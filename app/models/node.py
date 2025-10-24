@@ -11,6 +11,11 @@ class NodeStatus(str, Enum):
     disabled = "disabled"
 
 
+class GeoMode(str, Enum):
+    default = "default"
+    custom = "custom"
+
+
 class NodeSettings(BaseModel):
     min_node_version: str = "v0.2.0"
     certificate: str
@@ -26,6 +31,7 @@ class Node(BaseModel):
 
 class NodeCreate(Node):
     add_as_new_host: bool = True
+    geo_mode: GeoMode = GeoMode.default
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "name": "DE node",
@@ -33,7 +39,8 @@ class NodeCreate(Node):
             "port": 62050,
             "api_port": 62051,
             "add_as_new_host": True,
-            "usage_coefficient": 1
+            "usage_coefficient": 1,
+            "geo_mode": "default"
         }
     })
 
@@ -45,6 +52,7 @@ class NodeModify(Node):
     api_port: Optional[int] = Field(None, nullable=True)
     status: Optional[NodeStatus] = Field(None, nullable=True)
     usage_coefficient: Optional[float] = Field(None, nullable=True)
+    geo_mode: Optional[GeoMode] = Field(None, nullable=True)
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "name": "DE node",
@@ -52,7 +60,8 @@ class NodeModify(Node):
             "port": 62050,
             "api_port": 62051,
             "status": "disabled",
-            "usage_coefficient": 1.0
+            "usage_coefficient": 1.0,
+            "geo_mode": "default"
         }
     })
 
@@ -62,6 +71,7 @@ class NodeResponse(Node):
     xray_version: Optional[str] = None
     status: NodeStatus
     message: Optional[str] = None
+    geo_mode: GeoMode
     model_config = ConfigDict(from_attributes=True)
 
 

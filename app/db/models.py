@@ -22,7 +22,7 @@ from sqlalchemy.sql.expression import select, text
 
 from app import xray
 from app.db.base import Base
-from app.models.node import NodeStatus
+from app.models.node import NodeStatus, GeoMode
 from app.models.proxy import (
     ProxyHostALPN,
     ProxyHostFingerprint,
@@ -45,6 +45,7 @@ class Admin(Base):
     telegram_id = Column(BigInteger, nullable=True, default=None)
     discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
+    lifetime_usage = Column(BigInteger, nullable=False, default=0)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 
@@ -309,6 +310,7 @@ class Node(Base):
     user_usages = relationship("NodeUserUsage", back_populates="node", cascade="all, delete-orphan")
     usages = relationship("NodeUsage", back_populates="node", cascade="all, delete-orphan")
     usage_coefficient = Column(Float, nullable=False, server_default=text("1.0"), default=1)
+    geo_mode = Column(Enum(GeoMode), nullable=False, default=GeoMode.default)
 
 
 class NodeUserUsage(Base):

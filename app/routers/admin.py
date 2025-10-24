@@ -1,13 +1,15 @@
 from typing import List, Optional
-
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_
 
 from app import xray
 from app.db import Session, crud, get_db
 from app.dependencies import get_admin_by_username, validate_admin
 from app.models.admin import Admin, AdminCreate, AdminModify, Token
+from app.db.models import Admin as DBAdmin, Node as DBNode
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
 from config import LOGIN_NOTIFY_WHITE_LIST
@@ -23,6 +25,20 @@ def get_client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
     return "Unknown"
+
+
+def validate_dates(start: str, end: str) -> tuple[datetime, datetime]:
+    """Validate and parse start and end dates."""
+    try:
+        start_date = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else (datetime.utcnow() - timedelta(days=30))
+        end_date = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else datetime.utcnow()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use ISO 8601 (e.g., 2025-09-24T00:00:00)")
+
+    if start_date > end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before end date")
+
+    return start_date, end_date
 
 
 @router.post("/admin/token", response_model=Token)
@@ -185,7 +201,97 @@ def reset_admin_usage(
 )
 def get_admin_usage(
     dbadmin: Admin = Depends(get_admin_by_username),
-    current_admin: Admin = Depends(Admin.check_sudo_admin)
+    current_admin: Admin = Depends(Admin.get_current)
 ):
     """Retrieve the usage of given admin."""
+    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     return dbadmin.users_usage
+
+
+@router.get("/admin/{username}/usage/daily", responses={403: responses._403, 404: responses._404})
+def get_admin_usage_daily(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    start: str = "",
+    end: str = "",
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.get_current)
+):
+    """
+    Get admin usage per day (aggregated over all nodes and users).
+    """
+    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    start, end = validate_dates(start, end)
+    usages = crud.get_admin_daily_usages(db, dbadmin, start, end)
+
+    return {"username": dbadmin.username, "usages": usages}
+
+
+@router.get("/admin/{username}/usage/chart", responses={403: responses._403, 404: responses._404})
+def get_admin_usage_chart(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    start: str = "",
+    end: str = "",
+    node_id: Optional[int] = None,
+    granularity: str = "day",
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.get_current)
+):
+    """
+    Get admin usage timeseries for a specific node (or all nodes if node_id is not provided).
+    Returns usage data grouped by date (daily by default, hourly if requested).
+    """
+    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    start, end = validate_dates(start, end)
+    granularity_value = (granularity or "day").lower()
+    if granularity_value not in {"day", "hour"}:
+        raise HTTPException(status_code=400, detail="Invalid granularity. Use 'day' or 'hour'.")
+
+    usages = crud.get_admin_usages_by_day(db, dbadmin, start, end, node_id, granularity_value)
+
+    if node_id is not None:
+        if node_id == 0:
+            node_name = "Master"
+        else:
+            node = db.query(DBNode).filter(DBNode.id == node_id).first()
+            if not node:
+                raise HTTPException(status_code=404, detail="Node not found")
+            node_name = node.name
+        return {
+            "username": dbadmin.username,
+            "node_id": node_id,
+            "node_name": node_name,
+            "usages": usages,
+        }
+
+    return {"username": dbadmin.username, "usages": usages}
+
+
+@router.get("/admin/{username}/usage/nodes", responses={403: responses._403, 404: responses._404})
+def get_admin_usage_by_nodes(
+    username: str,
+    start: str = "",
+    end: str = "",
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.get_current)
+):
+    """
+    Retrieve usage statistics for a specific admin across all nodes within a date range.
+    Returns uplink and downlink traffic grouped by node.
+    """
+    if not (current_admin.is_sudo or current_admin.username == username):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    dbadmin = db.query(DBAdmin).filter(DBAdmin.username == username).first()
+    if not dbadmin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+
+    start, end = validate_dates(start, end)
+    usages = crud.get_admin_usage_by_nodes(db, dbadmin, start, end)
+
+    return {"usages": usages}

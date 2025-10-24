@@ -2,7 +2,7 @@ import asyncio
 import time
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, Body
 from sqlalchemy.exc import IntegrityError
 from starlette.websockets import WebSocketDisconnect
 
@@ -20,6 +20,7 @@ from app.models.node import (
 )
 from app.models.proxy import ProxyHost
 from app.utils import responses
+from app.db.models import Node as DBNode
 
 router = APIRouter(
     tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403}
@@ -211,3 +212,114 @@ def get_usage(
     usages = crud.get_nodes_usage(db, start, end)
 
     return {"usages": usages}
+
+
+@router.get("/node/{node_id}/usage/daily", responses={403: responses._403, 404: responses._404})
+def get_node_usage_daily(
+    node_id: int,
+    start: str = "",
+    end: str = "",
+    granularity: str = "day",
+    db: Session = Depends(get_db),
+    _: Admin = Depends(Admin.check_sudo_admin)
+):
+    """
+    Get usage for a specific node, regardless of admin.
+    Supports daily (default) or hourly granularity.
+    """
+    start, end = validate_dates(start, end)
+    granularity = (granularity or "day").lower()
+    if granularity not in {"day", "hour"}:
+        raise HTTPException(status_code=400, detail="Invalid granularity. Use 'day' or 'hour'.")
+
+    dbnode = db.query(DBNode).filter(DBNode.id == node_id).first()
+    if not dbnode:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    usages = crud.get_node_usage_by_day(db, node_id, start, end, granularity)
+    return {
+        "node_id": node_id,
+        "node_name": dbnode.name,
+        "usages": usages
+    }
+
+
+@router.post("/node/{node_id}/xray/update", responses={403: responses._403, 404: responses._404})
+def update_node_core(
+    node_id: int,
+    payload: dict = Body(..., example={"version": "v1.8.11"}),
+    dbnode: NodeResponse = Depends(get_node),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Ask a node to update/switch its Xray-core to a specific version, then restart node core."""
+    version = payload.get("version")
+    if not version or not isinstance(version, str):
+        raise HTTPException(status_code=422, detail="version is required")
+
+    node = xray.nodes.get(node_id)
+    if not node:
+        raise HTTPException(404, detail="Node not connected")
+
+    try:
+        node.update_core(version=version)
+        startup_config = xray.config.include_db_users()
+        xray.operations.restart_node(node_id, startup_config)
+    except Exception as e:
+        raise HTTPException(502, detail=f"Update failed: {e}")
+
+    return {"detail": f"Node {dbnode.name} switched to {version}"}
+
+
+@router.post("/node/{node_id}/geo/update", responses={403: responses._403, 404: responses._404})
+def update_node_geo(
+    node_id: int,
+    payload: dict = Body(..., example={
+        "files": [{"name": "geosite.dat", "url": "https://.../geosite.dat"},
+                  {"name": "geoip.dat", "url": "https://.../geoip.dat"}],
+        "template_index_url": "https://.../index.json",
+        "template_name": "standard"
+    }),
+    dbnode: NodeResponse = Depends(get_node),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """
+    Download and install geo assets on a specific node (custom mode).
+    Supports direct files list or template selection.
+    """
+    files = payload.get("files") or []
+    template_index_url = payload.get("template_index_url") or ""
+    template_name = payload.get("template_name") or ""
+
+    if not files and (template_index_url and template_name):
+        try:
+            r = requests.get(template_index_url, timeout=60)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            raise HTTPException(502, detail=f"Failed to fetch template index: {e}")
+        candidates = data.get("templates", data if isinstance(data, list) else [])
+        found = None
+        for t in candidates:
+            if t.get("name") == template_name:
+                found = t
+                break
+        if not found:
+            raise HTTPException(404, detail="Template not found in index.")
+        links = found.get("links") or {}
+        files = [{"name": k, "url": v} for k, v in links.items()]
+
+    if not files or not isinstance(files, list):
+        raise HTTPException(422, detail="'files' must be a non-empty list of {name,url}.")
+
+    node = xray.nodes.get(node_id)
+    if not node:
+        raise HTTPException(404, detail="Node not connected")
+
+    try:
+        node.update_geo(files=files)
+        startup_config = xray.config.include_db_users()
+        xray.operations.restart_node(node_id, startup_config)
+    except Exception as e:
+        raise HTTPException(502, detail=f"Geo update failed: {e}")
+
+    return {"detail": f"Geo assets updated on node {dbnode.name}"}

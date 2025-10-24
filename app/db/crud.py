@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
-
+from sqlalchemy import func
 from app.db.models import (
     JWT,
     TLS,
@@ -1498,3 +1498,279 @@ def count_online_users(db: Session, hours: int = 24):
     query = db.query(func.count(User.id)).filter(User.online_at.isnot(
         None), User.online_at >= twenty_four_hours_ago)
     return query.scalar()
+
+
+def get_admin_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[UserUsageResponse]:
+    """
+    Retrieves total usage for all users under a specific admin within a date range.
+    Returns data grouped by node.
+    """
+    usages = {0: UserUsageResponse(  # Main Core
+        node_id=None,
+        node_name="Master",
+        used_traffic=0
+    )}
+
+    # Create usage objects for each node
+    for node in db.query(Node).all():
+        usages[node.id] = UserUsageResponse(
+            node_id=node.id,
+            node_name=node.name,
+            used_traffic=0
+        )
+
+    # Get all user IDs owned by this admin
+    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+
+    if not user_ids:
+        return list(usages.values())
+
+    cond = and_(
+        NodeUserUsage.user_id.in_(user_ids),
+        NodeUserUsage.created_at >= start,
+        NodeUserUsage.created_at <= end
+    )
+
+    for v in db.query(NodeUserUsage).filter(cond):
+        try:
+            usages[v.node_id or 0].used_traffic += v.used_traffic
+        except KeyError:
+            pass
+
+    return list(usages.values())
+
+
+def get_admin_daily_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[dict]:
+    """
+    Retrieves daily usage for all users under a specific admin, aggregated over all nodes.
+    Returns a list of dictionaries with date and total used_traffic.
+    """
+    # Initialize result list
+    usages = []
+
+    # Get all user IDs owned by this admin
+    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    if not user_ids:
+        return usages
+
+    # Initialize usage dictionary for all dates
+    usage_by_date = {}
+    current_date = start
+    while current_date <= end:
+        date_str = current_date.strftime("%Y-%m-%d")
+        usage_by_date[date_str] = {
+            "date": date_str,
+            "used_traffic": 0
+        }
+        current_date += timedelta(days=1)
+
+    # Query usage data
+    cond = and_(
+        NodeUserUsage.user_id.in_(user_ids),
+        NodeUserUsage.created_at >= start,
+        NodeUserUsage.created_at <= end
+    )
+
+    for v in db.query(NodeUserUsage).filter(cond):
+        date_str = v.created_at.strftime("%Y-%m-%d")
+        try:
+            usage_by_date[date_str]["used_traffic"] += v.used_traffic
+        except KeyError:
+            pass
+
+    # Convert to list and filter out zero-traffic entries
+    usages = [entry for entry in usage_by_date.values() if entry["used_traffic"] > 0]
+
+    return sorted(usages, key=lambda x: x["date"])
+
+
+def get_admin_usages_by_day(
+    db: Session,
+    dbadmin: Admin,
+    start: datetime,
+    end: datetime,
+    node_id: Optional[int] = None,
+    granularity: str = "day",
+) -> List[dict]:
+    """
+    Retrieves usage for all users under a specific admin, optionally filtered by node_id.
+    Supports daily (default) or hourly granularity.
+    """
+    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    if not user_ids:
+        return []
+
+    granularity = (granularity or "day").lower()
+    if granularity not in {"day", "hour"}:
+        granularity = "day"
+
+    align_unit = "hour" if granularity == "hour" else "day"
+    step = timedelta(hours=1) if granularity == "hour" else timedelta(days=1)
+    fmt = "%Y-%m-%d %H:00" if granularity == "hour" else "%Y-%m-%d"
+
+    node_lookup: dict[int, str] = {node.id: node.name for node in db.query(Node).all()}
+    node_lookup[0] = "Master"
+
+    def resolve_node_name(n_id: int) -> str:
+        return node_lookup.get(n_id, "Unknown")
+
+    if node_id is not None:
+        node_keys: List[int] = [node_id]
+    else:
+        node_keys = sorted(node_lookup.keys())
+
+    if granularity == "hour":
+        current = start.replace(minute=0, second=0, microsecond=0)
+        end_aligned = end.replace(minute=0, second=0, microsecond=0)
+    else:
+        current = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_aligned = end.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if current > end_aligned:
+        return []
+
+    usage_by_node_and_date: Dict[tuple[int, str], dict] = {}
+    while current <= end_aligned:
+        label = current.strftime(fmt)
+        for n_key in node_keys:
+            usage_by_node_and_date[(n_key, label)] = {
+                "node_id": None if n_key in (0, None) else n_key,
+                "node_name": resolve_node_name(n_key if n_key is not None else 0),
+                "date": label,
+                "used_traffic": 0,
+            }
+        current += step
+
+    cond = and_(
+        NodeUserUsage.user_id.in_(user_ids),
+        NodeUserUsage.created_at >= start,
+        NodeUserUsage.created_at <= end,
+    )
+    if node_id is not None:
+        if node_id == 0:
+            cond = and_(cond, NodeUserUsage.node_id.is_(None))
+        else:
+            cond = and_(cond, NodeUserUsage.node_id == node_id)
+
+    for usage in db.query(NodeUserUsage).filter(cond):
+        bucket_time = usage.created_at
+        if granularity == "hour":
+            bucket_time = bucket_time.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket_time = bucket_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        label = bucket_time.strftime(fmt)
+        node_key = usage.node_id or 0
+        key = (node_key, label)
+        if key in usage_by_node_and_date:
+            usage_by_node_and_date[key]["used_traffic"] += usage.used_traffic
+
+    if node_id is not None:
+        return [
+            {"date": entry["date"], "used_traffic": entry["used_traffic"]}
+            for entry in sorted(usage_by_node_and_date.values(), key=lambda x: x["date"])
+        ]
+
+    return [
+        entry
+        for _, entry in sorted(
+            usage_by_node_and_date.items(), key=lambda item: (item[0][1], item[0][0] or 0)
+        )
+        if entry["used_traffic"] > 0
+    ]
+
+
+def get_node_usage_by_day(
+    db: Session,
+    node_id: int,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> List[dict]:
+    """
+    Retrieves usage for a specific node from NodeUserUsage.
+    Granularity can be "day" (default) or "hour".
+    """
+    granularity = (granularity or "day").lower()
+    if granularity not in {"day", "hour"}:
+        granularity = "day"
+
+    if granularity == "hour":
+        current = start.replace(minute=0, second=0, microsecond=0)
+        end_aligned = end.replace(minute=0, second=0, microsecond=0)
+        step = timedelta(hours=1)
+        fmt = "%Y-%m-%d %H:00"
+    else:
+        current = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_aligned = end.replace(hour=0, minute=0, second=0, microsecond=0)
+        step = timedelta(days=1)
+        fmt = "%Y-%m-%d"
+
+    if current > end_aligned:
+        return []
+
+    usage_by_date: Dict[str, Dict[str, Union[str, int]]] = {}
+    while current <= end_aligned:
+        label = current.strftime(fmt)
+        usage_by_date[label] = {"date": label, "used_traffic": 0}
+        current += step
+
+    cond = and_(
+        (NodeUserUsage.node_id == node_id) if node_id != 0 else NodeUserUsage.node_id.is_(None),
+        NodeUserUsage.created_at >= start,
+        NodeUserUsage.created_at <= end,
+    )
+
+    for usage in db.query(NodeUserUsage).filter(cond):
+        bucket_time = usage.created_at
+        if granularity == "hour":
+            bucket_time = bucket_time.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket_time = bucket_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        label = bucket_time.strftime(fmt)
+        if label in usage_by_date:
+            usage_by_date[label]["used_traffic"] += usage.used_traffic
+
+    return list(usage_by_date.values())
+
+
+def get_admin_usage_by_nodes(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[dict]:
+    """
+    Retrieves uplink and downlink usage for all users under a specific admin within a date range,
+    grouped by node. Returns a list of dictionaries with node_id, node_name, uplink, and downlink.
+    """
+    usages = []
+
+    # Initialize usage dictionary for all nodes
+    usage_by_node = {0: {"node_id": None, "node_name": "Master", "uplink": 0, "downlink": 0}}
+    for node in db.query(Node).all():
+        usage_by_node[node.id] = {
+            "node_id": node.id,
+            "node_name": node.name,
+            "uplink": 0,
+            "downlink": 0
+        }
+
+    # Get all user IDs owned by this admin
+    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    if not user_ids:
+        return list(usage_by_node.values())
+
+    # Query usage data
+    cond = and_(
+        NodeUserUsage.user_id.in_(user_ids),
+        NodeUserUsage.created_at >= start,
+        NodeUserUsage.created_at <= end
+    )
+
+    for usage in db.query(NodeUserUsage).filter(cond):
+        node_id = usage.node_id or 0
+        traffic = usage.used_traffic or 0
+        try:
+            usage_by_node[node_id]["downlink"] += traffic
+        except KeyError:
+            pass
+
+    # Convert to list and filter out nodes with zero traffic
+    usages = [entry for entry in usage_by_node.values() if entry["uplink"] > 0 or entry["downlink"] > 0]
+
+    return sorted(usages, key=lambda x: x["node_id"] or 0)

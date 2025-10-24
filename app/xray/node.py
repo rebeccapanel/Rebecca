@@ -270,6 +270,19 @@ class ReSTXRayNode:
                 pass
             del buf
 
+    def update_core(self, version: str):
+        # node REST service new endpoint
+        self.make_request("/update_core", timeout=300, version=version)
+
+    def update_geo(self, files: list[dict]):
+        """
+        Push geo assets to node via its REST endpoint.
+        files: list of {"name": "...", "url": "..."}
+        """
+        if not self.connected:
+            self.connect()
+        self.make_request("/update_geo", timeout=300, files=files)
+
 
 class RPyCXRayNode:
     def __init__(self,
@@ -491,6 +504,17 @@ class RPyCXRayNode:
     def on_stop(self, func: callable):
         self._service.add_shutdown_func(func)
         return func
+
+    def update_core(self, version: str):
+        # node RPYC service new exposed method
+        self.remote.update_core(version)
+
+    def update_geo(self, files: list[dict]):
+        """
+        Push geo assets to node via rpyc.
+        files: list of {"name": "...", "url": "..."}
+        """
+        self.remote.update_geo(files)
 
 
 class XRayNode:

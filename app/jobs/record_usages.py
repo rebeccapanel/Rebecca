@@ -173,7 +173,10 @@ def record_user_usages():
         if admin_data:
             admin_update_stmt = update(Admin). \
                 where(Admin.id == bindparam('admin_id')). \
-                values(users_usage=Admin.users_usage + bindparam('value'))
+                values(
+                    users_usage=Admin.users_usage + bindparam('value'),
+                    lifetime_usage=Admin.lifetime_usage + bindparam('value')
+                    )
             safe_execute(db, admin_update_stmt, admin_data)
 
     if DISABLE_RECORDING_NODE_USAGE:
