@@ -29,6 +29,9 @@ import {
   useDisclosure,
   FormControl,
   FormLabel,
+  RadioGroup,
+  Radio,
+  useBreakpointValue,
   useColorModeValue,
 } from "@chakra-ui/react";
 import type { TableProps } from "@chakra-ui/react";
@@ -55,6 +58,7 @@ import { useDashboard } from "contexts/DashboardContext";
 import { FC, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { JsonEditor } from "../components/JsonEditor";
+import { CompactChips, CompactTextWithCopy } from "components/CompactPopover";
 import XrayLogsPage from "./XrayLogsPage";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useMutation } from "react-query";
@@ -218,6 +222,10 @@ export const CoreSettingsPage: FC = () => {
   const [fakeDns, setFakeDns] = useState<any[]>([]);
   const [outboundsTraffic, setOutboundsTraffic] = useState<any[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [advSettings, setAdvSettings] = useState<string>("xraySetting");
+  const [obsSettings, setObsSettings] = useState<string>("");
+  const isMobile = useBreakpointValue({ base: true, md: false });
+  const [jsonKey, setJsonKey] = useState(0); // force re-render of JsonEditor
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -277,6 +285,9 @@ export const CoreSettingsPage: FC = () => {
       );
       setDnsServers(config?.dns?.servers || []);
       setFakeDns(config?.fakedns || []);
+      // initialize observatory editor selection if present
+      setObsSettings(config?.observatory ? "observatory" : config?.burstObservatory ? "burstObservatory" : "");
+      setJsonKey((prev) => prev + 1); // force JsonEditor re-mount
     }
   }, [config, form]);
 
@@ -492,6 +503,110 @@ export const CoreSettingsPage: FC = () => {
     }
   };
 
+  const getAdvancedJson = () => {
+    const cfg = form.getValues("config") || {};
+    switch (advSettings) {
+      case "inboundSettings":
+        return JSON.stringify(cfg.inbounds ?? [], null, 2);
+      case "outboundSettings":
+        return JSON.stringify(cfg.outbounds ?? [], null, 2);
+      case "routingRuleSettings":
+        return JSON.stringify(cfg.routing?.rules ?? [], null, 2);
+      case "xraySetting":
+      default:
+        return JSON.stringify(cfg ?? {}, null, 2);
+    }
+  };
+
+  const setAdvancedJson = (value: string) => {
+    try {
+      const parsed = JSON.parse(value);
+      const cfg = { ...(form.getValues("config") || {}) };
+      switch (advSettings) {
+        case "inboundSettings":
+          cfg.inbounds = parsed;
+          break;
+        case "outboundSettings":
+          cfg.outbounds = parsed;
+          setOutboundData(parsed.map((o: any, index: number) => ({ key: index, ...o })));
+          break;
+        case "routingRuleSettings":
+          if (!cfg.routing) cfg.routing = {};
+          cfg.routing.rules = parsed;
+          setRoutingRuleData(
+            parsed.map((r: any, index: number) => ({
+              key: index,
+              ...r,
+              domain: r.domain?.join(","),
+              ip: r.ip?.join(","),
+              source: r.source?.join(","),
+              network: Array.isArray(r.network) ? r.network.join(",") : r.network,
+              user: r.user?.join(","),
+              inboundTag: r.inboundTag?.join(","),
+              protocol: r.protocol?.join(","),
+              attrs: JSON.stringify(r.attrs, null, 2),
+            }))
+          );
+          break;
+        case "xraySetting":
+        default:
+          // replace whole config
+          form.setValue("config", parsed, { shouldDirty: true });
+          // sync all derived states
+          setOutboundData(parsed?.outbounds?.map((o: any, index: number) => ({ key: index, ...o })) || []);
+          setRoutingRuleData(
+            parsed?.routing?.rules?.map((r: any, index: number) => ({
+              key: index,
+              ...r,
+              domain: r.domain?.join(","),
+              ip: r.ip?.join(","),
+              source: r.source?.join(","),
+              network: Array.isArray(r.network) ? r.network.join(",") : r.network,
+              user: r.user?.join(","),
+              inboundTag: r.inboundTag?.join(","),
+              protocol: r.protocol?.join(","),
+              attrs: JSON.stringify(r.attrs, null, 2),
+            })) || []
+          );
+          setBalancersData(
+            parsed?.routing?.balancers?.map((b: any, index: number) => ({
+              key: index,
+              tag: b.tag || "",
+              strategy: b.strategy?.type || "random",
+              selector: b.selector || [],
+              fallbackTag: b.fallbackTag || "",
+            })) || []
+          );
+          setDnsServers(parsed?.dns?.servers || []);
+          setFakeDns(parsed?.fakedns || []);
+          return;
+      }
+      form.setValue("config", cfg, { shouldDirty: true });
+    } catch (e) {
+      // ignore invalid JSON until it becomes valid
+    }
+  };
+
+  const getObsJson = () => {
+    const cfg = form.getValues("config") || {};
+    if (obsSettings === "observatory") return JSON.stringify(cfg.observatory ?? {}, null, 2);
+    if (obsSettings === "burstObservatory") return JSON.stringify(cfg.burstObservatory ?? {}, null, 2);
+    return "";
+  };
+
+  const setObsJson = (value: string) => {
+    try {
+      const parsed = JSON.parse(value);
+      const cfg = { ...(form.getValues("config") || {}) };
+      if (obsSettings === "observatory") cfg.observatory = parsed;
+      if (obsSettings === "burstObservatory") cfg.burstObservatory = parsed;
+      form.setValue("config", cfg, { shouldDirty: true });
+      setJsonKey((prev) => prev + 1); // trigger refresh
+    } catch (e) {
+      // ignore until valid
+    }
+  };
+
   const toChipList = (value: unknown): string[] => {
     if (!value && value !== 0) return [];
     if (Array.isArray(value)) {
@@ -513,22 +628,19 @@ export const CoreSettingsPage: FC = () => {
     if (!chips.length) {
       return <Text color="gray.400">-</Text>;
     }
-    return (
-      <Box display="flex" flexWrap="wrap" gap="1">
-        {chips.map((chip, idx) => (
-          <Tag key={`${chip}-${idx}`} colorScheme={colorScheme} size="sm">
-            {chip}
-          </Tag>
-        ))}
-      </Box>
-    );
+    // use compact chips that show first item and a +N trigger on small screens
+    return <CompactChips chips={chips} color={colorScheme} />;
   };
 
   const renderTextValue = (value: unknown) => {
     if (value === undefined || value === null || value === "" || (typeof value === "string" && !value.trim())) {
       return <Text color="gray.400">-</Text>;
     }
-    return <Text>{typeof value === "string" ? value : String(value)}</Text>;
+    const str = typeof value === "string" ? value : String(value);
+    if (str.length > 30) {
+      return <CompactTextWithCopy text={str} label={t("details")} />;
+    }
+    return <Text>{str}</Text>;
   };
 
   const renderAttrsCell = (attrsValue: string | undefined) => {
@@ -1065,6 +1177,28 @@ export const CoreSettingsPage: FC = () => {
                   </Tbody>
                 </TableGrid>
               </TableCard>
+              {/* Observatory / Burst Observatory editor (if present in config) */}
+              {(form.getValues("config")?.observatory || form.getValues("config")?.burstObservatory) && (
+                <VStack spacing={3} align="stretch">
+                  <RadioGroup onChange={(v) => { setObsSettings(v); setJsonKey((prev) => prev + 1); }} value={obsSettings}>
+                    <HStack spacing={3}>
+                      {form.getValues("config")?.observatory && (
+                        <Radio value="observatory">Observatory</Radio>
+                      )}
+                      {form.getValues("config")?.burstObservatory && (
+                        <Radio value="burstObservatory">Burst Observatory</Radio>
+                      )}
+                    </HStack>
+                  </RadioGroup>
+                  <Box h="300px">
+                    <JsonEditor
+                      key={`obs-${obsSettings}-${jsonKey}`}
+                      json={getObsJson() ? JSON.parse(getObsJson()) : {}}
+                      onChange={(value) => setObsJson(value)}
+                    />
+                  </Box>
+                </VStack>
+              )}
             </VStack>
           </TabPanel>
           <TabPanel>
@@ -1190,43 +1324,51 @@ export const CoreSettingsPage: FC = () => {
             </VStack>
           </TabPanel>
           <TabPanel>
-            <Box position="relative" w="100%" h="100vh">
-              <IconButton
-                position="absolute"
-                top={2}
-                right={2}
-                aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}
-                icon={isFullScreen ? <ExitFullScreenIconStyled /> : <FullScreenIconStyled />}
-                onClick={toggleFullScreen}
-                zIndex={10}
-              />
-              <Box
-                w={isFullScreen ? "100vw" : "100%"}
-                h={isFullScreen ? "100vh" : "100%"}
-                position={isFullScreen ? "fixed" : "relative"}
-                top={isFullScreen ? 0 : "auto"}
-                left={isFullScreen ? 0 : "auto"}
-                zIndex={isFullScreen ? 1000 : "auto"}
-              >
-                <Controller
-                  control={form.control}
-                  name="config"
-                  render={({ field }) => (
-                    <JsonEditor
-                      json={field.value ?? {}}
-                      onChange={(value) => {
-                        try {
-                          const parsed = JSON.parse(value);
-                          field.onChange(parsed);
-                        } catch {
-                          // ignore invalid JSON until it becomes valid
-                        }
-                      }}
-                    />
-                  )}
-                />
+            <VStack spacing={4} align="stretch">
+              <Box px={2}>
+                <Text fontWeight="semibold">{t("pages.xray.Template")}</Text>
+                <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
+                  {t("pages.xray.TemplateDesc")}
+                </Text>
               </Box>
-            </Box>
+              <Box px={2}>
+                <RadioGroup onChange={(v) => { setAdvSettings(v); setJsonKey((prev) => prev + 1); }} value={advSettings}>
+                  <HStack spacing={3} wrap="wrap">
+                    <Radio value="xraySetting">{t("pages.xray.completeTemplate")}</Radio>
+                    <Radio value="inboundSettings">{t("pages.xray.Inbounds")}</Radio>
+                    <Radio value="outboundSettings">{t("pages.xray.Outbounds")}</Radio>
+                    <Radio value="routingRuleSettings">{t("pages.xray.Routings")}</Radio>
+                  </HStack>
+                </RadioGroup>
+              </Box>
+              <Box position="relative" w="100%" h="calc(100vh - 350px)" minH="400px">
+                <IconButton
+                  position="absolute"
+                  top={2}
+                  right={2}
+                  aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}
+                  icon={isFullScreen ? <ExitFullScreenIconStyled /> : <FullScreenIconStyled />}
+                  onClick={toggleFullScreen}
+                  zIndex={10}
+                />
+                <Box
+                  w={isFullScreen ? "100vw" : "100%"}
+                  h={isFullScreen ? "100vh" : "100%"}
+                  position={isFullScreen ? "fixed" : "relative"}
+                  top={isFullScreen ? 0 : "auto"}
+                  left={isFullScreen ? 0 : "auto"}
+                  zIndex={isFullScreen ? 1000 : "auto"}
+                >
+                  <JsonEditor
+                    key={`advanced-${advSettings}-${jsonKey}`}
+                    json={getAdvancedJson() ? JSON.parse(getAdvancedJson()) : {}}
+                    onChange={(value) => {
+                      setAdvancedJson(value);
+                    }}
+                  />
+                </Box>
+              </Box>
+            </VStack>
           </TabPanel>
           <TabPanel>
             <Box>

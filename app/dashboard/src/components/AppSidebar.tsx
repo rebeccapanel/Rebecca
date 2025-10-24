@@ -32,6 +32,8 @@ const ChevronDownIconStyled = chakra(ChevronDownIcon, iconProps);
 
 interface AppSidebarProps {
   collapsed: boolean;
+  /** when rendered inside a Drawer on mobile */
+  inDrawer?: boolean;
 }
 
 type SidebarItem = {
@@ -41,7 +43,7 @@ type SidebarItem = {
   subItems?: { title: string; url: string; icon: ElementType }[];
 };
 
-export const AppSidebar: FC<AppSidebarProps> = ({ collapsed }) => {
+export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false }) => {
   const { t } = useTranslation();
   const location = useLocation();
   const { userData, getUserIsSuccess } = useGetUser();
@@ -77,15 +79,20 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed }) => {
 
   return (
     <Box
-      w={collapsed ? "16" : "60"}
-      h="100vh"
+      w={inDrawer ? "full" : collapsed ? "16" : "60"}
+      h={inDrawer ? "100%" : "100vh"}
+      maxH={inDrawer ? "100%" : "100vh"}
       bg="white"
-      borderRight="1px"
-      borderColor="light-border"
-      _dark={{ bg: "gray.800", borderColor: "gray.600" }}
+      borderRight={inDrawer ? undefined : "1px"}
+      borderColor={inDrawer ? undefined : "light-border"}
+      _dark={{ bg: "gray.800", borderColor: inDrawer ? undefined : "gray.600" }}
       transition="width 0.3s"
-      position="sticky"
-      top="0"
+      position={inDrawer ? "relative" : "fixed"}
+      top={inDrawer ? undefined : "0"}
+      left={inDrawer ? undefined : "0"}
+      overflowY="auto"
+      overflowX="hidden"
+      flexShrink={0}
     >
       <VStack spacing={1} p={4} align="stretch">
         {!collapsed && (

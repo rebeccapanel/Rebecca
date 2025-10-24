@@ -18,6 +18,7 @@ import {
   IconButton,
   Input as ChakraInput,
   InputGroup,
+  InputLeftElement,
   InputRightElement,
   Modal,
   ModalBody,
@@ -47,10 +48,12 @@ import {
   useColorMode,
   useDisclosure,
   useToast,
+  chakra,
 } from "@chakra-ui/react";
 import {
   ArrowPathIcon,
   ChevronDownIcon,
+  MagnifyingGlassIcon,
   NoSymbolIcon,
   PencilIcon,
   PlayIcon,
@@ -61,13 +64,22 @@ import {
   EyeSlashIcon,
   UserGroupIcon,
   ChartBarIcon,
+  InformationCircleIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { chakra } from "@chakra-ui/react";
 import { UsageFilter } from "components/UsageFilter";
+import { AdminsPagination } from "components/AdminsPagination";
 import { createUsageConfig } from "components/UsageFilter";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { FilterUsageType } from "contexts/DashboardContext";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from "react";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionPanel,
+  AccordionButton,
+  useBreakpointValue,
+} from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { Admin, AdminCreatePayload, AdminUpdatePayload } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
@@ -76,9 +88,11 @@ import { fetch as apiFetch } from "service/http";
 import { ApexOptions } from "apexcharts";
 import ReactApexChart from "react-apexcharts";
 import dayjs from "dayjs";
+import { CompactTextWithCopy } from "components/CompactPopover";
 import { UseFormReturn, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import debounce from "lodash.debounce";
 
 const AddIcon = chakra(PlusIcon, { baseStyle: { w: 4, h: 4 } });
 const EditIcon = chakra(PencilIcon, { baseStyle: { w: 4, h: 4 } });
@@ -89,8 +103,11 @@ const DeleteIcon = chakra(TrashIcon, { baseStyle: { w: 4, h: 4 } });
 const RandomIcon = chakra(SparklesIcon, { baseStyle: { w: 4, h: 4 } });
 const ViewIcon = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const ViewOffIcon = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
+const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
+const ClearIcon = chakra(XMarkIcon, { baseStyle: { w: 4, h: 4 } });
 const ManageTabIcon = chakra(UserGroupIcon, { baseStyle: { w: 4, h: 4 } });
 const UsageTabIcon = chakra(ChartBarIcon, { baseStyle: { w: 4, h: 4 } });
+const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 5, h: 5 } });
 const SortIcon = chakra(ChevronDownIcon, {
   baseStyle: {
     w: 4,
@@ -166,43 +183,61 @@ const buildUsageLineOptions = (
   t: (key: string, defaultValue?: string, options?: Record<string, string | number>) => string,
   labels: string[],
   colorMode: "light" | "dark"
-): ApexOptions => ({
-  chart: {
-    type: "line",
-    height: 320,
-    animations: { enabled: false },
-    toolbar: { show: false },
-  },
-  stroke: {
-    curve: "smooth",
-    width: 2,
-  },
-  dataLabels: { enabled: false },
-  xaxis: {
-    categories: labels,
-    labels: {
-      style: {
-        colors: colorMode === "dark" ? "#CBD5E0" : undefined,
+): ApexOptions => {
+  const axisColor = colorMode === "dark" ? "#d8dee9" : "#1a202c";
+  return {
+    chart: {
+      type: "area",
+      height: 360,
+      toolbar: { show: false },
+      zoom: { enabled: false },
+    },
+    dataLabels: { enabled: false },
+    stroke: {
+      curve: "smooth",
+      width: 2,
+    },
+    fill: {
+      type: "gradient",
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.35,
+        opacityTo: 0.05,
+        stops: [0, 80, 100],
       },
     },
-  },
-  yaxis: {
-    labels: {
-      formatter: (value) => formatBytes(Number(value) || 0),
-      style: {
-        colors: colorMode === "dark" ? "#CBD5E0" : undefined,
+    grid: {
+      borderColor: colorMode === "dark" ? "#2D3748" : "#E2E8F0",
+    },
+    xaxis: {
+      categories: labels,
+      labels: {
+        style: {
+          colors: labels.map(() => axisColor),
+        },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: {
+        formatter: (value: number) => formatBytes(Number(value) || 0, 1),
+        style: {
+          colors: [axisColor],
+        },
       },
     },
-  },
-  tooltip: {
-    y: {
-      formatter: (value) => formatBytes(Number(value) || 0, 2),
-      title: {
-        formatter: () => t("admins.usageValue", "Usage"),
+    tooltip: {
+      theme: colorMode === "dark" ? "dark" : "light",
+      shared: true,
+      fillSeriesColor: false,
+      y: {
+        formatter: (value: number) => formatBytes(Number(value) || 0, 2),
       },
     },
-  },
-});
+    colors: [colorMode === "dark" ? "#63B3ED" : "#3182CE"],
+  };
+};
 
 interface AdminFormModalProps {
   isOpen: boolean;
@@ -530,6 +565,10 @@ export const AdminsPage: React.FC = () => {
   const [nodeUsage, setNodeUsage] = useState<AdminNodeUsageEntry[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
   const [lastUsageUpdated, setLastUsageUpdated] = useState<Date | null>(null);
+  const [selectedRow, setSelectedRow] = useState<number | undefined>(undefined);
+  const marginTop = useBreakpointValue({ base: 120, lg: 72 }) || 72;
+  const [top, setTop] = useState(`${marginTop}px`);
+  const useTable = useBreakpointValue({ base: false, md: true });
 
   useEffect(() => {
     fetchAdmins().catch((error) => {
@@ -543,9 +582,24 @@ export const AdminsPage: React.FC = () => {
     }
   }, [admins, usageAdmin]);
 
-  const handleSearchSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    setFilters({ search: search.trim(), offset: 0 });
+  const debouncedSearch = useMemo(
+    () =>
+      debounce((searchValue: string) => {
+        setFilters({ search: searchValue.trim(), offset: 0 });
+        fetchAdmins().catch((error) => generateErrorMessage(error, toast));
+      }, 300),
+    [setFilters, fetchAdmins, toast]
+  );
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setSearch(value);
+    debouncedSearch(value);
+  };
+
+  const handleClearSearch = () => {
+    setSearch("");
+    setFilters({ search: "", offset: 0 });
     fetchAdmins().catch((error) => generateErrorMessage(error, toast));
   };
 
@@ -700,6 +754,15 @@ export const AdminsPage: React.FC = () => {
     }
   }, [loadUsageData, usageAdmin]);
 
+  useEffect(() => {
+    const calcTop = () => {
+      const el = document.querySelectorAll("#filters")[0] as HTMLElement;
+      if (el) setTop(`${el.offsetHeight}px`);
+    };
+    window.addEventListener("scroll", calcTop);
+    return () => window.removeEventListener("scroll", calcTop);
+  }, []);
+
   const usageLineLabels = useMemo(
     () => dailyUsage.map((entry) => formatTimeseriesLabel(entry.date)),
     [dailyUsage]
@@ -713,6 +776,11 @@ export const AdminsPage: React.FC = () => {
       },
     ],
     [dailyUsage, t]
+  );
+
+  const dailyUsageTotal = useMemo(
+    () => dailyUsage.reduce((sum, entry) => sum + Number(entry.used_traffic || 0), 0),
+    [dailyUsage]
   );
 
   const nodeUsageChart = useMemo(() => {
@@ -752,34 +820,52 @@ export const AdminsPage: React.FC = () => {
     <VStack align="stretch" spacing={6}>
       <Tabs variant="enclosed" colorScheme="primary">
         <TabList>
-          <Tab>{t("admins.manageTab", "Admins")}</Tab>
-          <Tab>{t("admins.usageTab", "Usage")}</Tab>
+          <Tab>
+            <HStack spacing={2}>
+              <ManageTabIcon />
+              <Text>{t("admins.manageTab", "Admins")}</Text>
+            </HStack>
+          </Tab>
+          <Tab>
+            <HStack spacing={2}>
+              <UsageTabIcon />
+              <Text>{t("admins.usageTab", "Usage")}</Text>
+            </HStack>
+          </Tab>
         </TabList>
         <TabPanels>
           <TabPanel px={0}>
             <VStack align="stretch" spacing={4}>
               <Flex
-                as="form"
-                onSubmit={handleSearchSubmit}
                 justify="space-between"
                 gap={4}
                 flexWrap="wrap"
               >
-                <HStack spacing={3}>
+                <InputGroup maxW="260px">
+                  <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
                   <ChakraInput
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={handleSearchChange}
                     placeholder={t(
                       "admins.searchPlaceholder",
                       "Search admins..."
                     )}
                     size="sm"
-                    maxW="260px"
                   />
-                  <Button type="submit" size="sm">
-                    {t("search")}
-                  </Button>
-                </HStack>
+                  <InputRightElement>
+                    {loading && <Spinner size="xs" />}
+                    {search && search.length > 0 && (
+                      <IconButton
+                        onClick={handleClearSearch}
+                        aria-label="clear"
+                        size="xs"
+                        variant="ghost"
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    )}
+                  </InputRightElement>
+                </InputGroup>
                 <HStack spacing={3}>
                   <Button
                     size="sm"
@@ -805,132 +891,144 @@ export const AdminsPage: React.FC = () => {
                     <Spinner />
                   </Flex>
                 ) : admins.length ? (
-                  <Table size="sm">
-                    <Thead>
-                      <Tr>
-                        <Th>{t("username")}</Th>
-                        <Th>{t("admins.isSudo", "Sudo access")}</Th>
-                        <Th>{t("admins.telegramId", "Telegram ID")}</Th>
-                        <Th>{t("admins.discordWebhook", "Discord webhook")}</Th>
-                        <Th>{t("admins.usageColumn", "Usage")}</Th>
-                        <Th>{t("actions")}</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {admins.map((admin) => {
-                        const usage = formatBytes(admin.users_usage ?? 0);
-                        const isActionLoading =
-                          actionState?.username === admin.username;
-                        return (
-                          <Tr key={admin.username}>
-                            <Td fontWeight="medium">{admin.username}</Td>
-                            <Td>
-                              {admin.is_sudo ? (
-                                <Badge colorScheme="purple">
-                                  {t("admins.sudoBadge", "Sudo")}
-                                </Badge>
-                              ) : (
-                                <Badge>{t("admins.standardBadge", "Standard")}</Badge>
-                              )}
-                            </Td>
-                            <Td>
-                              {admin.telegram_id !== null &&
-                              admin.telegram_id !== undefined
-                                ? admin.telegram_id
-                                : "-"}
-                            </Td>
-                            <Td maxW="220px">
-                              <Text isTruncated>
-                                {admin.discord_webhook || "-"}
-                              </Text>
-                            </Td>
-                            <Td>{usage}</Td>
-                            <Td>
-                              <HStack spacing={1}>
-                                <Tooltip
-                                  label={t("admins.editAction", "Edit")}
-                                  placement="top"
-                                >
-                                  <IconButton
-                                    aria-label="edit admin"
-                                    icon={<EditIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleOpenEdit(admin)}
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  label={t("admins.resetUsage", "Reset usage")}
-                                  placement="top"
-                                >
-                                  <IconButton
-                                    aria-label="reset usage"
-                                    icon={<ResetIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => runAction("reset", admin)}
-                                    isLoading={
-                                      isActionLoading &&
-                                      actionState?.type === "reset"
-                                    }
-                                    isDisabled={(admin.users_usage ?? 0) === 0}
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  label={t(
-                                    "admins.disableUsers",
-                                    "Disable users"
-                                  )}
-                                  placement="top"
-                                >
-                                  <IconButton
-                                    aria-label="disable users"
-                                    icon={<DisableIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => runAction("disable", admin)}
-                                    isLoading={
-                                      isActionLoading &&
-                                      actionState?.type === "disable"
-                                    }
-                                  />
-                                </Tooltip>
-                                <Tooltip
-                                  label={t(
-                                    "admins.activateUsers",
-                                    "Activate users"
-                                  )}
-                                  placement="top"
-                                >
-                                  <IconButton
-                                    aria-label="activate users"
-                                    icon={<ActivateIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => runAction("activate", admin)}
-                                    isLoading={
-                                      isActionLoading &&
-                                      actionState?.type === "activate"
-                                    }
-                                  />
-                                </Tooltip>
-                                <Tooltip label={t("delete")} placement="top">
-                                  <IconButton
-                                    aria-label="delete admin"
-                                    icon={<DeleteIcon />}
-                                    size="sm"
-                                    variant="ghost"
-                                    colorScheme="red"
-                                    onClick={() => openDeleteDialog(admin)}
-                                  />
-                                </Tooltip>
-                              </HStack>
-                            </Td>
+                  <>
+                    {!useTable ? (
+                      <Accordion allowMultiple display={{ base: "block", md: "none" }} index={selectedRow}>
+                        <Table orientation="vertical" zIndex="docked">
+                          <Thead zIndex="docked" position="relative">
+                            <Tr>
+                              <Th position="sticky" top={top} minW="120px" pl={4} pr={4}>{t("username")}</Th>
+                              <Th position="sticky" top={top} minW="80px" pl={0} pr={0}>{t("admins.isSudo", "Sudo")}</Th>
+                              <Th position="sticky" top={top} minW="100px" pr={0}>{t("admins.usageColumn", "Usage")}</Th>
+                              <Th position="sticky" top={top} minW="32px" w="32px" p={0}></Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {admins.map((admin, i) => {
+                              const usage = formatBytes(admin.users_usage ?? 0);
+                              const isActionLoading = actionState?.username === admin.username;
+                              return (
+                                <Fragment key={admin.username}>
+                                  <Tr onClick={() => setSelectedRow(i === selectedRow ? undefined : i)} cursor="pointer">
+                                    <Td borderBottom={0} minW="100px" pl={4} pr={4} maxW="calc(100vw - 120px)">
+                                      <Text isTruncated fontWeight="medium">{admin.username}</Text>
+                                    </Td>
+                                    <Td borderBottom={0} minW="80px" pl={0} pr={0}>
+                                      {admin.is_sudo ? (
+                                        <Badge colorScheme="purple">{t("admins.sudoBadge", "Sudo")}</Badge>
+                                      ) : (
+                                        <Badge>{t("admins.standardBadge", "Standard")}</Badge>
+                                      )}
+                                    </Td>
+                                    <Td borderBottom={0} minW="100px" pr={0}>
+                                      <Text fontSize="sm">{usage}</Text>
+                                    </Td>
+                                    <Td p={0} borderBottom={0} w="32px" minW="32px">
+                                      <SortIcon transform={selectedRow === i ? "rotate(180deg)" : "0deg"} />
+                                    </Td>
+                                  </Tr>
+                                  <Tr className="collapsible">
+                                    <Td p={0} colSpan={4}>
+                                      <AccordionItem border={0}>
+                                        <AccordionButton display="none"></AccordionButton>
+                                        <AccordionPanel border={0} px={6} py={3}>
+                                          <VStack align="stretch" spacing={3}>
+                                            <HStack justify="space-between">
+                                              <VStack align="flex-start">
+                                                <Text fontSize="xs" fontWeight="semibold">{t("admins.telegramId", "Telegram ID")}</Text>
+                                                <Text>{admin.telegram_id ?? "-"}</Text>
+                                              </VStack>
+                                              <CompactTextWithCopy text={admin.discord_webhook ?? undefined} label={t("admins.discordWebhook", "Discord webhook")} />
+                                            </HStack>
+                                            <HStack justify="space-between">
+                                              <HStack spacing={1}>
+                                                <Tooltip label={t("admins.editAction", "Edit")} placement="top">
+                                                  <IconButton aria-label="edit admin" icon={<EditIcon />} size="sm" variant="ghost" onClick={() => handleOpenEdit(admin)} />
+                                                </Tooltip>
+                                                <Tooltip label={t("admins.resetUsage", "Reset usage")} placement="top">
+                                                  <IconButton aria-label="reset usage" icon={<ResetIcon />} size="sm" variant="ghost" onClick={() => runAction("reset", admin)} isLoading={isActionLoading && actionState?.type === "reset"} isDisabled={(admin.users_usage ?? 0) === 0} />
+                                                </Tooltip>
+                                                <Tooltip label={t("admins.disableUsers", "Disable users")} placement="top">
+                                                  <IconButton aria-label="disable users" icon={<DisableIcon />} size="sm" variant="ghost" onClick={() => runAction("disable", admin)} isLoading={isActionLoading && actionState?.type === "disable"} />
+                                                </Tooltip>
+                                                <Tooltip label={t("admins.activateUsers", "Activate users")} placement="top">
+                                                  <IconButton aria-label="activate users" icon={<ActivateIcon />} size="sm" variant="ghost" onClick={() => runAction("activate", admin)} isLoading={isActionLoading && actionState?.type === "activate"} />
+                                                </Tooltip>
+                                              </HStack>
+                                              <HStack>
+                                                <Tooltip label={t("delete")} placement="top">
+                                                  <IconButton aria-label="delete admin" icon={<DeleteIcon />} size="sm" variant="ghost" colorScheme="red" onClick={() => openDeleteDialog(admin)} />
+                                                </Tooltip>
+                                              </HStack>
+                                            </HStack>
+                                          </VStack>
+                                        </AccordionPanel>
+                                      </AccordionItem>
+                                    </Td>
+                                  </Tr>
+                                </Fragment>
+                              );
+                            })}
+                          </Tbody>
+                        </Table>
+                      </Accordion>
+                    ) : (
+                      <Table size="sm">
+                        <Thead>
+                          <Tr>
+                            <Th>{t("username")}</Th>
+                            <Th>{t("admins.isSudo", "Sudo access")}</Th>
+                            <Th>{t("admins.telegramId", "Telegram ID")}</Th>
+                            <Th>{t("admins.discordWebhook", "Discord webhook")}</Th>
+                            <Th>{t("admins.usageColumn", "Usage")}</Th>
+                            <Th>{t("actions")}</Th>
                           </Tr>
-                        );
-                      })}
-                    </Tbody>
-                  </Table>
+                        </Thead>
+                        <Tbody>
+                          {admins.map((admin) => {
+                            const usage = formatBytes(admin.users_usage ?? 0);
+                            const isActionLoading = actionState?.username === admin.username;
+                            return (
+                              <Tr key={admin.username}>
+                                <Td fontWeight="medium">{admin.username}</Td>
+                                <Td>
+                                  {admin.is_sudo ? (
+                                    <Badge colorScheme="purple">{t("admins.sudoBadge", "Sudo")}</Badge>
+                                  ) : (
+                                    <Badge>{t("admins.standardBadge", "Standard")}</Badge>
+                                  )}
+                                </Td>
+                                <Td>{admin.telegram_id !== null && admin.telegram_id !== undefined ? admin.telegram_id : "-"}</Td>
+                                <Td>
+                                  <CompactTextWithCopy text={admin.discord_webhook ?? undefined} label={t("admins.discordWebhook", "Discord webhook")} />
+                                </Td>
+                                <Td>{usage}</Td>
+                                <Td>
+                                  <HStack spacing={1}>
+                                    <Tooltip label={t("admins.editAction", "Edit")} placement="top">
+                                      <IconButton aria-label="edit admin" icon={<EditIcon />} size="sm" variant="ghost" onClick={() => handleOpenEdit(admin)} />
+                                    </Tooltip>
+                                    <Tooltip label={t("admins.resetUsage", "Reset usage")} placement="top">
+                                      <IconButton aria-label="reset usage" icon={<ResetIcon />} size="sm" variant="ghost" onClick={() => runAction("reset", admin)} isLoading={isActionLoading && actionState?.type === "reset"} isDisabled={(admin.users_usage ?? 0) === 0} />
+                                    </Tooltip>
+                                    <Tooltip label={t("admins.disableUsers", "Disable users")} placement="top">
+                                      <IconButton aria-label="disable users" icon={<DisableIcon />} size="sm" variant="ghost" onClick={() => runAction("disable", admin)} isLoading={isActionLoading && actionState?.type === "disable"} />
+                                    </Tooltip>
+                                    <Tooltip label={t("admins.activateUsers", "Activate users")} placement="top">
+                                      <IconButton aria-label="activate users" icon={<ActivateIcon />} size="sm" variant="ghost" onClick={() => runAction("activate", admin)} isLoading={isActionLoading && actionState?.type === "activate"} />
+                                    </Tooltip>
+                                    <Tooltip label={t("delete")} placement="top">
+                                      <IconButton aria-label="delete admin" icon={<DeleteIcon />} size="sm" variant="ghost" colorScheme="red" onClick={() => openDeleteDialog(admin)} />
+                                    </Tooltip>
+                                  </HStack>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
+                    )}
+                  </>
                 ) : (
                   <Flex direction="column" align="center" py={12} gap={2}>
                     <Text color="gray.500">
@@ -945,6 +1043,7 @@ export const AdminsPage: React.FC = () => {
                   </Flex>
                 )}
               </Box>
+              <AdminsPagination />
             </VStack>
           </TabPanel>
           <TabPanel px={0}>
@@ -991,30 +1090,48 @@ export const AdminsPage: React.FC = () => {
               )}
               <Box
                 borderWidth="1px"
-                borderRadius="md"
-                p={4}
-                minH="320px"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
+                borderRadius="lg"
+                p={{ base: 4, md: 6 }}
+                boxShadow="md"
               >
-                {usageLoading ? (
-                  <Spinner />
-                ) : dailyUsage.length ? (
-                  <ReactApexChart
-                    options={buildUsageLineOptions(t, usageLineLabels, colorMode)}
-                    series={usageLineSeries}
-                    type="line"
-                    height={320}
-                  />
-                ) : (
-                  <Text color="gray.500">
-                    {t(
-                      "admins.usageEmpty",
-                      "No usage data for the selected range."
-                    )}
-                  </Text>
-                )}
+                <HStack justify="space-between" align="start" mb={6}>
+                  <VStack align="start" spacing={2}>
+                    <Tooltip 
+                      label={t("admins.dailyUsageTooltip", "Total data usage per day for the selected admin and time range")}
+                      hasArrow
+                    >
+                      <HStack spacing={1}>
+                        <Text fontSize="lg" fontWeight="bold">
+                          {t("admins.dailyUsageTitle", "Daily Usage")}
+                        </Text>
+                        <InfoIcon />
+                      </HStack>
+                    </Tooltip>
+                    <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                      {usageAdmin && `${t("admins.admin", "Admin")}: ${usageAdmin} • `}
+                      {t("admins.totalUsage", "Total")}: {formatBytes(dailyUsageTotal, 2)}
+                    </Text>
+                  </VStack>
+                </HStack>
+                <Box minH="360px" display="flex" alignItems="center" justifyContent="center">
+                  {usageLoading ? (
+                    <Spinner />
+                  ) : dailyUsage.length ? (
+                    <ReactApexChart
+                      options={buildUsageLineOptions(t, usageLineLabels, colorMode)}
+                      series={usageLineSeries}
+                      type="area"
+                      height={360}
+                    />
+                  ) : (
+                    <Text color="gray.500">
+                      {t(
+                        "admins.usageEmpty",
+                        "No usage data for the selected range."
+                      )}
+                    </Text>
+                  )}
+                </Box>
               </Box>
               <Divider />
               <Box

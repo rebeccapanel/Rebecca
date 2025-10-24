@@ -11,6 +11,7 @@ export type AdminFilters = {
 
 type AdminsStore = {
   admins: Admin[];
+  total: number;
   loading: boolean;
   filters: AdminFilters;
   fetchAdmins: () => Promise<void>;
@@ -25,13 +26,14 @@ type AdminsStore = {
 
 const defaultFilters: AdminFilters = {
   search: "",
-  limit: 50,
+  limit: 10,
   offset: 0,
   sort: "username",
 };
 
 export const useAdminsStore = create<AdminsStore>((set, get) => ({
   admins: [],
+  total: 0,
   loading: false,
   filters: defaultFilters,
   async fetchAdmins() {
@@ -52,8 +54,14 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 
     set({ loading: true });
     try {
-      const data = await fetch<Admin[]>("/admins", { query });
-      set({ admins: Array.isArray(data) ? data : [] });
+      const data = await fetch<{ admins: Admin[]; total: number } | Admin[]>("/admins", { query });
+      if (Array.isArray(data)) {
+        // Fallback for old API format
+        set({ admins: data, total: data.length });
+      } else {
+        // New API format with pagination
+        set({ admins: data.admins || [], total: data.total || 0 });
+      }
     } finally {
       set({ loading: false });
     }
