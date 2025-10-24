@@ -145,7 +145,7 @@ const CoreSettingModalContent: FC = () => {
   });
 
   useEffect(() => {
-    if (config) form.setValue("config", config);
+    if (config) form.setValue("config", config, { shouldDirty: true });
   }, [config]);
 
   useEffect(() => {

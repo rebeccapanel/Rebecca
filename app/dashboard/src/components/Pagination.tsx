@@ -1,3 +1,4 @@
+import React, { useMemo } from "react";
 import {
   Box,
   Button,
@@ -38,16 +39,9 @@ export type PaginationType = {
 
 const MINIMAL_PAGE_ITEM_COUNT = 5;
 
-/**
- * Generate numeric page items around current page.
- *   - Always include first and last page
- *   - Add ellipsis if needed
- */
 function generatePageItems(total: number, current: number, width: number) {
   if (width < MINIMAL_PAGE_ITEM_COUNT) {
-    throw new Error(
-      `Must allow at least ${MINIMAL_PAGE_ITEM_COUNT} page items`
-    );
+    throw new Error(`Must allow at least ${MINIMAL_PAGE_ITEM_COUNT} page items`);
   }
   if (width % 2 === 0) {
     throw new Error(`Must allow odd number of page items`);
@@ -55,20 +49,16 @@ function generatePageItems(total: number, current: number, width: number) {
   if (total < width) {
     return [...new Array(total).keys()];
   }
-  const left = Math.max(
-    0,
-    Math.min(total - width, current - Math.floor(width / 2))
-  );
+  const left = Math.max(0, Math.min(total - width, current - Math.floor(width / 2)));
   const items: (string | number)[] = new Array(width);
   for (let i = 0; i < width; i += 1) {
     items[i] = i + left;
   }
-  // replace non-ending items with placeholders
-  if (items[0] > 0) {
+  if (typeof items[0] === "number" && items[0] > 0) {
     items[0] = 0;
     items[1] = "prev-more";
   }
-  if (items[items.length - 1] < total - 1) {
+  if ((items[items.length - 1] as number) < total - 1) {
     items[items.length - 1] = total - 1;
     items[items.length - 2] = "next-more";
   }
@@ -81,28 +71,36 @@ export const Pagination: FC = () => {
     onFilterChange,
     users: { total },
   } = useDashboard();
-  const { limit: perPage, offset } = filters;
+  const { limit, offset } = filters;
 
-  const page = (offset || 0) / (perPage || 1);
-  const noPages = Math.ceil(total / (perPage || 1));
+  const perPageNum = Number(limit || 1);
+  const offsetNum = Number(offset || 0);
+
+  const page = Math.floor(offsetNum / perPageNum);
+  const noPages = Math.ceil(total / perPageNum);
   const pages = generatePageItems(noPages, page, 7);
 
-  const changePage = (page: number) => {
+  const changePage = (p: number) => {
     onFilterChange({
       ...filters,
-      offset: page * (perPage as number),
+      offset: p * perPageNum,
     });
   };
 
   const handlePageSizeChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const next = parseInt(e.target.value, 10);
     onFilterChange({
       ...filters,
-      limit: parseInt(e.target.value),
+      limit: next,
+      offset: 0,
     });
     setUsersPerPageLimitSize(e.target.value);
   };
 
   const { t } = useTranslation();
+
+  const canPrev = useMemo(() => page > 0 && noPages > 0, [page, noPages]);
+  const canNext = useMemo(() => page + 1 < noPages && noPages > 0, [page, noPages]);
 
   return (
     <HStack
@@ -118,48 +116,40 @@ export const Pagination: FC = () => {
         <HStack>
           <Select
             minW="60px"
-            value={perPage}
+            value={String(perPageNum)}
             onChange={handlePageSizeChange}
             size="sm"
             rounded="md"
           >
-            <option>10</option>
-            <option>20</option>
-            <option>30</option>
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
           </Select>
-          <Text whiteSpace={"nowrap"} fontSize="sm">
+          <Text whiteSpace="nowrap" fontSize="sm">
             {t("itemsPerPage")}
           </Text>
         </HStack>
       </Box>
 
       <ButtonGroup size="sm" isAttached variant="outline" order={{ base: 1, md: 2 }}>
-        <Button
-          leftIcon={<PrevIcon />}
-          onClick={changePage.bind(null, page - 1)}
-          isDisabled={page === 0 || noPages === 0}
-        >
+        <Button leftIcon={<PrevIcon />} onClick={() => changePage(page - 1)} isDisabled={!canPrev}>
           {t("previous")}
         </Button>
+
         {pages.map((pageIndex) => {
-          if (typeof pageIndex === "string")
-            return <Button key={pageIndex}>...</Button>;
+          if (typeof pageIndex === "string") return <Button key={pageIndex}>...</Button>;
           return (
             <Button
               key={pageIndex}
-              variant={(pageIndex as number) === page ? "solid" : "outline"}
-              onClick={changePage.bind(null, pageIndex)}
+              variant={pageIndex === page ? "solid" : "outline"}
+              onClick={() => changePage(pageIndex)}
             >
-              {(pageIndex as number) + 1}
+              {pageIndex + 1}
             </Button>
           );
         })}
 
-        <Button
-          rightIcon={<NextIcon />}
-          onClick={changePage.bind(null, page + 1)}
-          isDisabled={page + 1 === noPages || noPages === 0}
-        >
+        <Button rightIcon={<NextIcon />} onClick={() => changePage(page + 1)} isDisabled={!canNext}>
           {t("next")}
         </Button>
       </ButtonGroup>

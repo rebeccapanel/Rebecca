@@ -666,7 +666,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                             <Input
                               size="sm"
                               borderRadius="4px"
-                              placeholder={String(inbound.port || "8080")}
+                              placeholder={String(inbound?.port ?? "8080")}
                               type="number"
                               {...form.register(
                                 hostKey + "." + index + ".port"

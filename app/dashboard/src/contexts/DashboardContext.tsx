@@ -64,10 +64,11 @@ type DashboardStateType = {
   setQRCode: (links: string[] | null) => void;
   setSubLink: (subscribeURL: string | null) => void;
   onEditingHosts: (isEditingHosts: boolean) => void;
-  onEditingNodes: (isEditingHosts: boolean) => void;
+  onEditingNodes: (isEditingNodes: boolean) => void;
   onShowingNodesUsage: (isShowingNodesUsage: boolean) => void;
   resetDataUsage: (user: User) => Promise<void>;
   revokeSubscription: (user: User) => Promise<void>;
+  onEditingCore: (isEditingCore: boolean) => void;
 };
 
 const fetchUsers = (query: FilterType): Promise<User[]> => {
@@ -210,5 +211,6 @@ export const useDashboard = create(
         get().refetchUsers();
       });
     },
+    onEditingCore: (isEditingCore) => set({ isEditingCore }),
   }))
 );

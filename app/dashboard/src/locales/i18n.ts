@@ -43,11 +43,14 @@ i18n
             },
         },
         function (err, t) {
+            if (err) console.error("i18next initialization error:", err);
+            else console.log("i18next initialized successfully with language:", i18n.language);
             dayjs.locale(i18n.language);
         }
     );
 
 i18n.on("languageChanged", (lng) => {
+    console.log("Language changed to:", lng);
     dayjs.locale(lng);
 });
 

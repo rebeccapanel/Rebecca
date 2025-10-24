@@ -161,12 +161,13 @@ const RadioCard: FC<
   const { getCheckboxProps: getInboundCheckboxProps } = useCheckboxGroup({
     value: inBoundDefaultValue,
     onChange: (selectedInbounds) => {
-      form.setValue(`inbounds.${title}`, selectedInbounds);
+      form.setValue(`inbounds.${title}`, selectedInbounds, { shouldDirty: true });
       if (selectedInbounds.length === 0) {
         const selected_proxies = form.getValues("selected_proxies");
         form.setValue(
           `selected_proxies`,
-          selected_proxies.filter((p: string) => p !== title)
+          selected_proxies.filter((p: string) => p !== title),
+          { shouldDirty: true }
         );
         toggleAccordion();
       }
@@ -487,7 +488,8 @@ export const RadioGroup = forwardRef<any, RadioGroupProps>(
             useDashboard
               .getState()
               .inbounds.get(selectedItem[0] as ProtocolType)
-              ?.map((i) => i.tag)
+              ?.map((i) => i.tag),
+            { shouldDirty: true }
           );
         }
 

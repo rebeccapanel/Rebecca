@@ -73,13 +73,14 @@ export const Login: FC = () => {
     setLoading(true);
     fetch("/admin/token", { method: "post", body: formData })
       .then(({ access_token: token }) => {
+        console.log("Token received:", token);
         setAuthToken(token);
         navigate("/");
       })
       .catch((err) => {
-        setError(err.response._data.detail);
+        setError(err.response?._data?.detail || "Login failed");
       })
-      .finally(setLoading.bind(null, false));
+      .finally(() => setLoading(false));
   };
   return (
     <VStack justifyContent="space-between" minH="100vh" p="6" w="full">
