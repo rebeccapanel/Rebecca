@@ -1040,7 +1040,8 @@ def get_admin_by_telegram_id(db: Session, telegram_id: int) -> Admin:
 def get_admins(db: Session,
                offset: Optional[int] = None,
                limit: Optional[int] = None,
-               username: Optional[str] = None) -> List[Admin]:
+               username: Optional[str] = None,
+               sort: Optional[str] = None) -> List[Admin]:
     """
     Retrieves a list of admins with optional filters and pagination.
 
@@ -1049,6 +1050,8 @@ def get_admins(db: Session,
         offset (Optional[int]): The number of records to skip (for pagination).
         limit (Optional[int]): The maximum number of records to return.
         username (Optional[str]): The username to filter by.
+        sort (Optional[str]): Sort expression. Supports "username" and "users_usage"
+                              with optional "-" prefix for descending order.
 
     Returns:
         List[Admin]: A list of admin objects.
@@ -1056,11 +1059,86 @@ def get_admins(db: Session,
     query = db.query(Admin)
     if username:
         query = query.filter(Admin.username.ilike(f'%{username}%'))
+
+    if sort:
+        descending = sort.startswith('-')
+        sort_key = sort[1:] if descending else sort
+        sortable_columns = {
+            "username": Admin.username,
+            "users_usage": Admin.users_usage,
+            "created_at": Admin.created_at,
+        }
+        column = sortable_columns.get(sort_key)
+        if column is not None:
+            query = query.order_by(column.desc() if descending else column.asc())
+    else:
+        query = query.order_by(Admin.username.asc())
+
     if offset:
         query = query.offset(offset)
     if limit:
         query = query.limit(limit)
-    return query.all()
+
+    admins = query.all()
+    if not admins:
+        return admins
+
+    admin_ids = [admin.id for admin in admins if admin.id is not None]
+    if not admin_ids:
+        return admins
+
+    counts_by_admin: Dict[int, Dict[str, int]] = {
+        admin_id: {
+            "active": 0,
+            "limited": 0,
+            "expired": 0,
+        }
+        for admin_id in admin_ids
+    }
+
+    status_counts = (
+        db.query(User.admin_id, User.status, func.count(User.id))
+        .filter(User.admin_id.in_(admin_ids))
+        .group_by(User.admin_id, User.status)
+        .all()
+    )
+
+    for admin_id, status, count in status_counts:
+        if admin_id not in counts_by_admin:
+            continue
+        if status == UserStatus.active:
+            counts_by_admin[admin_id]["active"] = count or 0
+        elif status == UserStatus.limited:
+            counts_by_admin[admin_id]["limited"] = count or 0
+        elif status == UserStatus.expired:
+            counts_by_admin[admin_id]["expired"] = count or 0
+
+    online_threshold = datetime.utcnow() - timedelta(hours=24)
+    online_counts = {
+        admin_id: count
+        for admin_id, count in (
+            db.query(User.admin_id, func.count(User.id))
+            .filter(
+                User.admin_id.in_(admin_ids),
+                User.online_at.isnot(None),
+                User.online_at >= online_threshold,
+            )
+            .group_by(User.admin_id)
+            .all()
+        )
+    }
+
+    for admin in admins:
+        admin_id = getattr(admin, "id", None)
+        if admin_id is None:
+            continue
+        counts = counts_by_admin.get(admin_id, {})
+        setattr(admin, "active_users", counts.get("active", 0))
+        setattr(admin, "limited_users", counts.get("limited", 0))
+        setattr(admin, "expired_users", counts.get("expired", 0))
+        setattr(admin, "online_users", online_counts.get(admin_id, 0))
+
+    return admins
 
 
 def reset_admin_usage(db: Session, dbadmin: Admin) -> int:

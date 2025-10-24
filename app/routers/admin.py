@@ -143,11 +143,12 @@ def get_admins(
     offset: Optional[int] = None,
     limit: Optional[int] = None,
     username: Optional[str] = None,
+    sort: Optional[str] = None,
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Fetch a list of admins with optional filters for pagination and username."""
-    return crud.get_admins(db, offset, limit, username)
+    return crud.get_admins(db, offset, limit, username, sort)
 
 
 @router.post("/admin/{username}/users/disable", responses={403: responses._403, 404: responses._404})

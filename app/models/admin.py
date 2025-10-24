@@ -19,11 +19,16 @@ class Token(BaseModel):
 
 
 class Admin(BaseModel):
+    id: Optional[int] = None
     username: str
     is_sudo: bool
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
     users_usage: Optional[int] = None
+    active_users: Optional[int] = None
+    online_users: Optional[int] = None
+    limited_users: Optional[int] = None
+    expired_users: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("users_usage",  mode='before')

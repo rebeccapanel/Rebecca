@@ -13,9 +13,12 @@ import {
   FormControl,
   FormErrorMessage,
   FormLabel,
+  Switch,
   HStack,
   IconButton,
   Input as ChakraInput,
+  InputGroup,
+  InputRightElement,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -39,18 +42,25 @@ import {
   Tooltip,
   Tr,
   VStack,
+  Wrap,
+  WrapItem,
   useColorMode,
   useDisclosure,
   useToast,
-  Switch,
 } from "@chakra-ui/react";
 import {
   ArrowPathIcon,
+  ChevronDownIcon,
   NoSymbolIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
   TrashIcon,
+  SparklesIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  UserGroupIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
 import { chakra } from "@chakra-ui/react";
 import { UsageFilter } from "components/UsageFilter";
@@ -76,13 +86,41 @@ const ResetIcon = chakra(ArrowPathIcon, { baseStyle: { w: 4, h: 4 } });
 const DisableIcon = chakra(NoSymbolIcon, { baseStyle: { w: 4, h: 4 } });
 const ActivateIcon = chakra(PlayIcon, { baseStyle: { w: 4, h: 4 } });
 const DeleteIcon = chakra(TrashIcon, { baseStyle: { w: 4, h: 4 } });
+const RandomIcon = chakra(SparklesIcon, { baseStyle: { w: 4, h: 4 } });
+const ViewIcon = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
+const ViewOffIcon = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
+const ManageTabIcon = chakra(UserGroupIcon, { baseStyle: { w: 4, h: 4 } });
+const UsageTabIcon = chakra(ChartBarIcon, { baseStyle: { w: 4, h: 4 } });
+const SortIcon = chakra(ChevronDownIcon, {
+  baseStyle: {
+    w: 4,
+    h: 4,
+    transition: "transform 0.2s",
+  },
+});
 
 type AdminFormValues = {
   username: string;
   password?: string;
-  is_sudo: boolean;
   telegram_id?: string;
-  discord_webhook?: string;
+  is_sudo?: boolean;
+};
+
+const SortIndicator = ({
+  sort,
+  column,
+}: {
+  sort: string;
+  column: string;
+}) => {
+  const isActive = sort.includes(column);
+  const isDescending = isActive && sort.startsWith("-");
+  return (
+    <SortIcon
+      opacity={isActive ? 1 : 0}
+      transform={isActive && !isDescending ? "rotate(180deg)" : undefined}
+    />
+  );
 };
 
 type AdminDailyEntry = {
@@ -203,7 +241,6 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
             (value) => !value || value.length >= 6,
             t("admins.validation.passwordMin")
           ),
-        is_sudo: z.boolean(),
         telegram_id: z
           .string()
           .trim()
@@ -212,16 +249,6 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
           .refine(
             (value) => value === undefined || /^\d+$/.test(value),
             t("admins.validation.telegramNumeric")
-          ),
-        discord_webhook: z
-          .string()
-          .trim()
-          .optional()
-          .transform((value) => (value === "" ? undefined : value))
-          .refine(
-            (value) =>
-              value === undefined || value.startsWith("https://discord.com"),
-            t("admins.validation.discordUrl")
           ),
       })
       .superRefine((values, ctx) => {
@@ -241,14 +268,51 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
     defaultValues: {
       username: "",
       password: "",
-      is_sudo: false,
       telegram_id: "",
-      discord_webhook: "",
+      is_sudo: false,
     },
   });
 
-  const { register, handleSubmit, reset, watch, formState, setValue } = form;
+  const { register, handleSubmit, reset, formState, setValue, watch } = form;
+
   const sudoField = register("is_sudo");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const generateRandomString = useCallback((length: number) => {
+    const characters =
+      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    const charactersLength = characters.length;
+
+    if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+      const randomValues = new Uint32Array(length);
+      window.crypto.getRandomValues(randomValues);
+      return Array.from(randomValues, (value) =>
+        characters[value % charactersLength]
+      ).join("");
+    }
+
+    return Array.from({ length }, () => {
+      const index = Math.floor(Math.random() * charactersLength);
+      return characters[index];
+    }).join("");
+  }, []);
+
+  const handleGenerateUsername = useCallback(() => {
+    if (mode === "edit") return;
+    const randomUsername = generateRandomString(8);
+    setValue("username", randomUsername, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [generateRandomString, mode, setValue]);
+
+  const handleGeneratePassword = useCallback(() => {
+    const randomPassword = generateRandomString(12);
+    setValue("password", randomPassword, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [generateRandomString, setValue]);
   const { errors, isSubmitting } = formState;
 
   useEffect(() => {
@@ -256,12 +320,10 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
       reset({
         username: admin?.username ?? "",
         password: "",
-        is_sudo: admin?.is_sudo ?? false,
         telegram_id:
           admin?.telegram_id !== undefined && admin?.telegram_id !== null
             ? String(admin.telegram_id)
             : "",
-        discord_webhook: admin?.discord_webhook ?? "",
       });
     }
   }, [admin, isOpen, reset]);
@@ -272,9 +334,7 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
       reset({
         username: "",
         password: "",
-        is_sudo: false,
         telegram_id: "",
-        discord_webhook: "",
       });
       onClose();
     } catch (error) {
@@ -296,22 +356,65 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
           <VStack spacing={4} align="stretch">
             <FormControl isInvalid={!!errors.username}>
               <FormLabel>{t("username")}</FormLabel>
-              <ChakraInput
-                placeholder={t("admins.usernamePlaceholder", "Admin username")}
-                {...register("username")}
-                isDisabled={mode === "edit"}
-              />
+              <InputGroup>
+                <ChakraInput
+                  placeholder={t(
+                    "admins.usernamePlaceholder",
+                    "Admin username"
+                  )}
+                  {...register("username")}
+                  isDisabled={mode === "edit"}
+                  pr="28"
+                />
+                <InputRightElement
+                  width="auto"
+                  pr="2"
+                  pointerEvents={mode === "edit" ? "none" : "auto"}
+                >
+                  <IconButton
+                    aria-label={t("admins.generateUsername", "Random")}
+                    size="xs"
+                    variant="ghost"
+                    icon={<RandomIcon />}
+                    onClick={handleGenerateUsername}
+                    isDisabled={mode === "edit"}
+                  />
+                </InputRightElement>
+              </InputGroup>
               <FormErrorMessage>
                 {errors.username?.message as string}
               </FormErrorMessage>
             </FormControl>
             <FormControl isInvalid={!!errors.password}>
               <FormLabel>{t("password")}</FormLabel>
-              <ChakraInput
-                placeholder={t("admins.passwordPlaceholder", "Password")}
-                type="password"
-                {...register("password")}
-              />
+              <InputGroup>
+                <ChakraInput
+                  placeholder={t("admins.passwordPlaceholder", "Password")}
+                  type={showPassword ? "text" : "password"}
+                  {...register("password")}
+                  pr="28"
+                />
+                <InputRightElement width="auto" pr="2" pointerEvents="auto">
+                  <HStack spacing={1}>
+                    <IconButton
+                      aria-label={showPassword ? t("hide", "Hide") : t("show", "Show")}
+                      size="xs"
+                      variant="ghost"
+                      icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                      onClick={() => setShowPassword((s) => !s)}
+                      type="button"
+                    />
+                    <IconButton
+                      aria-label={t("admins.generatePassword", "Random")}
+                      size="xs"
+                      variant="ghost"
+                      icon={<RandomIcon />}
+                      onClick={handleGeneratePassword}
+                      type="button"
+                    />
+                  </HStack>
+                </InputRightElement>
+              </InputGroup>
               <FormErrorMessage>
                 {errors.password?.message as string}
               </FormErrorMessage>
@@ -362,21 +465,6 @@ const AdminFormModal: React.FC<AdminFormModalProps> = ({
               />
               <FormErrorMessage>
                 {errors.telegram_id?.message as string}
-              </FormErrorMessage>
-            </FormControl>
-            <FormControl isInvalid={!!errors.discord_webhook}>
-              <FormLabel>
-                {t("admins.discordWebhook", "Discord webhook")}
-              </FormLabel>
-              <ChakraInput
-                placeholder={t(
-                  "admins.discordPlaceholder",
-                  "https://discord.com/api/webhooks/..."
-                )}
-                {...register("discord_webhook")}
-              />
-              <FormErrorMessage>
-                {errors.discord_webhook?.message as string}
               </FormErrorMessage>
             </FormControl>
           </VStack>
@@ -465,6 +553,21 @@ export const AdminsPage: React.FC = () => {
     fetchAdmins().catch((error) => generateErrorMessage(error, toast));
   };
 
+  const handleSort = (column: "username" | "users_usage") => {
+    let newSort = filters.sort || "username";
+    if (newSort.includes(column)) {
+      if (newSort.startsWith("-")) {
+        newSort = "username";
+      } else {
+        newSort = `-${column}`;
+      }
+    } else {
+      newSort = column;
+    }
+    setFilters({ sort: newSort, offset: 0 });
+    fetchAdmins().catch((error) => generateErrorMessage(error, toast));
+  };
+
   const handleOpenCreate = () => {
     setFormMode("create");
     setFormAdmin(null);
@@ -486,21 +589,19 @@ export const AdminsPage: React.FC = () => {
         const payload: AdminCreatePayload = {
           username: values.username.trim(),
           password: values.password ?? "",
-          is_sudo: values.is_sudo,
+          is_sudo: false,
           telegram_id: values.telegram_id
             ? Number(values.telegram_id)
             : undefined,
-          discord_webhook: values.discord_webhook ?? undefined,
         };
         await createAdmin(payload);
         generateSuccessMessage(t("admins.createSuccess", "Admin created"), toast);
       } else if (formAdmin) {
         const payload: AdminUpdatePayload = {
-          is_sudo: values.is_sudo,
+          is_sudo: formAdmin.is_sudo,
           telegram_id: values.telegram_id
             ? Number(values.telegram_id)
             : undefined,
-          discord_webhook: values.discord_webhook ?? undefined,
         };
         if (values.password) {
           payload.password = values.password;

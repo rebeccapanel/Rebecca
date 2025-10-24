@@ -6,6 +6,7 @@ export type AdminFilters = {
   search: string;
   limit: number;
   offset: number;
+  sort: string;
 };
 
 type AdminsStore = {
@@ -26,6 +27,7 @@ const defaultFilters: AdminFilters = {
   search: "",
   limit: 50,
   offset: 0,
+  sort: "username",
 };
 
 export const useAdminsStore = create<AdminsStore>((set, get) => ({
@@ -43,6 +45,9 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
     }
     if (filters.limit) {
       query.limit = filters.limit;
+    }
+    if (filters.sort) {
+      query.sort = filters.sort;
     }
 
     set({ loading: true });
