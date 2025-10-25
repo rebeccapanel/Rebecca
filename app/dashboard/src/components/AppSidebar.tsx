@@ -82,10 +82,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
       w={inDrawer ? "full" : collapsed ? "16" : "60"}
       h={inDrawer ? "100%" : "100vh"}
       maxH={inDrawer ? "100%" : "100vh"}
-      bg="white"
+      bg="surface.light"
       borderRight={inDrawer ? undefined : "1px"}
       borderColor={inDrawer ? undefined : "light-border"}
-      _dark={{ bg: "gray.800", borderColor: inDrawer ? undefined : "gray.600" }}
+      _dark={{ bg: "surface.dark", borderColor: inDrawer ? undefined : "whiteAlpha.200" }}
       transition="width 0.3s"
       position={inDrawer ? "relative" : "fixed"}
       top={inDrawer ? undefined : "0"}

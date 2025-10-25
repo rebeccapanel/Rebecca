@@ -17,10 +17,8 @@ import {
   IconButton,
   Text,
   VStack,
-  useColorMode,
-  useColorModeValue,
 } from "@chakra-ui/react";
-import { ArrowRightOnRectangleIcon, EyeIcon, EyeSlashIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
+import { ArrowRightOnRectangleIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FC, useEffect, useState } from "react";
 import { FieldValues, useForm } from "react-hook-form";
@@ -32,6 +30,7 @@ import { removeAuthToken, setAuthToken } from "utils/authStorage";
 import { ReactComponent as Logo } from "assets/logo.svg";
 import { useTranslation } from "react-i18next";
 import { Language } from "components/Language";
+import ThemeSelector from "components/ThemeSelector";
 
 const schema = z.object({
   username: z.string().min(1, "login.fieldRequired"),
@@ -54,20 +53,6 @@ const LoginIcon = chakra(ArrowRightOnRectangleIcon, {
   },
 });
 
-const DarkIcon = chakra(MoonIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
-
-const LightIcon = chakra(SunIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
-
 const Eye = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const EyeSlash = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
 
@@ -77,10 +62,9 @@ export const Login: FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { colorMode, toggleColorMode } = useColorMode();
   // slightly off-white in light mode so the card is visible against a plain white page
-  const cardBg = useColorModeValue("gray.50", "gray.700");
-  const cardBorder = useColorModeValue("gray.200", "gray.600");
+  // const cardBg = useColorModeValue("gray.50", "gray.700");
+  // const cardBorder = useColorModeValue("gray.200", "gray.600");
   let location = useLocation();
   const {
     register,
@@ -118,22 +102,16 @@ export const Login: FC = () => {
       <Card
         maxW="500px"
         w="full"
-        bg={cardBg}
+        bg="surface.light"
+        _dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
         borderWidth="1px"
-        borderColor={cardBorder}
+        borderColor="light-border"
         boxShadow="md"
       >
         <CardBody>
           <HStack justifyContent="end" spacing={2} mb={6}>
             <Language />
-            <IconButton
-              size="sm"
-              variant="outline"
-              aria-label="switch theme"
-              onClick={toggleColorMode}
-            >
-              {colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-            </IconButton>
+            <ThemeSelector minimal />
           </HStack>
           <VStack alignItems="center" w="full" spacing={4}>
             <LogoIcon />

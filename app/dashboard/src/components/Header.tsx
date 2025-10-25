@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { updateThemeColor } from "utils/themeColor";
 import { Language } from "./Language";
+import ThemeSelector from "./ThemeSelector";
 import useGetUser from "hooks/useGetUser";
 
 type HeaderProps = {
@@ -155,6 +156,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
           )}
 
           <Language />
+
+          <ThemeSelector />
 
           <IconButton
             size="sm"

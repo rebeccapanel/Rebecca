@@ -2,7 +2,6 @@ import {
   Box,
   HStack,
   IconButton,
-  useColorMode,
   Flex,
   useBreakpointValue,
   Drawer,
@@ -11,12 +10,12 @@ import {
   DrawerBody,
   useDisclosure,
 } from "@chakra-ui/react";
-import { MoonIcon, SunIcon, ArrowLeftOnRectangleIcon, Bars3Icon } from "@heroicons/react/24/outline";
+import { ArrowLeftOnRectangleIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { chakra } from "@chakra-ui/react";
 import { AppSidebar } from "./AppSidebar";
 import { Language } from "./Language";
+import ThemeSelector from "./ThemeSelector";
 import { Outlet, Link } from "react-router-dom";
-import { updateThemeColor } from "utils/themeColor";
 import { useState } from "react";
 
 const iconProps = {
@@ -26,13 +25,10 @@ const iconProps = {
   },
 };
 
-const DarkIcon = chakra(MoonIcon, iconProps);
-const LightIcon = chakra(SunIcon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
 
 export function AppLayout() {
-  const { colorMode, toggleColorMode } = useColorMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isMobile = useBreakpointValue({ base: true, md: false });
   const drawer = useDisclosure();
@@ -58,7 +54,8 @@ export function AppLayout() {
           minH="16"
           borderBottom="1px"
           borderColor="light-border"
-          _dark={{ borderColor: "gray.600" }}
+          bg="surface.light"
+          _dark={{ borderColor: "whiteAlpha.200", bg: "surface.dark" }}
           display="flex"
           alignItems="center"
           px="6"
@@ -77,17 +74,7 @@ export function AppLayout() {
           />
           <HStack spacing={2}>
             <Language />
-            <IconButton
-              size="sm"
-              variant="outline"
-              aria-label="switch theme"
-              onClick={() => {
-                updateThemeColor(colorMode == "dark" ? "light" : "dark");
-                toggleColorMode();
-              }}
-            >
-              {colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-            </IconButton>
+            <ThemeSelector />
             <Link to="/login">
               <IconButton
                 size="sm"
@@ -107,7 +94,7 @@ export function AppLayout() {
         {isMobile && (
           <Drawer isOpen={drawer.isOpen} placement="left" onClose={drawer.onClose} size="xs">
             <DrawerOverlay />
-            <DrawerContent>
+            <DrawerContent bg="surface.light" _dark={{ bg: "surface.dark" }}>
               <DrawerBody p={0}>
                 <AppSidebar collapsed={false} inDrawer />
               </DrawerBody>
