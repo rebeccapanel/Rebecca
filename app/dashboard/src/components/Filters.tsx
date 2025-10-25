@@ -121,18 +121,13 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
         md: "repeat(4, 1fr)",
         base: "repeat(1, 1fr)",
       }}
-      position="sticky"
-      top={0}
       mx="0"
-      px="6"
       rowGap={4}
       gap={{
         lg: 4,
         base: 0,
       }}
-      bg="var(--chakra-colors-chakra-body-bg)"
       py={4}
-      zIndex="sticky"
       {...props}
     >
       <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>

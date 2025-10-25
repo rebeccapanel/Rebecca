@@ -199,21 +199,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   const [selectedRow, setSelectedRow] = useState<ExpandedIndex | undefined>(
     undefined
   );
-  const marginTop = useBreakpointValue({ base: 120, lg: 72 }) || 72;
-  const [top, setTop] = useState(`${marginTop}px`);
+  
   const useTable = useBreakpointValue({ base: false, md: true });
 
-  useLayoutEffect(() => {
-    const calcTop = () => {
-      const el = document.querySelectorAll("#filters")[0] as HTMLElement;
-      if (el) {
-        setTop(`${el.offsetHeight}px`);
-      }
-    };
-    calcTop(); // Calculate initial top
-    window.addEventListener("scroll", calcTop);
-    return () => window.removeEventListener("scroll", calcTop);
-  }, []);
+  
 
   const isFiltered = users.length !== totalUsers.total;
 
@@ -253,7 +242,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           <Thead zIndex="docked" position="relative">
             <Tr>
               <Th
-                top={top}
                 minW="120px"
                 pl={4}
                 pr={4}
@@ -266,7 +254,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                top={top}
                 minW="50px"
                 pl={0}
                 pr={0}
@@ -316,7 +303,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                top={top}
                 minW="100px"
                 cursor={"pointer"}
                 pr={0}
@@ -328,7 +314,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                top={top}
                 minW="32px"
                 w="32px"
                 p={0}
@@ -489,10 +474,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
         display={{ base: "none", md: "table" }}
         {...props}
       >
-        <Thead position="sticky" top={{ base: "unset", md: top }} zIndex="docked">
+        <Thead position="relative" zIndex="docked">
           <Tr>
             <Th
-              top={{ base: "unset", md: top }}
               minW="140px"
               cursor={"pointer"}
               onClick={handleSort.bind(null, "username")}
@@ -503,7 +487,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              top={{ base: "unset", md: top }}
               width="400px"
               minW="150px"
               cursor={"pointer"}
@@ -556,7 +539,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              top={{ base: "unset", md: top }}
               width="350px"
               minW="230px"
               cursor={"pointer"}
@@ -568,7 +550,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              top={{ base: "unset", md: top }}
               width="200px"
               minW="180px"
             />
