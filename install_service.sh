@@ -2,7 +2,7 @@
 
 SERVICE_NAME="rebecca"
 SERVICE_DESCRIPTION="Rebecca Service"
-SERVICE_DOCUMENTATION="https://github.com/ppouria/rebecca"
+SERVICE_DOCUMENTATION="https://github.com/rebeccapanel/rebecca"
 MAIN_PY_PATH="$PWD/main.py"
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 

@@ -1,6 +1,6 @@
 services:
   rebecca:
-    image:  ppouriaa/rebecca:latest
+    image:  rebeccapanel/rebecca:latest
     restart: always
     env_file: .env
     network_mode: host

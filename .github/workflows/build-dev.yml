@@ -61,4 +61,4 @@ jobs:
           push: true
           tags: |
             rebeccapanel/rebecca:${{ github.ref_name }}
-            ghcr.io/ppouria/rebecca:${{ github.ref_name }}
+            ghcr.io/rebeccapanel/rebecca:${{ github.ref_name }}
