@@ -960,6 +960,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    if modified_admin.data_limit is not None:
+        dbadmin.data_limit = modified_admin.data_limit
+    if modified_admin.users_limit is not None:
+        dbadmin.users_limit = modified_admin.users_limit
 
     db.commit()
     db.refresh(dbadmin)
@@ -987,6 +991,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook is not None:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    if modified_admin.data_limit is not None:
+        dbadmin.data_limit = modified_admin.data_limit
+    if modified_admin.users_limit is not None:
+        dbadmin.users_limit = modified_admin.users_limit
 
     db.commit()
     db.refresh(dbadmin)
@@ -1041,7 +1049,7 @@ def get_admins(db: Session,
                offset: Optional[int] = None,
                limit: Optional[int] = None,
                username: Optional[str] = None,
-               sort: Optional[str] = None) -> List[Admin]:
+               sort: Optional[str] = None) -> Dict:
     """
     Retrieves a list of admins with optional filters and pagination.
 
@@ -1054,11 +1062,14 @@ def get_admins(db: Session,
                               with optional "-" prefix for descending order.
 
     Returns:
-        List[Admin]: A list of admin objects.
+        Dict: A dictionary with 'admins' (list of admin objects) and 'total' (total count).
     """
     query = db.query(Admin)
     if username:
         query = query.filter(Admin.username.ilike(f'%{username}%'))
+
+    # Get total count before pagination
+    total = query.count()
 
     if sort:
         descending = sort.startswith('-')
@@ -1066,6 +1077,7 @@ def get_admins(db: Session,
         sortable_columns = {
             "username": Admin.username,
             "users_usage": Admin.users_usage,
+            "data_limit": Admin.data_limit,
             "created_at": Admin.created_at,
         }
         column = sortable_columns.get(sort_key)
@@ -1081,11 +1093,11 @@ def get_admins(db: Session,
 
     admins = query.all()
     if not admins:
-        return admins
+        return {"admins": admins, "total": total}
 
     admin_ids = [admin.id for admin in admins if admin.id is not None]
     if not admin_ids:
-        return admins
+        return {"admins": admins, "total": total}
 
     counts_by_admin: Dict[int, Dict[str, int]] = {
         admin_id: {
@@ -1128,6 +1140,17 @@ def get_admins(db: Session,
         )
     }
 
+    # Add users_count for each admin
+    users_counts = {
+        admin_id: count
+        for admin_id, count in (
+            db.query(User.admin_id, func.count(User.id))
+            .filter(User.admin_id.in_(admin_ids))
+            .group_by(User.admin_id)
+            .all()
+        )
+    }
+
     for admin in admins:
         admin_id = getattr(admin, "id", None)
         if admin_id is None:
@@ -1137,8 +1160,9 @@ def get_admins(db: Session,
         setattr(admin, "limited_users", counts.get("limited", 0))
         setattr(admin, "expired_users", counts.get("expired", 0))
         setattr(admin, "online_users", online_counts.get(admin_id, 0))
+        setattr(admin, "users_count", users_counts.get(admin_id, 0))
 
-    return admins
+    return {"admins": admins, "total": total}
 
 
 def reset_admin_usage(db: Session, dbadmin: Admin) -> int:

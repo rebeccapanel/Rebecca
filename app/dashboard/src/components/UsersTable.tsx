@@ -39,7 +39,7 @@ import classNames from "classnames";
 import { resetStrategy, statusColors } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
 import { t } from "i18next";
-import { FC, Fragment, useEffect, useState } from "react";
+import { FC, Fragment, useEffect, useLayoutEffect, useState } from "react";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { User } from "types/User";
@@ -203,13 +203,16 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   const [top, setTop] = useState(`${marginTop}px`);
   const useTable = useBreakpointValue({ base: false, md: true });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const calcTop = () => {
       const el = document.querySelectorAll("#filters")[0] as HTMLElement;
-      setTop(`${el.offsetHeight}px`);
+      if (el) {
+        setTop(`${el.offsetHeight}px`);
+      }
     };
+    calcTop(); // Calculate initial top
     window.addEventListener("scroll", calcTop);
-    () => window.removeEventListener("scroll", calcTop);
+    return () => window.removeEventListener("scroll", calcTop);
   }, []);
 
   const isFiltered = users.length !== totalUsers.total;
@@ -250,7 +253,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           <Thead zIndex="docked" position="relative">
             <Tr>
               <Th
-                position="sticky"
                 top={top}
                 minW="120px"
                 pl={4}
@@ -264,7 +266,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                position="sticky"
                 top={top}
                 minW="50px"
                 pl={0}
@@ -315,7 +316,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                position="sticky"
                 top={top}
                 minW="100px"
                 cursor={"pointer"}
@@ -328,7 +328,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </HStack>
               </Th>
               <Th
-                position="sticky"
                 top={top}
                 minW="32px"
                 w="32px"
@@ -490,10 +489,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
         display={{ base: "none", md: "table" }}
         {...props}
       >
-        <Thead zIndex="docked" position="relative">
+        <Thead position="sticky" top={{ base: "unset", md: top }} zIndex="docked">
           <Tr>
             <Th
-              position="sticky"
               top={{ base: "unset", md: top }}
               minW="140px"
               cursor={"pointer"}
@@ -505,7 +503,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              position="sticky"
               top={{ base: "unset", md: top }}
               width="400px"
               minW="150px"
@@ -559,7 +556,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              position="sticky"
               top={{ base: "unset", md: top }}
               width="350px"
               minW="230px"
@@ -572,7 +568,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
               </HStack>
             </Th>
             <Th
-              position="sticky"
               top={{ base: "unset", md: top }}
               width="200px"
               minW="180px"
@@ -627,7 +622,6 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           )}
         </Tbody>
       </Table>
-      <Pagination />
     </Box>
   );
 };

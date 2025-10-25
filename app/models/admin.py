@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db import Session, crud, get_db
 from app.utils.jwt import get_admin_payload
@@ -22,9 +22,11 @@ class Admin(BaseModel):
     id: Optional[int] = None
     username: str
     is_sudo: bool
-    telegram_id: Optional[int] = None
-    discord_webhook: Optional[str] = None
-    users_usage: Optional[int] = None
+    telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL for notifications")
+    users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
+    data_limit: Optional[int] = Field(None, description="Maximum data limit for admin in bytes (null = unlimited)", example=107374182400)
+    users_limit: Optional[int] = Field(None, description="Maximum number of users admin can create (null = unlimited)", example=100)
     active_users: Optional[int] = None
     online_users: Optional[int] = None
     limited_users: Optional[int] = None
@@ -95,9 +97,11 @@ class Admin(BaseModel):
 
 
 class AdminCreate(Admin):
-    password: str
-    telegram_id: Optional[int] = None
-    discord_webhook: Optional[str] = None
+    password: str = Field(..., min_length=6, description="Admin password (minimum 6 characters)")
+    telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL")
+    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
+    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
 
     @property
     def hashed_password(self):
@@ -112,10 +116,12 @@ class AdminCreate(Admin):
 
 
 class AdminModify(BaseModel):
-    password: Optional[str] = None
-    is_sudo: bool
-    telegram_id: Optional[int] = None
-    discord_webhook: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
+    is_sudo: bool = Field(..., description="Grant sudo privileges")
+    telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL")
+    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
+    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
 
     @property
     def hashed_password(self):

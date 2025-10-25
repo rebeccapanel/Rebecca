@@ -49,6 +49,8 @@
   "admins.resetUsage": "Reset usage",
   "admins.disableUsers": "Disable users",
   "admins.activateUsers": "Activate users",
+  "admins.sortByUsage": "Sort by usage",
+  "admins.sortByLimit": "Sort by limit",
   "admins.sudoBadge": "Sudo",
   "admins.standardBadge": "Standard",
   "admins.emptyStateTitle": "No admins found",

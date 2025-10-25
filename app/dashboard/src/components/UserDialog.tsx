@@ -286,7 +286,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   const submit = (values: FormType) => {
     setLoading(true);
-    const methods = { edited: editUser, created: createUser };
+    const methods = { edited: (body: UserCreate) => editUser(editingUser!.username, body), created: createUser };
     const method = isEditing ? "edited" : "created";
     setError(null);
 

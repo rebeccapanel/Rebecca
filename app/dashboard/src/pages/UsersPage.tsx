@@ -1,6 +1,7 @@
 import { Box, VStack, Text } from "@chakra-ui/react";
 import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
+import { Pagination } from "components/Pagination";
 import { QRCodeDialog } from "components/QRCodeDialog";
 import { ResetUserUsageModal } from "components/ResetUserUsageModal";
 import { RevokeSubscriptionModal } from "components/RevokeSubscriptionModal";
@@ -25,6 +26,7 @@ export const UsersPage: FC = () => {
       </Text>
       <Filters />
       <UsersTable />
+      <Pagination />
       <UserDialog />
       <DeleteUserModal />
       <QRCodeDialog />

@@ -328,6 +328,8 @@
   "admins.resetUsage": "ریست مصرف",
   "admins.disableUsers": "غیرفعال کردن کاربران",
   "admins.activateUsers": "فعال کردن کاربران",
+  "admins.sortByUsage": "مرتب‌سازی بر اساس مصرف",
+  "admins.sortByLimit": "مرتب‌سازی بر اساس محدودیت",
   "admins.sudoBadge": "سودو",
   "admins.standardBadge": "معمولی",
   "admins.emptyStateTitle": "مدیری یافت نشد",

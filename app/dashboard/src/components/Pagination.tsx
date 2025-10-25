@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { ChangeEvent, FC, useMemo } from "react";
 import {
   Box,
   Button,
@@ -12,8 +12,9 @@ import {
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
 } from "@heroicons/react/24/outline";
+import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
-import { ChangeEvent, FC } from "react";
+ 
 import { useTranslation } from "react-i18next";
 import { setUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 
@@ -30,11 +31,8 @@ const NextIcon = chakra(ArrowLongRightIcon, {
   },
 });
 
-export type PaginationType = {
-  count: number;
-  perPage: number;
-  page: number;
-  onChange?: (page: number) => void;
+export type PaginationProps = {
+  for?: "users" | "admins";
 };
 
 const MINIMAL_PAGE_ITEM_COUNT = 5;
@@ -65,15 +63,47 @@ function generatePageItems(total: number, current: number, width: number) {
   return items;
 }
 
-export const Pagination: FC = () => {
+export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
   const {
-    filters,
-    onFilterChange,
-    users: { total },
+    filters: userFilters,
+    onFilterChange: onUserFilterChange,
+    users: { total: usersTotal },
   } = useDashboard();
+
+  const {
+    filters: adminFilters,
+    onFilterChange: onAdminFilterChange,
+    total: adminsTotal,
+  } = useAdminsStore();
+
+  const { t } = useTranslation();
+
+  const { filters, total, onFilterChange } = useMemo(() => {
+    if (target === "admins") {
+      return {
+        filters: adminFilters,
+        total: adminsTotal,
+        onFilterChange: onAdminFilterChange,
+      };
+    }
+    return {
+      filters: userFilters,
+      total: usersTotal,
+      onFilterChange: onUserFilterChange,
+    };
+  }, [
+    target,
+    adminFilters,
+    adminsTotal,
+    onAdminFilterChange,
+    userFilters,
+    usersTotal,
+    onUserFilterChange,
+  ]);
+
   const { limit, offset } = filters;
 
-  const perPageNum = Number(limit || 1);
+  const perPageNum = Number(limit || 10);
   const offsetNum = Number(offset || 0);
 
   const page = Math.floor(offsetNum / perPageNum);
@@ -94,13 +124,20 @@ export const Pagination: FC = () => {
       limit: next,
       offset: 0,
     });
-    setUsersPerPageLimitSize(e.target.value);
+    if (target === "users") {
+      setUsersPerPageLimitSize(e.target.value);
+    }
   };
 
-  const { t } = useTranslation();
-
   const canPrev = useMemo(() => page > 0 && noPages > 0, [page, noPages]);
-  const canNext = useMemo(() => page + 1 < noPages && noPages > 0, [page, noPages]);
+  const canNext = useMemo(
+    () => page + 1 < noPages && noPages > 0,
+    [page, noPages]
+  );
+
+  if (total <= perPageNum && page === 0) {
+    return null;
+  }
 
   return (
     <HStack

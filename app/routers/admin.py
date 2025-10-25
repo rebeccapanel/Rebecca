@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_
+from pydantic import BaseModel
 
 from app import xray
 from app.db import Session, crud, get_db
@@ -15,6 +16,11 @@ from app.utils.jwt import create_admin_token
 from config import LOGIN_NOTIFY_WHITE_LIST
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
+
+
+class AdminsListResponse(BaseModel):
+    admins: List[Admin]
+    total: int
 
 
 def get_client_ip(request: Request) -> str:
@@ -136,7 +142,7 @@ def get_current_admin(admin: Admin = Depends(Admin.get_current)):
 
 @router.get(
     "/admins",
-    response_model=List[Admin],
+    response_model=AdminsListResponse,
     responses={403: responses._403},
 )
 def get_admins(

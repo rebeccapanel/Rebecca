@@ -59,7 +59,7 @@ type DashboardStateType = {
   onFilterChange: (filters: Partial<FilterType>) => void;
   deleteUser: (user: User) => Promise<void>;
   createUser: (user: UserCreate) => Promise<void>;
-  editUser: (user: UserCreate) => Promise<void>;
+  editUser: (username: string, body: UserCreate) => Promise<void>;
   fetchUserUsage: (user: User, query: FilterUsageType) => Promise<void>;
   setQRCode: (links: string[] | null) => void;
   setSubLink: (subscribeURL: string | null) => void;
@@ -168,8 +168,8 @@ export const useDashboard = create(
         queryClient.invalidateQueries(StatisticsQueryKey);
       });
     },
-    editUser: (body: UserCreate) => {
-      return fetch(`/user/${body.username}`, { method: "PUT", body }).then(
+    editUser: (username: string, body: UserCreate) => {
+      return fetch(`/user/${username}`, { method: "PUT", body }).then(
         () => {
           get().onEditingUser(null);
           get().refetchUsers();

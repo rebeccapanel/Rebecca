@@ -15,9 +15,11 @@ import {
 import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
+  PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
+import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import debounce from "lodash.debounce";
 import React, { FC, useState } from "react";
@@ -34,32 +36,83 @@ const SearchIcon = chakra(MagnifyingGlassIcon, iconProps);
 const ClearIcon = chakra(XMarkIcon, iconProps);
 export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 
-export type FilterProps = {} & BoxProps;
-const setSearchField = debounce((search: string) => {
-  useDashboard.getState().onFilterChange({
-    ...useDashboard.getState().filters,
-    offset: 0,
-    search,
-  });
-}, 300);
+export type FilterProps = { for?: "users" | "admins" } & BoxProps;
 
-export const Filters: FC<FilterProps> = ({ ...props }) => {
-  const { loading, filters, onFilterChange, refetchUsers, onCreateUser } =
-    useDashboard();
+const setSearchField = debounce(
+  (search: string, target: "users" | "admins") => {
+    if (target === "users") {
+      useDashboard.getState().onFilterChange({
+        ...useDashboard.getState().filters,
+        offset: 0,
+        search,
+      });
+    } else {
+      useAdminsStore.getState().onFilterChange({
+        search,
+        offset: 0,
+      });
+    }
+  },
+  300
+);
+
+export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) => {
+  const {
+    loading: usersLoading,
+    filters: userFilters,
+    onFilterChange: onUserFilterChange,
+    refetchUsers,
+    onCreateUser,
+  } = useDashboard();
+  const {
+    loading: adminsLoading,
+    filters: adminFilters,
+    onFilterChange: onAdminFilterChange,
+    fetchAdmins,
+    openAdminDialog,
+  } = useAdminsStore();
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
+
+  const loading = target === "users" ? usersLoading : adminsLoading;
+  const filters = target === "users" ? userFilters : adminFilters;
+
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
-    setSearchField(e.target.value);
+    setSearchField(e.target.value, target);
   };
   const clear = () => {
     setSearch("");
-    onFilterChange({
-      ...filters,
-      offset: 0,
-      search: "",
-    });
+    if (target === "users") {
+      onUserFilterChange({
+        ...filters,
+        offset: 0,
+        search: "",
+      });
+    } else {
+      onAdminFilterChange({
+        search: "",
+        offset: 0,
+      });
+    }
   };
+
+  const handleRefresh = () => {
+    if (target === "users") {
+      refetchUsers();
+    } else {
+      fetchAdmins();
+    }
+  };
+
+  const handleCreate = () => {
+    if (target === "users") {
+      onCreateUser(true);
+    } else {
+      openAdminDialog();
+    }
+  };
+
   return (
     <Grid
       id="filters"
@@ -70,7 +123,7 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
       }}
       position="sticky"
       top={0}
-      mx="-6"
+      mx="0"
       px="6"
       rowGap={4}
       gap={{
@@ -79,14 +132,18 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
       }}
       bg="var(--chakra-colors-chakra-body-bg)"
       py={4}
-      zIndex="docked"
+      zIndex="sticky"
       {...props}
     >
       <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>
         <InputGroup>
           <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
           <Input
-            placeholder={t("search")}
+            placeholder={
+              target === "users"
+                ? t("search")
+                : t("admins.searchPlaceholder", "Search admins...")
+            }
             value={search}
             borderColor="light-border"
             onChange={onChange}
@@ -110,9 +167,9 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
       <GridItem colSpan={2} order={{ base: 1, md: 2 }}>
         <HStack justifyContent="flex-end" alignItems="center" h="full">
           <IconButton
-            aria-label="refresh users"
+            aria-label="refresh"
             disabled={loading}
-            onClick={refetchUsers}
+            onClick={handleRefresh}
             size="sm"
             variant="outline"
           >
@@ -125,10 +182,13 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
           <Button
             colorScheme="primary"
             size="sm"
-            onClick={() => onCreateUser(true)}
+            onClick={handleCreate}
             px={5}
+            leftIcon={<PlusIcon width={16} />}
           >
-            {t("createUser")}
+            {target === "users"
+              ? t("createUser")
+              : t("admins.addAdmin", "Add admin")}
           </Button>
         </HStack>
       </GridItem>

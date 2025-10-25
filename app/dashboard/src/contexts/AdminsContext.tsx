@@ -14,14 +14,19 @@ type AdminsStore = {
   total: number;
   loading: boolean;
   filters: AdminFilters;
+  isAdminDialogOpen: boolean;
+  adminInDialog: Admin | null;
   fetchAdmins: () => Promise<void>;
   setFilters: (filters: Partial<AdminFilters>) => void;
+  onFilterChange: (filters: Partial<AdminFilters>) => void;
   createAdmin: (payload: AdminCreatePayload) => Promise<void>;
   updateAdmin: (username: string, payload: AdminUpdatePayload) => Promise<void>;
   deleteAdmin: (username: string) => Promise<void>;
   resetUsage: (username: string) => Promise<void>;
   disableUsers: (username: string) => Promise<void>;
   activateUsers: (username: string) => Promise<void>;
+  openAdminDialog: (admin?: Admin) => void;
+  closeAdminDialog: () => void;
 };
 
 const defaultFilters: AdminFilters = {
@@ -36,20 +41,28 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
   total: 0,
   loading: false,
   filters: defaultFilters,
+  isAdminDialogOpen: false,
+  adminInDialog: null,
   async fetchAdmins() {
     const { filters } = get();
     const query: Record<string, string | number> = {};
     if (filters.search) {
       query.username = filters.search;
     }
-    if (filters.offset) {
+    if (filters.offset !== undefined) {
       query.offset = filters.offset;
     }
-    if (filters.limit) {
+    if (filters.limit !== undefined) {
       query.limit = filters.limit;
     }
     if (filters.sort) {
-      query.sort = filters.sort;
+      if (filters.sort === "data_usage") {
+        query.sort = "users_usage";
+      } else if (filters.sort === "data_limit") {
+        query.sort = "data_limit";
+      } else {
+        query.sort = filters.sort;
+      }
     }
 
     set({ loading: true });
@@ -62,6 +75,9 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
         // New API format with pagination
         set({ admins: data.admins || [], total: data.total || 0 });
       }
+    } catch (error) {
+      console.error("Failed to fetch admins:", error);
+      set({ admins: [], total: 0 });
     } finally {
       set({ loading: false });
     }
@@ -73,6 +89,15 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
         ...partial,
       },
     }));
+  },
+  onFilterChange(partial) {
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        ...partial,
+      },
+    }));
+    get().fetchAdmins();
   },
   async createAdmin(payload) {
     await fetch("/admin", { method: "POST", body: payload });
@@ -106,5 +131,11 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
     await fetch(`/admin/${encodeURIComponent(username)}/users/activate`, {
       method: "POST",
     });
+  },
+  openAdminDialog(admin) {
+    set({ isAdminDialogOpen: true, adminInDialog: admin || null });
+  },
+  closeAdminDialog() {
+    set({ isAdminDialogOpen: false, adminInDialog: null });
   },
 }));
