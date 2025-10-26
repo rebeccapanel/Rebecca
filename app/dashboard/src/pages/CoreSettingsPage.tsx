@@ -33,6 +33,7 @@ import {
   Radio,
   useBreakpointValue,
   useColorModeValue,
+  Stack,
 } from "@chakra-ui/react";
 import type { TableProps } from "@chakra-ui/react";
 import {
@@ -101,12 +102,16 @@ const SettingsSection: FC<{ title: string; children: ReactNode }> = ({ title, ch
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
   return (
     <Box borderWidth="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden">
-      <Box bg={headerBg} px={4} py={2}>
-        <Text fontWeight="semibold">{title}</Text>
+      <Box bg={headerBg} px={{ base: 3, md: 4 }} py={2}>
+        <Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
+          {title}
+        </Text>
       </Box>
-      <Table variant="simple" size="sm">
-        <Tbody>{children}</Tbody>
-      </Table>
+      <Box overflowX="auto">
+        <Table variant="simple" size="sm" minW={{ base: "100%", md: "unset" }}>
+          <Tbody>{children}</Tbody>
+        </Table>
+      </Box>
     </Box>
   );
 };
@@ -118,14 +123,33 @@ const SettingRow: FC<{ label: string; controlId: string; children: (controlId: s
 }) => {
   const labelColor = useColorModeValue("gray.700", "whiteAlpha.800");
   return (
-    <Tr>
-      <Td width="40%" py={3} pr={4}>
-        <FormLabel htmlFor={controlId} mb="0" color={labelColor}>
+    <Tr
+      display={{ base: "block", md: "table-row" }}
+      _notFirst={{
+        borderTopWidth: { base: "1px", md: "0" },
+        borderColor: "gray.200",
+        _dark: { borderColor: "whiteAlpha.200" },
+      }}
+    >
+      <Td
+        width={{ base: "100%", md: "40%" }}
+        py={3}
+        pr={{ base: 0, md: 4 }}
+        display={{ base: "block", md: "table-cell" }}
+      >
+        <FormLabel htmlFor={controlId} mb={{ base: 2, md: 0 }} color={labelColor}>
           {label}
         </FormLabel>
       </Td>
-      <Td py={3}>
-        <FormControl id={controlId} display="flex" alignItems="center" gap={4}>
+      <Td py={3} display={{ base: "block", md: "table-cell" }}>
+        <FormControl
+          id={controlId}
+          display="flex"
+          flexDir={{ base: "column", md: "row" }}
+          alignItems={{ base: "flex-start", md: "center" }}
+          gap={{ base: 2, md: 4 }}
+          w="full"
+        >
           {children(controlId)}
         </FormControl>
       </Td>
@@ -682,29 +706,57 @@ export const CoreSettingsPage: FC = () => {
       <Text color="gray.600" _dark={{ color: "gray.300" }} fontSize="sm">
         {t("pages.xray.coreDescription")}
       </Text>
-      <HStack justifyContent="space-between">
-        <HStack>
+      <Stack
+        direction={{ base: "column", sm: "row" }}
+        spacing={{ base: 3, sm: 4 }}
+        justifyContent="space-between"
+        alignItems={{ base: "stretch", sm: "center" }}
+      >
+        <Stack direction={{ base: "column", sm: "row" }} spacing={3} flexWrap="wrap" w="full">
           <Button
             size="sm"
             colorScheme="primary"
             isLoading={isPostLoading}
             isDisabled={!hasConfigChanges || isPostLoading}
             onClick={handleOnSave}
+            w={{ base: "full", sm: "auto" }}
           >
             {t("core.save")}
           </Button>
-        <Button
-          size="sm"
-          leftIcon={<ReloadIconStyled />}
-          isLoading={isRestarting}
-          onClick={() => handleRestartCore()}
-        >
-          {t(isRestarting ? "core.restarting" : "core.restartCore")}
-        </Button>
-      </HStack>
-    </HStack>
+          <Button
+            size="sm"
+            leftIcon={<ReloadIconStyled />}
+            isLoading={isRestarting}
+            onClick={() => handleRestartCore()}
+            variant="outline"
+            w={{ base: "full", sm: "auto" }}
+          >
+            {t(isRestarting ? "core.restarting" : "core.restartCore")}
+          </Button>
+        </Stack>
+      </Stack>
       <Tabs variant="enclosed" colorScheme="primary">
-        <TabList>
+        <TabList
+          overflowX="auto"
+          flexWrap={{ base: "wrap", md: "nowrap" }}
+          gap={{ base: 2, md: 0 }}
+          pb={{ base: 1, md: 0 }}
+          sx={{
+            "&::-webkit-scrollbar": { display: "none" },
+            button: {
+              flexShrink: 0,
+              fontSize: "sm",
+              minW: "max-content",
+              px: 3,
+              py: 2,
+              "@media (min-width: 48em)": {
+                fontSize: "md",
+                px: 4,
+                py: 3,
+              },
+            },
+          }}
+        >
           <Tab>
             <HStack spacing={2} align="center">
               <BasicTabIcon />

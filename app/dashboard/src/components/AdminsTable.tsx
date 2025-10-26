@@ -194,7 +194,7 @@ export const AdminsTable = () => {
   return (
     <>
       <Box borderWidth="1px" borderRadius="md" overflowX="auto">
-        <Table variant="simple">
+        <Table variant="simple" size="sm" minW="640px">
           <Thead>
             <Tr>
               {columns.map((col) => (
@@ -246,12 +246,12 @@ export const AdminsTable = () => {
                   )}
                 </Td>
                 <Td>
-                  <Text>
+                  <Text whiteSpace="nowrap">
                     {formatBytes(admin.users_usage ?? 0, 2)} /{" "}
                     {admin.data_limit ? (
                       formatBytes(admin.data_limit, 2)
                     ) : (
-                      "∞"
+                      "-"
                     )}
                   </Text>
                 </Td>

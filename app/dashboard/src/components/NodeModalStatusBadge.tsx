@@ -32,6 +32,7 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
         py={1}
         columnGap={compact ? 1 : 2}
         alignItems="center"
+        flexWrap="wrap"
       >
         <Icon w={compact ? 3 : 4} />
         {showDetail && (
@@ -41,6 +42,9 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
             lineHeight={compact ? "1rem" : "1.25rem"}
             fontWeight="medium"
             letterSpacing="tighter"
+            whiteSpace="normal"
+            textAlign="left"
+            maxW={{ base: "100%", md: "fit-content" }}
           >
             {userStatus && t(`nodeModal.status.${userStatus}`)}
             {extraText && `: ${extraText}`}

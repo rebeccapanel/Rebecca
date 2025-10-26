@@ -15,6 +15,8 @@
   "core.restartCore": "Restart Core",
   "core.restarting": "Restarting...",
   "core.restartSuccess": "Restart Success",
+  "core.autoScrollOn": "Auto-scroll: On",
+  "core.autoScrollOff": "Auto-scroll: Off",
   "core.save": "Save",
   "core.socket.closed": "Closed",
   "core.socket.connected": "Connected",

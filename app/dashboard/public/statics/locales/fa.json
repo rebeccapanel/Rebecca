@@ -422,5 +422,7 @@
   "theme.importError": "داده تم نامعتبر است",
   "theme.edit": "ویرایش",
   "theme.delete": "حذف",
-  "theme.untitled": "تم بدون نام"
+  "theme.untitled": "تم بدون نام",
+  "core.autoScrollOn": "اسکرول خودکار: روشن",
+  "core.autoScrollOff": "اسکرول خودکار: خاموش"
 }

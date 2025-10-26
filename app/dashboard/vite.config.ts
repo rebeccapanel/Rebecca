@@ -15,4 +15,14 @@ export default defineConfig({
     visualizer(),
     splitVendorChunkPlugin(),
   ],
+  build: {
+    rollupOptions: {
+      onwarn(warning, warn) {
+        if (typeof warning.message === "string" && warning.message.includes("Module level directives cause errors when bundled")) {
+          return;
+        }
+        warn(warning);
+      },
+    },
+  },
 });

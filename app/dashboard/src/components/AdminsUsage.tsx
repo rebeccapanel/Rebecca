@@ -9,7 +9,6 @@ import {
   VStack,
   useColorMode,
   Button,
-  ButtonGroup,
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -19,16 +18,18 @@ import {
   Tooltip,
 } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
+import ReactDatePicker from "react-datepicker";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { formatBytes } from "utils/formatByte";
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 
 dayjs.extend(utc);
 const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
+const CalendarIcon = chakra(CalendarDaysIcon, { baseStyle: { w: 4, h: 4 } });
 
 interface DailyUsagePoint {
   date: string;
@@ -53,6 +54,12 @@ const formatTimeseriesLabel = (value: string) => {
 
 const formatApiStart = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ss") + "Z";
 const formatApiEnd = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ss") + "Z";
+const toUtcMillis = (value: string) => {
+  if (!value) return 0;
+  const hasTime = value.includes(" ");
+  const normalized = hasTime ? value.replace(" ", "T") : `${value}T00:00`;
+  return dayjs.utc(normalized).valueOf();
+};
 
 const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
   const alignUnit: dayjs.ManipulateType = preset.unit === "hour" ? "hour" : "day";
@@ -60,6 +67,21 @@ const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
   const span = Math.max(preset.amount - 1, 0);
   const start = end.subtract(span, preset.unit).startOf(alignUnit);
   return { key: preset.key, start: start.toDate(), end: end.toDate(), unit: preset.unit };
+};
+
+const normalizeCustomRange = (start: Date, end: Date): RangeState => {
+  const startDate = dayjs(start);
+  const endDate = dayjs(end);
+  const [minDate, maxDate] = startDate.isBefore(endDate) ? [startDate, endDate] : [endDate, startDate];
+  const startDay = minDate.startOf("day");
+  const endDay = maxDate.endOf("day");
+  const isSingleDay = startDay.isSame(endDay, "day");
+  return {
+    key: "custom",
+    start: startDay.toDate(),
+    end: endDay.toDate(),
+    unit: isSingleDay ? "hour" : "day",
+  };
 };
 
 const buildDailyUsageOptions = (colorMode: string, categories: string[]) => {
@@ -100,6 +122,14 @@ const AdminsUsage: FC = () => {
   const [selectedAdmin, setSelectedAdmin] = useState<string | null>(null);
   const [points, setPoints] = useState<DailyUsagePoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isCalendarOpen, setCalendarOpen] = useState(false);
+  const [draftRange, setDraftRange] = useState<[Date | null, Date | null]>([range.start, range.end]);
+
+  useEffect(() => {
+    if (!isCalendarOpen) {
+      setDraftRange([range.start, range.end]);
+    }
+  }, [isCalendarOpen, range.start, range.end]);
 
   // load all admins (not paginated) for the select list
   useEffect(() => {
@@ -126,28 +156,61 @@ const AdminsUsage: FC = () => {
     if (!selectedAdmin) return;
     let cancelled = false;
     setLoading(true);
+    const isHourly = range.unit === "hour";
     const query: Record<string, string> = {
       start: formatApiStart(range.start),
       end: formatApiEnd(range.end),
     };
-    console.debug("AdminsUsage: fetching daily usage", { selectedAdmin, query });
-    apiFetch(`/admin/${encodeURIComponent(selectedAdmin)}/usage/daily`, { query })
+    if (isHourly) {
+      query.granularity = "hour";
+    }
+    const endpoint = isHourly ? "chart" : "daily";
+    console.debug("AdminsUsage: fetching usage", { selectedAdmin, endpoint, query });
+    apiFetch(`/admin/${encodeURIComponent(selectedAdmin)}/usage/${endpoint}`, { query })
       .then((data: any) => {
         if (cancelled) return;
         const usages = Array.isArray(data?.usages) ? data.usages : [];
-        console.debug("AdminsUsage: response daily usages", { length: usages.length });
-        const mapped = usages.map((entry: any) => ({ date: entry?.date ?? "", used_traffic: Number(entry?.used_traffic ?? 0) }));
+        console.debug("AdminsUsage: response usages", { length: usages.length, endpoint });
+        let mapped: DailyUsagePoint[];
+        if (isHourly) {
+          const aggregated = new Map<string, number>();
+          usages.forEach((entry: any) => {
+            const dateLabel = typeof entry?.date === "string" ? entry.date : "";
+            if (!dateLabel) return;
+            const current = aggregated.get(dateLabel) ?? 0;
+            aggregated.set(dateLabel, current + Number(entry?.used_traffic ?? 0));
+          });
+          const aggregatedEntries: Array<[string, number]> = Array.from(aggregated.entries());
+          aggregatedEntries.sort((entryA: [string, number], entryB: [string, number]) => {
+            const [dateA] = entryA;
+            const [dateB] = entryB;
+            return toUtcMillis(dateA) - toUtcMillis(dateB);
+          });
+          mapped = aggregatedEntries.map(([date, used]) => ({ date, used_traffic: used }));
+        } else {
+          const dailyPoints = usages.map((entry: any): DailyUsagePoint => ({
+            date: entry?.date ?? "",
+            used_traffic: Number(entry?.used_traffic ?? 0),
+          }));
+          dailyPoints.sort(
+            (pointA: DailyUsagePoint, pointB: DailyUsagePoint) =>
+              toUtcMillis(pointA.date) - toUtcMillis(pointB.date)
+          );
+          mapped = dailyPoints;
+        }
         setPoints(mapped);
       })
       .catch((err) => {
         if (cancelled) return;
-        console.error("Error fetching admin daily usage:", err);
+        console.error("Error fetching admin usage:", err);
         setPoints([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedAdmin, range]);
 
   useEffect(() => {
@@ -171,11 +234,22 @@ const AdminsUsage: FC = () => {
   );
 
   const total = useMemo(() => points.reduce((sum, p) => sum + Number(p.used_traffic || 0), 0), [points]);
+  const rangeLabel = useMemo(() => {
+    const startLabel = dayjs(range.start).format("YYYY-MM-DD");
+    const endLabel = dayjs(range.end).format("YYYY-MM-DD");
+    return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+  }, [range.start, range.end]);
 
   return (
     <VStack spacing={4} align="stretch">
       <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
-        <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
+        <Stack
+          direction={{ base: "column", lg: "row" }}
+          spacing={{ base: 4, lg: 6 }}
+          justifyContent="space-between"
+          alignItems={{ base: "stretch", lg: "flex-start" }}
+          w="full"
+        >
           <VStack align="start" spacing={1}>
             <HStack spacing={2} align="center">
               <Text fontWeight="semibold">{t("admins.dailyUsage", "Daily usage")}</Text>
@@ -184,44 +258,113 @@ const AdminsUsage: FC = () => {
               </Tooltip>
             </HStack>
             <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-              {t("admins.selectedAdmin", "Admin")}: <chakra.span fontWeight="medium">{selectedAdmin ?? "-"}</chakra.span>  {t("nodes.totalLabel", "Total")}: <chakra.span fontWeight="medium">{formatBytes(total || 0, 2)}</chakra.span>
+              {t("admins.selectedAdmin", "Admin")}:{" "}
+              <chakra.span fontWeight="medium">{selectedAdmin ?? "-"}</chakra.span>{" "}
+              {t("nodes.totalLabel", "Total")}:{" "}
+              <chakra.span fontWeight="medium">{formatBytes(total || 0, 2)}</chakra.span>
             </Text>
           </VStack>
-          <HStack>
-            <ButtonGroup size="sm" variant="outline">
+          <Stack
+            direction={{ base: "column", md: "row" }}
+            spacing={{ base: 3, md: 4 }}
+            alignItems={{ base: "stretch", md: "center" }}
+            justifyContent="flex-end"
+            w="full"
+          >
+            <Stack
+              direction={{ base: "column", sm: "row" }}
+              spacing={2}
+              flex="1"
+              justifyContent={{ sm: "flex-end" }}
+            >
               {presets.map((p) => (
                 <Button
                   key={p.key}
+                  size="sm"
                   onClick={() => {
                     setSelectedPresetKey(p.key);
                     setRange(buildRangeFromPreset(p));
                   }}
                   variant={selectedPresetKey === p.key ? "solid" : "outline"}
                   colorScheme="primary"
+                  w={{ base: "full", sm: "auto" }}
                 >
                   {p.label}
                 </Button>
               ))}
-            </ButtonGroup>
-            <Popover placement="bottom-end">
-              <PopoverTrigger>
-                <Button size="sm" variant="outline">{`${dayjs(range.start).format("YYYY-MM-DD")} - ${dayjs(range.end).format("YYYY-MM-DD")}`}</Button>
-              </PopoverTrigger>
-              <PopoverContent>
-                <PopoverArrow />
-                <PopoverBody>
-                  <Text fontSize="sm">{t("selectRange")}</Text>
-                </PopoverBody>
-              </PopoverContent>
-            </Popover>
-            {/* granularity removed: daily endpoint used */}
-            <Select value={selectedAdmin ?? ""} onChange={(e) => setSelectedAdmin(e.target.value)} width="220px">
-              {admins.map((a) => (
-                <option key={a.username} value={a.username}>{a.username}</option>
-              ))}
-            </Select>
-          </HStack>
-        </HStack>
+            </Stack>
+            <Stack
+              direction={{ base: "column", sm: "row" }}
+              spacing={2}
+              alignItems={{ base: "stretch", sm: "center" }}
+            >
+              <Popover
+                placement="bottom-end"
+                isOpen={isCalendarOpen}
+                onClose={() => {
+                  setCalendarOpen(false);
+                }}
+                closeOnBlur={false}
+              >
+                <PopoverTrigger>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    leftIcon={<CalendarIcon />}
+                    w={{ base: "full", sm: "auto" }}
+                    onClick={() => {
+                      if (isCalendarOpen) {
+                        setCalendarOpen(false);
+                        return;
+                      }
+                      setDraftRange([range.start, range.end]);
+                      setCalendarOpen(true);
+                    }}
+                  >
+                    {rangeLabel}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent w="auto">
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <ReactDatePicker
+                      selectsRange
+                      inline
+                      maxDate={new Date()}
+                      startDate={draftRange[0] ?? undefined}
+                      endDate={draftRange[1] ?? undefined}
+                      onChange={(dates) => {
+                        const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                        setDraftRange([start, end]);
+                        if (start && end) {
+                          const normalized = normalizeCustomRange(start, end);
+                          setSelectedPresetKey("custom");
+                          setRange(normalized);
+                          setCalendarOpen(false);
+                        }
+                      }}
+                    />
+                    <Text mt={2} fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("nodes.customRangeHint", "Select a start and end date")}
+                    </Text>
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
+              <Select
+                value={selectedAdmin ?? ""}
+                onChange={(e) => setSelectedAdmin(e.target.value)}
+                w={{ base: "full", sm: "auto", md: "220px" }}
+                minW={{ md: "200px" }}
+              >
+                {admins.map((a) => (
+                  <option key={a.username} value={a.username}>
+                    {a.username}
+                  </option>
+                ))}
+              </Select>
+            </Stack>
+          </Stack>
+        </Stack>
         <Box mt={6}>
           {loading ? (
             <VStack spacing={3}>

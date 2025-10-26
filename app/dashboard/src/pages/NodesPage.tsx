@@ -127,12 +127,20 @@ const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
   };
 };
 
-const normalizeCustomRange = (start: Date, end: Date): RangeState => ({
-  key: "custom",
-  start: dayjs(start).startOf("day").toDate(),
-  end: dayjs(end).endOf("day").toDate(),
-  unit: "day",
-});
+const normalizeCustomRange = (start: Date, end: Date): RangeState => {
+  const startDate = dayjs(start);
+  const endDate = dayjs(end);
+  const [minDate, maxDate] = startDate.isBefore(endDate) ? [startDate, endDate] : [endDate, startDate];
+  const startAligned = minDate.startOf("day");
+  const endAligned = maxDate.endOf("day");
+  const isSingleDay = startAligned.isSame(endAligned, "day");
+  return {
+    key: "custom",
+    start: startAligned.toDate(),
+    end: endAligned.toDate(),
+    unit: isSingleDay ? "hour" : "day",
+  };
+};
 
 const buildDailyUsageOptions = (colorMode: string, categories: string[]): ApexOptions => {
   const axisColor = colorMode === "dark" ? "#d8dee9" : "#1a202c";
@@ -200,25 +208,69 @@ type UsageRangeControlsProps = {
 
 const UsageRangeControls: FC<UsageRangeControlsProps> = ({ presets, range, onPresetChange, onCustomChange }) => {
   const { t } = useTranslation();
-  const rangeLabel = `${dayjs(range.start).format("YYYY-MM-DD")} - ${dayjs(range.end).format("YYYY-MM-DD")}`;
+  const startLabel = dayjs(range.start).format("YYYY-MM-DD");
+  const endLabel = dayjs(range.end).format("YYYY-MM-DD");
+  const rangeLabel = startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+  const [isCalendarOpen, setCalendarOpen] = useState(false);
+  const [draftRange, setDraftRange] = useState<[Date | null, Date | null]>([range.start, range.end]);
+
+  useEffect(() => {
+    if (!isCalendarOpen) {
+      setDraftRange([range.start, range.end]);
+    }
+  }, [isCalendarOpen, range.start, range.end]);
 
   return (
-    <HStack spacing={2} flexWrap="wrap" justify="flex-end">
-      <ButtonGroup size="sm" variant="outline">
+    <Stack
+      direction={{ base: "column", md: "row" }}
+      spacing={{ base: 3, md: 4 }}
+      alignItems={{ base: "stretch", md: "center" }}
+      justifyContent="flex-end"
+      w="full"
+    >
+      <Stack
+        direction={{ base: "column", sm: "row" }}
+        spacing={2}
+        flexWrap="wrap"
+        justifyContent={{ sm: "flex-end" }}
+        w="full"
+      >
         {presets.map((preset) => (
           <Button
             key={preset.key}
+            size="sm"
             onClick={() => onPresetChange(preset.key)}
             colorScheme="primary"
             variant={range.key === preset.key ? "solid" : "outline"}
+            w={{ base: "full", sm: "auto" }}
           >
             {preset.label}
           </Button>
         ))}
-      </ButtonGroup>
-      <Popover placement="bottom-end">
+      </Stack>
+      <Popover
+        placement="bottom-end"
+        isOpen={isCalendarOpen}
+        onClose={() => {
+          setCalendarOpen(false);
+        }}
+        closeOnBlur={false}
+      >
         <PopoverTrigger>
-          <Button size="sm" variant="outline" leftIcon={<CalendarIconStyled />}>
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={<CalendarIconStyled />}
+            w={{ base: "full", sm: "auto" }}
+            onClick={() => {
+              if (isCalendarOpen) {
+                setCalendarOpen(false);
+                return;
+              }
+              setDraftRange([range.start, range.end]);
+              setCalendarOpen(true);
+            }}
+          >
             {rangeLabel}
           </Button>
         </PopoverTrigger>
@@ -228,13 +280,15 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({ presets, range, onPre
             <ReactDatePicker
               selectsRange
               inline
-              startDate={range.start}
-              endDate={range.end}
               maxDate={new Date()}
+              startDate={draftRange[0] ?? undefined}
+              endDate={draftRange[1] ?? undefined}
               onChange={(dates) => {
-                const [start, end] = dates as [Date | null, Date | null];
+                const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                setDraftRange([start, end]);
                 if (start && end) {
                   onCustomChange(start, end);
+                  setCalendarOpen(false);
                 }
               }}
             />
@@ -244,7 +298,7 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({ presets, range, onPre
           </PopoverBody>
         </PopoverContent>
       </Popover>
-    </HStack>
+    </Stack>
   );
 };
 
@@ -515,9 +569,9 @@ export const NodesPage: FC = () => {
   }, [nodes]);
 
   useEffect(() => {
-    onEditingNodes(activeTab === 1);
+    onEditingNodes(activeTab === 0);
     return () => {
-      if (activeTab === 1) {
+      if (activeTab === 0) {
         onEditingNodes(false);
       }
     };
@@ -571,29 +625,39 @@ export const NodesPage: FC = () => {
     if (!userData?.is_sudo) return;
     let cancelled = false;
     apiFetch("/admins")
-      .then((admins: any[]) => {
+      .then((payload: any) => {
         if (cancelled) return;
-        const usernames = Array.isArray(admins)
-          ? admins
-              .map((admin) => admin?.username)
-              .filter((username: unknown): username is string => typeof username === "string")
+        const adminsList = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.admins)
+          ? payload.admins
           : [];
-        if (!usernames.length && userData?.username) {
+        const usernames: string[] = adminsList
+          .map((admin: any) => admin?.username)
+          .filter((username: unknown): username is string => typeof username === "string");
+
+        const uniqueUsernamesSet = new Set<string>(usernames);
+        const uniqueUsernames: string[] = Array.from(uniqueUsernamesSet.values());
+        uniqueUsernames.sort((a, b) => a.localeCompare(b));
+
+        if (!uniqueUsernames.length && userData?.username) {
           setAdminOptions([userData.username]);
           return;
         }
-        setAdminOptions(usernames);
+        setAdminOptions(uniqueUsernames);
         setSelectedAdminDaily((prev) => {
-          if (prev && usernames.includes(prev)) {
+          if (prev && uniqueUsernames.includes(prev)) {
             return prev;
           }
-          return usernames[0] ?? prev ?? null;
+          const fallback = uniqueUsernames[0] ?? null;
+          return fallback ?? prev ?? null;
         });
         setSelectedAdminTotals((prev) => {
-          if (prev && usernames.includes(prev)) {
+          if (prev && uniqueUsernames.includes(prev)) {
             return prev;
           }
-          return usernames[0] ?? prev ?? null;
+          const fallback = uniqueUsernames[0] ?? null;
+          return fallback ?? prev ?? null;
         });
       })
       .catch((err) => {
@@ -929,282 +993,38 @@ export const NodesPage: FC = () => {
         <TabList>
           <Tab>
             <HStack spacing={2} align="center">
-              <ChartIcon />
-              <Text>{t("header.nodesUsage")}</Text>
+              <ManageNodesIcon />
+              <Text>{t("nodes.manageNodes", "Manage Nodes")}</Text>
             </HStack>
           </Tab>
           <Tab>
             <HStack spacing={2} align="center">
-              <ManageNodesIcon />
-              <Text>{t("nodes.manageNodes", "Manage Nodes")}</Text>
+              <ChartIcon />
+              <Text>{t("header.nodesUsage")}</Text>
             </HStack>
           </Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
-            <VStack spacing={6} align="stretch">
-              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
-                <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-                  <VStack align="start" spacing={1}>
-                    <Tooltip label={t("nodes.trafficOverviewTooltip", "Total usage per node over the chosen range.")} placement="top" fontSize="sm">
-                      <HStack spacing={2} align="center">
-                        <Text fontWeight="semibold">{t("nodes.trafficOverview", "Traffic overview")}</Text>
-                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
-                      </HStack>
-                    </Tooltip>
-                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("nodes.totalLabel", "Total")}:{" "}
-                      <chakra.span fontWeight="medium">{formatBytes(totalNodeUsage || 0, 2)}</chakra.span>
-                    </Text>
-                  </VStack>
-                  <UsageRangeControls
-                    presets={presets}
-                    range={nodesUsageRange}
-                    onPresetChange={handleNodesUsagePresetChange}
-                    onCustomChange={handleNodesUsageCustomChange}
-                  />
-                </HStack>
-                <Box mt={6}>
-                  {nodeUsageLoading ? (
-                    <VStack spacing={3}>
-                      <Spinner />
-                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                        {t("loading")}
-                      </Text>
-                    </VStack>
-                  ) : nodeUsageChart.series.length ? (
-                    <ReactApexChart options={nodeUsageChart.options} series={nodeUsageChart.series} type="donut" height={360} />
-                  ) : (
-                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("noData")}
-                    </Text>
-                  )}
-                </Box>
-              </Box>
-
-              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
-                <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-                  <VStack align="start" spacing={1}>
-                    <Tooltip label={t("nodes.perDayUsageTooltip", "Daily traffic aggregated for the selected node within the chosen range.")} placement="top" fontSize="sm">
-                      <HStack spacing={2} align="center">
-                        <Text fontWeight="semibold">{t("nodes.perDayUsage", "Per day usage")}</Text>
-                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
-                      </HStack>
-                    </Tooltip>
-                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("nodes.selectedNode", "Node")}:{" "}
-                      <chakra.span fontWeight="medium">{nodeDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}</chakra.span>{" "}
-                      • {t("nodes.totalLabel", "Total")}:{" "}
-                      <chakra.span fontWeight="medium">{formatBytes(nodeDailyTotal || 0, 2)}</chakra.span>
-                    </Text>
-                  </VStack>
-                  <HStack spacing={3} flexWrap="wrap" justify="flex-end">
-                    <Select
-                      size="sm"
-                      minW="180px"
-                      value={nodeDailySelectedNodeId ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (!value) {
-                          setNodeDailySelectedNodeId(null);
-                          return;
-                        }
-                        const parsed = Number(value);
-                        setNodeDailySelectedNodeId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
-                      }}
-                      placeholder={t("nodes.selectNode", "Select node")}
-                    >
-                      {nodeDailyOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <UsageRangeControls
-                      presets={presets}
-                      range={nodeDailyRange}
-                      onPresetChange={handleNodeDailyPresetChange}
-                      onCustomChange={handleNodeDailyCustomChange}
-                    />
-                  </HStack>
-                </HStack>
-                <Box mt={6}>
-                  {nodeDailyLoading ? (
-                    <VStack spacing={3}>
-                      <Spinner />
-                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                        {t("loading")}
-                      </Text>
-                    </VStack>
-                  ) : nodeDailySeries[0]?.data?.length ? (
-                    <ReactApexChart options={nodeDailyChartConfig.options} series={nodeDailyChartConfig.series} type="area" height={360} />
-                  ) : (
-                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("noData")}
-                    </Text>
-                  )}
-                </Box>
-              </Box>
-
-              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
-                <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-                  <VStack align="start" spacing={1}>
-                    <Tooltip label={t("nodes.adminUsagePerNodeTooltip", "Daily usage for the selected admin on the chosen node.")} placement="top" fontSize="sm">
-                      <HStack spacing={2} align="center">
-                        <Text fontWeight="semibold">{t("nodes.adminUsagePerNode", "Admin usage per day for a node")}</Text>
-                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
-                      </HStack>
-                    </Tooltip>
-                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("nodes.selectedAdmin", "Admin")}:{" "}
-                      <chakra.span fontWeight="medium">{selectedAdminDaily ?? "-"}</chakra.span>{" "}
-                      • {t("nodes.selectedNode", "Node")}:{" "}
-                      <chakra.span fontWeight="medium">{adminDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}</chakra.span>{" "}
-                      • {t("nodes.totalLabel", "Total")}:{" "}
-                      <chakra.span fontWeight="medium">{formatBytes(adminDailyTotal || 0, 2)}</chakra.span>
-                    </Text>
-                  </VStack>
-                  <HStack spacing={3} flexWrap="wrap" justify="flex-end">
-                    <Select
-                      size="sm"
-                      minW="160px"
-                      value={selectedAdminDaily ?? ""}
-                      onChange={(event) => setSelectedAdminDaily(event.target.value || null)}
-                      isDisabled={adminSelectOptions.length <= 1}
-                    >
-                      {adminSelectOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      size="sm"
-                      minW="180px"
-                      value={selectedAdminNodeId ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (value === "") {
-                          setSelectedAdminNodeId(null);
-                          return;
-                        }
-                        const parsed = Number(value);
-                        setSelectedAdminNodeId(Number.isNaN(parsed) ? null : parsed);
-                      }}
-                      placeholder={t("nodes.selectNode", "Select node")}
-                    >
-                      {adminNodeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <UsageRangeControls
-                      presets={presets}
-                      range={adminDailyRange}
-                      onPresetChange={handleAdminDailyPresetChange}
-                      onCustomChange={handleAdminDailyCustomChange}
-                    />
-                  </HStack>
-                </HStack>
-                <Box mt={6}>
-                  {adminDailyLoading ? (
-                    <VStack spacing={3}>
-                      <Spinner />
-                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                        {t("loading")}
-                      </Text>
-                    </VStack>
-                  ) : adminDailySeries[0]?.data?.length ? (
-                    <ReactApexChart
-                      options={adminDailyChartConfig.options}
-                      series={adminDailyChartConfig.series}
-                      type="area"
-                      height={360}
-                    />
-                  ) : (
-                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("noData")}
-                    </Text>
-                  )}
-                </Box>
-              </Box>
-
-              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
-                <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-                  <VStack align="start" spacing={1}>
-                    <Tooltip label={t("nodes.perAdminUsageTooltip", "Total usage by node for the selected admin.")} placement="top" fontSize="sm">
-                      <HStack spacing={2} align="center">
-                        <Text fontWeight="semibold">{t("nodes.perAdminUsage", "Per admin usages")}</Text>
-                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
-                      </HStack>
-                    </Tooltip>
-                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("nodes.selectedAdmin", "Admin")}:{" "}
-                      <chakra.span fontWeight="medium">{selectedAdminTotals ?? "-"}</chakra.span>{" "}
-                      • {t("nodes.totalLabel", "Total")}:{" "}
-                      <chakra.span fontWeight="medium">{formatBytes(totalAdminUsage || 0, 2)}</chakra.span>
-                    </Text>
-                  </VStack>
-                  <HStack spacing={3} flexWrap="wrap" justify="flex-end">
-                    <Select
-                      size="sm"
-                      minW="160px"
-                      value={selectedAdminTotals ?? ""}
-                      onChange={(event) => setSelectedAdminTotals(event.target.value || null)}
-                      isDisabled={adminSelectOptions.length <= 1}
-                    >
-                      {adminSelectOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <UsageRangeControls
-                      presets={presets}
-                      range={adminDonutRange}
-                      onPresetChange={handleAdminDonutPresetChange}
-                      onCustomChange={handleAdminDonutCustomChange}
-                    />
-                  </HStack>
-                </HStack>
-                <Box mt={6}>
-                  {adminDonutLoading ? (
-                    <VStack spacing={3}>
-                      <Spinner />
-                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-                        {t("loading")}
-                      </Text>
-                    </VStack>
-                  ) : adminDonutChart.series.length ? (
-                    <ReactApexChart
-                      options={adminDonutChart.options}
-                      series={adminDonutChart.series}
-                      type="donut"
-                      height={360}
-                    />
-                  ) : (
-                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
-                      {t("noData")}
-                    </Text>
-                  )}
-                </Box>
-              </Box>
-            </VStack>
-          </TabPanel>
-          <TabPanel>
             <VStack spacing={4} align="stretch">
-              <HStack justify="space-between" align="center" flexWrap="wrap" gap={3}>
+              <Stack
+                direction={{ base: "column", sm: "row" }}
+                spacing={{ base: 3, sm: 4 }}
+                alignItems={{ base: "stretch", sm: "center" }}
+                justifyContent="space-between"
+                w="full"
+              >
                 <Text fontWeight="semibold">{t("nodes.manageNodesHeader", "Node list")}</Text>
                 <Button
                   leftIcon={<AddIconStyled />}
                   colorScheme="primary"
                   size="sm"
                   onClick={() => setAddNodeOpen(true)}
+                  w={{ base: "full", sm: "auto" }}
                 >
                   {t("nodes.addNewMarzbanNode")}
                 </Button>
-              </HStack>
+              </Stack>
               {hasError && (
                 <Alert status="error" borderRadius="md">
                   <AlertIcon />
@@ -1364,6 +1184,303 @@ export const NodesPage: FC = () => {
                   {t("noData")}
                 </Box>
               )}
+            </VStack>
+          </TabPanel>
+          <TabPanel>
+            <VStack spacing={6} align="stretch">
+              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
+                <Stack
+                  direction={{ base: "column", lg: "row" }}
+                  spacing={{ base: 4, lg: 6 }}
+                  justifyContent="space-between"
+                  alignItems={{ base: "stretch", lg: "flex-start" }}
+                  w="full"
+                >
+                  <VStack align="start" spacing={1}>
+                    <Tooltip label={t("nodes.trafficOverviewTooltip", "Total usage per node over the chosen range.")} placement="top" fontSize="sm">
+                      <HStack spacing={2} align="center">
+                        <Text fontWeight="semibold">{t("nodes.trafficOverview", "Traffic overview")}</Text>
+                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
+                      </HStack>
+                    </Tooltip>
+                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("nodes.totalLabel", "Total")}:{" "}
+                      <chakra.span fontWeight="medium">{formatBytes(totalNodeUsage || 0, 2)}</chakra.span>
+                    </Text>
+                  </VStack>
+                  <UsageRangeControls
+                    presets={presets}
+                    range={nodesUsageRange}
+                    onPresetChange={handleNodesUsagePresetChange}
+                    onCustomChange={handleNodesUsageCustomChange}
+                  />
+                </Stack>
+                <Box mt={6}>
+                  {nodeUsageLoading ? (
+                    <VStack spacing={3}>
+                      <Spinner />
+                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                        {t("loading")}
+                      </Text>
+                    </VStack>
+                  ) : nodeUsageChart.series.length ? (
+                    <ReactApexChart options={nodeUsageChart.options} series={nodeUsageChart.series} type="donut" height={360} />
+                  ) : (
+                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("noData")}
+                    </Text>
+                  )}
+                </Box>
+              </Box>
+
+              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
+                <Stack
+                  direction={{ base: "column", lg: "row" }}
+                  spacing={{ base: 4, lg: 6 }}
+                  justifyContent="space-between"
+                  alignItems={{ base: "stretch", lg: "flex-start" }}
+                  w="full"
+                >
+                  <VStack align="start" spacing={1}>
+                    <Tooltip label={t("nodes.perDayUsageTooltip", "Daily traffic aggregated for the selected node within the chosen range.")} placement="top" fontSize="sm">
+                      <HStack spacing={2} align="center">
+                        <Text fontWeight="semibold">{t("nodes.perDayUsage", "Per day usage")}</Text>
+                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
+                      </HStack>
+                    </Tooltip>
+                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("nodes.selectedNode", "Node")}:{" "}
+                      <chakra.span fontWeight="medium">{nodeDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}</chakra.span>{" "}
+                      {t("nodes.totalLabel", "Total")}:{" "}
+                      <chakra.span fontWeight="medium">{formatBytes(nodeDailyTotal || 0, 2)}</chakra.span>
+                    </Text>
+                  </VStack>
+                  <Stack
+                    direction={{ base: "column", md: "row" }}
+                    spacing={{ base: 3, md: 4 }}
+                    alignItems={{ base: "stretch", md: "center" }}
+                    justifyContent="flex-end"
+                    w="full"
+                  >
+                    <Select
+                      size="sm"
+                      minW={{ md: "180px" }}
+                      w={{ base: "full", md: "auto" }}
+                      value={nodeDailySelectedNodeId ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          setNodeDailySelectedNodeId(null);
+                          return;
+                        }
+                        const parsed = Number(value);
+                        setNodeDailySelectedNodeId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+                      }}
+                      placeholder={t("nodes.selectNode", "Select node")}
+                    >
+                      {nodeDailyOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <UsageRangeControls
+                      presets={presets}
+                      range={nodeDailyRange}
+                      onPresetChange={handleNodeDailyPresetChange}
+                      onCustomChange={handleNodeDailyCustomChange}
+                    />
+                  </Stack>
+                </Stack>
+                <Box mt={6}>
+                  {nodeDailyLoading ? (
+                    <VStack spacing={3}>
+                      <Spinner />
+                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                        {t("loading")}
+                      </Text>
+                    </VStack>
+                  ) : nodeDailySeries[0]?.data?.length ? (
+                    <ReactApexChart options={nodeDailyChartConfig.options} series={nodeDailyChartConfig.series} type="area" height={360} />
+                  ) : (
+                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("noData")}
+                    </Text>
+                  )}
+                </Box>
+              </Box>
+
+              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
+                <Stack
+                  direction={{ base: "column", lg: "row" }}
+                  spacing={{ base: 4, lg: 6 }}
+                  justifyContent="space-between"
+                  alignItems={{ base: "stretch", lg: "flex-start" }}
+                  w="full"
+                >
+                  <VStack align="start" spacing={1}>
+                    <Tooltip label={t("nodes.adminUsagePerNodeTooltip", "Daily usage for the selected admin on the chosen node.")} placement="top" fontSize="sm">
+                      <HStack spacing={2} align="center">
+                        <Text fontWeight="semibold">{t("nodes.adminUsagePerNode", "Admin usage per day for a node")}</Text>
+                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
+                      </HStack>
+                    </Tooltip>
+                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("nodes.selectedAdmin", "Admin")}:{" "}
+                      <chakra.span fontWeight="medium">{selectedAdminDaily ?? "-"}</chakra.span>{" "}
+                      {t("nodes.selectedNode", "Node")}:{" "}
+                      <chakra.span fontWeight="medium">{adminDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}</chakra.span>{" "}
+                      {t("nodes.totalLabel", "Total")}:{" "}
+                      <chakra.span fontWeight="medium">{formatBytes(adminDailyTotal || 0, 2)}</chakra.span>
+                    </Text>
+                  </VStack>
+                  <Stack
+                    direction={{ base: "column", md: "row" }}
+                    spacing={{ base: 3, md: 4 }}
+                    alignItems={{ base: "stretch", md: "center" }}
+                    justifyContent="flex-end"
+                    w="full"
+                  >
+                    <Select
+                      size="sm"
+                      minW={{ md: "160px" }}
+                      w={{ base: "full", md: "auto" }}
+                      value={selectedAdminDaily ?? ""}
+                      onChange={(event) => setSelectedAdminDaily(event.target.value || null)}
+                      isDisabled={adminSelectOptions.length === 0}
+                    >
+                      {adminSelectOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      size="sm"
+                      minW={{ md: "180px" }}
+                      w={{ base: "full", md: "auto" }}
+                      value={selectedAdminNodeId ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === "") {
+                          setSelectedAdminNodeId(null);
+                          return;
+                        }
+                        const parsed = Number(value);
+                        setSelectedAdminNodeId(Number.isNaN(parsed) ? null : parsed);
+                      }}
+                      placeholder={t("nodes.selectNode", "Select node")}
+                    >
+                      {adminNodeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <UsageRangeControls
+                      presets={presets}
+                      range={adminDailyRange}
+                      onPresetChange={handleAdminDailyPresetChange}
+                      onCustomChange={handleAdminDailyCustomChange}
+                    />
+                  </Stack>
+                </Stack>
+                <Box mt={6}>
+                  {adminDailyLoading ? (
+                    <VStack spacing={3}>
+                      <Spinner />
+                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                        {t("loading")}
+                      </Text>
+                    </VStack>
+                  ) : adminDailySeries[0]?.data?.length ? (
+                    <ReactApexChart
+                      options={adminDailyChartConfig.options}
+                      series={adminDailyChartConfig.series}
+                      type="area"
+                      height={360}
+                    />
+                  ) : (
+                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("noData")}
+                    </Text>
+                  )}
+                </Box>
+              </Box>
+
+              <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
+                <Stack
+                  direction={{ base: "column", lg: "row" }}
+                  spacing={{ base: 4, lg: 6 }}
+                  justifyContent="space-between"
+                  alignItems={{ base: "stretch", lg: "flex-start" }}
+                  w="full"
+                >
+                  <VStack align="start" spacing={1}>
+                    <Tooltip label={t("nodes.perAdminUsageTooltip", "Total usage by node for the selected admin.")} placement="top" fontSize="sm">
+                      <HStack spacing={2} align="center">
+                        <Text fontWeight="semibold">{t("nodes.perAdminUsage", "Per admin usages")}</Text>
+                        <InfoIcon color="gray.500" _dark={{ color: "gray.400" }} aria-label="info" cursor="help" />
+                      </HStack>
+                    </Tooltip>
+                    <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("nodes.selectedAdmin", "Admin")}:{" "}
+                      <chakra.span fontWeight="medium">{selectedAdminTotals ?? "-"}</chakra.span>{" "}
+                      {t("nodes.totalLabel", "Total")}:{" "}
+                      <chakra.span fontWeight="medium">{formatBytes(totalAdminUsage || 0, 2)}</chakra.span>
+                    </Text>
+                  </VStack>
+                  <Stack
+                    direction={{ base: "column", md: "row" }}
+                    spacing={{ base: 3, md: 4 }}
+                    alignItems={{ base: "stretch", md: "center" }}
+                    justifyContent="flex-end"
+                    w="full"
+                  >
+                    <Select
+                      size="sm"
+                      minW={{ md: "160px" }}
+                      w={{ base: "full", md: "auto" }}
+                      value={selectedAdminTotals ?? ""}
+                      onChange={(event) => setSelectedAdminTotals(event.target.value || null)}
+                      isDisabled={adminSelectOptions.length === 0}
+                    >
+                      {adminSelectOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <UsageRangeControls
+                      presets={presets}
+                      range={adminDonutRange}
+                      onPresetChange={handleAdminDonutPresetChange}
+                      onCustomChange={handleAdminDonutCustomChange}
+                    />
+                  </Stack>
+                </Stack>
+                <Box mt={6}>
+                  {adminDonutLoading ? (
+                    <VStack spacing={3}>
+                      <Spinner />
+                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                        {t("loading")}
+                      </Text>
+                    </VStack>
+                  ) : adminDonutChart.series.length ? (
+                    <ReactApexChart
+                      options={adminDonutChart.options}
+                      series={adminDonutChart.series}
+                      type="donut"
+                      height={360}
+                    />
+                  ) : (
+                    <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
+                      {t("noData")}
+                    </Text>
+                  )}
+                </Box>
+              </Box>
             </VStack>
           </TabPanel>
         </TabPanels>

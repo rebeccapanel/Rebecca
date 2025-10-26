@@ -41,7 +41,6 @@ import { useWebSocket } from "react-use-websocket/dist/lib/use-websocket";
 import { getAuthToken } from "utils/authStorage";
 import { Icon } from "./Icon";
 import { JsonEditor } from "./JsonEditor";
-import "./JsonEditor/themes.js";
 import { useNodesQuery } from "contexts/NodesContext";
 
 export const MAX_NUMBER_OF_LOGS = 500;

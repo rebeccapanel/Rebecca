@@ -4,13 +4,13 @@ import {
   chakra,
   Grid,
   GridItem,
-  HStack,
   IconButton,
   Input,
   InputGroup,
   InputLeftElement,
   InputRightElement,
   Spinner,
+  Stack,
 } from "@chakra-ui/react";
 import {
   ArrowPathIcon,
@@ -141,6 +141,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             }
             value={search}
             borderColor="light-border"
+            w="full"
             onChange={onChange}
           />
 
@@ -159,14 +160,21 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
           </InputRightElement>
         </InputGroup>
       </GridItem>
-      <GridItem colSpan={2} order={{ base: 1, md: 2 }}>
-        <HStack justifyContent="flex-end" alignItems="center" h="full">
+      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
+        <Stack
+          direction={{ base: "column", sm: "row" }}
+          spacing={3}
+          justifyContent={{ base: "flex-start", md: "flex-end" }}
+          alignItems={{ base: "stretch", sm: "center" }}
+          w="full"
+        >
           <IconButton
             aria-label="refresh"
             disabled={loading}
             onClick={handleRefresh}
             size="sm"
             variant="outline"
+            w={{ base: "full", sm: "auto" }}
           >
             <ReloadIcon
               className={classNames({
@@ -180,12 +188,14 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             onClick={handleCreate}
             px={5}
             leftIcon={<PlusIcon width={16} />}
+            w={{ base: "full", sm: "auto" }}
+            justifyContent="center"
           >
             {target === "users"
               ? t("createUser")
               : t("admins.addAdmin", "Add admin")}
           </Button>
-        </HStack>
+        </Stack>
       </GridItem>
     </Grid>
   );

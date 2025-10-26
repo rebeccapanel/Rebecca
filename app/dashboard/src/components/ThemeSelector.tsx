@@ -28,6 +28,7 @@ import {
   VStack,
   useDisclosure,
   useToast,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import {
   ArrowDownTrayIcon,
@@ -40,7 +41,15 @@ import {
   SwatchIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
-import { FC, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FC,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { updateThemeColor } from "utils/themeColor";
 import { useColorMode } from "@chakra-ui/react";
@@ -402,6 +411,24 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
   const { colorMode, toggleColorMode } = useColorMode();
   const createModal = useDisclosure();
   const importModal = useDisclosure();
+  const popoverBg = useColorModeValue("surface.light", "surface.dark");
+  const popoverHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
+  const popoverBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+  const primaryText = useColorModeValue("gray.800", "gray.100");
+  const secondaryText = useColorModeValue("gray.600", "gray.300");
+  const overlayBg = useColorModeValue("blackAlpha.400", "blackAlpha.700");
+  const menuGroupStyles = useMemo(
+    () => ({
+      ".chakra-menu__group__title": {
+        fontSize: "xs",
+        textTransform: "uppercase",
+        letterSpacing: "wider",
+        fontWeight: "semibold",
+        color: secondaryText,
+      },
+    }),
+    [secondaryText]
+  );
 
   const [active, setActive] = useState<string>(() => {
     try {
@@ -671,6 +698,18 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
     }
   };
 
+  const handleCustomMenuAction = useCallback(
+    (
+      event: ReactMouseEvent<HTMLSpanElement> | ReactKeyboardEvent<HTMLSpanElement>,
+      action: () => void
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+    },
+    []
+  );
+
   const customPreviewLight = useMemo(() => generatePalette(customDraft.light.primary), [customDraft.light.primary]);
   const customPreviewDark = useMemo(() => generatePalette(customDraft.dark.primary), [customDraft.dark.primary]);
 
@@ -723,15 +762,26 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
     <>
       <Menu placement="bottom-end">
         <MenuButton as={IconButton} size="sm" variant="outline" icon={<SwatchIconChakra />} position="relative" />
-        <MenuList minW="260px" zIndex={9999}>
-          <MenuGroup title={t("theme.builtIn")}>
+        <MenuList minW="260px" zIndex={9999} bg={popoverBg} color={primaryText} borderColor={popoverBorder}>
+          <MenuGroup title={t("theme.builtIn")} sx={menuGroupStyles}>
             {BUILTIN_THEMES.map((theme) => {
               const selected = active === theme.key;
               return (
-                <MenuItem key={theme.key} onClick={() => handleSelectBuiltIn(theme)}>
+                <MenuItem
+                  key={theme.key}
+                  onClick={() => handleSelectBuiltIn(theme)}
+                  _hover={{ bg: popoverHoverBg }}
+                >
                   <HStack justify="space-between" w="full">
                     <HStack>
-                      <Box w="4" h="3" bg={theme.accent} borderRadius="xs" borderWidth="1px" borderColor="blackAlpha.200" />
+                      <Box
+                        w="4"
+                        h="3"
+                        bg={theme.accent}
+                        borderRadius="xs"
+                        borderWidth="1px"
+                        borderColor={popoverBorder}
+                      />
                       <Text>{t(`theme.${theme.key}`)}</Text>
                     </HStack>
                     {selected && <CheckIconChakra />}
@@ -742,13 +792,17 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
           </MenuGroup>
           {!minimal && (
             <>
-              <MenuDivider />
-              <MenuGroup title={t("theme.customGroup")}>
+              <MenuDivider borderColor={popoverBorder} />
+              <MenuGroup title={t("theme.customGroup")} sx={menuGroupStyles}>
                 {customThemes.length ? (
                   customThemes.map((theme) => {
                     const isActive = active === `custom:${theme.id}`;
                     return (
-                      <MenuItem key={theme.id} onClick={() => handleSelectCustom(theme.id)}>
+                      <MenuItem
+                        key={theme.id}
+                        onClick={() => handleSelectCustom(theme.id)}
+                        _hover={{ bg: popoverHoverBg }}
+                      >
                         <HStack justify="space-between" w="full">
                           <HStack>
                             <Box
@@ -758,34 +812,58 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                               bgGradient={`linear(to-r, ${theme.light.surface}, ${theme.light.primary})`}
                               borderRadius="xs"
                               borderWidth="1px"
-                              borderColor="blackAlpha.200"
+                              borderColor={popoverBorder}
                             />
                             <Text>{theme.name}</Text>
                           </HStack>
                           <HStack spacing={1}>
                             {isActive && <CheckIconChakra />}
-                            <IconButton
-                              aria-label={t("theme.edit")}
-                              size="xs"
-                              variant="ghost"
-                              icon={<PencilIconChakra />}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openEditModal(theme);
-                              }}
-                            />
-                            <IconButton
-                              aria-label={t("theme.delete")}
-                              size="xs"
-                              variant="ghost"
-                              icon={<TrashIconChakra />}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                handleDeleteCustom(theme.id);
-                              }}
-                            />
+                            {[
+                              {
+                                icon: <PencilIconChakra />,
+                                label: t("theme.edit"),
+                                onClick: () => openEditModal(theme),
+                              },
+                              {
+                                icon: <TrashIconChakra />,
+                                label: t("theme.delete"),
+                                onClick: () => handleDeleteCustom(theme.id),
+                              },
+                            ].map(({ icon, label, onClick: action }) => (
+                              <Box
+                                key={label}
+                                as="span"
+                                role="button"
+                                tabIndex={0}
+                                aria-label={label}
+                                onClick={(event: ReactMouseEvent<HTMLSpanElement>) =>
+                                  handleCustomMenuAction(event, action)
+                                }
+                                onKeyDown={(event: ReactKeyboardEvent<HTMLSpanElement>) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    handleCustomMenuAction(event, action);
+                                  }
+                                }}
+                                cursor="pointer"
+                                display="inline-flex"
+                                alignItems="center"
+                                justifyContent="center"
+                                w={6}
+                                h={6}
+                                borderRadius="md"
+                                transition="background-color 0.2s ease"
+                                _hover={{
+                                  bg: popoverHoverBg,
+                                }}
+                                _focusVisible={{
+                                  outline: "2px solid",
+                                  outlineColor: "primary.400",
+                                  outlineOffset: "2px",
+                                }}
+                              >
+                                {icon}
+                              </Box>
+                            ))}
                           </HStack>
                         </HStack>
                       </MenuItem>
@@ -794,21 +872,29 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                 ) : (
                   <MenuItem isDisabled>{t("theme.noCustom")}</MenuItem>
                 )}
-                <MenuItem icon={<PlusIconChakra />} onClick={() => openCreateModal()}>
+                <MenuItem
+                  icon={<PlusIconChakra />}
+                  onClick={() => openCreateModal()}
+                  _hover={{ bg: popoverHoverBg }}
+                >
                   {t("theme.createCustom")}
                 </MenuItem>
               </MenuGroup>
-              <MenuDivider />
-              <MenuItem icon={<SparklesIconChakra />} onClick={() => openCreateModal(PRESET_THEMES[0])}>
+              <MenuDivider borderColor={popoverBorder} />
+              <MenuItem
+                icon={<SparklesIconChakra />}
+                onClick={() => openCreateModal(PRESET_THEMES[0])}
+                _hover={{ bg: popoverHoverBg }}
+              >
                 {t("theme.quickPreset")}
               </MenuItem>
-              <MenuItem icon={<ArrowUpIconChakra />} onClick={handleExport}>
+              <MenuItem icon={<ArrowUpIconChakra />} onClick={handleExport} _hover={{ bg: popoverHoverBg }}>
                 {t("theme.export")}
               </MenuItem>
-              <MenuItem icon={<ArrowDownIconChakra />} onClick={() => importModal.onOpen()}>
+              <MenuItem icon={<ArrowDownIconChakra />} onClick={() => importModal.onOpen()} _hover={{ bg: popoverHoverBg }}>
                 {t("theme.import")}
               </MenuItem>
-              <MenuItem icon={<ResetIconChakra />} onClick={handleReset}>
+              <MenuItem icon={<ResetIconChakra />} onClick={handleReset} _hover={{ bg: popoverHoverBg }}>
                 {t("theme.reset")}
               </MenuItem>
             </>
@@ -817,14 +903,20 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
       </Menu>
 
       <Modal isOpen={createModal.isOpen} onClose={createModal.onClose} isCentered size="xl">
-        <ModalOverlay />
-        <ModalContent mx={4}>
-          <ModalHeader>{editingId ? t("theme.editThemeTitle") : t("theme.customTitle")}</ModalHeader>
+        <ModalOverlay bg={overlayBg} backdropFilter="blur(4px)" />
+        <ModalContent
+          mx={4}
+          bg={popoverBg}
+          borderColor={popoverBorder}
+          borderWidth="1px"
+          color={primaryText}
+        >
+          <ModalHeader color={primaryText}>{editingId ? t("theme.editThemeTitle") : t("theme.customTitle")}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={6} align="stretch">
               <FormControl>
-                <FormLabel>{t("theme.customName")}</FormLabel>
+                <FormLabel color={secondaryText}>{t("theme.customName")}</FormLabel>
                 <Input
                   placeholder={t("theme.customNamePlaceholder") || ""}
                   value={customDraft.name}
@@ -840,7 +932,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 <Stack spacing={4}>
                   <FormControl>
-                    <FormLabel>{t("theme.lightPrimary")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.lightPrimary")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.light.primary}
@@ -851,10 +943,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                         }))
                       }
                     />
-                    <FormHelperText>{t("theme.lightPrimaryHint")}</FormHelperText>
+                    <FormHelperText color={secondaryText}>{t("theme.lightPrimaryHint")}</FormHelperText>
                   </FormControl>
                   <FormControl>
-                    <FormLabel>{t("theme.lightSurface")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.lightSurface")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.light.surface}
@@ -865,10 +957,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                         }))
                       }
                     />
-                    <FormHelperText>{t("theme.lightSurfaceHint")}</FormHelperText>
+                    <FormHelperText color={secondaryText}>{t("theme.lightSurfaceHint")}</FormHelperText>
                   </FormControl>
                   <FormControl>
-                    <FormLabel>{t("theme.lightBackground")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.lightBackground")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.light.bg}
@@ -883,7 +975,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                 </Stack>
                 <Stack spacing={4}>
                   <FormControl>
-                    <FormLabel>{t("theme.darkPrimary")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.darkPrimary")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.dark.primary}
@@ -894,10 +986,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                         }))
                       }
                     />
-                    <FormHelperText>{t("theme.darkPrimaryHint")}</FormHelperText>
+                    <FormHelperText color={secondaryText}>{t("theme.darkPrimaryHint")}</FormHelperText>
                   </FormControl>
                   <FormControl>
-                    <FormLabel>{t("theme.darkSurface")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.darkSurface")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.dark.surface}
@@ -908,10 +1000,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                         }))
                       }
                     />
-                    <FormHelperText>{t("theme.darkSurfaceHint")}</FormHelperText>
+                    <FormHelperText color={secondaryText}>{t("theme.darkSurfaceHint")}</FormHelperText>
                   </FormControl>
                   <FormControl>
-                    <FormLabel>{t("theme.darkBackground")}</FormLabel>
+                    <FormLabel color={secondaryText}>{t("theme.darkBackground")}</FormLabel>
                     <Input
                       type="color"
                       value={customDraft.dark.bg}
@@ -964,13 +1056,19 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
       </Modal>
 
       <Modal isOpen={importModal.isOpen} onClose={importModal.onClose} size="lg" isCentered>
-        <ModalOverlay />
-        <ModalContent mx={4}>
-          <ModalHeader>{t("theme.importTitle")}</ModalHeader>
+        <ModalOverlay bg={overlayBg} backdropFilter="blur(4px)" />
+        <ModalContent
+          mx={4}
+          bg={popoverBg}
+          borderColor={popoverBorder}
+          borderWidth="1px"
+          color={primaryText}
+        >
+          <ModalHeader color={primaryText}>{t("theme.importTitle")}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={4} align="stretch">
-              <Text fontSize="sm" color="gray.500">
+              <Text fontSize="sm" color={secondaryText}>
                 {t("theme.importDescription")}
               </Text>
               <Textarea
@@ -978,6 +1076,9 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
                 placeholder={t("theme.importPlaceholder") || ""}
                 value={importPayload}
                 onChange={(e) => setImportPayload(e.target.value)}
+                bg="transparent"
+                borderColor={popoverBorder}
+                color={primaryText}
               />
             </VStack>
           </ModalBody>
