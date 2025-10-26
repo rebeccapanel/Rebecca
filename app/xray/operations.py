@@ -260,6 +260,17 @@ def restart_node(node_id, config=None):
 
         node.restart(config)
         logger.info(f"Xray core of \"{dbnode.name}\" node restarted")
+
+        try:
+            version = node.get_version()
+        except Exception as version_err:
+            logger.warning(
+                "Unable to refresh Xray version for node %s after restart: %s",
+                dbnode.name,
+                version_err,
+            )
+        else:
+            _change_node_status(node_id, NodeStatus.connected, version=version)
     except Exception as e:
         _change_node_status(node_id, NodeStatus.error, message=str(e))
         logger.info(f"Unable to restart node {node_id}")

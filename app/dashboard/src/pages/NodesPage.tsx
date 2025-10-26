@@ -14,6 +14,9 @@ import {
   PopoverBody,
   PopoverContent,
   PopoverTrigger,
+  Input,
+  InputGroup,
+  InputLeftElement,
   Select,
   SimpleGrid,
   Tooltip,
@@ -40,12 +43,13 @@ import {
   InformationCircleIcon,
   PresentationChartLineIcon,
   ServerStackIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import { useNodes, useNodesQuery, FetchNodesQueryKey, NodeType } from "contexts/NodesContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "react-query";
+import { useMutation, useQuery, useQueryClient } from "react-query";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { DeleteNodeModal } from "../components/DeleteNodeModal";
@@ -61,6 +65,8 @@ import useGetUser from "hooks/useGetUser";
 import { fetch as apiFetch } from "service/http";
 import { formatBytes } from "utils/formatByte";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
+import { CoreVersionDialog } from "../components/CoreVersionDialog";
+import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 4, h: 4 } });
 const DeleteIconStyled = chakra(DeleteIcon, { baseStyle: { w: 4, h: 4 } });
@@ -70,6 +76,7 @@ const CalendarIconStyled = chakra(CalendarDaysIcon, { baseStyle: { w: 4, h: 4 } 
 const ChartIcon = chakra(PresentationChartLineIcon, { baseStyle: { w: 4, h: 4 } });
 const ManageNodesIcon = chakra(ServerStackIcon, { baseStyle: { w: 4, h: 4 } });
 const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
+const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
 
 type RangeKey = "24h" | "7d" | "30d" | "90d" | "custom";
 type PresetRangeKey = Exclude<RangeKey, "custom">;
@@ -98,6 +105,21 @@ interface NodeUsageSlice {
   nodeName: string;
   total: number;
 }
+
+interface CoreStatsResponse {
+  version: string | null;
+  started: string | null;
+  logs_websocket?: string;
+}
+
+type VersionDialogTarget =
+  | { type: "master" }
+  | { type: "node"; node: NodeType }
+  | { type: "bulk" };
+
+type GeoDialogTarget =
+  | { type: "master" }
+  | { type: "node"; node: NodeType };
 
 const FALLBACK_PRESET: UsagePreset = { key: "30d", label: "30d", amount: 30, unit: "day" };
 
@@ -305,13 +327,39 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({ presets, range, onPre
 export const NodesPage: FC = () => {
   const { t } = useTranslation();
   const { onEditingNodes } = useDashboard();
-  const { data: nodes, isLoading, error } = useNodesQuery();
+  const {
+    data: nodes,
+    isLoading,
+    error,
+    refetch: refetchNodes,
+    isFetching,
+  } = useNodesQuery();
   const { fetchNodesUsage, addNode, updateNode, reconnectNode, setDeletingNode } = useNodes();
   const queryClient = useQueryClient();
   const toast = useToast();
   const { colorMode } = useColorMode();
   const [editingNode, setEditingNode] = useState<any>(null);
   const [isAddNodeOpen, setAddNodeOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [versionDialogTarget, setVersionDialogTarget] = useState<VersionDialogTarget | null>(null);
+  const [geoDialogTarget, setGeoDialogTarget] = useState<GeoDialogTarget | null>(null);
+  const [updatingCoreNodeId, setUpdatingCoreNodeId] = useState<number | null>(null);
+  const [updatingGeoNodeId, setUpdatingGeoNodeId] = useState<number | null>(null);
+  const [updatingMasterCore, setUpdatingMasterCore] = useState(false);
+  const [updatingBulkCore, setUpdatingBulkCore] = useState(false);
+  const [updatingMasterGeo, setUpdatingMasterGeo] = useState(false);
+  const {
+    data: coreStats,
+    isLoading: isCoreLoading,
+    refetch: refetchCoreStats,
+    error: coreError,
+  } = useQuery<CoreStatsResponse>(
+    ["core-stats"],
+    () => apiFetch<CoreStatsResponse>("/core"),
+    {
+      refetchOnWindowFocus: false,
+    }
+  );
   const presets = useMemo<UsagePreset[]>(
     () => [
       { key: "24h", label: t("nodes.range24h", "Last 24 hours"), amount: 24, unit: "hour" },
@@ -498,6 +546,27 @@ export const NodesPage: FC = () => {
       series: adminDailySeries,
     }),
     [colorMode, adminDailyCategories, adminDailySeries]
+  );
+
+  const filteredNodes = useMemo(() => {
+    if (!nodes) return [];
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return nodes;
+    return nodes.filter((node) => {
+      const name = (node.name ?? "").toLowerCase();
+      const address = (node.address ?? "").toLowerCase();
+      const version = (node.xray_version ?? "").toLowerCase();
+      return (
+        name.includes(term) ||
+        address.includes(term) ||
+        version.includes(term)
+      );
+    });
+  }, [nodes, searchTerm]);
+
+  const hasConnectedNodes = useMemo(
+    () => (nodes ?? []).some((node) => node.id != null && node.status === "connected"),
+    [nodes]
   );
 
   const nodeDailyOptions = useMemo(() => {
@@ -963,6 +1032,263 @@ export const NodesPage: FC = () => {
     toggleNodeStatus({ ...node, status: nextStatus });
   };
 
+  const closeVersionDialog = () => setVersionDialogTarget(null);
+  const closeGeoDialog = () => setGeoDialogTarget(null);
+
+  const handleVersionSubmit = async ({ version, persist }: { version: string; persist?: boolean }) => {
+    if (!versionDialogTarget) {
+      return;
+    }
+
+    if (versionDialogTarget.type === "master") {
+      setUpdatingMasterCore(true);
+      try {
+        await apiFetch("/core/xray/update", {
+          method: "POST",
+          body: { version, persist_env: Boolean(persist) },
+        });
+        generateSuccessMessage(
+          t("nodes.coreVersionDialog.masterUpdateSuccess", { version }),
+          toast
+        );
+        await Promise.all([
+          refetchCoreStats(),
+          queryClient.invalidateQueries(FetchNodesQueryKey),
+        ]);
+        closeVersionDialog();
+      } catch (error) {
+        generateErrorMessage(error, toast);
+        const message =
+          error instanceof Error ? error.message : t("nodes.coreVersionDialog.genericError");
+        throw new Error(message);
+      } finally {
+        setUpdatingMasterCore(false);
+      }
+      return;
+    }
+
+    if (versionDialogTarget.type === "node") {
+      const nodeId = versionDialogTarget.node.id;
+      if (!nodeId) {
+        const message = t("nodes.coreVersionDialog.nodeIdMissing", "Node identifier missing.");
+        toast({
+          title: message,
+          status: "error",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
+        throw new Error(message);
+      }
+
+      setUpdatingCoreNodeId(nodeId);
+      try {
+        await apiFetch(`/node/${nodeId}/xray/update`, {
+          method: "POST",
+          body: { version },
+        });
+        queryClient.setQueryData<NodeType[] | undefined>(FetchNodesQueryKey, (prev) => {
+          if (!prev) return prev;
+          return prev.map((existing) =>
+            existing.id === nodeId ? { ...existing, xray_version: version } : existing
+          );
+        });
+        generateSuccessMessage(
+          t("nodes.coreVersionDialog.nodeUpdateSuccess", {
+            name: versionDialogTarget.node.name ?? nodeId,
+            version,
+          }),
+          toast
+        );
+        queryClient.invalidateQueries(FetchNodesQueryKey);
+        closeVersionDialog();
+      } catch (error) {
+        generateErrorMessage(error, toast);
+        const message =
+          error instanceof Error ? error.message : t("nodes.coreVersionDialog.genericError");
+        throw new Error(message);
+      } finally {
+        setUpdatingCoreNodeId(null);
+      }
+      return;
+    }
+
+    if (versionDialogTarget.type === "bulk") {
+      const targetNodes = (nodes ?? []).filter(
+        (node) => node.id != null && node.status === "connected"
+      );
+      if (targetNodes.length === 0) {
+        const message = t(
+          "nodes.coreVersionDialog.noConnectedNodes",
+          "No connected nodes available for update."
+        );
+        toast({
+          title: message,
+          status: "warning",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
+        throw new Error(message);
+      }
+
+      setUpdatingBulkCore(true);
+      try {
+        const results: Array<{ status: "fulfilled" | "rejected"; node: NodeType }> = [];
+        for (const node of targetNodes) {
+          try {
+            await apiFetch(`/node/${node.id}/xray/update`, {
+              method: "POST",
+              body: { version },
+            });
+            results.push({ status: "fulfilled", node });
+          } catch (err) {
+            results.push({ status: "rejected", node });
+            generateErrorMessage(err, toast);
+          }
+        }
+
+        const total = results.length;
+        const success = results.filter((res) => res.status === "fulfilled").length;
+        const failed = total - success;
+
+        if (success > 0) {
+          const successfulIds = new Set(
+            results.filter((res) => res.status === "fulfilled").map((res) => res.node.id)
+          );
+          queryClient.setQueryData<NodeType[] | undefined>(FetchNodesQueryKey, (prev) => {
+            if (!prev) return prev;
+            return prev.map((existing) =>
+              existing.id != null && successfulIds.has(existing.id)
+                ? { ...existing, xray_version: version }
+                : existing
+            );
+          });
+        }
+
+        if (success > 0) {
+          generateSuccessMessage(
+            t("nodes.coreVersionDialog.bulkSuccess", { success, total }),
+            toast
+          );
+        }
+
+        if (failed > 0) {
+          const failureMessage = t("nodes.coreVersionDialog.bulkPartialError", { failed, total });
+          toast({
+            title: failureMessage,
+            status: "error",
+            isClosable: true,
+            position: "top",
+            duration: 4000,
+          });
+        }
+
+        queryClient.invalidateQueries(FetchNodesQueryKey);
+        closeVersionDialog();
+      } catch (error) {
+        generateErrorMessage(error, toast);
+        const message =
+          error instanceof Error ? error.message : t("nodes.coreVersionDialog.genericError");
+        throw new Error(message);
+      } finally {
+        setUpdatingBulkCore(false);
+      }
+    }
+  };
+
+  const handleGeoSubmit = async (payload: {
+    mode: "template" | "manual";
+    templateIndexUrl: string;
+    templateName: string;
+    files: { name: string; url: string }[];
+    persistEnv: boolean;
+    applyToNodes: boolean;
+  }) => {
+    if (!geoDialogTarget) {
+      return;
+    }
+
+    if (geoDialogTarget.type === "master") {
+      setUpdatingMasterGeo(true);
+      const body: Record<string, unknown> = {
+        mode: payload.mode === "template" ? "default" : "custom",
+        persist_env: payload.persistEnv,
+        apply_to_nodes: payload.applyToNodes,
+        skip_node_ids: [],
+      };
+      if (payload.mode === "template") {
+        body.template_index_url = payload.templateIndexUrl;
+        body.template_name = payload.templateName;
+      } else {
+        body.files = payload.files;
+      }
+
+      try {
+        await apiFetch("/core/geo/apply", {
+          method: "POST",
+          body,
+        });
+        generateSuccessMessage(t("nodes.geoDialog.masterSuccess"), toast);
+        closeGeoDialog();
+      } catch (error) {
+        generateErrorMessage(error, toast);
+        const message =
+          error instanceof Error ? error.message : t("nodes.geoDialog.genericError");
+        throw new Error(message);
+      } finally {
+        setUpdatingMasterGeo(false);
+      }
+      return;
+    }
+
+    if (geoDialogTarget.type === "node") {
+      const nodeId = geoDialogTarget.node.id;
+      if (!nodeId) {
+        const message = t("nodes.geoDialog.nodeIdMissing", "Node identifier missing.");
+        toast({
+          title: message,
+          status: "error",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
+        throw new Error(message);
+      }
+
+      setUpdatingGeoNodeId(nodeId);
+      const body: Record<string, unknown> = {};
+      if (payload.mode === "template") {
+        body.template_index_url = payload.templateIndexUrl;
+        body.template_name = payload.templateName;
+      } else {
+        body.files = payload.files;
+      }
+
+      try {
+        await apiFetch(`/node/${nodeId}/geo/update`, {
+          method: "POST",
+          body,
+        });
+        generateSuccessMessage(
+          t("nodes.geoDialog.nodeSuccess", {
+            name: geoDialogTarget.node.name ?? nodeId,
+          }),
+          toast
+        );
+        queryClient.invalidateQueries(FetchNodesQueryKey);
+        closeGeoDialog();
+      } catch (error) {
+        generateErrorMessage(error, toast);
+        const message =
+          error instanceof Error ? error.message : t("nodes.geoDialog.genericError");
+        throw new Error(message);
+      } finally {
+        setUpdatingGeoNodeId(null);
+      }
+    }
+  };
+
   const errorMessage =
     error instanceof Error
       ? error.message
@@ -970,6 +1296,61 @@ export const NodesPage: FC = () => {
       ? String((error as { message?: unknown }).message ?? t("errorOccurred"))
       : undefined;
   const hasError = Boolean(errorMessage);
+  const masterLabel = t("nodes.masterNode", "Master");
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const masterMatchesSearch =
+    !normalizedSearch ||
+    masterLabel.toLowerCase().includes(normalizedSearch) ||
+    (coreStats?.version ?? "").toLowerCase().includes(normalizedSearch);
+  const versionDialogLoading =
+    versionDialogTarget?.type === "master"
+      ? updatingMasterCore
+      : versionDialogTarget?.type === "node"
+      ? versionDialogTarget.node.id != null &&
+        updatingCoreNodeId === versionDialogTarget.node.id
+      : versionDialogTarget?.type === "bulk"
+      ? updatingBulkCore
+      : false;
+  const geoDialogLoading =
+    geoDialogTarget?.type === "master"
+      ? updatingMasterGeo
+      : geoDialogTarget?.type === "node"
+      ? geoDialogTarget.node.id != null && updatingGeoNodeId === geoDialogTarget.node.id
+      : false;
+  const versionDialogTitle =
+    versionDialogTarget?.type === "master"
+      ? t("nodes.coreVersionDialog.masterTitle")
+      : versionDialogTarget?.type === "bulk"
+      ? t("nodes.coreVersionDialog.bulkTitle")
+      : versionDialogTarget?.type === "node"
+      ? t("nodes.coreVersionDialog.nodeTitle", {
+          name: versionDialogTarget.node.name ?? t("nodes.unnamedNode", "Unnamed node"),
+        })
+      : "";
+  const versionDialogDescription =
+    versionDialogTarget?.type === "master"
+      ? t("nodes.coreVersionDialog.masterDescription")
+      : versionDialogTarget?.type === "bulk"
+      ? t("nodes.coreVersionDialog.bulkDescription")
+      : versionDialogTarget?.type === "node"
+      ? t("nodes.coreVersionDialog.nodeDescription", {
+          name: versionDialogTarget.node.name ?? t("nodes.unnamedNode", "Unnamed node"),
+        })
+      : "";
+  const versionDialogCurrentVersion =
+    versionDialogTarget?.type === "master"
+      ? coreStats?.version ?? ""
+      : versionDialogTarget?.type === "node"
+      ? versionDialogTarget.node.xray_version ?? ""
+      : "";
+  const geoDialogTitle =
+    geoDialogTarget?.type === "master"
+      ? t("nodes.geoDialog.masterTitle")
+      : geoDialogTarget?.type === "node"
+      ? t("nodes.geoDialog.nodeTitle", {
+          name: geoDialogTarget.node.name ?? t("nodes.unnamedNode", "Unnamed node"),
+        })
+      : "";
 
   return (
     <VStack spacing={6} align="stretch">
@@ -1008,22 +1389,69 @@ export const NodesPage: FC = () => {
           <TabPanel>
             <VStack spacing={4} align="stretch">
               <Stack
-                direction={{ base: "column", sm: "row" }}
-                spacing={{ base: 3, sm: 4 }}
-                alignItems={{ base: "stretch", sm: "center" }}
+                direction={{ base: "column", lg: "row" }}
+                spacing={{ base: 3, lg: 4 }}
+                alignItems={{ base: "stretch", lg: "center" }}
                 justifyContent="space-between"
                 w="full"
               >
                 <Text fontWeight="semibold">{t("nodes.manageNodesHeader", "Node list")}</Text>
-                <Button
-                  leftIcon={<AddIconStyled />}
-                  colorScheme="primary"
-                  size="sm"
-                  onClick={() => setAddNodeOpen(true)}
-                  w={{ base: "full", sm: "auto" }}
+                <Stack
+                  direction={{ base: "column", md: "row" }}
+                  spacing={{ base: 3, md: 3 }}
+                  alignItems={{ base: "stretch", md: "center" }}
+                  justifyContent="flex-end"
+                  w={{ base: "full", lg: "auto" }}
                 >
-                  {t("nodes.addNewMarzbanNode")}
-                </Button>
+                  <Stack
+                    direction={{ base: "row", sm: "row" }}
+                    spacing={2}
+                    alignItems="center"
+                    justifyContent="flex-end"
+                    w={{ base: "full", md: "auto" }}
+                  >
+                    <Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
+                      <IconButton
+                        aria-label={t("nodes.refreshNodes", "Refresh nodes")}
+                        icon={<ArrowPathIconStyled />}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => refetchNodes()}
+                        isLoading={isFetching}
+                      />
+                    </Tooltip>
+                    <InputGroup size="sm" maxW={{ base: "full", md: "260px" }}>
+                      <InputLeftElement pointerEvents="none">
+                        <SearchIcon color="gray.400" />
+                      </InputLeftElement>
+                      <Input
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder={t("nodes.searchPlaceholder", "Search nodes")}
+                      />
+                    </InputGroup>
+                  </Stack>
+                  <Stack direction={{ base: "column", sm: "row" }} spacing={2} justify="flex-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVersionDialogTarget({ type: "bulk" })}
+                      isDisabled={!hasConnectedNodes}
+                      w={{ base: "full", sm: "auto" }}
+                    >
+                      {t("nodes.updateAllNodesCore")}
+                    </Button>
+                    <Button
+                      leftIcon={<AddIconStyled />}
+                      colorScheme="primary"
+                      size="sm"
+                      onClick={() => setAddNodeOpen(true)}
+                      w={{ base: "full", sm: "auto" }}
+                    >
+                      {t("nodes.addNewMarzbanNode")}
+                    </Button>
+                  </Stack>
+                </Stack>
               </Stack>
               {hasError && (
                 <Alert status="error" borderRadius="md">
@@ -1035,7 +1463,7 @@ export const NodesPage: FC = () => {
                 <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
                   {Array.from({ length: 3 }).map((_, idx) => (
                     <Box
-                      key={idx}
+                      key={`nodes-skeleton-${idx}`}
                       borderWidth="1px"
                       borderRadius="lg"
                       p={6}
@@ -1053,136 +1481,235 @@ export const NodesPage: FC = () => {
                     </Box>
                   ))}
                 </SimpleGrid>
-              ) : nodes && nodes.length > 0 ? (
+              ) : (
                 <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-                  {nodes.map((node) => {
-                    const status = node.status || "error";
-                    const nodeId = node?.id as number | undefined;
-                    const isEnabled = status !== "disabled";
-                    const pending = nodeId != null ? pendingStatus[nodeId] : undefined;
-                    const displayEnabled = pending ?? isEnabled;
-                    const isToggleLoading =
-                      nodeId != null && togglingNodeId === nodeId && isToggling;
-                    return (
-                      <Box
-                        key={node.id ?? node.name}
-                        borderWidth="1px"
-                        borderRadius="lg"
-                        p={6}
-                        boxShadow="sm"
-                        _hover={{ boxShadow: "md" }}
-                        transition="box-shadow 0.2s ease-in-out"
-                      >
+                  {masterMatchesSearch && (
+                    <Box
+                      key="master-node"
+                      borderWidth="1px"
+                      borderRadius="lg"
+                      p={6}
+                      boxShadow="sm"
+                      _hover={{ boxShadow: "md" }}
+                      transition="box-shadow 0.2s ease-in-out"
+                    >
+                      {isCoreLoading ? (
+                        <VStack spacing={3} align="center" justify="center">
+                          <Spinner />
+                          <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                            {t("loading")}
+                          </Text>
+                        </VStack>
+                      ) : coreError ? (
+                        <VStack spacing={3} align="stretch">
+                          <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                            {t("nodes.masterLoadFailed", "Unable to load master details.")}
+                          </Text>
+                          <Button size="sm" variant="outline" onClick={() => refetchCoreStats()}>
+                            {t("refresh", "Refresh")}
+                          </Button>
+                        </VStack>
+                      ) : (
                         <VStack align="stretch" spacing={4}>
                           <Stack spacing={2}>
                             <HStack spacing={3} align="center" flexWrap="wrap">
                               <Text fontWeight="semibold" fontSize="lg">
-                                {node.name || t("nodes.unnamedNode", "Unnamed node")}
+                                {masterLabel}
                               </Text>
-                              <Switch
-                                size="sm"
-                                colorScheme="primary"
-                                isChecked={displayEnabled}
-                                onChange={() => handleToggleNode(node)}
-                                isDisabled={isToggleLoading}
-                                aria-label={t("nodes.toggleAvailability", "Toggle node availability")}
-                              />
-                              {node.status === "error" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  leftIcon={<ArrowPathIconStyled />}
-                                  onClick={() => reconnect(node)}
-                                  isLoading={isReconnecting}
-                                >
-                                  {t("nodes.reconnect")}
-                                </Button>
-                              )}
+                              <Tag colorScheme="purple" size="sm">
+                                {coreStats?.version
+                                  ? `Xray ${coreStats.version}`
+                                  : t("nodes.versionUnknown", "Version unknown")}
+                              </Tag>
                             </HStack>
-                            <HStack spacing={2} flexWrap="wrap">
-                              <NodeModalStatusBadge status={status} compact />
-                              {node.xray_version && (
-                                <Tag colorScheme="blue" size="sm">
-                                  Xray {node.xray_version}
-                                </Tag>
-                              )}
-                            </HStack>
-                          </Stack>
-
-                          {node.message && (
-                            <Alert
-                              status="warning"
-                              variant="left-accent"
-                              borderRadius="md"
-                              fontSize="sm"
-                            >
-                              <AlertIcon />
-                              <AlertDescription>{node.message}</AlertDescription>
-                            </Alert>
-                          )}
-
-                          <Divider />
-                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacingY={2}>
-                            <Box>
-                              <Text fontSize="xs" textTransform="uppercase" color="gray.500">
-                                {t("nodes.nodeAddress")}
-                              </Text>
-                              <Text fontWeight="medium">{node.address}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" textTransform="uppercase" color="gray.500">
-                                {t("nodes.nodePort")}
-                              </Text>
-                              <Text fontWeight="medium">{node.port}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" textTransform="uppercase" color="gray.500">
-                                {t("nodes.nodeAPIPort")}
-                              </Text>
-                              <Text fontWeight="medium">{node.api_port}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" textTransform="uppercase" color="gray.500">
-                                {t("nodes.usageCoefficient")}
-                              </Text>
-                              <Text fontWeight="medium">{node.usage_coefficient}</Text>
-                            </Box>
-                          </SimpleGrid>
-                          <Divider />
-                          <HStack justify="space-between" align="center" flexWrap="wrap" gap={2}>
-                            <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-                              {t("nodes.id", "ID")}: {node.id ?? "-"}
+                            <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                              {coreStats?.started
+                                ? t("nodes.masterStartedAt", {
+                                    date: dayjs(coreStats.started).local().format("YYYY-MM-DD HH:mm"),
+                                  })
+                                : t("nodes.masterStartedUnknown", "Start time unavailable")}
                             </Text>
-                            <ButtonGroup size="sm" variant="ghost">
-                              <IconButton
-                                aria-label={t("edit")}
-                                icon={<EditIconStyled />}
-                                onClick={() => setEditingNode(node)}
-                              />
-                              <IconButton
-                                aria-label={t("delete")}
-                                icon={<DeleteIconStyled />}
-                                colorScheme="red"
-                                onClick={() => setDeletingNode(node)}
-                              />
-                            </ButtonGroup>
-                          </HStack>
+                          </Stack>
+                          <Divider />
+                          <Stack direction={{ base: "column", sm: "row" }} spacing={2}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="primary"
+                              onClick={() => setVersionDialogTarget({ type: "master" })}
+                              isLoading={updatingMasterCore}
+                            >
+                              {t("nodes.coreVersionDialog.updateMasterButton")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setGeoDialogTarget({ type: "master" })}
+                              isLoading={updatingMasterGeo}
+                            >
+                              {t("nodes.geoDialog.updateMasterButton")}
+                            </Button>
+                          </Stack>
                         </VStack>
-                      </Box>
-                    );
-                  })}
+                      )}
+                    </Box>
+                  )}
+                  {filteredNodes.length > 0
+                    ? filteredNodes.map((node) => {
+                        const status = node.status || "error";
+                        const nodeId = node?.id as number | undefined;
+                        const isEnabled = status !== "disabled";
+                        const pending = nodeId != null ? pendingStatus[nodeId] : undefined;
+                        const displayEnabled = pending ?? isEnabled;
+                        const isToggleLoading =
+                          nodeId != null && togglingNodeId === nodeId && isToggling;
+                        const isCoreUpdating = nodeId != null && updatingCoreNodeId === nodeId;
+                        const isGeoUpdating = nodeId != null && updatingGeoNodeId === nodeId;
+                        return (
+                          <Box
+                            key={node.id ?? node.name}
+                            borderWidth="1px"
+                            borderRadius="lg"
+                            p={6}
+                            boxShadow="sm"
+                            _hover={{ boxShadow: "md" }}
+                            transition="box-shadow 0.2s ease-in-out"
+                          >
+                            <VStack align="stretch" spacing={4}>
+                              <Stack spacing={2}>
+                                <HStack spacing={3} align="center" flexWrap="wrap">
+                                  <Text fontWeight="semibold" fontSize="lg">
+                                    {node.name || t("nodes.unnamedNode", "Unnamed node")}
+                                  </Text>
+                                  <Switch
+                                    size="sm"
+                                    colorScheme="primary"
+                                    isChecked={displayEnabled}
+                                    onChange={() => handleToggleNode(node)}
+                                    isDisabled={isToggleLoading}
+                                    aria-label={t("nodes.toggleAvailability", "Toggle node availability")}
+                                  />
+                                  {node.status === "error" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      leftIcon={<ArrowPathIconStyled />}
+                                      onClick={() => reconnect(node)}
+                                      isLoading={isReconnecting}
+                                    >
+                                      {t("nodes.reconnect")}
+                                    </Button>
+                                  )}
+                                </HStack>
+                                <HStack spacing={2} flexWrap="wrap">
+                                  <NodeModalStatusBadge status={status} compact />
+                                  <HStack spacing={1} align="center">
+                                    <Tag colorScheme="blue" size="sm">
+                                      {node.xray_version
+                                        ? `Xray ${node.xray_version}`
+                                        : t("nodes.versionUnknown", "Version unknown")}
+                                    </Tag>
+                                    <Button
+                                      size="xs"
+                                      variant="ghost"
+                                      colorScheme="primary"
+                                      onClick={() => nodeId && setVersionDialogTarget({ type: "node", node })}
+                                      isLoading={isCoreUpdating}
+                                      isDisabled={!nodeId}
+                                    >
+                                      {t("nodes.updateCoreAction")}
+                                    </Button>
+                                  </HStack>
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() => nodeId && setGeoDialogTarget({ type: "node", node })}
+                                    isLoading={isGeoUpdating}
+                                    isDisabled={!nodeId}
+                                  >
+                                    {t("nodes.updateGeoAction")}
+                                  </Button>
+                                </HStack>
+                              </Stack>
+
+                              {node.message && (
+                                <Alert
+                                  status="warning"
+                                  variant="left-accent"
+                                  borderRadius="md"
+                                  fontSize="sm"
+                                >
+                                  <AlertIcon />
+                                  <AlertDescription>{node.message}</AlertDescription>
+                                </Alert>
+                              )}
+
+                              <Divider />
+                              <SimpleGrid columns={{ base: 1, sm: 2 }} spacingY={2}>
+                                <Box>
+                                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                                    {t("nodes.nodeAddress")}
+                                  </Text>
+                                  <Text fontWeight="medium">{node.address}</Text>
+                                </Box>
+                                <Box>
+                                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                                    {t("nodes.nodePort")}
+                                  </Text>
+                                  <Text fontWeight="medium">{node.port}</Text>
+                                </Box>
+                                <Box>
+                                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                                    {t("nodes.nodeAPIPort")}
+                                  </Text>
+                                  <Text fontWeight="medium">{node.api_port}</Text>
+                                </Box>
+                                <Box>
+                                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                                    {t("nodes.usageCoefficient")}
+                                  </Text>
+                                  <Text fontWeight="medium">{node.usage_coefficient}</Text>
+                                </Box>
+                              </SimpleGrid>
+                              <Divider />
+                              <HStack justify="space-between" align="center" flexWrap="wrap" gap={2}>
+                                <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+                                  {t("nodes.id", "ID")}: {node.id ?? "-"}
+                                </Text>
+                                <ButtonGroup size="sm" variant="ghost">
+                                  <IconButton
+                                    aria-label={t("edit")}
+                                    icon={<EditIconStyled />}
+                                    onClick={() => setEditingNode(node)}
+                                  />
+                                  <IconButton
+                                    aria-label={t("delete")}
+                                    icon={<DeleteIconStyled />}
+                                    colorScheme="red"
+                                    onClick={() => setDeletingNode(node)}
+                                  />
+                                </ButtonGroup>
+                              </HStack>
+                            </VStack>
+                          </Box>
+                        );
+                      })
+                    : !masterMatchesSearch && (
+                        <Box
+                          key="empty-nodes"
+                          borderWidth="1px"
+                          borderRadius="lg"
+                          p={8}
+                          textAlign="center"
+                          color="gray.500"
+                          _dark={{ color: "gray.400" }}
+                        >
+                          {nodes && nodes.length > 0
+                            ? t("nodes.noNodesMatchSearch", "No nodes match your search.")
+                            : t("nodes.noNodesAvailable", "No nodes have been added yet.")}
+                        </Box>
+                      )}
                 </SimpleGrid>
-              ) : (
-                <Box
-                  borderWidth="1px"
-                  borderRadius="lg"
-                  p={8}
-                  textAlign="center"
-                  color="gray.500"
-                  _dark={{ color: "gray.400" }}
-                >
-                  {t("noData")}
-                </Box>
               )}
             </VStack>
           </TabPanel>
@@ -1485,6 +2012,24 @@ export const NodesPage: FC = () => {
           </TabPanel>
         </TabPanels>
       </Tabs>
+      <CoreVersionDialog
+        isOpen={Boolean(versionDialogTarget)}
+        onClose={closeVersionDialog}
+        onSubmit={handleVersionSubmit}
+        currentVersion={versionDialogCurrentVersion}
+        title={versionDialogTitle}
+        description={versionDialogDescription}
+        allowPersist={versionDialogTarget?.type === "master"}
+        isSubmitting={versionDialogLoading}
+      />
+      <GeoUpdateDialog
+        isOpen={Boolean(geoDialogTarget)}
+        onClose={closeGeoDialog}
+        onSubmit={handleGeoSubmit}
+        title={geoDialogTitle}
+        showMasterOptions={geoDialogTarget?.type === "master"}
+        isSubmitting={geoDialogLoading}
+      />
       <NodeFormModal
         isOpen={isAddNodeOpen}
         onClose={() => setAddNodeOpen(false)}

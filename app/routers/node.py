@@ -187,13 +187,14 @@ def reconnect_node(
 
 @router.delete("/node/{node_id}")
 def remove_node(
-    dbnode: NodeResponse = Depends(get_node),
+    bg: BackgroundTasks,
+    dbnode: DBNode = Depends(get_dbnode),
     db: Session = Depends(get_db),
-    admin: Admin = Depends(Admin.check_sudo_admin),
+    _: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Delete a node and remove it from xray in the background."""
+    """Delete a node and schedule xray cleanup in the background."""
     crud.remove_node(db, dbnode)
-    xray.operations.remove_node(dbnode.id)
+    bg.add_task(xray.operations.remove_node, dbnode.id)
 
     logger.info(f'Node "{dbnode.name}" deleted')
     return {}

@@ -1428,6 +1428,8 @@ def remove_node(db: Session, dbnode: Node) -> Node:
     Returns:
         Node: The removed Node object.
     """
+    db.query(NodeUsage).filter(NodeUsage.node_id == dbnode.id).delete(synchronize_session=False)
+    db.query(NodeUserUsage).filter(NodeUserUsage.node_id == dbnode.id).delete(synchronize_session=False)
     db.delete(dbnode)
     db.commit()
     return dbnode
