@@ -62,5 +62,5 @@ jobs:
           tags: |
             rebeccapanel/rebecca:latest
             rebeccapanel/rebecca:${{ github.ref_name }}
-            ghcr.io/ppouria/rebecca:latest
-            ghcr.io/ppouria/rebecca:${{ github.ref_name }}
+            ghcr.io/rebeccapanel/rebecca:latest
+            ghcr.io/rebeccapanel/rebecca:${{ github.ref_name }}

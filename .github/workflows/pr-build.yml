@@ -52,4 +52,4 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ppouriaa/rebecca:pr-${{ github.event.pull_request.number }}
+          tags: rebeccapanela/rebecca:pr-${{ github.event.pull_request.number }}

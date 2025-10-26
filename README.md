@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/xmohammad1/marzban" target="_blank" rel="noopener noreferrer">
+  <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/logo-dark.png">
       <img width="160" height="160" src="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/logo-light.png">
@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<h1 align="center"/>Marzban</h1>
+<h1 align="center"/>Rebecca</h1>
 
 <p align="center">
     Unified GUI Censorship Resistant Solution Powered by <a href="https://github.com/XTLS/Xray-core">Xray</a>
@@ -15,24 +15,18 @@
 
 <br/>
 <p align="center">
-    <a href="#">
-        <img src="https://img.shields.io/github/actions/workflow/status/xmohammad1/marzban/build.yml?style=flat-square" />
-    </a>
-    <a href="https://hub.docker.com/r/xmohammad1/marzban" target="_blank">
-        <img src="https://img.shields.io/docker/pulls/xmohammad1/marzban?style=flat-square&logo=docker" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/license/xmohammad1/marzban?style=flat-square" />
-    </a>
-    <a href="https://t.me/xmohammad1_marzban" target="_blank">
-        <img src="https://img.shields.io/badge/telegram-group-blue?style=flat-square&logo=telegram" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/badge/twitter-commiunity-blue?style=flat-square&logo=twitter" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/stars/xmohammad1/marzban?style=social" />
-    </a>
+  <a href="#">
+    <img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/Rebecca/build.yml?style=flat-square" />
+  </a>
+  <a href="https://hub.docker.com/r/rebeccapanel/rebecca" target="_blank">
+    <img src="https://img.shields.io/docker/pulls/rebeccapanel/rebecca?style=flat-square&logo=docker" />
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/github/stars/rebeccapanel/Rebecca?style=social" />
+  </a>
 </p>
 
 <p align="center">
@@ -54,8 +48,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xmohammad1/marzban" target="_blank" rel="noopener noreferrer" >
-    <img src="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/preview.png" alt="Marzban screenshots" width="600" height="auto">
+  <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer" >
+    <img src="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
   </a>
 </p>
 
@@ -70,8 +64,8 @@
 - [API](#api)
 - [Backup](#backup)
 - [Telegram Bot](#telegram-bot)
-- [Marzban CLI](#marzban-cli)
-- [Marzban Node](#marzban-node)
+- [Rebecca CLI](#rebecca-cli)
+- [Rebecca Node](#rebecca-node)
 - [Webhook notifications](#webhook-notifications)
 - [Donation](#donation)
 - [License](#license)
@@ -79,11 +73,11 @@
 
 # Overview
 
-Marzban (the Persian word for "border guard" - pronounced /mærz'ban/) is a proxy management tool that provides a simple and easy-to-use user interface for managing hundreds of proxy accounts powered by [Xray-core](https://github.com/XTLS/Xray-core) and built using Python and Reactjs.
+Rebecca is a proxy management tool that provides a simple and easy-to-use user interface for managing hundreds of proxy accounts powered by [Xray-core](https://github.com/XTLS/Xray-core) and built using Python and React.
 
-## Why using Marzban?
+## Why use Rebecca?
 
-Marzban is user-friendly, feature-rich and reliable. It lets you to create different proxies for your users without any complicated configuration. Using its built-in web UI, you are able to monitor, modify and limit users.
+Rebecca is user-friendly, feature-rich and reliable. It lets you create different proxies for your users without any complicated configuration. Using its built-in web UI, you can monitor, modify and limit users.
 
 ### Features
 
@@ -108,54 +102,54 @@ Marzban is user-friendly, feature-rich and reliable. It lets you to create diffe
 
 # Installation guide
 
-Run the following command to install Marzban with SQLite database:
+Run the following command to install Rebecca with SQLite database:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/xmohammad1/Marzban-scripts/raw/master/marzban.sh)" @ install
+sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install
 ```
 
-Run the following command to install Marzban with MySQL database:
+Run the following command to install Rebecca with MySQL database:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/xmohammad1/Marzban-scripts/raw/master/marzban.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mysql
 ```
 
-Run the following command to install Marzban with MariaDB database:
+Run the following command to install Rebecca with MariaDB database:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/xmohammad1/Marzban-scripts/raw/master/marzban.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mariadb
 ```
 
 Once the installation is complete:
 
 - You will see the logs that you can stop watching them by closing the terminal or pressing `Ctrl+C`
-- The Marzban files will be located at `/opt/marzban`
-- The configuration file can be found at `/opt/marzban/.env` (refer to [configurations](#configuration) section to see variables)
-- The data files will be placed at `/var/lib/marzban`
-- For security reasons, the Marzban dashboard is not accessible via IP address. Therefore, you must [obtain SSL certificate](https://xmohammad1.github.io/marzban/en/examples/issue-ssl-certificate) and access your Marzban dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
+- The Rebecca files will be located at `/opt/rebecca`
+- The configuration file can be found at `/opt/rebecca/.env` (refer to [configurations](#configuration) section to see variables)
+- The data files will be placed at `/var/lib/rebecca`
+- For security reasons, the Rebecca dashboard is not accessible via IP address. Therefore, you must obtain an SSL certificate and access your Rebecca dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
 - You can also use SSH port forwarding to access the Marzban dashboard locally without a domain. Replace `user@serverip` with your actual SSH username and server IP and Run the command below:
 
 ```bash
 ssh -L 8000:localhost:8000 user@serverip
 ```
 
-Finally, you can enter the following link in your browser to access your Marzban dashboard:
+Finally, you can enter the following link in your browser to access your Rebecca dashboard:
 
 http://localhost:8000/dashboard/
 
 You will lose access to the dashboard as soon as you close the SSH terminal. Therefore, this method is recommended only for testing purposes.
 
-Next, you need to create a sudo admin for logging into the Marzban dashboard by the following command
+Next, you need to create a sudo admin for logging into the Rebecca dashboard by the following command
 
 ```bash
-marzban cli admin create --sudo
+rebecca cli admin create --sudo
 ```
 
 That's it! You can login to your dashboard using these credentials
 
-To see the help message of the Marzban script, run the following command
+To see the help message of the Rebecca script, run the following command
 
 ```bash
-marzban --help
+rebecca --help
 ```
 
 If you are eager to run the project using the source code, check the section below
@@ -173,8 +167,8 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 Clone this project and install the dependencies (you need Python >= 3.8)
 
 ```bash
-git clone https://github.com/xmohammad1/Marzban.git
-cd Marzban
+git clone https://github.com/rebeccapanel/Rebecca.git
+cd Rebecca
 wget -qO- https://bootstrap.pypa.io/get-pip.py | python3 -
 python3 -m pip install -r requirements.txt
 ```
@@ -187,12 +181,12 @@ Then run the following command to run the database migration scripts
 alembic upgrade head
 ```
 
-If you want to use `marzban-cli`, you should link it to a file in your `$PATH`, make it executable, and install the auto-completion:
+If you want to use the CLI, you can link the bundled `marzban-cli.py` to a new executable name and install the auto-completion:
 
 ```bash
-sudo ln -s $(pwd)/marzban-cli.py /usr/bin/marzban-cli
-sudo chmod +x /usr/bin/marzban-cli
-marzban-cli completion install
+sudo ln -s $(pwd)/marzban-cli.py /usr/bin/rebecca-cli
+sudo chmod +x /usr/bin/rebecca-cli
+rebecca-cli completion install
 ```
 
 Now it's time to configuration
@@ -214,11 +208,11 @@ Eventually, launch the application using command below
 python3 main.py
 ```
 
-To launch with linux systemctl (copy marzban.service file to `/var/lib/marzban/marzban.service`)
+To launch with linux systemctl (copy rebecca.service file to `/var/lib/rebecca/rebecca.service`)
 
 ```
-systemctl enable /var/lib/marzban/marzban.service
-systemctl start marzban
+systemctl enable /var/lib/rebecca/rebecca.service
+systemctl start rebecca
 ```
 
 To use with nginx
@@ -239,14 +233,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    # xray-core ws-path: /
-    # client ws-path: /marzban/me/2087
+  # xray-core ws-path: /
+  # client ws-path: /rebecca/me/2087
     #
-    # All traffic is proxed through port 443, and send to the xray port(2087, 2088 etc.).
-    # The '/marzban' in location regex path can changed any characters by yourself.
+  # All traffic is proxied through port 443, and sent to the xray port (2087, 2088, etc.).
+  # The '/rebecca' in the location regex path can be changed to any value you like.
     #
-    # /${path}/${username}/${xray-port}
-    location ~* /marzban/.+/(.+)$ {
+  # /${path}/${username}/${xray-port}
+  location ~* /rebecca/.+/(.+)$ {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:$1/;
         proxy_http_version 1.1;
@@ -265,7 +259,7 @@ or
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name  marzban.example.com;
+  server_name  rebecca.example.com;
 
     ssl_certificate      /etc/letsencrypt/live/example.com/fullchain.pem;
     ssl_certificate_key  /etc/letsencrypt/live/example.com/privkey.pem;
@@ -279,7 +273,7 @@ server {
 }
 ```
 
-By default the app will be run on `http://localhost:8000/dashboard`. You can configure it using changing the `UVICORN_HOST` and `UVICORN_PORT` environment variables.
+By default the app will be run on `http://localhost:8000/dashboard`. You can configure it by changing the `UVICORN_HOST` and `UVICORN_PORT` environment variables.
 </details>
 
 # Configuration
@@ -329,65 +323,65 @@ By default the app will be run on `http://localhost:8000/dashboard`. You can con
 
 # Documentation
 
-The [Marzban Documentation](https://xmohammad1.github.io/marzban) provides all the essential guides to get you started, available in three languages: Farsi, English, and Russian. This documentation requires significant effort to cover all aspects of the project comprehensively. We welcome and appreciate your contributions to help us improve it. You can contribute on this [GitHub repository](https://github.com/xmohammad1/xmohammad1.github.io).
+Rebecca documentation is a work in progress. We welcome and appreciate your contributions to help us improve it. Please open issues or PRs in the main repository.
 
 
 # API
 
-Marzban provides a REST API that enables developers to interact with Marzban services programmatically. To view the API documentation in Swagger UI or ReDoc, set the configuration variable `DOCS=True` and navigate to the `/docs` and `/redoc`.
+Rebecca provides a REST API that enables developers to interact with its services programmatically. To view the API documentation in Swagger UI or ReDoc, set the configuration variable `DOCS=True` and navigate to `/docs` and `/redoc`.
 
 
 # Backup
 
-It's always a good idea to backup your Marzban files regularly to prevent data loss in case of system failures or accidental deletion. Here are the steps to backup Marzban:
+It's always a good idea to back up your Rebecca files regularly to prevent data loss in case of system failures or accidental deletion. Here are the steps to back up Rebecca:
 
-1. By default, all Marzban important files are saved in `/var/lib/marzban` (Docker versions). Copy the entire `/var/lib/marzban` directory to a backup location of your choice, such as an external hard drive or cloud storage.
-2. Additionally, make sure to backup your env file, which contains your configuration variables, and also, your Xray config file. If you installed Marzban using marzban-scripts (recommended installation approach), the env and other configurations should be inside `/opt/marzban/` directory.
+1. By default, all Rebecca important files are saved in `/var/lib/rebecca` (Docker versions). Copy the entire `/var/lib/rebecca` directory to a backup location of your choice, such as an external hard drive or cloud storage.
+2. Additionally, make sure to back up your env file, which contains your configuration variables, and also your Xray config file. If you installed Rebecca using rebecca-scripts (recommended installation approach), the env and other configurations should be inside the `/opt/rebecca/` directory.
 
-Marzban's backup service efficiently zips all necessary files and sends them to your specified Telegram bot. It supports SQLite, MySQL, and MariaDB databases. One of its key features is automation, allowing you to schedule backups every hour. There are no limitations concerning Telegram's upload limits for bots; if a file exceeds the limit, it will be split and sent in multiple parts. Additionally, you can initiate an immediate backup at any time.
+Rebecca's backup service efficiently zips all necessary files and sends them to your specified Telegram bot. It supports SQLite, MySQL, and MariaDB databases. One of its key features is automation, allowing you to schedule backups every hour. There are no limitations concerning Telegram's upload limits for bots; if a file exceeds the limit, it will be split and sent in multiple parts. Additionally, you can initiate an immediate backup at any time.
 
-Install the Latest Version of Marzban Command:
+Install the Latest Version of Rebecca Command:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/xmohammad1/Marzban-scripts/raw/master/marzban.sh)" @ install-script
+sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install-script
 ```
 
 Setup the Backup Service:
 ```bash
-marzban backup-service
+rebecca backup-service
 ```
 
 Get an Immediate Backup:
 ```bash
-marzban backup
+rebecca backup
 ```
 
 By following these steps, you can ensure that you have a backup of all your Marzban files and data, as well as your configuration variables and Xray configuration, in case you need to restore them in the future. Remember to update your backups regularly to keep them up-to-date.
 
 # Telegram Bot
 
-Marzban comes with an integrated Telegram bot that can handle server management, user creation and removal, and send notifications. This bot can be easily enabled by following a few simple steps, and it provides a convenient way to interact with Marzban without having to log in to the server every time.
+Rebecca comes with an integrated Telegram bot that can handle server management, user creation and removal, and send notifications. This bot can be easily enabled by following a few simple steps, and it provides a convenient way to interact with Rebecca without having to log in to the server every time.
 
 To enable Telegram Bot:
 
 1. set `TELEGRAM_API_TOKEN` to your bot's API Token
 2. set `TELEGRAM_ADMIN_ID` to your Telegram account's numeric ID, you can get your ID from [@userinfobot](https://t.me/userinfobot)
 
-# Marzban CLI
+# Rebecca CLI
 
-Marzban comes with an integrated CLI named `marzban-cli` which allows administrators to have direct interaction with it.
+Rebecca comes with an integrated CLI which allows administrators to have direct interaction with it.
 
-If you've installed Marzban using easy install script, you can access the cli commands by running
+If you've installed Rebecca using the easy install script, you can access the CLI commands by running
 
 ```bash
-marzban cli [OPTIONS] COMMAND [ARGS]...
+rebecca cli [OPTIONS] COMMAND [ARGS]...
 ```
 
-For more information, You can read [Marzban CLI's documentation](./cli/README.md).
+For more information, you can read the CLI documentation in `./cli/README.md`.
 
-# Marzban Node
+# Rebecca Node
 
-The Marzban project introduces the [Marzban-node](https://github.com/xmohammad1/marzban-node), which revolutionizes infrastructure distribution. With Marzban-node, you can distribute your infrastructure across multiple locations, unlocking benefits such as redundancy, high availability, scalability, flexibility. Marzban-node empowers users to connect to different servers, offering them the flexibility to choose and connect to multiple servers instead of being limited to only one server.
-For more detailed information and installation instructions, please refer to the [Marzban-node official documentation](https://github.com/xmohammad1/marzban-node)
+The Rebecca project introduces the [Rebecca-node](https://github.com/rebeccapanel/Rebecca-node), which enables infrastructure distribution. With Rebecca-node, you can distribute your infrastructure across multiple locations, unlocking benefits such as redundancy, high availability, scalability, and flexibility. Rebecca-node empowers users to connect to different servers, offering them the flexibility to choose and connect to multiple servers instead of being limited to only one server.
+For more detailed information and installation instructions, please refer to the [Rebecca-node repository](https://github.com/rebeccapanel/Rebecca-node).
 
 # Webhook notifications
 
@@ -395,7 +389,7 @@ You can set a webhook address and Marzban will send the notifications to that ad
 
 the requests will be sent as a post request to the adress provided by `WEBHOOK_ADDRESS` with `WEBHOOK_SECRET` as `x-webhook-secret` in the headers.
 
-Example request sent from Marzban:
+Example request sent from Rebecca:
 
 ```
 Headers:
@@ -411,7 +405,7 @@ Content-Type: application/json
 
 
 Body:
-{"username": "marzban_test_user", "action": "user_updated", "enqueued_at": 1680506457.636369, "tries": 0}
+{"username": "rebecca_test_user", "action": "user_updated", "enqueued_at": 1680506457.636369, "tries": 0}
 ```
 
 Different action typs are: `user_created`, `user_updated`, `user_deleted`, `user_limited`, `user_expired`, `user_disabled`, `user_enabled`
@@ -430,20 +424,20 @@ Thank you for your support!
 
 # License
 
-Made in [Unknown!] and Published under [AGPL-3.0](./LICENSE).
+Made in [Unknown!] and published under [AGPL-3.0](./LICENSE).
 
 # Contributors
 
-We ❤️‍🔥 contributors! If you'd like to contribute, please check out our [Contributing Guidelines](CONTRIBUTING.md) and feel free to submit a pull request or open an issue. We also welcome you to join our [Telegram](https://t.me/xmohammad1_marzban) group for either support or contributing guidance.
+We ❤️‍🔥 contributors! If you'd like to contribute, please check out our [Contributing Guidelines](CONTRIBUTING.md) and feel free to submit a pull request or open an issue.
 
-Check [open issues](https://github.com/xmohammad1/marzban/issues) to help the progress of this project.
+Check [open issues](https://github.com/rebeccapanel/Rebecca/issues) to help the progress of this project.
 
 <p align="center">
 Thanks to the all contributors who have helped improve Marzban:
 </p>
 <p align="center">
-<a href="https://github.com/xmohammad1/Marzban/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xmohammad1/Marzban" />
+<a href="https://github.com/rebeccapanel/Rebecca/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=rebeccapanel/Rebecca" />
 </a>
 </p>
 <p align="center">
