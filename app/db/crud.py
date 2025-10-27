@@ -54,7 +54,12 @@ def add_default_host(db: Session, inbound: ProxyInbound):
         db (Session): Database session.
         inbound (ProxyInbound): Proxy inbound to add the default host to.
     """
-    host = ProxyHost(remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]", address="{SERVER_IP}", inbound=inbound)
+    host = ProxyHost(
+        remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+        address="{SERVER_IP}",
+        inbound=inbound,
+        sort=0,
+    )
     db.add(host)
     db.commit()
 
@@ -92,7 +97,12 @@ def get_hosts(db: Session, inbound_tag: str) -> List[ProxyHost]:
         List[ProxyHost]: List of hosts for the inbound.
     """
     inbound = get_or_create_inbound(db, inbound_tag)
-    return inbound.hosts
+    return (
+        db.query(ProxyHost)
+        .filter(ProxyHost.inbound_tag == inbound.tag)
+        .order_by(ProxyHost.sort.asc(), ProxyHost.id.asc())
+        .all()
+    )
 
 
 def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[ProxyHost]:
@@ -108,11 +118,18 @@ def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[Proxy
         List[ProxyHost]: Updated list of hosts for the inbound.
     """
     inbound = get_or_create_inbound(db, inbound_tag)
+    existing_sorts = [existing_host.sort for existing_host in inbound.hosts]
+    sort_value = (
+        host.sort
+        if host.sort is not None
+        else (max(existing_sorts) + 1 if existing_sorts else 0)
+    )
     inbound.hosts.append(
         ProxyHost(
             remark=host.remark,
             address=host.address,
             port=host.port,
+            sort=sort_value,
             path=host.path,
             sni=host.sni,
             host=host.host,
@@ -140,27 +157,31 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
         List[ProxyHost]: Updated list of hosts for the inbound.
     """
     inbound = get_or_create_inbound(db, inbound_tag)
-    inbound.hosts = [
-        ProxyHost(
-            remark=host.remark,
-            address=host.address,
-            port=host.port,
-            path=host.path,
-            sni=host.sni,
-            host=host.host,
-            inbound=inbound,
-            security=host.security,
-            alpn=host.alpn,
-            fingerprint=host.fingerprint,
-            allowinsecure=host.allowinsecure,
-            is_disabled=host.is_disabled,
-            mux_enable=host.mux_enable,
-            fragment_setting=host.fragment_setting,
-            noise_setting=host.noise_setting,
-            random_user_agent=host.random_user_agent,
-            use_sni_as_host=host.use_sni_as_host,
-        ) for host in modified_hosts
-    ]
+    inbound.hosts = []
+    for index, host in enumerate(modified_hosts):
+        sort_value = host.sort if host.sort is not None else index
+        inbound.hosts.append(
+            ProxyHost(
+                remark=host.remark,
+                address=host.address,
+                port=host.port,
+                sort=sort_value,
+                path=host.path,
+                sni=host.sni,
+                host=host.host,
+                inbound=inbound,
+                security=host.security,
+                alpn=host.alpn,
+                fingerprint=host.fingerprint,
+                allowinsecure=host.allowinsecure,
+                is_disabled=host.is_disabled,
+                mux_enable=host.mux_enable,
+                fragment_setting=host.fragment_setting,
+                noise_setting=host.noise_setting,
+                random_user_agent=host.random_user_agent,
+                use_sni_as_host=host.use_sni_as_host,
+            )
+        )
     db.commit()
     db.refresh(inbound)
     return inbound.hosts

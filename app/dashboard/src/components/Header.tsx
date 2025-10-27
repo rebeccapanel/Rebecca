@@ -60,12 +60,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
     return false;
   };
 
-  const {
-    onEditingHosts,
-    onResetAllUsage,
-    onEditingNodes,
-    onShowingNodesUsage,
-  } = useDashboard();
+  const { onResetAllUsage, onEditingNodes, onShowingNodesUsage } =
+    useDashboard();
   const { t } = useTranslation();
   const { colorMode, toggleColorMode } = useColorMode();
 
@@ -104,7 +100,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                     maxW="170px"
                     fontSize="sm"
                     icon={<HostsIcon />}
-                    onClick={onEditingHosts.bind(null, true)}
+                    as={Link}
+                    to="/hosts"
                   >
                     {t("header.hostSettings")}
                   </MenuItem>

@@ -43,7 +43,6 @@ type DashboardStateType = {
   filters: FilterType;
   subscribeUrl: string | null;
   QRcodeLinks: string[] | null;
-  isEditingHosts: boolean;
   isEditingNodes: boolean;
   isShowingNodesUsage: boolean;
   isResetingAllUsage: boolean;
@@ -63,7 +62,6 @@ type DashboardStateType = {
   fetchUserUsage: (user: User, query: FilterUsageType) => Promise<void>;
   setQRCode: (links: string[] | null) => void;
   setSubLink: (subscribeURL: string | null) => void;
-  onEditingHosts: (isEditingHosts: boolean) => void;
   onEditingNodes: (isEditingNodes: boolean) => void;
   onShowingNodesUsage: (isShowingNodesUsage: boolean) => void;
   resetDataUsage: (user: User) => Promise<void>;
@@ -112,7 +110,6 @@ export const useDashboard = create(
     },
     loading: true,
     isResetingAllUsage: false,
-    isEditingHosts: false,
     isEditingNodes: false,
     isShowingNodesUsage: false,
     resetUsageUser: null,
@@ -182,9 +179,6 @@ export const useDashboard = create(
           delete query[key as keyof FilterUsageType];
       }
       return fetch(`/user/${body.username}/usage`, { method: "GET", query });
-    },
-    onEditingHosts: (isEditingHosts: boolean) => {
-      set({ isEditingHosts });
     },
     onEditingNodes: (isEditingNodes: boolean) => {
       set({ isEditingNodes });

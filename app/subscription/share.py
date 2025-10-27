@@ -243,82 +243,100 @@ def process_inbounds_and_tags(
         ],
         reverse=False,
 ) -> Union[List, str]:
-    _inbounds = []
-    for protocol, tags in inbounds.items():
-        for tag in tags:
-            _inbounds.append((protocol, [tag]))
-    index_dict = {proxy: index for index, proxy in enumerate(
-        xray.config.inbounds_by_tag.keys())}
-    inbounds = sorted(
-        _inbounds, key=lambda x: index_dict.get(x[1][0], float('inf')))
+    inbound_index = {
+        tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
+    }
 
-    for protocol, tags in inbounds:
+    host_entries = []
+    for protocol, tags in inbounds.items():
         settings = proxies.get(protocol)
         if not settings:
             continue
 
-        format_variables.update({"PROTOCOL": protocol.name})
         for tag in tags:
             inbound = xray.config.inbounds_by_tag.get(tag)
             if not inbound:
                 continue
 
-            format_variables.update({"TRANSPORT": inbound["network"]})
-            host_inbound = inbound.copy()
-            for host in xray.hosts.get(tag, []):
-                sni = ""
-                sni_list = host["sni"] or inbound["sni"]
-                if sni_list:
-                    salt = secrets.token_hex(8)
-                    sni = random.choice(sni_list).replace("*", salt)
-
-                if sids := inbound.get("sids"):
-                    inbound["sid"] = random.choice(sids)
-
-                req_host = ""
-                req_host_list = host["host"] or inbound["host"]
-                if req_host_list:
-                    salt = secrets.token_hex(8)
-                    req_host = random.choice(req_host_list).replace("*", salt)
-
-                address = ""
-                address_list = host['address']
-                if host['address']:
-                    salt = secrets.token_hex(8)
-                    address = random.choice(address_list).replace('*', salt)
-
-                if host["path"] is not None:
-                    path = host["path"].format_map(format_variables)
-                else:
-                    path = inbound.get("path", "").format_map(format_variables)
-
-                if host.get("use_sni_as_host", False) and sni:
-                    req_host = sni
-
-                host_inbound.update(
-                    {
-                        "port": host["port"] or inbound["port"],
-                        "sni": sni,
-                        "host": req_host,
-                        "tls": inbound["tls"] if host["tls"] is None else host["tls"],
-                        "alpn": host["alpn"] if host["alpn"] else None,
-                        "path": path,
-                        "fp": host["fingerprint"] or inbound.get("fp", ""),
-                        "ais": host["allowinsecure"]
-                        or inbound.get("allowinsecure", ""),
-                        "mux_enable": host["mux_enable"],
-                        "fragment_setting": host["fragment_setting"],
-                        "noise_setting": host["noise_setting"],
-                        "random_user_agent": host["random_user_agent"],
-                    }
+            host_list = xray.hosts.get(tag, [])
+            for position, host in enumerate(host_list):
+                host_entries.append(
+                    (
+                        protocol,
+                        tag,
+                        settings,
+                        inbound,
+                        host,
+                        inbound_index.get(tag, float("inf")),
+                        position,
+                    )
                 )
 
-                conf.add(
-                    remark=host["remark"].format_map(format_variables),
-                    address=address.format_map(format_variables),
-                    inbound=host_inbound,
-                    settings=settings.model_dump()
-                )
+    host_entries.sort(
+        key=lambda entry: (
+            entry[4].get("sort", 0),
+            entry[5],
+            entry[6],
+        )
+    )
+
+    for protocol, tag, settings, inbound, host, _, _ in host_entries:
+        format_variables.update({"PROTOCOL": protocol.name})
+        format_variables.update({"TRANSPORT": inbound["network"]})
+        host_inbound = inbound.copy()
+
+        sni = ""
+        sni_list = host["sni"] or inbound["sni"]
+        if sni_list:
+            salt = secrets.token_hex(8)
+            sni = random.choice(sni_list).replace("*", salt)
+
+        if sids := inbound.get("sids"):
+            inbound["sid"] = random.choice(sids)
+
+        req_host = ""
+        req_host_list = host["host"] or inbound["host"]
+        if req_host_list:
+            salt = secrets.token_hex(8)
+            req_host = random.choice(req_host_list).replace("*", salt)
+
+        address = ""
+        address_list = host["address"]
+        if host["address"]:
+            salt = secrets.token_hex(8)
+            address = random.choice(address_list).replace("*", salt)
+
+        if host["path"] is not None:
+            path = host["path"].format_map(format_variables)
+        else:
+            path = inbound.get("path", "").format_map(format_variables)
+
+        if host.get("use_sni_as_host", False) and sni:
+            req_host = sni
+
+        host_inbound.update(
+            {
+                "port": host["port"] or inbound["port"],
+                "sni": sni,
+                "host": req_host,
+                "tls": inbound["tls"] if host["tls"] is None else host["tls"],
+                "alpn": host["alpn"] if host["alpn"] else None,
+                "path": path,
+                "fp": host["fingerprint"] or inbound.get("fp", ""),
+                "ais": host["allowinsecure"] or inbound.get("allowinsecure", ""),
+                "mux_enable": host["mux_enable"],
+                "fragment_setting": host["fragment_setting"],
+                "noise_setting": host["noise_setting"],
+                "random_user_agent": host["random_user_agent"],
+            }
+        )
+
+        conf.add(
+            remark=host["remark"].format_map(format_variables),
+            address=address.format_map(format_variables),
+            inbound=host_inbound,
+            settings=settings.model_dump(),
+        )
 
     return conf.render(reverse=reverse)
 

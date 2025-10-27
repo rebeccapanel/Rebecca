@@ -41,6 +41,10 @@ def hosts(storage: dict):
     with GetDB() as db:
         for inbound_tag in config.inbounds_by_tag:
             inbound_hosts: Sequence[ProxyHost] = crud.get_hosts(db, inbound_tag)
+            sorted_hosts = sorted(
+                inbound_hosts,
+                key=lambda host: (host.sort, host.id),
+            )
 
             storage[inbound_tag] = [
                 {
@@ -63,7 +67,9 @@ def hosts(storage: dict):
                     "noise_setting": host.noise_setting,
                     "random_user_agent": host.random_user_agent,
                     "use_sni_as_host": host.use_sni_as_host,
-                } for host in inbound_hosts if not host.is_disabled
+                    "sort": host.sort if host.sort is not None else 0,
+                    "id": host.id,
+                } for host in sorted_hosts if not host.is_disabled
             ]
 
 

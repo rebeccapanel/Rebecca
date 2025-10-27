@@ -44,6 +44,7 @@
     "react-use-websocket": "^4.13.0",
     "rollup-plugin-visualizer": "^5.9.0",
     "slick-carousel": "^1.8.1",
+    "twemoji": "^14.0.2",
     "vite-tsconfig-paths": "^4.0.3",
     "zod": "^3.19.1",
     "zustand": "^4.4.6",

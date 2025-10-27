@@ -17,6 +17,7 @@ import { Language } from "./Language";
 import ThemeSelector from "./ThemeSelector";
 import { Outlet, Link } from "react-router-dom";
 import { useState } from "react";
+import { useAppleEmoji } from "hooks/useAppleEmoji";
 
 const iconProps = {
   baseStyle: {
@@ -32,6 +33,7 @@ export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isMobile = useBreakpointValue({ base: true, md: false });
   const drawer = useDisclosure();
+  useAppleEmoji();
 
   return (
     <Flex minH="100vh" maxH="100vh" overflow="hidden">

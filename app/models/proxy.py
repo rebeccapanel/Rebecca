@@ -142,6 +142,7 @@ class ProxyHost(BaseModel):
     remark: str
     address: str
     port: Optional[int] = Field(None, nullable=True)
+    sort: Optional[int] = Field(None, nullable=True)
     sni: Optional[str] = Field(None, nullable=True)
     host: Optional[str] = Field(None, nullable=True)
     path: Optional[str] = Field(None, nullable=True)

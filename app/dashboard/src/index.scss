@@ -255,6 +255,15 @@ table thead {
     box-shadow: 0 0 0 10px rgba(0, 0, 0, 0);
   }
 }
+
+img.apple-emoji {
+  display: inline-block;
+  height: 1em;
+  width: auto;
+  margin: 0 0.15em 0 0;
+  vertical-align: text-bottom;
+}
+
 @keyframes green-pulse-animation {
   0% {
     box-shadow: 0 0 0 0px #66ff9975;

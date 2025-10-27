@@ -40,6 +40,7 @@
   "header.nodeSettings": "تنظیمات گره‌ها",
   "header.nodesUsage": "نمودار گره‌ها",
   "hostsDialog.addHost": "افزودن هاست",
+  "hostsDialog.address": "آدرس",
   "hostsDialog.advancedOptions": "تنظیمات پیشرفته",
   "hostsDialog.allowinsecure": "Allow Insecure",
   "hostsDialog.alpn": "ALPN",
@@ -55,18 +56,18 @@
   "hostsDialog.fragment.info": "length,interval,packet (e.g. 10-100,100-200,tlshello)",
   "hostsDialog.fragment.info.attention": "توجه: در حال حاضر، این ویژگی فقط در streisand >= 1.6.12 و v2rayNG >= 1.8.16 (پیکربندی سفارشی) پشتیبانی می شود",
   "hostsDialog.fragment.info.examples": "نمونه ها:",
-  "hostsDialog.noise": "الگو نویز",
-  "hostsDialog.noise.info": "packet,delay (e.g. rand:10-20,100-200)",
-  "hostsDialog.noise.info.attention": "توجه: در حال حاضر، این ویژگی فقط در streisand >= 1.6.32 و v2rayNG >= 1.8.39 (پیکربندی سفارشی) پشتیبانی می شود",
-  "hostsDialog.noise.info.examples": "نمونه ها:",
-
   "hostsDialog.host": "هاست درخواست",
   "hostsDialog.host.info": "به‌طور پیش‌فرض، اگر هاست درخواستی در پیکربندی *** تنظیم شده باشد، این هاست استفاده می‌شود. اما می‌توانید یک هاست درخواستی متفاوت در اینجا قرار دهید.",
   "hostsDialog.host.multiHost": "برای تنظیم چند آدرس، با <badge>,</badge> از هم جدا کنید. هر دفعه آدرسی به صورت تصادفی قرار داده می‌شود.",
   "hostsDialog.host.wildcard": "از <badge>*</badge> برای ساخت عبارت تصادفی استفاده کنید (برای نام‌های wildcard کار می‌کند)",
+  "hostsDialog.isDisabled": "غیرفعال کردن هاست",
   "hostsDialog.jalaliExpireDate": "تاریخ انقضای کاربر به شمسی",
   "hostsDialog.loading": "درحال بارگزاری...",
   "hostsDialog.muxEnable": "فعالسازی MUX",
+  "hostsDialog.noise": "الگو نویز",
+  "hostsDialog.noise.info": "packet,delay (e.g. rand:10-20,100-200)",
+  "hostsDialog.noise.info.attention": "توجه: در حال حاضر، این ویژگی فقط در streisand >= 1.6.32 و v2rayNG >= 1.8.39 (پیکربندی سفارشی) پشتیبانی می شود",
+  "hostsDialog.noise.info.examples": "نمونه ها:",
   "hostsDialog.path": "Path",
   "hostsDialog.path.info": "می‌توانید برای این هاست مسیر تعریف کنید، مثلا برای زمانی که از reverse proxy استفاده ‌می‌کنید، کارآمد است.",
   "hostsDialog.port": "پورت",
@@ -79,16 +80,51 @@
   "hostsDialog.remainingData": "حجم باقی‌مانده کاربر",
   "hostsDialog.remainingDays": "روزهای باقی مانده کاربر",
   "hostsDialog.remainingTime": "زمان باقی مانده کاربر",
+  "hostsDialog.remark": "برچسب",
   "hostsDialog.savedSuccess": "هاست‌ها با موفقیت ذخیره شدند",
   "hostsDialog.security": "لایه امنیت",
   "hostsDialog.security.info": "اگر میان‌افزار سرور این هاست، از لایه امنیتی متفاوتی از ورودی استفاده می‌کند، می‌توانید اینجا انتخاب کنید",
   "hostsDialog.sni": "SNI",
   "hostsDialog.sni.info": "به طور پیش‌فرض، هاست، از SNI پیش‌فرض ورودی استفاده میکند، در صورتی که این هاست یک SNI دیگری دارد، می‌توانید آن را تغییر دهید. برای مثال، ممکن است سرور ترافیک با SSL متفاوت را دریافت و منتقل کند.",
   "hostsDialog.sockopt": "Sockopt",
+  "hostsDialog.sort": "ترتیب نمایش",
+  "hostsDialog.sort.info": "عددهای کوچکتر اولویت بالاتری دارند و بالاتر از بقیه در کانفیگ و لینک‌ها قرار می‌گیرند.",
   "hostsDialog.statusEmoji": "وضعیت کاربر در قالب اموجی (✅,⌛️,🪫,❌,🔌)",
   "hostsDialog.statusText": "وضعیت کاربر",
   "hostsDialog.title": "با انتخاب این تنظیمات، می‌توانید برای هر ورودی یک آدرس منحصر به فرد انتخاب کنید.",
   "hostsDialog.username": "نام کاربری کاربر",
+  "hostsPage.active": "فعال",
+  "hostsPage.activeToggle": "فعال بودن هاست",
+  "hostsPage.addHost": "افزودن هاست",
+  "hostsPage.cancel": "انصراف",
+  "hostsPage.create.description": "تنظیمات پایه اتصال را مشخص کنید، باقی موارد را بعداً می‌توانید ویرایش کنید.",
+  "hostsPage.create.sortHint": "هاست جدید با اولویت {{value}} اضافه می‌شود و بعداً هم قابل تغییر است.",
+  "hostsPage.create.submit": "ایجاد هاست",
+  "hostsPage.create.title": "افزودن هاست جدید",
+  "hostsPage.created": "هاست ایجاد شد",
+  "hostsPage.delete": "حذف",
+  "hostsPage.deleteConfirmation": "آیا از حذف این هاست مطمئن هستید؟",
+  "hostsPage.deleteTitle": "حذف هاست",
+  "hostsPage.deleted": "هاست حذف شد",
+  "hostsPage.edit": "ویرایش",
+  "hostsPage.emptyState": "هاست فعالی یافت نشد. از دکمه بالا برای افزودن استفاده کنید.",
+  "hostsPage.error.create": "ایجاد هاست انجام نشد. دوباره تلاش کنید.",
+  "hostsPage.error.delete": "حذف هاست انجام نشد. دوباره تلاش کنید.",
+  "hostsPage.error.save": "ذخیره هاست‌ها انجام نشد. دوباره تلاش کنید.",
+  "hostsPage.inactive": "غیرفعال",
+  "hostsPage.inboundLabel": "اینباند",
+  "hostsPage.noAddress": "آدرسی تنظیم نشده است",
+  "hostsPage.noInbounds": "هیچ اینباندی موجود نیست. ابتدا یک اینباند تنظیم کنید.",
+  "hostsPage.portTag": "پورت {{value}}",
+  "hostsPage.reset": "بازنشانی",
+  "hostsPage.save": "ذخیره",
+  "hostsPage.saved": "هاست ذخیره شد",
+  "hostsPage.section.advanced": "پیشرفته",
+  "hostsPage.section.general": "عمومی",
+  "hostsPage.section.security": "امنیت و TLS",
+  "hostsPage.showDisabled": "نمایش هاست‌های غیرفعال",
+  "hostsPage.unsaved": "تغییرات ذخیره‌نشده",
+  "hostsPage.untitledHost": "هاست بدون نام",
   "inbound": "ورودی",
   "itemsPerPage": "تعداد در صفحه",
   "login": "ورود",
@@ -96,6 +132,10 @@
   "login.loginYourAccount": "وارد حساب خود شوید",
   "login.welcomeBack": "خوش آمدید, لطفا اطلاعات خود را وارد کنید",
   "next": "بعدی",
+  "nodeModal.status.connected": "متصل",
+  "nodeModal.status.connecting": "درحال اتصال",
+  "nodeModal.status.disabled": "غیرفعال",
+  "nodeModal.status.error": "خطا در اتصال",
   "nodes.addHostForEveryInbound": "استفاده از این گره به عنوان میزبان تمام ورودی‌ها",
   "nodes.addNewMarzbanNode": "افزودن گره مرزبان",
   "nodes.addNode": "افزودن گره",
@@ -140,10 +180,6 @@
   "status.expired": "منقضی شده",
   "status.limited": "اتمام حد مصرف",
   "status.on_hold": "در انتظار اتصال",
-  "nodeModal.status.error": "خطا در اتصال",
-  "nodeModal.status.disabled": "غیرفعال",
-  "nodeModal.status.connecting": "درحال اتصال",
-  "nodeModal.status.connected": "متصل",
   "userDialog.absolute": "مطلق",
   "userDialog.custom": "انتخابی",
   "userDialog.dataLimit": "حد مصرف داده",
@@ -192,5 +228,17 @@
   "usersTable.noUser": "کاربری افزوده نشده است",
   "usersTable.noUserMatched": "به‌نظر میرسه کاربری که جستجو کردید، وجود ندارد",
   "usersTable.status": "وضعیت",
-  "usersTable.total": "مجموع"
+  "usersTable.total": "مجموع",
+  "hostsPage.dragHandle": "برای تغییر ترتیب بکشید",
+  "hostsPage.reorderSaved": "ترتیب به‌روزرسانی شد",
+  "hostsPage.reorderFailed": "به‌روزرسانی ترتیب انجام نشد. دوباره تلاش کنید.",
+  "hostsPage.orderSaving": "در حال ذخیره ترتیب جدید...",
+  "hostsPage.orderDirty": "برای ذخیره ترتیب جدید رها کنید",
+  "hostsPage.reorderHint": "با استفاده از دکمه جابه‌جایی می‌توانید اولویت‌ها را تغییر دهید.",
+  "hostsPage.orderIndex": "اولویت {{value}}",
+  "hostsPage.disabled": "غیرفعال",
+  "hostsPage.enabled": "فعال",
+  "hostsPage.enterSort": "مرتب‌سازی هاست‌ها",
+  "hostsPage.sortingTitle": "حالت مرتب‌سازی",
+  "hostsPage.sortingInstructions": "هاست‌ها را در فهرست بکشید و رها کنید تا ترتیبشان تغییر کند، سپس ترتیب جدید را ذخیره کنید."
 }
