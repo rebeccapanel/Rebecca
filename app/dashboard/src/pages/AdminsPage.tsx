@@ -4,6 +4,7 @@ import { AdminsTable } from "components/AdminsTable";
 import { Filters } from "components/Filters";
 import { Pagination } from "components/Pagination";
 import AdminsUsage from "components/AdminsUsage";
+import AdminDetailsDrawer from "components/AdminDetailsDrawer";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { FC, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -66,6 +67,7 @@ export const AdminsPage: FC = () => {
         </TabPanels>
       </Tabs>
       <AdminDialog />
+      <AdminDetailsDrawer />
     </VStack>
   );
 };

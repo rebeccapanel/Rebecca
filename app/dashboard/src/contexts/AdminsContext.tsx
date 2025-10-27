@@ -16,6 +16,8 @@ type AdminsStore = {
   filters: AdminFilters;
   isAdminDialogOpen: boolean;
   adminInDialog: Admin | null;
+  isAdminDetailsOpen: boolean;
+  adminInDetails: Admin | null;
   fetchAdmins: () => Promise<void>;
   setFilters: (filters: Partial<AdminFilters>) => void;
   onFilterChange: (filters: Partial<AdminFilters>) => void;
@@ -27,6 +29,8 @@ type AdminsStore = {
   activateUsers: (username: string) => Promise<void>;
   openAdminDialog: (admin?: Admin) => void;
   closeAdminDialog: () => void;
+  openAdminDetails: (admin: Admin) => void;
+  closeAdminDetails: () => void;
 };
 
 const defaultFilters: AdminFilters = {
@@ -43,6 +47,8 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
   filters: defaultFilters,
   isAdminDialogOpen: false,
   adminInDialog: null,
+  isAdminDetailsOpen: false,
+  adminInDetails: null,
   async fetchAdmins() {
     const { filters } = get();
     const query: Record<string, string | number> = {};
@@ -68,16 +74,24 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
     set({ loading: true });
     try {
       const data = await fetch<{ admins: Admin[]; total: number } | Admin[]>("/admins", { query });
-      if (Array.isArray(data)) {
-        // Fallback for old API format
-        set({ admins: data, total: data.length });
-      } else {
-        // New API format with pagination
-        set({ admins: data.admins || [], total: data.total || 0 });
-      }
+      const { admins, total } = Array.isArray(data)
+        ? { admins: data, total: data.length }
+        : { admins: data.admins || [], total: data.total || 0 };
+
+      set((state) => {
+        const currentDetails = state.adminInDetails
+          ? admins.find((admin) => admin.username === state.adminInDetails?.username) ||
+            state.adminInDetails
+          : null;
+        return {
+          admins,
+          total,
+          adminInDetails: currentDetails,
+        };
+      });
     } catch (error) {
       console.error("Failed to fetch admins:", error);
-      set({ admins: [], total: 0 });
+      set({ admins: [], total: 0, adminInDetails: null });
     } finally {
       set({ loading: false });
     }
@@ -137,5 +151,11 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
   },
   closeAdminDialog() {
     set({ isAdminDialogOpen: false, adminInDialog: null });
+  },
+  openAdminDetails(admin) {
+    set({ isAdminDetailsOpen: true, adminInDetails: admin });
+  },
+  closeAdminDetails() {
+    set({ isAdminDetailsOpen: false, adminInDetails: null });
   },
 }));

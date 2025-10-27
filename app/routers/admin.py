@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app import xray
 from app.db import Session, crud, get_db
+from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_admin_by_username, validate_admin
 from app.models.admin import Admin, AdminCreate, AdminModify, Token
 from app.db.models import Admin as DBAdmin, Node as DBNode
@@ -109,7 +110,11 @@ def modify_admin(
             detail="You're not allowed to edit another sudoer's account. Use marzban-cli instead.",
         )
 
-    updated_admin = crud.update_admin(db, dbadmin, modified_admin)
+    try:
+        updated_admin = crud.update_admin(db, dbadmin, modified_admin)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
 
     return updated_admin
 
@@ -178,7 +183,11 @@ def activate_all_disabled_users(
     db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Activate all disabled users under a specific admin"""
-    crud.activate_all_disabled_users(db=db, admin=dbadmin)
+    try:
+        crud.activate_all_disabled_users(db=db, admin=dbadmin)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)
     for node_id, node in list(xray.nodes.items()):

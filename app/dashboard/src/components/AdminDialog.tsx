@@ -121,7 +121,7 @@ export const AdminDialog: FC = () => {
     },
   });
 
-  const { register, handleSubmit, reset, formState, setValue, watch } = form;
+  const { register, handleSubmit, reset, formState, setValue, watch, setError } = form;
 
   const sudoField = register("is_sudo");
   const [showPassword, setShowPassword] = useState(false);
@@ -186,6 +186,23 @@ export const AdminDialog: FC = () => {
   }, [admin, isOpen, reset]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
+    if (mode === "edit" && admin) {
+      const currentActive = admin.active_users ?? 0;
+      if (values.users_limit) {
+        const requestedLimit = Number(values.users_limit);
+        if (
+          !Number.isNaN(requestedLimit) &&
+          requestedLimit > 0 &&
+          requestedLimit < currentActive
+        ) {
+          setError("users_limit", {
+            type: "manual",
+            message: t("admins.validation.usersLimitTooLow", { active: currentActive }),
+          });
+          return;
+        }
+      }
+    }
     try {
       if (mode === "create") {
         const payload: AdminCreatePayload = {

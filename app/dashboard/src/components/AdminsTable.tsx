@@ -23,6 +23,8 @@ import {
   Th,
   Thead,
   Tr,
+  Stack,
+  useColorModeValue,
   useDisclosure,
   useToast,
 } from "@chakra-ui/react";
@@ -45,6 +47,8 @@ import { formatBytes } from "utils/formatByte";
 export const AdminsTable = () => {
   const { t } = useTranslation();
   const toast = useToast();
+  const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
+  const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
   const {
     admins,
     loading,
@@ -57,6 +61,8 @@ export const AdminsTable = () => {
     disableUsers,
     activateUsers,
     openAdminDialog,
+    openAdminDetails,
+    adminInDetails,
   } = useAdminsStore();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -235,76 +241,115 @@ export const AdminsTable = () => {
             </Tr>
           </Thead>
           <Tbody>
-            {admins.map((admin) => (
-              <Tr key={admin.username}>
-                <Td>
-                  <Text fontWeight="medium">{admin.username}</Text>
-                  {admin.is_sudo && (
-                    <Badge colorScheme="purple" fontSize="xs" mt={1}>
-                      {t("sudo")}
-                    </Badge>
-                  )}
-                </Td>
-                <Td>
-                  <Text whiteSpace="nowrap">
-                    {formatBytes(admin.users_usage ?? 0, 2)} /{" "}
-                    {admin.data_limit ? (
-                      formatBytes(admin.data_limit, 2)
-                    ) : (
-                      "-"
+            {admins.map((admin) => {
+              const isSelected = adminInDetails?.username === admin.username;
+              const usersLimitLabel =
+                admin.users_limit && admin.users_limit > 0
+                  ? String(admin.users_limit)
+                  : "∞";
+              const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
+
+              return (
+                <Tr
+                  key={admin.username}
+                  onClick={() => openAdminDetails(admin)}
+                  cursor="pointer"
+                  bg={isSelected ? rowSelectedBg : undefined}
+                  _hover={{ bg: rowHoverBg }}
+                  transition="background-color 0.15s ease-in-out"
+                >
+                  <Td>
+                    <Text fontWeight="medium">{admin.username}</Text>
+                    {admin.is_sudo && (
+                      <Badge colorScheme="purple" fontSize="xs" mt={1}>
+                        {t("sudo")}
+                      </Badge>
                     )}
-                  </Text>
-                </Td>
-                <Td>{admin.users_count}</Td>
-                <Td textAlign="right">
-                  <Menu>
-                    <MenuButton
-                      as={IconButton}
-                      icon={<EllipsisVerticalIcon width={20} />}
-                      variant="ghost"
-                    />
-                    <MenuList>
-                      <MenuItem
-                        icon={<PencilIcon width={20} />}
-                        onClick={() => openAdminDialog(admin)}
-                      >
-                        {t("edit")}
-                      </MenuItem>
-                      <MenuItem
-                        icon={<ArrowPathIcon width={20} />}
-                        onClick={() => runAction("reset", admin)}
-                        isDisabled={actionState?.username === admin.username}
-                      >
-                        {t("admins.resetUsage")}
-                      </MenuItem>
-                      <MenuDivider />
-                      <MenuItem
-                        icon={<PlayIcon width={20} />}
-                        onClick={() => runAction("activate", admin)}
-                        isDisabled={actionState?.username === admin.username}
-                      >
-                        {t("admins.activateUsers")}
-                      </MenuItem>
-                      <MenuItem
-                        icon={<NoSymbolIcon width={20} />}
-                        onClick={() => runAction("disable", admin)}
-                        isDisabled={actionState?.username === admin.username}
-                      >
-                        {t("admins.disableUsers")}
-                      </MenuItem>
-                      <MenuDivider />
-                      <MenuItem
-                        color="red.500"
-                        icon={<TrashIcon width={20} />}
-                        onClick={() => openDeleteDialog(admin)}
-                      >
-                        {t("delete")}
-                      </MenuItem>
-                    </MenuList>
-                  </Menu>
-                </Td>
-              </Tr>
-            ))}
+                  </Td>
+                  <Td>
+                    <Text whiteSpace="nowrap">
+                      {formatBytes(admin.users_usage ?? 0, 2)} /{" "}
+                      {admin.data_limit ? (
+                        formatBytes(admin.data_limit, 2)
+                      ) : (
+                        "-"
+                      )}
+                    </Text>
+                  </Td>
+                  <Td>
+                    <Stack spacing={0}>
+                      <Text fontSize="xs" color="gray.500">
+                        {t("users")}
+                      </Text>
+                      <Text fontWeight="semibold">{activeLabel}</Text>
+                    </Stack>
+                  </Td>
+                  <Td textAlign="right">
+                    <Menu>
+                      <MenuButton
+                        as={IconButton}
+                        icon={<EllipsisVerticalIcon width={20} />}
+                        variant="ghost"
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      <MenuList onClick={(event) => event.stopPropagation()}>
+                        <MenuItem
+                          icon={<PencilIcon width={20} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openAdminDialog(admin);
+                          }}
+                        >
+                          {t("edit")}
+                        </MenuItem>
+                        <MenuItem
+                          icon={<ArrowPathIcon width={20} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            runAction("reset", admin);
+                          }}
+                          isDisabled={actionState?.username === admin.username}
+                        >
+                          {t("admins.resetUsage")}
+                        </MenuItem>
+                        <MenuDivider />
+                        <MenuItem
+                          icon={<PlayIcon width={20} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            runAction("activate", admin);
+                          }}
+                          isDisabled={actionState?.username === admin.username}
+                        >
+                          {t("admins.activateUsers")}
+                        </MenuItem>
+                        <MenuItem
+                          icon={<NoSymbolIcon width={20} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            runAction("disable", admin);
+                          }}
+                          isDisabled={actionState?.username === admin.username}
+                        >
+                          {t("admins.disableUsers")}
+                        </MenuItem>
+                        <MenuDivider />
+                        <MenuItem
+                          color="red.500"
+                          icon={<TrashIcon width={20} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDeleteDialog(admin);
+                          }}
+                        >
+                          {t("delete")}
+                        </MenuItem>
+                      </MenuList>
+                    </Menu>
+                  </Td>
+                </Tr>
+              );
+            })}
           </Tbody>
         </Table>
       </Box>

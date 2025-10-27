@@ -189,8 +189,7 @@ type UsersTableProps = {} & TableProps;
 export const UsersTable: FC<UsersTableProps> = (props) => {
   const {
     filters,
-    users: { users },
-    users: totalUsers,
+    users: { users, total },
     onEditingUser,
     onFilterChange,
   } = useDashboard();
@@ -204,7 +203,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 
   
 
-  const isFiltered = users.length !== totalUsers.total;
+  const isFiltered = users.length !== total;
 
   const handleSort = (column: string) => {
     let newSort = filters.sort;

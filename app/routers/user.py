@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app import logger, xray
 from app.db import Session, crud, get_db
+from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
 from app.models.admin import Admin
 from app.models.user import (
@@ -58,6 +59,9 @@ def add_user(
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
         )
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="User already exists")
@@ -109,7 +113,11 @@ def modify_user(
             )
 
     old_status = dbuser.status
-    dbuser = crud.update_user(db, dbuser, modified_user)
+    try:
+        dbuser = crud.update_user(db, dbuser, modified_user)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     user = UserResponse.model_validate(dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
@@ -164,7 +172,11 @@ def reset_user_data_usage(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Reset user data usage"""
-    dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
+    try:
+        dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
@@ -235,7 +247,24 @@ def get_users(
         return_with_count=True,
     )
 
-    return {"users": users, "total": count}
+    users_limit = None
+    active_total = None
+    if not admin.is_sudo:
+        dbadmin = crud.get_admin(db, admin.username)
+        if dbadmin:
+            users_limit = dbadmin.users_limit
+            active_total = crud.get_users_count(
+                db,
+                status=UserStatus.active,
+                admin=dbadmin,
+            )
+
+    return {
+        "users": users,
+        "total": count,
+        "active_total": active_total,
+        "users_limit": users_limit,
+    }
 
 
 @router.post("/users/reset", responses={403: responses._403, 404: responses._404})
@@ -244,7 +273,11 @@ def reset_users_data_usage(
 ):
     """Reset all users data usage"""
     dbadmin = crud.get_admin(db, admin.username)
-    crud.reset_all_users_data_usage(db=db, admin=dbadmin)
+    try:
+        crud.reset_all_users_data_usage(db=db, admin=dbadmin)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)
     for node_id, node in list(xray.nodes.items()):
@@ -275,7 +308,11 @@ def active_next_plan(
     dbuser: UserResponse = Depends(get_validated_user),
 ):
     """Reset user by next plan"""
-    dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
+    try:
+        dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
+    except UsersLimitReachedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if (dbuser is None or dbuser.next_plan is None):
         raise HTTPException(

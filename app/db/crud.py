@@ -4,7 +4,7 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
@@ -44,6 +44,7 @@ from app.models.user import (
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
 from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
+from app.db.exceptions import UsersLimitReachedError
 
 
 def add_default_host(db: Session, inbound: ProxyInbound):
@@ -375,6 +376,62 @@ def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None)
     return query.count()
 
 
+def _status_to_str(status: Union[UserStatus, str, None]) -> Optional[str]:
+    if status is None:
+        return None
+    if isinstance(status, Enum):
+        return status.value
+    return str(status)
+
+
+def _is_user_limit_enforced(admin: Optional[Admin]) -> bool:
+    return bool(
+        admin
+        and admin.users_limit is not None
+        and admin.users_limit > 0
+    )
+
+
+def _get_active_users_count(
+    db: Session,
+    admin: Admin,
+    exclude_user_ids: Optional[Iterable[int]] = None,
+) -> int:
+    if not admin:
+        return 0
+
+    query = db.query(func.count(User.id)).filter(
+        User.admin_id == admin.id,
+        User.status == UserStatus.active,
+    )
+    if exclude_user_ids:
+        exclude_ids = [uid for uid in exclude_user_ids if uid is not None]
+        if exclude_ids:
+            query = query.filter(~User.id.in_(exclude_ids))
+
+    return query.scalar() or 0
+
+
+def _ensure_active_user_capacity(
+    db: Session,
+    admin: Optional[Admin],
+    *,
+    required_slots: int = 1,
+    exclude_user_ids: Optional[Iterable[int]] = None,
+) -> None:
+    if not _is_user_limit_enforced(admin) or required_slots <= 0:
+        return
+
+    active_count = _get_active_users_count(
+        db,
+        admin,
+        exclude_user_ids=exclude_user_ids,
+    )
+    remaining_slots = (admin.users_limit or 0) - active_count
+    if remaining_slots < required_slots:
+        raise UsersLimitReachedError(limit=admin.users_limit)
+
+
 def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
     """
     Creates a new user with provided details.
@@ -387,6 +444,10 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
     Returns:
         User: The created user object.
     """
+    status_value = _status_to_str(user.status) or UserStatus.active.value
+    if status_value == UserStatus.active.value and admin:
+        _ensure_active_user_capacity(db, admin, required_slots=1)
+
     excluded_inbounds_tags = user.excluded_inbounds
     proxies = []
     for proxy_type, settings in user.proxies.items():
@@ -466,6 +527,7 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     Returns:
         User: The updated user object.
     """
+    original_status_value = _status_to_str(dbuser.status)
     added_proxies: Dict[ProxyTypes, Proxy] = {}
     if modify.proxies:
         for proxy_type, settings in modify.proxies.items():
@@ -546,6 +608,17 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     elif dbuser.next_plan is not None:
         db.delete(dbuser.next_plan)
 
+    current_status_value = _status_to_str(dbuser.status)
+    if (
+        current_status_value == UserStatus.active.value
+        and original_status_value != UserStatus.active.value
+    ):
+        _ensure_active_user_capacity(
+            db,
+            dbuser.admin,
+            exclude_user_ids=(dbuser.id,),
+        )
+
     dbuser.edit_at = datetime.utcnow()
 
     db.commit()
@@ -572,7 +645,18 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     dbuser.used_traffic = 0
     dbuser.node_usages.clear()
-    if dbuser.status not in (UserStatus.expired or UserStatus.disabled):
+    current_status_value = _status_to_str(dbuser.status)
+    should_activate = current_status_value not in (
+        UserStatus.expired.value,
+        UserStatus.disabled.value,
+    )
+    if should_activate:
+        if current_status_value != UserStatus.active.value:
+            _ensure_active_user_capacity(
+                db,
+                dbuser.admin,
+                exclude_user_ids=(dbuser.id,),
+            )
         dbuser.status = UserStatus.active.value
 
     if dbuser.next_plan:
@@ -607,6 +691,12 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
     db.add(usage_log)
 
     dbuser.node_usages.clear()
+    if _status_to_str(dbuser.status) != UserStatus.active.value:
+        _ensure_active_user_capacity(
+            db,
+            dbuser.admin,
+            exclude_user_ids=(dbuser.id,),
+        )
     dbuser.status = UserStatus.active.value
 
     dbuser.data_limit = dbuser.next_plan.data_limit + \
@@ -682,7 +772,19 @@ def reset_all_users_data_usage(db: Session, admin: Optional[Admin] = None):
 
     for dbuser in query.all():
         dbuser.used_traffic = 0
-        if dbuser.status not in [UserStatus.on_hold, UserStatus.expired, UserStatus.disabled]:
+        current_status_value = _status_to_str(dbuser.status)
+        should_activate = current_status_value not in (
+            UserStatus.on_hold.value,
+            UserStatus.expired.value,
+            UserStatus.disabled.value,
+        )
+        if should_activate:
+            if current_status_value != UserStatus.active.value:
+                _ensure_active_user_capacity(
+                    db,
+                    dbuser.admin,
+                    exclude_user_ids=(dbuser.id,),
+                )
             dbuser.status = UserStatus.active
         dbuser.usage_logs.clear()
         dbuser.node_usages.clear()
@@ -719,20 +821,37 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         db (Session): Database session.
         admin (Optional[Admin]): Admin to filter users by, if any.
     """
-    query_for_active_users = db.query(User).filter(User.status == UserStatus.disabled)
-    query_for_on_hold_users = db.query(User).filter(
+    disabled_users_query = db.query(User).filter(User.status == UserStatus.disabled)
+    on_hold_candidates_query = db.query(User).filter(
         and_(
-            User.status == UserStatus.disabled, User.expire.is_(
-                None), User.on_hold_expire_duration.isnot(None), User.online_at.is_(None)
-        ))
+            User.status == UserStatus.disabled,
+            User.expire.is_(None),
+            User.on_hold_expire_duration.isnot(None),
+            User.online_at.is_(None),
+        )
+    )
     if admin:
-        query_for_active_users = query_for_active_users.filter(User.admin == admin)
-        query_for_on_hold_users = query_for_on_hold_users.filter(User.admin == admin)
+        disabled_users_query = disabled_users_query.filter(User.admin == admin)
+        on_hold_candidates_query = on_hold_candidates_query.filter(User.admin == admin)
 
-    query_for_on_hold_users.update(
-        {User.status: UserStatus.on_hold, User.last_status_change: datetime.utcnow()}, synchronize_session=False)
-    query_for_active_users.update(
-        {User.status: UserStatus.active, User.last_status_change: datetime.utcnow()}, synchronize_session=False)
+    for user in on_hold_candidates_query.all():
+        user.status = UserStatus.on_hold
+        user.last_status_change = datetime.utcnow()
+
+    # Refresh query to account for users moved to on-hold status
+    disabled_users_query = db.query(User).filter(User.status == UserStatus.disabled)
+    if admin:
+        disabled_users_query = disabled_users_query.filter(User.admin == admin)
+
+    for user in disabled_users_query.all():
+        if _status_to_str(user.status) != UserStatus.active.value:
+            _ensure_active_user_capacity(
+                db,
+                user.admin,
+                exclude_user_ids=(user.id,),
+            )
+        user.status = UserStatus.active
+        user.last_status_change = datetime.utcnow()
 
     db.commit()
 
@@ -984,7 +1103,15 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
     if modified_admin.users_limit is not None:
-        dbadmin.users_limit = modified_admin.users_limit
+        new_limit = modified_admin.users_limit
+        if new_limit is not None and new_limit > 0:
+            active_count = _get_active_users_count(db, dbadmin)
+            if active_count > new_limit:
+                raise UsersLimitReachedError(
+                    limit=new_limit,
+                    current_active=active_count,
+                )
+        dbadmin.users_limit = new_limit
 
     db.commit()
     db.refresh(dbadmin)
@@ -1015,7 +1142,15 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
     if modified_admin.users_limit is not None:
-        dbadmin.users_limit = modified_admin.users_limit
+        new_limit = modified_admin.users_limit
+        if new_limit is not None and new_limit > 0:
+            active_count = _get_active_users_count(db, dbadmin)
+            if active_count > new_limit:
+                raise UsersLimitReachedError(
+                    limit=new_limit,
+                    current_active=active_count,
+                )
+        dbadmin.users_limit = new_limit
 
     db.commit()
     db.refresh(dbadmin)

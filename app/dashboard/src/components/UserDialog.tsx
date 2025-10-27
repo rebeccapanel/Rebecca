@@ -33,6 +33,7 @@ import {
 } from "@chakra-ui/react";
 import {
   ChartPieIcon,
+  LockClosedIcon,
   PencilIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
@@ -80,6 +81,19 @@ const UserUsageIcon = chakra(ChartPieIcon, {
   baseStyle: {
     w: 5,
     h: 5,
+  },
+});
+
+const LimitLockIcon = chakra(LockClosedIcon, {
+  baseStyle: {
+    w: {
+      base: 16,
+      md: 20,
+    },
+    h: {
+      base: 16,
+      md: 20,
+    },
   },
 });
 
@@ -223,9 +237,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
     onEditingUser,
     createUser,
     onDeletingUser,
+    users: usersState,
+    isUserLimitReached,
   } = useDashboard();
   const isEditing = !!editingUser;
   const isOpen = isCreatingNewUser || isEditing;
+  const usersLimit = usersState.users_limit ?? null;
+  const activeUsersCount = usersState.active_total ?? null;
+  const limitReached = isUserLimitReached && !isEditing;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>("");
   const toast = useToast();
@@ -285,6 +304,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
   }, [editingUser]);
 
   const submit = (values: FormType) => {
+    if (limitReached) {
+      return;
+    }
     setLoading(true);
     const methods = { edited: (body: UserCreate) => editUser(editingUser!.username, body), created: createUser };
     const method = isEditing ? "edited" : "created";
@@ -360,7 +382,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     useDashboard.setState({ revokeSubscriptionUser: editingUser });
   };
 
-  const disabled = loading;
+  const disabled = loading || limitReached;
   const isOnHold = userStatus === "on_hold";
 
   const [randomUsernameLoading, setrandomUsernameLoading] = useState(false);
@@ -383,8 +405,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
     <Modal isOpen={isOpen} onClose={onClose} size="2xl">
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
       <FormProvider {...form}>
-        <ModalContent mx="3">
-          <form onSubmit={form.handleSubmit(submit)}>
+        <ModalContent mx="3" position="relative" overflow="hidden">
+          <ModalCloseButton mt={3} disabled={loading} />
+          <Box
+            pointerEvents={limitReached ? "none" : "auto"}
+            filter={limitReached ? "blur(6px)" : "none"}
+            transition="filter 0.2s ease"
+          >
+            <form onSubmit={form.handleSubmit(submit)}>
             <ModalHeader pt={6}>
               <HStack gap={2}>
                 <Icon color="primary">
@@ -401,7 +429,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
                 </Text>
               </HStack>
             </ModalHeader>
-            <ModalCloseButton mt={3} disabled={disabled} />
             <ModalBody>
               <Grid
                 templateColumns={{
@@ -863,6 +890,37 @@ export const UserDialog: FC<UserDialogProps> = () => {
               </HStack>
             </ModalFooter>
           </form>
+          </Box>
+          {limitReached && (
+            <Flex
+              position="absolute"
+              inset={0}
+              align="center"
+              justify="center"
+              direction="column"
+              gap={4}
+              bg="blackAlpha.600"
+              color="white"
+              textAlign="center"
+              p={6}
+              pointerEvents="none"
+            >
+              <Icon color="primary">
+                <LimitLockIcon />
+              </Icon>
+              <Text fontSize="xl" fontWeight="semibold">
+                {t("userDialog.limitReachedTitle")}
+              </Text>
+              <Text fontSize="md" maxW="sm">
+                {usersLimit && usersLimit > 0
+                  ? t("userDialog.limitReachedBody", {
+                      limit: usersLimit,
+                      active: activeUsersCount ?? usersLimit,
+                    })
+                  : t("userDialog.limitReachedContent")}
+              </Text>
+            </Flex>
+          )}
         </ModalContent>
       </FormProvider>
     </Modal>

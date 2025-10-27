@@ -80,3 +80,10 @@ export type UseGetUserReturn = {
   getUserIsError: boolean;
   getUserError: Error | null;
 }
+
+export type UsersListResponse = {
+  users: User[];
+  total: number;
+  active_total?: number | null;
+  users_limit?: number | null;
+};

@@ -339,6 +339,8 @@ class SubscriptionUserResponse(UserResponse):
 class UsersResponse(BaseModel):
     users: List[UserResponse]
     total: int
+    active_total: Optional[int] = None
+    users_limit: Optional[int] = None
 
 
 class UserUsageResponse(BaseModel):

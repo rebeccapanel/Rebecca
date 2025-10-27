@@ -12,6 +12,7 @@ export type Admin = {
   online_users?: number | null;
   limited_users?: number | null;
   expired_users?: number | null;
+  lifetime_usage?: number | null;
 };
 
 export type AdminCreatePayload = {

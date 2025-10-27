@@ -1,6 +1,6 @@
 import { StatisticsQueryKey } from "components/Statistics";
 import { fetch } from "service/http";
-import { User, UserCreate } from "types/User";
+import { User, UserCreate, UsersListResponse } from "types/User";
 import { queryClient } from "utils/react-query";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
@@ -34,12 +34,10 @@ type DashboardStateType = {
   editingUser: User | null | undefined;
   deletingUser: User | null;
   version: string | null;
-  users: {
-    users: User[];
-    total: number;
-  };
+  users: UsersListResponse;
   inbounds: Inbounds;
   loading: boolean;
+  isUserLimitReached: boolean;
   filters: FilterType;
   subscribeUrl: string | null;
   QRcodeLinks: string[] | null;
@@ -69,15 +67,24 @@ type DashboardStateType = {
   onEditingCore: (isEditingCore: boolean) => void;
 };
 
-const fetchUsers = (query: FilterType): Promise<User[]> => {
+const fetchUsers = (query: FilterType): Promise<UsersListResponse> => {
   for (const key in query) {
     if (!query[key as keyof FilterType]) delete query[key as keyof FilterType];
   }
   useDashboard.setState({ loading: true });
-  return fetch("/users", { query })
-    .then((users) => {
-      useDashboard.setState({ users });
-      return users;
+  return fetch<UsersListResponse>("/users", { query })
+    .then((usersResponse) => {
+      const limit = usersResponse.users_limit ?? null;
+      const activeTotal = usersResponse.active_total ?? null;
+      const isUserLimitReached =
+        limit !== null && limit !== undefined && limit > 0 && activeTotal !== null
+          ? activeTotal >= limit
+          : false;
+      useDashboard.setState({
+        users: usersResponse,
+        isUserLimitReached,
+      });
+      return usersResponse;
     })
     .finally(() => {
       useDashboard.setState({ loading: false });
@@ -107,8 +114,11 @@ export const useDashboard = create(
     users: {
       users: [],
       total: 0,
+      active_total: 0,
+      users_limit: null,
     },
     loading: true,
+    isUserLimitReached: false,
     isResetingAllUsage: false,
     isEditingNodes: false,
     isShowingNodesUsage: false,
