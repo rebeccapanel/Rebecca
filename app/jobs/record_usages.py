@@ -243,16 +243,22 @@ def record_user_usages():
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
-        admin_update_stmt = update(Admin). \
-            where(Admin.id == bindparam('b_admin_id')). \
-            values(
-                users_usage=Admin.users_usage + bindparam('value'),
-                lifetime_usage=Admin.lifetime_usage + bindparam('value')
+            admin_update_stmt = (
+                update(Admin)
+                .where(Admin.id == bindparam("b_admin_id"))
+                .values(
+                    users_usage=Admin.users_usage + bindparam("value"),
+                    lifetime_usage=Admin.lifetime_usage + bindparam("value"),
+                )
             )
-        safe_execute(db, admin_update_stmt, [
-            {"b_admin_id": entry["admin_id"], "value": entry["value"]}
-            for entry in admin_data
-        ])
+            safe_execute(
+                db,
+                admin_update_stmt,
+                [
+                    {"b_admin_id": entry["admin_id"], "value": entry["value"]}
+                    for entry in admin_data
+                ],
+            )
 
         if service_usage:
             service_update_stmt = (
