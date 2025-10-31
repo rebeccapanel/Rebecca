@@ -96,6 +96,8 @@ const compactActionButtonProps = {
 };
 
 const serializeConfig = (value: any) => JSON.stringify(value ?? {});
+const formatList = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value.join(",") : value ?? "";
 
 const SettingsSection: FC<{ title: string; children: ReactNode }> = ({ title, children }) => {
   const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -288,13 +290,13 @@ export const CoreSettingsPage: FC = () => {
         config?.routing?.rules?.map((r: any, index: number) => ({
           key: index,
           ...r,
-          domain: r.domain?.join(","),
-          ip: r.ip?.join(","),
-          source: r.source?.join(","),
-          network: Array.isArray(r.network) ? r.network.join(",") : r.network,
-          user: r.user?.join(","),
-          inboundTag: r.inboundTag?.join(","),
-          protocol: r.protocol?.join(","),
+          domain: formatList(r.domain),
+          ip: formatList(r.ip),
+          source: formatList(r.source),
+          network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
+          user: formatList(r.user),
+          inboundTag: formatList(r.inboundTag),
+          protocol: formatList(r.protocol),
           attrs: JSON.stringify(r.attrs, null, 2),
         })) || []
       );
@@ -561,13 +563,13 @@ export const CoreSettingsPage: FC = () => {
             parsed.map((r: any, index: number) => ({
               key: index,
               ...r,
-              domain: r.domain?.join(","),
-              ip: r.ip?.join(","),
-              source: r.source?.join(","),
-              network: Array.isArray(r.network) ? r.network.join(",") : r.network,
-              user: r.user?.join(","),
-              inboundTag: r.inboundTag?.join(","),
-              protocol: r.protocol?.join(","),
+              domain: formatList(r.domain),
+              ip: formatList(r.ip),
+              source: formatList(r.source),
+              network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
+              user: formatList(r.user),
+              inboundTag: formatList(r.inboundTag),
+              protocol: formatList(r.protocol),
               attrs: JSON.stringify(r.attrs, null, 2),
             }))
           );
@@ -582,13 +584,13 @@ export const CoreSettingsPage: FC = () => {
             parsed?.routing?.rules?.map((r: any, index: number) => ({
               key: index,
               ...r,
-              domain: r.domain?.join(","),
-              ip: r.ip?.join(","),
-              source: r.source?.join(","),
-              network: Array.isArray(r.network) ? r.network.join(",") : r.network,
-              user: r.user?.join(","),
-              inboundTag: r.inboundTag?.join(","),
-              protocol: r.protocol?.join(","),
+              domain: formatList(r.domain),
+              ip: formatList(r.ip),
+              source: formatList(r.source),
+              network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
+              user: formatList(r.user),
+              inboundTag: formatList(r.inboundTag),
+              protocol: formatList(r.protocol),
               attrs: JSON.stringify(r.attrs, null, 2),
             })) || []
           );
@@ -1318,8 +1320,8 @@ export const CoreSettingsPage: FC = () => {
                               </HStack>
                             </Td>
                             <Td>{typeof dns === "object" ? dns.address : dns}</Td>
-                            <Td>{typeof dns === "object" ? dns.domains?.join(",") : ""}</Td>
-                            <Td>{typeof dns === "object" ? dns.expectIPs?.join(",") : ""}</Td>
+                            <Td>{typeof dns === "object" ? formatList(dns.domains) : ""}</Td>
+                            <Td>{typeof dns === "object" ? formatList(dns.expectIPs) : ""}</Td>
                           </Tr>
                         ))}
                       </Tbody>

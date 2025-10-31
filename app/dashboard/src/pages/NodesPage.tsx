@@ -40,6 +40,7 @@ import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { DeleteNodeModal } from "../components/DeleteNodeModal";
 import { fetch as apiFetch } from "service/http";
+import { formatBytes } from "utils/formatByte";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
@@ -77,7 +78,7 @@ export const NodesPage: FC = () => {
     refetch: refetchNodes,
     isFetching,
   } = useNodesQuery();
-  const { addNode, updateNode, reconnectNode, setDeletingNode } = useNodes();
+  const { addNode, updateNode, reconnectNode, resetNodeUsage, setDeletingNode } = useNodes();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -93,6 +94,7 @@ export const NodesPage: FC = () => {
   const [updatingMasterGeo, setUpdatingMasterGeo] = useState(false);
   const [togglingNodeId, setTogglingNodeId] = useState<number | null>(null);
   const [pendingStatus, setPendingStatus] = useState<Record<number, boolean>>({});
+  const [resettingNodeId, setResettingNodeId] = useState<number | null>(null);
 
   const {
     data: coreStats,
@@ -157,6 +159,19 @@ export const NodesPage: FC = () => {
     },
   });
 
+  const { isLoading: isResettingUsage, mutate: resetUsageMutate } = useMutation(resetNodeUsage, {
+    onSuccess: () => {
+      generateSuccessMessage(t("nodes.resetUsageSuccess", "Node usage reset"), toast);
+      queryClient.invalidateQueries(FetchNodesQueryKey);
+    },
+    onError: (err) => {
+      generateErrorMessage(err, toast);
+    },
+    onSettled: () => {
+      setResettingNodeId(null);
+    },
+  });
+
   const handleToggleNode = (node: NodeType) => {
     if (!node?.id) return;
     const isEnabled = node.status !== "disabled";
@@ -165,6 +180,12 @@ export const NodesPage: FC = () => {
     setTogglingNodeId(nodeId);
     setPendingStatus((prev) => ({ ...prev, [nodeId]: !isEnabled }));
     toggleNodeStatus({ ...node, status: nextStatus });
+  };
+
+  const handleResetNodeUsage = (node: NodeType) => {
+    if (!node?.id) return;
+    setResettingNodeId(node.id);
+    resetUsageMutate(node);
   };
 
   const closeVersionDialog = () => setVersionDialogTarget(null);
@@ -612,7 +633,7 @@ export const NodesPage: FC = () => {
             filteredNodes.map((node) => {
               const status = node.status || "error";
               const nodeId = node?.id as number | undefined;
-              const isEnabled = status !== "disabled";
+              const isEnabled = status !== "disabled" && status !== "limited";
               const pending = nodeId != null ? pendingStatus[nodeId] : undefined;
               const displayEnabled = pending ?? isEnabled;
               const isToggleLoading = nodeId != null && togglingNodeId === nodeId && isToggling;
@@ -683,7 +704,25 @@ export const NodesPage: FC = () => {
                         >
                           {t("nodes.updateGeoAction", "Update geo")}
                         </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => handleResetNodeUsage(node)}
+                          isLoading={isResettingUsage && nodeId != null && resettingNodeId === nodeId}
+                          isDisabled={!nodeId}
+                        >
+                          {t("nodes.resetUsage", "Reset usage")}
+                        </Button>
                       </HStack>
+                      {status === "limited" && (
+                        <Text fontSize="sm" color="red.500">
+                          {t(
+                            "nodes.limitedStatusDescription",
+                            "This node is limited because its data limit is exhausted. Increase the limit or reset usage to reconnect it."
+                          )}
+                        </Text>
+                      )}
                     </Stack>
 
                     <Divider />
@@ -711,6 +750,24 @@ export const NodesPage: FC = () => {
                           {t("nodes.usageCoefficient", "Usage coefficient")}
                         </Text>
                         <Text fontWeight="medium">{node.usage_coefficient}</Text>
+                      </Box>
+                      <Box>
+                        <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                          {t("nodes.totalUsage", "Total usage")}
+                        </Text>
+                        <Text fontWeight="medium">
+                          {formatBytes((node.uplink ?? 0) + (node.downlink ?? 0), 2)}
+                        </Text>
+                      </Box>
+                      <Box>
+                        <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                          {t("nodes.dataLimitLabel", "Data limit")}
+                        </Text>
+                        <Text fontWeight="medium">
+                          {node.data_limit != null && node.data_limit > 0
+                            ? formatBytes(node.data_limit, 2)
+                            : t("nodes.unlimited", "Unlimited")}
+                        </Text>
                       </Box>
                     </SimpleGrid>
                     <Divider />
@@ -792,3 +849,5 @@ export const NodesPage: FC = () => {
 };
 
 export default NodesPage;
+
+

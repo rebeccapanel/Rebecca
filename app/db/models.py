@@ -415,6 +415,7 @@ class Node(Base):
     usages = relationship("NodeUsage", back_populates="node", cascade="all, delete-orphan")
     usage_coefficient = Column(Float, nullable=False, server_default=text("1.0"), default=1)
     geo_mode = Column(Enum(GeoMode), nullable=False, default=GeoMode.default)
+    data_limit = Column(BigInteger, nullable=True, default=None)
 
 
 class NodeUserUsage(Base):

@@ -1,6 +1,6 @@
 {
   "translatedbyai": "Translated by AI",
-  ",": ",", 
+  ",": ",",
   "DNS": "DNS",
   "UsersUsage": "您的用量",
   "actions": "Actions",
@@ -667,5 +667,17 @@
   "usage.tabs.nodes": "Nodes",
   "usage.nodes.description": "See how traffic is distributed across your nodes.",
   "usage.nodes.total": "Total usage",
-  "usersTable.sortByExpire": "按过期时间排序"
+  "usersTable.sortByExpire": "按过期时间排序",
+  "nodeModal.status.limited": "已限制",
+  "nodes.totalUsage": "总流量",
+  "nodes.dataLimitLabel": "流量上限",
+  "nodes.unlimited": "不限量",
+  "nodes.limitedStatusDescription": "该节点因流量上限已用尽而被限制。请提高上限或重置使用量以重新连接。",
+  "nodes.dataLimitField": "流量上限 (GB)",
+  "nodes.dataLimitPlaceholder": "例如 500（留空 = 不限量）",
+  "nodes.dataLimitHint": "留空即为不限量。",
+  "nodes.dataLimitValidation": "流量上限必须是有效数字",
+  "nodes.dataLimitPositive": "流量上限必须大于或等于 0",
+  "nodes.resetUsage": "重置流量",
+  "nodes.resetUsageSuccess": "节点流量已重置"
 }

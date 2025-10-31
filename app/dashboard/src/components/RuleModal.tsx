@@ -29,6 +29,7 @@ interface RuleModalProps {
 
 export const RuleModal: FC<RuleModalProps> = ({ isOpen, onClose, form, setRoutingRuleData, ruleIndex }) => {
   const { t } = useTranslation();
+  const formatList = (value: string[] | string | undefined) => (Array.isArray(value) ? value.join(",") : value ?? "");
   const modalForm = useForm({
     defaultValues: {
       inboundTag: "",
@@ -72,16 +73,16 @@ export const RuleModal: FC<RuleModalProps> = ({ isOpen, onClose, form, setRoutin
       currentRules.map((r: any, index: number) => ({
         key: index,
         ...r,
-        domain: r.domain?.join(","),
-        ip: r.ip?.join(","),
-        source: r.source?.join(","),
-        user: r.user?.join(","),
-        inboundTag: r.inboundTag?.join(","),
-        protocol: r.protocol?.join(","),
+        domain: formatList(r.domain),
+        ip: formatList(r.ip),
+        source: formatList(r.source),
+        user: formatList(r.user),
+        inboundTag: formatList(r.inboundTag),
+        protocol: formatList(r.protocol),
         attrs: JSON.stringify(r.attrs, null, 2),
-        port: r.port?.join(","),
-        sourcePort: r.sourcePort?.join(","),
-        network: r.network?.join(","),
+        port: formatList(r.port),
+        sourcePort: formatList(r.sourcePort),
+        network: formatList(r.network),
       }))
     );
     onClose();

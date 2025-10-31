@@ -14,12 +14,14 @@ from app.db import GetDB
 from app.db.models import (
     Admin,
     AdminServiceLink,
+    Node,
     NodeUsage,
     NodeUserUsage,
     Service,
     System,
     User,
 )
+from app.models.node import NodeStatus
 from config import (
     DISABLE_RECORDING_NODE_USAGE,
     JOB_RECORD_NODE_USAGES_INTERVAL,
@@ -95,6 +97,11 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     if not params:
         return
 
+    total_up = sum(p.get("up", 0) for p in params)
+    total_down = sum(p.get("down", 0) for p in params)
+    limited_triggered = False
+    limit_cleared = False
+
     created_at = datetime.fromisoformat(datetime.utcnow().strftime('%Y-%m-%dT%H:00:00'))
 
     with GetDB() as db:
@@ -113,6 +120,42 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
             where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
 
         safe_execute(db, stmt, params)
+
+        if node_id is not None and (total_up or total_down):
+            dbnode = db.query(Node).filter(Node.id == node_id).with_for_update().first()
+            if dbnode:
+                dbnode.uplink = (dbnode.uplink or 0) + total_up
+                dbnode.downlink = (dbnode.downlink or 0) + total_down
+
+                current_usage = (dbnode.uplink or 0) + (dbnode.downlink or 0)
+                limit = dbnode.data_limit
+
+                if limit is not None and current_usage >= limit:
+                    if dbnode.status != NodeStatus.limited:
+                        dbnode.status = NodeStatus.limited
+                        dbnode.message = "Data limit reached"
+                        dbnode.xray_version = None
+                        dbnode.last_status_change = datetime.utcnow()
+                        limited_triggered = True
+                else:
+                    if dbnode.status == NodeStatus.limited:
+                        dbnode.status = NodeStatus.connecting
+                        dbnode.message = None
+                        dbnode.xray_version = None
+                        dbnode.last_status_change = datetime.utcnow()
+                        limit_cleared = True
+
+                db.commit()
+            else:
+                db.commit()
+
+    if limited_triggered:
+        try:
+            xray.operations.remove_node(node_id)
+        except Exception:
+            pass
+    elif limit_cleared:
+        xray.operations.connect_node(node_id)
 
 
 def get_users_stats(api: XRayAPI):
@@ -200,18 +243,21 @@ def record_user_usages():
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
-            admin_update_stmt = update(Admin). \
-                where(Admin.id == bindparam('admin_id')). \
-                values(
-                    users_usage=Admin.users_usage + bindparam('value'),
-                    lifetime_usage=Admin.lifetime_usage + bindparam('value')
-                )
-            safe_execute(db, admin_update_stmt, admin_data)
+        admin_update_stmt = update(Admin). \
+            where(Admin.id == bindparam('b_admin_id')). \
+            values(
+                users_usage=Admin.users_usage + bindparam('value'),
+                lifetime_usage=Admin.lifetime_usage + bindparam('value')
+            )
+        safe_execute(db, admin_update_stmt, [
+            {"b_admin_id": entry["admin_id"], "value": entry["value"]}
+            for entry in admin_data
+        ])
 
         if service_usage:
             service_update_stmt = (
                 update(Service)
-                .where(Service.id == bindparam("service_id"))
+                .where(Service.id == bindparam("b_service_id"))
                 .values(
                     used_traffic=Service.used_traffic + bindparam("value"),
                     lifetime_used_traffic=Service.lifetime_used_traffic + bindparam("value"),
@@ -219,7 +265,7 @@ def record_user_usages():
                 )
             )
             service_params = [
-                {"service_id": sid, "value": value}
+                {"b_service_id": sid, "value": value}
                 for sid, value in service_usage.items()
             ]
             safe_execute(db, service_update_stmt, service_params)
@@ -229,8 +275,8 @@ def record_user_usages():
                 update(AdminServiceLink)
                 .where(
                     and_(
-                        AdminServiceLink.admin_id == bindparam("admin_id"),
-                        AdminServiceLink.service_id == bindparam("service_id"),
+                        AdminServiceLink.admin_id == bindparam("b_admin_id"),
+                        AdminServiceLink.service_id == bindparam("b_service_id"),
                     )
                 )
                 .values(
@@ -241,8 +287,8 @@ def record_user_usages():
             )
             admin_service_params = [
                 {
-                    "admin_id": admin_id,
-                    "service_id": service_id,
+                    "b_admin_id": admin_id,
+                    "b_service_id": service_id,
                     "value": value,
                 }
                 for (admin_id, service_id), value in admin_service_usage.items()

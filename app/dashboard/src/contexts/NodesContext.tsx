@@ -18,12 +18,15 @@ export const NodeSchema = z.object({
   xray_version: z.string().nullable().optional(),
   id: z.number().nullable().optional(),
   status: z
-    .enum(["connected", "connecting", "error", "disabled"])
+    .enum(["connected", "connecting", "error", "disabled", "limited"])
     .nullable()
     .optional(),
   message: z.string().nullable().optional(),
   add_as_new_host: z.boolean().optional(),
   usage_coefficient: z.number().or(z.string().transform((v) => parseFloat(v))),
+  data_limit: z.number().nullable().optional(),
+  uplink: z.number().nullable().optional(),
+  downlink: z.number().nullable().optional(),
 });
 
 export type NodeType = z.infer<typeof NodeSchema>;
@@ -35,6 +38,9 @@ export const getNodeDefaultValues = (): NodeType => ({
   api_port: 62051,
   xray_version: "",
   usage_coefficient: 1,
+  data_limit: null,
+  uplink: 0,
+  downlink: 0,
 });
 
 export const FetchNodesQueryKey = "fetch-nodes-query-key";
@@ -46,6 +52,7 @@ export type NodeStore = {
   fetchNodesUsage: (query: FilterUsageType) => Promise<any>;
   updateNode: (node: NodeType) => Promise<unknown>;
   reconnectNode: (node: NodeType) => Promise<unknown>;
+  resetNodeUsage: (node: NodeType) => Promise<unknown>;
   deletingNode?: NodeType | null;
   deleteNode: () => Promise<unknown>;
   setDeletingNode: (node: NodeType | null) => void;
@@ -83,6 +90,11 @@ export const useNodes = create<NodeStore>((set, get) => ({
   },
   reconnectNode(body) {
     return fetch(`/node/${body.id}/reconnect`, {
+      method: "POST",
+    });
+  },
+  resetNodeUsage(body) {
+    return fetch(`/node/${body.id}/usage/reset`, {
       method: "POST",
     });
   },

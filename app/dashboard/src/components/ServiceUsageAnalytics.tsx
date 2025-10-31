@@ -446,26 +446,28 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({ services
                 {rangeLabel}
               </Button>
             </PopoverTrigger>
-            <PopoverContent w="auto">
+            <PopoverContent w="auto" maxW="calc(100vw - 2rem)" _focus={{ outline: "none" }}>
               <PopoverArrow />
-              <PopoverBody>
-                <ReactDatePicker
-                  selectsRange
-                  inline
-                  maxDate={new Date()}
-                  startDate={draftRange[0] ?? undefined}
-                  endDate={draftRange[1] ?? undefined}
-                  onChange={(dates) => {
-                    const [start, end] = (dates ?? []) as [Date | null, Date | null];
-                    setDraftRange([start, end]);
-                    if (start && end) {
-                      const normalized = normalizeCustomRange(start, end);
-                      setSelectedPresetKey("custom");
-                      setRange(normalized);
-                      setCalendarOpen(false);
-                    }
-                  }}
-                />
+              <PopoverBody px={3} py={3}>
+                <Box overflowX="auto">
+                  <ReactDatePicker
+                    selectsRange
+                    inline
+                    maxDate={new Date()}
+                    startDate={draftRange[0] ?? undefined}
+                    endDate={draftRange[1] ?? undefined}
+                    onChange={(dates) => {
+                      const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                      setDraftRange([start, end]);
+                      if (start && end) {
+                        const normalized = normalizeCustomRange(start, end);
+                        setSelectedPresetKey("custom");
+                        setRange(normalized);
+                        setCalendarOpen(false);
+                      }
+                    }}
+                  />
+                </Box>
                 <Text mt={2} fontSize="xs" color="gray.500">
                   {t("nodes.customRangeHint", "Select a start and end date")}
                 </Text>

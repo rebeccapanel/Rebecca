@@ -222,24 +222,26 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
             {rangeLabel}
           </Button>
         </PopoverTrigger>
-        <PopoverContent w="auto">
+        <PopoverContent w="auto" maxW="calc(100vw - 2rem)" _focus={{ outline: "none" }}>
           <PopoverArrow />
-          <PopoverBody>
-            <ReactDatePicker
-              selectsRange
-              inline
-              maxDate={new Date()}
-              startDate={draftRange[0] ?? undefined}
-              endDate={draftRange[1] ?? undefined}
-              onChange={(dates) => {
-                const [start, end] = (dates ?? []) as [Date | null, Date | null];
-                setDraftRange([start, end]);
-                if (start && end) {
-                  onCustomChange(start, end);
-                  setCalendarOpen(false);
-                }
-              }}
-            />
+          <PopoverBody px={3} py={3}>
+            <Box overflowX="auto">
+              <ReactDatePicker
+                selectsRange
+                inline
+                maxDate={new Date()}
+                startDate={draftRange[0] ?? undefined}
+                endDate={draftRange[1] ?? undefined}
+                onChange={(dates) => {
+                  const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                  setDraftRange([start, end]);
+                  if (start && end) {
+                    onCustomChange(start, end);
+                    setCalendarOpen(false);
+                  }
+                }}
+              />
+            </Box>
             <Text mt={2} fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
               {t("nodes.customRangeHint", "Select a start and end date")}
             </Text>

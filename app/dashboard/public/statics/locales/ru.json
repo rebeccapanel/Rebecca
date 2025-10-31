@@ -666,5 +666,17 @@
   "usage.tabs.admins": "Admins",
   "usage.tabs.nodes": "Nodes",
   "usage.nodes.description": "See how traffic is distributed across your nodes.",
-  "usage.nodes.total": "Total usage"
+  "usage.nodes.total": "Total usage",
+  "nodeModal.status.limited": "Ограничено",
+  "nodes.totalUsage": "Общий трафик",
+  "nodes.dataLimitLabel": "Лимит трафика",
+  "nodes.unlimited": "Безлимитно",
+  "nodes.limitedStatusDescription": "У узла закончился лимит трафика. Увеличьте лимит или сбросьте использование, чтобы подключить его снова.",
+  "nodes.dataLimitField": "Лимит трафика (ГБ)",
+  "nodes.dataLimitPlaceholder": "например, 500 (пусто = без лимита)",
+  "nodes.dataLimitHint": "Оставьте пустым для безлимитного трафика.",
+  "nodes.dataLimitValidation": "Лимит трафика должен быть числом",
+  "nodes.dataLimitPositive": "Лимит трафика должен быть не меньше нуля",
+  "nodes.resetUsage": "Сбросить трафик",
+  "nodes.resetUsageSuccess": "Трафик узла сброшен"
 }

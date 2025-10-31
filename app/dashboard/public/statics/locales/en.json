@@ -293,6 +293,7 @@
   "nodeModal.status.connecting": "Connecting",
   "nodeModal.status.disabled": "Disabled",
   "nodeModal.status.error": "Error",
+  "nodeModal.status.limited": "Limited",
   "nodes.addHostForEveryInbound": "Add this node as a new host for every inbound",
   "nodes.addNewMarzbanNode": "Add New Rebecca Node",
   "nodes.addNode": "Add Node",
@@ -398,6 +399,15 @@
   "nodes.updateCoreAction": "Update core",
   "nodes.updateGeoAction": "Update geo",
   "nodes.usageCoefficient": "Usage Ratio",
+  "nodes.totalUsage": "Total usage",
+  "nodes.dataLimitLabel": "Data limit",
+  "nodes.unlimited": "Unlimited",
+  "nodes.limitedStatusDescription": "This node is limited because its data limit is exhausted. Increase the limit or reset usage to reconnect it.",
+  "nodes.dataLimitField": "Data Limit (GB)",
+  "nodes.dataLimitPlaceholder": "e.g., 500 (empty = unlimited)",
+  "nodes.dataLimitHint": "Leave empty for unlimited data.",
+  "nodes.dataLimitValidation": "Data limit must be a valid number",
+  "nodes.dataLimitPositive": "Data limit must be zero or greater",
   "nodes.usedTrafficSeries": "Used traffic",
   "nodes.versionUnknown": "Version unknown",
   "on_hold": "On Hold",
@@ -665,5 +675,7 @@
   "usage.tabs.admins": "Admins",
   "usage.tabs.nodes": "Nodes",
   "usage.nodes.description": "See how traffic is distributed across your nodes.",
-  "usage.nodes.total": "Total usage"
+  "usage.nodes.total": "Total usage",
+  "nodes.resetUsage": "Reset usage",
+  "nodes.resetUsageSuccess": "Node usage reset"
 }

@@ -466,7 +466,10 @@ const SortRow: FC<SortRowProps> = ({ host, index }) => {
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
       dragControls.start(event);
     },
     [dragControls]
@@ -482,7 +485,7 @@ const SortRow: FC<SortRowProps> = ({ host, index }) => {
       dragMomentum={false}
       whileDrag={{ zIndex: 10, scale: 1.01 }}
       dragTransition={{ bounceStiffness: 600, bounceDamping: 40 }}
-      style={{ listStyle: "none" }}
+      style={{ listStyle: "none", touchAction: "none" }}
     >
       <HStack
         borderWidth="1px"
@@ -502,6 +505,7 @@ const SortRow: FC<SortRowProps> = ({ host, index }) => {
             icon={<HandleIcon />}
             cursor="grab"
             onPointerDown={handlePointerDown}
+            style={{ touchAction: "none" }}
           />
         </Tooltip>
         <Tag colorScheme="gray" size="sm">

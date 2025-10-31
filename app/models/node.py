@@ -9,6 +9,7 @@ class NodeStatus(str, Enum):
     connecting = "connecting"
     error = "error"
     disabled = "disabled"
+    limited = "limited"
 
 
 class GeoMode(str, Enum):
@@ -27,6 +28,11 @@ class Node(BaseModel):
     port: int = 62050
     api_port: int = 62051
     usage_coefficient: float = Field(gt=0, default=1.0)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit for the node in bytes (null = unlimited)",
+        example=107374182400,
+    )
 
 
 class NodeCreate(Node):
@@ -53,6 +59,7 @@ class NodeModify(Node):
     status: Optional[NodeStatus] = Field(None, nullable=True)
     usage_coefficient: Optional[float] = Field(None, nullable=True)
     geo_mode: Optional[GeoMode] = Field(None, nullable=True)
+    data_limit: Optional[int] = Field(None, nullable=True)
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "name": "DE node",
@@ -72,6 +79,8 @@ class NodeResponse(Node):
     status: NodeStatus
     message: Optional[str] = None
     geo_mode: GeoMode
+    uplink: int = 0
+    downlink: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 

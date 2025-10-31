@@ -671,5 +671,17 @@
   "dateInfo.min": " دقیقه",
   "dateInfo.month": " ماه",
   "dateInfo.year": " سال",
-  "header.donation": "کمک مالی"
+  "header.donation": "کمک مالی",
+  "nodeModal.status.limited": "محدود",
+  "nodes.totalUsage": "مصرف کل",
+  "nodes.dataLimitLabel": "سقف حجم",
+  "nodes.unlimited": "نامحدود",
+  "nodes.limitedStatusDescription": "این نود به خاطر اتمام سقف حجم محدود شده است. برای فعال‌سازی دوباره، سقف را افزایش دهید یا مصرف را ریست کنید.",
+  "nodes.dataLimitField": "سقف حجم (گیگابایت)",
+  "nodes.dataLimitPlaceholder": "مثال: ۵۰۰ (خالی = نامحدود)",
+  "nodes.dataLimitHint": "برای نامحدود گذاشتن خالی بگذارید.",
+  "nodes.dataLimitValidation": "سقف حجم باید یک عدد معتبر باشد",
+  "nodes.dataLimitPositive": "سقف حجم باید صفر یا بیشتر باشد",
+  "nodes.resetUsage": "ریست حجم",
+  "nodes.resetUsageSuccess": "مصرف نود ریست شد"
 }

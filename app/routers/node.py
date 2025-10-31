@@ -167,11 +167,25 @@ def modify_node(
     """Update a node's details. Only accessible to sudo admins."""
     updated_node = crud.update_node(db, dbnode, modified_node)
     xray.operations.remove_node(updated_node.id)
-    if updated_node.status != NodeStatus.disabled:
+    if updated_node.status not in {NodeStatus.disabled, NodeStatus.limited}:
         bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
 
     logger.info(f'Node "{dbnode.name}" modified')
     return dbnode
+
+
+@router.post("/node/{node_id}/usage/reset", response_model=NodeResponse)
+def reset_node_usage(
+    bg: BackgroundTasks,
+    dbnode: NodeResponse = Depends(get_node),
+    db: Session = Depends(get_db),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Reset the tracked data usage of a node."""
+    updated_node = crud.reset_node_usage(db, dbnode)
+    bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
+    logger.info(f'Node "{dbnode.name}" usage reset')
+    return updated_node
 
 
 @router.post("/node/{node_id}/reconnect")

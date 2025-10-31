@@ -41,6 +41,8 @@ const EyeSlashIconStyled = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
 const CopyIconStyled = chakra(DocumentDuplicateIcon, { baseStyle: { w: 4, h: 4 } });
 const DownloadIconStyled = chakra(ArrowDownTrayIcon, { baseStyle: { w: 4, h: 4 } });
 
+const BYTES_IN_GB = 1024 * 1024 * 1024;
+
 const getInputError = (error: unknown): string | undefined => {
   if (error && typeof error === "object" && "message" in error) {
     const message = (error as { message?: unknown }).message;
@@ -77,9 +79,35 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     queryFn: () => fetch<{ min_node_version: string; certificate: string }>("/node/settings"),
   });
 
+  const formatDataLimitForInput = (value?: number | null) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const gbValue = value / BYTES_IN_GB;
+    if (!Number.isFinite(gbValue)) {
+      return null;
+    }
+    const rounded = Math.round(gbValue * 100) / 100;
+    return rounded;
+  };
+
+  const convertLimitToBytes = (value?: number | null) =>
+    value === null || value === undefined ? null : Math.round(value * BYTES_IN_GB);
+
+  const baseDefaults = isAddMode
+    ? { ...getNodeDefaultValues(), add_as_new_host: false }
+    : {
+        ...getNodeDefaultValues(),
+        ...node,
+        add_as_new_host: false,
+      };
+
   const form = useForm({
     resolver: zodResolver(NodeSchema),
-    defaultValues: isAddMode ? { ...getNodeDefaultValues(), add_as_new_host: false } : node,
+    defaultValues: {
+      ...baseDefaults,
+      data_limit: formatDataLimitForInput(baseDefaults.data_limit ?? null),
+    },
   });
 
   const certificateValue = nodeSettings?.certificate ?? "";
@@ -89,8 +117,15 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     if (isOpen) {
       const defaults = isAddMode
         ? { ...getNodeDefaultValues(), add_as_new_host: false }
-        : node ?? getNodeDefaultValues();
-      form.reset(defaults);
+        : {
+            ...getNodeDefaultValues(),
+            ...node,
+            add_as_new_host: false,
+          };
+      form.reset({
+        ...defaults,
+        data_limit: formatDataLimitForInput(defaults.data_limit ?? null),
+      });
       setShowCertificate(isAddMode && !!certificateValue);
     }
   }, [isOpen, isAddMode, node, form, certificateValue]);
@@ -111,7 +146,11 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
   }, [node, isAddMode, isOpen, fetchNodesUsage]);
 
   const handleSubmit = form.handleSubmit((data) => {
-    mutate(data);
+    const payload = {
+      ...data,
+      data_limit: convertLimitToBytes(data.data_limit ?? null),
+    };
+    mutate(payload);
   });
 
   const handleCopyCertificate = () => {
@@ -284,6 +323,44 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   error={getInputError(form.formState?.errors?.usage_coefficient)}
                 />
               </FormControl>
+              <FormControl>
+                <Input
+                  label={t("nodes.dataLimitField", "Data Limit (GB)")}
+                  size="sm"
+                  type="number"
+                  step={0.01}
+                  min={0}
+                  placeholder={t("nodes.dataLimitPlaceholder", "e.g., 500 (empty = unlimited)")}
+                  {...form.register("data_limit", {
+                    setValueAs: (value) => {
+                      if (value === "" || value === null || value === undefined) {
+                        return null;
+                      }
+                      const parsed = Number(value);
+                      return Number.isFinite(parsed) ? parsed : Number.NaN;
+                    },
+                    validate: (value) => {
+                      if (value === null || value === undefined) {
+                        return true;
+                      }
+                      if (Number.isNaN(value)) {
+                        return t(
+                          "nodes.dataLimitValidation",
+                          "Data limit must be a valid number"
+                        );
+                      }
+                      return value >= 0 || t(
+                        "nodes.dataLimitPositive",
+                        "Data limit must be zero or greater"
+                      );
+                    },
+                  })}
+                  error={getInputError(form.formState?.errors?.data_limit)}
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
+                </Text>
+              </FormControl>
             </Stack>
 
             {isAddMode && (
@@ -307,3 +384,4 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     </Modal>
   );
 };
+

@@ -1585,7 +1585,9 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         hashed_password=admin.hashed_password,
         is_sudo=admin.is_sudo,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
-        discord_webhook=admin.discord_webhook if admin.discord_webhook else None
+        discord_webhook=admin.discord_webhook if admin.discord_webhook else None,
+        data_limit=admin.data_limit if admin.data_limit is not None else None,
+        users_limit=admin.users_limit if admin.users_limit is not None else None,
     )
     db.add(dbadmin)
     db.commit()
@@ -2021,7 +2023,7 @@ def get_nodes(db: Session,
             query = query.filter(Node.status == status)
 
     if enabled:
-        query = query.filter(Node.status != NodeStatus.disabled)
+        query = query.filter(Node.status.notin_([NodeStatus.disabled, NodeStatus.limited]))
 
     return query.all()
 
@@ -2076,10 +2078,15 @@ def create_node(db: Session, node: NodeCreate) -> Node:
     Returns:
         Node: The newly created Node object.
     """
-    dbnode = Node(name=node.name,
-                  address=node.address,
-                  port=node.port,
-                  api_port=node.api_port)
+    dbnode = Node(
+        name=node.name,
+        address=node.address,
+        port=node.port,
+        api_port=node.api_port,
+        usage_coefficient=node.usage_coefficient if getattr(node, "usage_coefficient", None) else 1,
+        data_limit=node.data_limit if getattr(node, "data_limit", None) is not None else None,
+        geo_mode=node.geo_mode,
+    )
 
     db.add(dbnode)
     db.commit()
@@ -2129,15 +2136,35 @@ def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
     if modify.api_port is not None:
         dbnode.api_port = modify.api_port
 
-    if modify.status is NodeStatus.disabled:
-        dbnode.status = modify.status
-        dbnode.xray_version = None
-        dbnode.message = None
+    if modify.status is not None:
+        if modify.status is NodeStatus.disabled:
+            dbnode.status = modify.status
+            dbnode.xray_version = None
+            dbnode.message = None
+        elif modify.status is NodeStatus.limited:
+            dbnode.status = NodeStatus.limited
+            dbnode.message = "Data limit reached"
+        else:
+            dbnode.status = NodeStatus.connecting
     else:
-        dbnode.status = NodeStatus.connecting
+        if dbnode.status not in {NodeStatus.disabled, NodeStatus.limited}:
+            dbnode.status = NodeStatus.connecting
 
-    if modify.usage_coefficient:
+    if modify.usage_coefficient is not None:
         dbnode.usage_coefficient = modify.usage_coefficient
+
+    data_limit_updated = False
+    if modify.data_limit is not None:
+        dbnode.data_limit = modify.data_limit
+        data_limit_updated = True
+
+    if data_limit_updated:
+        usage_total = (dbnode.uplink or 0) + (dbnode.downlink or 0)
+        if dbnode.data_limit is None or usage_total < dbnode.data_limit:
+            if modify.status is None and dbnode.status == NodeStatus.limited:
+                dbnode.status = NodeStatus.connecting
+                dbnode.message = None
+
 
     db.commit()
     db.refresh(dbnode)
@@ -2162,6 +2189,29 @@ def update_node_status(db: Session, dbnode: Node, status: NodeStatus, message: s
     dbnode.message = message
     dbnode.xray_version = version
     dbnode.last_status_change = datetime.utcnow()
+    db.commit()
+    db.refresh(dbnode)
+    return dbnode
+
+
+def reset_node_usage(db: Session, dbnode: Node) -> Node:
+    """
+    Resets the stored data usage metrics for a node.
+
+    Args:
+        db (Session): The database session.
+        dbnode (Node): The node whose usage should be reset.
+
+    Returns:
+        Node: The updated node object.
+    """
+    db.query(NodeUsage).filter(NodeUsage.node_id == dbnode.id).delete(synchronize_session=False)
+    db.query(NodeUserUsage).filter(NodeUserUsage.node_id == dbnode.id).delete(synchronize_session=False)
+
+    dbnode.uplink = 0
+    dbnode.downlink = 0
+    dbnode.status = NodeStatus.connected
+    dbnode.message = None
     db.commit()
     db.refresh(dbnode)
     return dbnode

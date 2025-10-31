@@ -205,6 +205,10 @@ def connect_node(node_id, config=None):
     if not dbnode:
         return
 
+    if dbnode.status == NodeStatus.limited:
+        logger.info("Skipping connect for limited node %s", dbnode.name)
+        return
+
     try:
         node = xray.nodes[dbnode.id]
         assert node.connected
@@ -242,6 +246,10 @@ def restart_node(node_id, config=None):
         dbnode = crud.get_node_by_id(db, node_id)
 
     if not dbnode:
+        return
+
+    if dbnode.status == NodeStatus.limited:
+        logger.info("Skipping restart for limited node %s", dbnode.name)
         return
 
     try:
