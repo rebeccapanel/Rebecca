@@ -18,7 +18,7 @@ type AdminsStore = {
   adminInDialog: Admin | null;
   isAdminDetailsOpen: boolean;
   adminInDetails: Admin | null;
-  fetchAdmins: () => Promise<void>;
+  fetchAdmins: (overrides?: Partial<AdminFilters>) => Promise<void>;
   setFilters: (filters: Partial<AdminFilters>) => void;
   onFilterChange: (filters: Partial<AdminFilters>) => void;
   createAdmin: (payload: AdminCreatePayload) => Promise<void>;
@@ -49,8 +49,12 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
   adminInDialog: null,
   isAdminDetailsOpen: false,
   adminInDetails: null,
-  async fetchAdmins() {
-    const { filters } = get();
+  async fetchAdmins(overrides) {
+    const { filters: stateFilters } = get();
+    const filters = {
+      ...stateFilters,
+      ...overrides,
+    };
     const query: Record<string, string | number> = {};
     if (filters.search) {
       query.username = filters.search;

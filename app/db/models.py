@@ -16,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
@@ -39,6 +40,13 @@ class Admin(Base):
     username = Column(String(34), unique=True, index=True)
     hashed_password = Column(String(128))
     users = relationship("User", back_populates="admin")
+    service_links = relationship(
+        "AdminServiceLink",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    services = association_proxy("service_links", "service")
     created_at = Column(DateTime, default=datetime.utcnow)
     is_sudo = Column(Boolean, default=False)
     password_reset_at = Column(DateTime, nullable=True)
@@ -98,6 +106,9 @@ class User(Base):
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
 
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
+    service = relationship("Service", back_populates="users")
+
     next_plan = relationship(
         "NextPlan",
         uselist=False,
@@ -146,6 +157,16 @@ class User(Base):
                     _[proxy.type].append(inbound["tag"])
 
         return _
+
+    @property
+    def service_host_orders(self):
+        if not self.service:
+            return {}
+        return {link.host_id: link.sort for link in self.service.host_links}
+
+    @property
+    def service_name(self):
+        return self.service.name if self.service else None
 
 
 excluded_inbounds_association = Table(
@@ -268,6 +289,86 @@ class ProxyHost(Base):
     noise_setting = Column(String(2000), nullable=True)
     random_user_agent = Column(Boolean, nullable=False, default=False, server_default='0')
     use_sni_as_host = Column(Boolean, nullable=False, default=False, server_default="0")
+    service_links = relationship(
+        "ServiceHostLink",
+        back_populates="host",
+        cascade="all, delete-orphan",
+    )
+
+
+class AdminServiceLink(Base):
+    __tablename__ = "admins_services"
+
+    admin_id = Column(Integer, ForeignKey("admins.id", ondelete="CASCADE"), primary_key=True)
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    admin = relationship("Admin", back_populates="service_links")
+    service = relationship("Service", back_populates="admin_links")
+
+
+class ServiceHostLink(Base):
+    __tablename__ = "service_hosts"
+
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    host_id = Column(Integer, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True)
+    sort = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    service = relationship("Service", back_populates="host_links")
+    host = relationship("ProxyHost", back_populates="service_links")
+
+
+class Service(Base):
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(128), unique=True, nullable=False)
+    description = Column(String(256), nullable=True)
+    used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    admin_links = relationship(
+        "AdminServiceLink",
+        back_populates="service",
+        cascade="all, delete-orphan",
+    )
+    host_links = relationship(
+        "ServiceHostLink",
+        back_populates="service",
+        cascade="all, delete-orphan",
+        order_by="ServiceHostLink.sort",
+    )
+    admins = association_proxy("admin_links", "admin")
+    hosts = association_proxy("host_links", "host")
+    users = relationship("User", back_populates="service")
+
+    @property
+    def admin_ids(self):
+        return [link.admin_id for link in self.admin_links]
+
+    @property
+    def host_ids(self):
+        return [link.host_id for link in self.host_links]
+
+    @property
+    def host_order_map(self):
+        return {link.host_id: link.sort for link in self.host_links}
 
 
 class System(Base):

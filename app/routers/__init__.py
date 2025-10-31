@@ -8,6 +8,8 @@ from . import (
     user_template, 
     user,
     home,
+    service_v2,
+    user_v2,
 )
 
 api_router = APIRouter()
@@ -21,6 +23,8 @@ routers = [
     user_template.router,
     user.router,
     home.router,
+    service_v2.router,
+    user_v2.router,
 ]
 
 for router in routers:

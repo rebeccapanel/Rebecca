@@ -1,6 +1,6 @@
 import { StatisticsQueryKey } from "components/Statistics";
 import { fetch } from "service/http";
-import { User, UserCreate, UsersListResponse } from "types/User";
+import { User, UserCreate, UserCreateWithService, UsersListResponse } from "types/User";
 import { queryClient } from "utils/react-query";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
@@ -42,7 +42,6 @@ type DashboardStateType = {
   subscribeUrl: string | null;
   QRcodeLinks: string[] | null;
   isEditingNodes: boolean;
-  isShowingNodesUsage: boolean;
   isResetingAllUsage: boolean;
   resetUsageUser: User | null;
   revokeSubscriptionUser: User | null;
@@ -56,12 +55,12 @@ type DashboardStateType = {
   onFilterChange: (filters: Partial<FilterType>) => void;
   deleteUser: (user: User) => Promise<void>;
   createUser: (user: UserCreate) => Promise<void>;
+  createUserWithService: (user: UserCreateWithService) => Promise<void>;
   editUser: (username: string, body: UserCreate) => Promise<void>;
   fetchUserUsage: (user: User, query: FilterUsageType) => Promise<void>;
   setQRCode: (links: string[] | null) => void;
   setSubLink: (subscribeURL: string | null) => void;
   onEditingNodes: (isEditingNodes: boolean) => void;
-  onShowingNodesUsage: (isShowingNodesUsage: boolean) => void;
   resetDataUsage: (user: User) => Promise<void>;
   revokeSubscription: (user: User) => Promise<void>;
   onEditingCore: (isEditingCore: boolean) => void;
@@ -121,7 +120,6 @@ export const useDashboard = create(
     isUserLimitReached: false,
     isResetingAllUsage: false,
     isEditingNodes: false,
-    isShowingNodesUsage: false,
     resetUsageUser: null,
     revokeSubscriptionUser: null,
     filters: {
@@ -175,8 +173,15 @@ export const useDashboard = create(
         queryClient.invalidateQueries(StatisticsQueryKey);
       });
     },
+    createUserWithService: (body: UserCreateWithService) => {
+      return fetch(`/v2/users`, { method: "POST", body }).then(() => {
+        set({ editingUser: null });
+        get().refetchUsers();
+        queryClient.invalidateQueries(StatisticsQueryKey);
+      });
+    },
     editUser: (username: string, body: UserCreate) => {
-      return fetch(`/user/${username}`, { method: "PUT", body }).then(
+      return fetch(`/v2/users/${username}`, { method: "PUT", body }).then(
         () => {
           get().onEditingUser(null);
           get().refetchUsers();
@@ -192,9 +197,6 @@ export const useDashboard = create(
     },
     onEditingNodes: (isEditingNodes: boolean) => {
       set({ isEditingNodes });
-    },
-    onShowingNodesUsage: (isShowingNodesUsage: boolean) => {
-      set({ isShowingNodesUsage });
     },
     setSubLink: (subscribeUrl) => {
       set({ subscribeUrl });

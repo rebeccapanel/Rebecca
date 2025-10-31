@@ -3,7 +3,6 @@ import { CoreSettingsModal } from "components/CoreSettingsModal";
 import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
 import { Header } from "components/Header";
-import { NodesUsage } from "components/NodesUsage";
 import { QRCodeDialog } from "components/QRCodeDialog";
 import { ResetAllUsageModal } from "components/ResetAllUsageModal";
 import { ResetUserUsageModal } from "components/ResetUserUsageModal";
@@ -31,7 +30,6 @@ export const Dashboard: FC = () => {
         <QRCodeDialog />
         <ResetUserUsageModal />
         <RevokeSubscriptionModal />
-        <NodesUsage />
         <ResetAllUsageModal />
         <CoreSettingsModal />
       </Box>

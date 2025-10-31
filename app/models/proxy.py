@@ -139,6 +139,7 @@ class FormatVariables(dict):
 
 
 class ProxyHost(BaseModel):
+    id: Optional[int] = None
     remark: str
     address: str
     port: Optional[int] = Field(None, nullable=True)

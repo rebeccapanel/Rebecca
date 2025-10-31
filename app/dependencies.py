@@ -113,3 +113,19 @@ def get_expired_users_list(db: Session, admin: Admin, expired_after: Optional[da
         u for u in dbusers
         if u.expire and expired_after.timestamp() <= u.expire <= expired_before.timestamp()
     ]
+
+
+def get_service_for_admin(
+        service_id: int,
+        admin: Admin = Depends(Admin.get_current),
+        db: Session = Depends(get_db),
+):
+    service = crud.get_service(db, service_id)
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    if not admin.is_sudo:
+        if admin.id is None or admin.id not in service.admin_ids:
+            raise HTTPException(status_code=403, detail="You're not allowed")
+
+    return service

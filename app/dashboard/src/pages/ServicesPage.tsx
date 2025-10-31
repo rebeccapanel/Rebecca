@@ -1,0 +1,807 @@
+import {
+  Alert,
+  AlertIcon,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Flex,
+  FormControl,
+  FormHelperText,
+  FormLabel,
+  Grid,
+  GridItem,
+  HStack,
+  IconButton,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  Select,
+  SimpleGrid,
+  Spinner,
+  Stack,
+  Table,
+  Tbody,
+  Td,
+  Text,
+  Th,
+  Thead,
+  Tooltip,
+  Tr,
+  VStack,
+  useDisclosure,
+  useToast,
+} from "@chakra-ui/react";
+import { PlusIcon, ArrowUpIcon, ArrowDownIcon, EyeIcon, PencilSquareIcon, ArrowPathIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useAdminsStore } from "contexts/AdminsContext";
+import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
+import { useHosts } from "contexts/HostsContext";
+import { useServicesStore } from "contexts/ServicesContext";
+import { FC, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ServiceCreatePayload, ServiceDetail, ServiceHostAssignment, ServiceSummary } from "types/Service";
+import useGetUser from "hooks/useGetUser";
+import { formatBytes } from "utils/formatByte";
+import { Input } from "components/Input";
+import { motion } from "framer-motion";
+
+type HostOption = {
+  id: number;
+  label: string;
+  inboundTag: string;
+  protocol: string;
+  isDisabled: boolean;
+};
+
+type ServiceDialogProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (payload: ServiceCreatePayload, serviceId?: number) => Promise<void>;
+  isSaving: boolean;
+  allHosts: HostOption[];
+  allAdmins: { id: number; username: string }[];
+  initialService?: ServiceDetail | null;
+};
+
+const ServiceDialog: FC<ServiceDialogProps> = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  isSaving,
+  allHosts,
+  allAdmins,
+  initialService,
+}) => {
+  const { t } = useTranslation();
+  const [name, setName] = useState(initialService?.name ?? "");
+  const [description, setDescription] = useState(initialService?.description ?? "");
+  const [selectedAdmins, setSelectedAdmins] = useState<number[]>(
+    initialService?.admin_ids ?? []
+  );
+  const [selectedHosts, setSelectedHosts] = useState<number[]>(
+    initialService?.hosts.map((host) => host.id) ?? []
+  );
+  const [adminSearch, setAdminSearch] = useState("");
+  const [hostSearch, setHostSearch] = useState("");
+  const [hoveredHost, setHoveredHost] = useState<number | null>(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(initialService?.name ?? "");
+      setDescription(initialService?.description ?? "");
+      setSelectedAdmins(initialService?.admin_ids ?? []);
+      setSelectedHosts(initialService?.hosts.map((host) => host.id) ?? []);
+      setAdminSearch("");
+      setHostSearch("");
+    }
+  }, [isOpen, initialService]);
+
+  const hostMap = useMemo(() => {
+    return new Map(allHosts.map((host) => [host.id, host]));
+  }, [allHosts]);
+
+  const availableHosts = useMemo(() => {
+    return allHosts.filter(
+      (host) => !selectedHosts.includes(host.id) && !host.isDisabled
+    );
+  }, [allHosts, selectedHosts]);
+
+  const filteredAvailableHosts = useMemo(() => {
+    const query = hostSearch.trim().toLowerCase();
+    if (!query) {
+      return availableHosts;
+    }
+    return availableHosts.filter((host) => {
+      const label = host.label.toLowerCase();
+      const inboundTag = host.inboundTag.toLowerCase();
+      const protocol = host.protocol.toLowerCase();
+      return (
+        label.includes(query) ||
+        inboundTag.includes(query) ||
+        protocol.includes(query)
+      );
+    });
+  }, [availableHosts, hostSearch]);
+
+  const filteredAdmins = useMemo(() => {
+    const query = adminSearch.trim().toLowerCase();
+    if (!query) {
+      return allAdmins;
+    }
+    return allAdmins.filter((admin) => admin.username.toLowerCase().includes(query));
+  }, [adminSearch, allAdmins]);
+
+  const selectedAdminsSet = useMemo(() => new Set(selectedAdmins), [selectedAdmins]);
+
+  const handleAdminToggle = (adminId: number) => {
+    setSelectedAdmins((prev) =>
+      prev.includes(adminId) ? prev.filter((id) => id !== adminId) : [...prev, adminId]
+    );
+  };
+
+  const handleHostToggle = (hostId: number) => {
+    setSelectedHosts((prev) =>
+      prev.includes(hostId) ? prev.filter((id) => id !== hostId) : [...prev, hostId]
+    );
+  };
+
+  const moveHost = (hostId: number, direction: "up" | "down") => {
+    setSelectedHosts((prev) => {
+      const index = prev.indexOf(hostId);
+      if (index === -1) return prev;
+      const swapWith = direction === "up" ? index - 1 : index + 1;
+      if (swapWith < 0 || swapWith >= prev.length) {
+        return prev;
+      }
+      const updated = [...prev];
+      [updated[index], updated[swapWith]] = [updated[swapWith], updated[index]];
+      return updated;
+    });
+  };
+
+  const submit = async () => {
+    if (!name.trim()) {
+      toast({
+        status: "warning",
+        title: t("services.validation.nameRequired", "Service name is required"),
+      });
+      return;
+    }
+    if (!selectedHosts.length) {
+      toast({
+        status: "warning",
+        title: t("services.validation.hostRequired", "Please select at least one host"),
+      });
+      return;
+    }
+
+    const assignments: ServiceHostAssignment[] = selectedHosts.map((hostId, index) => ({
+      host_id: hostId,
+      sort: index,
+    }));
+
+    await onSubmit(
+      {
+        name: name.trim(),
+        description: description?.trim() || null,
+        admin_ids: selectedAdmins,
+        hosts: assignments,
+      },
+      initialService?.id
+    );
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="5xl">
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>
+          {initialService ? t("services.editTitle", "Edit Service") : t("services.createTitle", "Create Service")}
+        </ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          <Stack spacing={6}>
+            <HStack spacing={4}>
+              <Input
+                label={t("services.fields.name", "Name")}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={128}
+                isRequired
+              />
+              <Input
+                label={t("services.fields.description", "Description")}
+                value={description ?? ""}
+                onChange={(event) => setDescription(event.target.value)}
+                maxLength={256}
+              />
+            </HStack>
+            <Box>
+              <Text fontWeight="medium" mb={2}>
+                {t("services.fields.admins", "Admins")}
+              </Text>
+              <Stack spacing={3}>
+                <Input
+                  value={adminSearch}
+                  onChange={(event) => setAdminSearch(event.target.value)}
+                  placeholder={t("services.searchAdmins", "Search admins")}
+                  size="sm"
+                  clearable
+                />
+                <VStack
+                  align="stretch"
+                  spacing={2}
+                  maxH="200px"
+                  overflowY="auto"
+                  borderWidth="1px"
+                  borderRadius="md"
+                  p={3}
+                >
+                  {allAdmins.length === 0 ? (
+                    <Text fontSize="sm" color="gray.500">
+                      {t("services.noAdminsFound", "No admins available")}
+                    </Text>
+                  ) : filteredAdmins.length === 0 ? (
+                    <Text fontSize="sm" color="gray.500">
+                      {t("services.noAdminsMatching", "No admins match your search")}
+                    </Text>
+                  ) : (
+                    filteredAdmins.map((admin) => {
+                      const isSelected = selectedAdminsSet.has(admin.id);
+                      return (
+                        <Box
+                          key={admin.id}
+                          borderWidth="1px"
+                          borderRadius="md"
+                          px={3}
+                          py={2}
+                          borderColor={isSelected ? "primary.400" : "gray.200"}
+                          bg={isSelected ? "primary.50" : "transparent"}
+                          _hover={{ borderColor: "primary.300", cursor: "pointer" }}
+                          _dark={{
+                            borderColor: isSelected ? "primary.300" : "gray.600",
+                            bg: isSelected ? "gray.700" : "transparent",
+                          }}
+                          transition="all 0.1s ease-in-out"
+                          onClick={() => handleAdminToggle(admin.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              handleAdminToggle(admin.id);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <Flex align="center" justify="space-between">
+                            <Text fontWeight="medium">{admin.username}</Text>
+                            {isSelected && (
+                              <Badge colorScheme="primary">
+                                {t("services.selected", "Selected")}
+                              </Badge>
+                            )}
+                          </Flex>
+                        </Box>
+                      );
+                    })
+                  )}
+                </VStack>
+              </Stack>
+              <Text fontSize="sm" color="gray.500" mt={1}>
+                {t("services.adminHint", "Selected admins can create users for this service")}
+              </Text>
+            </Box>
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4}>
+              <GridItem>
+                <Card variant="outline" h="full">
+                  <CardHeader>
+                    <Text fontWeight="semibold">
+                      {t("services.availableHosts", "Available Hosts")}
+                    </Text>
+                  </CardHeader>
+                  <CardBody>
+                    <Stack spacing={3}>
+                      <Input
+                        value={hostSearch}
+                        onChange={(event) => setHostSearch(event.target.value)}
+                        placeholder={t("services.searchHosts", "Search hosts")}
+                        size="sm"
+                        clearable
+                      />
+                      <VStack align="stretch" spacing={2} maxH="300px" overflowY="auto">
+                        {availableHosts.length === 0 ? (
+                          <Text fontSize="sm" color="gray.500">
+                            {t("services.noHostsLeft", "All hosts are selected")}
+                          </Text>
+                        ) : filteredAvailableHosts.length === 0 ? (
+                          <Text fontSize="sm" color="gray.500">
+                            {t("services.noHostsMatching", "No hosts match your search")}
+                          </Text>
+                        ) : (
+                          filteredAvailableHosts.map((host) => (
+                            <Box
+                              key={host.id}
+                              borderWidth="1px"
+                              borderRadius="md"
+                              px={3}
+                              py={2}
+                              borderColor={hoveredHost === host.id ? "primary.400" : "gray.200"}
+                              _hover={{ borderColor: "primary.300", cursor: "pointer" }}
+                              onMouseEnter={() => setHoveredHost(host.id)}
+                              onMouseLeave={() => setHoveredHost(null)}
+                              onClick={() => handleHostToggle(host.id)}
+                            >
+                              <Text fontWeight="medium">{host.label}</Text>
+                              <Text fontSize="sm" color="gray.500">
+                                {host.protocol.toUpperCase()} - {host.inboundTag}
+                              </Text>
+                            </Box>
+                          ))
+                        )}
+                      </VStack>
+                    </Stack>
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem>
+                <Card variant="outline" h="full">
+                  <CardHeader>
+                    <Text fontWeight="semibold">
+                      {t("services.selectedHosts", "Selected Hosts")}
+                    </Text>
+                  </CardHeader>
+                  <CardBody>
+                    <VStack align="stretch" spacing={2} maxH="300px" overflowY="auto">
+                      {selectedHosts.length === 0 && (
+                        <Text fontSize="sm" color="gray.500">
+                          {t("services.noHostsSelected", "Choose hosts from the left list")}
+                        </Text>
+                      )}
+                      {selectedHosts.map((hostId, index) => {
+                        const host = hostMap.get(hostId);
+                        if (!host) return null;
+                        return (
+                          <motion.div layout key={hostId}>
+                            <Flex
+                              align="center"
+                              justify="space-between"
+                              borderWidth="1px"
+                              borderRadius="md"
+                              px={3}
+                              py={2}
+                              gap={3}
+                            >
+                              <Box>
+                                <HStack spacing={2} align="center">
+                                  <Text fontWeight="medium">{host.label}</Text>
+                                  {host.isDisabled && (
+                                    <Badge colorScheme="red">
+                                      {t("services.hostDisabled", "Disabled")}
+                                    </Badge>
+                                  )}
+                                </HStack>
+                                <Text fontSize="sm" color="gray.500">
+                                  {host.protocol.toUpperCase()} - {host.inboundTag}
+                                </Text>
+                              </Box>
+                              <HStack spacing={1}>
+                                <Tooltip label={t("services.moveUp", "Move up")}>
+                                  <IconButton
+                                    aria-label="Move up"
+                                    size="sm"
+                                    variant="ghost"
+                                    icon={<ArrowUpIcon width={16} />}
+                                    onClick={() => moveHost(hostId, "up")}
+                                    isDisabled={index === 0}
+                                  />
+                                </Tooltip>
+                                <Tooltip label={t("services.moveDown", "Move down")}>
+                                  <IconButton
+                                    aria-label="Move down"
+                                    size="sm"
+                                    variant="ghost"
+                                    icon={<ArrowDownIcon width={16} />}
+                                    onClick={() => moveHost(hostId, "down")}
+                                    isDisabled={index === selectedHosts.length - 1}
+                                  />
+                                </Tooltip>
+                                <Tooltip label={t("services.removeHost", "Remove host")}>
+                                  <IconButton
+                                    aria-label="Remove"
+                                    size="sm"
+                                    variant="ghost"
+                                    icon={<TrashIcon width={16} />}
+                                    onClick={() => handleHostToggle(hostId)}
+                                  />
+                                </Tooltip>
+                              </HStack>
+                            </Flex>
+                          </motion.div>
+                        );
+                      })}
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </GridItem>
+            </Grid>
+          </Stack>
+        </ModalBody>
+        <ModalFooter>
+          <HStack justify="flex-end" w="full">
+            <Button onClick={onClose}>{t("cancel")}</Button>
+            <Button colorScheme="primary" onClick={submit} isLoading={isSaving}>
+              {initialService ? t("saveChanges") : t("create")}
+            </Button>
+          </HStack>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
+const ServicesPage: FC = () => {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const isSudo = getUserIsSuccess && userData.is_sudo;
+  const servicesStore = useServicesStore();
+  const adminStore = useAdminsStore();
+  const hostsStore = useHosts();
+  const { inbounds } = useDashboard();
+
+  const dialogDisclosure = useDisclosure();
+  const [editingService, setEditingService] = useState<ServiceDetail | null>(null);
+
+  useEffect(() => {
+    if (!getUserIsSuccess || !isSudo) {
+      return;
+    }
+    servicesStore.fetchServices();
+    adminStore.fetchAdmins({ limit: 500, offset: 0 });
+    fetchInbounds();
+    hostsStore.fetchHosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getUserIsSuccess, isSudo]);
+
+  const adminOptions = useMemo(() => {
+    return adminStore.admins
+      .slice()
+      .sort((a, b) => a.username.localeCompare(b.username))
+      .map((admin) => ({
+        id: admin.id!,
+        username: admin.username,
+      }));
+  }, [adminStore.admins]);
+
+  const hostOptions: HostOption[] = useMemo(() => {
+    const options: HostOption[] = [];
+    for (const [tag, hosts] of Object.entries(hostsStore.hosts)) {
+      const inbound =
+        Array.from(inbounds.values())
+          .flat()
+          .find((inbound) => inbound.tag === tag) ?? null;
+      const protocol = inbound?.protocol ?? "unknown";
+      hosts.forEach((host) => {
+        if (host.id == null) {
+          return;
+        }
+        options.push({
+          id: host.id,
+          label: host.remark,
+          inboundTag: tag,
+          protocol,
+          isDisabled: Boolean(host.is_disabled),
+        });
+      });
+    }
+    return options;
+  }, [hostsStore.hosts, inbounds]);
+
+  const openCreateDialog = () => {
+    setEditingService(null);
+    dialogDisclosure.onOpen();
+  };
+
+  const openEditDialog = async (serviceId: number) => {
+    try {
+      const detail = await servicesStore.fetchServiceDetail(serviceId);
+      setEditingService(detail);
+      dialogDisclosure.onOpen();
+    } catch (error) {
+      toast({
+        status: "error",
+        title: t("services.fetchFailed", "Unable to fetch service details"),
+      });
+    }
+  };
+
+  const handleSubmit = async (payload: ServiceCreatePayload, serviceId?: number) => {
+    try {
+      if (serviceId) {
+        await servicesStore.updateService(serviceId, payload);
+        toast({
+          status: "success",
+          title: t("services.updated", "Service updated"),
+        });
+      } else {
+        await servicesStore.createService(payload);
+        toast({
+          status: "success",
+          title: t("services.created", "Service created"),
+        });
+      }
+      dialogDisclosure.onClose();
+    } catch (error: any) {
+      toast({
+        status: "error",
+        title: error?.data?.detail ?? t("services.saveFailed", "Failed to save service"),
+      });
+    }
+  };
+
+  const handleDelete = async (serviceId: number) => {
+    try {
+      await servicesStore.deleteService(serviceId);
+      toast({
+        status: "success",
+        title: t("services.deleted", "Service removed"),
+      });
+    } catch (error: any) {
+      toast({
+        status: "error",
+        title: error?.data?.detail ?? t("services.deleteFailed", "Unable to delete service"),
+      });
+    }
+  };
+
+  const handleResetUsage = async (serviceId: number) => {
+    try {
+      await servicesStore.resetServiceUsage(serviceId);
+      toast({
+        status: "success",
+        title: t("services.resetSuccess", "Usage reset"),
+      });
+    } catch (error: any) {
+      toast({
+        status: "error",
+        title: error?.data?.detail ?? t("services.resetFailed", "Failed to reset usage"),
+      });
+    }
+  };
+
+  const renderServiceRow = (service: ServiceSummary) => (
+    <Tr key={service.id}>
+      <Td>
+        <VStack align="start" spacing={0}>
+          <Text fontWeight="semibold">{service.name}</Text>
+          {service.description && (
+            <Text fontSize="sm" color="gray.500">
+              {service.description}
+            </Text>
+          )}
+        </VStack>
+      </Td>
+      <Td>{service.host_count}</Td>
+      <Td>{service.user_count}</Td>
+      <Td>{formatBytes(service.used_traffic)}</Td>
+      <Td>{formatBytes(service.lifetime_used_traffic)}</Td>
+      <Td>
+        <HStack spacing={2}>
+          <Tooltip label={t("services.view", "View")}>
+            <IconButton
+              aria-label="View"
+              icon={<EyeIcon width={18} />}
+              size="sm"
+              variant="ghost"
+              onClick={() => servicesStore.fetchServiceDetail(service.id)}
+            />
+          </Tooltip>
+          {isSudo && (
+            <>
+              <Tooltip label={t("services.edit", "Edit")}>
+                <IconButton
+                  aria-label="Edit"
+                  icon={<PencilSquareIcon width={18} />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => openEditDialog(service.id)}
+                />
+              </Tooltip>
+              <Tooltip label={t("services.resetUsage", "Reset usage")}>
+                <IconButton
+                  aria-label="Reset usage"
+                  icon={<ArrowPathIcon width={18} />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleResetUsage(service.id)}
+                />
+              </Tooltip>
+              <Tooltip label={t("services.delete", "Delete")}>
+                <IconButton
+                  aria-label="Delete"
+                  icon={<TrashIcon width={18} />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDelete(service.id)}
+                />
+              </Tooltip>
+            </>
+          )}
+        </HStack>
+      </Td>
+    </Tr>
+  );
+
+  const selectedService = servicesStore.serviceDetail;
+
+  if (!getUserIsSuccess) {
+    return (
+      <Flex justify="center" align="center" h="full" py={10}>
+        <Spinner />
+      </Flex>
+    );
+  }
+
+  if (!isSudo) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("services.title", "Services")}
+        </Text>
+        <Text fontSize="sm" color="gray.500">
+          {t("services.noPermission", "You do not have permission to view this section.")}
+        </Text>
+      </VStack>
+    );
+  }
+
+  return (
+    <VStack spacing={4} align="stretch">
+      <Flex justify="space-between" align="center">
+        <Box>
+          <Text as="h1" fontSize="2xl" fontWeight="semibold">
+            {t("services.title", "Services")}
+          </Text>
+          <Text fontSize="sm" color="gray.500">
+            {t(
+              "services.subtitle",
+              "Group hosts, assign admins, and monitor usage per service."
+            )}
+          </Text>
+        </Box>
+        {isSudo && (
+          <Button
+            leftIcon={<PlusIcon width={18} />}
+            colorScheme="primary"
+            onClick={openCreateDialog}
+          >
+            {t("services.addService", "New Service")}
+          </Button>
+        )}
+      </Flex>
+      <Card variant="outline">
+        <CardBody>
+          {servicesStore.isLoading ? (
+            <Flex justify="center" py={10}>
+              <Spinner />
+            </Flex>
+          ) : (
+            <Table variant="simple">
+              <Thead>
+                <Tr>
+                  <Th>{t("services.columns.name", "Name")}</Th>
+                  <Th>{t("services.columns.hosts", "Hosts")}</Th>
+                  <Th>{t("services.columns.users", "Users")}</Th>
+                  <Th>{t("services.columns.usage", "Usage")}</Th>
+                  <Th>{t("services.columns.lifetime", "Lifetime")}</Th>
+                  <Th>{t("services.columns.actions", "Actions")}</Th>
+                </Tr>
+              </Thead>
+              <Tbody>{servicesStore.services.map(renderServiceRow)}</Tbody>
+            </Table>
+          )}
+        </CardBody>
+      </Card>
+
+      {selectedService && (
+        <Card variant="outline">
+          <CardHeader>
+            <Flex justify="space-between" align="center">
+              <Box>
+                <Text fontWeight="semibold">{selectedService.name}</Text>
+                {selectedService.description && (
+                  <Text fontSize="sm" color="gray.500">
+                    {selectedService.description}
+                  </Text>
+                )}
+              </Box>
+              <Badge colorScheme="primary">
+                {t("services.usersCount", "{{count}} users", {
+                  count: selectedService.user_count,
+                })}
+              </Badge>
+            </Flex>
+          </CardHeader>
+          <CardBody>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+              <Box>
+                <Text fontWeight="medium" mb={2}>
+                  {t("services.admins", "Admins")}
+                </Text>
+                <Stack spacing={2}>
+                  {selectedService.admins.length === 0 ? (
+                    <Text fontSize="sm" color="gray.500">
+                      {t("services.noAdmins", "No admins assigned")}
+                    </Text>
+                  ) : (
+                    selectedService.admins.map((link) => (
+                      <Flex
+                        key={link.id}
+                        justify="space-between"
+                        borderWidth="1px"
+                        borderRadius="md"
+                        px={3}
+                        py={2}
+                      >
+                        <Text fontWeight="medium">{link.username}</Text>
+                        <Text fontSize="sm" color="gray.500">
+                          {formatBytes(link.used_traffic)} /{" "}
+                          {formatBytes(link.lifetime_used_traffic)}
+                        </Text>
+                      </Flex>
+                    ))
+                  )}
+                </Stack>
+              </Box>
+              <Box>
+                <Text fontWeight="medium" mb={2}>
+                  {t("services.hosts", "Hosts")}
+                </Text>
+                <Stack spacing={2}>
+                  {selectedService.hosts.map((host) => (
+                    <Flex
+                      key={host.id}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      px={3}
+                      py={2}
+                      justify="space-between"
+                      align="center"
+                    >
+                      <Box>
+                        <Text fontWeight="medium">{host.remark}</Text>
+                        <Text fontSize="sm" color="gray.500">
+                          {host.inbound_protocol.toUpperCase()} - {host.inbound_tag}
+                        </Text>
+                      </Box>
+                      <Badge colorScheme="gray">#{host.sort + 1}</Badge>
+                    </Flex>
+                  ))}
+                </Stack>
+              </Box>
+            </SimpleGrid>
+          </CardBody>
+        </Card>
+      )}
+
+      <ServiceDialog
+        isOpen={dialogDisclosure.isOpen}
+        onClose={dialogDisclosure.onClose}
+        onSubmit={handleSubmit}
+        isSaving={servicesStore.isSaving}
+        allHosts={hostOptions}
+        allAdmins={adminOptions}
+        initialService={editingService ?? undefined}
+      />
+    </VStack>
+  );
+};
+
+export default ServicesPage;

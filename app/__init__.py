@@ -25,10 +25,19 @@ scheduler = BackgroundScheduler(
 )
 logger = logging.getLogger("uvicorn.error")
 
+allowed_origins = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+if not allowed_origins:
+    allowed_origins = ["*"]
+
+allow_credentials = True
+if "*" in allowed_origins:
+    allowed_origins = ["*"]
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

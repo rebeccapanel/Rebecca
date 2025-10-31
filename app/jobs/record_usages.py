@@ -5,13 +5,21 @@ from operator import attrgetter
 from typing import Union
 
 from pymysql.err import OperationalError
-from sqlalchemy import and_, bindparam, insert, select, update
+from sqlalchemy import and_, bindparam, func, insert, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Insert
 
 from app import scheduler, xray
 from app.db import GetDB
-from app.db.models import Admin, NodeUsage, NodeUserUsage, System, User
+from app.db.models import (
+    Admin,
+    AdminServiceLink,
+    NodeUsage,
+    NodeUserUsage,
+    Service,
+    System,
+    User,
+)
 from config import (
     DISABLE_RECORDING_NODE_USAGE,
     JOB_RECORD_NODE_USAGES_INTERVAL,
@@ -145,18 +153,39 @@ def record_user_usages():
         coefficient = usage_coefficient.get(node_id, 1)  # get the usage coefficient for the node
         for param in params:
             users_usage[param['uid']] += int(param['value'] * coefficient)  # apply the usage coefficient
-    users_usage = list({"uid": uid, "value": value} for uid, value in users_usage.items())
+    users_usage = [
+        {"uid": uid, "value": value} for uid, value in users_usage.items()
+    ]
     if not users_usage:
         return
 
+    user_ids = [int(entry["uid"]) for entry in users_usage]
+
     with GetDB() as db:
-        user_admin_map = dict(db.query(User.id, User.admin_id).all())
+        mapping_rows = (
+            db.query(User.id, User.admin_id, User.service_id)
+            .filter(User.id.in_(user_ids))
+            .all()
+        )
+
+    user_to_admin_service: Dict[int, Tuple[Optional[int], Optional[int]]] = {
+        row[0]: (row[1], row[2]) for row in mapping_rows
+    }
 
     admin_usage = defaultdict(int)
+    service_usage = defaultdict(int)
+    admin_service_usage = defaultdict(int)
     for user_usage in users_usage:
-        admin_id = user_admin_map.get(int(user_usage["uid"]))
+        admin_id, service_id = user_to_admin_service.get(
+            int(user_usage["uid"]), (None, None)
+        )
+        value = user_usage["value"]
         if admin_id:
-            admin_usage[admin_id] += user_usage["value"]
+            admin_usage[admin_id] += value
+        if service_id:
+            service_usage[service_id] += value
+            if admin_id:
+                admin_service_usage[(admin_id, service_id)] += value
 
     # record users usage
     with GetDB() as db:
@@ -176,8 +205,49 @@ def record_user_usages():
                 values(
                     users_usage=Admin.users_usage + bindparam('value'),
                     lifetime_usage=Admin.lifetime_usage + bindparam('value')
-                    )
+                )
             safe_execute(db, admin_update_stmt, admin_data)
+
+        if service_usage:
+            service_update_stmt = (
+                update(Service)
+                .where(Service.id == bindparam("service_id"))
+                .values(
+                    used_traffic=Service.used_traffic + bindparam("value"),
+                    lifetime_used_traffic=Service.lifetime_used_traffic + bindparam("value"),
+                    updated_at=func.now(),
+                )
+            )
+            service_params = [
+                {"service_id": sid, "value": value}
+                for sid, value in service_usage.items()
+            ]
+            safe_execute(db, service_update_stmt, service_params)
+
+        if admin_service_usage:
+            admin_service_update_stmt = (
+                update(AdminServiceLink)
+                .where(
+                    and_(
+                        AdminServiceLink.admin_id == bindparam("admin_id"),
+                        AdminServiceLink.service_id == bindparam("service_id"),
+                    )
+                )
+                .values(
+                    used_traffic=AdminServiceLink.used_traffic + bindparam("value"),
+                    lifetime_used_traffic=AdminServiceLink.lifetime_used_traffic + bindparam("value"),
+                    updated_at=func.now(),
+                )
+            )
+            admin_service_params = [
+                {
+                    "admin_id": admin_id,
+                    "service_id": service_id,
+                    "value": value,
+                }
+                for (admin_id, service_id), value in admin_service_usage.items()
+            ]
+            safe_execute(db, admin_service_update_stmt, admin_service_params)
 
     if DISABLE_RECORDING_NODE_USAGE:
         return

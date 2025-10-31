@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from app import logger, xray
@@ -54,6 +54,12 @@ def add_user(
                 status_code=400,
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
+
+    if not admin.is_sudo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only sudo admins can create users without assigning a service.",
+        )
 
     try:
         dbuser = crud.create_user(
@@ -112,7 +118,14 @@ def modify_user(
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
 
+    if "service_id" in modified_user.model_fields_set and modified_user.service_id is None and not admin.is_sudo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only sudo admins can set service to null.",
+        )
+
     old_status = dbuser.status
+
     try:
         dbuser = crud.update_user(db, dbuser, modified_user)
     except UsersLimitReachedError as exc:

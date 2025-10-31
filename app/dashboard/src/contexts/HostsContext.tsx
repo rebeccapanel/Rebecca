@@ -4,6 +4,7 @@ import { create } from "zustand";
 export type HostsSchema = Record<
   string,
   {
+    id?: number | null;
     remark: string;
     address: string;
     sort: number | null;

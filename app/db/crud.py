@@ -2,18 +2,21 @@
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
 
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
 from sqlalchemy import func
+from app import xray
 from app.db.models import (
     JWT,
     TLS,
     Admin,
+    AdminServiceLink,
     AdminUsageLogs,
     NextPlan,
     Node,
@@ -24,6 +27,8 @@ from app.db.models import (
     ProxyHost,
     ProxyInbound,
     ProxyTypes,
+    Service,
+    ServiceHostLink,
     System,
     User,
     UserTemplate,
@@ -32,6 +37,7 @@ from app.db.models import (
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.models.node import NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
 from app.models.proxy import ProxyHost as ProxyHostModify
+from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 from app.models.user import (
     ReminderType,
     UserCreate,
@@ -45,6 +51,7 @@ from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
 from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
+
 
 
 def add_default_host(db: Session, inbound: ProxyInbound):
@@ -186,6 +193,480 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
     db.commit()
     db.refresh(inbound)
     return inbound.hosts
+
+
+def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, ProxyHost]:
+    if not host_ids:
+        return {}
+    hosts = (
+        db.query(ProxyHost)
+        .filter(ProxyHost.id.in_(set(host_ids)))
+        .all()
+    )
+    return {host.id: host for host in hosts}
+
+
+def _assign_service_hosts(
+    db: Session, service: Service, assignments: Iterable[ServiceHostAssignment]
+) -> None:
+    assignments = list(assignments)
+    desired_ids = [assignment.host_id for assignment in assignments]
+    host_map = _fetch_hosts_by_ids(db, desired_ids)
+
+    if len(host_map) != len(set(desired_ids)):
+        raise ValueError("One or more hosts could not be found")
+
+    existing_links = {link.host_id: link for link in service.host_links}
+    desired_id_set = set(desired_ids)
+
+    for link in list(service.host_links):
+        if link.host_id not in desired_id_set:
+            service.host_links.remove(link)
+            db.delete(link)
+
+    for index, assignment in enumerate(assignments):
+        sort_value = assignment.sort if assignment.sort is not None else index
+        link = existing_links.get(assignment.host_id)
+        if link:
+            link.sort = sort_value
+        else:
+            service.host_links.append(
+                ServiceHostLink(
+                    host=host_map[assignment.host_id],
+                    sort=sort_value,
+                )
+            )
+
+
+def _assign_service_admins(
+    db: Session, service: Service, admin_ids: Iterable[int]
+) -> None:
+    admin_ids = list(dict.fromkeys(admin_ids))
+    existing_links = {link.admin_id: link for link in service.admin_links}
+    desired_id_set = set(admin_ids)
+
+    for link in list(service.admin_links):
+        if link.admin_id not in desired_id_set:
+            service.admin_links.remove(link)
+            db.delete(link)
+
+    if not admin_ids:
+        return
+
+    admins = db.query(Admin).filter(Admin.id.in_(desired_id_set)).all()
+    if len(admins) != len(desired_id_set):
+        raise ValueError("One or more admins could not be found")
+
+    for admin in admins:
+        if admin.id in existing_links:
+            continue
+        service.admin_links.append(AdminServiceLink(admin=admin, service=service))
+
+
+def _service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
+    allowed: Dict[ProxyTypes, Set[str]] = defaultdict(set)
+    for link in service.host_links:
+        host = link.host
+        if not host:
+            continue
+        inbound_tag = host.inbound_tag
+        inbound_info = xray.config.inbounds_by_tag.get(inbound_tag)
+        if not inbound_info:
+            continue
+        protocol = inbound_info.get("protocol")
+        if not protocol:
+            continue
+        try:
+            proxy_type = ProxyTypes(protocol)
+        except ValueError:
+            continue
+        allowed[proxy_type].add(inbound_tag)
+    return allowed
+
+
+def _ensure_admin_service_link(db: Session, admin: Optional[Admin], service: Service) -> None:
+    if not admin or admin.id is None or service.id is None:
+        return
+
+    exists = (
+        db.query(AdminServiceLink)
+        .filter(
+            AdminServiceLink.admin_id == admin.id,
+            AdminServiceLink.service_id == service.id,
+        )
+        .first()
+    )
+    if exists:
+        return
+
+    db.add(AdminServiceLink(admin_id=admin.id, service_id=service.id))
+
+
+def _apply_service_to_user(
+    db: Session,
+    dbuser: User,
+    service: Service,
+    allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
+) -> None:
+    if allowed_inbounds is None:
+        allowed_inbounds = _service_allowed_inbounds(service)
+
+    allowed_protocols = set(allowed_inbounds.keys())
+    existing_proxies: Dict[ProxyTypes, Proxy] = {}
+
+    for proxy in list(dbuser.proxies):
+        proxy_type = ProxyTypes(proxy.type)
+        if proxy_type not in allowed_protocols:
+            db.delete(proxy)
+            continue
+        existing_proxies[proxy_type] = proxy
+
+    for proxy_type in allowed_protocols:
+        allowed_tags = allowed_inbounds[proxy_type]
+        proxy = existing_proxies.get(proxy_type)
+        if not proxy:
+            settings_model = proxy_type.settings_model
+            proxy = Proxy(type=proxy_type, settings=settings_model().dict(no_obj=True))
+            dbuser.proxies.append(proxy)
+
+        available_tags = {
+            inbound["tag"]
+            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])
+        }
+        excluded_tags = sorted(available_tags - set(allowed_tags))
+        proxy.excluded_inbounds = [
+            get_or_create_inbound(db, tag) for tag in excluded_tags
+        ]
+
+    dbuser.service = service
+    dbuser.edit_at = datetime.utcnow()
+
+
+def refresh_service_users(
+    db: Session,
+    service: Service,
+    allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
+) -> List[User]:
+    if allowed_inbounds is None:
+        allowed_inbounds = _service_allowed_inbounds(service)
+
+    updated_users: List[User] = []
+    for user in service.users:
+        _apply_service_to_user(db, user, service, allowed_inbounds)
+        updated_users.append(user)
+
+    db.flush()
+    return updated_users
+
+
+def get_service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
+    return _service_allowed_inbounds(service)
+
+
+def get_service(db: Session, service_id: int) -> Optional[Service]:
+    return (
+        db.query(Service)
+        .options(
+            joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
+            joinedload(Service.host_links).joinedload(ServiceHostLink.host),
+            joinedload(Service.users),
+        )
+        .filter(Service.id == service_id)
+        .first()
+    )
+
+
+def list_services(
+    db: Session,
+    name: Optional[str] = None,
+    admin: Optional[Admin] = None,
+    offset: int = 0,
+    limit: Optional[int] = None,
+) -> Dict[str, Union[List[Service], int]]:
+    query = db.query(Service)
+
+    if name:
+        query = query.filter(Service.name.ilike(f"%{name}%"))
+
+    if admin and not admin.is_sudo:
+        query = query.join(Service.admin_links).filter(
+            AdminServiceLink.admin_id == admin.id
+        )
+
+    total = query.count()
+    query = query.order_by(Service.created_at.desc())
+
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
+
+    services = (
+        query.options(
+            joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
+            joinedload(Service.host_links).joinedload(ServiceHostLink.host),
+            joinedload(Service.users),
+        )
+        .all()
+    )
+
+    return {"services": services, "total": total}
+
+
+def create_service(db: Session, payload: ServiceCreate) -> Service:
+    if not payload.hosts:
+        raise ValueError("Service must include at least one host")
+
+    service = Service(
+        name=payload.name.strip(),
+        description=payload.description or None,
+    )
+    db.add(service)
+    db.flush()
+
+    _assign_service_hosts(db, service, payload.hosts)
+    _assign_service_admins(db, service, payload.admin_ids)
+
+    db.commit()
+    db.refresh(service)
+    return service
+
+
+def update_service(
+    db: Session,
+    service: Service,
+    modification: ServiceModify,
+) -> Tuple[Service, Optional[Dict[ProxyTypes, Set[str]]], Optional[Dict[ProxyTypes, Set[str]]]]:
+    allowed_before: Optional[Dict[ProxyTypes, Set[str]]] = None
+
+    if modification.hosts is not None:
+        if not modification.hosts:
+            raise ValueError("Service must include at least one host")
+        allowed_before = _service_allowed_inbounds(service)
+        _assign_service_hosts(db, service, modification.hosts)
+
+    if modification.name is not None:
+        service.name = modification.name.strip()
+
+    if modification.description is not None:
+        service.description = modification.description or None
+
+    if modification.admin_ids is not None:
+        _assign_service_admins(db, service, modification.admin_ids)
+
+    db.flush()
+    allowed_after: Optional[Dict[ProxyTypes, Set[str]]] = (
+        _service_allowed_inbounds(service) if allowed_before is not None else None
+    )
+
+    db.commit()
+    db.refresh(service)
+
+    return service, allowed_before, allowed_after
+
+
+def remove_service(db: Session, service: Service) -> None:
+    if service.users:
+        raise ValueError("Cannot delete a service while users are assigned to it")
+    db.delete(service)
+    db.commit()
+
+
+def reset_service_usage(db: Session, service: Service) -> Service:
+    service.used_traffic = 0
+    service.updated_at = datetime.utcnow()
+    for link in service.admin_links:
+        link.used_traffic = 0
+        link.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(service)
+    return service
+
+
+def get_service_usage_timeseries(
+    db: Session,
+    service: Service,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> List[Dict[str, Union[datetime, int]]]:
+    granularity_value = (granularity or "day").lower()
+    if granularity_value not in {"day", "hour"}:
+        granularity_value = "day"
+
+    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+    tzinfo = start_aware.tzinfo or timezone.utc
+
+    if granularity_value == "hour":
+        current = start_aware.replace(minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
+        step = timedelta(hours=1)
+    else:
+        current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        step = timedelta(days=1)
+
+    if current > end_aligned:
+        return []
+
+    usage_map: Dict[datetime, int] = {}
+    cursor = current
+    while cursor <= end_aligned:
+        usage_map[cursor] = 0
+        cursor += step
+
+    rows = (
+        db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
+        .join(User, User.id == NodeUserUsage.user_id)
+        .filter(
+            User.service_id == service.id,
+            NodeUserUsage.created_at >= start_aware,
+            NodeUserUsage.created_at <= end_aware,
+        )
+        .all()
+    )
+
+    for created_at, used_traffic in rows:
+        if created_at is None or used_traffic is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=tzinfo)
+        else:
+            created_at = created_at.astimezone(tzinfo)
+        if granularity_value == "hour":
+            bucket = created_at.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        usage_map.setdefault(bucket, 0)
+        usage_map[bucket] += int(used_traffic)
+
+    return [
+        {"timestamp": bucket, "used_traffic": value}
+        for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
+    ]
+
+
+def get_service_admin_usage_timeseries(
+    db: Session,
+    service: Service,
+    admin_id: Optional[int],
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> List[Dict[str, Union[datetime, int]]]:
+    granularity_value = (granularity or "day").lower()
+    if granularity_value not in {"day", "hour"}:
+        granularity_value = "day"
+
+    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+    tzinfo = start_aware.tzinfo or timezone.utc
+
+    if granularity_value == "hour":
+        current = start_aware.replace(minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
+        step = timedelta(hours=1)
+    else:
+        current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        step = timedelta(days=1)
+
+    if current > end_aligned:
+        return []
+
+    usage_map: Dict[datetime, int] = {}
+    cursor = current
+    while cursor <= end_aligned:
+        usage_map[cursor] = 0
+        cursor += step
+
+    query = (
+        db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
+        .join(User, User.id == NodeUserUsage.user_id)
+        .filter(
+            User.service_id == service.id,
+            NodeUserUsage.created_at >= start_aware,
+            NodeUserUsage.created_at <= end_aware,
+        )
+    )
+
+    if admin_id is None:
+        query = query.filter(User.admin_id.is_(None))
+    else:
+        query = query.filter(User.admin_id == admin_id)
+
+    rows = query.all()
+    for created_at, used_traffic in rows:
+        if created_at is None or used_traffic is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=tzinfo)
+        else:
+            created_at = created_at.astimezone(tzinfo)
+        if granularity_value == "hour":
+            bucket = created_at.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        usage_map.setdefault(bucket, 0)
+        usage_map[bucket] += int(used_traffic)
+
+    return [
+        {"timestamp": bucket, "used_traffic": value}
+        for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
+    ]
+
+
+def get_service_admin_usage(
+    db: Session,
+    service: Service,
+    start: datetime,
+    end: datetime,
+) -> List[Dict[str, Union[int, None, str]]]:
+    usage_rows = (
+        db.query(
+            Admin.id.label("admin_id"),
+            Admin.username.label("username"),
+            func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
+        )
+        .select_from(NodeUserUsage)
+        .join(User, User.id == NodeUserUsage.user_id)
+        .outerjoin(Admin, Admin.id == User.admin_id)
+        .filter(
+            User.service_id == service.id,
+            NodeUserUsage.created_at >= start,
+            NodeUserUsage.created_at <= end,
+        )
+        .group_by(Admin.id, Admin.username)
+        .all()
+    )
+
+    usage_map: Dict[Optional[int], Dict[str, Union[int, None, str]]] = {}
+    for admin_id, username, used in usage_rows:
+        label = username or "Unassigned"
+        usage_map[admin_id] = {
+            "admin_id": admin_id,
+            "username": label,
+            "used_traffic": int(used or 0),
+        }
+
+    for link in service.admin_links:
+        if link.admin_id is None or not link.admin:
+            continue
+        usage_map.setdefault(
+            link.admin_id,
+            {
+                "admin_id": link.admin_id,
+                "username": link.admin.username,
+                "used_traffic": 0,
+            },
+        )
+
+    return sorted(
+        usage_map.values(),
+        key=lambda entry: int(entry.get("used_traffic") or 0),
+        reverse=True,
+    )
 
 
 def get_user_queryset(db: Session) -> Query:
@@ -432,7 +913,12 @@ def _ensure_active_user_capacity(
         raise UsersLimitReachedError(limit=admin.users_limit)
 
 
-def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
+def create_user(
+    db: Session,
+    user: UserCreate,
+    admin: Admin = None,
+    service: Optional[Service] = None,
+) -> User:
     """
     Creates a new user with provided details.
 
@@ -440,6 +926,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         db (Session): Database session.
         user (UserCreate): User creation details.
         admin (Admin, optional): Admin associated with the user.
+        service (Service, optional): Service profile associated with the user.
 
     Returns:
         User: The created user object.
@@ -479,7 +966,16 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
             fire_on_either=user.next_plan.fire_on_either,
         ) if user.next_plan else None
     )
+    if service:
+        dbuser.service = service
     db.add(dbuser)
+    db.flush()
+
+    if service:
+        allowed = _service_allowed_inbounds(service)
+        _apply_service_to_user(db, dbuser, service, allowed)
+        _ensure_admin_service_link(db, admin, service)
+
     db.commit()
     db.refresh(dbuser)
     return dbuser
@@ -515,7 +1011,15 @@ def remove_users(db: Session, dbusers: List[User]):
     return
 
 
-def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
+def update_user(
+    db: Session,
+    dbuser: User,
+    modify: UserModify,
+    *,
+    service: Optional[Service] = None,
+    service_set: bool = False,
+    admin: Optional[Admin] = None,
+) -> User:
     """
     Updates a user with new details.
 
@@ -607,6 +1111,16 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
         )
     elif dbuser.next_plan is not None:
         db.delete(dbuser.next_plan)
+
+    if service_set:
+        if service is None:
+            dbuser.service = None
+        else:
+            allowed = _service_allowed_inbounds(service)
+            dbuser.service = service
+            _apply_service_to_user(db, dbuser, service, allowed)
+            if admin:
+                _ensure_admin_service_link(db, admin, service)
 
     current_status_value = _status_to_str(dbuser.status)
     if (

@@ -47,7 +47,9 @@ STATUS_TEXTS = {
 def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:
     format_variables = setup_format_variables(extra_data)
     conf = V2rayShareLink()
-    return process_inbounds_and_tags(inbounds, proxies, format_variables, conf=conf, reverse=reverse)
+    return process_inbounds_and_tags(
+        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
+    )
 
 
 def generate_clash_subscription(
@@ -60,7 +62,7 @@ def generate_clash_subscription(
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, conf=conf, reverse=reverse
+        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
     )
 
 
@@ -71,7 +73,7 @@ def generate_singbox_subscription(
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, conf=conf, reverse=reverse
+        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
     )
 
 
@@ -82,7 +84,7 @@ def generate_outline_subscription(
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, conf=conf, reverse=reverse
+        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
     )
 
 
@@ -93,7 +95,7 @@ def generate_v2ray_json_subscription(
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, conf=conf, reverse=reverse
+        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
     )
 
 
@@ -233,6 +235,7 @@ def process_inbounds_and_tags(
         inbounds: dict,
         proxies: dict,
         format_variables: dict,
+        extra_data: dict,
         conf: Union[
             V2rayShareLink,
             V2rayJsonConfig,
@@ -247,6 +250,15 @@ def process_inbounds_and_tags(
         tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
     }
 
+    service_host_orders = (extra_data or {}).get("service_host_orders") or {}
+    if service_host_orders:
+        service_host_orders = {
+            int(k): v for k, v in service_host_orders.items()
+        }
+        allowed_host_ids = set(service_host_orders.keys())
+    else:
+        allowed_host_ids = None
+
     host_entries = []
     for protocol, tags in inbounds.items():
         settings = proxies.get(protocol)
@@ -260,6 +272,9 @@ def process_inbounds_and_tags(
 
             host_list = xray.hosts.get(tag, [])
             for position, host in enumerate(host_list):
+                host_id = host.get("id")
+                if allowed_host_ids is not None and host_id not in allowed_host_ids:
+                    continue
                 host_entries.append(
                     (
                         protocol,
@@ -269,18 +284,21 @@ def process_inbounds_and_tags(
                         host,
                         inbound_index.get(tag, float("inf")),
                         position,
+                        host_id,
                     )
                 )
 
     host_entries.sort(
         key=lambda entry: (
-            entry[4].get("sort", 0),
+            service_host_orders.get(
+                entry[7], entry[4].get("sort", 0)
+            ),
             entry[5],
             entry[6],
         )
     )
 
-    for protocol, tag, settings, inbound, host, _, _ in host_entries:
+    for protocol, tag, settings, inbound, host, _, _, _ in host_entries:
         format_variables.update({"PROTOCOL": protocol.name})
         format_variables.update({"TRANSPORT": inbound["network"]})
         host_inbound = inbound.copy()

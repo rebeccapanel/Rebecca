@@ -4,10 +4,11 @@ import {
   UsersIcon,
   ServerIcon,
   Cog6ToothIcon,
-  ChartBarIcon,
   Square3Stack3DIcon,
   ShieldCheckIcon,
   ChevronDownIcon,
+  Squares2X2Icon,
+  ChartPieIcon,
 } from "@heroicons/react/24/outline";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -25,10 +26,11 @@ const HomeIconStyled = chakra(HomeIcon, iconProps);
 const UsersIconStyled = chakra(UsersIcon, iconProps);
 const ServerIconStyled = chakra(ServerIcon, iconProps);
 const SettingsIconStyled = chakra(Cog6ToothIcon, iconProps);
-const ChartIconStyled = chakra(ChartBarIcon, iconProps);
 const NetworkIconStyled = chakra(Square3Stack3DIcon, iconProps);
 const AdminIconStyled = chakra(ShieldCheckIcon, iconProps);
 const ChevronDownIconStyled = chakra(ChevronDownIcon, iconProps);
+const ServicesIconStyled = chakra(Squares2X2Icon, iconProps);
+const UsageIconStyled = chakra(ChartPieIcon, iconProps);
 
 interface AppSidebarProps {
   collapsed: boolean;
@@ -48,11 +50,22 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
   const location = useLocation();
   const { userData, getUserIsSuccess } = useGetUser();
   const isSudo = getUserIsSuccess && userData.is_sudo;
-  const settingsSubItems: SidebarItem["subItems"] = [
+
+  const baseSettingsSubItems: SidebarItem["subItems"] = [
     { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled },
     { title: t("header.nodeSettings"), url: "/node-settings", icon: NetworkIconStyled },
     { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled },
   ];
+  const settingsSubItems: SidebarItem["subItems"] = [...baseSettingsSubItems];
+
+  if (isSudo) {
+    settingsSubItems.unshift({
+      title: t("services.menu", "Services"),
+      url: "/services",
+      icon: ServicesIconStyled,
+    });
+  }
+
   const isSettingsRoute = settingsSubItems.some((sub) => location.pathname === sub.url);
   const [isSettingsOpen, setSettingsOpen] = useState(isSettingsRoute);
 
@@ -65,17 +78,17 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
   const items: SidebarItem[] = [
     { title: t("dashboard"), url: "/", icon: HomeIconStyled },
     { title: t("users"), url: "/users", icon: UsersIconStyled },
-    ...(isSudo
-      ? [
-          { title: t("admins", "Admins"), url: "/admins", icon: AdminIconStyled },
-          {
-            title: t("header.settings"),
-            icon: SettingsIconStyled,
-            subItems: settingsSubItems,
-          },
-        ]
-      : []),
   ];
+
+  if (isSudo) {
+    items.push({ title: t("usage.menu", "Usage"), url: "/usage", icon: UsageIconStyled });
+    items.push({ title: t("admins", "Admins"), url: "/admins", icon: AdminIconStyled });
+    items.push({
+      title: t("header.settings"),
+      icon: SettingsIconStyled,
+      subItems: settingsSubItems,
+    });
+  }
 
   return (
     <Box

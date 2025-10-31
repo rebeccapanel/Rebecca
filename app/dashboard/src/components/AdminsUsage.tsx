@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
+import type { ApexOptions } from "apexcharts";
 import ReactDatePicker from "react-datepicker";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
@@ -25,6 +26,12 @@ import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { formatBytes } from "utils/formatByte";
+import {
+  ServiceAdminUsage,
+  ServiceAdminUsageResponse,
+  ServiceListResponse,
+  ServiceSummary,
+} from "types/Service";
 import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 
 dayjs.extend(utc);
@@ -84,13 +91,13 @@ const normalizeCustomRange = (start: Date, end: Date): RangeState => {
   };
 };
 
-const buildDailyUsageOptions = (colorMode: string, categories: string[]) => {
+const buildDailyUsageOptions = (colorMode: string, categories: string[]): ApexOptions => {
   const axisColor = colorMode === "dark" ? "#d8dee9" : "#1a202c";
   return {
-    chart: { type: "area", toolbar: { show: false }, zoom: { enabled: false } },
+    chart: { type: "area" as const, toolbar: { show: false }, zoom: { enabled: false } },
     dataLabels: { enabled: false },
-    stroke: { curve: "smooth", width: 2 },
-    fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 80, 100] } },
+    stroke: { curve: "smooth" as const, width: 2 },
+    fill: { type: "gradient" as const, gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 80, 100] } },
     grid: { borderColor: colorMode === "dark" ? "#2D3748" : "#E2E8F0" },
     xaxis: { categories, labels: { style: { colors: categories.map(() => axisColor) } }, axisBorder: { show: false }, axisTicks: { show: false } },
     yaxis: { labels: { formatter: (value: number) => formatBytes(Number(value) || 0, 1), style: { colors: [axisColor] } } },
@@ -99,11 +106,41 @@ const buildDailyUsageOptions = (colorMode: string, categories: string[]) => {
   };
 };
 
+const buildServiceDonutOptions = (colorMode: string, labels: string[]): ApexOptions => ({
+  labels,
+  legend: { position: "bottom" as const, labels: { colors: colorMode === "dark" ? "#d8dee9" : "#1a202c" } },
+  tooltip: {
+    y: {
+      formatter: (value: number) => formatBytes(Number(value) || 0, 2),
+      title: {
+        formatter: (seriesName: string, opts?: { seriesIndex: number; w: { globals: { labels: string[] } } }) =>
+          opts?.w?.globals?.labels?.[opts.seriesIndex] ?? seriesName,
+      },
+    },
+  },
+  colors: [
+    "#3182CE",
+    "#63B3ED",
+    "#ED8936",
+    "#38A169",
+    "#9F7AEA",
+    "#F6AD55",
+    "#4299E1",
+    "#E53E3E",
+    "#D53F8C",
+    "#805AD5",
+  ],
+});
+
 const AdminsUsage: FC = () => {
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
   const { admins: pagedAdmins } = useAdminsStore();
   const [admins, setAdmins] = useState<any[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [serviceAdminUsage, setServiceAdminUsage] = useState<ServiceAdminUsage[]>([]);
+  const [loadingServiceUsage, setLoadingServiceUsage] = useState(false);
 
   const presets = useMemo<UsagePreset[]>(
     () => [
@@ -124,15 +161,104 @@ const AdminsUsage: FC = () => {
   const [loading, setLoading] = useState(false);
   const [isCalendarOpen, setCalendarOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<[Date | null, Date | null]>([range.start, range.end]);
+  const selectedService = useMemo(
+    () => serviceOptions.find((service) => service.id === selectedServiceId) ?? null,
+    [serviceOptions, selectedServiceId]
+  );
+  const filteredAdmins = useMemo(() => {
+    if (!selectedServiceId) return admins;
+    const allowedUsernames = new Set(
+      serviceAdminUsage
+        .map((entry) => entry.username)
+        .filter((username): username is string => Boolean(username))
+    );
+    const filtered = admins.filter((admin) => allowedUsernames.has(admin.username));
+    return filtered.length ? filtered : admins;
+  }, [admins, selectedServiceId, serviceAdminUsage]);
+  const serviceUsageTotal = useMemo(
+    () => serviceAdminUsage.reduce((acc, item) => acc + (item.used_traffic || 0), 0),
+    [serviceAdminUsage]
+  );
+  const serviceDonutSeries = useMemo(
+    () => serviceAdminUsage.map((item) => item.used_traffic || 0),
+    [serviceAdminUsage]
+  );
+  const serviceDonutLabels = useMemo(
+    () => serviceAdminUsage.map((item) => item.username || t("services.unassignedAdmin", "Unassigned")),
+    [serviceAdminUsage, t]
+  );
+  const serviceDonutOptions = useMemo(
+    () => buildServiceDonutOptions(colorMode, serviceDonutLabels),
+    [colorMode, serviceDonutLabels]
+  );
 
-  useEffect(() => {
-    if (!isCalendarOpen) {
-      setDraftRange([range.start, range.end]);
+useEffect(() => {
+  if (!isCalendarOpen) {
+    setDraftRange([range.start, range.end]);
+  }
+}, [isCalendarOpen, range.start, range.end]);
+
+useEffect(() => {
+  let cancelled = false;
+
+  const loadServices = async () => {
+    try {
+      const response = await apiFetch<ServiceListResponse>("/v2/services", {
+        query: { limit: 500 },
+      });
+      if (cancelled || !response) return;
+      const list = response.services ?? [];
+      setServiceOptions(list);
+      setSelectedServiceId((prev) => {
+        if (prev !== null) return prev;
+        return list.length ? list[0].id : null;
+      });
+    } catch (error) {
+      if (!cancelled) {
+        setServiceOptions([]);
+      }
     }
-  }, [isCalendarOpen, range.start, range.end]);
+  };
 
-  // load all admins (not paginated) for the select list
-  useEffect(() => {
+  loadServices();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
+  if (!selectedServiceId) {
+    setServiceAdminUsage([]);
+    return;
+  }
+  let cancelled = false;
+  setLoadingServiceUsage(true);
+  apiFetch<ServiceAdminUsageResponse>(`/v2/services/${selectedServiceId}/usage/admins`, {
+    query: {
+      start: formatApiStart(range.start),
+      end: formatApiEnd(range.end),
+    },
+  })
+    .then((data) => {
+      if (cancelled || !data) return;
+      setServiceAdminUsage(data.admins ?? []);
+    })
+    .catch(() => {
+      if (!cancelled) {
+        setServiceAdminUsage([]);
+      }
+    })
+    .finally(() => {
+      if (!cancelled) setLoadingServiceUsage(false);
+    });
+  return () => {
+    cancelled = true;
+  };
+}, [selectedServiceId, range.start, range.end, range.unit]);
+
+// load all admins (not paginated) for the select list
+useEffect(() => {
     let cancelled = false;
     const loadAll = async () => {
       try {
@@ -213,10 +339,13 @@ const AdminsUsage: FC = () => {
     };
   }, [selectedAdmin, range]);
 
-  useEffect(() => {
-    if (!admins || admins.length === 0) return;
-    if (!selectedAdmin) setSelectedAdmin(admins[0].username);
-  }, [admins, selectedAdmin]);
+useEffect(() => {
+  if (!filteredAdmins || filteredAdmins.length === 0) return;
+  const hasSelected = filteredAdmins.some((admin) => admin.username === selectedAdmin);
+  if (!hasSelected) {
+    setSelectedAdmin(filteredAdmins[0].username);
+  }
+}, [filteredAdmins, selectedAdmin]);
 
   // keep selectedPresetKey in sync with range; if range doesn't match any preset mark as custom
   useEffect(() => {
@@ -242,6 +371,106 @@ const AdminsUsage: FC = () => {
 
   return (
     <VStack spacing={4} align="stretch">
+      <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          spacing={{ base: 4, md: 6 }}
+          justifyContent="space-between"
+          alignItems={{ base: "stretch", md: "center" }}
+        >
+          <VStack align="start" spacing={1}>
+            <Text fontWeight="semibold" fontSize="lg">
+              {t("admins.serviceUsageTitle", "Service usage distribution")}
+            </Text>
+            <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+              {t("admins.serviceUsageHint", "Pick a service to see how its usage is split between admins.")}
+            </Text>
+          </VStack>
+          <Stack direction={{ base: "column", sm: "row" }} spacing={3} align={{ base: "stretch", sm: "center" }}>
+            <Select
+              value={selectedServiceId ?? ""}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setSelectedServiceId(Number.isNaN(value) ? null : value);
+              }}
+              minW={{ sm: "220px" }}
+              placeholder={t("admins.selectService", "Select service")}
+              isDisabled={!serviceOptions.length}
+            >
+              {serviceOptions.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </Select>
+            <HStack fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+              <InfoIcon />
+              <Text>
+                {t("services.totalUsage", "Total")}:{" "}
+                <chakra.span fontWeight="medium">{formatBytes(serviceUsageTotal, 2)}</chakra.span>
+              </Text>
+            </HStack>
+          </Stack>
+        </Stack>
+        <Stack
+          mt={6}
+          direction={{ base: "column", lg: "row" }}
+          spacing={{ base: 4, lg: 6 }}
+          align={{ base: "stretch", lg: "center" }}
+        >
+          <Box flex="1">
+            {loadingServiceUsage ? (
+              <VStack spacing={3} py={8}>
+                <Spinner />
+                <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                  {t("loading")}
+                </Text>
+              </VStack>
+            ) : serviceAdminUsage.length && serviceUsageTotal > 0 ? (
+              <ReactApexChart type="donut" height={320} options={serviceDonutOptions} series={serviceDonutSeries} />
+            ) : (
+              <Text textAlign="center" color="gray.500" _dark={{ color: "gray.400" }}>
+                {t("noData")}
+              </Text>
+            )}
+          </Box>
+          <VStack flex="1" align="stretch" spacing={2}>
+            {serviceAdminUsage.length ? (
+              serviceAdminUsage.map((item) => {
+                const username = item.username || t("services.unassignedAdmin", "Unassigned");
+                const isSelectable = Boolean(item.username);
+                const isActive = selectedAdmin === item.username && isSelectable;
+                return (
+                  <Button
+                    key={`${item.admin_id ?? "na"}-${username}`}
+                    size="sm"
+                    variant={isActive ? "solid" : "outline"}
+                    colorScheme="primary"
+                    justifyContent="space-between"
+                    onClick={() => {
+                      if (isSelectable && item.username) {
+                        setSelectedAdmin(item.username);
+                      }
+                    }}
+                    isDisabled={!isSelectable}
+                  >
+                    <HStack justify="space-between" w="full">
+                      <Text>{username}</Text>
+                      <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
+                        {formatBytes(item.used_traffic || 0, 2)}
+                      </Text>
+                    </HStack>
+                  </Button>
+                );
+              })
+            ) : (
+              <Text color="gray.500" _dark={{ color: "gray.400" }}>
+                {t("noData")}
+              </Text>
+            )}
+          </VStack>
+        </Stack>
+      </Box>
       <Box borderWidth="1px" borderRadius="lg" p={{ base: 4, md: 6 }} boxShadow="md">
         <Stack
           direction={{ base: "column", lg: "row" }}
@@ -352,11 +581,12 @@ const AdminsUsage: FC = () => {
               </Popover>
               <Select
                 value={selectedAdmin ?? ""}
-                onChange={(e) => setSelectedAdmin(e.target.value)}
+                onChange={(e) => setSelectedAdmin(e.target.value || null)}
                 w={{ base: "full", sm: "auto", md: "220px" }}
                 minW={{ md: "200px" }}
+                isDisabled={!filteredAdmins.length}
               >
-                {admins.map((a) => (
+                {filteredAdmins.map((a: any) => (
                   <option key={a.username} value={a.username}>
                     {a.username}
                   </option>

@@ -206,6 +206,7 @@ class UserCreate(User):
 class UserModify(User):
     status: UserStatusModify = None
     data_limit_reset_strategy: UserDataLimitResetStrategy = None
+    service_id: Optional[int] = None
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "proxies": {
@@ -279,6 +280,30 @@ class UserModify(User):
         return status
 
 
+class UserServiceCreate(BaseModel):
+    username: str
+    service_id: int
+    status: UserStatusCreate | None = None
+    expire: Optional[int] = None
+    data_limit: Optional[int] = Field(None, ge=0)
+    data_limit_reset_strategy: UserDataLimitResetStrategy = UserDataLimitResetStrategy.no_reset
+    note: Optional[str] = Field(None, nullable=True)
+    on_hold_timeout: Optional[Union[datetime, None]] = Field(None, nullable=True)
+    on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
+    auto_delete_in_days: Optional[int] = Field(None, nullable=True)
+    next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value):
+        return User.validate_username(value)
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value):
+        return User.validate_note(value)
+
+
 class UserResponse(User):
     username: str
     status: UserStatus
@@ -289,6 +314,9 @@ class UserResponse(User):
     subscription_url: str = ""
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
+    service_id: int | None = None
+    service_name: str | None = None
+    service_host_orders: Dict[int, int] = Field(default_factory=dict)
 
     admin: Optional[Admin] = None
     model_config = ConfigDict(from_attributes=True)

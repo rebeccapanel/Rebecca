@@ -13,7 +13,6 @@ import {
 import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
-  ChartPieIcon,
   Cog6ToothIcon,
   DocumentMinusIcon,
   LinkIcon,
@@ -47,7 +46,6 @@ const SettingsIcon = chakra(Bars3Icon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const HostsIcon = chakra(LinkIcon, iconProps);
 const NodesIcon = chakra(SquaresPlusIcon, iconProps);
-const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
 const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
@@ -60,7 +58,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
     return false;
   };
 
-  const { onResetAllUsage, onEditingNodes, onShowingNodesUsage } =
+  const { onResetAllUsage, onEditingNodes } =
     useDashboard();
   const { t } = useTranslation();
   const { colorMode, toggleColorMode } = useColorMode();
@@ -112,14 +110,6 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                     onClick={onEditingNodes.bind(null, true)}
                   >
                     {t("header.nodeSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesUsageIcon />}
-                    onClick={onShowingNodesUsage.bind(null, true)}
-                  >
-                    {t("header.nodesUsage")}
                   </MenuItem>
                   <MenuItem
                     maxW="170px"

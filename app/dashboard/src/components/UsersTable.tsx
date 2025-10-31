@@ -301,6 +301,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                   </Select>
                 </HStack>
               </Th>
+              <Th minW="120px">
+                <span>{t("usersTable.service", "Service")}</span>
+              </Th>
               <Th
                 minW="100px"
                 cursor={"pointer"}
@@ -334,7 +337,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                         minW="100px"
                         pl={4}
                         pr={4}
-                        maxW="calc(100vw - 50px - 32px - 100px - 48px)"
+                        maxW="calc(100vw - 50px - 32px - 100px - 120px - 48px)"
                       >
                         <div className="flex-status">
                           <OnlineBadge lastOnline={user.online_at} />
@@ -348,6 +351,19 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                           expiryDate={user.expire}
                           status={user.status}
                         />
+                      </Td>
+                      <Td borderBottom={0} minW="120px" pr={4}>
+                        <Text
+                          fontSize="sm"
+                          color={user.service_name ? "gray.700" : "gray.500"}
+                          _dark={{
+                            color: user.service_name ? "gray.200" : "gray.500",
+                          }}
+                          isTruncated
+                        >
+                          {user.service_name ??
+                            t("usersTable.defaultService", "Default")}
+                        </Text>
                       </Td>
                       <Td borderBottom={0} minW="100px" pr={0}>
                         <UsageSliderCompact
@@ -537,6 +553,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 </Select>
               </HStack>
             </Th>
+            <Th minW="150px">
+              <span>{t("usersTable.service", "Service")}</span>
+            </Th>
             <Th
               width="350px"
               minW="230px"
@@ -577,6 +596,17 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                       expiryDate={user.expire}
                       status={user.status}
                     />
+                  </Td>
+                  <Td minW="150px">
+                    <Text
+                      fontSize="sm"
+                      color={user.service_name ? "gray.700" : "gray.500"}
+                      _dark={{ color: user.service_name ? "gray.200" : "gray.500" }}
+                      isTruncated
+                    >
+                      {user.service_name ??
+                        t("usersTable.defaultService", "Default")}
+                    </Text>
                   </Td>
                   <Td width="350px" minW="230px">
                     <UsageSlider

@@ -40,25 +40,20 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { resetStrategy } from "constants/UserSettings";
 import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
+import { useServicesStore } from "contexts/ServicesContext";
+import useGetUser from "hooks/useGetUser";
 import dayjs from "dayjs";
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import {
-  ProxyKeys,
-  ProxyType,
-  User,
-  UserCreate,
-  UserInbounds,
-} from "types/User";
+import { User, UserCreate, UserCreateWithService } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { z } from "zod";
 import { DeleteIcon } from "./DeleteUserModal";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
-import { RadioGroup } from "./RadioGroup";
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
@@ -98,31 +93,51 @@ const LimitLockIcon = chakra(LockClosedIcon, {
 });
 
 export type UserDialogProps = {};
+type BaseFormFields = Pick<
+  UserCreate,
+  | "username"
+  | "status"
+  | "expire"
+  | "data_limit"
+  | "data_limit_reset_strategy"
+  | "on_hold_expire_duration"
+  | "note"
+  | "proxies"
+  | "inbounds"
+>;
 
-export type FormType = Pick<UserCreate, keyof UserCreate> & {
-  selected_proxies: ProxyKeys;
+export type FormType = BaseFormFields & {
+  service_id: number | null;
+  next_plan_enabled: boolean;
+  next_plan_data_limit: number | null;
+  next_plan_expire: number | null;
+  next_plan_add_remaining_traffic: boolean;
+  next_plan_fire_on_either: boolean;
 };
 
 const formatUser = (user: User): FormType => {
+  const nextPlan = user.next_plan ?? null;
   return {
     ...user,
     data_limit: user.data_limit
       ? Number((user.data_limit / 1073741824).toFixed(5))
       : user.data_limit,
-    on_hold_expire_duration: user.on_hold_expire_duration
-      ? Number(user.on_hold_expire_duration / (24 * 60 * 60))
-      : user.on_hold_expire_duration,
-    selected_proxies: Object.keys(user.proxies) as ProxyKeys,
+    on_hold_expire_duration:
+      user.on_hold_expire_duration
+        ? Number(user.on_hold_expire_duration / (24 * 60 * 60))
+        : user.on_hold_expire_duration,
+    service_id: user.service_id ?? null,
+    next_plan_enabled: Boolean(nextPlan),
+    next_plan_data_limit: nextPlan?.data_limit
+      ? Number((nextPlan.data_limit / 1073741824).toFixed(5))
+      : null,
+    next_plan_expire: nextPlan?.expire ?? null,
+    next_plan_add_remaining_traffic: nextPlan?.add_remaining_traffic ?? false,
+    next_plan_fire_on_either: nextPlan?.fire_on_either ?? true,
   };
 };
 const getDefaultValues = (): FormType => {
-  const defaultInbounds = Object.fromEntries(useDashboard.getState().inbounds);
-  const inbounds: UserInbounds = {};
-  for (const key in defaultInbounds) {
-    inbounds[key] = defaultInbounds[key].map((i) => i.tag);
-  }
   return {
-    selected_proxies: Object.keys(defaultInbounds) as ProxyKeys,
     data_limit: null,
     expire: null,
     username: "",
@@ -130,39 +145,35 @@ const getDefaultValues = (): FormType => {
     status: "active",
     on_hold_expire_duration: null,
     note: "",
-    inbounds,
+    inbounds: {},
     proxies: {
       vless: { id: "", flow: "" },
       vmess: { id: "" },
       trojan: { password: "" },
       shadowsocks: { password: "", method: "chacha20-ietf-poly1305" },
     },
+    service_id: null,
+    next_plan_enabled: false,
+    next_plan_data_limit: null,
+    next_plan_expire: null,
+    next_plan_add_remaining_traffic: false,
+    next_plan_fire_on_either: true,
   };
-};
-
-const mergeProxies = (
-  proxyKeys: ProxyKeys,
-  proxyType: ProxyType | undefined
-): ProxyType => {
-  const proxies: ProxyType = proxyKeys.reduce(
-    (ac, a) => ({ ...ac, [a]: {} }),
-    {}
-  );
-  if (!proxyType) return proxies;
-  proxyKeys.forEach((proxy) => {
-    if (proxyType[proxy]) {
-      proxies[proxy] = proxyType[proxy];
-    }
-  });
-  return proxies;
 };
 
 const baseSchema = {
   username: z.string().min(1, { message: "Required" }),
-  selected_proxies: z.array(z.string()).refine((value) => value.length > 0, {
-    message: "userDialog.selectOneProtocol",
-  }),
   note: z.string().nullable(),
+  service_id: z
+    .union([z.string(), z.number()])
+    .nullable()
+    .transform((value) => {
+      if (value === "" || value === null || typeof value === "undefined") {
+        return null;
+      }
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }),
   proxies: z
     .record(z.string(), z.record(z.string(), z.any()))
     .transform((ins) => {
@@ -196,6 +207,30 @@ const baseSchema = {
     });
     return ins;
   }),
+  next_plan_enabled: z.boolean().default(false),
+  next_plan_data_limit: z
+    .union([z.string(), z.number(), z.null()])
+    .transform((value) => {
+      if (value === null || value === "" || typeof value === "undefined") {
+        return null;
+      }
+      const parsed = Number(value);
+      if (Number.isNaN(parsed)) {
+        return null;
+      }
+      return Math.max(0, parsed);
+    }),
+  next_plan_expire: z
+    .union([z.number(), z.string(), z.null()])
+    .transform((value) => {
+      if (value === "" || value === null || typeof value === "undefined") {
+        return null;
+      }
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }),
+  next_plan_add_remaining_traffic: z.boolean().default(false),
+  next_plan_fire_on_either: z.boolean().default(true),
 };
 
 const schema = z.discriminatedUnion("status", [
@@ -235,7 +270,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     editUser,
     fetchUserUsage,
     onEditingUser,
-    createUser,
+    createUserWithService,
     onDeletingUser,
     users: usersState,
     isUserLimitReached,
@@ -252,6 +287,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   const { colorMode } = useColorMode();
 
+  const services = useServicesStore((state) => state.services);
+  const servicesLoading = useServicesStore((state) => state.isLoading);
+  const { userData, getUserIsSuccess } = useGetUser();
+  const isSudo = Boolean(getUserIsSuccess && userData.is_sudo);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const hasServices = services.length > 0;
+  const selectedService = selectedServiceId
+    ? services.find((service) => service.id === selectedServiceId) ?? null
+    : null;
+  const isServiceManagedUser = Boolean(editingUser?.service_id);
   const [usageVisible, setUsageVisible] = useState(false);
   const handleUsageToggle = () => {
     setUsageVisible((current) => !current);
@@ -262,21 +307,82 @@ export const UserDialog: FC<UserDialogProps> = () => {
     resolver: zodResolver(schema),
   });
 
-  useEffect(
-    () =>
-      useDashboard.subscribe(
-        (state) => state.inbounds,
-        () => {
-          form.reset(getDefaultValues());
-        }
-      ),
-    []
-  );
+  useEffect(() => {
+    if (isOpen) {
+      useServicesStore.getState().fetchServices();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isEditing) {
+      if (editingUser?.service_id) {
+        setSelectedServiceId(editingUser.service_id);
+      } else if (isSudo) {
+        setSelectedServiceId(null);
+      } else if (services.length) {
+        setSelectedServiceId(services[0]?.id ?? null);
+      } else {
+        setSelectedServiceId(null);
+      }
+    } else if (!isOpen) {
+      setSelectedServiceId(null);
+    }
+  }, [isEditing, editingUser, isOpen, isSudo, services]);
+
+  useEffect(() => {
+    if (!isEditing && isOpen && hasServices) {
+      setSelectedServiceId((current) => current ?? services[0]?.id ?? null);
+    }
+  }, [services, isEditing, isOpen, hasServices]);
+
+  useEffect(() => {
+    if (!isEditing && isOpen && !hasServices) {
+      setSelectedServiceId(null);
+    }
+  }, [hasServices, isEditing, isOpen]);
 
   const [dataLimit, userStatus] = useWatch({
     control: form.control,
     name: ["data_limit", "status"],
   });
+  const nextPlanEnabled = useWatch({
+    control: form.control,
+    name: "next_plan_enabled",
+  });
+  const nextPlanDataLimit = useWatch({
+    control: form.control,
+    name: "next_plan_data_limit",
+  });
+  const nextPlanExpire = useWatch({
+    control: form.control,
+    name: "next_plan_expire",
+  });
+  const nextPlanAddRemainingTraffic = useWatch({
+    control: form.control,
+    name: "next_plan_add_remaining_traffic",
+  });
+  const nextPlanFireOnEither = useWatch({
+    control: form.control,
+    name: "next_plan_fire_on_either",
+  });
+
+  const handleNextPlanToggle = (checked: boolean) => {
+    form.setValue("next_plan_enabled", checked, { shouldDirty: true });
+    if (checked) {
+      if (form.getValues("next_plan_data_limit") === null) {
+        form.setValue("next_plan_data_limit", 0, { shouldDirty: false });
+      }
+      if (form.getValues("next_plan_add_remaining_traffic") === undefined) {
+        form.setValue("next_plan_add_remaining_traffic", false, { shouldDirty: false });
+      }
+      if (form.getValues("next_plan_fire_on_either") === undefined) {
+        form.setValue("next_plan_fire_on_either", true, { shouldDirty: false });
+      }
+    } else {
+      form.setValue("next_plan_data_limit", null, { shouldDirty: true });
+      form.setValue("next_plan_expire", null, { shouldDirty: true });
+    }
+  };
 
   const usageTitle = t("userDialog.total");
   const [usage, setUsage] = useState(createUsageConfig(colorMode, usageTitle));
@@ -296,47 +402,156 @@ export const UserDialog: FC<UserDialogProps> = () => {
   useEffect(() => {
     if (editingUser) {
       form.reset(formatUser(editingUser));
-
       fetchUsageWithFilter({
         start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
       });
     }
-  }, [editingUser]);
+  }, [editingUser, isEditing, isOpen]);
 
   const submit = (values: FormType) => {
     if (limitReached) {
       return;
     }
     setLoading(true);
-    const methods = { edited: (body: UserCreate) => editUser(editingUser!.username, body), created: createUser };
-    const method = isEditing ? "edited" : "created";
     setError(null);
 
-    const { selected_proxies, ...rest } = values;
+    const {
+      service_id: _serviceId,
+      next_plan_enabled,
+      next_plan_data_limit,
+      next_plan_expire,
+      next_plan_add_remaining_traffic,
+      next_plan_fire_on_either,
+      proxies,
+      inbounds,
+      status,
+      data_limit,
+      data_limit_reset_strategy,
+      on_hold_expire_duration,
+      ...rest
+    } = values;
 
-    let body: UserCreate = {
-      ...rest,
-      data_limit: values.data_limit,
-      proxies: mergeProxies(selected_proxies, values.proxies),
-      data_limit_reset_strategy:
-        values.data_limit && values.data_limit > 0
-          ? values.data_limit_reset_strategy
-          : "no_reset",
-      status:
-        values.status === "active" ||
+    const normalizedNextPlanDataLimit =
+      next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
+        ? Number((Number(next_plan_data_limit) * 1073741824).toFixed(5))
+        : 0;
+
+    const nextPlanPayload = next_plan_enabled
+      ? {
+          data_limit: normalizedNextPlanDataLimit,
+          expire: next_plan_expire ?? 0,
+          add_remaining_traffic: next_plan_add_remaining_traffic,
+          fire_on_either: next_plan_fire_on_either,
+        }
+      : null;
+
+    if (!isEditing) {
+      if (!selectedServiceId) {
+        setError(t("userDialog.selectService", "Please choose a service"));
+        setLoading(false);
+        return;
+      }
+
+      const serviceBody: UserCreateWithService = {
+        username: values.username,
+        service_id: selectedServiceId,
+        note: values.note,
+        status:
+          values.status === "active" ||
           values.status === "disabled" ||
           values.status === "on_hold"
-          ? values.status
+            ? values.status
+            : "active",
+        expire: values.expire,
+        data_limit: values.data_limit,
+        data_limit_reset_strategy:
+          data_limit && data_limit > 0
+            ? data_limit_reset_strategy
+            : "no_reset",
+        on_hold_expire_duration:
+          status === "on_hold" ? on_hold_expire_duration : null,
+      };
+      if (nextPlanPayload) {
+        serviceBody.next_plan = nextPlanPayload;
+      }
+
+      createUserWithService(serviceBody)
+        .then(() => {
+          toast({
+            title: t("userDialog.userCreated", { username: values.username }),
+            status: "success",
+            isClosable: true,
+            position: "top",
+            duration: 3000,
+          });
+          onClose();
+        })
+        .catch((err) => {
+          if (err?.response?.status === 409 || err?.response?.status === 400) {
+            setError(err?.response?._data?.detail);
+          }
+          if (err?.response?.status === 422) {
+            Object.keys(err.response._data.detail).forEach((key) => {
+              setError(err?.response._data.detail[key] as string);
+              form.setError(
+                key as "proxies" | "username" | "data_limit" | "expire",
+                {
+                  type: "custom",
+                  message: err.response._data.detail[key],
+                }
+              );
+            });
+          }
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+
+      return;
+    }
+
+    const body: Record<string, unknown> = {
+      ...rest,
+      data_limit,
+      data_limit_reset_strategy:
+        data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset",
+      status:
+        status === "active" || status === "disabled" || status === "on_hold"
+          ? status
           : "active",
+      on_hold_expire_duration:
+        status === "on_hold" ? on_hold_expire_duration : null,
     };
 
-    methods[method](body)
+    if (nextPlanPayload) {
+      body.next_plan = nextPlanPayload;
+    } else if (!next_plan_enabled && editingUser?.next_plan) {
+      body.next_plan = null;
+    }
+
+    if (!editingUser?.service_id) {
+      if (proxies && Object.keys(proxies).length > 0) {
+        body.proxies = proxies;
+      }
+      if (inbounds && Object.keys(inbounds).length > 0) {
+        body.inbounds = inbounds;
+      }
+    }
+
+    if (typeof selectedServiceId !== "undefined") {
+      if (selectedServiceId === null) {
+        if (isSudo) {
+          body.service_id = null;
+        }
+      } else if (selectedServiceId !== editingUser?.service_id) {
+        body.service_id = selectedServiceId;
+      }
+    }
+
+    editUser(editingUser!.username, body as UserCreate)
       .then(() => {
         toast({
-          title: t(
-            isEditing ? "userDialog.userEdited" : "userDialog.userCreated",
-            { username: values.username }
-          ),
+          title: t("userDialog.userEdited", { username: values.username }),
           status: "success",
           isClosable: true,
           position: "top",
@@ -345,8 +560,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
         onClose();
       })
       .catch((err) => {
-        if (err?.response?.status === 409 || err?.response?.status === 400)
+        if (err?.response?.status === 409 || err?.response?.status === 400) {
           setError(err?.response?._data?.detail);
+        }
         if (err?.response?.status === 422) {
           Object.keys(err.response._data.detail).forEach((key) => {
             setError(err?.response._data.detail[key] as string);
@@ -372,6 +588,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
     setError(null);
     setUsageVisible(false);
     setUsageFilter("1m");
+    setSelectedServiceId(null);
   };
 
   const handleResetUsage = () => {
@@ -430,6 +647,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
               </HStack>
             </ModalHeader>
             <ModalBody>
+              {isEditing && isServiceManagedUser && (
+                <Alert status="info" mb={4} borderRadius="md">
+                  <AlertIcon />
+                  {t(
+                    "userDialog.serviceManagedNotice",
+                    "This user is tied to service {{service}}. Update the service to change shared settings.",
+                    {
+                      service: editingUser?.service_name ?? "",
+                    }
+                  )}
+                </Alert>
+              )}
               <Grid
                 templateColumns={{
                   base: "repeat(1, 1fr)",
@@ -610,6 +839,140 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         </FormControl>
                       </Collapse>
 
+                      <Box mb={"10px"}>
+                        <HStack justify="space-between" align="center">
+                          <FormLabel mb={0}>{t("userDialog.nextPlanTitle", "Next plan")}</FormLabel>
+                          <Switch
+                            colorScheme="primary"
+                            isChecked={nextPlanEnabled}
+                            onChange={(event) => handleNextPlanToggle(event.target.checked)}
+                            isDisabled={disabled}
+                          />
+                        </HStack>
+                        <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }} mt={1}>
+                          {t(
+                            "userDialog.nextPlanDescription",
+                            "Configure automatic renewal details for this user."
+                          )}
+                        </Text>
+                        <Collapse in={nextPlanEnabled} animateOpacity style={{ width: "100%" }}>
+                          <VStack align="stretch" spacing={3} mt={3}>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                {t("userDialog.nextPlanDataLimit", "Next plan data limit")}
+                              </FormLabel>
+                              <Input
+                                endAdornment="GB"
+                                type="number"
+                                size="sm"
+                                borderRadius="6px"
+                                disabled={disabled}
+                                value={
+                                  nextPlanDataLimit !== null && typeof nextPlanDataLimit !== "undefined"
+                                    ? String(nextPlanDataLimit)
+                                    : ""
+                                }
+                                onChange={(event) => {
+                                  const rawValue = event.target.value;
+                                  if (!rawValue) {
+                                    form.setValue("next_plan_data_limit", null, { shouldDirty: true });
+                                    return;
+                                  }
+                                  const parsed = Number(rawValue);
+                                  if (Number.isNaN(parsed)) {
+                                    return;
+                                  }
+                                  form.setValue("next_plan_data_limit", Math.max(0, parsed), {
+                                    shouldDirty: true,
+                                  });
+                                }}
+                              />
+                            </FormControl>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                {t("userDialog.nextPlanExpire", "Next plan expiry")}
+                              </FormLabel>
+                              <ReactDatePicker
+                                locale={i18n.language.toLocaleLowerCase()}
+                                dateFormat={t("dateFormat")}
+                                minDate={new Date()}
+                                selected={
+                                  nextPlanExpire && nextPlanExpire > 0
+                                    ? dayjs(nextPlanExpire * 1000).utc().toDate()
+                                    : undefined
+                                }
+                                onChange={(date: Date) => {
+                                  if (!date) {
+                                    form.setValue("next_plan_expire", null, { shouldDirty: true });
+                                    return;
+                                  }
+                                  const normalized = dayjs(date)
+                                    .set("hour", 23)
+                                    .set("minute", 59)
+                                    .set("second", 59)
+                                    .utc()
+                                    .valueOf();
+                                  form.setValue(
+                                    "next_plan_expire",
+                                    Math.floor(normalized / 1000),
+                                    { shouldDirty: true }
+                                  );
+                                }}
+                                customInput={
+                                  <Input
+                                    size="sm"
+                                    type="text"
+                                    borderRadius="6px"
+                                    clearable
+                                    disabled={disabled}
+                                  />
+                                }
+                              />
+                            </FormControl>
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                                {t(
+                                  "userDialog.nextPlanAddRemainingTraffic",
+                                  "Carry over remaining traffic"
+                                )}
+                              </Text>
+                              <Switch
+                                size="sm"
+                                colorScheme="primary"
+                                isChecked={Boolean(nextPlanAddRemainingTraffic)}
+                                onChange={(event) =>
+                                  form.setValue(
+                                    "next_plan_add_remaining_traffic",
+                                    event.target.checked,
+                                    { shouldDirty: true }
+                                  )
+                                }
+                                isDisabled={disabled}
+                              />
+                            </HStack>
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                                {t(
+                                  "userDialog.nextPlanFireOnEither",
+                                  "Trigger on data or expiry"
+                                )}
+                              </Text>
+                              <Switch
+                                size="sm"
+                                colorScheme="primary"
+                                isChecked={Boolean(nextPlanFireOnEither)}
+                                onChange={(event) =>
+                                  form.setValue("next_plan_fire_on_either", event.target.checked, {
+                                    shouldDirty: true,
+                                  })
+                                }
+                                isDisabled={disabled}
+                              />
+                            </HStack>
+                          </VStack>
+                        </Collapse>
+                      </Box>
+
                       <FormControl mb={"10px"}>
                         <FormLabel>
                           {isOnHold
@@ -743,48 +1106,152 @@ export const UserDialog: FC<UserDialogProps> = () => {
                   </VStack>
                 </GridItem>
                 <GridItem>
-                  <FormControl
-                    isInvalid={
-                      !!form.formState.errors.selected_proxies?.message
-                    }
-                  >
-                    <FormLabel>{t("userDialog.protocols")}</FormLabel>
-                    <Controller
-                      control={form.control}
-                      name="selected_proxies"
-                      render={({ field }) => {
-                        return (
-                          <RadioGroup
-                            list={[
-                              {
-                                title: "vmess",
-                                description: t("userDialog.vmessDesc"),
-                              },
-                              {
-                                title: "vless",
-                                description: t("userDialog.vlessDesc"),
-                              },
-                              {
-                                title: "trojan",
-                                description: t("userDialog.trojanDesc"),
-                              },
-                              {
-                                title: "shadowsocks",
-                                description: t("userDialog.shadowsocksDesc"),
-                              },
-                            ]}
-                            disabled={disabled}
-                            {...field}
-                          />
-                        );
-                      }}
-                    />
-                    <FormErrorMessage>
-                      {t(
-                        form.formState.errors.selected_proxies
-                          ?.message as string
-                      )}
-                    </FormErrorMessage>
+                  <FormControl isRequired={!isEditing}>
+                    <FormLabel>{t("userDialog.selectServiceLabel", "Service")}</FormLabel>
+                    {servicesLoading ? (
+                      <HStack spacing={2} py={4}>
+                        <Spinner size="sm" />
+                        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                          {t("loading")}
+                        </Text>
+                      </HStack>
+                    ) : hasServices ? (
+                      <VStack align="stretch" spacing={3}>
+                        {isEditing && isSudo && (
+                          <Box
+                            role="button"
+                            tabIndex={disabled ? -1 : 0}
+                            aria-pressed={selectedServiceId === null}
+                            onKeyDown={(event) => {
+                              if (disabled) return;
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setSelectedServiceId(null);
+                              }
+                            }}
+                            onClick={() => {
+                              if (disabled) return;
+                              setSelectedServiceId(null);
+                            }}
+                            borderWidth="1px"
+                            borderRadius="md"
+                            p={4}
+                            borderColor={
+                              selectedServiceId === null ? "primary.500" : "gray.200"
+                            }
+                            bg={selectedServiceId === null ? "primary.50" : "transparent"}
+                            cursor={disabled ? "not-allowed" : "pointer"}
+                            pointerEvents={disabled ? "none" : "auto"}
+                            transition="border-color 0.2s ease, background-color 0.2s ease"
+                            _hover={
+                              disabled
+                                ? {}
+                                : {
+                                    borderColor: selectedServiceId === null ? "primary.500" : "gray.300",
+                                  }
+                            }
+                            _dark={{
+                              borderColor:
+                                selectedServiceId === null ? "primary.400" : "gray.700",
+                              bg:
+                                selectedServiceId === null ? "primary.900" : "transparent",
+                            }}
+                          >
+                            <Text fontWeight="semibold">
+                              {t("userDialog.noServiceOption", "No service")}
+                            </Text>
+                            <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }} mt={1}>
+                              {t(
+                                "userDialog.noServiceHelper",
+                                "Keep this user detached from shared service settings."
+                              )}
+                            </Text>
+                          </Box>
+                        )}
+                        {services.map((service) => {
+                          const isSelected = selectedServiceId === service.id;
+                          return (
+                            <Box
+                              key={service.id}
+                              role="button"
+                              tabIndex={disabled ? -1 : 0}
+                              aria-pressed={isSelected}
+                              onKeyDown={(event) => {
+                                if (disabled) return;
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setSelectedServiceId(service.id);
+                                }
+                              }}
+                              onClick={() => {
+                                if (disabled) return;
+                                setSelectedServiceId(service.id);
+                              }}
+                              borderWidth="1px"
+                            borderRadius="md"
+                            p={4}
+                            borderColor={isSelected ? "primary.500" : "gray.200"}
+                            bg={isSelected ? "primary.50" : "transparent"}
+                            cursor={disabled ? "not-allowed" : "pointer"}
+                            pointerEvents={disabled ? "none" : "auto"}
+                            transition="border-color 0.2s ease, background-color 0.2s ease"
+                            _hover={
+                              disabled
+                                ? {}
+                                : {
+                                      borderColor: isSelected ? "primary.500" : "gray.300",
+                                    }
+                              }
+                              _dark={{
+                                borderColor: isSelected ? "primary.400" : "gray.700",
+                                bg: isSelected ? "primary.900" : "transparent",
+                              }}
+                            >
+                              <HStack justify="space-between" align="flex-start">
+                                <VStack align="flex-start" spacing={0}>
+                                  <Text fontWeight="semibold">{service.name}</Text>
+                                  {service.description && (
+                                    <Text
+                                      fontSize="sm"
+                                      color="gray.500"
+                                      _dark={{ color: "gray.400" }}
+                                    >
+                                      {service.description}
+                                    </Text>
+                                  )}
+                                </VStack>
+                                <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+                                  {t("userDialog.serviceSummary", "{{hosts}} hosts, {{users}} users", {
+                                    hosts: service.host_count,
+                                    users: service.user_count,
+                                  })}
+                                </Text>
+                              </HStack>
+                            </Box>
+                          );
+                        })}
+                      </VStack>
+                    ) : (
+                      <Alert status="warning" borderRadius="md">
+                        <AlertIcon />
+                        {t(
+                          "userDialog.noServicesAvailable",
+                          "No services are available yet. Create a service to manage users."
+                        )}
+                      </Alert>
+                    )}
+                    {selectedService && (
+                      <FormHelperText mt={2}>
+                        {t(
+                          "userDialog.serviceSummary",
+                          "{{hosts}} hosts, {{users}} users",
+                          {
+                            hosts: selectedService.host_count,
+                            users: selectedService.user_count,
+                          }
+                        )}
+                      </FormHelperText>
+                    )}
                   </FormControl>
                 </GridItem>
                 {isEditing && usageVisible && (

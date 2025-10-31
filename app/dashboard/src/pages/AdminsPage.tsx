@@ -1,9 +1,8 @@
-import { Box, Text, VStack, Tabs, TabList, TabPanels, Tab, TabPanel, HStack } from "@chakra-ui/react";
+import { Text, VStack } from "@chakra-ui/react";
 import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
 import { Filters } from "components/Filters";
 import { Pagination } from "components/Pagination";
-import AdminsUsage from "components/AdminsUsage";
 import AdminDetailsDrawer from "components/AdminDetailsDrawer";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { FC, useEffect } from "react";
@@ -50,22 +49,9 @@ export const AdminsPage: FC = () => {
           "View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage."
         )}
       </Text>
-      <Tabs variant="enclosed" colorScheme="primary">
-        <TabList>
-          <Tab>{t("admins.manageTab", "Manage")}</Tab>
-          <Tab>{t("admins.usageTab", "Usage")}</Tab>
-        </TabList>
-        <TabPanels>
-          <TabPanel>
-            <Filters for="admins" />
-            <AdminsTable />
-            <Pagination for="admins" />
-          </TabPanel>
-          <TabPanel>
-            <AdminsUsage />
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+      <Filters for="admins" />
+      <AdminsTable />
+      <Pagination for="admins" />
       <AdminDialog />
       <AdminDetailsDrawer />
     </VStack>

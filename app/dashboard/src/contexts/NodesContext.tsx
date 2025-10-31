@@ -43,7 +43,7 @@ export type NodeStore = {
   nodes: NodeType[];
   addNode: (node: NodeType) => Promise<unknown>;
   fetchNodes: () => Promise<NodeType[]>;
-  fetchNodesUsage: (query: FilterUsageType) => Promise<void>;
+  fetchNodesUsage: (query: FilterUsageType) => Promise<any>;
   updateNode: (node: NodeType) => Promise<unknown>;
   reconnectNode: (node: NodeType) => Promise<unknown>;
   deletingNode?: NodeType | null;
