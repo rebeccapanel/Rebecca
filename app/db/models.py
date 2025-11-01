@@ -23,6 +23,7 @@ from sqlalchemy.sql.expression import select, text
 
 from app import xray
 from app.db.base import Base
+from app.models.admin import AdminStatus
 from app.models.node import NodeStatus, GeoMode
 from app.models.proxy import (
     ProxyHostALPN,
@@ -37,7 +38,7 @@ class Admin(Base):
     __tablename__ = "admins"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(34), unique=True, index=True)
+    username = Column(String(34), index=True)
     hashed_password = Column(String(128))
     users = relationship("User", back_populates="admin")
     service_links = relationship(
@@ -56,6 +57,7 @@ class Admin(Base):
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
     data_limit = Column(BigInteger, nullable=True, default=None)
     users_limit = Column(Integer, nullable=True, default=None)
+    status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 
@@ -73,7 +75,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(34, collation='NOCASE'), unique=True, index=True)
+    username = Column(String(34, collation='NOCASE'), index=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
     used_traffic = Column(BigInteger, default=0)

@@ -2,6 +2,7 @@ export type Admin = {
   id: number;
   username: string;
   is_sudo: boolean;
+  status: "active" | "deleted";
   telegram_id?: number | null;
   discord_webhook?: string | null;
   users_usage?: number | null;
