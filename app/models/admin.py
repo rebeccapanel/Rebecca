@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -13,6 +14,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/token")  # Admin view url
 
 
+class AdminStatus(str, Enum):
+    active = "active"
+    deleted = "deleted"
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -22,6 +28,7 @@ class Admin(BaseModel):
     id: Optional[int] = None
     username: str
     is_sudo: bool
+    status: AdminStatus = AdminStatus.active
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     discord_webhook: Optional[str] = Field(None, description="Discord webhook URL for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")

@@ -27,6 +27,7 @@ class UserStatus(str, Enum):
     limited = "limited"
     expired = "expired"
     on_hold = "on_hold"
+    deleted = "deleted"
 
 
 class UserStatusModify(str, Enum):

@@ -8,9 +8,9 @@ from enum import Enum
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from sqlalchemy import and_, delete, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
-from sqlalchemy import func
 from app import xray
 from app.db.models import (
     JWT,
@@ -34,6 +34,7 @@ from app.db.models import (
     UserTemplate,
     UserUsageResetLogs,
 )
+from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.models.node import NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
 from app.models.proxy import ProxyHost as ProxyHostModify
@@ -253,7 +254,12 @@ def _assign_service_admins(
     if not admin_ids:
         return
 
-    admins = db.query(Admin).filter(Admin.id.in_(desired_id_set)).all()
+    admins = (
+        db.query(Admin)
+        .filter(Admin.id.in_(desired_id_set))
+        .filter(Admin.status != AdminStatus.deleted)
+        .all()
+    )
     if len(admins) != len(desired_id_set):
         raise ValueError("One or more admins could not be found")
 
@@ -679,7 +685,12 @@ def get_user_queryset(db: Session) -> Query:
     Returns:
         Query: Base user query.
     """
-    return db.query(User).options(joinedload(User.admin)).options(joinedload(User.next_plan))
+    return (
+        db.query(User)
+        .options(joinedload(User.admin))
+        .options(joinedload(User.next_plan))
+        .filter(User.status != UserStatus.deleted)
+    )
 
 
 def get_user(db: Session, username: str) -> Optional[User]:
@@ -693,7 +704,12 @@ def get_user(db: Session, username: str) -> Optional[User]:
     Returns:
         Optional[User]: The user object if found, else None.
     """
-    return get_user_queryset(db).filter(User.username == username).first()
+    normalized = username.lower()
+    return (
+        get_user_queryset(db)
+        .filter(func.lower(User.username) == normalized)
+        .first()
+    )
 
 
 def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
@@ -850,6 +866,8 @@ def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None)
         int: Count of users matching the criteria.
     """
     query = db.query(User.id)
+    if status is None:
+        query = query.filter(User.status != UserStatus.deleted)
     if admin:
         query = query.filter(User.admin == admin)
     if status:
@@ -931,8 +949,23 @@ def create_user(
     Returns:
         User: The created user object.
     """
+    normalized_username = user.username.lower()
+    existing_user = (
+        db.query(User)
+        .filter(func.lower(User.username) == normalized_username)
+        .filter(User.status != UserStatus.deleted)
+        .first()
+    )
+    if existing_user:
+        raise IntegrityError(
+            None,
+            {"username": user.username},
+            Exception("User username already exists"),
+        )
+
     status_value = _status_to_str(user.status) or UserStatus.active.value
-    if status_value == UserStatus.active.value and admin:
+    resolved_status = UserStatus(status_value)
+    if resolved_status == UserStatus.active and admin:
         _ensure_active_user_capacity(db, admin, required_slots=1)
 
     excluded_inbounds_tags = user.excluded_inbounds
@@ -950,7 +983,7 @@ def create_user(
     dbuser = User(
         username=user.username,
         proxies=proxies,
-        status=user.status,
+        status=resolved_status,
         data_limit=(user.data_limit or None),
         expire=(user.expire or None),
         admin=admin,
@@ -992,8 +1025,12 @@ def remove_user(db: Session, dbuser: User) -> User:
     Returns:
         User: The removed user object.
     """
-    db.delete(dbuser)
+    if dbuser.status == UserStatus.deleted:
+        return dbuser
+
+    dbuser.status = UserStatus.deleted
     db.commit()
+    db.refresh(dbuser)
     return dbuser
 
 
@@ -1005,9 +1042,13 @@ def remove_users(db: Session, dbusers: List[User]):
         db (Session): Database session.
         dbusers (List[User]): List of user objects to be removed.
     """
+    updated = False
     for dbuser in dbusers:
-        db.delete(dbuser)
-    db.commit()
+        if dbuser.status != UserStatus.deleted:
+            dbuser.status = UserStatus.deleted
+            updated = True
+    if updated:
+        db.commit()
     return
 
 
@@ -1557,7 +1598,7 @@ def get_tls_certificate(db: Session) -> TLS:
 
 def get_admin(db: Session, username: str) -> Admin:
     """
-    Retrieves an admin by username.
+    Retrieves an active admin by username (case-insensitive).
 
     Args:
         db (Session): Database session.
@@ -1566,7 +1607,13 @@ def get_admin(db: Session, username: str) -> Admin:
     Returns:
         Admin: The admin object.
     """
-    return db.query(Admin).filter(Admin.username == username).first()
+    normalized = username.lower()
+    return (
+        db.query(Admin)
+        .filter(func.lower(Admin.username) == normalized)
+        .filter(Admin.status != AdminStatus.deleted)
+        .first()
+    )
 
 
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
@@ -1580,6 +1627,20 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     Returns:
         Admin: The created admin object.
     """
+    normalized_username = admin.username.lower()
+    existing_admin = (
+        db.query(Admin)
+        .filter(func.lower(Admin.username) == normalized_username)
+        .filter(Admin.status != AdminStatus.deleted)
+        .first()
+    )
+    if existing_admin:
+        raise IntegrityError(
+            None,
+            {"username": admin.username},
+            Exception("Admin username already exists"),
+        )
+
     dbadmin = Admin(
         username=admin.username,
         hashed_password=admin.hashed_password,
@@ -1588,6 +1649,7 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         discord_webhook=admin.discord_webhook if admin.discord_webhook else None,
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
+        status=AdminStatus.active,
     )
     db.add(dbadmin)
     db.commit()
@@ -1684,8 +1746,12 @@ def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     Returns:
         Admin: The removed admin object.
     """
-    db.delete(dbadmin)
+    if dbadmin.status == AdminStatus.deleted:
+        return dbadmin
+
+    dbadmin.status = AdminStatus.deleted
     db.commit()
+    db.refresh(dbadmin)
     return dbadmin
 
 
@@ -1700,7 +1766,12 @@ def get_admin_by_id(db: Session, id: int) -> Admin:
     Returns:
         Admin: The admin object.
     """
-    return db.query(Admin).filter(Admin.id == id).first()
+    return (
+        db.query(Admin)
+        .filter(Admin.id == id)
+        .filter(Admin.status != AdminStatus.deleted)
+        .first()
+    )
 
 
 def get_admin_by_telegram_id(db: Session, telegram_id: int) -> Admin:
@@ -1714,7 +1785,12 @@ def get_admin_by_telegram_id(db: Session, telegram_id: int) -> Admin:
     Returns:
         Admin: The admin object.
     """
-    return db.query(Admin).filter(Admin.telegram_id == telegram_id).first()
+    return (
+        db.query(Admin)
+        .filter(Admin.telegram_id == telegram_id)
+        .filter(Admin.status != AdminStatus.deleted)
+        .first()
+    )
 
 
 def get_admins(db: Session,
@@ -1736,7 +1812,7 @@ def get_admins(db: Session,
     Returns:
         Dict: A dictionary with 'admins' (list of admin objects) and 'total' (total count).
     """
-    query = db.query(Admin)
+    query = db.query(Admin).filter(Admin.status != AdminStatus.deleted)
     if username:
         query = query.filter(Admin.username.ilike(f'%{username}%'))
 
@@ -1783,6 +1859,7 @@ def get_admins(db: Session,
     status_counts = (
         db.query(User.admin_id, User.status, func.count(User.id))
         .filter(User.admin_id.in_(admin_ids))
+        .filter(User.status != UserStatus.deleted)
         .group_by(User.admin_id, User.status)
         .all()
     )
@@ -1804,6 +1881,7 @@ def get_admins(db: Session,
             db.query(User.admin_id, func.count(User.id))
             .filter(
                 User.admin_id.in_(admin_ids),
+                User.status != UserStatus.deleted,
                 User.online_at.isnot(None),
                 User.online_at >= online_threshold,
             )
@@ -1817,7 +1895,10 @@ def get_admins(db: Session,
         admin_id: count
         for admin_id, count in (
             db.query(User.admin_id, func.count(User.id))
-            .filter(User.admin_id.in_(admin_ids))
+            .filter(
+                User.admin_id.in_(admin_ids),
+                User.status != UserStatus.deleted,
+            )
             .group_by(User.admin_id)
             .all()
         )
@@ -2344,7 +2425,12 @@ def get_admin_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime
         )
 
     # Get all user IDs owned by this admin
-    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    user_ids = [
+        u.id
+        for u in db.query(User.id)
+        .filter(User.admin_id == dbadmin.id)
+        .filter(User.status != UserStatus.deleted)
+    ]
 
     if not user_ids:
         return list(usages.values())
@@ -2373,7 +2459,12 @@ def get_admin_daily_usages(db: Session, dbadmin: Admin, start: datetime, end: da
     usages = []
 
     # Get all user IDs owned by this admin
-    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    user_ids = [
+        u.id
+        for u in db.query(User.id)
+        .filter(User.admin_id == dbadmin.id)
+        .filter(User.status != UserStatus.deleted)
+    ]
     if not user_ids:
         return usages
 
@@ -2420,7 +2511,12 @@ def get_admin_usages_by_day(
     Retrieves usage for all users under a specific admin, optionally filtered by node_id.
     Supports daily (default) or hourly granularity.
     """
-    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    user_ids = [
+        u.id
+        for u in db.query(User.id)
+        .filter(User.admin_id == dbadmin.id)
+        .filter(User.status != UserStatus.deleted)
+    ]
     if not user_ids:
         return []
 
@@ -2575,7 +2671,12 @@ def get_admin_usage_by_nodes(db: Session, dbadmin: Admin, start: datetime, end: 
         }
 
     # Get all user IDs owned by this admin
-    user_ids = [u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id)]
+    user_ids = [
+        u.id
+        for u in db.query(User.id)
+        .filter(User.admin_id == dbadmin.id)
+        .filter(User.status != UserStatus.deleted)
+    ]
     if not user_ids:
         return list(usage_by_node.values())
 
