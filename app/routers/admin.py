@@ -1,17 +1,19 @@
+from types import SimpleNamespace
 from typing import List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_
 from pydantic import BaseModel
 
 from app import xray
+from app.models.user import UserStatus
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_admin_by_username, validate_admin
 from app.models.admin import Admin, AdminCreate, AdminModify, Token
-from app.db.models import Admin as DBAdmin, Node as DBNode
+from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
 from config import LOGIN_NOTIFY_WHITE_LIST
@@ -164,16 +166,23 @@ def get_admins(
 
 @router.post("/admin/{username}/users/disable", responses={403: responses._403, 404: responses._404})
 def disable_all_active_users(
+    bg: BackgroundTasks,
     dbadmin: Admin = Depends(get_admin_by_username),
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Disable all active users under a specific admin"""
+    users_query = db.query(DBUser).filter(DBUser.status.in_((UserStatus.active, UserStatus.on_hold)))
+    if dbadmin:
+        users_query = users_query.filter(DBUser.admin_id == dbadmin.id)
+
+    users_snapshot = [SimpleNamespace(id=user.id, username=user.username) for user in users_query.all()]
+
     crud.disable_all_active_users(db=db, admin=dbadmin)
-    startup_config = xray.config.include_db_users()
-    xray.core.restart(startup_config)
-    for node_id, node in list(xray.nodes.items()):
-        if node.connected:
-            xray.operations.restart_node(node_id, startup_config)
+
+    for user in users_snapshot:
+        bg.add_task(xray.operations.remove_user, dbuser=user)
+
     return {"detail": "Users successfully disabled"}
 
 
