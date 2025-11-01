@@ -5,8 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import logger, xray
 from app.db import GetDB, crud
-from app.models.node import NodeStatus
+from app.models.node import NodeResponse, NodeStatus
 from app.models.user import UserResponse
+from app.utils import report
 from app.utils.concurrency import threaded_function
 from app.xray.node import XRayNode
 from xray_api import XRay as XRayAPI
@@ -183,7 +184,9 @@ def _change_node_status(node_id: int, status: NodeStatus, message: str = None, v
                 remove_node(dbnode.id)
                 return
 
-            crud.update_node_status(db, dbnode, status, message, version)
+            previous_status = dbnode.status
+            updated_dbnode = crud.update_node_status(db, dbnode, status, message, version)
+            report.node_status_change(NodeResponse.model_validate(updated_dbnode), previous_status=previous_status)
         except SQLAlchemyError:
             db.rollback()
 
@@ -281,6 +284,7 @@ def restart_node(node_id, config=None):
             _change_node_status(node_id, NodeStatus.connected, version=version)
     except Exception as e:
         _change_node_status(node_id, NodeStatus.error, message=str(e))
+        report.node_error(dbnode.name, str(e))
         logger.info(f"Unable to restart node {node_id}")
         try:
             node.disconnect()
@@ -296,3 +300,6 @@ __all__ = [
     "connect_node",
     "restart_node",
 ]
+
+
+

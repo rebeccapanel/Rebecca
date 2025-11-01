@@ -1,9 +1,9 @@
-from app.telegram import bot
-
 from telebot import types
 from telebot.custom_filters import AdvancedCustomFilter
 
-from config import TELEGRAM_ADMIN_ID
+from app import logger
+from app.services import TelegramSettingsService
+from app.telegram import get_bot
 
 
 class IsAdminFilter(AdvancedCustomFilter):
@@ -13,9 +13,11 @@ class IsAdminFilter(AdvancedCustomFilter):
         """
         :meta private:
         """
+        settings = TelegramSettingsService.get_settings()
+        admin_ids = set(settings.admin_chat_ids or [])
         if isinstance(message, types.CallbackQuery):
-            return message.from_user.id in TELEGRAM_ADMIN_ID
-        return message.chat.id in TELEGRAM_ADMIN_ID
+            return message.from_user.id in admin_ids
+        return message.chat.id in admin_ids
 
 
 def cb_query_equals(text: str):
@@ -28,4 +30,8 @@ def cb_query_startswith(text: str):
 
 
 def setup() -> None:
-    bot.add_custom_filter(IsAdminFilter())
+    bot_instance = get_bot()
+    if not bot_instance:
+        logger.info("Telegram bot not available; skipping admin filter registration")
+        return
+    bot_instance.add_custom_filter(IsAdminFilter())

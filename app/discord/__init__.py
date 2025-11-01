@@ -9,7 +9,17 @@ from .handlers.report import (  # noqa
     report_user_usage_reset,
     report_user_data_reset_by_next,
     report_user_subscription_revoked,
-    report_login
+    report_login,
+    report_node_created,
+    report_node_deleted,
+    report_node_usage_reset,
+    report_node_status_change,
+    report_node_error,
+    report_admin_created,
+    report_admin_updated,
+    report_admin_deleted,
+    report_admin_usage_reset,
+    report_admin_limit_reached,
 )
 
 __all__ = [
@@ -21,5 +31,15 @@ __all__ = [
     "report_user_usage_reset",
     "report_user_data_reset_by_next",
     "report_user_subscription_revoked",
-    "report_login"
+    "report_login",
+    "report_node_created",
+    "report_node_deleted",
+    "report_node_usage_reset",
+    "report_node_status_change",
+    "report_node_error",
+    "report_admin_created",
+    "report_admin_updated",
+    "report_admin_deleted",
+    "report_admin_usage_reset",
+    "report_admin_limit_reached",
 ]

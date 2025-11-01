@@ -66,6 +66,7 @@ def add_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
         )
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     except IntegrityError:
@@ -129,6 +130,7 @@ def modify_user(
     try:
         dbuser = crud.update_user(db, dbuser, modified_user)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     user = UserResponse.model_validate(dbuser)
@@ -188,6 +190,7 @@ def reset_user_data_usage(
     try:
         dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
@@ -289,6 +292,7 @@ def reset_users_data_usage(
     try:
         crud.reset_all_users_data_usage(db=db, admin=dbadmin)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     startup_config = xray.config.include_db_users()
@@ -324,6 +328,7 @@ def active_next_plan(
     try:
         dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -444,3 +449,7 @@ def delete_expired_users(
         )
 
     return removed_users
+
+
+
+

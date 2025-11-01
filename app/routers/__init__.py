@@ -10,6 +10,7 @@ from . import (
     home,
     service_v2,
     user_v2,
+    settings,
 )
 
 api_router = APIRouter()
@@ -25,9 +26,12 @@ routers = [
     home.router,
     service_v2.router,
     user_v2.router,
+    settings.router,
 ]
 
 for router in routers:
     api_router.include_router(router)
 
 __all__ = ["api_router"]
+
+

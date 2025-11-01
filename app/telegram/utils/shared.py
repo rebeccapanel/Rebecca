@@ -58,8 +58,13 @@ def get_user_info_text(db_user: User) -> str:
     online_at = time_to_string(user.online_at) if user.online_at else "-"
     sub_updated_at = time_to_string(user.sub_updated_at) if user.sub_updated_at else "-"
     if user.status == UserStatus.on_hold:
-        expiry_text = f"⏰ <b>On Hold Duration:</b> <code>{on_hold_duration} days</code> (auto start at <code>{
-            on_hold_timeout}</code>)"
+        if on_hold_duration is not None:
+            expiry_text = (
+                f"⏰ <b>On Hold Duration:</b> <code>{on_hold_duration} days</code> "
+                f"(auto start at <code>{on_hold_timeout}</code>)"
+            )
+        else:
+            expiry_text = f"⏰ <b>On Hold Timeout:</b> <code>{on_hold_timeout}</code>"
     else:
         expiry_text = f"📅 <b>Expiry Date:</b> <code>{expiry_date}</code> ({time_left})"
     return f"""\

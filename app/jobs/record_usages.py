@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Insert
 
 from app import scheduler, xray
+from app.utils import report
 from app.db import GetDB
 from app.db.models import (
     Admin,
@@ -21,7 +22,8 @@ from app.db.models import (
     System,
     User,
 )
-from app.models.node import NodeStatus
+from app.models.admin import Admin as AdminSchema
+from app.models.node import NodeStatus, NodeResponse
 from config import (
     DISABLE_RECORDING_NODE_USAGE,
     JOB_RECORD_NODE_USAGES_INTERVAL,
@@ -104,6 +106,8 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
 
     created_at = datetime.fromisoformat(datetime.utcnow().strftime('%Y-%m-%dT%H:00:00'))
 
+    status_change_payload = None
+
     with GetDB() as db:
 
         # make node usage row if doesn't exist
@@ -132,22 +136,30 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
 
                 if limit is not None and current_usage >= limit:
                     if dbnode.status != NodeStatus.limited:
+                        previous_status = dbnode.status
                         dbnode.status = NodeStatus.limited
                         dbnode.message = "Data limit reached"
                         dbnode.xray_version = None
                         dbnode.last_status_change = datetime.utcnow()
                         limited_triggered = True
+                        status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
                 else:
                     if dbnode.status == NodeStatus.limited:
+                        previous_status = dbnode.status
                         dbnode.status = NodeStatus.connecting
                         dbnode.message = None
                         dbnode.xray_version = None
                         dbnode.last_status_change = datetime.utcnow()
                         limit_cleared = True
+                        status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
 
                 db.commit()
             else:
                 db.commit()
+
+    if status_change_payload:
+        node_resp, prev_status = status_change_payload
+        report.node_status_change(node_resp, previous_status=prev_status)
 
     if limited_triggered:
         try:
@@ -231,6 +243,8 @@ def record_user_usages():
                 admin_service_usage[(admin_id, service_id)] += value
 
     # record users usage
+    admin_limit_events = []
+
     with GetDB() as db:
         stmt = update(User). \
             where(User.id == bindparam('uid')). \
@@ -243,6 +257,26 @@ def record_user_usages():
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
+            increments = {entry["admin_id"]: entry["value"] for entry in admin_data}
+            admin_rows = (
+                db.query(Admin)
+                .filter(Admin.id.in_(increments.keys()))
+                .all()
+            )
+            for admin_row in admin_rows:
+                limit = admin_row.data_limit
+                if limit:
+                    previous_usage = admin_row.users_usage or 0
+                    new_usage = previous_usage + increments.get(admin_row.id, 0)
+                    if previous_usage < limit <= new_usage:
+                        admin_limit_events.append(
+                            (
+                                AdminSchema.model_validate(admin_row),
+                                limit,
+                                new_usage,
+                            )
+                        )
+
             admin_update_stmt = (
                 update(Admin)
                 .where(Admin.id == bindparam("b_admin_id"))
@@ -301,6 +335,9 @@ def record_user_usages():
             ]
             safe_execute(db, admin_service_update_stmt, admin_service_params)
 
+    for admin_obj, limit, current in admin_limit_events:
+        report.admin_data_limit_reached(admin_obj, limit, current)
+
     if DISABLE_RECORDING_NODE_USAGE:
         return
 
@@ -348,3 +385,6 @@ scheduler.add_job(record_user_usages, 'interval',
 scheduler.add_job(record_node_usages, 'interval',
                   seconds=JOB_RECORD_NODE_USAGES_INTERVAL,
                   coalesce=True, max_instances=1)
+
+
+

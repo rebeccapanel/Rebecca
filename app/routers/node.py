@@ -19,7 +19,7 @@ from app.models.node import (
     NodesUsageResponse,
 )
 from app.models.proxy import ProxyHost
-from app.utils import responses
+from app.utils import responses, report
 from app.db.models import Node as DBNode
 
 router = APIRouter(
@@ -53,7 +53,7 @@ def add_node(
     new_node: NodeCreate,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Add a new node to the database and optionally add it as a host."""
     try:
@@ -67,6 +67,8 @@ def add_node(
     bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
     bg.add_task(add_host_if_needed, new_node, db)
 
+    report.node_created(dbnode, admin)
+
     logger.info(f'New node "{dbnode.name}" added')
     return dbnode
 
@@ -74,7 +76,7 @@ def add_node(
 @router.get("/node/{node_id}", response_model=NodeResponse)
 def get_node(
     dbnode: NodeResponse = Depends(get_dbnode),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Retrieve details of a specific node by its ID."""
     return dbnode
@@ -162,16 +164,22 @@ def modify_node(
     bg: BackgroundTasks,
     dbnode: NodeResponse = Depends(get_node),
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Update a node's details. Only accessible to sudo admins."""
+    previous_status = dbnode.status
     updated_node = crud.update_node(db, dbnode, modified_node)
+    updated_node_resp = NodeResponse.model_validate(updated_node)
+
+    if modified_node.status is not None and updated_node_resp.status != previous_status:
+        report.node_status_change(updated_node_resp, previous_status=previous_status)
+
     xray.operations.remove_node(updated_node.id)
     if updated_node.status not in {NodeStatus.disabled, NodeStatus.limited}:
         bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
 
     logger.info(f'Node "{dbnode.name}" modified')
-    return dbnode
+    return updated_node_resp
 
 
 @router.post("/node/{node_id}/usage/reset", response_model=NodeResponse)
@@ -179,11 +187,12 @@ def reset_node_usage(
     bg: BackgroundTasks,
     dbnode: NodeResponse = Depends(get_node),
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Reset the tracked data usage of a node."""
     updated_node = crud.reset_node_usage(db, dbnode)
     bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
+    report.node_usage_reset(updated_node, admin)
     logger.info(f'Node "{dbnode.name}" usage reset')
     return updated_node
 
@@ -192,7 +201,7 @@ def reset_node_usage(
 def reconnect_node(
     bg: BackgroundTasks,
     dbnode: NodeResponse = Depends(get_node),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Trigger a reconnection for the specified node. Only accessible to sudo admins."""
     bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
@@ -204,11 +213,13 @@ def remove_node(
     bg: BackgroundTasks,
     dbnode: DBNode = Depends(get_dbnode),
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Delete a node and schedule xray cleanup in the background."""
     crud.remove_node(db, dbnode)
     bg.add_task(xray.operations.remove_node, dbnode.id)
+
+    report.node_deleted(dbnode, admin)
 
     logger.info(f'Node "{dbnode.name}" deleted')
     return {}
@@ -219,7 +230,7 @@ def get_usage(
     db: Session = Depends(get_db),
     start: str = "",
     end: str = "",
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Retrieve usage statistics for nodes within a specified date range."""
     start, end = validate_dates(start, end)
@@ -264,7 +275,7 @@ def update_node_core(
     node_id: int,
     payload: dict = Body(..., example={"version": "v1.8.11"}),
     dbnode: NodeResponse = Depends(get_node),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Ask a node to update/switch its Xray-core to a specific version, then restart node core."""
     version = payload.get("version")
@@ -295,7 +306,7 @@ def update_node_geo(
         "template_name": "standard"
     }),
     dbnode: NodeResponse = Depends(get_node),
-    _: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """
     Download and install geo assets on a specific node (custom mode).
@@ -338,3 +349,8 @@ def update_node_geo(
         raise HTTPException(502, detail=f"Geo update failed: {e}")
 
     return {"detail": f"Geo assets updated on node {dbnode.name}"}
+
+
+
+
+

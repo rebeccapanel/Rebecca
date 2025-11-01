@@ -31,7 +31,6 @@ const AdminIconStyled = chakra(ShieldCheckIcon, iconProps);
 const ChevronDownIconStyled = chakra(ChevronDownIcon, iconProps);
 const ServicesIconStyled = chakra(Squares2X2Icon, iconProps);
 const UsageIconStyled = chakra(ChartPieIcon, iconProps);
-
 interface AppSidebarProps {
   collapsed: boolean;
   /** when rendered inside a Drawer on mobile */
@@ -52,8 +51,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
   const isSudo = getUserIsSuccess && userData.is_sudo;
 
   const baseSettingsSubItems: SidebarItem["subItems"] = [
-    { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled },
+        { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled },
     { title: t("header.nodeSettings"), url: "/node-settings", icon: NetworkIconStyled },
+    { title: t("header.integrationSettings", "Master Settings"), url: "/integrations", icon: SettingsIconStyled },
     { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled },
   ];
   const settingsSubItems: SidebarItem["subItems"] = [...baseSettingsSubItems];
@@ -247,3 +247,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
     </Box>
   );
 };
+
+
+

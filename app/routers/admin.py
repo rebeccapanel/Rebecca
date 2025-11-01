@@ -91,7 +91,9 @@ def create_admin(
         db.rollback()
         raise HTTPException(status_code=409, detail="Admin already exists")
 
-    return dbadmin
+    admin_schema = Admin.model_validate(dbadmin)
+    report.admin_created(admin_schema, admin)
+    return admin_schema
 
 
 @router.put(
@@ -112,13 +114,17 @@ def modify_admin(
             detail="You're not allowed to edit another sudoer's account. Use marzban-cli instead.",
         )
 
+    previous_admin_state = Admin.model_validate(dbadmin)
     try:
         updated_admin = crud.update_admin(db, dbadmin, modified_admin)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(dbadmin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
-    return updated_admin
+    updated_schema = Admin.model_validate(updated_admin)
+    report.admin_updated(updated_schema, current_admin, previous=previous_admin_state)
+    return updated_schema
 
 
 @router.delete(
@@ -138,6 +144,7 @@ def remove_admin(
         )
 
     crud.remove_admin(db, dbadmin)
+    report.admin_deleted(dbadmin.username, current_admin)
     return {"detail": "Admin removed successfully"}
 
 
@@ -195,6 +202,7 @@ def activate_all_disabled_users(
     try:
         crud.activate_all_disabled_users(db=db, admin=dbadmin)
     except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(dbadmin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     startup_config = xray.config.include_db_users()
@@ -216,7 +224,10 @@ def reset_admin_usage(
     current_admin: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Resets usage of admin."""
-    return crud.reset_admin_usage(db, dbadmin)
+    updated_admin = crud.reset_admin_usage(db, dbadmin)
+    admin_schema = Admin.model_validate(updated_admin)
+    report.admin_usage_reset(admin_schema, current_admin)
+    return admin_schema
 
 
 @router.get(
@@ -320,3 +331,8 @@ def get_admin_usage_by_nodes(
     usages = crud.get_admin_usage_by_nodes(db, dbadmin, start, end)
 
     return {"usages": usages}
+
+
+
+
+

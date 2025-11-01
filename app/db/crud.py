@@ -7,8 +7,9 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
+import sqlalchemy as sa
 from sqlalchemy import and_, delete, func, or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
 from app import xray
@@ -52,6 +53,65 @@ from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
 from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
+
+
+_USER_STATUS_ENUM_ENSURED = False
+
+
+def _ensure_user_deleted_status(db: Session) -> bool:
+    """
+    Ensure the underlying user status enum (if any) supports the 'deleted' value.
+
+    Returns:
+        bool: True if the enum already supported, was updated successfully,
+              or does not need updating. False if no automated fix was applied.
+    """
+    global _USER_STATUS_ENUM_ENSURED
+
+    if _USER_STATUS_ENUM_ENSURED:
+        return True
+
+    bind = db.get_bind()
+    if bind is None:
+        return False
+
+    engine = getattr(bind, "engine", bind)
+    dialect = engine.dialect.name
+
+    try:
+        inspector = sa.inspect(engine)
+        columns = inspector.get_columns("users")
+    except Exception:  # pragma: no cover - inspector failure
+        return False
+
+    status_column = next((col for col in columns if col.get("name") == "status"), None)
+    if not status_column:
+        return False
+
+    enum_type = status_column.get("type")
+    enum_values = getattr(enum_type, "enums", None)
+    if enum_values and "deleted" in enum_values:
+        _USER_STATUS_ENUM_ENSURED = True
+        return True
+
+    try:
+        if dialect == "mysql":
+            with engine.begin() as conn:
+                conn.exec_driver_sql(
+                    "ALTER TABLE users MODIFY COLUMN status "
+                    "ENUM('active','disabled','limited','expired','on_hold','deleted') NOT NULL"
+                )
+        elif dialect == "postgresql":
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'deleted'")
+        else:
+            # SQLite and other backends require running the Alembic migration.
+            return False
+    except Exception:  # pragma: no cover - ALTER failure
+        return False
+
+    _USER_STATUS_ENUM_ENSURED = True
+    return True
 
 
 
@@ -1029,8 +1089,25 @@ def remove_user(db: Session, dbuser: User) -> User:
         return dbuser
 
     dbuser.status = UserStatus.deleted
-    db.commit()
-    db.refresh(dbuser)
+    physically_deleted = False
+    try:
+        db.commit()
+    except DataError as exc:
+        db.rollback()
+        if not _ensure_user_deleted_status(db):
+            db.delete(dbuser)
+            db.commit()
+            physically_deleted = True
+        else:
+            dbuser.status = UserStatus.deleted
+            db.add(dbuser)
+            try:
+                db.commit()
+            except DataError:
+                db.rollback()
+                raise exc
+    if not physically_deleted:
+        db.refresh(dbuser)
     return dbuser
 
 
@@ -1048,7 +1125,23 @@ def remove_users(db: Session, dbusers: List[User]):
             dbuser.status = UserStatus.deleted
             updated = True
     if updated:
-        db.commit()
+        try:
+            db.commit()
+        except DataError as exc:
+            db.rollback()
+            if not _ensure_user_deleted_status(db):
+                for dbuser in dbusers:
+                    db.delete(dbuser)
+                db.commit()
+            else:
+                for dbuser in dbusers:
+                    dbuser.status = UserStatus.deleted
+                    db.add(dbuser)
+                try:
+                    db.commit()
+                except DataError:
+                    db.rollback()
+                    raise exc
     return
 
 
