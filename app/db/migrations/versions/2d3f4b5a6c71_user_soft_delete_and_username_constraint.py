@@ -32,14 +32,19 @@ def _drop_username_uniqueness(bind) -> None:
             op.drop_constraint(constraint["name"], "users", type_="unique")
             break
 
-    indexes = {idx["name"]: idx for idx in inspector.get_indexes("users")}
+    # refresh inspector after potential constraint removal to get current indexes
+    indexes = {idx["name"]: idx for idx in sa.inspect(bind).get_indexes("users")}
     unique_index_name = None
     for name, metadata in indexes.items():
         if metadata.get("column_names") == ["username"] and metadata.get("unique"):
             unique_index_name = name
             break
     if unique_index_name:
-        op.drop_index(unique_index_name, table_name="users")
+        try:
+            op.drop_index(unique_index_name, table_name="users")
+        except sa.exc.OperationalError:
+            # index already removed (e.g., dropped alongside the constraint)
+            pass
 
     inspector = sa.inspect(bind)
     existing_indexes = {idx["name"]: idx for idx in inspector.get_indexes("users")}
