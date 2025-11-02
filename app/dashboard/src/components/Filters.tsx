@@ -4,6 +4,7 @@ import {
   chakra,
   Grid,
   GridItem,
+  HStack,
   IconButton,
   Input,
   InputGroup,
@@ -11,6 +12,7 @@ import {
   InputRightElement,
   Spinner,
   Stack,
+  useBreakpointValue,
 } from "@chakra-ui/react";
 import {
   ArrowPathIcon,
@@ -35,6 +37,7 @@ const iconProps = {
 const SearchIcon = chakra(MagnifyingGlassIcon, iconProps);
 const ClearIcon = chakra(XMarkIcon, iconProps);
 export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
+const PlusIconStyled = chakra(PlusIcon, iconProps);
 
 export type FilterProps = { for?: "users" | "admins" } & BoxProps;
 
@@ -113,6 +116,8 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
     }
   };
 
+  const isMobile = useBreakpointValue({ base: true, sm: false }) ?? false;
+
   return (
     <Grid
       id="filters"
@@ -131,50 +136,44 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       {...props}
     >
       <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>
-        <InputGroup>
-          <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
-          <Input
-            placeholder={
-              target === "users"
-                ? t("search")
-                : t("admins.searchPlaceholder", "Search admins...")
-            }
-            value={search}
-            borderColor="light-border"
-            w="full"
-            onChange={onChange}
-          />
+        <HStack spacing={2} align="center" w="full">
+          <InputGroup flex="1">
+            <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
+            <Input
+              placeholder={
+                target === "users"
+                  ? t("search")
+                  : t("admins.searchPlaceholder", "Search admins...")
+              }
+              value={search}
+              borderColor="light-border"
+              w="full"
+              onChange={onChange}
+            />
 
-          <InputRightElement>
-            {loading && <Spinner size="xs" />}
-            {filters.search && filters.search.length > 0 && (
-              <IconButton
-                onClick={clear}
-                aria-label="clear"
-                size="xs"
-                variant="ghost"
-              >
-                <ClearIcon />
-              </IconButton>
-            )}
-          </InputRightElement>
-        </InputGroup>
-      </GridItem>
-      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
-        <Stack
-          direction={{ base: "column", sm: "row" }}
-          spacing={3}
-          justifyContent={{ base: "flex-start", md: "flex-end" }}
-          alignItems={{ base: "stretch", sm: "center" }}
-          w="full"
-        >
+            <InputRightElement>
+              {loading && <Spinner size="xs" />}
+              {filters.search && filters.search.length > 0 && (
+                <IconButton
+                  onClick={clear}
+                  aria-label="clear"
+                  size="xs"
+                  variant="ghost"
+                >
+                  <ClearIcon />
+                </IconButton>
+              )}
+            </InputRightElement>
+          </InputGroup>
           <IconButton
             aria-label="refresh"
             disabled={loading}
             onClick={handleRefresh}
-            size="sm"
-            variant="outline"
-            w={{ base: "full", sm: "auto" }}
+            size={isMobile ? "sm" : "md"}
+            variant={isMobile ? "ghost" : "outline"}
+            borderRadius="full"
+            minW={isMobile ? "36px" : "40px"}
+            h={isMobile ? "36px" : undefined}
           >
             <ReloadIcon
               className={classNames({
@@ -182,14 +181,29 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
               })}
             />
           </IconButton>
+        </HStack>
+      </GridItem>
+      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
+        <Stack
+          direction={{ base: "row", sm: "row" }}
+          spacing={{ base: 2, sm: 3 }}
+          justifyContent={{ base: "flex-start", md: "flex-end" }}
+          alignItems="center"
+          w="full"
+          flexWrap="wrap"
+        >
           <Button
             colorScheme="primary"
-            size="sm"
+            size={isMobile ? "sm" : "md"}
             onClick={handleCreate}
-            px={5}
-            leftIcon={<PlusIcon width={16} />}
-            w={{ base: "full", sm: "auto" }}
-            justifyContent="center"
+            px={isMobile ? 3 : 5}
+            leftIcon={isMobile ? undefined : <PlusIconStyled />}
+            w="auto"
+            h={isMobile ? "36px" : undefined}
+            minW={isMobile ? "auto" : "8.5rem"}
+            fontSize={isMobile ? "sm" : "md"}
+            fontWeight="semibold"
+            whiteSpace="nowrap"
           >
             {target === "users"
               ? t("createUser")

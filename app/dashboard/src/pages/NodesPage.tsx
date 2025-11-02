@@ -2,6 +2,12 @@ import {
   Alert,
   AlertDescription,
   AlertIcon,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
   Box,
   Button,
   ButtonGroup,
@@ -20,6 +26,7 @@ import {
   Text,
   Tooltip,
   VStack,
+  useDisclosure,
   useToast,
 } from "@chakra-ui/react";
 import {
@@ -31,7 +38,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useNodes, useNodesQuery, FetchNodesQueryKey, NodeType } from "contexts/NodesContext";
 import { useDashboard } from "contexts/DashboardContext";
-import { FC, useEffect, useMemo, useState } from "react";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import dayjs from "dayjs";
@@ -95,6 +102,9 @@ export const NodesPage: FC = () => {
   const [togglingNodeId, setTogglingNodeId] = useState<number | null>(null);
   const [pendingStatus, setPendingStatus] = useState<Record<number, boolean>>({});
   const [resettingNodeId, setResettingNodeId] = useState<number | null>(null);
+  const [resetCandidate, setResetCandidate] = useState<NodeType | null>(null);
+  const { isOpen: isResetConfirmOpen, onOpen: openResetConfirm, onClose: closeResetConfirm } = useDisclosure();
+  const cancelResetRef = useRef<HTMLButtonElement | null>(null);
 
   const {
     data: coreStats,
@@ -169,6 +179,8 @@ export const NodesPage: FC = () => {
     },
     onSettled: () => {
       setResettingNodeId(null);
+      setResetCandidate(null);
+      closeResetConfirm();
     },
   });
 
@@ -184,8 +196,19 @@ export const NodesPage: FC = () => {
 
   const handleResetNodeUsage = (node: NodeType) => {
     if (!node?.id) return;
-    setResettingNodeId(node.id);
-    resetUsageMutate(node);
+    setResetCandidate(node);
+    openResetConfirm();
+  };
+
+  const confirmResetUsage = () => {
+    if (!resetCandidate?.id) return;
+    setResettingNodeId(resetCandidate.id);
+    resetUsageMutate(resetCandidate);
+  };
+
+  const handleCloseResetConfirm = () => {
+    setResetCandidate(null);
+    closeResetConfirm();
   };
 
   const closeVersionDialog = () => setVersionDialogTarget(null);
@@ -482,23 +505,12 @@ export const NodesPage: FC = () => {
           justifyContent="flex-end"
           w={{ base: "full", lg: "auto" }}
         >
-          <Stack
-            direction={{ base: "row", sm: "row" }}
+          <HStack
             spacing={2}
             alignItems="center"
             justifyContent="flex-end"
             w={{ base: "full", md: "auto" }}
           >
-            <Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
-              <IconButton
-                aria-label={t("nodes.refreshNodes", "Refresh nodes")}
-                icon={<ArrowPathIconStyled />}
-                variant="ghost"
-                size="sm"
-                onClick={() => refetchNodes()}
-                isLoading={isFetching}
-              />
-            </Tooltip>
             <InputGroup size="sm" maxW={{ base: "full", md: "260px" }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -509,14 +521,30 @@ export const NodesPage: FC = () => {
                 placeholder={t("nodes.searchPlaceholder", "Search nodes")}
               />
             </InputGroup>
-          </Stack>
-          <Stack direction={{ base: "column", sm: "row" }} spacing={2} justify="flex-end">
+            <Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
+              <IconButton
+                aria-label={t("nodes.refreshNodes", "Refresh nodes")}
+                icon={<ArrowPathIconStyled />}
+                variant="ghost"
+                size="sm"
+                onClick={() => refetchNodes()}
+                isLoading={isFetching}
+              />
+            </Tooltip>
+          </HStack>
+          <Stack
+            direction={{ base: "column", sm: "row" }}
+            spacing={2}
+            justify="flex-end"
+            alignItems={{ base: "flex-end", sm: "center" }}
+          >
             <Button
               variant="outline"
               size="sm"
               onClick={() => setVersionDialogTarget({ type: "bulk" })}
               isDisabled={!hasConnectedNodes}
-              w={{ base: "full", sm: "auto" }}
+              w={{ base: "auto", sm: "auto" }}
+              px={{ base: 4, sm: 4 }}
             >
               {t("nodes.updateAllNodesCore")}
             </Button>
@@ -525,7 +553,8 @@ export const NodesPage: FC = () => {
               colorScheme="primary"
               size="sm"
               onClick={() => setAddNodeOpen(true)}
-              w={{ base: "full", sm: "auto" }}
+              w={{ base: "auto", sm: "auto" }}
+              px={{ base: 4, sm: 5 }}
             >
               {t("nodes.addNode")}
             </Button>
@@ -829,6 +858,35 @@ export const NodesPage: FC = () => {
         showMasterOptions={geoDialogTarget?.type === "master"}
         isSubmitting={geoDialogLoading}
       />
+      <AlertDialog
+        isOpen={isResetConfirmOpen}
+        leastDestructiveRef={cancelResetRef}
+        onClose={handleCloseResetConfirm}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              {t("nodes.resetUsage", "Reset usage")}
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              {t("nodes.resetUsageConfirm", "Are you sure you want to reset usage for {{name}}?", {
+                name: resetCandidate?.name ?? resetCandidate?.address ?? t("nodes.thisNode", "this node"),
+              })}
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelResetRef} onClick={handleCloseResetConfirm}>
+                {t("cancel", "Cancel")}
+              </Button>
+              <Button colorScheme="red" onClick={confirmResetUsage} ml={3} isLoading={isResettingUsage}>
+                {t("nodes.resetUsage", "Reset usage")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
       <NodeFormModal
         isOpen={isAddNodeOpen}
         onClose={() => setAddNodeOpen(false)}

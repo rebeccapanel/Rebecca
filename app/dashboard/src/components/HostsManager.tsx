@@ -354,6 +354,7 @@ const HostCard: FC<HostCardProps> = ({
   const inbound = inboundOptions.find((option) => option.value === host.inboundTag);
   const active = !host.data.is_disabled;
   const dirty = isHostDirty(host);
+  const hostName = host.data.remark || t("hostsPage.untitledHost");
 
   return (
     <Card
@@ -371,7 +372,11 @@ const HostCard: FC<HostCardProps> = ({
       <CardBody as={Stack} spacing={4}>
         <HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
           <VStack align="flex-start" spacing={1} flex="1">
-            <Text fontWeight="semibold">{host.data.remark || t("hostsPage.untitledHost")}</Text>
+            <Tooltip label={host.data.remark} isDisabled={!host.data.remark}>
+              <Text fontWeight="semibold" noOfLines={1} maxW="full">
+                {hostName}
+              </Text>
+            </Tooltip>
             <HStack spacing={2} flexWrap="wrap">
               <Tag colorScheme="gray" size="sm">
                 {t("hostsPage.orderIndex", { value: orderIndex + 1 })}
@@ -463,6 +468,7 @@ type SortRowProps = {
 const SortRow: FC<SortRowProps> = ({ host, index }) => {
   const { t } = useTranslation();
   const dragControls = useDragControls();
+  const hostName = host.data.remark || t("hostsPage.untitledHost");
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -512,7 +518,11 @@ const SortRow: FC<SortRowProps> = ({ host, index }) => {
           {t("hostsPage.orderIndex", { value: index + 1 })}
         </Tag>
         <VStack align="flex-start" spacing={0} flex="1">
-          <Text fontWeight="medium">{host.data.remark || t("hostsPage.untitledHost")}</Text>
+          <Tooltip label={host.data.remark} isDisabled={!host.data.remark}>
+            <Text fontWeight="medium" noOfLines={1} maxW="full">
+              {hostName}
+            </Text>
+          </Tooltip>
           <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }} noOfLines={1}>
             {host.data.address || host.inboundTag}
           </Text>

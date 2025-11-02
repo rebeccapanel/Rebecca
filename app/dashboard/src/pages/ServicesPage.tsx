@@ -1,6 +1,15 @@
 import {
-  Alert,
-  AlertIcon,
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
   Badge,
   Box,
   Button,
@@ -43,7 +52,7 @@ import { useAdminsStore } from "contexts/AdminsContext";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import { useServicesStore } from "contexts/ServicesContext";
-import { FC, useEffect, useMemo, useState } from "react";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ServiceCreatePayload, ServiceDetail, ServiceHostAssignment, ServiceSummary } from "types/Service";
 import useGetUser from "hooks/useGetUser";
@@ -576,6 +585,170 @@ const ServicesPage: FC = () => {
     }
   };
 
+  const [resetServiceId, setResetServiceId] = useState<number | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const {
+    isOpen: isResetDialogOpen,
+    onOpen: openResetDialog,
+    onClose: closeResetDialog,
+  } = useDisclosure();
+  const resetCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  const openResetConfirmation = (serviceId: number) => {
+    setResetServiceId(serviceId);
+    openResetDialog();
+  };
+
+  const confirmResetUsage = async () => {
+    if (resetServiceId == null) {
+      return;
+    }
+    setIsResetting(true);
+    try {
+      await handleResetUsage(resetServiceId);
+    } finally {
+      setIsResetting(false);
+      closeResetDialog();
+    }
+  };
+
+  const resetTargetName =
+    resetServiceId != null
+      ? servicesStore.services.find((service) => service.id === resetServiceId)?.name
+      : undefined;
+
+  const renderServiceAccordionItem = (service: ServiceSummary) => (
+    <AccordionItem
+      key={`service-accordion-${service.id}`}
+      borderWidth="1px"
+      borderRadius="lg"
+      borderColor="gray.200"
+      _dark={{ borderColor: "whiteAlpha.200", bg: "gray.800" }}
+      mb={2}
+    >
+      {({ isExpanded }) => (
+        <>
+          <AccordionButton
+            px={4}
+            py={3}
+            display="flex"
+            alignItems="flex-start"
+            gap={3}
+          >
+            <Box flex="1" textAlign="left">
+              <Text fontWeight="semibold">{service.name}</Text>
+              {service.description && (
+                <Text
+                  fontSize="sm"
+                  color="gray.500"
+                  _dark={{ color: "gray.300" }}
+                  noOfLines={isExpanded ? 3 : 1}
+                  mt={1}
+                >
+                  {service.description}
+                </Text>
+              )}
+            </Box>
+            <VStack spacing={1} align="flex-end" fontSize="xs" color="gray.500">
+              <HStack spacing={1}>
+                <Text fontWeight="medium">{t("services.columns.hosts", "Hosts")}:</Text>
+                <Text fontWeight="semibold" color="gray.700" _dark={{ color: "gray.200" }}>
+                  {service.host_count}
+                </Text>
+              </HStack>
+              <HStack spacing={1}>
+                <Text fontWeight="medium">{t("services.columns.users", "Users")}:</Text>
+                <Text fontWeight="semibold" color="gray.700" _dark={{ color: "gray.200" }}>
+                  {service.user_count}
+                </Text>
+              </HStack>
+            </VStack>
+            <AccordionIcon />
+          </AccordionButton>
+          <AccordionPanel pt={0} pb={4}>
+            <Stack spacing={4}>
+              <SimpleGrid columns={2} spacing={3}>
+                <Box>
+                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                    {t("services.columns.usage", "Usage")}
+                  </Text>
+                  <Text fontWeight="semibold">{formatBytes(service.used_traffic)}</Text>
+                </Box>
+                <Box>
+                  <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                    {t("services.columns.lifetime", "Lifetime")}
+                  </Text>
+                  <Text fontWeight="semibold">
+                    {formatBytes(service.lifetime_used_traffic)}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+              <Stack spacing={2}>
+                <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                  {t("services.actions", "Actions")}
+                </Text>
+                <HStack spacing={2} flexWrap="wrap">
+                  <Tooltip label={t("services.view", "View")}>
+                    <IconButton
+                      aria-label="View"
+                      icon={<EyeIcon width={18} />}
+                      size="sm"
+                      variant="outline"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        servicesStore.fetchServiceDetail(service.id);
+                      }}
+                    />
+                  </Tooltip>
+                  <Tooltip label={t("services.edit", "Edit")}>
+                    <IconButton
+                      aria-label="Edit"
+                      icon={<PencilSquareIcon width={18} />}
+                      size="sm"
+                      variant="outline"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEditDialog(service.id);
+                      }}
+                      isDisabled={!isSudo}
+                    />
+                  </Tooltip>
+                  <Tooltip label={t("services.resetUsage", "Reset usage")}>
+                    <IconButton
+                      aria-label="Reset usage"
+                      icon={<ArrowPathIcon width={18} />}
+                      size="sm"
+                      variant="outline"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openResetConfirmation(service.id);
+                      }}
+                      isDisabled={!isSudo}
+                    />
+                  </Tooltip>
+                  <Tooltip label={t("services.delete", "Delete")}>
+                    <IconButton
+                      aria-label="Delete"
+                      icon={<TrashIcon width={18} />}
+                      size="sm"
+                      variant="outline"
+                      colorScheme="red"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDelete(service.id);
+                      }}
+                      isDisabled={!isSudo}
+                    />
+                  </Tooltip>
+                </HStack>
+              </Stack>
+            </Stack>
+          </AccordionPanel>
+        </>
+      )}
+    </AccordionItem>
+  );
+
   const renderServiceRow = (service: ServiceSummary) => (
     <Tr key={service.id}>
       <Td>
@@ -620,7 +793,7 @@ const ServicesPage: FC = () => {
                   icon={<ArrowPathIcon width={18} />}
                   size="sm"
                   variant="ghost"
-                  onClick={() => handleResetUsage(service.id)}
+                  onClick={() => openResetConfirmation(service.id)}
                 />
               </Tooltip>
               <Tooltip label={t("services.delete", "Delete")}>
@@ -664,7 +837,12 @@ const ServicesPage: FC = () => {
 
   return (
     <VStack spacing={4} align="stretch">
-      <Flex justify="space-between" align="center">
+      <Flex
+        direction={{ base: "column", md: "row" }}
+        justify="space-between"
+        align={{ base: "flex-start", md: "center" }}
+        gap={{ base: 3, md: 0 }}
+      >
         <Box>
           <Text as="h1" fontSize="2xl" fontWeight="semibold">
             {t("services.title", "Services")}
@@ -681,6 +859,10 @@ const ServicesPage: FC = () => {
             leftIcon={<PlusIcon width={18} />}
             colorScheme="primary"
             onClick={openCreateDialog}
+            size="sm"
+            alignSelf={{ base: "flex-start", md: "center" }}
+            w={{ base: "auto", md: "auto" }}
+            px={{ base: 4, md: 5 }}
           >
             {t("services.addService", "New Service")}
           </Button>
@@ -693,19 +875,32 @@ const ServicesPage: FC = () => {
               <Spinner />
             </Flex>
           ) : (
-            <Table variant="simple">
-              <Thead>
-                <Tr>
-                  <Th>{t("services.columns.name", "Name")}</Th>
-                  <Th>{t("services.columns.hosts", "Hosts")}</Th>
-                  <Th>{t("services.columns.users", "Users")}</Th>
-                  <Th>{t("services.columns.usage", "Usage")}</Th>
-                  <Th>{t("services.columns.lifetime", "Lifetime")}</Th>
-                  <Th>{t("services.columns.actions", "Actions")}</Th>
-                </Tr>
-              </Thead>
-              <Tbody>{servicesStore.services.map(renderServiceRow)}</Tbody>
-            </Table>
+            <>
+              <Accordion
+                allowToggle
+                display={{ base: "block", md: "none" }}
+              >
+                {servicesStore.services.map(renderServiceAccordionItem)}
+              </Accordion>
+              <Box
+                display={{ base: "none", md: "block" }}
+                overflowX="auto"
+              >
+                <Table variant="simple">
+                  <Thead>
+                    <Tr>
+                      <Th>{t("services.columns.name", "Name")}</Th>
+                      <Th>{t("services.columns.hosts", "Hosts")}</Th>
+                      <Th>{t("services.columns.users", "Users")}</Th>
+                      <Th>{t("services.columns.usage", "Usage")}</Th>
+                      <Th>{t("services.columns.lifetime", "Lifetime")}</Th>
+                      <Th>{t("services.columns.actions", "Actions")}</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>{servicesStore.services.map(renderServiceRow)}</Tbody>
+                </Table>
+              </Box>
+            </>
           )}
         </CardBody>
       </Card>
@@ -790,6 +985,40 @@ const ServicesPage: FC = () => {
           </CardBody>
         </Card>
       )}
+
+      <AlertDialog
+        isOpen={isResetDialogOpen}
+        leastDestructiveRef={resetCancelRef}
+        onClose={closeResetDialog}
+        isCentered
+        motionPreset="slideInBottom"
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent mx={{ base: 4, sm: 0 }}>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              {t("services.resetUsage", "Reset usage")}
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              {t("services.resetUsageConfirm", "Reset usage for {{name}}?", {
+                name: resetTargetName ?? t("services.thisService", "this service"),
+              })}
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={resetCancelRef} onClick={closeResetDialog}>
+                {t("cancel", "Cancel")}
+              </Button>
+              <Button
+                colorScheme="primary"
+                ml={3}
+                onClick={confirmResetUsage}
+                isLoading={isResetting}
+              >
+                {t("services.resetUsage", "Reset usage")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
 
       <ServiceDialog
         isOpen={dialogDisclosure.isOpen}

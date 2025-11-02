@@ -168,7 +168,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
                   </HStack>
                   {!collapsed && (
                     <Collapse in={isSettingsOpen} animateOpacity>
-                      <VStack align="stretch" pl={6}>
+                      <VStack align="stretch" pl={6} spacing={1} mt={2}>
                         {item.subItems.map((subItem) => {
                           const isSubActive = location.pathname === subItem.url;
                           const SubIcon = subItem.icon;
