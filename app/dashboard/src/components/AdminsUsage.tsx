@@ -19,7 +19,7 @@ import {
 } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
-import ReactDatePicker from "react-datepicker";
+import DatePicker from "components/common/DatePicker";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { useTranslation } from "react-i18next";
@@ -32,6 +32,7 @@ import {
   ServiceListResponse,
   ServiceSummary,
 } from "types/Service";
+import type { Admin } from "types/Admin";
 import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 
 dayjs.extend(utc);
@@ -41,6 +42,13 @@ const CalendarIcon = chakra(CalendarDaysIcon, { baseStyle: { w: 4, h: 4 } });
 interface DailyUsagePoint {
   date: string;
   used_traffic: number;
+}
+
+interface AdminUsageApiResponse {
+  usages?: Array<{
+    date?: string;
+    used_traffic?: number;
+  }>;
 }
 
 type PresetRangeKey = string;
@@ -213,7 +221,7 @@ useEffect(() => {
         if (prev !== null) return prev;
         return list.length ? list[0].id : null;
       });
-    } catch (error) {
+    } catch (error: unknown) {
       if (!cancelled) {
         setServiceOptions([]);
       }
@@ -240,7 +248,7 @@ useEffect(() => {
       end: formatApiEnd(range.end),
     },
   })
-    .then((data) => {
+    .then((data: ServiceAdminUsageResponse | null) => {
       if (cancelled || !data) return;
       setServiceAdminUsage(data.admins ?? []);
     })
@@ -262,11 +270,11 @@ useEffect(() => {
     let cancelled = false;
     const loadAll = async () => {
       try {
-        const data: any = await apiFetch(`/admins`);
+        const data = await apiFetch<Admin[] | { admins?: Admin[] }>(`/admins`);
         if (cancelled) return;
         if (Array.isArray(data)) setAdmins(data);
         else setAdmins(data.admins || []);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("Failed to load all admins:", err);
         // fallback to paged admins from store
         setAdmins(pagedAdmins || []);
@@ -292,15 +300,15 @@ useEffect(() => {
     }
     const endpoint = isHourly ? "chart" : "daily";
     console.debug("AdminsUsage: fetching usage", { selectedAdmin, endpoint, query });
-    apiFetch(`/admin/${encodeURIComponent(selectedAdmin)}/usage/${endpoint}`, { query })
-      .then((data: any) => {
+    apiFetch<AdminUsageApiResponse>(`/admin/${encodeURIComponent(selectedAdmin)}/usage/${endpoint}`, { query })
+      .then((data: AdminUsageApiResponse | null) => {
         if (cancelled) return;
         const usages = Array.isArray(data?.usages) ? data.usages : [];
         console.debug("AdminsUsage: response usages", { length: usages.length, endpoint });
         let mapped: DailyUsagePoint[];
         if (isHourly) {
           const aggregated = new Map<string, number>();
-          usages.forEach((entry: any) => {
+          usages.forEach((entry) => {
             const dateLabel = typeof entry?.date === "string" ? entry.date : "";
             if (!dateLabel) return;
             const current = aggregated.get(dateLabel) ?? 0;
@@ -314,7 +322,7 @@ useEffect(() => {
           });
           mapped = aggregatedEntries.map(([date, used]) => ({ date, used_traffic: used }));
         } else {
-          const dailyPoints = usages.map((entry: any): DailyUsagePoint => ({
+          const dailyPoints = usages.map((entry): DailyUsagePoint => ({
             date: entry?.date ?? "",
             used_traffic: Number(entry?.used_traffic ?? 0),
           }));
@@ -326,7 +334,7 @@ useEffect(() => {
         }
         setPoints(mapped);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (cancelled) return;
         console.error("Error fetching admin usage:", err);
         setPoints([]);
@@ -557,14 +565,14 @@ useEffect(() => {
                   <PopoverArrow />
                   <PopoverBody px={3} py={3}>
                     <Box overflowX="auto">
-                      <ReactDatePicker
+                      <DatePicker
                         selectsRange
                         inline
                         maxDate={new Date()}
                         startDate={draftRange[0] ?? undefined}
                         endDate={draftRange[1] ?? undefined}
-                        onChange={(dates) => {
-                          const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                        onChange={(dates: [Date | null, Date | null] | null) => {
+                          const [start, end] = dates ?? [null, null];
                           setDraftRange([start, end]);
                           if (start && end) {
                             const normalized = normalizeCustomRange(start, end);

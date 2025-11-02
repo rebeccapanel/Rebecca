@@ -416,8 +416,6 @@ If you found Marzban useful and would like to support its development, you can m
 
 - TRON network (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
 - ETH, BNB, MATIC network (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
-- Bitcoin network: `bc1qpys2nefgsjjgae3g3gqy9crsv3h3rm96tlkz0v`
-- Dogecoin network: `DJAocBAu8y6LwhDKUktLAyzV8xyoFeHH6R`
 - TON network: `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
 
 Thank you for your support!

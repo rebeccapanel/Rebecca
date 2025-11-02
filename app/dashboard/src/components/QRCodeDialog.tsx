@@ -20,7 +20,7 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { FC, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Slider from "react-slick";
+import SlickSlider from "components/common/SlickSlider";
 import "slick-carousel/slick/slick-theme.css";
 import "slick-carousel/slick/slick.css";
 import { useDashboard } from "../contexts/DashboardContext";
@@ -114,7 +114,7 @@ export const QRCodeDialog: FC = () => {
               </VStack>
             )}
             <Box w="300px">
-              <Slider
+              <SlickSlider
                 centerPadding="0px"
                 centerMode={true}
                 slidesToShow={1}
@@ -162,7 +162,7 @@ export const QRCodeDialog: FC = () => {
                     </HStack>
                   );
                 })}
-              </Slider>
+              </SlickSlider>
               <Text display="block" textAlign="center" pb={3} mt={1}>
                 {index + 1} / {QRcodeLinks.length}
               </Text>

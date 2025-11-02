@@ -45,7 +45,7 @@ import useGetUser from "hooks/useGetUser";
 import dayjs from "dayjs";
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
-import ReactDatePicker from "react-datepicker";
+import DatePicker from "components/common/DatePicker";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { User, UserCreate, UserCreateWithService } from "types/User";
@@ -892,7 +892,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               <FormLabel fontSize="sm">
                                 {t("userDialog.nextPlanExpire", "Next plan expiry")}
                               </FormLabel>
-                              <ReactDatePicker
+                              <DatePicker
                                 locale={i18n.language.toLocaleLowerCase()}
                                 dateFormat={t("dateFormat")}
                                 minDate={new Date()}
@@ -1026,7 +1026,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               );
                               return (
                                 <>
-                                  <ReactDatePicker
+                                  <DatePicker
                                     locale={i18n.language.toLocaleLowerCase()}
                                     dateFormat={t("dateFormat")}
                                     minDate={new Date()}

@@ -380,11 +380,9 @@ Body:
 # کمک مالی
 اگر مرزبان را برای شما مفید بوده و می‌خواهید از توسعه آن حمایت کنید، می‌توانید در یکی از طریق یکی از شبکه های کریپتو زیر کمک مالی کنید:
 
-- شبکه TRON (TRX): `TX8kJoDcowQPBFTYHAJR36GyoUKP1Xwzkb`
-- شبکه ETH، BNB، MATIC: `0xFdc9ad32454FA4fc4733270FCc12ddBFb68b83F7`
-- شبکه بیت کوین: `bc1qpys2nefgsjjgae3g3gqy9crsv3h3rm96tlkz0v`
-- شبکه Dogecoin: `DJAocBAu8y6LwhDKUktLAyzV8xyoFeHH6R`
-- شبکه TON: `EQAVf-7hAXHlF-jmrKE44oBwN7HGQFVBLAtrOsev5K4qR4P8`
+- TRON network (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
+- ETH, BNB, MATIC network (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
+- TON network: `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
 
 
 از حمایت شما متشکرم!

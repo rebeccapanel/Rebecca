@@ -19,7 +19,7 @@ import {
 } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
-import ReactDatePicker from "react-datepicker";
+import DatePicker from "components/common/DatePicker";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { useTranslation } from "react-i18next";
@@ -450,14 +450,14 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({ services
               <PopoverArrow />
               <PopoverBody px={3} py={3}>
                 <Box overflowX="auto">
-                  <ReactDatePicker
+                  <DatePicker
                     selectsRange
                     inline
                     maxDate={new Date()}
                     startDate={draftRange[0] ?? undefined}
                     endDate={draftRange[1] ?? undefined}
-                    onChange={(dates) => {
-                      const [start, end] = (dates ?? []) as [Date | null, Date | null];
+                    onChange={(dates: [Date | null, Date | null] | null) => {
+                      const [start, end] = dates ?? [null, null];
                       setDraftRange([start, end]);
                       if (start && end) {
                         const normalized = normalizeCustomRange(start, end);

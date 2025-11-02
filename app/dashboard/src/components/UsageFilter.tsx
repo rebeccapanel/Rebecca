@@ -24,7 +24,7 @@ import { ApexOptions } from "apexcharts";
 import { FilterUsageType } from "contexts/DashboardContext";
 import dayjs, { ManipulateType } from "dayjs";
 import { FC, useRef, useState } from "react";
-import ReactDatePicker from "react-datepicker";
+import DatePicker from "components/common/DatePicker";
 import { useTranslation } from "react-i18next";
 import { generateDistinctColors } from "utils/color";
 import { formatBytes } from "utils/formatByte";
@@ -287,7 +287,7 @@ export const UsageFilter: FC<UsageFilterProps> = ({
             </TabPanel>
             <TabPanel className="datepicker-panel">
               <VStack>
-                <ReactDatePicker
+                <DatePicker
                   locale={i18n.language.toLocaleLowerCase()}
                   selected={startDate}
                   onChange={onDateChange}
