@@ -26,11 +26,17 @@ def upgrade() -> None:
 
     ADMIN_STATUS_ENUM.create(bind, checkfirst=True)
 
+    inspector = sa.inspect(bind)
+    existing_columns = {col["name"] for col in inspector.get_columns("admins")}
+
+    needs_status_column = "status" not in existing_columns
+
     if dialect == "sqlite":
         with op.batch_alter_table("admins", recreate="always") as batch_op:
-            batch_op.add_column(
-                sa.Column("status", ADMIN_STATUS_ENUM, nullable=False, server_default="active")
-            )
+            if needs_status_column:
+                batch_op.add_column(
+                    sa.Column("status", ADMIN_STATUS_ENUM, nullable=False, server_default="active")
+                )
             batch_op.alter_column(
                 "username",
                 existing_type=sa.String(length=34),
@@ -69,10 +75,11 @@ def upgrade() -> None:
         if "ix_admins_status" not in existing_indexes:
             op.create_index("ix_admins_status", "admins", ["status"], unique=False)
 
-    op.execute("UPDATE admins SET status = 'active' WHERE status IS NULL")
+    if needs_status_column:
+        op.execute("UPDATE admins SET status = 'active' WHERE status IS NULL")
 
-    with op.batch_alter_table("admins") as batch_op:
-        batch_op.alter_column("status", server_default=None)
+        with op.batch_alter_table("admins") as batch_op:
+            batch_op.alter_column("status", server_default=None)
 
 
 def downgrade() -> None:
