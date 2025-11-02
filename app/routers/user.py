@@ -55,12 +55,6 @@ def add_user(
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
 
-    if not admin.is_sudo:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only sudo admins can create users without assigning a service.",
-        )
-
     try:
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)

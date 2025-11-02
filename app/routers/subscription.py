@@ -1,5 +1,6 @@
 import re
 from distutils.version import LooseVersion
+from typing import Dict, List, Union
 
 from fastapi import APIRouter, Depends, Header, Path, Request, Response
 from fastapi.responses import HTMLResponse
@@ -49,6 +50,7 @@ def get_subscription_user_info(user: UserResponse) -> dict:
 @router.get("/{token}", include_in_schema=False)
 def user_subscription(
     request: Request,
+    token: str,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_sub),
     user_agent: str = Header(default="")
@@ -58,10 +60,15 @@ def user_subscription(
 
     accept_header = request.headers.get("Accept", "")
     if "text/html" in accept_header:
+        raw_path = request.url.path
+        base_path = raw_path.rstrip("/") if raw_path.endswith("/") else raw_path
+        if not base_path:
+            base_path = "/"
+        usage_url = "/usage" if base_path == "/" else f"{base_path}/usage"
         return HTMLResponse(
             render_template(
                 SUBSCRIPTION_PAGE_TEMPLATE,
-                {"user": user}
+                {"user": user, "usage_url": usage_url, "token": token}
             )
         )
 
@@ -157,9 +164,36 @@ def user_get_usage(
     """Fetches the usage statistics for the user within a specified date range."""
     start, end = validate_dates(start, end)
 
-    usages = crud.get_user_usages(db, dbuser, start, end)
+    timeline_daily = crud.get_user_usage_timeseries(db, dbuser, start, end, granularity="day")
+    daily_usages = [
+        {
+            "date": entry["timestamp"].date().isoformat(),
+            "used_traffic": int(entry["total"] or 0),
+        }
+        for entry in timeline_daily
+    ]
 
-    return {"usages": usages, "username": dbuser.username}
+    hourly_usages: List[Dict[str, Union[str, int]]] = []
+    if start.date() == end.date():
+        timeline_hourly = crud.get_user_usage_timeseries(db, dbuser, start, end, granularity="hour")
+        hourly_usages = [
+            {
+                "timestamp": entry["timestamp"].isoformat(),
+                "used_traffic": int(entry["total"] or 0),
+            }
+            for entry in timeline_hourly
+        ]
+
+    node_usages = crud.get_user_usage_by_nodes(db, dbuser, start, end)
+
+    return {
+        "username": dbuser.username,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "usages": daily_usages,
+        "hourly_usages": hourly_usages,
+        "node_usages": node_usages,
+    }
 
 
 @router.get("/{token}/{client_type}")

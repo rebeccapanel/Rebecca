@@ -873,6 +873,149 @@ def get_users(db: Session,
     return query.all()
 
 
+def get_user_usage_timeseries(
+    db: Session,
+    dbuser: User,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> List[Dict[str, Union[datetime, int, List[Dict[str, Union[int, str, int]]]]]]:
+    """Return usage timeline buckets for a user with optional per-node breakdown."""
+
+    granularity_value = (granularity or "day").lower()
+    if granularity_value not in {"day", "hour"}:
+        granularity_value = "day"
+
+    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+    target_tz = start_aware.tzinfo or timezone.utc
+
+    if granularity_value == "hour":
+        current = start_aware.replace(minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
+        step = timedelta(hours=1)
+    else:
+        current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+        step = timedelta(days=1)
+
+    if current > end_aligned:
+        return []
+
+    node_lookup: Dict[Optional[int], str] = {None: "Master"}
+    for node_id, node_name in db.query(Node.id, Node.name).all():
+        node_lookup[node_id] = node_name
+
+    usage_map: Dict[datetime, Dict[str, Union[int, Dict[Optional[int], int]]]] = {}
+    cursor = current
+    while cursor <= end_aligned:
+        usage_map[cursor] = {"total": 0, "nodes": defaultdict(int)}
+        cursor += step
+
+    rows = (
+        db.query(NodeUserUsage.created_at, NodeUserUsage.node_id, NodeUserUsage.used_traffic)
+        .filter(
+            NodeUserUsage.user_id == dbuser.id,
+            NodeUserUsage.created_at >= start_aware,
+            NodeUserUsage.created_at <= end_aware,
+        )
+        .all()
+    )
+
+    for created_at, node_id, used_traffic in rows:
+        if created_at is None or used_traffic is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        created_at = created_at.astimezone(target_tz)
+
+        if granularity_value == "hour":
+            bucket = created_at.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if bucket not in usage_map:
+            usage_map[bucket] = {"total": 0, "nodes": defaultdict(int)}
+
+        bucket_entry = usage_map[bucket]
+        bucket_entry["total"] = int(bucket_entry["total"] or 0) + int(used_traffic)
+        nodes_map: Dict[Optional[int], int] = bucket_entry["nodes"]  # type: ignore[assignment]
+        nodes_map[node_id] += int(used_traffic)
+
+    timeline: List[Dict[str, Union[datetime, int, List[Dict[str, Union[int, str, int]]]]]] = []
+    for bucket in sorted(usage_map.keys()):
+        bucket_entry = usage_map[bucket]
+        nodes_map = bucket_entry["nodes"]  # type: ignore[assignment]
+        node_entries: List[Dict[str, Union[int, str, int]]] = []
+        for node_id, usage in nodes_map.items():
+            if usage is None or usage == 0:
+                continue
+            resolved_id = node_id if node_id is not None else 0
+            node_entries.append(
+                {
+                    "node_id": resolved_id,
+                    "node_name": node_lookup.get(node_id) or node_lookup.get(None, "Master"),
+                    "used_traffic": int(usage),
+                }
+            )
+        timeline.append(
+            {
+                "timestamp": bucket,
+                "total": int(bucket_entry["total"] or 0),
+                "nodes": node_entries,
+            }
+        )
+
+    return timeline
+
+
+def get_user_usage_by_nodes(
+    db: Session,
+    dbuser: User,
+    start: datetime,
+    end: datetime,
+) -> List[Dict[str, Union[Optional[int], str, int]]]:
+    """Aggregate total usage per node (downlink) for a user within a date range."""
+
+    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+
+    node_lookup: Dict[Optional[int], Dict[str, Union[Optional[int], str, int]]] = {
+        None: {"node_id": None, "node_name": "Master", "uplink": 0, "downlink": 0}
+    }
+    for node in db.query(Node).all():
+        node_lookup[node.id] = {
+            "node_id": node.id,
+            "node_name": node.name,
+            "uplink": 0,
+            "downlink": 0,
+        }
+
+    rows = (
+        db.query(NodeUserUsage.node_id, func.coalesce(func.sum(NodeUserUsage.used_traffic), 0))
+        .filter(
+            NodeUserUsage.user_id == dbuser.id,
+            NodeUserUsage.created_at >= start_aware,
+            NodeUserUsage.created_at <= end_aware,
+        )
+        .group_by(NodeUserUsage.node_id)
+        .all()
+    )
+
+    for node_id, traffic in rows:
+        if node_id not in node_lookup:
+            # fallback for nodes created after initial map
+            node_lookup[node_id] = {
+                "node_id": node_id,
+                "node_name": f"Node {node_id}" if node_id is not None else "Master",
+                "uplink": 0,
+                "downlink": 0,
+            }
+        node_lookup[node_id]["downlink"] = node_lookup[node_id].get("downlink", 0) + int(traffic or 0)
+
+    return sorted(node_lookup.values(), key=lambda entry: (entry["node_id"] is not None, entry["node_id"] or -1))
+
+
 def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -> List[UserUsageResponse]:
     """
     Retrieves user usages within a specified date range.
