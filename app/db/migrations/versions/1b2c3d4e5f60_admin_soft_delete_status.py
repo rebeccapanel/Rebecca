@@ -53,26 +53,28 @@ def upgrade() -> None:
                 op.drop_constraint(constraint["name"], "admins", type_="unique")
                 break
 
-        with op.batch_alter_table("admins") as batch_op:
-            batch_op.add_column(
-                sa.Column("status", ADMIN_STATUS_ENUM, nullable=False, server_default="active")
-            )
+        if needs_status_column:
+            with op.batch_alter_table("admins") as batch_op:
+                batch_op.add_column(
+                    sa.Column("status", ADMIN_STATUS_ENUM, nullable=False, server_default="active")
+                )
 
         existing_indexes = {idx["name"]: idx for idx in inspector.get_indexes("admins")}
         # Drop any index that enforces uniqueness on username so we can recreate it non-unique
         index_to_drop = None
         for name, metadata in existing_indexes.items():
-            if metadata.get("column_names") == ["username"]:
+            if metadata.get("column_names") == ["username"] and metadata.get("unique"):
                 index_to_drop = name
                 break
         if index_to_drop:
             op.drop_index(index_to_drop, table_name="admins")
-        # Refresh inspector state if we dropped an index
-        existing_indexes = {idx["name"]: idx for idx in sa.inspect(bind).get_indexes("admins")}
+            existing_indexes.pop(index_to_drop, None)
 
-        if "ix_admins_username" not in existing_indexes:
+        refreshed_indexes = {idx["name"]: idx for idx in sa.inspect(bind).get_indexes("admins")}
+
+        if "ix_admins_username" not in refreshed_indexes:
             op.create_index("ix_admins_username", "admins", ["username"], unique=False)
-        if "ix_admins_status" not in existing_indexes:
+        if "ix_admins_status" not in refreshed_indexes:
             op.create_index("ix_admins_status", "admins", ["status"], unique=False)
 
     if needs_status_column:
