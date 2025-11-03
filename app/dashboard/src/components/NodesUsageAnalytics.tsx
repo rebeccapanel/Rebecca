@@ -19,6 +19,7 @@ import {
   useBreakpointValue,
   useToast,
 } from "@chakra-ui/react";
+import type { PlacementWithLogical } from "@chakra-ui/react";
 import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
@@ -157,7 +158,9 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
   onCustomChange,
 }) => {
   const { t } = useTranslation();
-  const popoverPlacement = useBreakpointValue({ base: "bottom", md: "auto-end" }) ?? "auto-end";
+  const fallbackPlacement: PlacementWithLogical = "auto-end";
+  const popoverPlacement =
+    useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
   const startLabel = dayjs(range.start).format("YYYY-MM-DD");
   const endLabel = dayjs(range.end).format("YYYY-MM-DD");
   const rangeLabel = startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;

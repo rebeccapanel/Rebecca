@@ -52,6 +52,7 @@ import { formatBytes } from "utils/formatByte";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
+import type { Status as UserStatus } from "types/User";
 
 dayjs.extend(utc);
 
@@ -322,6 +323,7 @@ export const NodesPage: FC = () => {
   const masterUpdatedAt = masterState?.updated_at
     ? dayjs(masterState.updated_at).local().format("YYYY-MM-DD HH:mm")
     : null;
+  const masterStatus: UserStatus = (masterState?.status ?? "error") as UserStatus;
   const masterUsageDisplay = formatBytes(masterTotalUsage, 2);
   const masterDataLimitDisplay =
     masterDataLimit !== null && masterDataLimit > 0
@@ -820,7 +822,7 @@ export const NodesPage: FC = () => {
                       </Tag>
                     </HStack>
                     <HStack spacing={2} align="center">
-                      <NodeModalStatusBadge status={(masterState.status as string) || "error"} compact />
+                      <NodeModalStatusBadge status={masterStatus} compact />
                       {masterState.limit_exceeded && (
                         <Tag colorScheme="red" size="sm">
                           {t("nodes.limitReached", "Limit reached")}

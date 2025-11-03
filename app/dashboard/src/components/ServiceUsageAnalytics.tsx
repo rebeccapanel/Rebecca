@@ -18,6 +18,7 @@ import {
   useColorMode,
   useBreakpointValue,
 } from "@chakra-ui/react";
+import type { PlacementWithLogical } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import DatePicker from "components/common/DatePicker";
@@ -133,7 +134,9 @@ type ServiceUsageAnalyticsProps = {
 export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({ services, selectedServiceId }) => {
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
-  const popoverPlacement = useBreakpointValue({ base: "bottom", md: "auto-end" }) ?? "auto-end";
+  const fallbackPlacement: PlacementWithLogical = "auto-end";
+  const popoverPlacement =
+    useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
 
   const serviceOptions = useMemo(() => services.map((service) => ({ id: service.id, name: service.name })), [services]);
   const initialServiceId = useMemo(() => {
