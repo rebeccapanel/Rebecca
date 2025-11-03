@@ -201,6 +201,52 @@ table thead {
   visibility: hidden;
 }
 
+.usage-range-datepicker {
+  width: 100%;
+  max-width: 360px;
+  padding: 0 4px;
+  font-size: 0.95rem;
+}
+
+.usage-range-datepicker .react-datepicker__month-container {
+  width: 100%;
+}
+
+.usage-range-datepicker .react-datepicker__month {
+  margin: 0;
+}
+
+.usage-range-datepicker .react-datepicker__week {
+  display: flex;
+  justify-content: space-between;
+}
+
+.usage-range-datepicker .react-datepicker__day,
+.usage-range-datepicker .react-datepicker__day-name {
+  width: 2.45rem;
+  line-height: 2.45rem;
+  margin: 0;
+}
+
+.usage-range-datepicker-popper {
+  z-index: 1500 !important;
+}
+
+@media (max-width: 480px) {
+  .usage-range-datepicker {
+    max-width: 100%;
+    padding: 0;
+    font-size: 0.85rem;
+  }
+
+  .usage-range-datepicker .react-datepicker__day,
+  .usage-range-datepicker .react-datepicker__day-name {
+    width: 2.1rem;
+    line-height: 2.1rem;
+    margin: 0;
+  }
+}
+
 .datepicker-panel .react-datepicker {
   background-color: unset;
   border: unset;

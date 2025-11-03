@@ -16,6 +16,7 @@ import {
   VStack,
   chakra,
   useColorMode,
+  useBreakpointValue,
   useToast,
 } from "@chakra-ui/react";
 import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
@@ -156,6 +157,7 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
   onCustomChange,
 }) => {
   const { t } = useTranslation();
+  const popoverPlacement = useBreakpointValue({ base: "bottom", md: "auto-end" }) ?? "auto-end";
   const startLabel = dayjs(range.start).format("YYYY-MM-DD");
   const endLabel = dayjs(range.end).format("YYYY-MM-DD");
   const rangeLabel = startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
@@ -197,12 +199,19 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
         ))}
       </Stack>
       <Popover
-        placement="bottom-end"
+        placement={popoverPlacement}
         isOpen={isCalendarOpen}
         onClose={() => {
           setCalendarOpen(false);
         }}
         closeOnBlur={false}
+        modifiers={[
+          { name: "preventOverflow", options: { padding: 16 } },
+          {
+            name: "flip",
+            options: { fallbackPlacements: ["top-end", "bottom-start", "top-start"] },
+          },
+        ]}
       >
         <PopoverTrigger>
           <Button
@@ -222,16 +231,21 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
             {rangeLabel}
           </Button>
         </PopoverTrigger>
-        <PopoverContent w="auto" maxW="calc(100vw - 2rem)" _focus={{ outline: "none" }}>
+        <PopoverContent
+          w="fit-content"
+          maxW="calc(100vw - 2rem)"
+          _focus={{ outline: "none" }}
+        >
           <PopoverArrow />
           <PopoverBody px={3} py={3}>
-            <Box overflowX="auto">
+            <Box overflowX="auto" maxW="full">
               <DatePicker
                 selectsRange
                 inline
                 maxDate={new Date()}
                 startDate={draftRange[0] ?? undefined}
                 endDate={draftRange[1] ?? undefined}
+                calendarClassName="usage-range-datepicker"
                 onChange={(dates: [Date | null, Date | null] | null) => {
                   const [start, end] = dates ?? [null, null];
                   setDraftRange([start, end]);

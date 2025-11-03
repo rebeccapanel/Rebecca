@@ -543,7 +543,6 @@ type HostDetailDrawerProps = {
     value: HostData[Key]
   ) => void;
   onChangeInbound: (uid: string, inboundTag: string) => void;
-  onToggleActive: (uid: string, active: boolean) => void;
   onSave: (uid: string) => void;
   onReset: (uid: string) => void;
   onDelete: (uid: string) => void;
@@ -558,7 +557,6 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
   onClose,
   onChange,
   onChangeInbound,
-  onToggleActive,
   onSave,
   onReset,
   onDelete,
@@ -572,7 +570,6 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
   }
 
   const inbound = inboundOptions.find((option) => option.value === host.inboundTag);
-  const active = !host.data.is_disabled;
   const dirty = isHostDirty(host);
 
   return (
@@ -582,19 +579,9 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
         <DrawerCloseButton />
         <DrawerHeader pb={1}>
           <VStack align="stretch" spacing={1}>
-            <HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
-              <Text fontWeight="semibold" fontSize="lg">
-                {host.data.remark || t("hostsPage.untitledHost")}
-              </Text>
-              <Button
-                size="xs"
-                variant={active ? "solid" : "outline"}
-                colorScheme={active ? "green" : "gray"}
-                onClick={() => onToggleActive(host.uid, !active)}
-              >
-                {active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
-              </Button>
-            </HStack>
+            <Text fontWeight="semibold" fontSize="lg">
+              {host.data.remark || t("hostsPage.untitledHost")}
+            </Text>
             <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
               {host.data.address || t("hostsPage.noAddress")}
             </Text>
@@ -1681,7 +1668,6 @@ export const HostsManager: FC = () => {
         onClose={() => setSelectedHostUid(null)}
         onChange={updateHost}
         onChangeInbound={updateHostInbound}
-        onToggleActive={toggleActive}
         onSave={saveHost}
         onReset={resetHost}
         onDelete={handleDeleteHost}

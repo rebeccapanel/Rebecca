@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -93,3 +94,28 @@ class NodeUsageResponse(BaseModel):
 
 class NodesUsageResponse(BaseModel):
     usages: List[NodeUsageResponse]
+
+
+class MasterNodeResponse(BaseModel):
+    id: int
+    name: str = "Master"
+    status: NodeStatus
+    message: Optional[str] = None
+    data_limit: Optional[int] = None
+    uplink: int = 0
+    downlink: int = 0
+    total_usage: int = 0
+    remaining_data: Optional[int] = None
+    limit_exceeded: bool = False
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MasterNodeUpdate(BaseModel):
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit for the master node in bytes (null = unlimited)",
+        ge=0,
+        example=107374182400,
+    )
+    model_config = ConfigDict(extra="forbid")

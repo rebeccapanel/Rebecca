@@ -438,6 +438,18 @@ class Node(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
 
 
+class MasterNodeState(Base):
+    __tablename__ = "master_node_state"
+
+    id = Column(Integer, primary_key=True, default=1)
+    uplink = Column(BigInteger, default=0)
+    downlink = Column(BigInteger, default=0)
+    data_limit = Column(BigInteger, nullable=True, default=None)
+    status = Column(Enum(NodeStatus), nullable=False, default=NodeStatus.connected)
+    message = Column(String(1024), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class NodeUserUsage(Base):
     __tablename__ = "node_user_usages"
     __table_args__ = (

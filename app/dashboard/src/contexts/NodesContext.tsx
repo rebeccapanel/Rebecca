@@ -53,6 +53,8 @@ export type NodeStore = {
   updateNode: (node: NodeType) => Promise<unknown>;
   reconnectNode: (node: NodeType) => Promise<unknown>;
   resetNodeUsage: (node: NodeType) => Promise<unknown>;
+  updateMasterNode: (payload: { data_limit: number | null }) => Promise<unknown>;
+  resetMasterUsage: () => Promise<unknown>;
   deletingNode?: NodeType | null;
   deleteNode: () => Promise<unknown>;
   setDeletingNode: (node: NodeType | null) => void;
@@ -95,6 +97,17 @@ export const useNodes = create<NodeStore>((set, get) => ({
   },
   resetNodeUsage(body) {
     return fetch(`/node/${body.id}/usage/reset`, {
+      method: "POST",
+    });
+  },
+  updateMasterNode(body) {
+    return fetch("/node/master", {
+      method: "PUT",
+      body,
+    });
+  },
+  resetMasterUsage() {
+    return fetch("/node/master/usage/reset", {
       method: "POST",
     });
   },

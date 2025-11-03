@@ -16,7 +16,9 @@ import {
   PopoverArrow,
   chakra,
   Tooltip,
+  useBreakpointValue,
 } from "@chakra-ui/react";
+import type { PlacementWithLogical } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import DatePicker from "components/common/DatePicker";
@@ -144,6 +146,9 @@ const AdminsUsage: FC = () => {
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
   const { admins: pagedAdmins } = useAdminsStore();
+const fallbackPlacement: PlacementWithLogical = "auto-end";
+const popoverPlacement =
+  useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
   const [admins, setAdmins] = useState<any[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
@@ -536,12 +541,19 @@ useEffect(() => {
               alignItems={{ base: "stretch", sm: "center" }}
             >
               <Popover
-                placement="bottom-end"
+                placement={popoverPlacement}
                 isOpen={isCalendarOpen}
                 onClose={() => {
                   setCalendarOpen(false);
                 }}
                 closeOnBlur={false}
+                modifiers={[
+                  { name: "preventOverflow", options: { padding: 16 } },
+                  {
+                    name: "flip",
+                    options: { fallbackPlacements: ["top-end", "bottom-start", "top-start"] },
+                  },
+                ]}
               >
                 <PopoverTrigger>
                   <Button
@@ -561,16 +573,21 @@ useEffect(() => {
                     {rangeLabel}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent w="auto" maxW="calc(100vw - 2rem)" _focus={{ outline: "none" }}>
+                <PopoverContent
+                  w="fit-content"
+                  maxW="calc(100vw - 2rem)"
+                  _focus={{ outline: "none" }}
+                >
                   <PopoverArrow />
                   <PopoverBody px={3} py={3}>
-                    <Box overflowX="auto">
+                    <Box overflowX="auto" maxW="full">
                       <DatePicker
                         selectsRange
                         inline
                         maxDate={new Date()}
                         startDate={draftRange[0] ?? undefined}
                         endDate={draftRange[1] ?? undefined}
+                        calendarClassName="usage-range-datepicker"
                         onChange={(dates: [Date | null, Date | null] | null) => {
                           const [start, end] = dates ?? [null, null];
                           setDraftRange([start, end]);

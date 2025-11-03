@@ -20,6 +20,7 @@ from app.db.models import (
     AdminServiceLink,
     AdminUsageLogs,
     NextPlan,
+    MasterNodeState,
     Node,
     NodeUsage,
     NodeUserUsage,
@@ -37,7 +38,10 @@ from app.db.models import (
 )
 from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
-from app.models.node import NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
+from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
+
+
+MASTER_NODE_NAME = "Master"
 from app.models.proxy import ProxyHost as ProxyHostModify
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 from app.models.user import (
@@ -902,7 +906,8 @@ def get_user_usage_timeseries(
     if current > end_aligned:
         return []
 
-    node_lookup: Dict[Optional[int], str] = {None: "Master"}
+    _ensure_master_state(db, for_update=False)
+    node_lookup: Dict[Optional[int], str] = {None: MASTER_NODE_NAME}
     for node_id, node_name in db.query(Node.id, Node.name).all():
         node_lookup[node_id] = node_name
 
@@ -939,8 +944,9 @@ def get_user_usage_timeseries(
 
         bucket_entry = usage_map[bucket]
         bucket_entry["total"] = int(bucket_entry["total"] or 0) + int(used_traffic)
-        nodes_map: Dict[Optional[int], int] = bucket_entry["nodes"]  # type: ignore[assignment]
-        nodes_map[node_id] += int(used_traffic)
+        nodes_map: Dict[int, int] = bucket_entry["nodes"]  # type: ignore[assignment]
+        key = node_id if node_id is not None else master.id
+        nodes_map[key] += int(used_traffic)
 
     timeline: List[Dict[str, Union[datetime, int, List[Dict[str, Union[int, str, int]]]]]] = []
     for bucket in sorted(usage_map.keys()):
@@ -948,9 +954,9 @@ def get_user_usage_timeseries(
         nodes_map = bucket_entry["nodes"]  # type: ignore[assignment]
         node_entries: List[Dict[str, Union[int, str, int]]] = []
         for node_id, usage in nodes_map.items():
-            if usage is None or usage == 0:
+            if not usage:
                 continue
-            resolved_id = node_id if node_id is not None else 0
+            resolved_id = 0 if node_id == master.id else node_id
             node_entries.append(
                 {
                     "node_id": resolved_id,
@@ -980,8 +986,10 @@ def get_user_usage_by_nodes(
     start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
     end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
 
+    _ensure_master_state(db, for_update=False)
+
     node_lookup: Dict[Optional[int], Dict[str, Union[Optional[int], str, int]]] = {
-        None: {"node_id": None, "node_name": "Master", "uplink": 0, "downlink": 0}
+        None: {"node_id": None, "node_name": MASTER_NODE_NAME, "uplink": 0, "downlink": 0}
     }
     for node in db.query(Node).all():
         node_lookup[node.id] = {
@@ -1003,17 +1011,21 @@ def get_user_usage_by_nodes(
     )
 
     for node_id, traffic in rows:
-        if node_id not in node_lookup:
+        target_id = node_id
+        if target_id not in node_lookup:
             # fallback for nodes created after initial map
-            node_lookup[node_id] = {
-                "node_id": node_id,
-                "node_name": f"Node {node_id}" if node_id is not None else "Master",
+            node_lookup[target_id] = {
+                "node_id": target_id,
+                "node_name": MASTER_NODE_NAME if target_id is None else f"Node {target_id}",
                 "uplink": 0,
                 "downlink": 0,
             }
-        node_lookup[node_id]["downlink"] = node_lookup[node_id].get("downlink", 0) + int(traffic or 0)
+        node_lookup[target_id]["downlink"] = node_lookup[target_id].get("downlink", 0) + int(traffic or 0)
 
-    return sorted(node_lookup.values(), key=lambda entry: (entry["node_id"] is not None, entry["node_id"] or -1))
+    return sorted(
+        node_lookup.values(),
+        key=lambda entry: (entry["node_id"] is not None, entry["node_id"] or -1),
+    )
 
 
 def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -> List[UserUsageResponse]:
@@ -2317,9 +2329,77 @@ def get_node_by_id(db: Session, node_id: int) -> Optional[Node]:
     return db.query(Node).filter(Node.id == node_id).first()
 
 
+def _ensure_master_state(db: Session, *, for_update: bool = False) -> MasterNodeState:
+    """Retrieve or create the singleton master node state entry."""
+    query = db.query(MasterNodeState)
+    if for_update:
+        query = query.with_for_update()
+
+    state = query.first()
+    if state:
+        return state
+
+    state = MasterNodeState(status=NodeStatus.connected)
+    db.add(state)
+    db.flush()
+    db.refresh(state)
+    return state
+
+
+def get_master_node_state(db: Session) -> MasterNodeState:
+    master_state = _ensure_master_state(db, for_update=False)
+    db.refresh(master_state)
+    return master_state
+
+
+def set_master_data_limit(db: Session, data_limit: Optional[int]) -> MasterNodeState:
+    master_state = _ensure_master_state(db, for_update=True)
+    normalized_limit = data_limit or None
+    master_state.data_limit = normalized_limit
+
+    total_usage = (master_state.uplink or 0) + (master_state.downlink or 0)
+    limited = normalized_limit is not None and total_usage >= normalized_limit
+
+    if limited:
+        if master_state.status != NodeStatus.limited:
+            master_state.status = NodeStatus.limited
+            master_state.message = "Data limit reached"
+    else:
+        if master_state.status == NodeStatus.limited:
+            master_state.status = NodeStatus.connected
+            master_state.message = None
+
+    master_state.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(master_state)
+    return master_state
+
+
+def reset_master_usage(db: Session) -> MasterNodeState:
+    master_state = _ensure_master_state(db, for_update=True)
+
+    db.query(NodeUsage).filter(
+        or_(NodeUsage.node_id.is_(None), NodeUsage.node_id == master_state.id)
+    ).delete(synchronize_session=False)
+    db.query(NodeUserUsage).filter(
+        or_(NodeUserUsage.node_id.is_(None), NodeUserUsage.node_id == master_state.id)
+    ).delete(synchronize_session=False)
+
+    master_state.uplink = 0
+    master_state.downlink = 0
+    master_state.status = NodeStatus.connected
+    master_state.message = None
+    master_state.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(master_state)
+    return master_state
+
+
 def get_nodes(db: Session,
               status: Optional[Union[NodeStatus, list]] = None,
-              enabled: bool = None) -> List[Node]:
+              enabled: bool = None,
+              include_master: bool = False) -> List[Node]:
     """
     Retrieves nodes based on optional status and enabled filters.
 
@@ -2357,29 +2437,38 @@ def get_nodes_usage(db: Session, start: datetime, end: datetime) -> List[NodeUsa
     Returns:
         List[NodeUsageResponse]: A list of NodeUsageResponse objects containing usage data.
     """
-    usages = {0: NodeUsageResponse(  # Main Core
-        node_id=None,
-        node_name="Master",
-        uplink=0,
-        downlink=0
-    )}
+    _ensure_master_state(db, for_update=False)
+
+    usages: Dict[Optional[int], NodeUsageResponse] = {
+        None: NodeUsageResponse(
+            node_id=None,
+            node_name=MASTER_NODE_NAME,
+            uplink=0,
+            downlink=0,
+        )
+    }
 
     for node in db.query(Node).all():
         usages[node.id] = NodeUsageResponse(
             node_id=node.id,
             node_name=node.name,
             uplink=0,
-            downlink=0
+            downlink=0,
         )
 
     cond = and_(NodeUsage.created_at >= start, NodeUsage.created_at <= end)
 
-    for v in db.query(NodeUsage).filter(cond):
-        try:
-            usages[v.node_id or 0].uplink += v.uplink
-            usages[v.node_id or 0].downlink += v.downlink
-        except KeyError:
-            pass
+    for entry in db.query(NodeUsage).filter(cond):
+        target_id = entry.node_id
+        if target_id not in usages:
+            usages[target_id] = NodeUsageResponse(
+                node_id=target_id,
+                node_name=MASTER_NODE_NAME if target_id is None else f"Node {target_id}",
+                uplink=0,
+                downlink=0,
+            )
+        usages[target_id].uplink += entry.uplink
+        usages[target_id].downlink += entry.downlink
 
     return list(usages.values())
 

@@ -58,6 +58,8 @@ import { UsageFilter, createUsageConfig } from "./UsageFilter";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
 
+const DATE_PICKER_PORTAL_ID = "user-dialog-datepicker-portal";
+
 const AddUserIcon = chakra(UserPlusIcon, {
   baseStyle: {
     w: 5,
@@ -334,6 +336,23 @@ export const UserDialog: FC<UserDialogProps> = () => {
       setSelectedServiceId((current) => current ?? services[0]?.id ?? null);
     }
   }, [services, isEditing, isOpen, hasServices]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    let portal = document.getElementById(DATE_PICKER_PORTAL_ID);
+    if (!portal) {
+      portal = document.createElement("div");
+      portal.setAttribute("id", DATE_PICKER_PORTAL_ID);
+      document.body.appendChild(portal);
+    }
+    return () => {
+      if (portal && portal.childElementCount === 0) {
+        portal.remove();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isEditing && isOpen && !hasServices) {
@@ -927,6 +946,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                     disabled={disabled}
                                   />
                                 }
+                                calendarClassName="usage-range-datepicker"
+                                popperClassName="usage-range-datepicker-popper"
+                                popperPlacement="bottom-end"
+                                portalId={DATE_PICKER_PORTAL_ID}
+                                popperModifiers={[
+                                  { name: "offset", options: { offset: [0, 8] } },
+                                  { name: "preventOverflow", options: { padding: 16 } },
+                                  { name: "flip", options: { fallbackPlacements: ["top-end", "top-start"] } },
+                                ]}
                               />
                             </FormControl>
                             <HStack justify="space-between">

@@ -753,5 +753,11 @@
   "settings.telegram.events.nodeErrorsHint": "Отправлять уведомление при ошибках узла, зафиксированных системой.",
   "settings.save": "Save Settings",
   "settings.savedSuccess": "Telegram settings updated.",
-  "settings.tabs.comingSoon": "Coming Soon"
+  "settings.tabs.comingSoon": "Coming Soon",
+  "nodes.masterLimitUpdateSuccess": "Master data limit saved",
+  "nodes.resetMasterUsageSuccess": "Master usage reset",
+  "nodes.remainingData": "Remaining data",
+  "nodes.lastUpdated": "Last updated",
+  "nodes.clearDataLimit": "Clear limit",
+  "nodes.limitReached": "Limit reached"
 }

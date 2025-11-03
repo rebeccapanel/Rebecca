@@ -31,6 +31,7 @@ from config import (
 )
 from xray_api import XRay as XRayAPI
 from xray_api import exc as xray_exc
+from app.db import crud
 
 
 def safe_execute(db: Session, stmt, params=None):
@@ -109,6 +110,9 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     status_change_payload = None
 
     with GetDB() as db:
+        master_record = None
+        if node_id is None:
+            master_record = crud._ensure_master_state(db, for_update=True)
 
         # make node usage row if doesn't exist
         select_stmt = select(NodeUsage.node_id). \
@@ -156,10 +160,28 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                 db.commit()
             else:
                 db.commit()
+        elif master_record and (total_up or total_down):
+            master_record.uplink = (master_record.uplink or 0) + total_up
+            master_record.downlink = (master_record.downlink or 0) + total_down
 
-    if status_change_payload:
-        node_resp, prev_status = status_change_payload
-        report.node_status_change(node_resp, previous_status=prev_status)
+            limit = master_record.data_limit
+            current_usage = (master_record.uplink or 0) + (master_record.downlink or 0)
+
+            if limit is not None and current_usage >= limit:
+                if master_record.status != NodeStatus.limited:
+                    master_record.status = NodeStatus.limited
+                    master_record.message = "Data limit reached"
+                    master_record.updated_at = datetime.utcnow()
+            else:
+                if master_record.status == NodeStatus.limited:
+                    master_record.status = NodeStatus.connected
+                    master_record.message = None
+                    master_record.updated_at = datetime.utcnow()
+
+            db.commit()
+        if status_change_payload:
+            node_resp, prev_status = status_change_payload
+            report.node_status_change(node_resp, previous_status=prev_status)
 
     if limited_triggered:
         try:

@@ -11,6 +11,8 @@ from app.db import Session, crud, get_db
 from app.dependencies import get_dbnode, validate_dates
 from app.models.admin import Admin
 from app.models.node import (
+    MasterNodeResponse,
+    MasterNodeUpdate,
     NodeCreate,
     NodeModify,
     NodeResponse,
@@ -20,7 +22,7 @@ from app.models.node import (
 )
 from app.models.proxy import ProxyHost
 from app.utils import responses, report
-from app.db.models import Node as DBNode
+from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
 
 router = APIRouter(
     tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403}
@@ -37,6 +39,61 @@ def add_host_if_needed(new_node: NodeCreate, db: Session):
         for inbound_tag in xray.config.inbounds_by_tag:
             crud.add_host(db, inbound_tag, host)
         xray.hosts.update()
+
+
+MASTER_NODE_NAME = "Master"
+
+
+def _build_master_response(master: DBMasterNodeState) -> MasterNodeResponse:
+    total_usage = (master.uplink or 0) + (master.downlink or 0)
+    data_limit = master.data_limit
+    remaining = max((data_limit or 0) - total_usage, 0) if data_limit is not None else None
+
+    return MasterNodeResponse(
+        id=master.id,
+        name=MASTER_NODE_NAME,
+        status=master.status,
+        message=master.message,
+        data_limit=data_limit,
+        uplink=master.uplink or 0,
+        downlink=master.downlink or 0,
+        total_usage=total_usage,
+        remaining_data=remaining,
+        limit_exceeded=bool(data_limit is not None and total_usage >= data_limit),
+        updated_at=master.updated_at,
+    )
+
+
+@router.get("/node/master", response_model=MasterNodeResponse, responses={403: responses._403})
+def get_master_node_state(
+    db: Session = Depends(get_db),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Retrieve the current usage and limits for the master node."""
+    master_state = crud.get_master_node_state(db)
+    return _build_master_response(master_state)
+
+
+@router.put("/node/master", response_model=MasterNodeResponse, responses={403: responses._403})
+def update_master_node_state(
+    payload: MasterNodeUpdate,
+    db: Session = Depends(get_db),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Update master node settings such as data limit."""
+    master_state = crud.set_master_data_limit(db, payload.data_limit)
+    return _build_master_response(master_state)
+
+
+@router.post("/node/master/usage/reset", response_model=MasterNodeResponse, responses={403: responses._403})
+def reset_master_node_usage(
+    db: Session = Depends(get_db),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Reset usage counters for the master node."""
+    master_state = crud.reset_master_usage(db)
+    logger.info("Master usage reset")
+    return _build_master_response(master_state)
 
 
 @router.get("/node/settings", response_model=NodeSettings)

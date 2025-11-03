@@ -18,6 +18,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   SimpleGrid,
   Spinner,
   Stack,
@@ -60,6 +61,47 @@ const EditIconStyled = chakra(EditIcon, { baseStyle: { w: 4, h: 4 } });
 const ArrowPathIconStyled = chakra(ArrowPathIcon, { baseStyle: { w: 4, h: 4 } });
 const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
 
+const BYTES_IN_GB = 1024 ** 3;
+
+interface MasterNodeSummary {
+  status: NodeType["status"];
+  message?: string | null;
+  data_limit?: number | null;
+  uplink: number;
+  downlink: number;
+  total_usage: number;
+  remaining_data?: number | null;
+  limit_exceeded: boolean;
+  updated_at?: string | null;
+}
+
+const formatDataLimitForInput = (value?: number | null): string => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const gbValue = value / BYTES_IN_GB;
+  if (!Number.isFinite(gbValue)) {
+    return "";
+  }
+  const rounded = Math.round(gbValue * 100) / 100;
+  return rounded.toString();
+};
+
+const convertLimitInputToBytes = (value: string): number | null | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return undefined;
+  }
+  if (numeric === 0) {
+    return null;
+  }
+  return Math.round(numeric * BYTES_IN_GB);
+};
+
 interface CoreStatsResponse {
   version: string | null;
   started: string | null;
@@ -78,6 +120,7 @@ type GeoDialogTarget =
 export const NodesPage: FC = () => {
   const { t } = useTranslation();
   const { onEditingNodes } = useDashboard();
+  const isEditingNodes = useDashboard((state) => state.isEditingNodes);
   const {
     data: nodes,
     isLoading,
@@ -85,7 +128,15 @@ export const NodesPage: FC = () => {
     refetch: refetchNodes,
     isFetching,
   } = useNodesQuery();
-  const { addNode, updateNode, reconnectNode, resetNodeUsage, setDeletingNode } = useNodes();
+  const {
+    addNode,
+    updateNode,
+    reconnectNode,
+    resetNodeUsage,
+    updateMasterNode,
+    resetMasterUsage,
+    setDeletingNode,
+  } = useNodes();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -105,6 +156,14 @@ export const NodesPage: FC = () => {
   const [resetCandidate, setResetCandidate] = useState<NodeType | null>(null);
   const { isOpen: isResetConfirmOpen, onOpen: openResetConfirm, onClose: closeResetConfirm } = useDisclosure();
   const cancelResetRef = useRef<HTMLButtonElement | null>(null);
+  const [masterLimitInput, setMasterLimitInput] = useState<string>("");
+  const [masterLimitDirty, setMasterLimitDirty] = useState(false);
+  const {
+    isOpen: isMasterResetOpen,
+    onOpen: openMasterReset,
+    onClose: closeMasterReset,
+  } = useDisclosure();
+  const masterResetCancelRef = useRef<HTMLButtonElement | null>(null);
 
   const {
     data: coreStats,
@@ -115,12 +174,44 @@ export const NodesPage: FC = () => {
     refetchOnWindowFocus: false,
   });
 
+  const {
+    data: masterState,
+    isLoading: isMasterStateLoading,
+    error: masterStateError,
+    refetch: refetchMasterState,
+  } = useQuery<MasterNodeSummary>(
+    ["master-node-state"],
+    () => apiFetch<MasterNodeSummary>("/node/master"),
+    {
+      refetchInterval: isEditingNodes ? 3000 : undefined,
+      refetchOnWindowFocus: false,
+    },
+  );
+
   useEffect(() => {
     onEditingNodes(true);
     return () => {
       onEditingNodes(false);
     };
   }, [onEditingNodes]);
+
+  useEffect(() => {
+    if (!masterState) {
+      return;
+    }
+    if (masterLimitDirty) {
+      const parsedValue = convertLimitInputToBytes(masterLimitInput);
+      const currentLimit = masterState.data_limit ?? null;
+      if (parsedValue !== currentLimit) {
+        return;
+      }
+    }
+    const formatted = formatDataLimitForInput(masterState.data_limit ?? null);
+    setMasterLimitInput(formatted);
+    if (masterLimitDirty) {
+      setMasterLimitDirty(false);
+    }
+  }, [masterState, masterLimitDirty, masterLimitInput]);
 
   const { isLoading: isAdding, mutate: addNodeMutate } = useMutation(addNode, {
     onSuccess: () => {
@@ -183,6 +274,86 @@ export const NodesPage: FC = () => {
       closeResetConfirm();
     },
   });
+
+  const { isLoading: isUpdatingMasterLimit, mutate: updateMasterLimitMutate } = useMutation(
+    updateMasterNode,
+    {
+      onSuccess: () => {
+        generateSuccessMessage(t("nodes.masterLimitUpdateSuccess", "Master data limit saved"), toast);
+        refetchMasterState();
+        setMasterLimitDirty(false);
+      },
+      onError: (err) => {
+        generateErrorMessage(err, toast);
+      },
+    },
+  );
+
+  const { isLoading: isResettingMasterUsage, mutate: resetMasterUsageMutate } = useMutation(
+    resetMasterUsage,
+    {
+      onSuccess: () => {
+        generateSuccessMessage(t("nodes.resetMasterUsageSuccess", "Master usage reset"), toast);
+        refetchMasterState();
+        closeMasterReset();
+      },
+      onError: (err) => {
+        generateErrorMessage(err, toast);
+      },
+    },
+  );
+
+  const parsedMasterLimit = useMemo(() => convertLimitInputToBytes(masterLimitInput), [masterLimitInput]);
+  const currentMasterLimit = masterState?.data_limit ?? null;
+  const masterLimitInvalid = parsedMasterLimit === undefined;
+  const hasMasterLimitChanged =
+    parsedMasterLimit !== undefined && parsedMasterLimit !== currentMasterLimit;
+  const isMasterCardLoading = isCoreLoading || isMasterStateLoading;
+  const masterErrorMessage = useMemo(() => {
+    if (coreError instanceof Error) return coreError.message;
+    if (typeof coreError === "string") return coreError;
+    if (masterStateError instanceof Error) return masterStateError.message;
+    if (typeof masterStateError === "string") return masterStateError;
+    return undefined;
+  }, [coreError, masterStateError]);
+  const masterTotalUsage = masterState?.total_usage ?? 0;
+  const masterDataLimit = masterState?.data_limit ?? null;
+  const masterRemainingBytes = masterState?.remaining_data ?? null;
+  const masterUpdatedAt = masterState?.updated_at
+    ? dayjs(masterState.updated_at).local().format("YYYY-MM-DD HH:mm")
+    : null;
+  const masterUsageDisplay = formatBytes(masterTotalUsage, 2);
+  const masterDataLimitDisplay =
+    masterDataLimit !== null && masterDataLimit > 0
+      ? formatBytes(masterDataLimit, 2)
+      : t("nodes.unlimited", "Unlimited");
+  const masterRemainingDisplay =
+    masterRemainingBytes !== null && masterRemainingBytes !== undefined
+      ? formatBytes(masterRemainingBytes, 2)
+      : null;
+
+  const handleMasterLimitInputChange = (value: string) => {
+    setMasterLimitDirty(true);
+    setMasterLimitInput(value);
+  };
+
+  const handleMasterLimitSave = () => {
+    if (masterLimitInvalid || parsedMasterLimit === undefined) {
+      generateErrorMessage(t("nodes.dataLimitValidation", "Data limit must be a non-negative number"), toast);
+      return;
+    }
+    updateMasterLimitMutate({ data_limit: parsedMasterLimit ?? null });
+  };
+
+  const handleMasterLimitClear = () => {
+    setMasterLimitDirty(true);
+    setMasterLimitInput("");
+    updateMasterLimitMutate({ data_limit: null });
+  };
+
+  const handleResetMasterUsageRequest = () => {
+    openMasterReset();
+  };
 
   const handleToggleNode = (node: NodeType) => {
     if (!node?.id) return;
@@ -596,19 +767,42 @@ export const NodesPage: FC = () => {
               _hover={{ boxShadow: "md" }}
               transition="box-shadow 0.2s ease-in-out"
             >
-              {isCoreLoading ? (
+              {isMasterCardLoading ? (
                 <VStack spacing={3} align="center" justify="center">
                   <Spinner />
                   <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
                     {t("loading")}
                   </Text>
                 </VStack>
-              ) : coreError ? (
+              ) : masterErrorMessage ? (
+                <VStack spacing={3} align="stretch">
+                  <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+                    {masterErrorMessage}
+                  </Text>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      refetchCoreStats();
+                      refetchMasterState();
+                    }}
+                  >
+                    {t("refresh", "Refresh")}
+                  </Button>
+                </VStack>
+              ) : !masterState ? (
                 <VStack spacing={3} align="stretch">
                   <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
                     {t("nodes.masterLoadFailed", "Unable to load master details.")}
                   </Text>
-                  <Button size="sm" variant="outline" onClick={() => refetchCoreStats()}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      refetchCoreStats();
+                      refetchMasterState();
+                    }}
+                  >
                     {t("refresh", "Refresh")}
                   </Button>
                 </VStack>
@@ -625,6 +819,14 @@ export const NodesPage: FC = () => {
                           : t("nodes.versionUnknown", "Version unknown")}
                       </Tag>
                     </HStack>
+                    <HStack spacing={2} align="center">
+                      <NodeModalStatusBadge status={(masterState.status as string) || "error"} compact />
+                      {masterState.limit_exceeded && (
+                        <Tag colorScheme="red" size="sm">
+                          {t("nodes.limitReached", "Limit reached")}
+                        </Tag>
+                      )}
+                    </HStack>
                     <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
                       {coreStats?.started
                         ? t("nodes.masterStartedAt", {
@@ -633,7 +835,88 @@ export const NodesPage: FC = () => {
                         : t("nodes.masterStartedUnknown", "Start time unavailable")}
                     </Text>
                   </Stack>
+                  {masterState.message && (
+                    <Alert status="warning" variant="left-accent" borderRadius="md">
+                      <AlertIcon />
+                      <AlertDescription fontSize="sm">{masterState.message}</AlertDescription>
+                    </Alert>
+                  )}
                   <Divider />
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    <Box>
+                      <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                        {t("nodes.totalUsage", "Total usage")}
+                      </Text>
+                      <Text fontWeight="medium">{masterUsageDisplay}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                        {t("nodes.dataLimitLabel", "Data limit")}
+                      </Text>
+                      <Text fontWeight="medium">{masterDataLimitDisplay}</Text>
+                    </Box>
+                    {masterRemainingDisplay && (
+                      <Box>
+                        <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                          {t("nodes.remainingData", "Remaining data")}
+                        </Text>
+                        <Text fontWeight="medium">{masterRemainingDisplay}</Text>
+                      </Box>
+                    )}
+                    {masterUpdatedAt && (
+                      <Box>
+                        <Text fontSize="xs" textTransform="uppercase" color="gray.500">
+                          {t("nodes.lastUpdated", "Last updated")}
+                        </Text>
+                        <Text fontWeight="medium">{masterUpdatedAt}</Text>
+                      </Box>
+                    )}
+                  </SimpleGrid>
+                  <Stack
+                    direction={{ base: "column", md: "row" }}
+                    spacing={2}
+                    align={{ base: "stretch", md: "center" }}
+                  >
+                    <InputGroup size="sm" maxW={{ base: "full", md: "240px" }}>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        inputMode="decimal"
+                        value={masterLimitInput}
+                        onChange={(event) => handleMasterLimitInputChange(event.target.value)}
+                        placeholder={t("nodes.dataLimitPlaceholder", "e.g., 500 (empty = unlimited)")}
+                      />
+                      <InputRightElement pointerEvents="none">
+                        <Text fontSize="xs" color="gray.500">
+                          GB
+                        </Text>
+                      </InputRightElement>
+                    </InputGroup>
+                    <Button
+                      colorScheme="primary"
+                      size="sm"
+                      onClick={handleMasterLimitSave}
+                      isDisabled={!hasMasterLimitChanged || masterLimitInvalid || isUpdatingMasterLimit}
+                      isLoading={isUpdatingMasterLimit}
+                    >
+                      {t("save", "Save")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleMasterLimitClear}
+                      isDisabled={masterDataLimit === null || isUpdatingMasterLimit}
+                      isLoading={isUpdatingMasterLimit && masterDataLimit === null}
+                    >
+                      {t("nodes.clearDataLimit", "Clear limit")}
+                    </Button>
+                  </Stack>
+                  {masterLimitInvalid && (
+                    <Text fontSize="xs" color="red.500">
+                      {t("nodes.dataLimitValidation", "Data limit must be a non-negative number")}
+                    </Text>
+                  )}
                   <Stack direction={{ base: "column", sm: "row" }} spacing={2}>
                     <Button
                       size="sm"
@@ -651,6 +934,15 @@ export const NodesPage: FC = () => {
                       isLoading={updatingMasterGeo}
                     >
                       {t("nodes.geoDialog.updateMasterButton")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="red"
+                      onClick={handleResetMasterUsageRequest}
+                      isLoading={isResettingMasterUsage}
+                    >
+                      {t("nodes.resetUsage", "Reset usage")}
                     </Button>
                   </Stack>
                 </VStack>
@@ -880,6 +1172,40 @@ export const NodesPage: FC = () => {
                 {t("cancel", "Cancel")}
               </Button>
               <Button colorScheme="red" onClick={confirmResetUsage} ml={3} isLoading={isResettingUsage}>
+                {t("nodes.resetUsage", "Reset usage")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      <AlertDialog
+        isOpen={isMasterResetOpen}
+        leastDestructiveRef={masterResetCancelRef}
+        onClose={closeMasterReset}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              {t("nodes.resetUsage", "Reset usage")}
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              {t("nodes.resetUsageConfirm", "Are you sure you want to reset usage for {{name}}?", {
+                name: masterLabel,
+              })}
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={masterResetCancelRef} onClick={closeMasterReset}>
+                {t("cancel", "Cancel")}
+              </Button>
+              <Button
+                colorScheme="red"
+                onClick={() => resetMasterUsageMutate()}
+                ml={3}
+                isLoading={isResettingMasterUsage}
+              >
                 {t("nodes.resetUsage", "Reset usage")}
               </Button>
             </AlertDialogFooter>
