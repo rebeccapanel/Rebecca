@@ -143,8 +143,9 @@ def remove_admin(
             detail="You're not allowed to delete sudo accounts. Use marzban-cli instead.",
         )
 
+    username = dbadmin.username
     crud.remove_admin(db, dbadmin)
-    report.admin_deleted(dbadmin.username, current_admin)
+    report.admin_deleted(username, current_admin)
     return {"detail": "Admin removed successfully"}
 
 

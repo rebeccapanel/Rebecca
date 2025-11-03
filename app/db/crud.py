@@ -39,9 +39,6 @@ from app.db.models import (
 from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
-
-
-MASTER_NODE_NAME = "Master"
 from app.models.proxy import ProxyHost as ProxyHostModify
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 from app.models.user import (
@@ -58,6 +55,8 @@ from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
 from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
 
+
+MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
 
@@ -230,31 +229,45 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
         List[ProxyHost]: Updated list of hosts for the inbound.
     """
     inbound = get_or_create_inbound(db, inbound_tag)
-    inbound.hosts = []
+    existing_by_id: Dict[int, ProxyHost] = {
+        host.id: host for host in inbound.hosts if host.id is not None
+    }
+
+    new_hosts: List[ProxyHost] = []
+
     for index, host in enumerate(modified_hosts):
         sort_value = host.sort if host.sort is not None else index
-        inbound.hosts.append(
-            ProxyHost(
-                remark=host.remark,
-                address=host.address,
-                port=host.port,
-                sort=sort_value,
-                path=host.path,
-                sni=host.sni,
-                host=host.host,
-                inbound=inbound,
-                security=host.security,
-                alpn=host.alpn,
-                fingerprint=host.fingerprint,
-                allowinsecure=host.allowinsecure,
-                is_disabled=host.is_disabled,
-                mux_enable=host.mux_enable,
-                fragment_setting=host.fragment_setting,
-                noise_setting=host.noise_setting,
-                random_user_agent=host.random_user_agent,
-                use_sni_as_host=host.use_sni_as_host,
-            )
-        )
+        db_host: Optional[ProxyHost] = None
+
+        if host.id is not None:
+            db_host = existing_by_id.pop(host.id, None)
+
+        if db_host is None:
+            db_host = ProxyHost(inbound=inbound)
+
+        db_host.inbound = inbound
+        db_host.inbound_tag = inbound.tag
+        db_host.remark = host.remark
+        db_host.address = host.address
+        db_host.port = host.port
+        db_host.sort = sort_value
+        db_host.path = host.path
+        db_host.sni = host.sni
+        db_host.host = host.host
+        db_host.security = host.security
+        db_host.alpn = host.alpn
+        db_host.fingerprint = host.fingerprint
+        db_host.allowinsecure = host.allowinsecure
+        db_host.is_disabled = host.is_disabled
+        db_host.mux_enable = host.mux_enable
+        db_host.fragment_setting = host.fragment_setting
+        db_host.noise_setting = host.noise_setting
+        db_host.random_user_agent = host.random_user_agent
+        db_host.use_sni_as_host = host.use_sni_as_host
+
+        new_hosts.append(db_host)
+
+    inbound.hosts = new_hosts
     db.commit()
     db.refresh(inbound)
     return inbound.hosts
@@ -439,7 +452,6 @@ def get_service(db: Session, service_id: int) -> Optional[Service]:
         .options(
             joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
             joinedload(Service.host_links).joinedload(ServiceHostLink.host),
-            joinedload(Service.users),
         )
         .filter(Service.id == service_id)
         .first()
@@ -471,16 +483,39 @@ def list_services(
     if limit:
         query = query.limit(limit)
 
-    services = (
-        query.options(
-            joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
-            joinedload(Service.host_links).joinedload(ServiceHostLink.host),
-            joinedload(Service.users),
-        )
-        .all()
-    )
+    services = query.all()
 
-    return {"services": services, "total": total}
+    service_ids = [service.id for service in services if service.id is not None]
+
+    host_counts: Dict[int, int] = {}
+    user_counts: Dict[int, int] = {}
+
+    if service_ids:
+        host_counts = {
+            service_id: int(count or 0)
+            for service_id, count in (
+                db.query(ServiceHostLink.service_id, func.count(ServiceHostLink.host_id))
+                .filter(ServiceHostLink.service_id.in_(service_ids))
+                .group_by(ServiceHostLink.service_id)
+                .all()
+            )
+        }
+        user_counts = {
+            service_id: int(count or 0)
+            for service_id, count in (
+                db.query(User.service_id, func.count(User.id))
+                .filter(User.service_id.in_(service_ids))
+                .group_by(User.service_id)
+                .all()
+            )
+        }
+
+    return {
+        "services": services,
+        "total": total,
+        "host_counts": host_counts,
+        "user_counts": user_counts,
+    }
 
 
 def create_service(db: Session, payload: ServiceCreate) -> Service:
@@ -1300,6 +1335,22 @@ def remove_users(db: Session, dbusers: List[User]):
     return
 
 
+def _delete_user_usage_rows(db: Session, user_ids: List[int]) -> None:
+    if not user_ids:
+        return
+    db.query(NodeUserUsage).filter(NodeUserUsage.user_id.in_(user_ids)).delete(synchronize_session=False)
+    db.query(UserUsageResetLogs).filter(UserUsageResetLogs.user_id.in_(user_ids)).delete(synchronize_session=False)
+
+
+def hard_delete_user(db: Session, dbuser: User) -> None:
+    """
+    Permanently remove a user and dependent usage records without soft-deleting.
+    """
+    if dbuser.id is not None:
+        _delete_user_usage_rows(db, [dbuser.id])
+    db.delete(dbuser)
+
+
 def update_user(
     db: Session,
     dbuser: User,
@@ -1985,21 +2036,25 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
 def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     """
-    Removes an admin from the database.
-
-    Args:
-        db (Session): Database session.
-        dbadmin (Admin): The admin object to be removed.
-
-    Returns:
-        Admin: The removed admin object.
+    Permanently remove an admin, their users, and related usage records from the database.
     """
-    if dbadmin.status == AdminStatus.deleted:
-        return dbadmin
+    if dbadmin.id is None:
+        raise ValueError("Admin must have a valid identifier before removal")
 
-    dbadmin.status = AdminStatus.deleted
+    # Collect admin users and ensure their usage data is cleared.
+    admin_users = db.query(User).filter(User.admin_id == dbadmin.id).all()
+    user_ids = [user.id for user in admin_users if user.id is not None]
+    _delete_user_usage_rows(db, user_ids)
+
+    for dbuser in admin_users:
+        db.delete(dbuser)
+
+    # Remove admin usage history and service link associations.
+    db.query(AdminUsageLogs).filter(AdminUsageLogs.admin_id == dbadmin.id).delete(synchronize_session=False)
+    db.query(AdminServiceLink).filter(AdminServiceLink.admin_id == dbadmin.id).delete(synchronize_session=False)
+
+    db.delete(dbadmin)
     db.commit()
-    db.refresh(dbadmin)
     return dbadmin
 
 

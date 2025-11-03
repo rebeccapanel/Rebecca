@@ -73,6 +73,7 @@ import { proxyALPN, proxyFingerprint, proxyHostSecurity } from "constants/Proxie
 import { DeleteIcon } from "./DeleteUserModal";
 
 type HostData = {
+  id: number | null;
   remark: string;
   address: string;
   sort: number;
@@ -95,6 +96,7 @@ type HostData = {
 type HostState = {
   uid: string;
   inboundTag: string;
+  initialInboundTag: string;
   data: HostData;
   original: HostData;
 };
@@ -210,6 +212,7 @@ const normalizeHostData = (
   host: HostsSchema[string][number],
   fallbackSort: number
 ): HostData => ({
+  id: host.id ?? null,
   remark: host.remark ?? "",
   address: host.address ?? "",
   sort: host.sort ?? fallbackSort,
@@ -230,6 +233,7 @@ const normalizeHostData = (
 });
 
 const cloneHostData = (data: HostData): HostData => ({
+  id: data.id ?? null,
   remark: data.remark,
   address: data.address,
   sort: data.sort,
@@ -251,6 +255,7 @@ const cloneHostData = (data: HostData): HostData => ({
 
 const serializeHostData = (data: HostData) => ({
   ...data,
+  id: data.id ?? null,
   port: data.port ?? null,
   path: normalizeString(data.path),
   sni: normalizeString(data.sni),
@@ -262,10 +267,14 @@ const serializeHostData = (data: HostData) => ({
 const isHostDirty = (host: HostState) => {
   const current = serializeHostData(host.data);
   const original = serializeHostData(host.original);
+  if (host.inboundTag !== host.initialInboundTag) {
+    return true;
+  }
   return JSON.stringify(current) !== JSON.stringify(original);
 };
 
 const formatHostForApi = (data: HostData): HostsSchema[string][number] => ({
+  id: data.id ?? null,
   remark: data.remark.trim(),
   address: data.address.trim(),
   sort: data.sort,
@@ -297,9 +306,11 @@ const mapHostsToState = (hosts: HostsSchema): HostState[] => {
   Object.entries(hosts).forEach(([tag, hostList]) => {
     hostList.forEach((host, index) => {
       const normalized = normalizeHostData(host, index);
+      const persistentUid = normalized.id != null ? `host-${normalized.id}` : createUid();
       result.push({
-        uid: createUid(),
+        uid: persistentUid,
         inboundTag: tag,
+        initialInboundTag: tag,
         data: cloneHostData(normalized),
         original: cloneHostData(normalized),
       });
@@ -324,9 +335,14 @@ const groupHostsByInbound = (items: HostState[]): HostsSchema => {
   return result;
 };
 
-const sliceInboundPayload = (items: HostState[], inboundTag: string): HostsSchema => {
+const buildInboundPayload = (items: HostState[], inboundTags: Iterable<string>): Partial<HostsSchema> => {
   const grouped = groupHostsByInbound(items);
-  return { [inboundTag]: grouped[inboundTag] ?? [] };
+  const uniqueTags = Array.from(new Set(inboundTags));
+  const payload: Partial<HostsSchema> = {};
+  uniqueTags.forEach((tag) => {
+    payload[tag] = grouped[tag] ?? [];
+  });
+  return payload;
 };
 
 type HostCardProps = {
@@ -1375,7 +1391,10 @@ export const HostsManager: FC = () => {
       address: host.data.address.trim(),
     });
     try {
-      const payload = sliceInboundPayload(hostItemsRef.current, host.inboundTag);
+      const payload = buildInboundPayload(hostItemsRef.current, [
+        host.inboundTag,
+        host.initialInboundTag,
+      ]);
       await setHosts(payload);
       await fetchHosts();
       toast({
@@ -1400,7 +1419,9 @@ export const HostsManager: FC = () => {
     applyHostItems((prev) =>
       sortHosts(
         prev.map((host) =>
-          host.uid === uid ? { ...host, data: cloneHostData(host.original) } : host
+          host.uid === uid
+            ? { ...host, inboundTag: host.initialInboundTag, data: cloneHostData(host.original) }
+            : host
         )
       )
     );
@@ -1425,7 +1446,7 @@ export const HostsManager: FC = () => {
     try {
       const nextHosts = hostItemsRef.current.filter((item) => item.uid !== confirmDeleteUid);
       applyHostItems(nextHosts);
-      const payload = sliceInboundPayload(nextHosts, host.inboundTag);
+      const payload = buildInboundPayload(nextHosts, [host.inboundTag, host.initialInboundTag]);
       await setHosts(payload);
       await fetchHosts();
       toast({
@@ -1464,7 +1485,9 @@ export const HostsManager: FC = () => {
       const newHost: HostState = {
         uid: createUid(),
         inboundTag: values.inboundTag,
+        initialInboundTag: values.inboundTag,
         data: {
+          id: null,
           remark: values.remark,
           address: values.address,
           sort: Number.isFinite(values.sort) ? values.sort : nextSort,
@@ -1484,6 +1507,7 @@ export const HostsManager: FC = () => {
           use_sni_as_host: false,
         },
         original: {
+          id: null,
           remark: values.remark,
           address: values.address,
           sort: Number.isFinite(values.sort) ? values.sort : nextSort,
@@ -1507,7 +1531,7 @@ export const HostsManager: FC = () => {
       const nextHosts = sortHosts([...hostItemsRef.current, newHost]);
       applyHostItems(nextHosts);
 
-      const payload = sliceInboundPayload(nextHosts, values.inboundTag);
+      const payload = buildInboundPayload(nextHosts, [values.inboundTag]);
       await setHosts(payload);
       await fetchHosts();
       toast({

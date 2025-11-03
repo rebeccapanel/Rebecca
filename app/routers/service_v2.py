@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import xray
@@ -45,19 +46,19 @@ def _ensure_service_visibility(service: Service, admin: Admin) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
 
 
-def _service_to_summary(service: Service) -> ServiceBase:
+def _service_to_summary(service: Service, *, host_count: int, user_count: int) -> ServiceBase:
     return ServiceBase(
         id=service.id,
         name=service.name,
         description=service.description,
         used_traffic=int(service.used_traffic or 0),
         lifetime_used_traffic=int(service.lifetime_used_traffic or 0),
-        host_count=len(service.host_links),
-        user_count=len(service.users),
+        host_count=host_count,
+        user_count=user_count,
     )
 
 
-def _service_to_detail(service: Service) -> ServiceDetail:
+def _service_to_detail(db: Session, service: Service) -> ServiceDetail:
     hosts: List[ServiceHost] = []
     for link in service.host_links:
         host = link.host
@@ -89,6 +90,12 @@ def _service_to_detail(service: Service) -> ServiceDetail:
             )
         )
 
+    user_count = (
+        db.query(func.count(User.id)).filter(User.service_id == service.id).scalar()
+        if service.id is not None
+        else 0
+    )
+
     return ServiceDetail(
         id=service.id,
         name=service.name,
@@ -96,7 +103,7 @@ def _service_to_detail(service: Service) -> ServiceDetail:
         used_traffic=int(service.used_traffic or 0),
         lifetime_used_traffic=int(service.lifetime_used_traffic or 0),
         host_count=len(hosts),
-        user_count=len(service.users),
+        user_count=int(user_count or 0),
         hosts=hosts,
         admins=admins,
         admin_ids=[link.admin_id for link in service.admin_links],
@@ -119,7 +126,16 @@ def get_services(
         offset=offset,
         limit=limit,
     )
-    services = [_service_to_summary(service) for service in data["services"]]
+    host_counts = data.get("host_counts", {})
+    user_counts = data.get("user_counts", {})
+    services = [
+        _service_to_summary(
+            service,
+            host_count=int(host_counts.get(service.id, 0)),
+            user_count=int(user_counts.get(service.id, 0)),
+        )
+        for service in data["services"]
+    ]
     return ServiceListResponse(services=services, total=data["total"])
 
 
@@ -138,7 +154,7 @@ def create_service(
     service = crud.get_service(db, service.id)
     if not service:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Service not available")
-    return _service_to_detail(service)
+    return _service_to_detail(db, service)
 
 
 @router.get("/{service_id}", response_model=ServiceDetail)
@@ -151,7 +167,7 @@ def get_service_detail(
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     _ensure_service_visibility(service, admin)
-    return _service_to_detail(service)
+    return _service_to_detail(db, service)
 
 
 @router.put("/{service_id}", response_model=ServiceDetail)
@@ -182,7 +198,7 @@ def modify_service(
         db.commit()
 
     db.refresh(service)
-    return _service_to_detail(service)
+    return _service_to_detail(db, service)
 
 
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -213,7 +229,7 @@ def reset_service_usage(
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     service = crud.reset_service_usage(db, service)
-    return _service_to_detail(service)
+    return _service_to_detail(db, service)
 
 
 @router.get("/{service_id}/usage/timeseries", response_model=ServiceUsageTimeseries)

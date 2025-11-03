@@ -159,7 +159,7 @@ const UsageRangeControls: FC<UsageRangeControlsProps> = ({
 }) => {
   const { t } = useTranslation();
   const fallbackPlacement: PlacementWithLogical = "auto-end";
-  const popoverPlacement =
+  const popoverPlacement: PlacementWithLogical =
     useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
   const startLabel = dayjs(range.start).format("YYYY-MM-DD");
   const endLabel = dayjs(range.end).format("YYYY-MM-DD");

@@ -135,7 +135,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({ services
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
   const fallbackPlacement: PlacementWithLogical = "auto-end";
-  const popoverPlacement =
+  const popoverPlacement: PlacementWithLogical =
     useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
 
   const serviceOptions = useMemo(() => services.map((service) => ({ id: service.id, name: service.name })), [services]);

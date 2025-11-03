@@ -463,7 +463,7 @@ const ServicesPage: FC = () => {
   const servicesStore = useServicesStore();
   const adminStore = useAdminsStore();
   const hostsStore = useHosts();
-  const { inbounds } = useDashboard();
+  const { inbounds, refetchUsers } = useDashboard();
 
   const dialogDisclosure = useDisclosure();
   const [editingService, setEditingService] = useState<ServiceDetail | null>(null);
@@ -546,6 +546,7 @@ const ServicesPage: FC = () => {
           title: t("services.created", "Service created"),
         });
       }
+      refetchUsers();
       dialogDisclosure.onClose();
     } catch (error: any) {
       toast({
@@ -562,6 +563,7 @@ const ServicesPage: FC = () => {
         status: "success",
         title: t("services.deleted", "Service removed"),
       });
+      refetchUsers();
     } catch (error: any) {
       toast({
         status: "error",

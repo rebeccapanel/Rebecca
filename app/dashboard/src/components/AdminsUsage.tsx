@@ -147,7 +147,7 @@ const AdminsUsage: FC = () => {
   const { colorMode } = useColorMode();
   const { admins: pagedAdmins } = useAdminsStore();
 const fallbackPlacement: PlacementWithLogical = "auto-end";
-const popoverPlacement =
+const popoverPlacement: PlacementWithLogical =
   useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
   const [admins, setAdmins] = useState<any[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);

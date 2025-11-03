@@ -1,7 +1,7 @@
 """Create master node state table
 
 Revision ID: 74f5f3f0a8c9
-Revises: 1b2c3d4e5f60
+Revises: 3e7a0cb1d2ef
 Create Date: 2025-11-03 12:00:00.000000
 
 """
