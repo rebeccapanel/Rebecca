@@ -5,6 +5,8 @@ Revises: c6a48231bb3d
 Create Date: 2025-11-02 12:00:00.000000
 
 """
+from typing import Set
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -27,16 +29,21 @@ NEW_STATUS_ENUM = sa.Enum(
 def upgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
+    inspector = sa.inspect(bind)
+    existing_columns: Set[str] = {column["name"] for column in inspector.get_columns("nodes")}
+    has_data_limit = "data_limit" in existing_columns
 
     if dialect == "postgresql":
         op.execute("ALTER TYPE nodestatus ADD VALUE IF NOT EXISTS 'limited'")
-        op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
+        if not has_data_limit:
+            op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
     elif dialect == "mysql":
         op.execute(
             "ALTER TABLE nodes MODIFY COLUMN status "
             "ENUM('connected','connecting','error','disabled','limited') NOT NULL"
         )
-        op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
+        if not has_data_limit:
+            op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
     elif dialect == "sqlite":
         with op.batch_alter_table("nodes", recreate="always") as batch_op:
             batch_op.alter_column(
@@ -45,20 +52,27 @@ def upgrade() -> None:
                 existing_type=OLD_STATUS_ENUM,
                 existing_nullable=False,
             )
-            batch_op.add_column(sa.Column("data_limit", sa.BigInteger(), nullable=True))
+            if not has_data_limit:
+                batch_op.add_column(sa.Column("data_limit", sa.BigInteger(), nullable=True))
     else:
-        op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
+        if not has_data_limit:
+            op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
 
 
 def downgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
+    inspector = sa.inspect(bind)
+    existing_columns = {column["name"] for column in inspector.get_columns("nodes")}
+    has_data_limit = "data_limit" in existing_columns
 
     if dialect == "postgresql":
-        op.drop_column("nodes", "data_limit")
+        if has_data_limit:
+            op.drop_column("nodes", "data_limit")
         # Removing enum values from PostgreSQL types is intentionally skipped.
     elif dialect == "mysql":
-        op.drop_column("nodes", "data_limit")
+        if has_data_limit:
+            op.drop_column("nodes", "data_limit")
         op.execute(
             "ALTER TABLE nodes MODIFY COLUMN status "
             "ENUM('connected','connecting','error','disabled') NOT NULL"
@@ -71,6 +85,8 @@ def downgrade() -> None:
                 existing_type=NEW_STATUS_ENUM,
                 existing_nullable=False,
             )
-            batch_op.drop_column("data_limit")
+            if has_data_limit:
+                batch_op.drop_column("data_limit")
     else:
-        op.drop_column("nodes", "data_limit")
+        if has_data_limit:
+            op.drop_column("nodes", "data_limit")

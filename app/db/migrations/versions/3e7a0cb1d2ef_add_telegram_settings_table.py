@@ -20,6 +20,9 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
+    inspector = sa.inspect(bind)
+    if "telegram_settings" in inspector.get_table_names():
+        return
 
     boolean_false = sa.text("false")
     if dialect in {"sqlite", "mysql"}:
@@ -71,4 +74,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("telegram_settings")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "telegram_settings" in inspector.get_table_names():
+        op.drop_table("telegram_settings")

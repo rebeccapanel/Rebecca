@@ -6,8 +6,8 @@ Create Date: 2025-11-03 12:00:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 
 # revision identifiers, used by Alembic.
@@ -18,31 +18,47 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "master_node_state",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("uplink", sa.BigInteger(), nullable=False, server_default="0"),
-        sa.Column("downlink", sa.BigInteger(), nullable=False, server_default="0"),
-        sa.Column("data_limit", sa.BigInteger(), nullable=True),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "connected",
-                "connecting",
-                "error",
-                "disabled",
-                "limited",
-                name="nodestatus",
-                create_type=False,
-            ),
-            nullable=False,
-            server_default="connected",
-        ),
-        sa.Column("message", sa.String(length=1024), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-    )
-
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    if "master_node_state" not in tables:
+        op.create_table(
+            "master_node_state",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("uplink", sa.BigInteger(), nullable=False, server_default="0"),
+            sa.Column("downlink", sa.BigInteger(), nullable=False, server_default="0"),
+            sa.Column("data_limit", sa.BigInteger(), nullable=True),
+            sa.Column(
+                "status",
+                sa.Enum(
+                    "connected",
+                    "connecting",
+                    "error",
+                    "disabled",
+                    "limited",
+                    name="nodestatus",
+                    create_type=False,
+                ),
+                nullable=False,
+                server_default="connected",
+            ),
+            sa.Column("message", sa.String(length=1024), nullable=True),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+        )
+
+    existing_row = bind.execute(
+        sa.text("SELECT id FROM master_node_state WHERE id = 1")
+    ).first()
+
+    if existing_row:
+        return
+
     result = bind.execute(
         sa.text(
             """
@@ -70,4 +86,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("master_node_state")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "master_node_state" in set(inspector.get_table_names()):
+        op.drop_table("master_node_state")
