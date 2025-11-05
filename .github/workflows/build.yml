@@ -9,7 +9,7 @@ jobs:
   build-docker-image:
     runs-on: ubuntu-latest
     env:
-      DASH_DIR: ./app/dashboard
+      DASH_DIR: ./dashboard
 
     steps:
       - name: Checkout

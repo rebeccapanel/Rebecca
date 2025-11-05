@@ -12,7 +12,7 @@ This project has been developed on the Nodejs v16.17.0 so if you faced any issue
 ## Install
 
     git clone https://github.com/rebeccapanel/Rebecca.git
-    cd Rebecca/app/dashboard
+    cd Rebecca/dashboard
     npm install
 
 ### Configure app

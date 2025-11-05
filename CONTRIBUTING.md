@@ -42,7 +42,7 @@ autopep8 <file> --max-line-length 120
 ```
 
 ## Frontend
-Frontend is pre-built and served by FastAPI from the `app/dashboard/build` directory. To rebuild the frontend, first make sure you have the necessary dependencies installed by running `npm install` in the `app/dashboard` directory. Then, simply remove the `app/dashboard/build` directory and run the Python code again, and it will rebuild the frontend automatically.
+Frontend is pre-built and served by FastAPI from the `dashboard/build` directory. To rebuild the frontend, first make sure you have the necessary dependencies installed by running `npm install` in the `dashboard` directory. Then, simply remove the `dashboard/build` directory and run the Python code again, and it will rebuild the frontend automatically.
 
 ### Components Library
 Frontend uses `Chakra-UI` as the component library, so please adhere to the Chakra-UI approach when contributing. Strive to create components that are cohesive and serve a single purpose. Keep in mind that readability and maintainability are more important than brevity, so prioritize those factors when writing your code.
@@ -57,12 +57,12 @@ $ PYTHONPATH=$(pwd) typer marzban-cli.py utils docs --name "" --output ./cli/REA
 ## Debug Mode
 To run the project in debug mode with auto-reload, you can set the environment variable `DEBUG` to `true`. then by running the `main.py`, the backend and frontend will run separately on different ports.
 
-Note that you must first install the necessary npm packages by running npm install inside the app/dashboard directory before running in debug mode.
+Note that you must first install the necessary npm packages by running npm install inside the dashboard directory before running in debug mode.
 ```bash
-cd app/dashboard
+cd dashboard
 npm install
 cd ../..
 ```
 
-If you run the project with debug mode off and delete the `app/dashboard/build` directory, the frontend will be rebuilt automatically on the next run. However, no rebuild will occur while inside debug mode."
+If you run the project with debug mode off and delete the `dashboard/build` directory, the frontend will be rebuilt automatically on the next run. However, no rebuild will occur while inside debug mode."
 
