@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 
-from app import runtime
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
@@ -19,6 +18,7 @@ from app.models.user import (
     UserUsagesResponse,
 )
 from app.utils import report, responses
+from app.runtime import xray, logger
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
@@ -70,7 +70,7 @@ def add_user(
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
     user = UserResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
-    runtime.runtime.runtime.logger.info(f'New user "{dbuser.username}" added')
+    logger.info(f'New user "{dbuser.username}" added')
     return user
 
 
@@ -136,7 +136,7 @@ def modify_user(
 
     bg.add_task(report.user_updated, user=user, user_admin=dbuser.admin, by=admin)
 
-    runtime.runtime.runtime.logger.info(f'User "{user.username}" modified')
+    logger.info(f'User "{user.username}" modified')
 
     if user.status != old_status:
         bg.add_task(
@@ -147,7 +147,7 @@ def modify_user(
             user_admin=dbuser.admin,
             by=admin,
         )
-        runtime.runtime.runtime.logger.info(
+        logger.info(
             f'User "{dbuser.username}" status changed from {old_status} to {user.status}'
         )
 
@@ -169,7 +169,7 @@ def remove_user(
         report.user_deleted, username=dbuser.username, user_admin=Admin.model_validate(dbuser.admin), by=admin
     )
 
-    runtime.runtime.runtime.logger.info(f'User "{dbuser.username}" deleted')
+    logger.info(f'User "{dbuser.username}" deleted')
     return {"detail": "User successfully deleted"}
 
 
@@ -195,7 +195,7 @@ def reset_user_data_usage(
         report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin
     )
 
-    runtime.runtime.runtime.logger.info(f'User "{dbuser.username}"\'s usage was reset')
+    logger.info(f'User "{dbuser.username}"\'s usage was reset')
     return dbuser
 
 
@@ -216,7 +216,7 @@ def revoke_user_subscription(
         report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin
     )
 
-    runtime.runtime.runtime.logger.info(f'User "{dbuser.username}" subscription revoked')
+    logger.info(f'User "{dbuser.username}" subscription revoked')
 
     return user
 
@@ -340,7 +340,7 @@ def active_next_plan(
         report.user_data_reset_by_next, user=user, user_admin=dbuser.admin,
     )
 
-    runtime.runtime.runtime.logger.info(f'User "{dbuser.username}"\'s usage was reset by next plan')
+    logger.info(f'User "{dbuser.username}"\'s usage was reset by next plan')
     return dbuser
 
 
@@ -377,7 +377,7 @@ def set_owner(
     dbuser = crud.set_owner(db, dbuser, new_admin)
     user = UserResponse.model_validate(dbuser)
 
-    runtime.runtime.runtime.logger.info(f'{user.username}"owner successfully set to{admin.username}')
+    logger.info(f'{user.username}"owner successfully set to{admin.username}')
 
     return user
 
@@ -432,7 +432,7 @@ def delete_expired_users(
     crud.remove_users(db, expired_users)
 
     for removed_user in removed_users:
-        runtime.runtime.runtime.logger.info(f'User "{removed_user}" deleted')
+        logger.info(f'User "{removed_user}" deleted')
         bg.add_task(
             report.user_deleted,
             username=removed_user,

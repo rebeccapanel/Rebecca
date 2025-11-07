@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
-import re
-import subprocess
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import PosixPath
 from typing import Union
 
 import commentjson
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 from sqlalchemy import func
 
 from app.db import GetDB
@@ -16,7 +18,7 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, XRAY_EXECUTABLE_PATH
+from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 
 def merge_dicts(a, b):  # B will override A dictionary key and values
@@ -28,24 +30,45 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
     return a
 
 
-def derive_reality_public_key(private_key: str) -> str | None:
+def derive_reality_public_key(private_key: str) -> str:
     """
-    Use the xray binary to derive the public key for a Reality inbound.
+    Derive the public key for a Reality inbound using pure Python (X25519).
+    Raises ValueError when the provided key cannot be decoded or is invalid.
     """
     if not private_key:
-        return None
+        raise ValueError("Reality private key is empty")
 
-    cmd = [XRAY_EXECUTABLE_PATH, "x25519"]
-    cmd.extend(["-i", private_key])
+    normalized = "".join(private_key.split())
+    padding = "=" * ((4 - len(normalized) % 4) % 4)
+    candidate = normalized + padding
+
+    decoded: bytes | None = None
+    errors: list[Exception] = []
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        try:
+            decoded = decoder(candidate.encode("utf-8"))
+            break
+        except (binascii.Error, ValueError) as exc:  # pragma: no cover - defensive
+            errors.append(exc)
+            continue
+
+    if decoded is None:
+        last_error = errors[-1] if errors else None
+        raise ValueError("Reality private key is not valid Base64") from last_error
+
+    if len(decoded) != 32:
+        raise ValueError("Reality private key must decode to 32 bytes")
+
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+        private_key_obj = x25519.X25519PrivateKey.from_private_bytes(decoded)
+    except ValueError as exc:
+        raise ValueError("Reality private key bytes are invalid") from exc
 
-    match = re.search(r"Public key:\s*(.+)", output)
-    if match:
-        return match.group(1).strip()
-    return None
+    public_bytes = private_key_obj.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return base64.urlsafe_b64encode(public_bytes).decode("utf-8")
 
 
 class XRayConfig(dict):
@@ -247,13 +270,11 @@ class XRayConfig(dict):
                             raise ValueError(
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
 
-                        public_key = derive_reality_public_key(pvk)
-                        if public_key:
-                            settings['pbk'] = public_key
-
-                        if not settings.get('pbk'):
+                        try:
+                            settings['pbk'] = derive_reality_public_key(pvk)
+                        except ValueError as exc:
                             raise ValueError(
-                                f"You need to provide publicKey in realitySettings of {inbound['tag']}")
+                                f"Invalid privateKey in realitySettings of {inbound['tag']}: {exc}") from exc
 
                     try:
                         settings['sids'] = tls_settings.get('shortIds')
