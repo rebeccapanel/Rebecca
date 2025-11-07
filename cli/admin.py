@@ -49,21 +49,32 @@ def list_admins(
     """Displays a table of admins"""
     with GetDB() as db:
         admins: list[Admin] = crud.get_admins(db, offset=offset, limit=limit, username=username)
-        utils.print_table(
-            table=Table("Username", 'Usage', 'Reseted usage', "Users Usage", "Is sudo",
-                        "Created at", "Telegram ID"),
-            rows=[
-                (str(admin.username),
-                 calculate_admin_usage(admin.id),
-                 calculate_admin_reseted_usage(admin.id),
-                 readable_size(admin.users_usage),
-                 "✔️" if admin.is_sudo else "✖️",
-                 utils.readable_datetime(admin.created_at),
-                 str(admin.telegram_id or "✖️")))
-                for admin in admins
-            ]
-        )
+        rows = []
+        for admin in admins:
+            rows.append(
+                (
+                    str(admin.username),
+                    calculate_admin_usage(admin.id),
+                    calculate_admin_reseted_usage(admin.id),
+                    readable_size(admin.users_usage),
+                    ("YES" if admin.is_sudo else "NO"),
+                    utils.readable_datetime(admin.created_at),
+                    str(admin.telegram_id or "-"),
+                )
+            )
 
+        utils.print_table(
+            table=Table(
+                "Username",
+                "Usage",
+                "Reseted usage",
+                "Users Usage",
+                "Is sudo",
+                "Created at",
+                "Telegram ID",
+            ),
+            rows=rows,
+        )
 
 @app.command(name="delete")
 def delete_admin(
