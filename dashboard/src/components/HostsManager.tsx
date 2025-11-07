@@ -12,13 +12,6 @@ import {
   CardBody,
   CardHeader,
   Checkbox,
-  Drawer,
-  DrawerBody,
-  DrawerCloseButton,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerOverlay,
   FormControl,
   FormLabel,
   HStack,
@@ -54,7 +47,12 @@ import {
   chakra,
   useToast,
 } from "@chakra-ui/react";
-import { InformationCircleIcon, PencilIcon, PlusIcon, Bars3Icon } from "@heroicons/react/24/outline";
+import {
+  InformationCircleIcon,
+  PencilIcon,
+  PlusIcon,
+  Bars3Icon,
+} from "@heroicons/react/24/outline";
 import {
   FC,
   PointerEvent as ReactPointerEvent,
@@ -548,7 +546,7 @@ const SortRow: FC<SortRowProps> = ({ host, index }) => {
   );
 };
 
-type HostDetailDrawerProps = {
+type HostDetailModalProps = {
   host: HostState | null;
   inboundOptions: InboundOption[];
   isOpen: boolean;
@@ -566,7 +564,7 @@ type HostDetailDrawerProps = {
   deleting: boolean;
 };
 
-const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
+const HostDetailModal: FC<HostDetailModalProps> = ({
   host,
   inboundOptions,
   isOpen,
@@ -589,11 +587,17 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
   const dirty = isHostDirty(host);
 
   return (
-    <Drawer isOpen={isOpen} placement="right" size="xl" onClose={onClose}>
-      <DrawerOverlay bg="blackAlpha.300" backdropFilter="blur(8px)" />
-      <DrawerContent>
-        <DrawerCloseButton />
-        <DrawerHeader pb={1}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="4xl"
+      scrollBehavior="inside"
+      isCentered
+    >
+      <ModalOverlay />
+      <ModalContent>
+        <ModalCloseButton />
+        <ModalHeader pb={1}>
           <VStack align="stretch" spacing={1}>
             <Text fontWeight="semibold" fontSize="lg">
               {host.data.remark || t("hostsPage.untitledHost")}
@@ -607,8 +611,8 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
               </Tag>
             )}
           </VStack>
-        </DrawerHeader>
-        <DrawerBody>
+        </ModalHeader>
+        <ModalBody>
           <VStack align="stretch" spacing={5}>
             <Card variant="outline">
               <CardHeader pb={2}>
@@ -831,8 +835,8 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
               </CardBody>
             </Card>
           </VStack>
-        </DrawerBody>
-        <DrawerFooter justifyContent="space-between">
+        </ModalBody>
+        <ModalFooter justifyContent="space-between">
           <Button
             size="sm"
             variant="ghost"
@@ -862,9 +866,9 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
               {t("hostsPage.save")}
             </Button>
           </HStack>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 };
 
@@ -1693,7 +1697,7 @@ export const HostsManager: FC = () => {
         }
       />
 
-      <HostDetailDrawer
+      <HostDetailModal
         host={selectedHost}
         inboundOptions={inboundOptions}
         isOpen={Boolean(selectedHost)}

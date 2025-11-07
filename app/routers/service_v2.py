@@ -184,6 +184,7 @@ def modify_service(
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
 
+    hosts_modified = modification.hosts is not None
     try:
         service, allowed_before, allowed_after = crud.update_service(db, service, modification)
     except ValueError as exc:
@@ -191,8 +192,16 @@ def modify_service(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     users_to_update: List[User] = []
-    if allowed_before is not None and allowed_after is not None and allowed_before != allowed_after:
-        users_to_update = crud.refresh_service_users(db, service, allowed_after)
+    allowed_changed = (
+        hosts_modified
+        and allowed_before is not None
+        and allowed_after is not None
+        and allowed_before != allowed_after
+    )
+
+    if hosts_modified:
+        allowed_for_refresh = allowed_after or crud.get_service_allowed_inbounds(service)
+        users_to_update = crud.refresh_service_users(db, service, allowed_for_refresh)
         db.commit()
         for dbuser in users_to_update:
             xray.operations.update_user(dbuser=dbuser)

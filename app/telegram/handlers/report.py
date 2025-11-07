@@ -58,9 +58,14 @@ def _dispatch(
 ) -> None:
     bot_instance, settings = get_bot(with_settings=True)
     if not bot_instance or settings is None:
+        logger.warning(
+            "Telegram bot is not configured; skipped notification for category '%s'",
+            category,
+        )
         return
 
     try:
+        delivered = False
         if settings.logs_chat_id:
             kwargs = {"parse_mode": parse_mode}
             if settings.logs_chat_is_forum:
@@ -70,18 +75,27 @@ def _dispatch(
                 if thread_id:
                     kwargs["message_thread_id"] = thread_id
             bot_instance.send_message(settings.logs_chat_id, text, **kwargs)
+            delivered = True
         else:
             for admin_id in settings.admin_chat_ids or []:
                 kwargs = {"parse_mode": parse_mode}
                 if keyboard:
                     kwargs["reply_markup"] = keyboard
                 bot_instance.send_message(admin_id, text, **kwargs)
+                delivered = True
 
         if chat_id:
             kwargs = {"parse_mode": parse_mode}
             if keyboard:
                 kwargs["reply_markup"] = keyboard
             bot_instance.send_message(chat_id, text, **kwargs)
+            delivered = True
+
+        if not delivered:
+            logger.warning(
+                "Telegram notification for category '%s' had no recipients configured",
+                category,
+            )
     except ApiTelegramException as exc:
         logger.error("Failed to send Telegram notification: %s", exc)
 

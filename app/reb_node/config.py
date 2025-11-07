@@ -227,7 +227,9 @@ class XRayConfig(dict):
                 net = stream.get('network', 'tcp')
                 net_settings = stream.get(f"{net}Settings", {})
                 security = stream.get("security")
-                tls_settings = stream.get(f"{security}Settings")
+                tls_settings = stream.get(f"{security}Settings", {}) if security else {}
+                if not isinstance(tls_settings, dict):
+                    tls_settings = {}
 
                 if settings['is_fallback'] is True:
                     # probably this is a fallback
@@ -260,7 +262,12 @@ class XRayConfig(dict):
                 elif security == 'reality':
                     settings['fp'] = 'chrome'
                     settings['tls'] = 'reality'
-                    settings['sni'] = tls_settings.get('serverNames', [])
+                    server_names = tls_settings.get('serverNames') or []
+                    if isinstance(server_names, str):
+                        server_names = [server_names]
+                    if not isinstance(server_names, list):
+                        server_names = []
+                    settings['sni'] = server_names
 
                     try:
                         settings['pbk'] = tls_settings['publicKey']
@@ -276,16 +283,16 @@ class XRayConfig(dict):
                             raise ValueError(
                                 f"Invalid privateKey in realitySettings of {inbound['tag']}: {exc}") from exc
 
-                    try:
-                        settings['sids'] = tls_settings.get('shortIds')
-                        settings['sids'][0]  # check if there is any shortIds
-                    except (IndexError, TypeError):
-                        raise ValueError(
-                            f"You need to define at least one shortID in realitySettings of {inbound['tag']}")
-                    try:
-                        settings['spx'] = tls_settings.get('SpiderX')
-                    except:
-                        settings['spx'] = ""
+                    sids = tls_settings.get('shortIds') or []
+                    if isinstance(sids, str):
+                        sids = [sids]
+                    if not isinstance(sids, list):
+                        sids = []
+                    sids = [sid for sid in sids if isinstance(sid, str) and sid.strip()]
+                    # Allow Reality configs without short IDs (Xray treats them as optional)
+                    settings['sids'] = sids
+                    spider_x = tls_settings.get('SpiderX', tls_settings.get('spiderX', ''))
+                    settings['spx'] = spider_x or ""
 
                 if net in ('tcp', 'raw'):
                     header = net_settings.get('header', {})

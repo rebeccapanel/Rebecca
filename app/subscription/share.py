@@ -218,6 +218,7 @@ def setup_format_variables(extra_data: dict) -> dict:
             "DATA_USAGE": readable_size(extra_data.get("used_traffic")),
             "DATA_LIMIT": data_limit,
             "DATA_LEFT": data_left,
+            "REMAINING_DATA": data_left,
             "DAYS_LEFT": days_left,
             "EXPIRE_DATE": expire_date,
             "JALALI_EXPIRE_DATE": jalali_expire_date,

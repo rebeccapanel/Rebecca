@@ -963,7 +963,6 @@ export const CoreSettingsPage: FC = () => {
       if (obsSettings === "observatory") cfg.observatory = parsed;
       if (obsSettings === "burstObservatory") cfg.burstObservatory = parsed;
       form.setValue("config", cfg, { shouldDirty: true });
-      setJsonKey((prev) => prev + 1); // trigger refresh
     } catch (e) {
       // ignore until valid
     }
@@ -1035,6 +1034,9 @@ export const CoreSettingsPage: FC = () => {
       </Text>
     );
   };
+
+  const observatoryJsonValue = getObsJson();
+  const advancedJsonValue = getAdvancedJson();
 
   return (
     <VStack spacing={6} align="stretch">
@@ -1684,11 +1686,11 @@ export const CoreSettingsPage: FC = () => {
                     </HStack>
                   </RadioGroup>
                   <Box h="300px">
-                    <JsonEditor
-                      key={`obs-${obsSettings}-${jsonKey}`}
-                      json={getObsJson() ? JSON.parse(getObsJson()) : {}}
-                      onChange={(value) => setObsJson(value)}
-                    />
+                  <JsonEditor
+                    key={`obs-${obsSettings}-${jsonKey}`}
+                    json={observatoryJsonValue}
+                    onChange={(value) => setObsJson(value)}
+                  />
                   </Box>
                 </VStack>
               )}
@@ -1844,23 +1846,37 @@ export const CoreSettingsPage: FC = () => {
                   onClick={toggleFullScreen}
                   zIndex={isFullScreen ? 1101 : 10}
                 />
-                <Box
-                  w={isFullScreen ? "100vw" : "100%"}
-                  h={isFullScreen ? "100vh" : "100%"}
-                  position={isFullScreen ? "fixed" : "relative"}
-                  top={isFullScreen ? 0 : "auto"}
-                  left={isFullScreen ? 0 : "auto"}
-                  zIndex={isFullScreen ? 1000 : "auto"}
-                >
-                  <JsonEditor
-                    key={`advanced-${advSettings}-${jsonKey}`}
-                    json={getAdvancedJson() ? JSON.parse(getAdvancedJson()) : {}}
-                    onChange={(value) => {
-                      setAdvancedJson(value);
-                    }}
-                  />
-                </Box>
+              <Box
+                w={isFullScreen ? "100vw" : "100%"}
+                h={isFullScreen ? "100vh" : "100%"}
+                position={isFullScreen ? "fixed" : "relative"}
+                top={isFullScreen ? 0 : "auto"}
+                left={isFullScreen ? 0 : "auto"}
+                zIndex={isFullScreen ? 1000 : "auto"}
+              >
+                <JsonEditor
+                  key={`advanced-${advSettings}-${jsonKey}`}
+                  json={advancedJsonValue}
+                  onChange={(value) => {
+                    setAdvancedJson(value);
+                  }}
+                />
               </Box>
+              {isFullScreen && isMobile && (
+                <Button
+                  position="fixed"
+                  bottom={4}
+                  left="50%"
+                  transform="translateX(-50%)"
+                  zIndex={1102}
+                  size="sm"
+                  colorScheme="primary"
+                  onClick={toggleFullScreen}
+                >
+                  {t("pages.xray.exitFullscreen", "Exit full screen")}
+                </Button>
+              )}
+            </Box>
             </VStack>
           </TabPanel>
           <TabPanel>

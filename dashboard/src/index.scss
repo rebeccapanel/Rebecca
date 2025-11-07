@@ -101,12 +101,25 @@ table thead {
   background-color: unset;
   position: relative;
   border-bottom: 1px solid var(--chakra-colors-gray-200);
-  padding: 8px 40px;
+  padding: 8px 32px;
 }
 
 .chakra-ui-dark .react-datepicker__header {
   border-bottom: 1px solid var(--chakra-colors-gray-600);
-  padding: 8px 40px;
+  padding: 8px 32px;
+}
+
+.react-datepicker__navigation {
+  top: 10px;
+  line-height: 1;
+}
+
+.react-datepicker__navigation--previous {
+  left: 8px;
+}
+
+.react-datepicker__navigation--next {
+  right: 8px;
 }
 
 .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
@@ -206,6 +219,7 @@ table thead {
 .usage-range-datepicker {
   width: auto;
   min-width: 300px;
+  max-width: min(420px, calc(100vw - 32px));
   padding: 0 4px;
   font-size: 0.95rem;
 }
@@ -591,8 +605,9 @@ table thead {
 
 @media (max-width: 480px) {
   .usage-range-datepicker {
-    max-width: 100%;
-    padding: 0;
+    min-width: 0;
+    width: min(360px, calc(100vw - 24px));
+    padding: 0 4px;
     font-size: 0.85rem;
   }
 

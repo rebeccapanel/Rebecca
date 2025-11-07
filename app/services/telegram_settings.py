@@ -385,13 +385,14 @@ class TelegramSettingsService:
                 }
 
             if "event_toggles" in payload:
-                incoming_raw = payload.get("event_toggles") or {}
-                if not isinstance(incoming_raw, dict):
-                    incoming_raw = {}
-                existing = record.event_toggles or {}
-                merged_source = {**cls.DEFAULT_EVENT_TOGGLES, **existing, **incoming_raw}
-                toggles, _ = cls._prepare_event_toggles(merged_source)
-                record.event_toggles = toggles
+                incoming_raw = payload.get("event_toggles")
+                incoming_processed, _ = cls._prepare_event_toggles(incoming_raw)
+
+                existing_raw = record.event_toggles
+                existing_processed, _ = cls._prepare_event_toggles(existing_raw)
+
+                merged_source = {**cls.DEFAULT_EVENT_TOGGLES, **existing_processed, **incoming_processed}
+                record.event_toggles = merged_source
 
             record.updated_at = datetime.utcnow()
             db.add(record)

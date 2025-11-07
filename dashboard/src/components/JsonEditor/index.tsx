@@ -133,10 +133,9 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 
       if (typeof json === "string") {
         try {
-          const parsed = JSON.parse(json);
-          editor.update(parsed);
-        } catch {
           editor.updateText(nextText);
+        } catch {
+          editor.setText(nextText);
         }
       } else {
         const safeValue =

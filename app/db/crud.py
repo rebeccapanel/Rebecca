@@ -33,6 +33,8 @@ from app.db.models import (
     User,
     UserTemplate,
     UserUsageResetLogs,
+    excluded_inbounds_association,
+    template_inbounds_association,
 )
 from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
@@ -267,6 +269,57 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
     db.commit()
     db.refresh(inbound)
     return inbound.hosts
+
+
+def delete_inbound(db: Session, inbound_tag: str) -> bool:
+    """
+    Delete an inbound definition along with its association rows.
+
+    Returns:
+        bool: True if an inbound was removed, False if it did not exist.
+
+    Raises:
+        ValueError: If the inbound still has host overrides attached.
+    """
+    inbound = db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
+    if inbound is None:
+        return False
+
+    if inbound.hosts:
+        raise ValueError("Inbound has hosts assigned. Remove hosts before deleting.")
+
+    db.execute(
+        delete(excluded_inbounds_association).where(
+            excluded_inbounds_association.c.inbound_tag == inbound_tag
+        )
+    )
+    db.execute(
+        delete(template_inbounds_association).where(
+            template_inbounds_association.c.inbound_tag == inbound_tag
+        )
+    )
+
+    db.delete(inbound)
+    db.flush()
+    return True
+
+
+def disable_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
+    hosts = (
+        db.query(ProxyHost)
+        .options(joinedload(ProxyHost.service_links).joinedload(ServiceHostLink.service))
+        .filter(ProxyHost.inbound_tag == inbound_tag)
+        .all()
+    )
+    affected_services: Dict[int, Service] = {}
+    for host in hosts:
+        host.is_disabled = True
+        for link in list(host.service_links):
+            if link.service and link.service.id is not None:
+                affected_services[link.service.id] = link.service
+            db.delete(link)
+    db.flush()
+    return list(affected_services.values())
 
 
 def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, ProxyHost]:

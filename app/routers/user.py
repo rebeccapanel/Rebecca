@@ -18,7 +18,10 @@ from app.models.user import (
     UserUsagesResponse,
 )
 from app.utils import report, responses
-from app.runtime import xray, logger
+from app import runtime
+from app.runtime import logger
+
+xray = runtime.xray
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
