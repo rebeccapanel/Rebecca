@@ -53,6 +53,12 @@ export type ServiceModifyPayload = Partial<Omit<ServiceCreatePayload, "hosts">> 
   hosts?: ServiceHostAssignment[];
 };
 
+export type ServiceDeletePayload = {
+  mode: "delete_users" | "transfer_users";
+  target_service_id?: number;
+  unlink_admins?: boolean;
+};
+
 export type ServiceUsagePoint = {
   timestamp: string;
   used_traffic: number;

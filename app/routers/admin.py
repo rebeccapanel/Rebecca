@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_
 from pydantic import BaseModel
 
-from app import xray
+from app.runtime import xray
 from app.models.user import UserStatus
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError

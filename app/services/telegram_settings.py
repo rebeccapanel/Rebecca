@@ -8,14 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
 from app.db.models import TelegramSettings as TelegramSettingsModel
-from config import (
-    TELEGRAM_ADMIN_ID,
-    TELEGRAM_API_TOKEN,
-    TELEGRAM_DEFAULT_VLESS_FLOW,
-    TELEGRAM_LOGGER_CHANNEL_ID,
-    TELEGRAM_PROXY_URL,
-)
-
 
 @dataclass
 class TelegramTopic:
@@ -91,11 +83,11 @@ class TelegramSettingsService:
     }
 
     ENV_FALLBACKS = {
-        "api_token": TELEGRAM_API_TOKEN or None,
-        "proxy_url": TELEGRAM_PROXY_URL or None,
-        "logs_chat_id": TELEGRAM_LOGGER_CHANNEL_ID or None,
-        "default_vless_flow": TELEGRAM_DEFAULT_VLESS_FLOW or None,
-        "admin_chat_ids": TELEGRAM_ADMIN_ID or [],
+        "api_token": None,
+        "proxy_url": None,
+        "logs_chat_id": None,
+        "default_vless_flow": None,
+        "admin_chat_ids": [],
     }
 
     @classmethod
@@ -128,7 +120,16 @@ class TelegramSettingsService:
         if value is None:
             return []
         if isinstance(value, str):
-            tokens = [token.strip() for token in value.split(",") if token.strip()]
+            if value.startswith('[') and value.endswith(']'):
+                import json
+                try:
+                    value = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    pass  # fall back to splitting
+            if isinstance(value, str):
+                tokens = [token.strip() for token in value.split(",") if token.strip()]
+            else:
+                tokens = list(value)
         else:
             tokens = list(value)
 
@@ -145,10 +146,18 @@ class TelegramSettingsService:
 
     @classmethod
     def _prepare_forum_topics(
-        cls, raw_topics: Optional[Dict[str, Dict[str, Optional[Union[str, int]]]]]
+        cls, raw_topics: Optional[Union[Dict[str, Dict[str, Optional[Union[str, int]]]], str]]
     ) -> Tuple[Dict[str, TelegramTopic], bool]:
         topics: Dict[str, TelegramTopic] = {}
         mutated = False
+
+        if isinstance(raw_topics, str):
+            import json
+            try:
+                raw_topics = json.loads(raw_topics)
+            except (json.JSONDecodeError, TypeError):
+                raw_topics = {}
+
         source = raw_topics or {}
 
         for key, default_title in cls.DEFAULT_TOPIC_TITLES.items():
@@ -188,10 +197,18 @@ class TelegramSettingsService:
 
     @classmethod
     def _prepare_event_toggles(
-        cls, raw_toggles: Optional[Dict[str, Any]]
+        cls, raw_toggles: Optional[Union[Dict[str, Any], str]]
     ) -> Tuple[Dict[str, bool], bool]:
         toggles: Dict[str, bool] = {}
         mutated = False
+
+        if isinstance(raw_toggles, str):
+            import json
+            try:
+                raw_toggles = json.loads(raw_toggles)
+            except (json.JSONDecodeError, TypeError):
+                raw_toggles = {}
+
         source = raw_toggles or {}
 
         for key, default_value in cls.DEFAULT_EVENT_TOGGLES.items():

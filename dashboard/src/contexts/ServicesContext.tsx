@@ -6,6 +6,7 @@ import {
   ServiceListResponse,
   ServiceModifyPayload,
   ServiceSummary,
+  ServiceDeletePayload,
 } from "types/Service";
 
 type QueryParams = {
@@ -24,7 +25,7 @@ type ServicesStore = {
   fetchServiceDetail: (id: number) => Promise<ServiceDetail>;
   createService: (payload: ServiceCreatePayload) => Promise<ServiceDetail>;
   updateService: (id: number, payload: ServiceModifyPayload) => Promise<ServiceDetail>;
-  deleteService: (id: number) => Promise<void>;
+  deleteService: (id: number, payload?: ServiceDeletePayload) => Promise<void>;
   resetServiceUsage: (id: number) => Promise<ServiceDetail>;
   setServiceDetail: (service: ServiceDetail | null) => void;
 };
@@ -89,10 +90,10 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
     }
   },
 
-  async deleteService(id) {
+  async deleteService(id, payload) {
     set({ isSaving: true });
     try {
-      await fetch(`/v2/services/${id}`, { method: "DELETE" });
+      await fetch(`/v2/services/${id}`, { method: "DELETE", body: payload });
       set({ serviceDetail: null });
       await get().fetchServices();
     } finally {

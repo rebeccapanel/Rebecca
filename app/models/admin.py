@@ -30,7 +30,6 @@ class Admin(BaseModel):
     is_sudo: bool
     status: AdminStatus = AdminStatus.active
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(None, description="Maximum data limit for admin in bytes (null = unlimited)", example=107374182400)
     users_limit: Optional[int] = Field(None, description="Maximum number of users admin can create (null = unlimited)", example=100)
@@ -106,7 +105,6 @@ class Admin(BaseModel):
 class AdminCreate(Admin):
     password: str = Field(..., min_length=6, description="Admin password (minimum 6 characters)")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL")
     data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
     users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
 
@@ -114,19 +112,10 @@ class AdminCreate(Admin):
     def hashed_password(self):
         return pwd_context.hash(self.password)
 
-    @field_validator("discord_webhook")
-    @classmethod
-    def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
-        return value
-
-
 class AdminModify(BaseModel):
     password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
     is_sudo: bool = Field(..., description="Grant sudo privileges")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    discord_webhook: Optional[str] = Field(None, description="Discord webhook URL")
     data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
     users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
 
@@ -134,14 +123,6 @@ class AdminModify(BaseModel):
     def hashed_password(self):
         if self.password:
             return pwd_context.hash(self.password)
-
-    @field_validator("discord_webhook")
-    @classmethod
-    def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
-        return value
-
 
 class AdminPartialModify(AdminModify):
     __annotations__ = {k: Optional[v] for k, v in AdminModify.__annotations__.items()}

@@ -4,7 +4,6 @@ from typing import Dict, List, Literal
 
 from telebot import types  # noqa
 
-from app import xray
 from app.utils.system import readable_size
 
 
@@ -291,6 +290,7 @@ class BotKeyboard:
             expire_on_hold_duration: int = None,
             expire_on_hold_timeout: dt = None
     ):
+        from app.runtime import xray
         keyboard = types.InlineKeyboardMarkup()
 
         if action == "edit":

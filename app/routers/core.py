@@ -6,12 +6,20 @@ import commentjson
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body
 from starlette.websockets import WebSocketDisconnect
 
-from app import xray
+from app.runtime import xray
 from app.db import Session, get_db
 from app.models.admin import Admin
 from app.models.core import CoreStats
+from app.models.warp import (
+    WarpAccountResponse,
+    WarpConfigResponse,
+    WarpLicenseUpdate,
+    WarpRegisterRequest,
+    WarpRegisterResponse,
+)
+from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
-from app.xray import XRayConfig
+from app.reb_node import XRayConfig
 from config import XRAY_JSON
 
 import os, platform, shutil, stat, zipfile, io, requests
@@ -463,3 +471,92 @@ def apply_geo_assets(
                 results["nodes"][str(node_id)] = {"status": "error", "detail": str(e)}
 
     return results
+
+
+def _warp_service(db: Session) -> WarpService:
+    return WarpService(db)
+
+
+def _serialize_warp_account(service: WarpService, account):
+    return service.serialize_account(account) if account else None
+
+
+@router.get("/core/warp", response_model=WarpAccountResponse, responses={403: responses._403})
+def get_warp_account(
+    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
+):
+    """Return the stored Cloudflare WARP account (if any)."""
+    service = _warp_service(db)
+    account = service.get_account()
+    return {"account": _serialize_warp_account(service, account)}
+
+
+@router.post(
+    "/core/warp/register",
+    response_model=WarpRegisterResponse,
+    responses={403: responses._403},
+)
+def register_warp_account(
+    payload: WarpRegisterRequest,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    """Register a new WARP device via Cloudflare and persist credentials."""
+    service = _warp_service(db)
+    try:
+        account, config = service.register(
+            payload.private_key.strip(), payload.public_key.strip()
+        )
+    except WarpServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"account": service.serialize_account(account), "config": config}
+
+
+@router.post(
+    "/core/warp/license",
+    response_model=WarpAccountResponse,
+    responses={403: responses._403},
+)
+def update_warp_license(
+    payload: WarpLicenseUpdate,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    """Update the stored license key on Cloudflare WARP."""
+    service = _warp_service(db)
+    try:
+        account = service.update_license(payload.license_key.strip())
+    except WarpAccountNotFound:
+        raise HTTPException(status_code=404, detail="No WARP account configured")
+    except WarpServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"account": service.serialize_account(account)}
+
+
+@router.get(
+    "/core/warp/config",
+    response_model=WarpConfigResponse,
+    responses={403: responses._403},
+)
+def get_warp_config(
+    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
+):
+    """Fetch the latest device+account info from Cloudflare."""
+    service = _warp_service(db)
+    try:
+        config = service.get_remote_config()
+    except WarpAccountNotFound:
+        raise HTTPException(status_code=404, detail="No WARP account configured")
+    except WarpServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"config": config}
+
+
+@router.delete("/core/warp", response_model=WarpAccountResponse, responses={403: responses._403})
+def delete_warp_account(
+    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
+):
+    """Remove the locally stored WARP credentials."""
+    service = _warp_service(db)
+    service.delete()
+    return {"account": None}

@@ -101,10 +101,12 @@ table thead {
   background-color: unset;
   position: relative;
   border-bottom: 1px solid var(--chakra-colors-gray-200);
+  padding: 8px 40px;
 }
 
 .chakra-ui-dark .react-datepicker__header {
   border-bottom: 1px solid var(--chakra-colors-gray-600);
+  padding: 8px 40px;
 }
 
 .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
@@ -202,8 +204,8 @@ table thead {
 }
 
 .usage-range-datepicker {
-  width: 100%;
-  max-width: 360px;
+  width: auto;
+  min-width: 300px;
   padding: 0 4px;
   font-size: 0.95rem;
 }
@@ -230,6 +232,361 @@ table thead {
 
 .usage-range-datepicker-popper {
   z-index: 1500 !important;
+}
+
+.datepicker-with-quickselect {
+  width: 100%;
+  align-items: stretch;
+}
+
+.datepicker-main-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.datepicker-quickselect-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Enhanced calendar styling to match the image */
+.datepicker-with-quickselect .react-datepicker {
+  border: none;
+  box-shadow: none;
+  background: transparent !important;
+}
+
+.datepicker-with-quickselect .react-datepicker__header {
+  border: none;
+  padding: 8px 0;
+  background: transparent;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Month/Year header container with navigation buttons */
+.datepicker-with-quickselect .react-datepicker__current-month {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-align: center;
+  padding: 0 8px;
+  order: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Navigation buttons - positioned on sides of month name */
+.datepicker-with-quickselect .react-datepicker__navigation {
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.datepicker-with-quickselect .react-datepicker__navigation--previous {
+  left: 8px;
+  position: absolute;
+}
+
+.datepicker-with-quickselect .react-datepicker__navigation--next {
+  right: 8px;
+  position: absolute;
+}
+
+.datepicker-with-quickselect .react-datepicker__navigation:hover {
+  background-color: rgba(226, 232, 240, 0.8);
+}
+
+.chakra-ui-dark .datepicker-with-quickselect .react-datepicker__navigation:hover {
+  background-color: rgba(74, 85, 104, 0.8);
+}
+
+.datepicker-with-quickselect .react-datepicker__day-names {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 4px;
+}
+
+.datepicker-with-quickselect .react-datepicker__day-name {
+  width: 2.2rem;
+  line-height: 2.2rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.datepicker-with-quickselect .react-datepicker__week {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 2px;
+}
+
+.datepicker-with-quickselect .react-datepicker__day {
+  width: 2.2rem;
+  height: 2.2rem;
+  line-height: 2.2rem;
+  margin: 2px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.datepicker-with-quickselect .react-datepicker__day:hover {
+  background-color: var(--chakra-colors-primary-100) !important;
+  color: var(--chakra-colors-primary-700) !important;
+}
+
+.chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day:hover {
+  background-color: var(--chakra-colors-primary-700) !important;
+  color: var(--chakra-colors-white) !important;
+}
+
+.datepicker-with-quickselect .react-datepicker__day--selected,
+.datepicker-with-quickselect .react-datepicker__day--keyboard-selected {
+  background-color: var(--chakra-colors-primary-500) !important;
+  color: var(--chakra-colors-white) !important;
+  font-weight: 600;
+}
+
+.chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day--selected,
+.chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day--keyboard-selected {
+  background-color: var(--chakra-colors-primary-400) !important;
+  color: var(--chakra-colors-gray-900) !important;
+}
+
+.datepicker-with-quickselect .react-datepicker__day--today {
+  font-weight: 600;
+  border: 2px solid var(--chakra-colors-primary-500);
+}
+
+.datepicker-with-quickselect .react-datepicker__day--disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.datepicker-with-quickselect .react-datepicker__day--disabled:hover {
+  background-color: transparent !important;
+}
+
+/* Quick select buttons styling */
+.datepicker-quickselect-panel button {
+  font-size: 0.875rem;
+  height: 40px;
+  padding: 0 12px;
+  background-color: transparent;
+  border: 1.5px solid var(--chakra-colors-gray-300);
+  color: var(--chakra-colors-gray-700);
+  transition: all 0.2s;
+}
+
+.chakra-ui-dark .datepicker-quickselect-panel button {
+  border-color: var(--chakra-colors-gray-600);
+  color: var(--chakra-colors-gray-300);
+}
+
+.datepicker-quickselect-panel button:hover {
+  background-color: var(--chakra-colors-primary-50);
+  border-color: var(--chakra-colors-primary-300);
+  color: var(--chakra-colors-primary-700);
+}
+
+.chakra-ui-dark .datepicker-quickselect-panel button:hover {
+  background-color: var(--chakra-colors-primary-900);
+  border-color: var(--chakra-colors-primary-600);
+  color: var(--chakra-colors-primary-200);
+}
+
+/* Footer time input styling */
+.datepicker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--chakra-colors-gray-200);
+}
+
+.chakra-ui-dark .datepicker-footer {
+  border-top-color: var(--chakra-colors-gray-600);
+}
+
+.datepicker-footer .chakra-numberinput {
+  flex: 1;
+}
+
+.datepicker-footer .chakra-numberinput input {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.datepicker-footer .chakra-button {
+  min-width: 40px;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.datepicker-quickselect-panel .chakra-button {
+  font-size: 0.9rem;
+}
+
+.datepicker-calendar-wrapper {
+  min-width: 312px;
+  padding-right: 0.5rem;
+}
+
+.datepicker-calendar-wrapper .usage-range-datepicker {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.datepicker-calendar-wrapper .usage-range-datepicker .react-datepicker__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: transparent;
+  border-bottom: none;
+  padding: 12px 12px 8px;
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__current-month {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation--previous {
+  order: 2;
+  margin-left: auto;
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation--next {
+  order: 3;
+  margin-left: 4px;
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation:hover {
+  background-color: rgba(148, 163, 184, 0.2);
+}
+
+.chakra-ui-dark
+  .datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation:hover {
+  background-color: rgba(148, 163, 184, 0.25);
+}
+
+.datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation-icon::before {
+  border-color: currentColor;
+}
+
+.chakra-ui-dark
+  .datepicker-calendar-wrapper
+  .usage-range-datepicker
+  .react-datepicker__navigation-icon::before {
+  border-color: rgba(226, 232, 240, 0.8);
+}
+
+.datepicker-calendar-wrapper .react-datepicker__triangle {
+  display: none;
+}
+
+.datepicker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.chakra-ui-dark .datepicker-footer {
+  border-top-color: rgba(148, 163, 184, 0.12);
+}
+
+.datepicker-footer .chakra-numberinput,
+.datepicker-footer .chakra-numberinput__field {
+  font-weight: 600;
+}
+
+.datepicker-footer .chakra-numberinput {
+  max-width: 140px;
+}
+
+.datepicker-footer .chakra-numberinput__field {
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .datepicker-main-row {
+    flex-direction: column;
+  }
+
+  .datepicker-quickselect-panel {
+    width: 100% !important;
+    border-right-width: 0 !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+    padding-bottom: 12px;
+  }
+
+  .chakra-ui-dark .datepicker-quickselect-panel {
+    border-bottom-color: rgba(74, 85, 104, 0.9);
+  }
+
+  .datepicker-calendar-wrapper {
+    min-width: 0;
+    padding-right: 0;
+  }
+
+  .datepicker-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .datepicker-footer .chakra-numberinput {
+    max-width: 100%;
+  }
 }
 
 @media (max-width: 480px) {

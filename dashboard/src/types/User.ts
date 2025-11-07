@@ -95,7 +95,6 @@ export type UserCreateWithService = Pick<
 };
 
 export type UserApi = {
-  discord_webook: string;
   is_sudo: boolean;
   telegram_id: number | string;
   username: string;

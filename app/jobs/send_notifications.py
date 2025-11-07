@@ -5,9 +5,7 @@ from typing import Any, Dict, List
 from fastapi.encoders import jsonable_encoder
 from requests import Session
 
-from app import app, logger, scheduler
-from app.db import GetDB
-from app.db.models import NotificationReminder
+from app.runtime import app, logger, scheduler
 from app.utils.notification import queue
 from config import (JOB_SEND_NOTIFICATIONS_INTERVAL,
                     NUMBER_OF_RECURRENT_NOTIFICATIONS,
@@ -79,12 +77,6 @@ def send_notifications():
             queue.append(notification)
 
 
-def delete_expired_reminders() -> None:
-    with GetDB() as db:
-        db.query(NotificationReminder).filter(NotificationReminder.expires_at < dt.utcnow()).delete()
-        db.commit()
-
-
 if WEBHOOK_ADDRESS:
     @app.on_event("shutdown")
     def app_shutdown():
@@ -92,7 +84,10 @@ if WEBHOOK_ADDRESS:
         send_notifications()
 
     logger.info("Send webhook job started")
-    scheduler.add_job(send_notifications, "interval",
-                      seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
-                      replace_existing=True)
-    scheduler.add_job(delete_expired_reminders, "interval", hours=2, start_date=dt.utcnow() + td(minutes=1))
+    scheduler.add_job(
+        send_notifications,
+        "interval",
+        seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
+        replace_existing=True,
+    )
+

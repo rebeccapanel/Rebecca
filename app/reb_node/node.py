@@ -15,7 +15,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.poolmanager import PoolManager
 from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException, create_connection
 
-from app.xray.config import XRayConfig
+from app.reb_node.config import XRayConfig
 from xray_api import XRay as XRayAPI
 
 

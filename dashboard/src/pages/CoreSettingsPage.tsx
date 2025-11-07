@@ -9,6 +9,8 @@ import {
   TabPanel,
   Button,
   HStack,
+  Alert,
+  AlertIcon,
   IconButton,
   useToast,
   Select,
@@ -34,6 +36,11 @@ import {
   useBreakpointValue,
   useColorModeValue,
   Stack,
+  TagLabel,
+  TagCloseButton,
+  Input,
+  Wrap,
+  WrapItem,
 } from "@chakra-ui/react";
 import type { TableProps } from "@chakra-ui/react";
 import {
@@ -48,6 +55,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowsRightLeftIcon,
   ArrowUpTrayIcon,
+  CloudArrowUpIcon,
   ScaleIcon,
   GlobeAltIcon,
   WrenchScrewdriverIcon,
@@ -56,7 +64,7 @@ import {
 import { chakra } from "@chakra-ui/react";
 import { useCoreSettings } from "contexts/CoreSettingsContext";
 import { useDashboard } from "contexts/DashboardContext";
-import { FC, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FC, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { JsonEditor } from "../components/JsonEditor";
 import { CompactChips, CompactTextWithCopy } from "components/CompactPopover";
@@ -64,12 +72,13 @@ import XrayLogsPage from "./XrayLogsPage";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useMutation } from "react-query";
 import { OutboundModal } from "../components/OutboundModal";
-import { RuleModal } from "../components/RuleModal";
+import { RuleModal, RoutingRule } from "../components/RuleModal";
 import { BalancerModal } from "../components/BalancerModal";
 import { DnsModal } from "../components/DnsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { SizeFormatter, Outbound } from "../utils/outbound";
 import { fetch as apiFetch } from "service/http";
+import { WarpModal } from "../components/WarpModal";
 
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 3.5, h: 3.5 } });
 const DeleteIconStyled = chakra(DeleteIcon, { baseStyle: { w: 4, h: 4 } });
@@ -86,6 +95,7 @@ const BalancerTabIcon = chakra(ScaleIcon, { baseStyle: { w: 4, h: 4 } });
 const DnsTabIcon = chakra(GlobeAltIcon, { baseStyle: { w: 4, h: 4 } });
 const AdvancedTabIcon = chakra(WrenchScrewdriverIcon, { baseStyle: { w: 4, h: 4 } });
 const LogsTabIcon = chakra(DocumentTextIcon, { baseStyle: { w: 4, h: 4 } });
+const WarpIconStyled = chakra(CloudArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
 const compactActionButtonProps = {
   colorScheme: "primary",
   size: "xs" as const,
@@ -98,6 +108,19 @@ const compactActionButtonProps = {
 const serializeConfig = (value: any) => JSON.stringify(value ?? {});
 const formatList = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value.join(",") : value ?? "";
+
+const SERVICES_OPTIONS: { label: string; value: string }[] = [
+  { label: "Apple", value: "geosite:apple" },
+  { label: "Meta", value: "geosite:meta" },
+  { label: "Google", value: "geosite:google" },
+  { label: "OpenAI", value: "geosite:openai" },
+  { label: "Spotify", value: "geosite:spotify" },
+  { label: "Netflix", value: "geosite:netflix" },
+  { label: "Reddit", value: "geosite:reddit" },
+  { label: "Speedtest", value: "geosite:speedtest" },
+];
+
+type OutboundJson = Record<string, any>;
 
 const SettingsSection: FC<{ title: string; children: ReactNode }> = ({ title, children }) => {
   const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -230,6 +253,7 @@ export const CoreSettingsPage: FC = () => {
   const { isOpen: isBalancerOpen, onOpen: onBalancerOpen, onClose: onBalancerClose } = useDisclosure();
   const { isOpen: isDnsOpen, onOpen: onDnsOpen, onClose: onDnsClose } = useDisclosure();
   const { isOpen: isFakeDnsOpen, onOpen: onFakeDnsOpen, onClose: onFakeDnsClose } = useDisclosure();
+  const { isOpen: isWarpOpen, onOpen: onWarpOpen, onClose: onWarpClose } = useDisclosure();
 
   const form = useForm({
     defaultValues: { config: config || { outbounds: [], routing: { rules: [], balancers: [] }, dns: { servers: [] } } },
@@ -247,11 +271,92 @@ export const CoreSettingsPage: FC = () => {
   const [dnsServers, setDnsServers] = useState<any[]>([]);
   const [fakeDns, setFakeDns] = useState<any[]>([]);
   const [outboundsTraffic, setOutboundsTraffic] = useState<any[]>([]);
+  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const [editingOutboundIndex, setEditingOutboundIndex] = useState<number | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [advSettings, setAdvSettings] = useState<string>("xraySetting");
   const [obsSettings, setObsSettings] = useState<string>("");
   const isMobile = useBreakpointValue({ base: true, md: false });
   const [jsonKey, setJsonKey] = useState(0); // force re-render of JsonEditor
+  const [warpOptionValue, setWarpOptionValue] = useState<string>("");
+  const [warpCustomDomain, setWarpCustomDomain] = useState<string>("");
+
+  const buildOutboundRows = useCallback(
+    (outbounds: OutboundJson[]) =>
+      outbounds.map((outbound, index) => ({
+        key: `${index}-${outbound.tag ?? outbound.protocol ?? "outbound"}`,
+        ...outbound,
+      })),
+    []
+  );
+
+  const syncOutboundDisplay = useCallback(
+    (outbounds: OutboundJson[]) => {
+      setOutboundData(buildOutboundRows(outbounds));
+    },
+    [buildOutboundRows]
+  );
+
+  const getOutbounds = useCallback((): OutboundJson[] => {
+    const value = form.getValues("config.outbounds");
+    if (!Array.isArray(value)) return [];
+    return JSON.parse(JSON.stringify(value));
+  }, [form]);
+
+  const commitOutbounds = useCallback(
+    (outbounds: OutboundJson[]) => {
+      form.setValue("config.outbounds", outbounds, { shouldDirty: true });
+      syncOutboundDisplay(outbounds);
+      setJsonKey((prev) => prev + 1);
+    },
+    [form, syncOutboundDisplay]
+  );
+
+  const buildRoutingRuleRows = useCallback(
+    (rules: RoutingRule[]) =>
+      rules.map((rule, index) => ({
+        key: `${index}-${rule.outboundTag ?? rule.balancerTag ?? "rule"}`,
+        source: rule.source ?? [],
+        sourcePort: rule.sourcePort ?? [],
+        network: rule.network ?? [],
+        protocol: rule.protocol ?? [],
+        attrs: rule.attrs ? JSON.stringify(rule.attrs, null, 2) : "",
+        ip: rule.ip ?? [],
+        domain: rule.domain ?? [],
+        port: rule.port ?? [],
+        inboundTag: rule.inboundTag ?? [],
+        user: rule.user ?? [],
+        outboundTag: rule.outboundTag ?? "",
+        balancerTag: rule.balancerTag ?? "",
+        type: rule.type ?? "field",
+        domainMatcher: rule.domainMatcher ?? "",
+      })),
+    []
+  );
+
+  const syncRoutingRuleDisplay = useCallback(
+    (rules: RoutingRule[]) => {
+      setRoutingRuleData(buildRoutingRuleRows(rules));
+    },
+    [buildRoutingRuleRows]
+  );
+
+  const commitRoutingRules = useCallback(
+    (rules: RoutingRule[]) => {
+      form.setValue("config.routing.rules", rules, { shouldDirty: true });
+      syncRoutingRuleDisplay(rules);
+      setJsonKey((prev) => prev + 1);
+    },
+    [form, syncRoutingRuleDisplay]
+  );
+
+  const getRoutingRules = useCallback((): RoutingRule[] => {
+    const rules = form.getValues("config.routing.rules");
+    if (Array.isArray(rules)) {
+      return JSON.parse(JSON.stringify(rules));
+    }
+    return [];
+  }, [form]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -285,20 +390,9 @@ export const CoreSettingsPage: FC = () => {
     if (config) {
       form.reset({ config });
       initialConfigStringRef.current = serializeConfig(config);
-      setOutboundData(config?.outbounds?.map((o: any, index: number) => ({ key: index, ...o })) || []);
-      setRoutingRuleData(
-        config?.routing?.rules?.map((r: any, index: number) => ({
-          key: index,
-          ...r,
-          domain: formatList(r.domain),
-          ip: formatList(r.ip),
-          source: formatList(r.source),
-          network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
-          user: formatList(r.user),
-          inboundTag: formatList(r.inboundTag),
-          protocol: formatList(r.protocol),
-          attrs: JSON.stringify(r.attrs, null, 2),
-        })) || []
+      syncOutboundDisplay((config?.outbounds as OutboundJson[]) || []);
+      syncRoutingRuleDisplay(
+        (config?.routing?.rules as RoutingRule[]) || []
       );
       setBalancersData(
         config?.routing?.balancers?.map((b: any, index: number) => ({
@@ -315,7 +409,7 @@ export const CoreSettingsPage: FC = () => {
       setObsSettings(config?.observatory ? "observatory" : config?.burstObservatory ? "burstObservatory" : "");
       setJsonKey((prev) => prev + 1); // force JsonEditor re-mount
     }
-  }, [config, form]);
+  }, [config, form, syncOutboundDisplay, syncRoutingRuleDisplay]);
 
   const { mutate: handleRestartCore, isLoading: isRestarting } = useMutation(restartCore, {
     onSuccess: () => {
@@ -386,48 +480,95 @@ export const CoreSettingsPage: FC = () => {
     }
   };
 
+  const handleOutboundModalClose = () => {
+    setEditingOutboundIndex(null);
+    onOutboundClose();
+  };
+
   const addOutbound = () => {
+    setEditingOutboundIndex(null);
     onOutboundOpen();
   };
 
   const editOutbound = (index: number) => {
+    setEditingOutboundIndex(index);
     onOutboundOpen();
   };
 
   const deleteOutbound = (index: number) => {
-    const newOutbounds = [...outboundData];
-    newOutbounds.splice(index, 1);
-    form.setValue("config.outbounds", newOutbounds, { shouldDirty: true });
-    setOutboundData(newOutbounds);
+    const outbounds = getOutbounds();
+    if (index < 0 || index >= outbounds.length) return;
+    outbounds.splice(index, 1);
+    commitOutbounds(outbounds);
   };
 
-  const setFirstOutbound = (index: number) => {
-    const newOutbounds = [...outboundData];
-    newOutbounds.splice(0, 0, newOutbounds.splice(index, 1)[0]);
-    form.setValue("config.outbounds", newOutbounds, { shouldDirty: true });
-    setOutboundData(newOutbounds);
+  const moveOutbound = (fromIndex: number, toIndex: number) => {
+    const outbounds = getOutbounds();
+    if (
+      fromIndex < 0 ||
+      fromIndex >= outbounds.length ||
+      toIndex < 0 ||
+      toIndex >= outbounds.length
+    ) {
+      return;
+    }
+    const [moved] = outbounds.splice(fromIndex, 1);
+    outbounds.splice(toIndex, 0, moved);
+    commitOutbounds(outbounds);
+  };
+
+  const moveOutboundUp = (index: number) => {
+    moveOutbound(index, index - 1);
+  };
+
+  const moveOutboundDown = (index: number) => {
+    moveOutbound(index, index + 1);
   };
 
   const addRule = () => {
+    setEditingRuleIndex(null);
     onRuleOpen();
   };
 
   const editRule = (index: number) => {
+    setEditingRuleIndex(index);
     onRuleOpen();
   };
 
   const deleteRule = (index: number) => {
-    const newRules = [...routingRuleData];
-    newRules.splice(index, 1);
-    form.setValue("config.routing.rules", newRules, { shouldDirty: true });
-    setRoutingRuleData(newRules);
+    const currentRules = getRoutingRules();
+    currentRules.splice(index, 1);
+    commitRoutingRules(currentRules);
   };
 
   const replaceRule = (oldIndex: number, newIndex: number) => {
-    const newRules = [...routingRuleData];
-    newRules.splice(newIndex, 0, newRules.splice(oldIndex, 1)[0]);
-    form.setValue("config.routing.rules", newRules, { shouldDirty: true });
-    setRoutingRuleData(newRules);
+    const currentRules = getRoutingRules();
+    if (oldIndex < 0 || oldIndex >= currentRules.length || newIndex < 0 || newIndex >= currentRules.length) {
+      return;
+    }
+    const [moved] = currentRules.splice(oldIndex, 1);
+    currentRules.splice(newIndex, 0, moved);
+    commitRoutingRules(currentRules);
+  };
+
+  const handleRuleModalSubmit = (rule: RoutingRule) => {
+    const currentRules = getRoutingRules();
+    if (
+      editingRuleIndex !== null &&
+      editingRuleIndex >= 0 &&
+      editingRuleIndex < currentRules.length
+    ) {
+      currentRules[editingRuleIndex] = rule;
+    } else {
+      currentRules.push(rule);
+    }
+    commitRoutingRules(currentRules);
+    setEditingRuleIndex(null);
+  };
+
+  const handleRuleModalClose = () => {
+    setEditingRuleIndex(null);
+    onRuleClose();
   };
 
   const addBalancer = () => {
@@ -513,6 +654,225 @@ export const CoreSettingsPage: FC = () => {
       : `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`;
   };
 
+  const canonicalOutbounds = useMemo<OutboundJson[]>(
+    () =>
+      Array.isArray(watchedConfig?.outbounds)
+        ? (watchedConfig.outbounds as OutboundJson[])
+        : [],
+    [watchedConfig]
+  );
+
+  const canonicalRoutingRules = useMemo<RoutingRule[]>(
+    () =>
+      Array.isArray(watchedConfig?.routing?.rules)
+        ? (watchedConfig.routing.rules as RoutingRule[])
+        : [],
+    [watchedConfig]
+  );
+
+  const availableInboundTags = useMemo<string[]>(
+    () =>
+      Array.from(
+        new Set(
+          (watchedConfig?.inbounds ?? [])
+            .map((inbound: any) => inbound?.tag)
+            .filter((tag: string | undefined): tag is string => Boolean(tag))
+        )
+      ),
+    [watchedConfig]
+  );
+
+  const availableOutboundTags = useMemo<string[]>(
+    () =>
+      Array.from(
+        new Set(
+          canonicalOutbounds
+            .map((outbound: any) => outbound?.tag)
+            .filter((tag: string | undefined): tag is string => Boolean(tag))
+        )
+      ),
+    [canonicalOutbounds]
+  );
+
+  const availableBalancerTags = useMemo<string[]>(
+    () =>
+      Array.from(
+        new Set(
+          (watchedConfig?.routing?.balancers ?? [])
+            .map((balancer: any) => balancer?.tag)
+            .filter((tag: string | undefined): tag is string => Boolean(tag))
+        )
+      ),
+    [watchedConfig]
+  );
+
+  const freedomOutboundIndex = useMemo(() => {
+    if (canonicalOutbounds.length === 0) return -1;
+    return canonicalOutbounds.findIndex(
+      (outbound: any) => outbound?.protocol === "freedom"
+    );
+  }, [canonicalOutbounds]);
+
+  const freedomDomainStrategy = useMemo(() => {
+    if (freedomOutboundIndex < 0) {
+      return "";
+    }
+    const outbound = canonicalOutbounds[freedomOutboundIndex];
+    return outbound?.settings?.domainStrategy ?? "";
+  }, [freedomOutboundIndex, canonicalOutbounds]);
+
+  const handleFreedomDomainStrategyChange = (value: string) => {
+    const configValue = form.getValues("config") || {};
+    const outbounds = Array.isArray(configValue.outbounds)
+      ? JSON.parse(JSON.stringify(configValue.outbounds))
+      : [];
+
+    const index = outbounds.findIndex(
+      (outbound: any) => outbound?.protocol === "freedom"
+    );
+
+    if (index === -1) {
+      return;
+    }
+
+    const updated = { ...outbounds[index] };
+    const settings = { ...(updated.settings || {}) };
+    if (value) {
+      settings.domainStrategy = value;
+    } else {
+      delete settings.domainStrategy;
+    }
+    updated.settings = settings;
+    outbounds[index] = updated;
+
+    form.setValue("config.outbounds", outbounds, { shouldDirty: true });
+    setOutboundData(outbounds.map((o: any, idx: number) => ({ key: idx, ...o })));
+    setJsonKey((prev) => prev + 1);
+  };
+
+  const warpOutbound = useMemo<OutboundJson | null>(
+    () =>
+      canonicalOutbounds.find(
+        (outbound) => outbound?.tag === "warp"
+      ) ?? null,
+    [canonicalOutbounds]
+  );
+
+  const warpOutboundIndex = useMemo(
+    () =>
+      canonicalOutbounds.findIndex(
+        (outbound) => outbound?.tag === "warp"
+      ),
+    [canonicalOutbounds]
+  );
+
+  const warpExists = warpOutboundIndex !== -1;
+
+  const warpDomains = useMemo<string[]>(
+    () => {
+      const rule = canonicalRoutingRules.find(
+        (routingRule) => routingRule.outboundTag === "warp"
+      );
+      return Array.isArray(rule?.domain) ? rule.domain : [];
+    },
+    [canonicalRoutingRules]
+  );
+
+  const handleWarpDomainsChange = (domains: string[]) => {
+    const normalized = domains
+      .map((entry) => entry.trim())
+      .filter((entry, index, arr) => entry.length > 0 && arr.indexOf(entry) === index);
+
+    const currentRules = getRoutingRules();
+    const existingIndex = currentRules.findIndex(
+      (rule) => rule.outboundTag === "warp"
+    );
+
+    if (normalized.length === 0) {
+      if (existingIndex !== -1) {
+        currentRules.splice(existingIndex, 1);
+        commitRoutingRules(currentRules);
+      }
+      return;
+    }
+
+    const updatedRule: RoutingRule = {
+      type: "field",
+      outboundTag: "warp",
+      domain: normalized,
+    };
+
+    if (existingIndex !== -1) {
+      currentRules[existingIndex] = {
+        ...currentRules[existingIndex],
+        ...updatedRule,
+      };
+    } else {
+      currentRules.push(updatedRule);
+    }
+    commitRoutingRules(currentRules);
+  };
+
+  const handleWarpDomainAdd = (domain: string) => {
+    const trimmed = domain.trim();
+    if (!trimmed) return;
+    if (warpDomains.includes(trimmed)) return;
+    handleWarpDomainsChange([...warpDomains, trimmed]);
+  };
+
+  const handleWarpDomainRemove = (domain: string) => {
+    handleWarpDomainsChange(warpDomains.filter((item) => item !== domain));
+  };
+
+  const warpSectionBg = useColorModeValue("white", "blackAlpha.400");
+  const warpSectionBorder = useColorModeValue("gray.200", "whiteAlpha.200");
+
+  const warpDomainHelper = useColorModeValue("gray.600", "gray.300");
+
+  const handleWarpSave = (outbound: OutboundJson) => {
+    const outbounds = getOutbounds();
+    const tag = outbound.tag ?? "warp";
+    const index = outbounds.findIndex((item) => item?.tag === tag);
+    if (index >= 0) {
+      outbounds[index] = outbound;
+    } else {
+      outbounds.push(outbound);
+    }
+    commitOutbounds(outbounds);
+  };
+
+  const handleWarpDelete = () => {
+    const outbounds = getOutbounds();
+    const index = outbounds.findIndex((item) => item?.tag === "warp");
+    if (index === -1) {
+      return;
+    }
+    outbounds.splice(index, 1);
+    commitOutbounds(outbounds);
+    handleWarpDomainsChange([]);
+    setWarpOptionValue("");
+    setWarpCustomDomain("");
+  };
+
+  const handleOutboundSave = (outbound: OutboundJson) => {
+    const outbounds = getOutbounds();
+    if (
+      editingOutboundIndex !== null &&
+      editingOutboundIndex >= 0 &&
+      editingOutboundIndex < outbounds.length
+    ) {
+      outbounds[editingOutboundIndex] = outbound;
+    } else {
+      outbounds.push(outbound);
+    }
+    commitOutbounds(outbounds);
+    setEditingOutboundIndex(null);
+  };
+
+  const handleWarpModalClose = () => {
+    onWarpClose();
+  };
+
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => {
@@ -554,45 +914,21 @@ export const CoreSettingsPage: FC = () => {
           break;
         case "outboundSettings":
           cfg.outbounds = parsed;
-          setOutboundData(parsed.map((o: any, index: number) => ({ key: index, ...o })));
+          syncOutboundDisplay(parsed as OutboundJson[]);
           break;
         case "routingRuleSettings":
           if (!cfg.routing) cfg.routing = {};
           cfg.routing.rules = parsed;
-          setRoutingRuleData(
-            parsed.map((r: any, index: number) => ({
-              key: index,
-              ...r,
-              domain: formatList(r.domain),
-              ip: formatList(r.ip),
-              source: formatList(r.source),
-              network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
-              user: formatList(r.user),
-              inboundTag: formatList(r.inboundTag),
-              protocol: formatList(r.protocol),
-              attrs: JSON.stringify(r.attrs, null, 2),
-            }))
-          );
+          syncRoutingRuleDisplay(parsed as RoutingRule[]);
           break;
         case "xraySetting":
         default:
           // replace whole config
           form.setValue("config", parsed, { shouldDirty: true });
           // sync all derived states
-          setOutboundData(parsed?.outbounds?.map((o: any, index: number) => ({ key: index, ...o })) || []);
-          setRoutingRuleData(
-            parsed?.routing?.rules?.map((r: any, index: number) => ({
-              key: index,
-              ...r,
-              domain: formatList(r.domain),
-              ip: formatList(r.ip),
-              source: formatList(r.source),
-              network: Array.isArray(r.network) ? r.network.join(",") : r.network ?? "",
-              user: formatList(r.user),
-              inboundTag: formatList(r.inboundTag),
-              protocol: formatList(r.protocol),
-              attrs: JSON.stringify(r.attrs, null, 2),
-            })) || []
+          syncOutboundDisplay((parsed?.outbounds as OutboundJson[]) || []);
+          syncRoutingRuleDisplay(
+            (parsed?.routing?.rules as RoutingRule[]) || []
           );
           setBalancersData(
             parsed?.routing?.balancers?.map((b: any, index: number) => ({
@@ -737,7 +1073,7 @@ export const CoreSettingsPage: FC = () => {
           </Button>
         </Stack>
       </Stack>
-      <Tabs variant="enclosed" colorScheme="primary">
+      <Tabs variant="enclosed" colorScheme="primary" isLazy isManual>
         <TabList
           overflowX="auto"
           flexWrap={{ base: "wrap", md: "nowrap" }}
@@ -806,21 +1142,25 @@ export const CoreSettingsPage: FC = () => {
           <TabPanel>
             <VStack spacing={4} align="stretch">
               <SettingsSection title={t("pages.xray.generalConfigs")}>
-                <SettingRow label={t("pages.xray.FreedomStrategy")} controlId="freedom-domain-strategy">
-                  {(id) => (
-                    <Controller
-                      name="config.outbounds[0].settings.domainStrategy"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          {["AsIs", "UseIP", "UseIPv4", "UseIPv6", "UseIPv6v4", "UseIPv4v6"].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </Select>
-                      )}
-                    />
-                  )}
-                </SettingRow>
+              <SettingRow label={t("pages.xray.FreedomStrategy")} controlId="freedom-domain-strategy">
+                {(id) => (
+                    <Select
+                      id={id}
+                      size="sm"
+                      maxW="220px"
+                      value={freedomDomainStrategy}
+                      onChange={(event) => handleFreedomDomainStrategyChange(event.target.value)}
+                      isDisabled={freedomOutboundIndex === -1}
+                    >
+                      <option value="">{t("core.default", "Default")}</option>
+                      {["AsIs", "UseIP", "UseIPv4", "UseIPv6", "UseIPv6v4", "UseIPv4v6"].map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                )}
+              </SettingRow>
                 <SettingRow label={t("pages.xray.RoutingStrategy")} controlId="routing-domain-strategy">
                   {(id) => (
                     <Controller
@@ -835,9 +1175,90 @@ export const CoreSettingsPage: FC = () => {
                       )}
                     />
                   )}
-                </SettingRow>
-              </SettingsSection>
-              <SettingsSection title={t("pages.xray.statistics")}>
+              </SettingRow>
+            </SettingsSection>
+            <Box
+              borderWidth="1px"
+              borderColor={warpSectionBorder}
+              borderRadius="lg"
+              bg={warpSectionBg}
+              p={{ base: 3, md: 4 }}
+            >
+              <VStack align="stretch" spacing={3}>
+                <HStack justify="space-between" align="center">
+                  <Text fontWeight="semibold">{t("pages.xray.warpRouting")}</Text>
+                  <Button variant="outline" size="sm" leftIcon={<WarpIconStyled />} onClick={onWarpOpen}>
+                    {warpExists
+                      ? t("pages.xray.warp.manage", "Manage WARP")
+                      : t("pages.xray.warp.create", "Create WARP")}
+                  </Button>
+                </HStack>
+                <Text fontSize="sm" color={warpDomainHelper}>
+                  {t("pages.xray.warpRoutingDesc")}
+                </Text>
+                <Wrap>
+                  {warpDomains.length === 0 && (
+                    <WrapItem>
+                      <Tag colorScheme="gray" variant="subtle">
+                        <TagLabel>{t("core.empty", "Empty")}</TagLabel>
+                      </Tag>
+                    </WrapItem>
+                  )}
+                  {warpDomains.map((domain) => (
+                    <WrapItem key={domain}>
+                      <Tag colorScheme="primary" borderRadius="full">
+                        <TagLabel>{domain}</TagLabel>
+                        <TagCloseButton
+                          aria-label={t("core.remove")}
+                          onClick={() => handleWarpDomainRemove(domain)}
+                        />
+                      </Tag>
+                    </WrapItem>
+                  ))}
+                </Wrap>
+                <HStack spacing={3} flexWrap="wrap">
+                  <Select
+                    placeholder={t("core.select")}
+                    size="sm"
+                    maxW="240px"
+                    value={warpOptionValue}
+                    onChange={(event) => {
+                      const { value } = event.target;
+                      if (value) {
+                        handleWarpDomainAdd(value);
+                      }
+                      setWarpOptionValue("");
+                    }}
+                  >
+                    {SERVICES_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <HStack spacing={2} maxW="320px" flex="1">
+                    <Input
+                      size="sm"
+                      value={warpCustomDomain}
+                      onChange={(event) => setWarpCustomDomain(event.target.value)}
+                      placeholder="geosite:google"
+                    />
+                    <Button
+                      size="sm"
+                      colorScheme="primary"
+                      onClick={() => {
+                        handleWarpDomainAdd(warpCustomDomain);
+                        setWarpCustomDomain("");
+                      }}
+                      isDisabled={!warpCustomDomain.trim()}
+                    >
+                      {t("core.add")}
+                    </Button>
+                  </HStack>
+                </HStack>
+              </VStack>
+            </Box>
+            <SettingsSection title={t("pages.xray.statistics")}>
                 <SettingRow label={t("pages.xray.statsInboundUplink")} controlId="stats-inbound-uplink">
                   {(id) => (
                     <Controller
@@ -1093,6 +1514,16 @@ export const CoreSettingsPage: FC = () => {
                 <Button leftIcon={<AddIconStyled />} {...compactActionButtonProps} onClick={addOutbound}>
                   {t("pages.xray.outbound.addOutbound")}
                 </Button>
+                <Button
+                  leftIcon={<WarpIconStyled />}
+                  size="xs"
+                  variant="ghost"
+                  onClick={onWarpOpen}
+                >
+                  {warpExists
+                    ? t("pages.xray.warp.manage", "Manage WARP")
+                    : t("pages.xray.warp.create", "Create WARP")}
+                </Button>
                 <Button leftIcon={<ReloadIconStyled />} size="xs" variant="ghost" onClick={fetchOutboundsTraffic}>
                   {t("refresh")}
                 </Button>
@@ -1115,12 +1546,20 @@ export const CoreSettingsPage: FC = () => {
                         <HStack>
                           <Text>{index + 1}</Text>
                           <IconButton
-                            aria-label="move to top"
+                            aria-label={t("pages.xray.outbound.moveUp", "Move up")}
                             icon={<ArrowUpIconStyled />}
                             size="xs"
                             variant="ghost"
                             isDisabled={index === 0}
-                            onClick={() => setFirstOutbound(index)}
+                            onClick={() => moveOutboundUp(index)}
+                          />
+                          <IconButton
+                            aria-label={t("pages.xray.outbound.moveDown", "Move down")}
+                            icon={<ArrowDownIconStyled />}
+                            size="xs"
+                            variant="ghost"
+                            isDisabled={index === outboundData.length - 1}
+                            onClick={() => moveOutboundDown(index)}
                           />
                           <IconButton
                             aria-label="edit"
@@ -1397,13 +1836,13 @@ export const CoreSettingsPage: FC = () => {
               </Box>
               <Box position="relative" w="100%" h="calc(100vh - 350px)" minH="400px">
                 <IconButton
-                  position="absolute"
+                  position={isFullScreen ? "fixed" : "absolute"}
                   top={2}
                   right={2}
                   aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}
                   icon={isFullScreen ? <ExitFullScreenIconStyled /> : <FullScreenIconStyled />}
                   onClick={toggleFullScreen}
-                  zIndex={10}
+                  zIndex={isFullScreen ? 1101 : 10}
                 />
                 <Box
                   w={isFullScreen ? "100vw" : "100%"}
@@ -1431,8 +1870,36 @@ export const CoreSettingsPage: FC = () => {
           </TabPanel>
         </TabPanels>
       </Tabs>
-      <OutboundModal isOpen={isOutboundOpen} onClose={onOutboundClose} form={form} setOutboundData={setOutboundData} />
-      <RuleModal isOpen={isRuleOpen} onClose={onRuleClose} form={form} setRoutingRuleData={setRoutingRuleData} />
+      <OutboundModal
+        isOpen={isOutboundOpen}
+        onClose={handleOutboundModalClose}
+        mode={editingOutboundIndex !== null ? "edit" : "create"}
+        initialOutbound={
+          editingOutboundIndex !== null ? canonicalOutbounds[editingOutboundIndex] : null
+        }
+        onSubmitOutbound={handleOutboundSave}
+      />
+      <RuleModal
+        isOpen={isRuleOpen}
+        mode={editingRuleIndex !== null ? "edit" : "create"}
+        initialRule={
+          editingRuleIndex !== null
+            ? canonicalRoutingRules[editingRuleIndex] || null
+            : null
+        }
+        availableInboundTags={availableInboundTags}
+        availableOutboundTags={availableOutboundTags}
+        availableBalancerTags={availableBalancerTags}
+        onSubmit={handleRuleModalSubmit}
+        onClose={handleRuleModalClose}
+      />
+      <WarpModal
+        isOpen={isWarpOpen}
+        onClose={handleWarpModalClose}
+        initialOutbound={warpOutbound}
+        onSave={handleWarpSave}
+        onDelete={handleWarpDelete}
+      />
       <BalancerModal isOpen={isBalancerOpen} onClose={onBalancerClose} form={form} setBalancersData={setBalancersData} />
       <DnsModal isOpen={isDnsOpen} onClose={onDnsClose} form={form} setDnsServers={setDnsServers} />
       <FakeDnsModal isOpen={isFakeDnsOpen} onClose={onFakeDnsClose} form={form} setFakeDns={setFakeDns} />

@@ -5,14 +5,13 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
 
 import sqlalchemy as sa
 from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
-from app import xray
 from app.db.models import (
     JWT,
     TLS,
@@ -24,7 +23,6 @@ from app.db.models import (
     Node,
     NodeUsage,
     NodeUserUsage,
-    NotificationReminder,
     Proxy,
     ProxyHost,
     ProxyInbound,
@@ -42,7 +40,6 @@ from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsa
 from app.models.proxy import ProxyHost as ProxyHostModify
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 from app.models.user import (
-    ReminderType,
     UserCreate,
     UserDataLimitResetStrategy,
     UserModify,
@@ -51,8 +48,7 @@ from app.models.user import (
     UserUsageResponse,
 )
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
-from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
-from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
+from config import USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
 
 
@@ -347,6 +343,7 @@ def _assign_service_admins(
 
 
 def _service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
+    from app.runtime import xray
     allowed: Dict[ProxyTypes, Set[str]] = defaultdict(set)
     for link in service.host_links:
         host = link.host
@@ -391,6 +388,7 @@ def _apply_service_to_user(
     service: Service,
     allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
 ) -> None:
+    from app.runtime import xray
     if allowed_inbounds is None:
         allowed_inbounds = _service_allowed_inbounds(service)
 
@@ -570,11 +568,41 @@ def update_service(
     return service, allowed_before, allowed_after
 
 
-def remove_service(db: Session, service: Service) -> None:
-    if service.users:
-        raise ValueError("Cannot delete a service while users are assigned to it")
+def remove_service(
+    db: Session,
+    service: Service,
+    *,
+    mode: Literal["delete_users", "transfer_users"] = "delete_users",
+    target_service: Optional[Service] = None,
+    unlink_admins: bool = False,
+) -> Tuple[List[User], List[User]]:
+    if service.admin_links and not unlink_admins:
+        raise ValueError("Service has admins assigned. Unlink them before deleting.")
+
+    deleted_users: List[User] = []
+    transferred_users: List[User] = []
+    service_users = list(service.users)
+
+    if unlink_admins and service.admin_links:
+        service.admin_links.clear()
+
+    if service_users:
+        if mode == "transfer_users":
+            if not target_service or target_service.id == service.id:
+                raise ValueError("A different target service is required for transferring users")
+            for user in service_users:
+                user.service_id = target_service.id
+                transferred_users.append(user)
+        elif mode == "delete_users":
+            deleted_users.extend(service_users)
+            for user in service_users:
+                db.delete(user)
+        else:
+            raise ValueError("Invalid delete mode")
+
     db.delete(service)
     db.commit()
+    return deleted_users, transferred_users
 
 
 def reset_service_usage(db: Session, service: Service) -> Service:
@@ -1405,13 +1433,6 @@ def update_user(
                 if dbuser.status != UserStatus.on_hold:
                     dbuser.status = UserStatus.active
 
-                for percent in sorted(NOTIFY_REACHED_USAGE_PERCENT, reverse=True):
-                    if not dbuser.data_limit or (calculate_usage_percent(
-                            dbuser.used_traffic, dbuser.data_limit) < percent):
-                        reminder = get_notification_reminder(db, dbuser.id, ReminderType.data_usage, threshold=percent)
-                        if reminder:
-                            delete_notification_reminder(db, reminder)
-
             else:
                 dbuser.status = UserStatus.limited
 
@@ -1420,13 +1441,6 @@ def update_user(
         if dbuser.status in (UserStatus.active, UserStatus.expired):
             if not dbuser.expire or dbuser.expire > datetime.utcnow().timestamp():
                 dbuser.status = UserStatus.active
-                for days_left in sorted(NOTIFY_DAYS_LEFT):
-                    if not dbuser.expire or (calculate_expiration_days(
-                            dbuser.expire) > days_left):
-                        reminder = get_notification_reminder(
-                            db, dbuser.id, ReminderType.expiration_date, threshold=days_left)
-                        if reminder:
-                            delete_notification_reminder(db, reminder)
             else:
                 dbuser.status = UserStatus.expired
 
@@ -1945,7 +1959,6 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         hashed_password=admin.hashed_password,
         is_sudo=admin.is_sudo,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
-        discord_webhook=admin.discord_webhook if admin.discord_webhook else None,
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
         status=AdminStatus.active,
@@ -1975,8 +1988,6 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.password_reset_at = datetime.utcnow()
     if modified_admin.telegram_id:
         dbadmin.telegram_id = modified_admin.telegram_id
-    if modified_admin.discord_webhook:
-        dbadmin.discord_webhook = modified_admin.discord_webhook
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
     if modified_admin.users_limit is not None:
@@ -2014,8 +2025,6 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.password_reset_at = datetime.utcnow()
     if modified_admin.telegram_id is not None:
         dbadmin.telegram_id = modified_admin.telegram_id
-    if modified_admin.discord_webhook is not None:
-        dbadmin.discord_webhook = modified_admin.discord_webhook
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
     if modified_admin.users_limit is not None:
@@ -2676,106 +2685,6 @@ def reset_node_usage(db: Session, dbnode: Node) -> Node:
     db.commit()
     db.refresh(dbnode)
     return dbnode
-
-
-def create_notification_reminder(
-        db: Session, reminder_type: ReminderType, expires_at: datetime, user_id: int, threshold: Optional[int] = None) -> NotificationReminder:
-    """
-    Creates a new notification reminder.
-
-    Args:
-        db (Session): The database session.
-        reminder_type (ReminderType): The type of reminder.
-        expires_at (datetime): The expiration time of the reminder.
-        user_id (int): The ID of the user associated with the reminder.
-        threshold (Optional[int]): The threshold value to check for (e.g., days left or usage percent).
-
-    Returns:
-        NotificationReminder: The newly created NotificationReminder object.
-    """
-    reminder = NotificationReminder(type=reminder_type, expires_at=expires_at, user_id=user_id)
-    if threshold is not None:
-        reminder.threshold = threshold
-    db.add(reminder)
-    db.commit()
-    db.refresh(reminder)
-    return reminder
-
-
-def get_notification_reminder(
-        db: Session, user_id: int, reminder_type: ReminderType, threshold: Optional[int] = None
-) -> Union[NotificationReminder, None]:
-    """
-    Retrieves a notification reminder for a user.
-
-    Args:
-        db (Session): The database session.
-        user_id (int): The ID of the user.
-        reminder_type (ReminderType): The type of reminder to retrieve.
-        threshold (Optional[int]): The threshold value to check for (e.g., days left or usage percent).
-
-    Returns:
-        Union[NotificationReminder, None]: The NotificationReminder object if found and not expired, None otherwise.
-    """
-    query = db.query(NotificationReminder).filter(
-        NotificationReminder.user_id == user_id,
-        NotificationReminder.type == reminder_type
-    )
-
-    # If a threshold is provided, filter for reminders with this threshold
-    if threshold is not None:
-        query = query.filter(NotificationReminder.threshold == threshold)
-
-    reminder = query.first()
-
-    if reminder is None:
-        return None
-
-    # Check if the reminder has expired
-    if reminder.expires_at and reminder.expires_at < datetime.utcnow():
-        db.delete(reminder)
-        db.commit()
-        return None
-
-    return reminder
-
-
-def delete_notification_reminder_by_type(
-        db: Session, user_id: int, reminder_type: ReminderType, threshold: Optional[int] = None
-) -> None:
-    """
-    Deletes a notification reminder for a user based on the reminder type and optional threshold.
-
-    Args:
-        db (Session): The database session.
-        user_id (int): The ID of the user.
-        reminder_type (ReminderType): The type of reminder to delete.
-        threshold (Optional[int]): The threshold to delete (e.g., days left or usage percent). If not provided, deletes all reminders of that type.
-    """
-    stmt = delete(NotificationReminder).where(
-        NotificationReminder.user_id == user_id,
-        NotificationReminder.type == reminder_type
-    )
-
-    # If a threshold is provided, include it in the filter
-    if threshold is not None:
-        stmt = stmt.where(NotificationReminder.threshold == threshold)
-
-    db.execute(stmt)
-    db.commit()
-
-
-def delete_notification_reminder(db: Session, dbreminder: NotificationReminder) -> None:
-    """
-    Deletes a specific notification reminder.
-
-    Args:
-        db (Session): The database session.
-        dbreminder (NotificationReminder): The NotificationReminder object to delete.
-    """
-    db.delete(dbreminder)
-    db.commit()
-    return
 
 
 def count_online_users(db: Session, hours: int = 24):

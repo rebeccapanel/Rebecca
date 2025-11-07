@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, List, Literal, Union
 
 from jdatetime import date as jd
 
-from app import xray
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
 
 from . import *
@@ -246,6 +245,7 @@ def process_inbounds_and_tags(
         ],
         reverse=False,
 ) -> Union[List, str]:
+    from app.runtime import xray
     inbound_index = {
         tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
     }

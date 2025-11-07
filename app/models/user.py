@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app import xray
 from app.models.admin import Admin
 from app.models.proxy import ProxySettings, ProxyTypes
 from app.subscription.share import generate_v2ray_links
@@ -154,6 +153,7 @@ class UserCreate(User):
 
     @property
     def excluded_inbounds(self):
+        from app.runtime import xray
         excluded = {}
         for proxy_type in self.proxies:
             excluded[proxy_type] = []
@@ -165,6 +165,7 @@ class UserCreate(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
+        from app.runtime import xray
         proxies = values.data.get("proxies", [])
 
         # delete inbounds that are for protocols not activated
@@ -236,6 +237,7 @@ class UserModify(User):
 
     @property
     def excluded_inbounds(self):
+        from app.runtime import xray
         excluded = {}
         for proxy_type in self.inbounds:
             excluded[proxy_type] = []
@@ -247,6 +249,7 @@ class UserModify(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
+        from app.runtime import xray
         # check with inbounds, "proxies" is optional on modifying
         # so inbounds particularly can be modified
         if inbounds:

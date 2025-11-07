@@ -226,11 +226,16 @@ class XRayConfig(dict):
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
 
                         try:
-                            from app.xray import core
-                            x25519 = core.get_x25519(pvk)
-                            settings['pbk'] = x25519['public_key']
+                            from app.reb_node import core
                         except ImportError:
                             pass
+                        else:
+                            x25519 = core.get_x25519(pvk)
+                            public_key = None
+                            if isinstance(x25519, dict):
+                                public_key = x25519.get('public_key')
+                            if public_key:
+                                settings['pbk'] = public_key
 
                         if not settings.get('pbk'):
                             raise ValueError(

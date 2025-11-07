@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ServiceHostAssignment(BaseModel):
@@ -126,3 +126,15 @@ class ServiceAdminTimeseries(BaseModel):
     end: datetime
     granularity: Literal["day", "hour"]
     points: List[ServiceUsagePoint]
+
+
+class ServiceDeletePayload(BaseModel):
+    mode: Literal["delete_users", "transfer_users"] = "delete_users"
+    target_service_id: Optional[int] = None
+    unlink_admins: bool = False
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if self.mode == "transfer_users" and self.target_service_id is None:
+            raise ValueError("target_service_id is required when transferring users")
+        return self

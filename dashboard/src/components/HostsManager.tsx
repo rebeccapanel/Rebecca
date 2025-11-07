@@ -667,11 +667,11 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
                           <DynamicTokensPopover />
                         </InputRightElement>
                       </InputGroup>
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>{t("hostsDialog.port")}</FormLabel>
-                      <NumberInput
-                        value={host.data.port ?? ""}
+                </FormControl>
+                <FormControl>
+                  <FormLabel>{t("hostsDialog.port")}</FormLabel>
+                  <NumberInput
+                    value={host.data.port ?? ""}
                         allowMouseWheel
                         onChange={(_, num) =>
                           onChange(host.uid, "port", Number.isNaN(num) ? null : num)
@@ -679,11 +679,19 @@ const HostDetailDrawer: FC<HostDetailDrawerProps> = ({
                       >
                         <NumberInputField />
                       </NumberInput>
-                    </FormControl>
-                  </SimpleGrid>
-                </VStack>
-              </CardBody>
-            </Card>
+                </FormControl>
+              </SimpleGrid>
+              <FormControl>
+                <FormLabel>{t("hostsDialog.path")}</FormLabel>
+                <Input
+                  value={host.data.path}
+                  onChange={(event) => onChange(host.uid, "path", event.target.value)}
+                  placeholder="/"
+                />
+              </FormControl>
+            </VStack>
+          </CardBody>
+        </Card>
 
             <Card variant="outline">
               <CardHeader pb={2}>

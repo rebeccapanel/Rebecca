@@ -27,7 +27,7 @@ import { z } from "zod";
 import { Input } from "components/Input";
 import { fetch } from "service/http";
 import { removeAuthToken, setAuthToken } from "utils/authStorage";
-import { ReactComponent as Logo } from "assets/logo.svg";
+import logoUrl from "assets/logo.svg";
 import { useTranslation } from "react-i18next";
 import { Language } from "components/Language";
 import ThemeSelector from "components/ThemeSelector";
@@ -37,9 +37,8 @@ const schema = z.object({
   password: z.string().min(1, "login.fieldRequired"),
 });
 
-export const LogoIcon = chakra(Logo, {
+export const LogoIcon = chakra("img", {
   baseStyle: {
-    strokeWidth: "10px",
     w: 12,
     h: 12,
   },
@@ -114,7 +113,7 @@ export const Login: FC = () => {
             <ThemeSelector minimal />
           </HStack>
           <VStack alignItems="center" w="full" spacing={4}>
-            <LogoIcon />
+            <LogoIcon src={logoUrl} alt={t("appName") || "Rebecca"} />
             <Text fontSize="2xl" fontWeight="semibold">
               {t("login.loginYourAccount")}
             </Text>

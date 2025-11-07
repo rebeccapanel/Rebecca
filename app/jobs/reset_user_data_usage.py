@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app import logger, scheduler, xray
+from app.runtime import logger, scheduler, xray
 from app.db import crud, GetDB, get_users
 from app.models.user import UserDataLimitResetStrategy, UserStatus
 
@@ -41,3 +41,4 @@ def reset_user_data_usage():
 
 
 scheduler.add_job(reset_user_data_usage, 'interval', coalesce=True, hours=1)
+

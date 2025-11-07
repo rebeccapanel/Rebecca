@@ -2,7 +2,8 @@ from typing import Dict, List, Union
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app import __version__, xray
+from app import __version__
+from app.runtime import xray
 from app.db import Session, crud, get_db
 from app.models.admin import Admin
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes

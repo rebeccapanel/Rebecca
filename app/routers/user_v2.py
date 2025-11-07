@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import logger, xray
+from app.runtime import logger, xray
 from app.db import crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user

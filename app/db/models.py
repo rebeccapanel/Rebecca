@@ -21,7 +21,6 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
 
-from app import xray
 from app.db.base import Base
 from app.models.admin import AdminStatus
 from app.models.node import NodeStatus, GeoMode
@@ -31,7 +30,7 @@ from app.models.proxy import (
     ProxyHostSecurity,
     ProxyTypes,
 )
-from app.models.user import ReminderType, UserDataLimitResetStrategy, UserStatus
+from app.models.user import UserDataLimitResetStrategy, UserStatus
 
 
 class Admin(Base):
@@ -52,7 +51,6 @@ class Admin(Base):
     is_sudo = Column(Boolean, default=False)
     password_reset_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, nullable=True, default=None)
-    discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
     data_limit = Column(BigInteger, nullable=True, default=None)
@@ -98,7 +96,6 @@ class User(Base):
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
     used_traffic = Column(BigInteger, default=0)
     node_usages = relationship("NodeUserUsage", back_populates="user", cascade="all, delete-orphan")
-    notification_reminders = relationship("NotificationReminder", back_populates="user", cascade="all, delete-orphan")
     data_limit = Column(BigInteger, nullable=True)
     data_limit_reset_strategy = Column(
         Enum(UserDataLimitResetStrategy),
@@ -168,6 +165,7 @@ class User(Base):
 
     @property
     def inbounds(self):
+        from app.runtime import xray  # lazy import to avoid circular dependency
         _ = {}
         for proxy in self.proxies:
             _[proxy.type] = []
@@ -399,6 +397,21 @@ class System(Base):
     downlink = Column(BigInteger, default=0)
 
 
+class WarpAccount(Base):
+    __tablename__ = "warp_accounts"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(String(64), nullable=False, unique=True, index=True)
+    access_token = Column(String(255), nullable=False)
+    license_key = Column(String(64), nullable=True)
+    private_key = Column(String(128), nullable=False)
+    public_key = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class JWT(Base):
     __tablename__ = "jwt"
 
@@ -477,15 +490,3 @@ class NodeUsage(Base):
     node = relationship("Node", back_populates="usages")
     uplink = Column(BigInteger, default=0)
     downlink = Column(BigInteger, default=0)
-
-
-class NotificationReminder(Base):
-    __tablename__ = "notification_reminders"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    user = relationship("User", back_populates="notification_reminders")
-    type = Column(Enum(ReminderType), nullable=False)
-    threshold = Column(Integer, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)

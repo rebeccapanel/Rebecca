@@ -1,7 +1,7 @@
 import time
 import traceback
 
-from app import app, logger, scheduler, xray
+from app.runtime import app, logger, scheduler, xray
 from app.db import GetDB, crud
 from app.models.node import NodeStatus
 from config import JOB_CORE_HEALTH_CHECK_INTERVAL
@@ -76,3 +76,5 @@ def app_shutdown():
             node.disconnect()
         except Exception:
             pass
+
+

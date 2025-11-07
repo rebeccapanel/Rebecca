@@ -4,6 +4,9 @@ import {
   AccordionIcon,
   AccordionItem,
   AccordionPanel,
+  Alert,
+  AlertIcon,
+  AlertDescription,
   AlertDialog,
   AlertDialogBody,
   AlertDialogContent,
@@ -41,6 +44,9 @@ import {
   Text,
   Th,
   Thead,
+  Checkbox,
+  RadioGroup,
+  Radio,
   Tooltip,
   Tr,
   VStack,
@@ -54,7 +60,13 @@ import { useHosts } from "contexts/HostsContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ServiceCreatePayload, ServiceDetail, ServiceHostAssignment, ServiceSummary } from "types/Service";
+import {
+  ServiceCreatePayload,
+  ServiceDeletePayload,
+  ServiceDetail,
+  ServiceHostAssignment,
+  ServiceSummary,
+} from "types/Service";
 import useGetUser from "hooks/useGetUser";
 import { formatBytes } from "utils/formatByte";
 import { Input } from "components/Input";
@@ -556,14 +568,11 @@ const ServicesPage: FC = () => {
     }
   };
 
-  const handleDelete = async (serviceId: number) => {
+  const beginDeleteService = async (serviceId: number) => {
     try {
-      await servicesStore.deleteService(serviceId);
-      toast({
-        status: "success",
-        title: t("services.deleted", "Service removed"),
-      });
-      refetchUsers();
+      const detail = await servicesStore.fetchServiceDetail(serviceId);
+      setServicePendingDelete(detail);
+      openDeleteDialog();
     } catch (error: any) {
       toast({
         status: "error",
@@ -618,6 +627,80 @@ const ServicesPage: FC = () => {
     resetServiceId != null
       ? servicesStore.services.find((service) => service.id === resetServiceId)?.name
       : undefined;
+
+  const handleCloseDeleteDialog = () => {
+    setServicePendingDelete(null);
+    closeDeleteDialog();
+  };
+
+  const confirmDeleteService = async () => {
+    if (!servicePendingDelete) {
+      return;
+    }
+    const payload: ServiceDeletePayload = {
+      mode: servicePendingDelete.user_count ? deleteMode : "delete_users",
+      unlink_admins: unlinkAdmins,
+    };
+    if (payload.mode === "transfer_users") {
+      if (!targetServiceId) {
+        toast({
+          status: "error",
+          title: t("services.selectTransferTarget", "Select a target service"),
+        });
+        return;
+      }
+      payload.target_service_id = targetServiceId;
+    }
+    setIsDeleting(true);
+    try {
+      await servicesStore.deleteService(servicePendingDelete.id, payload);
+      toast({
+        status: "success",
+        title: t("services.deleted", "Service removed"),
+      });
+      refetchUsers();
+      handleCloseDeleteDialog();
+    } catch (error: any) {
+      toast({
+        status: "error",
+        title: error?.data?.detail ?? t("services.deleteFailed", "Unable to delete service"),
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const [servicePendingDelete, setServicePendingDelete] = useState<ServiceDetail | null>(null);
+  const [deleteMode, setDeleteMode] = useState<"delete_users" | "transfer_users">("delete_users");
+  const [unlinkAdmins, setUnlinkAdmins] = useState(false);
+  const [targetServiceId, setTargetServiceId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const {
+    isOpen: isDeleteDialogOpen,
+    onOpen: openDeleteDialog,
+    onClose: closeDeleteDialog,
+  } = useDisclosure();
+
+  const otherServices = useMemo(() => {
+    if (!servicePendingDelete) {
+      return servicesStore.services;
+    }
+    return servicesStore.services.filter((service) => service.id !== servicePendingDelete.id);
+  }, [servicePendingDelete, servicesStore.services]);
+
+  useEffect(() => {
+    if (servicePendingDelete) {
+      setDeleteMode("delete_users");
+      setUnlinkAdmins(servicePendingDelete.admin_ids.length > 0);
+      setTargetServiceId(null);
+    }
+  }, [servicePendingDelete]);
+
+  useEffect(() => {
+    if (deleteMode === "delete_users") {
+      setTargetServiceId(null);
+    }
+  }, [deleteMode]);
 
   const renderServiceAccordionItem = (service: ServiceSummary) => (
     <AccordionItem
@@ -737,7 +820,7 @@ const ServicesPage: FC = () => {
                       colorScheme="red"
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleDelete(service.id);
+                        beginDeleteService(service.id);
                       }}
                       isDisabled={!isSudo}
                     />
@@ -804,7 +887,7 @@ const ServicesPage: FC = () => {
                   icon={<TrashIcon width={18} />}
                   size="sm"
                   variant="ghost"
-                  onClick={() => handleDelete(service.id)}
+                  onClick={() => beginDeleteService(service.id)}
                 />
               </Tooltip>
             </>
@@ -1021,6 +1104,134 @@ const ServicesPage: FC = () => {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+
+      <Modal isOpen={isDeleteDialogOpen} onClose={handleCloseDeleteDialog} size="lg">
+        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(6px)" />
+        <ModalContent>
+          <ModalHeader>
+            {t("services.deleteDialogTitle", "Delete Service")}
+            {servicePendingDelete ? ` – ${servicePendingDelete.name}` : ""}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {servicePendingDelete ? (
+              <VStack align="stretch" spacing={4}>
+                <Text>
+                  {t("services.deleteDialogDescription", {
+                    defaultValue:
+                      "Deleting the service \"{{name}}\" cannot be undone. Choose how linked resources should be handled.",
+                    name: servicePendingDelete.name,
+                  })}
+                </Text>
+                {servicePendingDelete.admin_ids.length > 0 ? (
+                  <Checkbox
+                    isChecked={unlinkAdmins}
+                    onChange={(event) => setUnlinkAdmins(event.target.checked)}
+                  >
+                    {t("services.unlinkAdminsOption", "Unlink all admins automatically")}
+                  </Checkbox>
+                ) : (
+                  <Text fontSize="sm" color="gray.500">
+                    {t("services.noAdminsLinked", "No admins are currently linked.")}
+                  </Text>
+                )}
+                {servicePendingDelete.user_count > 0 ? (
+                  <VStack align="stretch" spacing={3}>
+                    <Text fontWeight="semibold">
+                      {t("services.userDeletePrompt", {
+                        defaultValue:
+                          "This service has {{count}} linked users. Choose how to handle them.",
+                        count: servicePendingDelete.user_count,
+                      })}
+                    </Text>
+                    <RadioGroup
+                      value={deleteMode}
+                      onChange={(value) => setDeleteMode(value as "delete_users" | "transfer_users")}
+                    >
+                      <Stack align="flex-start" spacing={2}>
+                        <Radio value="delete_users">
+                          {t("services.deleteUsersOption", "Delete linked users with the service")}
+                        </Radio>
+                        <Radio
+                          value="transfer_users"
+                          isDisabled={otherServices.length === 0}
+                        >
+                          {otherServices.length === 0
+                            ? t(
+                                "services.transferUsersDisabled",
+                                "Transfer users (no other services available)"
+                              )
+                            : t("services.transferUsersOption", "Transfer users to another service")}
+                        </Radio>
+                      </Stack>
+                    </RadioGroup>
+                    {deleteMode === "transfer_users" && otherServices.length > 0 && (
+                      <FormControl isRequired>
+                        <FormLabel>
+                          {t("services.selectTargetService", "Target service")}
+                        </FormLabel>
+                        <Select
+                          placeholder={t(
+                            "services.selectServicePlaceholder",
+                            "Select a service"
+                          )}
+                          value={targetServiceId ?? ""}
+                          onChange={(event) =>
+                            setTargetServiceId(
+                              event.target.value ? Number(event.target.value) : null
+                            )
+                          }
+                        >
+                          {otherServices.map((service) => (
+                            <option key={service.id} value={service.id}>
+                              {service.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <FormHelperText>
+                          {t(
+                            "services.transferUsersHint",
+                            "All users will be moved to the selected service."
+                          )}
+                        </FormHelperText>
+                      </FormControl>
+                    )}
+                  </VStack>
+                ) : (
+                  <Alert status="info" borderRadius="md">
+                    <AlertIcon />
+                    <AlertDescription>
+                      {t("services.noUsersLinked", "This service has no linked users.")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </VStack>
+            ) : (
+              <Text>{t("services.loading", "Loading...")}</Text>
+            )}
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={handleCloseDeleteDialog}>
+              {t("cancel", "Cancel")}
+            </Button>
+            <Button
+              colorScheme="red"
+              onClick={confirmDeleteService}
+              isLoading={isDeleting}
+              isDisabled={
+                Boolean(
+                  servicePendingDelete?.user_count &&
+                    deleteMode === "transfer_users" &&
+                    otherServices.length > 0 &&
+                    !targetServiceId
+                )
+              }
+            >
+              {t("services.delete", "Delete")}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <ServiceDialog
         isOpen={dialogDisclosure.isOpen}

@@ -553,7 +553,7 @@ export const IntegrationSettingsPage = () => {
                     <Text fontSize="sm" color="gray.500" mb={4}>
                       {t(
                         "settings.telegram.notificationsDescription",
-                        "Choose which events should trigger Telegram and Discord notifications."
+                        "Choose which events should trigger Telegram notifications."
                       )}
                     </Text>
                     <Stack spacing={4}>

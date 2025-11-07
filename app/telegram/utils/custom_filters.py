@@ -1,7 +1,7 @@
 from telebot import types
 from telebot.custom_filters import AdvancedCustomFilter
 
-from app import logger
+from app.runtime import logger
 from app.services import TelegramSettingsService
 from app.telegram import get_bot
 
@@ -35,3 +35,4 @@ def setup() -> None:
         logger.info("Telegram bot not available; skipping admin filter registration")
         return
     bot_instance.add_custom_filter(IsAdminFilter())
+

@@ -5,9 +5,14 @@ import threading
 from collections import deque
 from contextlib import contextmanager
 
-from app import logger
-from app.xray.config import XRayConfig
+import logging
+
+import app.utils.system as system_utils
+from app.reb_node.config import XRayConfig
 from config import DEBUG
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class XRayCore:
@@ -166,3 +171,4 @@ class XRayCore:
     def on_stop(self, func: callable):
         self._on_stop_funcs.append(func)
         return func
+

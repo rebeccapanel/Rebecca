@@ -3,7 +3,7 @@ from os.path import dirname
 from threading import Lock, Thread
 from typing import Optional, Tuple, Union
 
-from app import app, logger
+from app.runtime import logger
 from app.services import TelegramSettingsService
 from app.services.telegram_settings import TelegramSettingsData
 from telebot import TeleBot, apihelper
@@ -170,11 +170,12 @@ def reload_bot() -> None:
 
     _prepare_handlers()
     _start_polling(bot_instance)
-
-
-@app.on_event("startup")
 def start_bot() -> None:
     ensure_polling()
+
+
+def setup(app):
+    app.add_event_handler("startup", start_bot)
 
 
 from .handlers.report import (  # noqa
@@ -224,5 +225,8 @@ __all__ = [
     "report_admin_deleted",
     "report_admin_usage_reset",
     "report_admin_limit_reached",
+    "setup",
 ]
+
+
 

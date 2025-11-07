@@ -54,7 +54,6 @@ $ admin create [OPTIONS]
 * `-u, --username TEXT`: [required]
 * `--sudo / --no-sudo`: [default: no-sudo]
 * `-tg, --telegram-id TEXT`
-* `-dc, --discord-webhook TEXT`
 * `--help`: Show this message and exit.
 
 ### `admin delete`

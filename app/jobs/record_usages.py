@@ -9,7 +9,7 @@ from sqlalchemy import and_, bindparam, func, insert, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Insert
 
-from app import scheduler, xray
+from app.runtime import scheduler, xray
 from app.utils import report
 from app.db import GetDB
 from app.db.models import (
@@ -407,6 +407,7 @@ scheduler.add_job(record_user_usages, 'interval',
 scheduler.add_job(record_node_usages, 'interval',
                   seconds=JOB_RECORD_NODE_USAGES_INTERVAL,
                   coalesce=True, max_instances=1)
+
 
 
 

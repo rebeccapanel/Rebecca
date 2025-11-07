@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import xray
+from app.runtime import xray
 from app.db import crud, get_db
 from app.db.models import Service, User
 from app.dependencies import validate_dates
@@ -24,8 +24,10 @@ from app.models.service import (
     ServiceAdminTimeseries,
     ServiceUsagePoint,
     ServiceUsageTimeseries,
+    ServiceDeletePayload,
 )
 from app.models.user import UserResponse, UsersResponse
+from app.reb_node import operations as core_operations
 from app.utils import responses
 
 router = APIRouter(
@@ -204,6 +206,7 @@ def modify_service(
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_service(
     service_id: int,
+    payload: ServiceDeletePayload = Body(default=ServiceDeletePayload()),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -211,11 +214,33 @@ def delete_service(
     service = crud.get_service(db, service_id)
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    target_service: Optional[Service] = None
+    if payload.mode == "transfer_users":
+        if payload.target_service_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_service_id is required")
+        if payload.target_service_id == service.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target service must be different")
+        target_service = crud.get_service(db, payload.target_service_id)
+        if not target_service:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target service not found")
+
     try:
-        crud.remove_service(db, service)
+        deleted_users, transferred_users = crud.remove_service(
+            db,
+            service,
+            mode=payload.mode,
+            target_service=target_service,
+            unlink_admins=payload.unlink_admins,
+        )
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    for dbuser in deleted_users:
+        core_operations.remove_user(dbuser=dbuser)
+    for dbuser in transferred_users:
+        core_operations.update_user(dbuser=dbuser)
 
 
 @router.post("/{service_id}/reset-usage", response_model=ServiceDetail)

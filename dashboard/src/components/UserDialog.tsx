@@ -13,6 +13,8 @@ import {
   GridItem,
   HStack,
   IconButton,
+  NumberInput,
+  NumberInputField,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -33,6 +35,7 @@ import {
 } from "@chakra-ui/react";
 import {
   ChartPieIcon,
+  CheckIcon,
   LockClosedIcon,
   PencilIcon,
   UserPlusIcon,
@@ -43,7 +46,7 @@ import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import dayjs from "dayjs";
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import DatePicker from "components/common/DatePicker";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
@@ -94,6 +97,13 @@ const LimitLockIcon = chakra(LockClosedIcon, {
   },
 });
 
+const ConfirmIcon = chakra(CheckIcon, {
+  baseStyle: {
+    w: 4,
+    h: 4,
+  },
+});
+
 export type UserDialogProps = {};
 type BaseFormFields = Pick<
   UserCreate,
@@ -115,6 +125,15 @@ export type FormType = BaseFormFields & {
   next_plan_expire: number | null;
   next_plan_add_remaining_traffic: boolean;
   next_plan_fire_on_either: boolean;
+};
+
+type QuickExpiryOption = {
+  key: string;
+  label: string;
+  months?: number;
+  years?: number;
+  setExact?: () => Date;
+  preserveExact?: boolean;
 };
 
 const formatUser = (user: User): FormType => {
@@ -288,6 +307,255 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const { t, i18n } = useTranslation();
 
   const { colorMode } = useColorMode();
+  const dateFormatPattern = t("dateFormat");
+  const hourPlaceholder = t("userDialog.hourPlaceholder", "Hour (1-24)");
+  const confirmLabel = t("userDialog.confirmDate", "Apply date");
+  const form = useForm<FormType>({
+    defaultValues: getDefaultValues(),
+    resolver: zodResolver(schema),
+  });
+  const expireInitialValue = form.getValues("expire");
+  const nextPlanInitialValue = form.getValues("next_plan_expire");
+  function clampHour(value: number | null | undefined): number {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+      return 24;
+    }
+    const parsed = Math.round(Number(value));
+    if (!Number.isFinite(parsed)) {
+      return 24;
+    }
+    return Math.min(Math.max(parsed, 1), 24);
+  }
+
+  function applyHourToDate(date: Date, hour: number): Date {
+    const normalizedHour = clampHour(hour);
+    let result = dayjs(date).set("millisecond", 0);
+    if (normalizedHour === 24) {
+      result = result.set("hour", 23).set("minute", 59).set("second", 59);
+    } else {
+      result = result
+        .set("hour", normalizedHour)
+        .set("minute", 0)
+        .set("second", 0);
+    }
+    return result.toDate();
+  }
+
+  function deriveHourFromDate(date: Date | null): number {
+    if (!date) {
+      return 24;
+    }
+    const local = dayjs(date);
+    const hour = local.hour();
+    const minute = local.minute();
+    if (hour === 23 && minute >= 59) {
+      return 24;
+    }
+    return clampHour(hour === 0 ? 1 : hour);
+  }
+
+  function deriveHourFromSeconds(value: unknown): number {
+    if (typeof value !== "number" || value <= 0) {
+      return 24;
+    }
+    const localDate = dayjs.unix(value).utc().local().toDate();
+    return deriveHourFromDate(localDate);
+  }
+
+  function convertDateToSeconds(date: Date): number {
+    return Math.floor(dayjs(date).utc().valueOf() / 1000);
+  }
+
+  function toDateFromSeconds(value: number): Date {
+    return dayjs.unix(value).utc().toDate();
+  }
+
+  const [expireHour, setExpireHour] = useState<number>(() =>
+    deriveHourFromSeconds(expireInitialValue)
+  );
+  const [nextPlanHour, setNextPlanHour] = useState<number>(() =>
+    deriveHourFromSeconds(nextPlanInitialValue)
+  );
+  const expirePickerRef = useRef<any>(null);
+  const nextPlanPickerRef = useRef<any>(null);
+
+  const quickExpiryOptions = useMemo<QuickExpiryOption[]>(
+    () => [
+      { key: "1m", label: t("userDialog.quickSelectOneMonth", "+1 month"), months: 1 },
+      { key: "3m", label: t("userDialog.quickSelectThreeMonths", "+3 months"), months: 3 },
+      { key: "6m", label: t("userDialog.quickSelectSixMonths", "+6 months"), months: 6 },
+      { key: "1y", label: t("userDialog.quickSelectOneYear", "+1 year"), years: 1 },
+    ],
+    [t]
+  );
+
+  const buildCalendarWithQuickSelect = (config: {
+    getReferenceDate: () => Date;
+    getSelectedDate?: () => Date | null;
+    onSelect: (nextDate: Date) => void;
+    getHour: () => number;
+    onHourChange: (hour: number) => void;
+    onConfirm: () => void;
+    pickerRef?: React.RefObject<any>;
+  }) => {
+    const {
+      getReferenceDate,
+      getSelectedDate,
+      onSelect,
+      getHour,
+      onHourChange,
+      onConfirm,
+      pickerRef,
+    } = config;
+
+    return (props: any) => {
+      const { children, className, style, ...rest } = props;
+      const containerBg =
+        (style?.backgroundColor as string | undefined) ??
+        (style?.background as string | undefined);
+      const panelBg =
+        containerBg ?? (colorMode === "dark" ? "rgba(26,35,51,0.95)" : "#ffffff");
+      const dividerColor = colorMode === "dark" ? "rgba(74,85,104,0.65)" : "rgba(226,232,240,0.9)";
+      const containerBorderColor =
+        colorMode === "dark" ? "rgba(148, 163, 184, 0.22)" : "rgba(203, 213, 225, 0.75)";
+      const containerShadow =
+        colorMode === "dark"
+          ? "0px 14px 30px rgba(15, 23, 42, 0.45)"
+          : "0px 18px 36px rgba(148, 163, 184, 0.28)";
+
+      const containerStyle = {
+        ...(style ?? {}),
+        display: "flex",
+        flexDirection: "column",
+        gap: "14px",
+        alignItems: "stretch",
+        padding: "14px 14px 16px",
+        borderRadius: style?.borderRadius ?? "14px",
+        background: containerBg ?? (colorMode === "dark" ? "rgba(17, 24, 39, 0.98)" : "#ffffff"),
+        border: style?.border ?? `1px solid ${containerBorderColor}`,
+        boxShadow: style?.boxShadow ?? containerShadow,
+      };
+
+      const hourValue = getHour();
+
+      const handleOptionSelect = (option: QuickExpiryOption) => {
+        const selectedBase =
+          getSelectedDate?.() ??
+          getReferenceDate();
+        let nextDate: Date;
+        if (option.setExact) {
+          nextDate = option.setExact();
+        } else {
+          const base = dayjs(selectedBase)
+            .add(option.months ?? 0, "month")
+            .add(option.years ?? 0, "year");
+          nextDate = base.toDate();
+        }
+
+        const finalDate = option.preserveExact
+          ? nextDate
+          : applyHourToDate(nextDate, getHour());
+
+        // Update the selected date and trigger calendar month/year change
+        onSelect(finalDate);
+        
+        // Force the calendar to show the month of the newly selected date
+        if (pickerRef?.current) {
+          pickerRef.current.setSelected(finalDate);
+        }
+      };
+
+      const handleHourChange = (value: number) => {
+        onHourChange(clampHour(value));
+      };
+
+      const handleHourBlur = () => {
+        onHourChange(clampHour(hourValue));
+      };
+
+      return (
+        <div
+          {...rest}
+          className={classNames("datepicker-with-quickselect", className)}
+          style={containerStyle}
+        >
+          <Flex
+            className="datepicker-main-row"
+            align="stretch"
+            gap="12px"
+            flexWrap="nowrap"
+          >
+            <Box
+              className="datepicker-quickselect-panel"
+              flexShrink={0}
+              width="150px"
+              px={2}
+              py={3}
+              bg={panelBg}
+              borderRight="1px solid"
+              borderColor={dividerColor}
+              borderTopLeftRadius="inherit"
+              borderBottomLeftRadius="inherit"
+              borderTopRightRadius="0"
+              borderBottomRightRadius="0"
+            >
+              <VStack align="stretch" spacing={2} height="100%">
+                {quickExpiryOptions.map((option) => (
+                  <Button
+                    key={option.key}
+                    size="sm"
+                    height="36px"
+                    variant="outline"
+                    colorScheme="primary"
+                    width="100%"
+                    justifyContent="flex-start"
+                    fontWeight="semibold"
+                    borderRadius="md"
+                    onClick={() => handleOptionSelect(option)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </VStack>
+            </Box>
+            <Box className="datepicker-calendar-wrapper" flex="1">
+              {children}
+            </Box>
+          </Flex>
+          <Flex
+            className="datepicker-footer"
+            align="center"
+            gap={2}
+            justify="space-between"
+            px={1}
+          >
+            <NumberInput
+              size="sm"
+              value={hourValue}
+              min={1}
+              max={24}
+              clampValueOnBlur={false}
+              onChange={(_, valueAsNumber) => handleHourChange(valueAsNumber)}
+              onBlur={handleHourBlur}
+              width="120px"
+            >
+              <NumberInputField
+                placeholder={hourPlaceholder}
+                textAlign="center"
+              />
+            </NumberInput>
+            <IconButton
+              aria-label={confirmLabel}
+              size="sm"
+              colorScheme="primary"
+              icon={<ConfirmIcon />}
+              onClick={onConfirm}
+            />
+          </Flex>
+        </div>
+      );
+    };
+  };
 
   const services = useServicesStore((state) => state.services);
   const servicesLoading = useServicesStore((state) => state.isLoading);
@@ -303,11 +571,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const handleUsageToggle = () => {
     setUsageVisible((current) => !current);
   };
-
-  const form = useForm<FormType>({
-    defaultValues: getDefaultValues(),
-    resolver: zodResolver(schema),
-  });
 
   useEffect(() => {
     if (isOpen) {
@@ -368,6 +631,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
     control: form.control,
     name: "next_plan_enabled",
   });
+  const expireValue = useWatch({
+    control: form.control,
+    name: "expire",
+  });
   const nextPlanDataLimit = useWatch({
     control: form.control,
     name: "next_plan_data_limit",
@@ -384,6 +651,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
     control: form.control,
     name: "next_plan_fire_on_either",
   });
+
+  useEffect(() => {
+    const derivedHour = deriveHourFromSeconds(expireValue);
+    setExpireHour((prev) => (prev === derivedHour ? prev : derivedHour));
+  }, [expireValue]);
+
+  useEffect(() => {
+    const derivedHour = deriveHourFromSeconds(nextPlanExpire);
+    setNextPlanHour((prev) => (prev === derivedHour ? prev : derivedHour));
+  }, [nextPlanExpire]);
 
   const handleNextPlanToggle = (checked: boolean) => {
     form.setValue("next_plan_enabled", checked, { shouldDirty: true });
@@ -912,31 +1189,31 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                 {t("userDialog.nextPlanExpire", "Next plan expiry")}
                               </FormLabel>
                               <DatePicker
+                                ref={nextPlanPickerRef}
                                 locale={i18n.language.toLocaleLowerCase()}
-                                dateFormat={t("dateFormat")}
+                                dateFormat={dateFormatPattern}
                                 minDate={new Date()}
                                 selected={
                                   nextPlanExpire && nextPlanExpire > 0
-                                    ? dayjs(nextPlanExpire * 1000).utc().toDate()
+                                    ? toDateFromSeconds(nextPlanExpire)
                                     : undefined
                                 }
-                                onChange={(date: Date) => {
+                                onChange={(date: Date | null) => {
                                   if (!date) {
                                     form.setValue("next_plan_expire", null, { shouldDirty: true });
                                     return;
                                   }
-                                  const normalized = dayjs(date)
-                                    .set("hour", 23)
-                                    .set("minute", 59)
-                                    .set("second", 59)
-                                    .utc()
-                                    .valueOf();
+                                  const hour = clampHour(nextPlanHour);
+                                  const adjustedDate = applyHourToDate(date, hour);
+                                  const normalized = convertDateToSeconds(adjustedDate);
+                                  setNextPlanHour(deriveHourFromDate(adjustedDate));
                                   form.setValue(
                                     "next_plan_expire",
-                                    Math.floor(normalized / 1000),
+                                    normalized,
                                     { shouldDirty: true }
                                   );
                                 }}
+                                shouldCloseOnSelect={false}
                                 customInput={
                                   <Input
                                     size="sm"
@@ -955,6 +1232,44 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                   { name: "preventOverflow", options: { padding: 16 } },
                                   { name: "flip", options: { fallbackPlacements: ["top-end", "top-start"] } },
                                 ]}
+                                calendarContainer={buildCalendarWithQuickSelect({
+                                  getReferenceDate: () => {
+                                    if (nextPlanExpire && nextPlanExpire > 0) {
+                                      return toDateFromSeconds(nextPlanExpire);
+                                    }
+                                    return new Date();
+                                  },
+                                  getSelectedDate: () =>
+                                    nextPlanExpire && nextPlanExpire > 0
+                                      ? toDateFromSeconds(nextPlanExpire)
+                                      : null,
+                                  onSelect: (selectedDate) => {
+                                    const normalized = convertDateToSeconds(selectedDate);
+                                    setNextPlanHour(deriveHourFromDate(selectedDate));
+                                    form.setValue("next_plan_expire", normalized, {
+                                      shouldDirty: true,
+                                    });
+                                  },
+                                  getHour: () => nextPlanHour,
+                                  onHourChange: (hour) => {
+                                    const sanitized = clampHour(hour);
+                                    setNextPlanHour(sanitized);
+                                    if (nextPlanExpire && nextPlanExpire > 0) {
+                                      const currentDate = toDateFromSeconds(nextPlanExpire);
+                                      const adjustedDate = applyHourToDate(currentDate, sanitized);
+                                      const normalized = convertDateToSeconds(adjustedDate);
+                                      form.setValue("next_plan_expire", normalized, {
+                                        shouldDirty: true,
+                                      });
+                                    }
+                                  },
+                                  onConfirm: () => {
+                                    if (nextPlanPickerRef.current) {
+                                      nextPlanPickerRef.current.setOpen(false);
+                                    }
+                                  },
+                                  pickerRef: nextPlanPickerRef,
+                                })}
                               />
                             </FormControl>
                             <HStack justify="space-between">
@@ -1055,35 +1370,33 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               return (
                                 <>
                                   <DatePicker
+                                    ref={expirePickerRef}
                                     locale={i18n.language.toLocaleLowerCase()}
-                                    dateFormat={t("dateFormat")}
+                                    dateFormat={dateFormatPattern}
                                     minDate={new Date()}
                                     selected={
                                       field.value
                                         ? createDateAsUTC(field.value)
                                         : undefined
                                     }
-                                    onChange={(date: Date) => {
-                                      form.setValue(
-                                        "on_hold_expire_duration",
-                                        null
-                                      );
+                                    onChange={(date: Date | null) => {
+                                      form.setValue("on_hold_expire_duration", null);
+                                      if (!date) {
+                                        field.onChange(0);
+                                        return;
+                                      }
+                                      const hour = clampHour(expireHour);
+                                      const adjustedDate = applyHourToDate(date, hour);
+                                      const normalized = convertDateToSeconds(adjustedDate);
+                                      setExpireHour(deriveHourFromDate(adjustedDate));
                                       field.onChange({
                                         target: {
-                                          value: date
-                                            ? dayjs(
-                                              dayjs(date)
-                                                .set("hour", 23)
-                                                .set("minute", 59)
-                                                .set("second", 59)
-                                            )
-                                              .utc()
-                                              .valueOf() / 1000
-                                            : 0,
-                                          name: "expire",
+                                          value: normalized,
+                                          name: field.name,
                                         },
                                       });
                                     }}
+                                    shouldCloseOnSelect={false}
                                     customInput={
                                       <Input
                                         size="sm"
@@ -1096,6 +1409,61 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                         }
                                       />
                                     }
+                                    calendarClassName="usage-range-datepicker"
+                                    popperClassName="usage-range-datepicker-popper"
+                                    popperPlacement="bottom-end"
+                                    portalId={DATE_PICKER_PORTAL_ID}
+                                    popperModifiers={[
+                                      { name: "offset", options: { offset: [0, 8] } },
+                                      { name: "preventOverflow", options: { padding: 16 } },
+                                      { name: "flip", options: { fallbackPlacements: ["top-end", "top-start"] } },
+                                    ]}
+                                    calendarContainer={buildCalendarWithQuickSelect({
+                                      getReferenceDate: () => {
+                                        const currVal = form.getValues("expire");
+                                        if (currVal) {
+                                          return createDateAsUTC(currVal);
+                                        }
+                                        return new Date();
+                                      },
+                                      getSelectedDate: () =>
+                                        field.value ? createDateAsUTC(field.value) : null,
+                                      onSelect: (selectedDate) => {
+                                        form.setValue("on_hold_expire_duration", null, {
+                                          shouldDirty: false,
+                                        });
+                                        const normalized = convertDateToSeconds(selectedDate);
+                                        setExpireHour(deriveHourFromDate(selectedDate));
+                                        field.onChange({
+                                          target: {
+                                            value: normalized,
+                                            name: field.name,
+                                          },
+                                        });
+                                      },
+                                      getHour: () => expireHour,
+                                      onHourChange: (hour) => {
+                                        const sanitized = clampHour(hour);
+                                        setExpireHour(sanitized);
+                                        if (field.value) {
+                                          const currentDate = createDateAsUTC(field.value);
+                                          const adjustedDate = applyHourToDate(currentDate, sanitized);
+                                          const normalized = convertDateToSeconds(adjustedDate);
+                                          field.onChange({
+                                            target: {
+                                              value: normalized,
+                                              name: field.name,
+                                            },
+                                          });
+                                        }
+                                      },
+                                      onConfirm: () => {
+                                        if (expirePickerRef.current) {
+                                          expirePickerRef.current.setOpen(false);
+                                        }
+                                      },
+                                      pickerRef: expirePickerRef,
+                                    })}
                                   />
                                   {field.value ? (
                                     <FormHelperText>

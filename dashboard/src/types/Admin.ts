@@ -4,7 +4,6 @@ export type Admin = {
   is_sudo: boolean;
   status: "active" | "deleted";
   telegram_id?: number | null;
-  discord_webhook?: string | null;
   users_usage?: number | null;
   data_limit?: number | null;
   users_limit?: number | null;

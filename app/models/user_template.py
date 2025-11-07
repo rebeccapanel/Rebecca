@@ -2,7 +2,6 @@ from typing import Dict, List, Optional
 
 from pydantic import field_validator, ConfigDict, BaseModel, Field
 
-from app import xray
 from app.models.proxy import ProxyTypes
 
 
@@ -52,6 +51,7 @@ class UserTemplateResponse(UserTemplate):
     @field_validator("inbounds", mode="before")
     @classmethod
     def validate_inbounds(cls, v):
+        from app.runtime import xray
         final = {}
         inbound_tags = [i.tag for i in v]
         for protocol, inbounds in xray.config.inbounds_by_protocol.items():

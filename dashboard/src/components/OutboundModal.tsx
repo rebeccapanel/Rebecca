@@ -97,8 +97,9 @@ interface OutboundFormValues {
 interface OutboundModalProps {
   isOpen: boolean;
   onClose: () => void;
-  form: any;
-  setOutboundData: (data: any[]) => void;
+  mode: "create" | "edit";
+  initialOutbound?: any | null;
+  onSubmitOutbound: (outboundJson: any) => Promise<void> | void;
 }
 
 const defaultValues: OutboundFormValues = {
@@ -281,7 +282,13 @@ const buildOutboundJson = (values: OutboundFormValues) => {
   return json;
 };
 
-export const OutboundModal: FC<OutboundModalProps> = ({ isOpen, onClose, form, setOutboundData }) => {
+export const OutboundModal: FC<OutboundModalProps> = ({
+  isOpen,
+  onClose,
+  mode,
+  initialOutbound,
+  onSubmitOutbound,
+}) => {
   const { t } = useTranslation();
   const toast = useToast();
   const bgSubtle = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -325,26 +332,26 @@ export const OutboundModal: FC<OutboundModalProps> = ({ isOpen, onClose, form, s
   const requiresDnsServer = typedProtocol === Protocols.DNS;
   const formValues = useWatch({ control }) as OutboundFormValues;
   const [activeTab, setActiveTab] = useState(0);
-  const initialJson = useMemo(() => buildOutboundJson(defaultValues), []);
-  const [jsonData, setJsonData] = useState(initialJson);
-  const [jsonText, setJsonText] = useState(() => JSON.stringify(initialJson, null, 2));
+  const [jsonData, setJsonData] = useState(() => buildOutboundJson(defaultValues));
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(buildOutboundJson(defaultValues), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [configInput, setConfigInput] = useState("");
   const updatingFromJsonRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setActiveTab(0);
-      updatingFromJsonRef.current = true;
-      reset(defaultValues);
-      setJsonError(null);
-      setConfigInput("");
-      const freshJson = buildOutboundJson(defaultValues);
-      setJsonData(freshJson);
-      const formatted = JSON.stringify(freshJson, null, 2);
-      setJsonText(formatted);
+    if (!isOpen) {
+      return;
     }
-  }, [isOpen, reset]);
+    setActiveTab(0);
+    setJsonError(null);
+    setConfigInput("");
+    const baseValues = initialOutbound ? mapJsonToFormValues(initialOutbound) : defaultValues;
+    updatingFromJsonRef.current = true;
+    reset(baseValues);
+    const freshJson = buildOutboundJson(baseValues);
+    setJsonData(freshJson);
+    setJsonText(JSON.stringify(freshJson, null, 2));
+  }, [initialOutbound, isOpen, reset]);
 
   useEffect(() => {
     if (!formValues) return;
@@ -548,18 +555,31 @@ export const OutboundModal: FC<OutboundModalProps> = ({ isOpen, onClose, form, s
     });
   };
 
-  const onSubmit = handleSubmit((values) => {
+  const onSubmit = handleSubmit(async (values) => {
     const outboundJson = buildOutboundJson(values);
-    const outbounds = [...form.getValues("config.outbounds"), outboundJson];
-    form.setValue("config.outbounds", outbounds, { shouldDirty: true });
-    setOutboundData(outbounds.map((o: any, index: number) => ({ key: index, ...o })));
-    toast({
-      title: t("pages.xray.outbound.addOutbound"),
-      status: "success",
-      duration: 2000,
-      position: "top",
-    });
-    onClose();
+    try {
+      await onSubmitOutbound(outboundJson);
+      toast({
+        title:
+          mode === "edit"
+            ? t("pages.xray.outbound.updated", "Outbound updated")
+            : t("pages.xray.outbound.addOutbound"),
+        status: "success",
+        duration: 2000,
+        position: "top",
+      });
+      onClose();
+    } catch (error: any) {
+      toast({
+        title:
+          error?.data?.detail ||
+          error?.message ||
+          t("pages.xray.outbound.saveFailed", "Unable to save outbound"),
+        status: "error",
+        duration: 3000,
+        position: "top",
+      });
+    }
   });
 
   const handleClose = () => {
@@ -581,7 +601,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({ isOpen, onClose, form, s
     <Modal size="4xl" isOpen={isOpen} onClose={handleClose} scrollBehavior="inside">
       <ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
       <ModalContent as="form" onSubmit={onSubmit}>
-        <ModalHeader>{t("pages.xray.outbound.addOutbound")}</ModalHeader>
+        <ModalHeader>
+          {mode === "edit"
+            ? t("pages.xray.outbound.editOutbound", "Edit Outbound")
+            : t("pages.xray.outbound.addOutbound")}
+        </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Tabs variant="enclosed" colorScheme="primary" index={activeTab} onChange={handleTabChange}>
@@ -1023,7 +1047,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({ isOpen, onClose, form, s
             {t("cancel")}
           </Button>
           <Button colorScheme="primary" type="submit" isDisabled={!isValid}>
-            {t("add")}
+            {mode === "edit" ? t("save") : t("add")}
           </Button>
         </ModalFooter>
       </ModalContent>

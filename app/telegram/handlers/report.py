@@ -4,7 +4,7 @@ from typing import Optional
 from telebot.apihelper import ApiTelegramException
 from telebot.formatting import escape_html
 
-from app import logger
+from app.runtime import logger
 from app.db.models import User
 from app.models.admin import Admin
 from app.models.node import NodeResponse, NodeStatus
@@ -474,7 +474,6 @@ def report_admin_updated(
         ("Users Limit", _format_users_limit(getattr(admin, "users_limit", None)), _format_users_limit(getattr(previous, "users_limit", None)) if previous else None),
         ("Data Limit", _format_data_limit(getattr(admin, "data_limit", None)), _format_data_limit(getattr(previous, "data_limit", None)) if previous else None),
         ("Telegram ID", _to_text(getattr(admin, "telegram_id", None)), _to_text(getattr(previous, "telegram_id", None)) if previous else None),
-        ("Discord Webhook", _to_text(getattr(admin, "discord_webhook", None)), _to_text(getattr(previous, "discord_webhook", None)) if previous else None),
         ("Status", _to_text(_status_value(admin)), _to_text(_status_value(previous)) if previous else None),
     ]
 
@@ -563,3 +562,4 @@ def report_admin_limit_reached(
         current=formatted_current,
     )
     report(text=text, category=CATEGORY_ADMINS)
+
