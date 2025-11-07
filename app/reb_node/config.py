@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import PosixPath
@@ -14,7 +16,7 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
+from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, XRAY_EXECUTABLE_PATH
 
 
 def merge_dicts(a, b):  # B will override A dictionary key and values
@@ -24,6 +26,26 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
         else:
             a[key] = value
     return a
+
+
+def derive_reality_public_key(private_key: str) -> str | None:
+    """
+    Use the xray binary to derive the public key for a Reality inbound.
+    """
+    if not private_key:
+        return None
+
+    cmd = [XRAY_EXECUTABLE_PATH, "x25519"]
+    cmd.extend(["-i", private_key])
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    match = re.search(r"Public key:\s*(.+)", output)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 class XRayConfig(dict):
@@ -225,17 +247,9 @@ class XRayConfig(dict):
                             raise ValueError(
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
 
-                        try:
-                            from app.reb_node import core
-                        except ImportError:
-                            pass
-                        else:
-                            x25519 = core.get_x25519(pvk)
-                            public_key = None
-                            if isinstance(x25519, dict):
-                                public_key = x25519.get('public_key')
-                            if public_key:
-                                settings['pbk'] = public_key
+                        public_key = derive_reality_public_key(pvk)
+                        if public_key:
+                            settings['pbk'] = public_key
 
                         if not settings.get('pbk'):
                             raise ValueError(
