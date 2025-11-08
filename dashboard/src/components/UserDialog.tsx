@@ -28,9 +28,11 @@ import {
 
   IconButton,
 
-  NumberInput,
+  InputGroup,
 
-  NumberInputField,
+  InputRightElement,
+
+  Input as ChakraInput,
 
   Modal,
 
@@ -59,6 +61,7 @@ import {
   Tooltip,
 
   VStack,
+  Stack,
 
   chakra,
 
@@ -80,6 +83,10 @@ import {
 
   UserPlusIcon,
 
+  QuestionMarkCircleIcon,
+
+  SparklesIcon,
+
 } from "@heroicons/react/24/outline";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -93,8 +100,6 @@ import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 
 import dayjs from "dayjs";
-
-import classNames from "classnames";
 
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
@@ -117,7 +122,7 @@ import { Input } from "./Input";
 
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
 
-import { ReloadIcon } from "./Filters";
+
 
 
 
@@ -217,6 +222,8 @@ type BaseFormFields = Pick<
 
   | "data_limit"
 
+  | "ip_limit"
+
   | "data_limit_reset_strategy"
 
   | "on_hold_expire_duration"
@@ -263,6 +270,8 @@ const formatUser = (user: User): FormType => {
 
       : user.data_limit,
 
+    ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
+
     on_hold_expire_duration:
 
       user.on_hold_expire_duration
@@ -296,6 +305,8 @@ const getDefaultValues = (): FormType => {
   return {
 
     data_limit: null,
+
+    ip_limit: null,
 
     expire: null,
 
@@ -632,33 +643,28 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   
 
-  const services = useServicesStore((state) => state.services);
-
+    const services = useServicesStore((state) => state.services);
   const servicesLoading = useServicesStore((state) => state.isLoading);
-
   const { userData, getUserIsSuccess } = useGetUser();
-
   const isSudo = Boolean(getUserIsSuccess && userData.is_sudo);
-
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
 
   const hasServices = services.length > 0;
-
   const selectedService = selectedServiceId
-
     ? services.find((service) => service.id === selectedServiceId) ?? null
-
     : null;
-
   const isServiceManagedUser = Boolean(editingUser?.service_id);
+  const nonSudoSingleService = !isSudo && services.length === 1;
+  const showServiceSelector = isSudo || services.length !== 1;
+  const useTwoColumns = showServiceSelector && services.length > 0;
+  const shouldCenterForm = !useTwoColumns;
+  const shouldCompactModal = !isSudo && services.length === 0;
 
   const [usageVisible, setUsageVisible] = useState(false);
-
   const handleUsageToggle = () => {
-
     setUsageVisible((current) => !current);
-
   };
+
 
 
 
@@ -727,6 +733,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
     }
 
   }, [hasServices, isEditing, isOpen]);
+
+  useEffect(() => {
+    if (nonSudoSingleService && services[0]) {
+      setSelectedServiceId((current) => current ?? services[0].id);
+    }
+  }, [nonSudoSingleService, services]);
 
 
 
@@ -862,19 +874,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 
   useEffect(() => {
-
     if (editingUser) {
-
-      form.reset(formatUser(editingUser));
-
+      const formatted = formatUser(editingUser);
+      form.reset(formatted);
+      setExpireDays(deriveDaysFromSeconds(formatted.expire));
+      setNextPlanDays(deriveDaysFromSeconds(formatted.next_plan_expire));
       fetchUsageWithFilter({
-
         start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
-
       });
-
+    } else {
+      const defaults = getDefaultValues();
+      form.reset(defaults);
+      setExpireDays(deriveDaysFromSeconds(defaults.expire));
+      setNextPlanDays(deriveDaysFromSeconds(defaults.next_plan_expire));
     }
-
   }, [editingUser, isEditing, isOpen]);
 
 
@@ -919,6 +932,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
       on_hold_expire_duration,
 
+      ip_limit,
+
       ...rest
 
     } = values;
@@ -951,27 +966,28 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
       : null;
 
+    const normalizedIpLimit =
+      typeof ip_limit === "number" && Number.isFinite(ip_limit) && ip_limit > 0
+        ? Math.floor(ip_limit)
+        : 0;
+
 
 
     if (!isEditing) {
+      const effectiveServiceId =
+        selectedServiceId ?? (nonSudoSingleService ? services[0]?.id ?? null : null);
 
-      if (!selectedServiceId) {
-
+      if (!effectiveServiceId) {
         setError(t("userDialog.selectService", "Please choose a service"));
-
         setLoading(false);
-
         return;
-
       }
-
-
 
       const serviceBody: UserCreateWithService = {
 
         username: values.username,
 
-        service_id: selectedServiceId,
+        service_id: effectiveServiceId,
 
         note: values.note,
 
@@ -990,6 +1006,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
         expire: values.expire,
 
         data_limit: values.data_limit,
+
+        ip_limit: normalizedIpLimit,
 
         data_limit_reset_strategy:
 
@@ -1088,6 +1106,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
       ...rest,
 
       data_limit,
+
+      ip_limit: normalizedIpLimit,
 
       data_limit_reset_strategy:
 
@@ -1228,6 +1248,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const onClose = () => {
 
     form.reset(getDefaultValues());
+    setExpireDays(null);
+    setNextPlanDays(null);
 
     onCreateUser(false);
 
@@ -1301,7 +1323,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   return (
 
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
+    <Modal isOpen={isOpen} onClose={onClose} size={shouldCompactModal ? "lg" : "2xl"}>
 
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
 
@@ -1382,19 +1404,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
               )}
 
               <Grid
-
                 templateColumns={{
-
                   base: "repeat(1, 1fr)",
-
-                  md: "repeat(2, 1fr)",
-
+                  md: useTwoColumns ? "repeat(2, 1fr)" : "minmax(0, 1fr)",
                 }}
-
                 gap={3}
-
+                {...(shouldCenterForm ? { maxW: "720px", mx: "auto", w: "full" } : {})}
               >
-
                 <GridItem>
 
                   <VStack justifyContent="space-between">
@@ -1411,72 +1427,49 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                       <Flex flexDirection="row" w="full" gap={2}>
 
-                        <FormControl mb={"10px"}>
-
-                          <FormLabel>
-
-                            <Flex gap={2} alignItems={"center"}>
-
-                              {t("username")}
-
-                              {!isEditing && (
-
-                                <ReloadIcon
-
-                                  cursor={"pointer"}
-
-                                  className={classNames({
-
-                                    "animate-spin": randomUsernameLoading,
-
-                                  })}
-
-                                  onClick={() => {
-
-                                    const randomUsername =
-
-                                      createRandomUsername();
-
-                                    form.setValue("username", randomUsername);
-
-                                    setTimeout(() => {
-
-                                      setrandomUsernameLoading(false);
-
-                                    }, 350);
-
-                                  }}
-
+                        <FormControl
+                          mb={"10px"}
+                          isInvalid={!!form.formState.errors.username?.message}
+                        >
+                          <FormLabel>{t("username")}</FormLabel>
+                          <HStack align="flex-end">
+                            <Box flex="1" minW="0">
+                              <InputGroup size="sm">
+                                <ChakraInput
+                                  type="text"
+                                  borderRadius="6px"
+                                  placeholder={t("username")}
+                                  isDisabled={disabled || isEditing}
+                                  {...form.register("username")}
                                 />
-
-                              )}
-
-                            </Flex>
-
-                          </FormLabel>
-
-                          <HStack>
-
-                            <Input
-
-                              size="sm"
-
-                              type="text"
-
-                              borderRadius="6px"
-
-                              error={form.formState.errors.username?.message}
-
-                              disabled={disabled || isEditing}
-
-                              {...form.register("username")}
-
-                            />
-
+                                {!isEditing && (
+                                  <InputRightElement width="auto" pr={1}>
+                                    <IconButton
+                                      aria-label={t(
+                                        "userDialog.generateUsername",
+                                        "Generate random username"
+                                      )}
+                                      size="sm"
+                                      variant="ghost"
+                                      icon={<SparklesIcon width={18} />}
+                                      onClick={() => {
+                                        const randomUsername = createRandomUsername();
+                                        form.setValue("username", randomUsername, {
+                                          shouldDirty: true,
+                                        });
+                                        setTimeout(() => {
+                                          setrandomUsernameLoading(false);
+                                        }, 350);
+                                      }}
+                                      isLoading={randomUsernameLoading}
+                                      isDisabled={disabled}
+                                    />
+                                  </InputRightElement>
+                                )}
+                              </InputGroup>
+                            </Box>
                             {isEditing && (
-
                               <HStack px={1}>
-
                                 <Controller
 
                                   name="status"
@@ -1537,55 +1530,110 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                           </HStack>
 
+                          <FormErrorMessage>
+                            {form.formState.errors.username?.message}
+                          </FormErrorMessage>
+
                         </FormControl>
 
                       </Flex>
 
-                      <FormControl mb={"10px"}>
-
-                        <FormLabel>{t("userDialog.dataLimit")}</FormLabel>
-
-                        <Controller
-
-                          control={form.control}
-
-                          name="data_limit"
-
-                          render={({ field }) => {
-
-                            return (
-
-                              <Input
-
-                                endAdornment="GB"
-
-                                type="number"
-
-                                size="sm"
-
-                                borderRadius="6px"
-
-                                onChange={field.onChange}
-
-                                disabled={disabled}
-
-                                error={
-
-                                  form.formState.errors.data_limit?.message
-
+                      <Stack
+                        direction={{ base: "column", md: "row" }}
+                        spacing={4}
+                        mb={"10px"}
+                      >
+                        <FormControl flex="1">
+                          <FormLabel>{t("userDialog.dataLimit")}</FormLabel>
+                          <Controller
+                            control={form.control}
+                            name="data_limit"
+                            render={({ field }) => {
+                              return (
+                                <Input
+                                  endAdornment="GB"
+                                  type="number"
+                                  size="sm"
+                                  borderRadius="6px"
+                                  onChange={field.onChange}
+                                  disabled={disabled}
+                                  error={form.formState.errors.data_limit?.message}
+                                  value={field.value ? String(field.value) : ""}
+                                />
+                              );
+                            }}
+                          />
+                        </FormControl>
+                        <FormControl flex="1">
+                          <FormLabel display="flex" alignItems="center" gap={2}>
+                            {t("userDialog.ipLimitLabel", "IP limit")}
+                            <Tooltip
+                              hasArrow
+                              placement="top"
+                              label={t(
+                                "userDialog.ipLimitHint",
+                                "Maximum number of unique IPs allowed. Leave empty or '-' for unlimited."
+                              )}
+                            >
+                              <chakra.span display="inline-flex" color="gray.400" cursor="help">
+                                <QuestionMarkCircleIcon width={16} height={16} />
+                              </chakra.span>
+                            </Tooltip>
+                          </FormLabel>
+                          <Controller
+                            control={form.control}
+                            name="ip_limit"
+                            rules={{
+                              validate: (value) => {
+                                if (value === null || value === undefined) {
+                                  return true;
                                 }
-
-                                value={field.value ? String(field.value) : ""}
-
+                                if (typeof value !== "number" || Number.isNaN(value)) {
+                                  return t(
+                                    "userDialog.ipLimitValidation",
+                                    "Enter a valid non-negative number"
+                                  );
+                                }
+                                return value >= 0
+                                  ? true
+                                  : t(
+                                      "userDialog.ipLimitValidation",
+                                      "Enter a valid non-negative number"
+                                    );
+                              },
+                            }}
+                            render={({ field }) => (
+                              <Input
+                                size="sm"
+                                borderRadius="6px"
+                                placeholder={t(
+                                  "userDialog.ipLimitPlaceholder",
+                                  "Leave empty or '-' for unlimited"
+                                )}
+                                value={
+                                  typeof field.value === "number" && field.value > 0
+                                    ? String(field.value)
+                                    : ""
+                                }
+                                onChange={(event) => {
+                                  const raw = event.target.value;
+                                  if (!raw.trim() || raw.trim() === "-") {
+                                    field.onChange(null);
+                                    return;
+                                  }
+                                  const parsed = Number(raw);
+                                  if (Number.isNaN(parsed)) {
+                                    return;
+                                  }
+                                  field.onChange(parsed < 0 ? 0 : Math.floor(parsed));
+                                }}
+                                disabled={disabled}
+                                error={form.formState.errors.ip_limit?.message}
                               />
-
-                            );
-
-                          }}
-
-                        />
-
-                      </FormControl>
+                            )}
+                          />
+                        </FormControl>
+                      </Stack>
 
                       <Collapse
 
@@ -1675,257 +1723,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 
 
-                      <Box mb={"10px"}>
-
-                        <HStack justify="space-between" align="center">
-
-                          <FormLabel mb={0}>{t("userDialog.nextPlanTitle", "Next plan")}</FormLabel>
-
-                          <Switch
-
-                            colorScheme="primary"
-
-                            isChecked={nextPlanEnabled}
-
-                            onChange={(event) => handleNextPlanToggle(event.target.checked)}
-
-                            isDisabled={disabled}
-
-                          />
-
-                        </HStack>
-
-                        <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }} mt={1}>
-
-                          {t(
-
-                            "userDialog.nextPlanDescription",
-
-                            "Configure automatic renewal details for this user."
-
-                          )}
-
-                        </Text>
-
-                        <Collapse in={nextPlanEnabled} animateOpacity style={{ width: "100%" }}>
-
-                          <VStack align="stretch" spacing={3} mt={3}>
-
-                            <FormControl>
-
-                              <FormLabel fontSize="sm">
-
-                                {t("userDialog.nextPlanDataLimit", "Next plan data limit")}
-
-                              </FormLabel>
-
-                              <Input
-
-                                endAdornment="GB"
-
-                                type="number"
-
-                                size="sm"
-
-                                borderRadius="6px"
-
-                                disabled={disabled}
-
-                                value={
-
-                                  nextPlanDataLimit !== null && typeof nextPlanDataLimit !== "undefined"
-
-                                    ? String(nextPlanDataLimit)
-
-                                    : ""
-
-                                }
-
-                                onChange={(event) => {
-
-                                  const rawValue = event.target.value;
-
-                                  if (!rawValue) {
-
-                                    form.setValue("next_plan_data_limit", null, { shouldDirty: true });
-
-                                    return;
-
-                                  }
-
-                                  const parsed = Number(rawValue);
-
-                                  if (Number.isNaN(parsed)) {
-
-                                    return;
-
-                                  }
-
-                                  form.setValue("next_plan_data_limit", Math.max(0, parsed), {
-
-                                    shouldDirty: true,
-
-                                  });
-
-                                }}
-
-                              />
-
-                            </FormControl>
-
-                            <FormControl>
-                              <FormLabel fontSize="sm">
-                                {t("userDialog.nextPlanExpireDays", "Next plan in (days)")}
-                              </FormLabel>
-                              <Controller
-                                control={form.control}
-                                name="next_plan_expire"
-                                render={({ field }) => {
-                                  const handleDaysChange = (valueAsString: string) => {
-                                    if (!valueAsString) {
-                                      setNextPlanDays(null);
-                                      field.onChange(null);
-                                      return;
-                                    }
-                                    const parsed = Number(valueAsString);
-                                    if (Number.isNaN(parsed) || parsed < 0) {
-                                      return;
-                                    }
-                                    const normalizedDays = Math.min(Math.round(parsed), 3650);
-                                    setNextPlanDays(normalizedDays);
-                                    const normalized = convertDaysToSecondsFromNow(
-                                      normalizedDays
-                                    );
-                                    field.onChange(normalized);
-                                  };
-
-                                  return (
-                                    <HStack
-                                      spacing={3}
-                                      align={{ base: "stretch", md: "flex-end" }}
-                                      flexWrap="wrap"
-                                    >
-                                      <Box flex="1" minW="180px">
-                                        <NumberInput
-                                          min={0}
-                                          clampValueOnBlur={false}
-                                          value={
-                                            typeof nextPlanDays === "number" ? nextPlanDays : ""
-                                          }
-                                          onChange={(valueAsString) =>
-                                            handleDaysChange(valueAsString)
-                                          }
-                                          isDisabled={disabled}
-                                        >
-                                          <NumberInputField
-                                            placeholder={t(
-                                              "userDialog.expiryDaysPlaceholder",
-                                              "e.g. 30"
-                                            )}
-                                          />
-                                        </NumberInput>
-                                      </Box>
-                                      <Text
-                                        fontSize="sm"
-                                        color="gray.600"
-                                        _dark={{ color: "gray.400" }}
-                                        whiteSpace="nowrap"
-                                      >
-                                        {t("userDialog.days", "Days")}
-                                      </Text>
-                                    </HStack>
-                                  );
-                                }}
-                              />
-                            </FormControl>
-                            <HStack justify="space-between">
-
-                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
-
-                                {t(
-
-                                  "userDialog.nextPlanAddRemainingTraffic",
-
-                                  "Carry over remaining traffic"
-
-                                )}
-
-                              </Text>
-
-                              <Switch
-
-                                size="sm"
-
-                                colorScheme="primary"
-
-                                isChecked={Boolean(nextPlanAddRemainingTraffic)}
-
-                                onChange={(event) =>
-
-                                  form.setValue(
-
-                                    "next_plan_add_remaining_traffic",
-
-                                    event.target.checked,
-
-                                    { shouldDirty: true }
-
-                                  )
-
-                                }
-
-                                isDisabled={disabled}
-
-                              />
-
-                            </HStack>
-
-                            <HStack justify="space-between">
-
-                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
-
-                                {t(
-
-                                  "userDialog.nextPlanFireOnEither",
-
-                                  "Trigger on data or expiry"
-
-                                )}
-
-                              </Text>
-
-                              <Switch
-
-                                size="sm"
-
-                                colorScheme="primary"
-
-                                isChecked={Boolean(nextPlanFireOnEither)}
-
-                                onChange={(event) =>
-
-                                  form.setValue("next_plan_fire_on_either", event.target.checked, {
-
-                                    shouldDirty: true,
-
-                                  })
-
-                                }
-
-                                isDisabled={disabled}
-
-                              />
-
-                            </HStack>
-
-                          </VStack>
-
-                        </Collapse>
-
-                      </Box>
-
-
-
                       <FormControl
                         mb={"10px"}
                         isInvalid={!isOnHold && Boolean(form.formState.errors.expire)}
@@ -1945,21 +1742,32 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             <Controller
                               name="status"
                               control={form.control}
-                              render={({ field }) => (
-                                <HStack spacing={2} align="center">
-                                  <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
-                                    {t("userDialog.onHold")}
-                                  </Text>
-                                  <Switch
-                                    colorScheme="primary"
-                                    isChecked={field.value === "on_hold"}
-                                    onChange={(event) =>
-                                      field.onChange(event.target.checked ? "on_hold" : "active")
-                                    }
-                                    isDisabled={disabled}
-                                  />
-                                </HStack>
-                              )}
+                              render={({ field }) => {
+                                const checked = field.value === "on_hold";
+                                return (
+                                  <HStack spacing={2} align="center">
+                                    <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                                      {t("userDialog.onHold")}
+                                    </Text>
+                                    <Switch
+                                      colorScheme="primary"
+                                      isChecked={checked}
+                                      onChange={(event) => {
+                                        const nextChecked = event.target.checked;
+                                        if (nextChecked) {
+                                          field.onChange("on_hold");
+                                        } else {
+                                          field.onChange("active");
+                                          form.setValue("on_hold_expire_duration", null, {
+                                            shouldDirty: true,
+                                          });
+                                        }
+                                      }}
+                                      isDisabled={disabled}
+                                    />
+                                  </HStack>
+                                );
+                              }}
                             />
                           )}
                         </Flex>
@@ -1975,13 +1783,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                   type="number"
                                   size="sm"
                                   borderRadius="6px"
-                                  onChange={(on_hold) => {
+                                  onChange={(event) => {
                                     form.setValue("expire", null);
-                                    field.onChange({
-                                      target: {
-                                        value: on_hold,
-                                      },
-                                    });
+                                    const raw = event.target.value;
+                                    if (!raw) {
+                                      field.onChange(null);
+                                      return;
+                                    }
+                                    const parsed = Number(raw);
+                                    if (Number.isNaN(parsed) || parsed < 0) {
+                                      return;
+                                    }
+                                    field.onChange(Math.round(parsed));
                                   }}
                                   disabled={disabled}
                                   error={
@@ -2022,45 +1835,23 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                 };
 
                                 return (
-                                  <HStack
-                                    spacing={3}
-                                    align={{ base: "stretch", md: "flex-end" }}
-                                    flexWrap="wrap"
-                                  >
-                                    <Box flex="1" minW="180px">
-                                      <NumberInput
-                                        min={0}
-                                        clampValueOnBlur={false}
-                                        value={
-                                          typeof expireDays === "number" ? expireDays : ""
-                                        }
-                                        onChange={(valueAsString) =>
-                                          handleDaysChange(valueAsString)
-                                        }
-                                        isDisabled={disabled}
-                                      >
-                                        <NumberInputField
-                                          placeholder={t(
-                                            "userDialog.expiryDaysPlaceholder",
-                                            "e.g. 30"
-                                          )}
-                                        />
-                                      </NumberInput>
-                                      {field.value ? (
-                                        <FormHelperText>
-                                          {t(status, { time })}
-                                        </FormHelperText>
-                                      ) : null}
-                                    </Box>
-                                    <Text
-                                      fontSize="sm"
-                                      color="gray.600"
-                                      _dark={{ color: "gray.400" }}
-                                      whiteSpace="nowrap"
-                                    >
-                                      {t("userDialog.days", "Days")}
-                                    </Text>
-                                  </HStack>
+                                  <Box flex="1" minW="180px">
+                                    <Input
+                                      endAdornment={t("userDialog.days", "Days")}
+                                      type="number"
+                                      size="sm"
+                                      borderRadius="6px"
+                                      value={
+                                        typeof expireDays === "number" ? String(expireDays) : ""
+                                      }
+                                      onChange={(event) => handleDaysChange(event.target.value)}
+                                      disabled={disabled}
+                                      error={form.formState.errors.expire?.message}
+                                    />
+                                    {field.value ? (
+                                      <FormHelperText>{t(status, { time })}</FormHelperText>
+                                    ) : null}
+                                  </Box>
                                 );
                               }}
                             />
@@ -2071,7 +1862,142 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         )}
                       </FormControl>
 
+                      <Box mb={"10px"}>
+                        <HStack justify="space-between" align="center">
+                          <FormLabel mb={0}>{t("userDialog.nextPlanTitle", "Next plan")}</FormLabel>
+                          <Switch
+                            colorScheme="primary"
+                            isChecked={nextPlanEnabled}
+                            onChange={(event) => handleNextPlanToggle(event.target.checked)}
+                            isDisabled={disabled}
+                          />
+                        </HStack>
+                        <Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }} mt={1}>
+                          {t(
+                            "userDialog.nextPlanDescription",
+                            "Configure automatic renewal details for this user."
+                          )}
+                        </Text>
+                        <Collapse in={nextPlanEnabled} animateOpacity style={{ width: "100%" }}>
+                          <VStack align="stretch" spacing={3} mt={3}>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                {t("userDialog.nextPlanDataLimit", "Next plan data limit")}
+                              </FormLabel>
+                              <Input
+                                endAdornment="GB"
+                                type="number"
+                                size="sm"
+                                borderRadius="6px"
+                                disabled={disabled}
+                                value={
+                                  nextPlanDataLimit !== null && typeof nextPlanDataLimit !== "undefined"
+                                    ? String(nextPlanDataLimit)
+                                    : ""
+                                }
+                                onChange={(event) => {
+                                  const rawValue = event.target.value;
+                                  if (!rawValue) {
+                                    form.setValue("next_plan_data_limit", null, { shouldDirty: true });
+                                    return;
+                                  }
+                                  const parsed = Number(rawValue);
+                                  if (Number.isNaN(parsed)) {
+                                    return;
+                                  }
+                                  form.setValue("next_plan_data_limit", Math.max(0, parsed), {
+                                    shouldDirty: true,
+                                  });
+                                }}
+                              />
+                            </FormControl>
+                            <FormControl>
+                              <FormLabel fontSize="sm">
+                                {t("userDialog.nextPlanExpireDays", "Next plan in (days)")}
+                              </FormLabel>
+                              <Controller
+                                control={form.control}
+                                name="next_plan_expire"
+                                render={({ field }) => {
+                                  const handleDaysChange = (valueAsString: string) => {
+                                    if (!valueAsString) {
+                                      setNextPlanDays(null);
+                                      field.onChange(null);
+                                      return;
+                                    }
+                                    const parsed = Number(valueAsString);
+                                    if (Number.isNaN(parsed) || parsed < 0) {
+                                      return;
+                                    }
+                                    const normalizedDays = Math.min(Math.round(parsed), 3650);
+                                    setNextPlanDays(normalizedDays);
+                                    const normalized = convertDaysToSecondsFromNow(
+                                      normalizedDays
+                                    );
+                                    field.onChange(normalized);
+                                  };
 
+                                  return (
+                                    <Input
+                                      endAdornment={t("userDialog.days", "Days")}
+                                      type="number"
+                                      size="sm"
+                                      borderRadius="6px"
+                                      value={
+                                        typeof nextPlanDays === "number"
+                                          ? String(nextPlanDays)
+                                          : ""
+                                      }
+                                      onChange={(event) => handleDaysChange(event.target.value)}
+                                      disabled={disabled}
+                                    />
+                                  );
+                                }}
+                              />
+                            </FormControl>
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                                {t(
+                                  "userDialog.nextPlanAddRemainingTraffic",
+                                  "Carry over remaining traffic"
+                                )}
+                              </Text>
+                              <Switch
+                                size="sm"
+                                colorScheme="primary"
+                                isChecked={Boolean(nextPlanAddRemainingTraffic)}
+                                onChange={(event) =>
+                                  form.setValue(
+                                    "next_plan_add_remaining_traffic",
+                                    event.target.checked,
+                                    { shouldDirty: true }
+                                  )
+                                }
+                                isDisabled={disabled}
+                              />
+                            </HStack>
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                                {t(
+                                  "userDialog.nextPlanFireOnEither",
+                                  "Trigger on data or expiry"
+                                )}
+                              </Text>
+                              <Switch
+                                size="sm"
+                                colorScheme="primary"
+                                isChecked={Boolean(nextPlanFireOnEither)}
+                                onChange={(event) =>
+                                  form.setValue("next_plan_fire_on_either", event.target.checked, {
+                                    shouldDirty: true,
+                                  })
+                                }
+                                isDisabled={disabled}
+                              />
+                            </HStack>
+                          </VStack>
+                        </Collapse>
+                      </Box>
 
                       <FormControl
 
@@ -2117,7 +2043,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                 </GridItem>
 
-                <GridItem>
+                {showServiceSelector && (
+                <GridItem mt={useTwoColumns ? 0 : 4}>
 
                   <FormControl isRequired={!isEditing}>
 
@@ -2414,10 +2341,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
                   </FormControl>
 
                 </GridItem>
+                )}
 
                 {isEditing && usageVisible && (
 
-                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
+                  <GridItem
+                    pt={6}
+                    colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
+                  >
 
                     <VStack gap={4}>
 
@@ -2692,4 +2623,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
   );
 
 };
+
+
+
+
+
 

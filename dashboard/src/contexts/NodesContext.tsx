@@ -27,6 +27,8 @@ export const NodeSchema = z.object({
   data_limit: z.number().nullable().optional(),
   uplink: z.number().nullable().optional(),
   downlink: z.number().nullable().optional(),
+  use_nobetci: z.boolean().optional(),
+  nobetci_port: z.number().nullable().optional(),
 });
 
 export type NodeType = z.infer<typeof NodeSchema>;
@@ -41,6 +43,8 @@ export const getNodeDefaultValues = (): NodeType => ({
   data_limit: null,
   uplink: 0,
   downlink: 0,
+  use_nobetci: false,
+  nobetci_port: null,
 });
 
 export const FetchNodesQueryKey = "fetch-nodes-query-key";

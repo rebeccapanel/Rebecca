@@ -16,6 +16,7 @@ import {
   Checkbox,
   Button,
   Text,
+  Switch,
   useToast,
   Collapse,
   IconButton,
@@ -26,7 +27,7 @@ import {
 import { EyeIcon, EyeSlashIcon, DocumentDuplicateIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FC, useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
 import { fetch } from "service/http";
@@ -42,6 +43,7 @@ const CopyIconStyled = chakra(DocumentDuplicateIcon, { baseStyle: { w: 4, h: 4 }
 const DownloadIconStyled = chakra(ArrowDownTrayIcon, { baseStyle: { w: 4, h: 4 } });
 
 const BYTES_IN_GB = 1024 * 1024 * 1024;
+const DEFAULT_NOBETCI_PORT = 51031;
 
 const getInputError = (error: unknown): string | undefined => {
   if (error && typeof error === "object" && "message" in error) {
@@ -112,6 +114,18 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 
   const certificateValue = nodeSettings?.certificate ?? "";
   const { onCopy: copyCertificate, hasCopied: certificateCopied } = useClipboard(certificateValue);
+  const useNobetci = form.watch("use_nobetci");
+
+  useEffect(() => {
+    if (!useNobetci) {
+      form.setValue("nobetci_port", null);
+      return;
+    }
+    const currentPort = form.getValues("nobetci_port");
+    if (currentPort === null || currentPort === undefined || currentPort === "") {
+      form.setValue("nobetci_port", DEFAULT_NOBETCI_PORT);
+    }
+  }, [useNobetci, form]);
 
   useEffect(() => {
     if (isOpen) {
@@ -361,6 +375,58 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   {t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
                 </Text>
               </FormControl>
+              <FormControl display="flex" alignItems="center">
+                <FormLabel mb={0}>{t("nodes.useNobetci", "Enable Nobetci integration")}</FormLabel>
+                <Controller
+                  control={form.control}
+                  name="use_nobetci"
+                  render={({ field }) => (
+                    <Switch
+                      isChecked={Boolean(field.value)}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                    />
+                  )}
+                />
+              </FormControl>
+              <Collapse in={Boolean(useNobetci)} animateOpacity>
+                <FormControl mt={useNobetci ? 2 : 0}>
+                  <Input
+                    label={t("nodes.nobetciPort", "Nobetci port")}
+                    size="sm"
+                    placeholder="443"
+                    {...form.register("nobetci_port", {
+                      setValueAs: (value) => {
+                        if (value === "" || value === null || value === undefined) {
+                          return null;
+                        }
+                        const parsed = Number(value);
+                        return Number.isFinite(parsed) ? parsed : Number.NaN;
+                      },
+                      validate: (value) => {
+                        if (!useNobetci) {
+                          return true;
+                        }
+                        if (value === null || value === undefined) {
+                          return t("nodes.nobetciPortRequired", "Port is required when Nobetci is enabled");
+                        }
+                        if (Number.isNaN(value)) {
+                          return t("nodes.nobetciPortInvalid", "Enter a valid port number");
+                        }
+                        return value >= 1 && value <= 65535
+                          ? true
+                          : t("nodes.nobetciPortRange", "Port must be between 1 and 65535");
+                      },
+                    })}
+                    error={getInputError(form.formState?.errors?.nobetci_port)}
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    {t(
+                      "nodes.nobetciHint",
+                      "Provide the Nobetci listener port. Leave blank to disable."
+                    )}
+                  </Text>
+                </FormControl>
+              </Collapse>
             </Stack>
 
             {isAddMode && (
