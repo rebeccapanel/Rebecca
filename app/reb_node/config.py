@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import re
+import subprocess
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import PosixPath
@@ -18,7 +20,12 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
+from config import (
+    DEBUG,
+    XRAY_EXECUTABLE_PATH,
+    XRAY_EXCLUDE_INBOUND_TAGS,
+    XRAY_FALLBACKS_INBOUND_TAG,
+)
 
 
 def merge_dicts(a, b):  # B will override A dictionary key and values
@@ -30,7 +37,7 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
     return a
 
 
-def derive_reality_public_key(private_key: str) -> str:
+def _derive_reality_public_key_python(private_key: str) -> str:
     """
     Derive the public key for a Reality inbound using pure Python (X25519).
     Raises ValueError when the provided key cannot be decoded or is invalid.
@@ -68,7 +75,31 @@ def derive_reality_public_key(private_key: str) -> str:
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
-    return base64.urlsafe_b64encode(public_bytes).decode("utf-8")
+    # Xray's built-in generator returns url-safe Base64 without padding.
+    return base64.urlsafe_b64encode(public_bytes).rstrip(b"=").decode("utf-8")
+
+
+def derive_reality_public_key(private_key: str) -> str:
+    """
+    Try to derive the Reality public key exactly the way Xray does (through the
+    CLI helper) to ensure identical formatting. Fall back to a pure Python
+    implementation when the CLI helper is unavailable.
+    """
+    if not private_key:
+        raise ValueError("Reality private key is empty")
+
+    try:
+        cmd = [XRAY_EXECUTABLE_PATH, "x25519"]
+        if private_key:
+            cmd.extend(["-i", private_key])
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
+        match = re.match(r"Private key: (.+)\nPublic key: (.+)", output)
+        if match:
+            return match.group(2)
+    except Exception:  # pragma: no cover - fallback handled below
+        pass
+
+    return _derive_reality_public_key_python(private_key)
 
 
 class XRayConfig(dict):
