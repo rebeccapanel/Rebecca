@@ -1,6 +1,6 @@
 import { ALPN_OPTION, UTLS_FINGERPRINT } from "utils/outbound";
 
-export type Protocol = "vmess" | "vless" | "trojan" | "shadowsocks";
+export type Protocol = "vmess" | "vless" | "trojan" | "shadowsocks" | "http" | "socks";
 export type StreamNetwork =
   | "tcp"
   | "ws"
@@ -27,6 +27,11 @@ export type FallbackForm = {
   type: string;
   alpn: string;
   xver: string;
+};
+
+export type ProxyAccountForm = {
+  user: string;
+  pass: string;
 };
 
 export type SockoptFormValues = {
@@ -94,6 +99,12 @@ export type InboundFormValues = {
   vlessSelectedAuth: string;
   sockoptEnabled: boolean;
   sockopt: SockoptFormValues;
+  httpAccounts: ProxyAccountForm[];
+  httpAllowTransparent: boolean;
+  socksAuth: "password" | "noauth";
+  socksAccounts: ProxyAccountForm[];
+  socksUdpEnabled: boolean;
+  socksUdpIp: string;
 };
 
 export const sniffingOptions = [
@@ -106,7 +117,7 @@ export const sniffingOptions = [
 export const tlsAlpnOptions = Object.values(ALPN_OPTION);
 export const tlsFingerprintOptions = Object.values(UTLS_FINGERPRINT);
 
-export const protocolOptions: Protocol[] = ["vmess", "vless", "trojan", "shadowsocks"];
+export const protocolOptions: Protocol[] = ["vmess", "vless", "trojan", "shadowsocks", "http", "socks"];
 export const streamNetworks: StreamNetwork[] = [
   "tcp",
   "ws",
@@ -179,6 +190,22 @@ const cleanObject = (value: Record<string, any>) => {
   });
   return value;
 };
+
+const createDefaultProxyAccount = (): ProxyAccountForm => ({
+  user: "",
+  pass: "",
+});
+
+const accountToForm = (account: Record<string, any> | undefined): ProxyAccountForm => ({
+  user: account?.user ?? "",
+  pass: account?.pass ?? "",
+});
+
+const formToAccount = (account: ProxyAccountForm) =>
+  cleanObject({
+    user: account.user?.trim(),
+    pass: account.pass?.trim(),
+  });
 
 const parseOptionalNumber = (value: unknown): number | undefined => {
   if (value === "" || value === null || typeof value === "undefined") {
@@ -260,6 +287,12 @@ export const createDefaultInboundForm = (protocol: Protocol = "vless"): InboundF
   vlessSelectedAuth: "",
   sockoptEnabled: false,
   sockopt: createDefaultSockopt(),
+  httpAccounts: [createDefaultProxyAccount()],
+  httpAllowTransparent: false,
+  socksAuth: "noauth",
+  socksAccounts: [createDefaultProxyAccount()],
+  socksUdpEnabled: false,
+  socksUdpIp: "",
 });
 
 const fallbackToForm = (fallback: Record<string, any>): FallbackForm => ({
@@ -366,6 +399,28 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
       defaults.interfaceName = sockopt.interface ?? defaults.interfaceName;
       return defaults;
     })(),
+    httpAccounts:
+      protocol === "http" && Array.isArray(settings.accounts)
+        ? settings.accounts.map((item: Record<string, any>) => accountToForm(item))
+        : base.httpAccounts,
+    httpAllowTransparent:
+      protocol === "http" && typeof settings.allowTransparent === "boolean"
+        ? settings.allowTransparent
+        : base.httpAllowTransparent,
+    socksAuth:
+      protocol === "socks" && settings.auth === "password" ? "password" : base.socksAuth,
+    socksAccounts:
+      protocol === "socks" && Array.isArray(settings.accounts)
+        ? settings.accounts.map((item: Record<string, any>) => accountToForm(item))
+        : base.socksAccounts,
+    socksUdpEnabled:
+      protocol === "socks" && typeof settings.udp === "boolean"
+        ? settings.udp
+        : base.socksUdpEnabled,
+    socksUdpIp:
+      protocol === "socks" && settings.ip !== undefined && settings.ip !== null
+        ? String(settings.ip)
+        : base.socksUdpIp,
   };
 };
 
@@ -464,7 +519,11 @@ const buildStreamSettings = (values: InboundFormValues): Record<string, any> => 
 };
 
 const buildSettings = (values: InboundFormValues): Record<string, any> => {
-  const base: Record<string, any> = { clients: [] };
+  const base: Record<string, any> = {};
+
+  if (["vmess", "vless", "trojan", "shadowsocks"].includes(values.protocol)) {
+    base.clients = [];
+  }
 
   switch (values.protocol) {
     case "vmess":
@@ -494,6 +553,34 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
     case "shadowsocks":
       base.network = values.shadowsocksNetwork || "tcp,udp";
       break;
+    case "http": {
+      const accounts = values.httpAccounts
+        .map(formToAccount)
+        .filter((account) => Object.keys(account).length);
+      if (accounts.length) {
+        base.accounts = accounts;
+      }
+      if (values.httpAllowTransparent) {
+        base.allowTransparent = true;
+      }
+      break;
+    }
+    case "socks": {
+      base.auth = values.socksAuth;
+      if (values.socksAuth === "password") {
+        const accounts = values.socksAccounts
+          .map(formToAccount)
+          .filter((account) => Object.keys(account).length);
+        if (accounts.length) {
+          base.accounts = accounts;
+        }
+      }
+      base.udp = values.socksUdpEnabled;
+      if (values.socksUdpEnabled && values.socksUdpIp.trim()) {
+        base.ip = values.socksUdpIp.trim();
+      }
+      break;
+    }
   }
 
   return base;

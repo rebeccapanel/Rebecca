@@ -136,6 +136,22 @@ export const InboundFormModal: FC<Props> = ({
     control,
     name: "fallbacks",
   });
+  const {
+    fields: httpAccountFields,
+    append: appendHttpAccount,
+    remove: removeHttpAccount,
+  } = useFieldArray({
+    control,
+    name: "httpAccounts",
+  });
+  const {
+    fields: socksAccountFields,
+    append: appendSocksAccount,
+    remove: removeSocksAccount,
+  } = useFieldArray({
+    control,
+    name: "socksAccounts",
+  });
 
   const currentProtocol = useWatch({ control, name: "protocol" }) || watch("protocol");
   const streamNetwork = useWatch({ control, name: "streamNetwork" }) || watch("streamNetwork");
@@ -145,6 +161,9 @@ export const InboundFormModal: FC<Props> = ({
   const tcpHeaderType = useWatch({ control, name: "tcpHeaderType" }) || watch("tcpHeaderType");
   const sockoptEnabled = useWatch({ control, name: "sockoptEnabled" }) ?? false;
   const vlessSelectedAuth = useWatch({ control, name: "vlessSelectedAuth" }) || "";
+  const socksAuth = useWatch({ control, name: "socksAuth" }) || watch("socksAuth") || "noauth";
+  const socksUdpEnabled =
+    useWatch({ control, name: "socksUdpEnabled" }) ?? watch("socksUdpEnabled") ?? false;
   const defaultVlessAuthLabels = useMemo(
     () => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
     []
@@ -173,11 +192,19 @@ export const InboundFormModal: FC<Props> = ({
         <Controller
           control={control}
           name={`sockopt.${name}` as const}
-          render={({ field }) => (
-            <NumberInput min={0} value={field.value ?? ""} onChange={(valueString) => field.onChange(valueString)}>
-              <NumberInputField />
-            </NumberInput>
-          )}
+          render={({ field }) => {
+            const numberInputValue: string | number | undefined =
+              typeof field.value === "number" || typeof field.value === "string" ? field.value : undefined;
+            return (
+              <NumberInput
+                min={0}
+                value={numberInputValue ?? ""}
+                onChange={(valueString) => field.onChange(valueString)}
+              >
+                <NumberInputField />
+              </NumberInput>
+            );
+          }}
         />
       </FormControl>
     ),
@@ -192,7 +219,10 @@ export const InboundFormModal: FC<Props> = ({
           control={control}
           name={`sockopt.${name}` as const}
           render={({ field }) => (
-            <Switch isChecked={field.value} onChange={(event) => field.onChange(event.target.checked)} />
+            <Switch
+              isChecked={typeof field.value === "boolean" ? field.value : Boolean(field.value)}
+              onChange={(event) => field.onChange(event.target.checked)}
+            />
           )}
         />
       </FormControl>
@@ -479,6 +509,151 @@ export const InboundFormModal: FC<Props> = ({
                       {t("inbounds.vless.clearKeys", "Clear")}
                     </Button>
                   </HStack>
+                </Stack>
+              )}
+              {currentProtocol === "http" && (
+                <Stack spacing={3}>
+                  <Flex justify="space-between" align="center">
+                    <Text fontWeight="medium">
+                      {t("inbounds.http.accounts", "HTTP accounts")}
+                    </Text>
+                    <Button
+                      size="xs"
+                      onClick={() => appendHttpAccount({ user: "", pass: "" })}
+                    >
+                      {t("inbounds.accounts.add", "Add account")}
+                    </Button>
+                  </Flex>
+                  <Stack spacing={3}>
+                    {httpAccountFields.map((field, index) => (
+                      <Box
+                        key={field.id}
+                        borderWidth="1px"
+                        borderRadius="md"
+                        borderColor={sectionBorder}
+                        p={3}
+                      >
+                        <Flex justify="space-between" align="center" mb={3}>
+                          <Text fontWeight="semibold">
+                            {t("inbounds.accounts.label", "Account")} #{index + 1}
+                          </Text>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="red"
+                            onClick={() => removeHttpAccount(index)}
+                          >
+                            {t("hostsPage.delete", "Delete")}
+                          </Button>
+                        </Flex>
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                          <FormControl>
+                            <FormLabel>{t("username", "Username")}</FormLabel>
+                            <Input {...register(`httpAccounts.${index}.user` as const)} />
+                          </FormControl>
+                          <FormControl>
+                            <FormLabel>{t("password", "Password")}</FormLabel>
+                            <Input {...register(`httpAccounts.${index}.pass` as const)} />
+                          </FormControl>
+                        </SimpleGrid>
+                      </Box>
+                    ))}
+                    {!httpAccountFields.length && (
+                      <Text fontSize="sm" color="gray.500">
+                        {t("inbounds.http.noAccountsHint", "Add at least one username/password pair.")}
+                      </Text>
+                    )}
+                  </Stack>
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel mb={0}>
+                      {t("inbounds.http.allowTransparent", "Allow transparent proxy")}
+                    </FormLabel>
+                    <Switch {...register("httpAllowTransparent")} />
+                  </FormControl>
+                </Stack>
+              )}
+              {currentProtocol === "socks" && (
+                <Stack spacing={3}>
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel mb={0}>{t("inbounds.socks.udp", "Enable UDP")}</FormLabel>
+                    <Switch {...register("socksUdpEnabled")} />
+                  </FormControl>
+                  {socksUdpEnabled && (
+                    <FormControl>
+                      <FormLabel>{t("inbounds.socks.udpIp", "UDP bind IP")}</FormLabel>
+                      <Input {...register("socksUdpIp")} placeholder="127.0.0.1" />
+                    </FormControl>
+                  )}
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel mb={0}>
+                      {t("inbounds.socks.auth", "Require authentication")}
+                    </FormLabel>
+                    <Controller
+                      control={control}
+                      name="socksAuth"
+                      render={({ field }) => (
+                        <Switch
+                          isChecked={field.value === "password"}
+                          onChange={(event) =>
+                            field.onChange(event.target.checked ? "password" : "noauth")
+                          }
+                        />
+                      )}
+                    />
+                  </FormControl>
+                  {socksAuth === "password" && (
+                    <Stack spacing={3}>
+                      <Flex justify="space-between" align="center">
+                        <Text fontWeight="medium">
+                          {t("inbounds.socks.accounts", "SOCKS accounts")}
+                        </Text>
+                        <Button
+                          size="xs"
+                          onClick={() => appendSocksAccount({ user: "", pass: "" })}
+                        >
+                          {t("inbounds.accounts.add", "Add account")}
+                        </Button>
+                      </Flex>
+                      {socksAccountFields.map((field, index) => (
+                        <Box
+                          key={field.id}
+                          borderWidth="1px"
+                          borderRadius="md"
+                          borderColor={sectionBorder}
+                          p={3}
+                        >
+                          <Flex justify="space-between" align="center" mb={3}>
+                            <Text fontWeight="semibold">
+                              {t("inbounds.accounts.label", "Account")} #{index + 1}
+                            </Text>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => removeSocksAccount(index)}
+                            >
+                              {t("hostsPage.delete", "Delete")}
+                            </Button>
+                          </Flex>
+                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                            <FormControl>
+                              <FormLabel>{t("username", "Username")}</FormLabel>
+                              <Input {...register(`socksAccounts.${index}.user` as const)} />
+                            </FormControl>
+                            <FormControl>
+                              <FormLabel>{t("password", "Password")}</FormLabel>
+                              <Input {...register(`socksAccounts.${index}.pass` as const)} />
+                            </FormControl>
+                          </SimpleGrid>
+                        </Box>
+                      ))}
+                      {!socksAccountFields.length && (
+                        <Text fontSize="sm" color="gray.500">
+                          {t("inbounds.socks.noAccountsHint", "Add at least one account for password mode.")}
+                        </Text>
+                      )}
+                    </Stack>
+                  )}
                 </Stack>
               )}
             </Stack>
