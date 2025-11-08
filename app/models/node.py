@@ -34,6 +34,13 @@ class Node(BaseModel):
         description="Maximum data limit for the node in bytes (null = unlimited)",
         example=107374182400,
     )
+    use_nobetci: bool = False
+    nobetci_port: Optional[int] = Field(
+        None,
+        ge=1,
+        le=65535,
+        description="Port to use when Nobetci integration is enabled",
+    )
 
 
 class NodeCreate(Node):
@@ -61,6 +68,8 @@ class NodeModify(Node):
     usage_coefficient: Optional[float] = Field(None, nullable=True)
     geo_mode: Optional[GeoMode] = Field(None, nullable=True)
     data_limit: Optional[int] = Field(None, nullable=True)
+    use_nobetci: Optional[bool] = Field(None, nullable=True)
+    nobetci_port: Optional[int] = Field(None, nullable=True)
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "name": "DE node",

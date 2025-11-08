@@ -114,6 +114,7 @@ class User(Base):
     online_at = Column(DateTime, nullable=True, default=None)
     on_hold_expire_duration = Column(BigInteger, nullable=True, default=None)
     on_hold_timeout = Column(DateTime, nullable=True, default=None)
+    ip_limit = Column(Integer, nullable=False, default=0, server_default="0")
 
     # * Positive values: User will be deleted after the value of this field in days automatically.
     # * Negative values: User won't be deleted automatically at all.
@@ -449,6 +450,8 @@ class Node(Base):
     usage_coefficient = Column(Float, nullable=False, server_default=text("1.0"), default=1)
     geo_mode = Column(Enum(GeoMode), nullable=False, default=GeoMode.default)
     data_limit = Column(BigInteger, nullable=True, default=None)
+    use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    nobetci_port = Column(Integer, nullable=True, default=None)
 
 
 class MasterNodeState(Base):

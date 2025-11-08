@@ -1323,6 +1323,7 @@ def create_user(
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
+        ip_limit=user.ip_limit or 0,
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -1502,6 +1503,9 @@ def update_user(
 
     if modify.data_limit_reset_strategy is not None:
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
+
+    if "ip_limit" in modify.model_fields_set:
+        dbuser.ip_limit = modify.ip_limit or 0
 
     if modify.on_hold_timeout is not None:
         dbuser.on_hold_timeout = modify.on_hold_timeout
@@ -2609,6 +2613,8 @@ def create_node(db: Session, node: NodeCreate) -> Node:
         usage_coefficient=node.usage_coefficient if getattr(node, "usage_coefficient", None) else 1,
         data_limit=node.data_limit if getattr(node, "data_limit", None) is not None else None,
         geo_mode=node.geo_mode,
+        use_nobetci=bool(getattr(node, "use_nobetci", False)),
+        nobetci_port=getattr(node, "nobetci_port", None) or None,
     )
 
     db.add(dbnode)
@@ -2680,6 +2686,16 @@ def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
     if modify.data_limit is not None:
         dbnode.data_limit = modify.data_limit
         data_limit_updated = True
+
+    if getattr(modify, "use_nobetci", None) is not None:
+        dbnode.use_nobetci = bool(modify.use_nobetci)
+        if not dbnode.use_nobetci:
+            dbnode.nobetci_port = None
+
+    if getattr(modify, "nobetci_port", None) is not None:
+        dbnode.nobetci_port = modify.nobetci_port or None
+        if dbnode.nobetci_port and not dbnode.use_nobetci:
+            dbnode.use_nobetci = True
 
     if data_limit_updated:
         usage_total = (dbnode.uplink or 0) + (dbnode.downlink or 0)

@@ -1,6 +1,7 @@
 import re
 import secrets
 from datetime import datetime
+import math
 from enum import Enum
 from typing import Dict, List, Optional, Union
 
@@ -13,6 +14,26 @@ from app.utils.jwt import create_subscription_token
 from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
 
 USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.]+)*$")
+
+
+def _normalize_ip_limit(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed or trimmed == "-":
+            return 0
+        try:
+            value = int(float(trimmed))
+        except (TypeError, ValueError):
+            raise ValueError("ip_limit must be a number or '-' for unlimited")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("ip_limit must be a finite number")
+        value = int(value)
+    if isinstance(value, int):
+        return value if value > 0 else 0
+    raise ValueError("ip_limit must be numeric")
 
 
 class ReminderType(str, Enum):
@@ -72,6 +93,11 @@ class User(BaseModel):
     online_at: Optional[datetime] = Field(None, nullable=True)
     on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
     on_hold_timeout: Optional[Union[datetime, None]] = Field(None, nullable=True)
+    ip_limit: int = Field(
+        0,
+        ge=0,
+        description="Maximum number of unique IPs allowed (0 = unlimited)",
+    )
 
     auto_delete_in_days: Optional[int] = Field(None, nullable=True)
 
@@ -119,6 +145,10 @@ class User(BaseModel):
         if (v in (0, None)):
             return None
         return v
+
+    @field_validator("ip_limit", mode="before")
+    def normalize_ip_limit(cls, value):
+        return _normalize_ip_limit(value)
 
 
 class UserCreate(User):
@@ -296,6 +326,7 @@ class UserServiceCreate(BaseModel):
     on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
     auto_delete_in_days: Optional[int] = Field(None, nullable=True)
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
+    ip_limit: int = 0
 
     @field_validator("username")
     @classmethod
@@ -306,6 +337,10 @@ class UserServiceCreate(BaseModel):
     @classmethod
     def validate_note(cls, value):
         return User.validate_note(value)
+
+    @field_validator("ip_limit", mode="before")
+    def normalize_ip_limit(cls, value):
+        return _normalize_ip_limit(value)
 
 
 class UserResponse(User):
