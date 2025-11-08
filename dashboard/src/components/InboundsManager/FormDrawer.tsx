@@ -3,11 +3,14 @@ import {
   Button,
   Checkbox,
   CheckboxGroup,
+  Collapse,
   Flex,
   FormControl,
   FormLabel,
   HStack,
   Input as ChakraInput,
+  NumberInput,
+  NumberInputField,
   Text,
   Modal,
   ModalBody,
@@ -32,8 +35,9 @@ import {
   Controller,
   useFieldArray,
   useForm,
+  useWatch,
 } from "react-hook-form";
-import { useEffect, FC, useMemo, useCallback } from "react";
+import { useEffect, FC, useMemo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -43,13 +47,16 @@ import {
   streamNetworks,
   streamSecurityOptions,
   sniffingOptions,
-  tlsAlpnOptions,
   tlsFingerprintOptions,
   createDefaultInboundForm,
   rawInboundToFormValues,
+  SockoptFormValues,
 } from "utils/inbounds";
 import { RawInbound } from "utils/inbounds";
 import { generateWireguardKeypair } from "utils/wireguard";
+import { getVlessEncAuthBlocks, VlessEncAuthBlock } from "service/xray";
+
+import { forwardRef } from "react";
 
 type Props = {
   isOpen: boolean;
@@ -60,9 +67,53 @@ type Props = {
   onSubmit: (values: InboundFormValues) => Promise<void>;
 };
 
-const Input = (props: InputProps) => <ChakraInput size="sm" {...props} />;
-const Select = (props: SelectProps) => <ChakraSelect size="sm" {...props} />;
-const Textarea = (props: TextareaProps) => <ChakraTextarea size="sm" resize="vertical" {...props} />;
+const Input = forwardRef<HTMLInputElement, InputProps>((props, ref) => (
+  <ChakraInput size="sm" ref={ref} {...props} />
+));
+Input.displayName = "InboundFormInput";
+
+const Select = forwardRef<HTMLSelectElement, SelectProps>((props, ref) => (
+  <ChakraSelect size="sm" ref={ref} {...props} />
+));
+Select.displayName = "InboundFormSelect";
+
+const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>((props, ref) => (
+  <ChakraTextarea size="sm" resize="vertical" ref={ref} {...props} />
+));
+Textarea.displayName = "InboundFormTextarea";
+
+const formatRealityKeyForDisplay = (value?: string | null) =>
+  (value ?? "").replace(/\s+/g, "").replace(/=+$/, "");
+
+const prepareRealityKeyForDerivation = (value?: string | null) => {
+  const trimmed = (value ?? "").replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (!trimmed) {
+    return "";
+  }
+  const remainder = trimmed.length % 4;
+  return remainder === 0 ? trimmed : `${trimmed}${"=".repeat(4 - remainder)}`;
+};
+
+const DOMAIN_STRATEGY_OPTIONS = [
+  "AsIs",
+  "UseIP",
+  "UseIPv6v4",
+  "UseIPv6",
+  "UseIPv4v6",
+  "UseIPv4",
+  "ForceIP",
+  "ForceIPv6v4",
+  "ForceIPv6",
+  "ForceIPv4v6",
+  "ForceIPv4",
+];
+
+const TCP_CONGESTION_OPTIONS = ["bbr", "cubic", "reno"];
+const TPROXY_OPTIONS: Array<"" | "off" | "redirect" | "tproxy"> = [
+  "off",
+  "redirect",
+  "tproxy",
+];
 
 export const InboundFormModal: FC<Props> = ({
   isOpen,
@@ -74,6 +125,8 @@ export const InboundFormModal: FC<Props> = ({
 }) => {
   const { t } = useTranslation();
   const toast = useToast();
+  const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>([]);
+  const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
 
   const form = useForm<InboundFormValues>({
     defaultValues: createDefaultInboundForm(),
@@ -84,19 +137,79 @@ export const InboundFormModal: FC<Props> = ({
     name: "fallbacks",
   });
 
+  const currentProtocol = useWatch({ control, name: "protocol" }) || watch("protocol");
+  const streamNetwork = useWatch({ control, name: "streamNetwork" }) || watch("streamNetwork");
+  const streamSecurity = useWatch({ control, name: "streamSecurity" }) || watch("streamSecurity");
+  const sniffingEnabled = useWatch({ control, name: "sniffingEnabled" }) ?? watch("sniffingEnabled");
+  const realityPrivateKey = useWatch({ control, name: "realityPrivateKey" }) || watch("realityPrivateKey");
+  const tcpHeaderType = useWatch({ control, name: "tcpHeaderType" }) || watch("tcpHeaderType");
+  const sockoptEnabled = useWatch({ control, name: "sockoptEnabled" }) ?? false;
+  const vlessSelectedAuth = useWatch({ control, name: "vlessSelectedAuth" }) || "";
+  const defaultVlessAuthLabels = useMemo(
+    () => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
+    []
+  );
+  const computedVlessAuthOptions = useMemo(() => {
+    const labels = [...defaultVlessAuthLabels, ...vlessAuthOptions.map((option) => option.label)].filter(Boolean);
+    const unique = Array.from(new Set(labels));
+    return unique.map((label) => ({ label, value: label }));
+  }, [defaultVlessAuthLabels, vlessAuthOptions]);
+
   useEffect(() => {
-    if (initialValue) {
-      reset(rawInboundToFormValues(initialValue));
-    } else {
-      reset(createDefaultInboundForm());
+    if (isOpen) {
+      if (initialValue) {
+        const formValues = rawInboundToFormValues(initialValue);
+        reset(formValues);
+      } else {
+        reset(createDefaultInboundForm());
+      }
     }
   }, [initialValue, reset, isOpen]);
 
-  const currentProtocol = watch("protocol");
-  const streamNetwork = watch("streamNetwork");
-  const streamSecurity = watch("streamSecurity");
-  const sniffingEnabled = watch("sniffingEnabled");
-  const realityPrivateKey = watch("realityPrivateKey");
+  const renderSockoptNumberInput = useCallback(
+    (name: keyof SockoptFormValues, label: string) => (
+      <FormControl>
+        <FormLabel>{label}</FormLabel>
+        <Controller
+          control={control}
+          name={`sockopt.${name}` as const}
+          render={({ field }) => (
+            <NumberInput min={0} value={field.value ?? ""} onChange={(valueString) => field.onChange(valueString)}>
+              <NumberInputField />
+            </NumberInput>
+          )}
+        />
+      </FormControl>
+    ),
+    [control]
+  );
+
+  const renderSockoptSwitch = useCallback(
+    (name: keyof SockoptFormValues, label: string) => (
+      <FormControl display="flex" alignItems="center">
+        <FormLabel mb={0}>{label}</FormLabel>
+        <Controller
+          control={control}
+          name={`sockopt.${name}` as const}
+          render={({ field }) => (
+            <Switch isChecked={field.value} onChange={(event) => field.onChange(event.target.checked)} />
+          )}
+        />
+      </FormControl>
+    ),
+    [control]
+  );
+
+  const renderSockoptTextInput = useCallback(
+    (name: keyof SockoptFormValues, label: string, placeholder?: string) => (
+      <FormControl>
+        <FormLabel>{label}</FormLabel>
+        <Input {...register(`sockopt.${name}` as const)} placeholder={placeholder} />
+      </FormControl>
+    ),
+    [register]
+  );
+  
   const supportsFallback = currentProtocol === "vless" || currentProtocol === "trojan";
 
   const sectionBorder = useColorModeValue("gray.200", "gray.700");
@@ -108,7 +221,9 @@ export const InboundFormModal: FC<Props> = ({
   const handleGenerateRealityKeypair = useCallback(() => {
     try {
       const { privateKey } = generateWireguardKeypair();
-      form.setValue("realityPrivateKey", privateKey, { shouldDirty: true });
+      form.setValue("realityPrivateKey", formatRealityKeyForDisplay(privateKey), {
+        shouldDirty: true,
+      });
     } catch (error) {
       toast({
         status: "error",
@@ -146,11 +261,13 @@ export const InboundFormModal: FC<Props> = ({
   }, [form, toast, t]);
 
   const derivedRealityPublicKey = useMemo(() => {
-    if (!realityPrivateKey || !realityPrivateKey.trim()) {
+    const normalized = prepareRealityKeyForDerivation(realityPrivateKey);
+    if (!normalized) {
       return "";
     }
     try {
-      return generateWireguardKeypair(realityPrivateKey.trim()).publicKey;
+      const { publicKey } = generateWireguardKeypair(normalized);
+      return formatRealityKeyForDisplay(publicKey);
     } catch {
       return "";
     }
@@ -158,6 +275,90 @@ export const InboundFormModal: FC<Props> = ({
 
   const handleAddFallback = () =>
     appendFallback({ dest: "", path: "", type: "", alpn: "", xver: "" });
+
+  const fetchVlessAuthBlocks = useCallback(async () => {
+    setVlessAuthLoading(true);
+    try {
+      const response = await getVlessEncAuthBlocks();
+      const blocks = response?.auths ?? [];
+      setVlessAuthOptions(blocks);
+      return blocks;
+    } catch (error) {
+      console.error(error);
+      toast({
+        status: "error",
+        title: t("inbounds.vless.getKeysError", "Unable to fetch VLESS keys"),
+      });
+      return [];
+    } finally {
+      setVlessAuthLoading(false);
+    }
+  }, [toast, t]);
+
+  const ensureVlessAuthBlocks = useCallback(async () => {
+    if (vlessAuthOptions.length) {
+      return vlessAuthOptions;
+    }
+    return fetchVlessAuthBlocks();
+  }, [fetchVlessAuthBlocks, vlessAuthOptions]);
+
+  const applyVlessAuthBlock = useCallback(
+    (label: string, blocks: VlessEncAuthBlock[]) => {
+      const match = blocks.find((block) => block.label === label);
+      if (!match) {
+        toast({
+          status: "warning",
+          title: t("inbounds.vless.authNotFound", "Authentication block not available"),
+        });
+        return;
+      }
+      form.setValue("vlessDecryption", match.decryption ?? "", { shouldDirty: true });
+      form.setValue("vlessEncryption", match.encryption ?? "", { shouldDirty: true });
+    },
+    [form, t, toast]
+  );
+
+  const handleAuthSelection = useCallback(
+    async (label: string) => {
+      if (!label) {
+        form.setValue("vlessDecryption", "", { shouldDirty: true });
+        form.setValue("vlessEncryption", "", { shouldDirty: true });
+        return;
+      }
+      const blocks = await ensureVlessAuthBlocks();
+      if (blocks.length) {
+        applyVlessAuthBlock(label, blocks);
+      }
+    },
+    [applyVlessAuthBlock, ensureVlessAuthBlocks, form]
+  );
+
+  const handleFetchAuthClick = useCallback(async () => {
+    const label = form.getValues("vlessSelectedAuth");
+    if (!label) {
+      toast({
+        status: "info",
+        title: t("inbounds.vless.selectAuthFirst", "Select an authentication option first"),
+      });
+      return;
+    }
+    const blocks = await fetchVlessAuthBlocks();
+    if (blocks.length) {
+      applyVlessAuthBlock(label, blocks);
+    }
+  }, [applyVlessAuthBlock, fetchVlessAuthBlocks, form, t, toast]);
+
+  const handleClearAuth = useCallback(() => {
+    form.setValue("vlessSelectedAuth", "", { shouldDirty: true });
+    form.setValue("vlessDecryption", "", { shouldDirty: true });
+    form.setValue("vlessEncryption", "", { shouldDirty: true });
+  }, [form]);
+
+  useEffect(() => {
+    if (isOpen && currentProtocol === "vless") {
+      ensureVlessAuthBlocks();
+    }
+  }, [currentProtocol, ensureVlessAuthBlocks, isOpen]);
 
   return (
     <Modal
@@ -229,86 +430,55 @@ export const InboundFormModal: FC<Props> = ({
                 </FormControl>
               )}
               {currentProtocol === "vless" && (
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                  <FormControl>
-                    <FormLabel>{t("inbounds.vless.decryption", "Decryption")}</FormLabel>
-                    <Input {...register("vlessDecryption")} />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel>{t("inbounds.vless.encryption", "Encryption")}</FormLabel>
-                    <Input {...register("vlessEncryption")} />
-                  </FormControl>
-                </SimpleGrid>
-              )}
-
-              {supportsFallback && (
-                <Stack
-                  spacing={3}
-                  borderWidth="1px"
-                  borderColor={sectionBorder}
-                  borderRadius="lg"
-                  p={4}
-                >
-                  <Flex align="center" justify="space-between">
-                    <Box fontWeight="medium">{t("inbounds.fallbacks", "Fallbacks")}</Box>
-                    <Button size="xs" onClick={handleAddFallback}>
-                      {t("inbounds.fallbacks.add", "Add fallback")}
+                <Stack spacing={3}>
+                  <Controller
+                    control={control}
+                    name="vlessSelectedAuth"
+                    render={({ field }) => (
+                      <FormControl>
+                        <FormLabel>{t("inbounds.vless.authentication", "Authentication")}</FormLabel>
+                        <ChakraSelect
+                          placeholder={t("inbounds.vless.authPlaceholder", "Select authentication")}
+                          value={field.value || ""}
+                          onChange={async (event) => {
+                            const value = event.target.value;
+                            field.onChange(value);
+                            await handleAuthSelection(value);
+                          }}
+                        >
+                          <option value="">{t("common.none", "None")}</option>
+                          {computedVlessAuthOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </ChakraSelect>
+                      </FormControl>
+                    )}
+                  />
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.vless.decryption", "Decryption")}</FormLabel>
+                      <Input {...register("vlessDecryption")} />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.vless.encryption", "Encryption")}</FormLabel>
+                      <Input {...register("vlessEncryption")} />
+                    </FormControl>
+                  </SimpleGrid>
+                  <HStack spacing={3}>
+                    <Button
+                      size="sm"
+                      onClick={handleFetchAuthClick}
+                      isLoading={vlessAuthLoading}
+                      isDisabled={!vlessSelectedAuth}
+                    >
+                      {t("inbounds.vless.getKeys", "Get new keys")}
                     </Button>
-                  </Flex>
-                  {fallbackFields.length === 0 ? (
-                    <Text fontSize="sm" color="gray.500">
-                      {t("inbounds.fallbacks.empty", "No fallbacks configured yet.")}
-                    </Text>
-                  ) : (
-                    fallbackFields.map((field, index) => (
-                      <Box
-                        key={field.id}
-                        borderWidth="1px"
-                        borderRadius="md"
-                        borderColor={sectionBorder}
-                        p={3}
-                      >
-                        <Flex justify="space-between" align="center" mb={3}>
-                          <Text fontWeight="semibold">
-                            {t("inbounds.fallbacks.type", "Fallback")} #{index + 1}
-                          </Text>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            colorScheme="red"
-                            onClick={() => removeFallback(index)}
-                          >
-                            {t("hostsPage.delete", "Delete")}
-                          </Button>
-                        </Flex>
-                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                          <FormControl>
-                            <FormLabel>{t("inbounds.fallbacks.dest", "Destination (host:port)")}</FormLabel>
-                            <Input
-                              placeholder="example.com:443"
-                              {...register(`fallbacks.${index}.dest` as const)}
-                            />
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel>{t("inbounds.fallbacks.path", "Path")}</FormLabel>
-                            <Input {...register(`fallbacks.${index}.path` as const)} placeholder="/" />
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel>{t("inbounds.fallbacks.type", "Type")}</FormLabel>
-                            <Input {...register(`fallbacks.${index}.type` as const)} placeholder="none" />
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel>{t("inbounds.fallbacks.alpn", "ALPN")}</FormLabel>
-                            <Input {...register(`fallbacks.${index}.alpn` as const)} placeholder="h2,http/1.1" />
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel>Xver</FormLabel>
-                            <Input {...register(`fallbacks.${index}.xver` as const)} placeholder="0" />
-                          </FormControl>
-                        </SimpleGrid>
-                      </Box>
-                    ))
-                  )}
+                    <Button size="sm" variant="ghost" onClick={handleClearAuth}>
+                      {t("inbounds.vless.clearKeys", "Clear")}
+                    </Button>
+                  </HStack>
                 </Stack>
               )}
             </Stack>
@@ -365,7 +535,7 @@ export const InboundFormModal: FC<Props> = ({
                       <option value="http">http</option>
                     </Select>
                   </FormControl>
-                  {watch("tcpHeaderType") === "http" && (
+                  {tcpHeaderType === "http" && (
                     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
                       <FormControl>
                         <FormLabel>{t("inbounds.tcp.host", "HTTP host list")}</FormLabel>
@@ -452,6 +622,132 @@ export const InboundFormModal: FC<Props> = ({
                   </FormControl>
                 </SimpleGrid>
               )}
+              <FormControl display="flex" alignItems="center">
+                <FormLabel mb={0}>{t("inbounds.sockopt.enable", "Enable sockopt")}</FormLabel>
+                <Controller
+                  control={control}
+                  name="sockoptEnabled"
+                  render={({ field }) => (
+                    <Switch
+                      isChecked={Boolean(field.value)}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                    />
+                  )}
+                />
+              </FormControl>
+              <Collapse in={Boolean(sockoptEnabled)} animateOpacity>
+                <Stack
+                  spacing={4}
+                  borderWidth="1px"
+                  borderColor={sectionBorder}
+                  borderRadius="md"
+                  p={4}
+                  mt={2}
+                >
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    {renderSockoptNumberInput("mark", t("inbounds.sockopt.routeMark", "Route mark"))}
+                    {renderSockoptNumberInput(
+                      "tcpKeepAliveInterval",
+                      t("inbounds.sockopt.tcpKeepAliveInterval", "TCP keep alive interval")
+                    )}
+                    {renderSockoptNumberInput(
+                      "tcpKeepAliveIdle",
+                      t("inbounds.sockopt.tcpKeepAliveIdle", "TCP keep alive idle")
+                    )}
+                    {renderSockoptNumberInput(
+                      "tcpMaxSeg",
+                      t("inbounds.sockopt.tcpMaxSeg", "TCP max segment")
+                    )}
+                    {renderSockoptNumberInput(
+                      "tcpUserTimeout",
+                      t("inbounds.sockopt.tcpUserTimeout", "TCP user timeout")
+                    )}
+                    {renderSockoptNumberInput(
+                      "tcpWindowClamp",
+                      t("inbounds.sockopt.tcpWindowClamp", "TCP window clamp")
+                    )}
+                  </SimpleGrid>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    {renderSockoptTextInput(
+                      "dialerProxy",
+                      t("inbounds.sockopt.dialerProxy", "Dialer proxy"),
+                      "proxy"
+                    )}
+                    {renderSockoptTextInput(
+                      "interfaceName",
+                      t("inbounds.sockopt.interfaceName", "Interface name")
+                    )}
+                  </SimpleGrid>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.sockopt.domainStrategy", "Domain strategy")}</FormLabel>
+                      <Controller
+                        control={control}
+                        name="sockopt.domainStrategy"
+                        render={({ field }) => (
+                          <ChakraSelect {...field}>
+                            <option value="">{t("common.none", "None")}</option>
+                            {DOMAIN_STRATEGY_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </ChakraSelect>
+                        )}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.sockopt.tcpCongestion", "TCP congestion")}</FormLabel>
+                      <Controller
+                        control={control}
+                        name="sockopt.tcpcongestion"
+                        render={({ field }) => (
+                          <ChakraSelect {...field}>
+                            <option value="">{t("common.none", "None")}</option>
+                            {TCP_CONGESTION_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </ChakraSelect>
+                        )}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.sockopt.tproxy", "TProxy")}</FormLabel>
+                      <Controller
+                        control={control}
+                        name="sockopt.tproxy"
+                        render={({ field }) => (
+                          <ChakraSelect {...field}>
+                            {TPROXY_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </ChakraSelect>
+                        )}
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    {renderSockoptSwitch(
+                      "acceptProxyProtocol",
+                      t("inbounds.sockopt.acceptProxyProtocol", "Accept proxy protocol")
+                    )}
+                    {renderSockoptSwitch(
+                      "tcpFastOpen",
+                      t("inbounds.sockopt.tcpFastOpen", "TCP fast open")
+                    )}
+                    {renderSockoptSwitch(
+                      "tcpMptcp",
+                      t("inbounds.sockopt.tcpMptcp", "Multipath TCP")
+                    )}
+                    {renderSockoptSwitch("penetrate", t("inbounds.sockopt.penetrate", "Penetrate"))}
+                    {renderSockoptSwitch("V6Only", t("inbounds.sockopt.v6Only", "IPv6 only"))}
+                  </SimpleGrid>
+                </Stack>
+              </Collapse>
             </Stack>
 
             {streamSecurity === "tls" && (
@@ -465,24 +761,6 @@ export const InboundFormModal: FC<Props> = ({
                 <FormControl>
                   <FormLabel>{t("inbounds.tls.serverName", "Server name (SNI)")}</FormLabel>
                   <Input {...register("tlsServerName")} placeholder="example.com" />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>{t("inbounds.tls.alpn", "ALPN")}</FormLabel>
-                  <Controller
-                    control={control}
-                    name="tlsAlpn"
-                    render={({ field }) => (
-                      <CheckboxGroup {...field}>
-                        <HStack spacing={4}>
-                          {tlsAlpnOptions.map((option) => (
-                            <Checkbox key={option} value={option}>
-                              {option}
-                            </Checkbox>
-                          ))}
-                        </HStack>
-                      </CheckboxGroup>
-                    )}
-                  />
                 </FormControl>
                 <FormControl>
                   <FormLabel>{t("inbounds.tls.fingerprint", "uTLS fingerprint")}</FormLabel>
@@ -512,7 +790,7 @@ export const InboundFormModal: FC<Props> = ({
               >
                 <FormControl isRequired>
                   <FormLabel>{t("inbounds.reality.privateKey", "Reality private key")}</FormLabel>
-                  <Textarea {...register("realityPrivateKey", { required: true })} />
+                  <Textarea rows={3} {...register("realityPrivateKey", { required: true })} />
                   <Button
                     size="xs"
                     mt={2}
@@ -531,17 +809,23 @@ export const InboundFormModal: FC<Props> = ({
                     placeholder={t("inbounds.reality.publicKeyPlaceholder", "Derived automatically")}
                   />
                 </FormControl>
-                <FormControl>
-                  <FormLabel>{t("inbounds.reality.serverNames", "Server names")}</FormLabel>
-                  <Textarea
-                    rows={2}
-                    {...register("realityServerNames")}
-                    placeholder="domain.com"
-                  />
-                  <Box fontSize="sm" color="gray.500">
-                    {t("inbounds.serverNamesHint", "Separate entries with commas or new lines.")}
-                  </Box>
-                </FormControl>
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <FormControl>
+                    <FormLabel>{t("inbounds.reality.serverNames", "Server names")}</FormLabel>
+                    <Textarea
+                      rows={2}
+                      {...register("realityServerNames")}
+                      placeholder="domain.com"
+                    />
+                    <Box fontSize="sm" color="gray.500">
+                      {t("inbounds.serverNamesHint", "Separate entries with commas or new lines.")}
+                    </Box>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>{t("inbounds.reality.dest", "Destination (host:port)")}</FormLabel>
+                    <Input {...register("realityDest")} placeholder="example.com:443" />
+                  </FormControl>
+                </SimpleGrid>
                 <FormControl>
                   <FormLabel>{t("inbounds.reality.shortIds", "Short IDs")}</FormLabel>
                   <Textarea rows={2} {...register("realityShortIds")} />
@@ -558,18 +842,87 @@ export const InboundFormModal: FC<Props> = ({
                     {t("inbounds.shortIdsHint", "Separate entries with commas or new lines.")}
                   </Box>
                 </FormControl>
-                <FormControl>
-                  <FormLabel>{t("inbounds.reality.dest", "Destination (host:port)")}</FormLabel>
-                  <Input {...register("realityDest")} placeholder="example.com:443" />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>{t("inbounds.reality.spiderX", "SpiderX")}</FormLabel>
-                  <Input {...register("realitySpiderX")} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>{t("inbounds.reality.xver", "Xver")}</FormLabel>
-                  <Input {...register("realityXver")} />
-                </FormControl>
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <FormControl>
+                    <FormLabel>{t("inbounds.reality.spiderX", "SpiderX")}</FormLabel>
+                    <Input {...register("realitySpiderX")} />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>{t("inbounds.reality.xver", "Xver")}</FormLabel>
+                    <Input {...register("realityXver")} />
+                  </FormControl>
+                </SimpleGrid>
+              </Stack>
+            )}
+
+            {supportsFallback && (
+              <Stack
+                spacing={3}
+                borderWidth="1px"
+                borderColor={sectionBorder}
+                borderRadius="lg"
+                p={4}
+              >
+                <Flex align="center" justify="space-between">
+                  <Box fontWeight="medium">{t("inbounds.fallbacks", "Fallbacks")}</Box>
+                  <Button size="xs" onClick={handleAddFallback}>
+                    {t("inbounds.fallbacks.add", "Add fallback")}
+                  </Button>
+                </Flex>
+                {fallbackFields.length === 0 ? (
+                  <Text fontSize="sm" color="gray.500">
+                    {t("inbounds.fallbacks.empty", "No fallbacks configured yet.")}
+                  </Text>
+                ) : (
+                  fallbackFields.map((field, index) => (
+                    <Box
+                      key={field.id}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      borderColor={sectionBorder}
+                      p={3}
+                    >
+                      <Flex justify="space-between" align="center" mb={3}>
+                        <Text fontWeight="semibold">
+                          {t("inbounds.fallbacks.type", "Fallback")} #{index + 1}
+                        </Text>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => removeFallback(index)}
+                        >
+                          {t("hostsPage.delete", "Delete")}
+                        </Button>
+                      </Flex>
+                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                        <FormControl>
+                          <FormLabel>{t("inbounds.fallbacks.dest", "Destination (host:port)")}</FormLabel>
+                          <Input
+                            placeholder="example.com:443"
+                            {...register(`fallbacks.${index}.dest` as const)}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("inbounds.fallbacks.path", "Path")}</FormLabel>
+                          <Input {...register(`fallbacks.${index}.path` as const)} placeholder="/" />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("inbounds.fallbacks.type", "Type")}</FormLabel>
+                          <Input {...register(`fallbacks.${index}.type` as const)} placeholder="none" />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("inbounds.fallbacks.alpn", "ALPN")}</FormLabel>
+                          <Input {...register(`fallbacks.${index}.alpn` as const)} placeholder="h2,http/1.1" />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>Xver</FormLabel>
+                          <Input {...register(`fallbacks.${index}.xver` as const)} placeholder="0" />
+                        </FormControl>
+                      </SimpleGrid>
+                    </Box>
+                  ))
+                )}
               </Stack>
             )}
 
@@ -597,12 +950,12 @@ export const InboundFormModal: FC<Props> = ({
                       control={control}
                       name="sniffingDestinations"
                       render={({ field }) => (
-                        <CheckboxGroup {...field}>
-                          <HStack spacing={4}>
-                            {sniffingOptions.map((option) => (
-                              <Checkbox key={option.value} value={option.value}>
-                                {option.label}
-                              </Checkbox>
+                      <CheckboxGroup value={field.value ?? []} onChange={field.onChange}>
+                        <HStack spacing={4}>
+                          {sniffingOptions.map((option) => (
+                            <Checkbox key={option.value} value={option.value}>
+                              {option.label}
+                            </Checkbox>
                             ))}
                           </HStack>
                         </CheckboxGroup>

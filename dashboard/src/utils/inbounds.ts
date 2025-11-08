@@ -29,6 +29,25 @@ export type FallbackForm = {
   xver: string;
 };
 
+export type SockoptFormValues = {
+  acceptProxyProtocol: boolean;
+  tcpFastOpen: boolean;
+  mark: string;
+  tproxy: "" | "off" | "redirect" | "tproxy";
+  tcpMptcp: boolean;
+  penetrate: boolean;
+  domainStrategy: string;
+  tcpMaxSeg: string;
+  dialerProxy: string;
+  tcpKeepAliveInterval: string;
+  tcpKeepAliveIdle: string;
+  tcpUserTimeout: string;
+  tcpcongestion: string;
+  V6Only: boolean;
+  tcpWindowClamp: string;
+  interfaceName: string;
+};
+
 export type InboundFormValues = {
   tag: string;
   listen: string;
@@ -72,6 +91,9 @@ export type InboundFormValues = {
   httpupgradeHost: string;
   splithttpPath: string;
   splithttpHost: string;
+  vlessSelectedAuth: string;
+  sockoptEnabled: boolean;
+  sockopt: SockoptFormValues;
 };
 
 export const sniffingOptions = [
@@ -105,6 +127,35 @@ const splitLines = (value: string): string[] =>
 const joinLines = (values: string[] | undefined): string =>
   values && values.length ? values.join("\n") : "";
 
+const toInputValue = (value: unknown): string => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return "";
+};
+
+const createDefaultSockopt = (): SockoptFormValues => ({
+  acceptProxyProtocol: false,
+  tcpFastOpen: false,
+  mark: "",
+  tproxy: "off",
+  tcpMptcp: false,
+  penetrate: false,
+  domainStrategy: "",
+  tcpMaxSeg: "",
+  dialerProxy: "",
+  tcpKeepAliveInterval: "",
+  tcpKeepAliveIdle: "",
+  tcpUserTimeout: "",
+  tcpcongestion: "",
+  V6Only: false,
+  tcpWindowClamp: "",
+  interfaceName: "",
+});
+
 const parsePort = (value: string): number | string => {
   if (!value) return 0;
   const numeric = Number(value);
@@ -127,6 +178,40 @@ const cleanObject = (value: Record<string, any>) => {
     }
   });
   return value;
+};
+
+const parseOptionalNumber = (value: unknown): number | undefined => {
+  if (value === "" || value === null || typeof value === "undefined") {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const buildSockoptSettings = (values: InboundFormValues) => {
+  if (!values.sockoptEnabled) {
+    return undefined;
+  }
+  const sockopt = values.sockopt;
+  const payload = {
+    acceptProxyProtocol: sockopt.acceptProxyProtocol,
+    tcpFastOpen: sockopt.tcpFastOpen,
+    mark: parseOptionalNumber(sockopt.mark),
+    tproxy: sockopt.tproxy || undefined,
+    tcpMptcp: sockopt.tcpMptcp,
+    penetrate: sockopt.penetrate,
+    domainStrategy: sockopt.domainStrategy || undefined,
+    tcpMaxSeg: parseOptionalNumber(sockopt.tcpMaxSeg),
+    dialerProxy: sockopt.dialerProxy || undefined,
+    tcpKeepAliveInterval: parseOptionalNumber(sockopt.tcpKeepAliveInterval),
+    tcpKeepAliveIdle: parseOptionalNumber(sockopt.tcpKeepAliveIdle),
+    tcpUserTimeout: parseOptionalNumber(sockopt.tcpUserTimeout),
+    tcpcongestion: sockopt.tcpcongestion || undefined,
+    V6Only: sockopt.V6Only,
+    tcpWindowClamp: parseOptionalNumber(sockopt.tcpWindowClamp),
+    interface: sockopt.interfaceName || undefined,
+  };
+  return cleanObject(payload);
 };
 
 export const createDefaultInboundForm = (protocol: Protocol = "vless"): InboundFormValues => ({
@@ -172,6 +257,9 @@ export const createDefaultInboundForm = (protocol: Protocol = "vless"): InboundF
   httpupgradeHost: "",
   splithttpPath: "/",
   splithttpHost: "",
+  vlessSelectedAuth: "",
+  sockoptEnabled: false,
+  sockopt: createDefaultSockopt(),
 });
 
 const fallbackToForm = (fallback: Record<string, any>): FallbackForm => ({
@@ -255,6 +343,29 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
     httpupgradeHost: stream?.httpupgradeSettings?.host ?? base.httpupgradeHost,
     splithttpPath: stream?.splithttpSettings?.path ?? base.splithttpPath,
     splithttpHost: stream?.splithttpSettings?.host ?? base.splithttpHost,
+    vlessSelectedAuth: settings.selectedAuth ?? base.vlessSelectedAuth,
+    sockoptEnabled: Boolean(stream?.sockopt),
+    sockopt: (() => {
+      const defaults = createDefaultSockopt();
+      const sockopt = stream?.sockopt ?? {};
+      defaults.acceptProxyProtocol = Boolean(sockopt.acceptProxyProtocol);
+      defaults.tcpFastOpen = Boolean(sockopt.tcpFastOpen);
+      defaults.mark = toInputValue(sockopt.mark);
+      defaults.tproxy = (sockopt.tproxy as SockoptFormValues["tproxy"]) ?? defaults.tproxy;
+      defaults.tcpMptcp = Boolean(sockopt.tcpMptcp);
+      defaults.penetrate = Boolean(sockopt.penetrate);
+      defaults.domainStrategy = sockopt.domainStrategy ?? defaults.domainStrategy;
+      defaults.tcpMaxSeg = toInputValue(sockopt.tcpMaxSeg);
+      defaults.dialerProxy = sockopt.dialerProxy ?? defaults.dialerProxy;
+      defaults.tcpKeepAliveInterval = toInputValue(sockopt.tcpKeepAliveInterval);
+      defaults.tcpKeepAliveIdle = toInputValue(sockopt.tcpKeepAliveIdle);
+      defaults.tcpUserTimeout = toInputValue(sockopt.tcpUserTimeout);
+      defaults.tcpcongestion = sockopt.tcpcongestion ?? defaults.tcpcongestion;
+      defaults.V6Only = Boolean(sockopt.V6Only);
+      defaults.tcpWindowClamp = toInputValue(sockopt.tcpWindowClamp);
+      defaults.interfaceName = sockopt.interface ?? defaults.interfaceName;
+      return defaults;
+    })(),
   };
 };
 
@@ -344,6 +455,11 @@ const buildStreamSettings = (values: InboundFormValues): Record<string, any> => 
     });
   }
 
+  const sockoptPayload = buildSockoptSettings(values);
+  if (sockoptPayload) {
+    stream.sockopt = sockoptPayload;
+  }
+
   return cleanObject(stream);
 };
 
@@ -358,6 +474,9 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
       base.decryption = values.vlessDecryption || "none";
       if (values.vlessEncryption) {
         base.encryption = values.vlessEncryption;
+      }
+      if (values.vlessSelectedAuth) {
+        base.selectedAuth = values.vlessSelectedAuth;
       }
       if (values.fallbacks.length) {
         base.fallbacks = values.fallbacks

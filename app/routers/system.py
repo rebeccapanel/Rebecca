@@ -1,3 +1,4 @@
+import subprocess
 from copy import deepcopy
 from typing import Dict, List, Union
 
@@ -14,7 +15,12 @@ from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config_and_restart
-from config import XRAY_JSON, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
+from config import (
+    XRAY_EXECUTABLE_PATH,
+    XRAY_JSON,
+    XRAY_EXCLUDE_INBOUND_TAGS,
+    XRAY_FALLBACKS_INBOUND_TAG,
+)
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 
@@ -87,6 +93,59 @@ def get_inbounds_full(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Return detailed inbound definitions for manageable protocols."""
     config = _load_config()
     return [_sanitize_inbound(inbound) for inbound in _managed_inbounds(config)]
+
+
+@router.get(
+    "/xray/vlessenc",
+    responses={403: responses._403},
+)
+def generate_vless_encryption_keys(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Run `xray vlessenc` to generate authentication/encryption suggestions."""
+
+    try:
+        process = subprocess.run(
+            [XRAY_EXECUTABLE_PATH, "vlessenc"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+        detail = exc.stderr.strip() or exc.stdout.strip() or "Failed to run vlessenc"
+        raise HTTPException(status_code=500, detail=detail) from exc
+
+    auths: List[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw_line in process.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("Authentication:"):
+            if current:
+                auths.append(current)
+            current = {
+                "label": line.split("Authentication:", 1)[1].strip(),
+            }
+            continue
+
+        if (
+            current
+            and (line.startswith('"decryption"') or line.startswith('"encryption"'))
+            and ":" in line
+        ):
+            key, value = line.split(":", 1)
+            current[key.strip().strip('"')] = value.strip().strip('"')
+
+    if current:
+        auths.append(current)
+
+    if not auths:
+        raise HTTPException(status_code=500, detail="Unable to parse vlessenc output")
+
+    return {"auths": auths}
 
 
 @router.get(
