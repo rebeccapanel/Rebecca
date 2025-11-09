@@ -28,12 +28,14 @@ class TelegramSettingsData:
     default_vless_flow: Optional[str] = None
     forum_topics: Dict[str, TelegramTopic] = field(default_factory=dict)
     event_toggles: Dict[str, bool] = field(default_factory=dict)
+    use_telegram: bool = True
     record_id: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]]:
         payload: Dict[str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]] = {
             "id": self.record_id,
             "api_token": self.api_token,
+            "use_telegram": self.use_telegram,
             "proxy_url": self.proxy_url,
             "admin_chat_ids": self.admin_chat_ids,
             "logs_chat_id": self.logs_chat_id,
@@ -263,8 +265,15 @@ class TelegramSettingsService:
             record.event_toggles if record and record.event_toggles else None
         )
 
+        use_telegram = (
+            cls._coerce_bool(record.use_telegram)
+            if record and record.use_telegram is not None
+            else True
+        )
+
         return TelegramSettingsData(
             api_token=api_token or None,
+            use_telegram=use_telegram,
             proxy_url=proxy_url or None,
             admin_chat_ids=admin_chat_ids,
             logs_chat_id=logs_chat_id,
@@ -292,6 +301,7 @@ class TelegramSettingsService:
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
                     admin_chat_ids=cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"]),
+                    use_telegram=True,
                 )
                 db.add(record)
                 db.commit()
@@ -338,6 +348,7 @@ class TelegramSettingsService:
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
                     admin_chat_ids=cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"]),
+                    use_telegram=True,
                 )
                 db.add(record)
                 db.flush()
@@ -348,6 +359,12 @@ class TelegramSettingsService:
                 new_token = payload["api_token"] or None
                 if new_token != record.api_token:
                     record.api_token = new_token
+                    should_reload = True
+
+            if "use_telegram" in payload:
+                new_flag = cls._coerce_bool(payload["use_telegram"])
+                if new_flag != record.use_telegram:
+                    record.use_telegram = new_flag
                     should_reload = True
 
             if "proxy_url" in payload:
@@ -446,6 +463,7 @@ class TelegramSettingsService:
                         for key, title in cls.DEFAULT_TOPIC_TITLES.items()
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
+                    use_telegram=True,
                 )
                 db.add(record)
                 db.flush()

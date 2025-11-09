@@ -105,9 +105,11 @@ import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
+import { useQuery } from "react-query";
 
 import { useTranslation } from "react-i18next";
 
+import { getPanelSettings } from "service/settings";
 import { User, UserCreate, UserCreateWithService } from "types/User";
 
 import { relativeExpiryDate } from "utils/dateFormatter";
@@ -659,6 +661,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const useTwoColumns = showServiceSelector && services.length > 0;
   const shouldCenterForm = !useTwoColumns;
   const shouldCompactModal = !isSudo && services.length === 0;
+
+  const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const allowIpLimit = Boolean(panelSettings?.use_nobetci);
 
   const [usageVisible, setUsageVisible] = useState(false);
   const handleUsageToggle = () => {
@@ -1564,75 +1573,77 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             }}
                           />
                         </FormControl>
-                        <FormControl flex="1">
-                          <FormLabel display="flex" alignItems="center" gap={2}>
-                            {t("userDialog.ipLimitLabel", "IP limit")}
-                            <Tooltip
-                              hasArrow
-                              placement="top"
-                              label={t(
-                                "userDialog.ipLimitHint",
-                                "Maximum number of unique IPs allowed. Leave empty or '-' for unlimited."
-                              )}
-                            >
-                              <chakra.span display="inline-flex" color="gray.400" cursor="help">
-                                <QuestionMarkCircleIcon width={16} height={16} />
-                              </chakra.span>
-                            </Tooltip>
-                          </FormLabel>
-                          <Controller
-                            control={form.control}
-                            name="ip_limit"
-                            rules={{
-                              validate: (value) => {
-                                if (value === null || value === undefined) {
-                                  return true;
-                                }
-                                if (typeof value !== "number" || Number.isNaN(value)) {
-                                  return t(
-                                    "userDialog.ipLimitValidation",
-                                    "Enter a valid non-negative number"
-                                  );
-                                }
-                                return value >= 0
-                                  ? true
-                                  : t(
+                        {allowIpLimit && (
+                          <FormControl flex="1">
+                            <FormLabel display="flex" alignItems="center" gap={2}>
+                              {t("userDialog.ipLimitLabel", "IP limit")}
+                              <Tooltip
+                                hasArrow
+                                placement="top"
+                                label={t(
+                                  "userDialog.ipLimitHint",
+                                  "Maximum number of unique IPs allowed. Leave empty or '-' for unlimited."
+                                )}
+                              >
+                                <chakra.span display="inline-flex" color="gray.400" cursor="help">
+                                  <QuestionMarkCircleIcon width={16} height={16} />
+                                </chakra.span>
+                              </Tooltip>
+                            </FormLabel>
+                            <Controller
+                              control={form.control}
+                              name="ip_limit"
+                              rules={{
+                                validate: (value) => {
+                                  if (value === null || value === undefined) {
+                                    return true;
+                                  }
+                                  if (typeof value !== "number" || Number.isNaN(value)) {
+                                    return t(
                                       "userDialog.ipLimitValidation",
                                       "Enter a valid non-negative number"
                                     );
-                              },
-                            }}
-                            render={({ field }) => (
-                              <Input
-                                size="sm"
-                                borderRadius="6px"
-                                placeholder={t(
-                                  "userDialog.ipLimitPlaceholder",
-                                  "Leave empty or '-' for unlimited"
-                                )}
-                                value={
-                                  typeof field.value === "number" && field.value > 0
-                                    ? String(field.value)
-                                    : ""
-                                }
-                                onChange={(event) => {
-                                  const raw = event.target.value;
-                                  if (!raw.trim() || raw.trim() === "-") {
-                                    field.onChange(null);
-                                    return;
                                   }
-                                  const parsed = Number(raw);
-                                  if (Number.isNaN(parsed)) {
-                                    return;
+                                  return value >= 0
+                                    ? true
+                                    : t(
+                                        "userDialog.ipLimitValidation",
+                                        "Enter a valid non-negative number"
+                                      );
+                                },
+                              }}
+                              render={({ field }) => (
+                                <Input
+                                  size="sm"
+                                  borderRadius="6px"
+                                  placeholder={t(
+                                    "userDialog.ipLimitPlaceholder",
+                                    "Leave empty or '-' for unlimited"
+                                  )}
+                                  value={
+                                    typeof field.value === "number" && field.value > 0
+                                      ? String(field.value)
+                                      : ""
                                   }
-                                  field.onChange(parsed < 0 ? 0 : Math.floor(parsed));
-                                }}
-                                disabled={disabled}
-                                error={form.formState.errors.ip_limit?.message}
-                              />
-                            )}
-                          />
-                        </FormControl>
+                                  onChange={(event) => {
+                                    const raw = event.target.value;
+                                    if (!raw.trim() || raw.trim() === "-") {
+                                      field.onChange(null);
+                                      return;
+                                    }
+                                    const parsed = Number(raw);
+                                    if (Number.isNaN(parsed)) {
+                                      return;
+                                    }
+                                    field.onChange(parsed < 0 ? 0 : Math.floor(parsed));
+                                  }}
+                                  disabled={disabled}
+                                  error={form.formState.errors.ip_limit?.message}
+                                />
+                              )}
+                            />
+                          </FormControl>
+                        )}
                       </Stack>
 
                       <Collapse

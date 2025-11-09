@@ -31,6 +31,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
 import { fetch } from "service/http";
+import { getPanelSettings } from "service/settings";
 import { NodeSchema, getNodeDefaultValues, useNodes } from "contexts/NodesContext";
 import { Input } from "./Input";
 import { chakra } from "@chakra-ui/react";
@@ -81,6 +82,14 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     queryFn: () => fetch<{ min_node_version: string; certificate: string }>("/node/settings"),
   });
 
+  const { data: panelSettings } = useQuery({
+    queryKey: "panel-settings",
+    queryFn: getPanelSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allowNobetci = panelSettings?.use_nobetci ?? true;
+
   const formatDataLimitForInput = (value?: number | null) => {
     if (value === null || value === undefined) {
       return null;
@@ -117,15 +126,28 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
   const useNobetci = form.watch("use_nobetci");
 
   useEffect(() => {
-    if (!useNobetci) {
-      form.setValue("nobetci_port", null);
+    if (!allowNobetci || !useNobetci) {
+      if (form.getValues("nobetci_port") !== null) {
+        form.setValue("nobetci_port", null);
+      }
       return;
     }
     const currentPort = form.getValues("nobetci_port");
     if (currentPort === null || currentPort === undefined || currentPort === "") {
       form.setValue("nobetci_port", DEFAULT_NOBETCI_PORT);
     }
-  }, [useNobetci, form]);
+  }, [useNobetci, form, allowNobetci]);
+
+  useEffect(() => {
+    if (panelSettings && !panelSettings.use_nobetci) {
+      if (form.getValues("use_nobetci")) {
+        form.setValue("use_nobetci", false);
+      }
+      if (form.getValues("nobetci_port") !== null) {
+        form.setValue("nobetci_port", null);
+      }
+    }
+  }, [panelSettings, form]);
 
   useEffect(() => {
     if (isOpen) {
@@ -375,58 +397,62 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   {t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
                 </Text>
               </FormControl>
-              <FormControl display="flex" alignItems="center">
-                <FormLabel mb={0}>{t("nodes.useNobetci", "Enable Nobetci integration")}</FormLabel>
-                <Controller
-                  control={form.control}
-                  name="use_nobetci"
-                  render={({ field }) => (
-                    <Switch
-                      isChecked={Boolean(field.value)}
-                      onChange={(event) => field.onChange(event.target.checked)}
+              {allowNobetci && (
+                <>
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel mb={0}>{t("nodes.useNobetci", "Enable Nobetci integration")}</FormLabel>
+                    <Controller
+                      control={form.control}
+                      name="use_nobetci"
+                      render={({ field }) => (
+                        <Switch
+                          isChecked={Boolean(field.value)}
+                          onChange={(event) => field.onChange(event.target.checked)}
+                        />
+                      )}
                     />
-                  )}
-                />
-              </FormControl>
-              <Collapse in={Boolean(useNobetci)} animateOpacity>
-                <FormControl mt={useNobetci ? 2 : 0}>
-                  <Input
-                    label={t("nodes.nobetciPort", "Nobetci port")}
-                    size="sm"
-                    placeholder="443"
-                    {...form.register("nobetci_port", {
-                      setValueAs: (value) => {
-                        if (value === "" || value === null || value === undefined) {
-                          return null;
-                        }
-                        const parsed = Number(value);
-                        return Number.isFinite(parsed) ? parsed : Number.NaN;
-                      },
-                      validate: (value) => {
-                        if (!useNobetci) {
-                          return true;
-                        }
-                        if (value === null || value === undefined) {
-                          return t("nodes.nobetciPortRequired", "Port is required when Nobetci is enabled");
-                        }
-                        if (Number.isNaN(value)) {
-                          return t("nodes.nobetciPortInvalid", "Enter a valid port number");
-                        }
-                        return value >= 1 && value <= 65535
-                          ? true
-                          : t("nodes.nobetciPortRange", "Port must be between 1 and 65535");
-                      },
-                    })}
-                    error={getInputError(form.formState?.errors?.nobetci_port)}
-                  />
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {t(
-                      "nodes.nobetciHint",
-                      "Provide the Nobetci listener port. Leave blank to disable."
-                    )}
-                  </Text>
-                </FormControl>
-              </Collapse>
+                  </FormControl>
+                  <Collapse in={Boolean(useNobetci)} animateOpacity>
+                    <FormControl mt={useNobetci ? 2 : 0}>
+                      <Input
+                        label={t("nodes.nobetciPort", "Nobetci port")}
+                        size="sm"
+                        placeholder="443"
+                        {...form.register("nobetci_port", {
+                          setValueAs: (value) => {
+                            if (value === "" || value === null || value === undefined) {
+                              return null;
+                            }
+                            const parsed = Number(value);
+                            return Number.isFinite(parsed) ? parsed : Number.NaN;
+                          },
+                          validate: (value) => {
+                            if (!useNobetci) {
+                              return true;
+                            }
+                            if (value === null || value === undefined) {
+                              return t("nodes.nobetciPortRequired", "Port is required when Nobetci is enabled");
+                            }
+                            if (Number.isNaN(value)) {
+                              return t("nodes.nobetciPortInvalid", "Enter a valid port number");
+                            }
+                            return value >= 1 && value <= 65535
+                              ? true
+                              : t("nodes.nobetciPortRange", "Port must be between 1 and 65535");
+                          },
+                        })}
+                        error={getInputError(form.formState?.errors?.nobetci_port)}
+                      />
+                      <Text fontSize="xs" color="gray.500" mt={1}>
+                        {t(
+                          "nodes.nobetciHint",
+                          "Provide the Nobetci listener port. Leave blank to disable."
+                        )}
+                      </Text>
+                    </FormControl>
+                  </Collapse>
+                </>
+              )}
             </Stack>
 
             {isAddMode && (

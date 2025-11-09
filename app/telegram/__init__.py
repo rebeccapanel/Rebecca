@@ -28,6 +28,8 @@ def _apply_proxy(proxy_url: Optional[str]) -> None:
 
 def _configure_bot(settings) -> Optional[TeleBot]:
     global bot, _current_token
+    if not settings.use_telegram:
+        return None
     token = settings.api_token
     if not token:
         return None
@@ -147,6 +149,10 @@ def _start_polling(bot_instance: TeleBot) -> None:
 
 def ensure_polling() -> None:
     bot_instance, settings = get_bot(with_settings=True)
+    if not settings.use_telegram:
+        logger.info("Telegram bot disabled; skipping bot polling")
+        _stop_polling(reset_token=True)
+        return
     if not bot_instance or not settings.api_token:
         logger.info("Telegram bot token not configured; skipping bot polling")
         _stop_polling(reset_token=not settings.api_token)
@@ -158,7 +164,7 @@ def ensure_polling() -> None:
 
 def reload_bot() -> None:
     settings = TelegramSettingsService.get_settings(ensure_record=True)
-    if not settings.api_token:
+    if not settings.use_telegram or not settings.api_token:
         _stop_polling(reset_token=True)
         return
 

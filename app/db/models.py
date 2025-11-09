@@ -74,6 +74,7 @@ class TelegramSettings(Base):
 
     id = Column(Integer, primary_key=True)
     api_token = Column(String(512), nullable=True)
+    use_telegram = Column(Boolean, nullable=False, default=True, server_default=text("1"))
     proxy_url = Column(String(512), nullable=True)
     admin_chat_ids = Column(JSON, nullable=False, default=list)
     logs_chat_id = Column(BigInteger, nullable=True)
@@ -85,6 +86,15 @@ class TelegramSettings(Base):
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class PanelSettings(Base):
+    __tablename__ = "panel_settings"
+
+    id = Column(Integer, primary_key=True)
+    use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class User(Base):

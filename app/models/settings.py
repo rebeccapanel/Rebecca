@@ -13,6 +13,7 @@ class TelegramTopicSettings(BaseModel):
 
 class TelegramSettingsResponse(BaseModel):
     api_token: Optional[str] = None
+    use_telegram: bool = True
     proxy_url: Optional[str] = None
     admin_chat_ids: List[int] = Field(default_factory=list)
     logs_chat_id: Optional[int] = None
@@ -24,6 +25,10 @@ class TelegramSettingsResponse(BaseModel):
 
 class TelegramSettingsUpdate(BaseModel):
     api_token: Optional[str] = Field(default=None, description="Telegram bot API token")
+    use_telegram: Optional[bool] = Field(
+        default=None,
+        description="Enable or disable the Telegram bot regardless of token presence",
+    )
     proxy_url: Optional[str] = Field(default=None, description="Proxy URL for bot connections")
     admin_chat_ids: Optional[List[int]] = Field(
         default=None, description="List of admin Telegram chat ids for direct notifications"
@@ -48,3 +53,11 @@ class TelegramSettingsUpdate(BaseModel):
         default=None,
         description="Optional mapping of log event keys to enable/disable notifications",
     )
+
+
+class PanelSettingsResponse(BaseModel):
+    use_nobetci: bool = False
+
+
+class PanelSettingsUpdate(BaseModel):
+    use_nobetci: Optional[bool] = None

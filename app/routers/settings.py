@@ -3,7 +3,14 @@ from typing import Dict
 from fastapi import APIRouter, Depends
 
 from app.models.admin import Admin
-from app.models.settings import TelegramSettingsResponse, TelegramSettingsUpdate, TelegramTopicSettings
+from app.models.settings import (
+    PanelSettingsResponse,
+    PanelSettingsUpdate,
+    TelegramSettingsResponse,
+    TelegramSettingsUpdate,
+    TelegramTopicSettings,
+)
+from app.services.panel_settings import PanelSettingsService
 from app.services.telegram_settings import TelegramSettingsService
 from app.utils import responses
 
@@ -21,6 +28,7 @@ def _to_response_payload(settings) -> TelegramSettingsResponse:
     }
     return TelegramSettingsResponse(
         api_token=settings.api_token,
+        use_telegram=settings.use_telegram,
         proxy_url=settings.proxy_url,
         admin_chat_ids=settings.admin_chat_ids,
         logs_chat_id=settings.logs_chat_id,
@@ -56,3 +64,20 @@ def update_telegram_settings(
         data["forum_topics"] = normalized
     settings = TelegramSettingsService.update_settings(data)
     return _to_response_payload(settings)
+
+
+@router.get("/panel", response_model=PanelSettingsResponse, responses={403: responses._403})
+def get_panel_settings(_: Admin = Depends(Admin.check_sudo_admin)):
+    """Retrieve general panel settings."""
+    settings = PanelSettingsService.get_settings(ensure_record=True)
+    return PanelSettingsResponse(use_nobetci=settings.use_nobetci)
+
+
+@router.put("/panel", response_model=PanelSettingsResponse, responses={403: responses._403})
+def update_panel_settings(
+    payload: PanelSettingsUpdate,
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Update general panel settings."""
+    settings = PanelSettingsService.update_settings(payload.model_dump(exclude_unset=True))
+    return PanelSettingsResponse(use_nobetci=settings.use_nobetci)

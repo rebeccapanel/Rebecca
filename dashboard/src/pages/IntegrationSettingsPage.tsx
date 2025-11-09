@@ -27,12 +27,16 @@ import {
 import { chakra } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { Controller, useForm } from "react-hook-form";
-import { useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import {
+  getPanelSettings,
   getTelegramSettings,
+  PanelSettingsResponse,
+  PanelSettingsUpdatePayload,
   TelegramSettingsResponse,
   TelegramSettingsUpdatePayload,
+  updatePanelSettings,
   updateTelegramSettings,
 } from "service/settings";
 
@@ -313,6 +317,7 @@ type TopicFormValue = {
 
 type FormValues = {
   api_token: string;
+  use_telegram: boolean;
   proxy_url: string;
   admin_chat_ids: string;
   logs_chat_id: string;
@@ -349,6 +354,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 
   return {
     api_token: settings.api_token ?? "",
+    use_telegram: settings.use_telegram ?? true,
     proxy_url: settings.proxy_url ?? "",
     admin_chat_ids: (settings.admin_chat_ids || []).join(", "),
     logs_chat_id: settings.logs_chat_id != null ? String(settings.logs_chat_id) : "",
@@ -358,6 +364,44 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
     event_toggles: toggles,
   };
 };
+
+const DisabledCard = ({
+  disabled,
+  message,
+  children,
+}: {
+  disabled: boolean;
+  message: string;
+  children: ReactNode;
+}) => (
+  <Box position="relative">
+    <Box
+      pointerEvents={disabled ? "none" : "auto"}
+      filter={disabled ? "blur(1.2px)" : "none"}
+      opacity={disabled ? 0.55 : 1}
+      transition="all 0.2s ease"
+    >
+      {children}
+    </Box>
+    {disabled && (
+      <Flex
+        position="absolute"
+        inset={0}
+        align="center"
+        justify="center"
+        textAlign="center"
+        fontWeight="semibold"
+        color="white"
+        px={6}
+        borderRadius="inherit"
+        bg="blackAlpha.400"
+        backdropFilter="blur(2px)"
+      >
+        <Text>{message}</Text>
+      </Flex>
+    )}
+  </Box>
+);
 
 const parseAdminChatIds = (value: string): number[] =>
   value
@@ -377,6 +421,22 @@ export const IntegrationSettingsPage = () => {
   });
 
   const {
+    data: panelData,
+    isLoading: isPanelLoading,
+    refetch: refetchPanelSettings,
+  } = useQuery<PanelSettingsResponse>("panel-settings", getPanelSettings, {
+    refetchOnWindowFocus: false,
+  });
+
+  const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(panelData?.use_nobetci ?? false);
+
+  useEffect(() => {
+    if (panelData) {
+      setPanelUseNobetci(panelData.use_nobetci);
+    }
+  }, [panelData]);
+
+  const {
     register,
     control,
     handleSubmit,
@@ -387,6 +447,7 @@ export const IntegrationSettingsPage = () => {
     defaultValues: buildDefaultValues(
       data ?? {
         api_token: null,
+        use_telegram: true,
         proxy_url: null,
         admin_chat_ids: [],
         logs_chat_id: null,
@@ -422,11 +483,30 @@ export const IntegrationSettingsPage = () => {
     },
   });
 
+  const panelMutation = useMutation(updatePanelSettings, {
+    onSuccess: (updated) => {
+      setPanelUseNobetci(updated.use_nobetci);
+      queryClient.setQueryData("panel-settings", updated);
+      toast({
+        title: t("settings.panel.saved", "Panel settings saved"),
+        status: "success",
+        duration: 3000,
+      });
+    },
+    onError: () => {
+      toast({
+        title: t("errors.generic", "Something went wrong"),
+        status: "error",
+      });
+    },
+  });
+
   const onSubmit = (values: FormValues) => {
     const flattenedEventToggles = flattenEventToggleValues(values.event_toggles || {});
 
     const payload: TelegramSettingsUpdatePayload = {
       api_token: values.api_token.trim() || null,
+      use_telegram: values.use_telegram,
       proxy_url: values.proxy_url.trim() || null,
       admin_chat_ids: parseAdminChatIds(values.admin_chat_ids),
       logs_chat_id: values.logs_chat_id.trim() ? Number(values.logs_chat_id.trim()) : null,
@@ -447,6 +527,11 @@ export const IntegrationSettingsPage = () => {
   };
 
   const forumTopics = watch("forum_topics");
+  const isTelegramEnabled = watch("use_telegram");
+  const telegramDisabledMessage = t(
+    "settings.telegram.disabledOverlay",
+    "Telegram bot is disabled. Enable it to edit these settings."
+  );
 
   return (
     <Box px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
@@ -455,10 +540,75 @@ export const IntegrationSettingsPage = () => {
       </Heading>
       <Tabs colorScheme="primary">
         <TabList>
+          <Tab>{t("settings.panel.tabTitle", "Panel")}</Tab>
           <Tab>{t("settings.telegram", "Telegram")}</Tab>
           <Tab isDisabled>{t("settings.tabs.comingSoon", "Coming Soon")}</Tab>
         </TabList>
         <TabPanels>
+          <TabPanel px={{ base: 0, md: 2 }}>
+            {isPanelLoading && panelData === undefined ? (
+              <Flex align="center" justify="center" py={12}>
+                <Spinner size="lg" />
+              </Flex>
+            ) : (
+              <Stack spacing={6} align="stretch">
+                <Text fontSize="sm" color="gray.500">
+                  {t(
+                    "settings.panel.description",
+                    "Control dashboard-specific behaviors that affect all admins."
+                  )}
+                </Text>
+                <Box borderWidth="1px" borderRadius="lg" p={4}>
+                  <Flex
+                    justify="space-between"
+                    align={{ base: "flex-start", md: "center" }}
+                    gap={4}
+                    flexDirection={{ base: "column", md: "row" }}
+                  >
+                    <Box>
+                      <Heading size="sm" mb={1}>
+                        {t("settings.panel.useNobetciTitle", "Enable Nobetci integration")}
+                      </Heading>
+                      <Text fontSize="sm" color="gray.500">
+                        {t(
+                          "settings.panel.useNobetciDescription",
+                          "Show Nobetci options when creating or editing nodes."
+                        )}
+                      </Text>
+                    </Box>
+                    <Switch
+                      isChecked={panelUseNobetci}
+                      onChange={(event) => setPanelUseNobetci(event.target.checked)}
+                      isDisabled={panelMutation.isLoading || isPanelLoading}
+                    />
+                  </Flex>
+                </Box>
+                <Flex gap={3} justify="flex-end">
+                  <Button
+                    variant="outline"
+                    leftIcon={<RefreshIcon />}
+                    onClick={() => refetchPanelSettings()}
+                    isDisabled={panelMutation.isLoading}
+                  >
+                    {t("actions.refresh", "Refresh")}
+                  </Button>
+                  <Button
+                    colorScheme="primary"
+                    leftIcon={<SaveIcon />}
+                    onClick={() => panelMutation.mutate({ use_nobetci: panelUseNobetci })}
+                    isLoading={panelMutation.isLoading}
+                    isDisabled={
+                      panelMutation.isLoading ||
+                      panelData === undefined ||
+                      panelUseNobetci === panelData.use_nobetci
+                    }
+                  >
+                    {t("settings.save", "Save Settings")}
+                  </Button>
+                </Flex>
+              </Stack>
+            )}
+          </TabPanel>
           <TabPanel px={{ base: 0, md: 2 }}>
             {isLoading && !data ? (
               <Flex align="center" justify="center" py={12}>
@@ -473,129 +623,167 @@ export const IntegrationSettingsPage = () => {
                       "Manage Telegram bot integration settings and notification preferences."
                     )}
                   </Text>
-                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-                    <FormControl>
-                      <FormLabel>{t("settings.telegram.apiToken", "Bot API Token")}</FormLabel>
-                      <Input placeholder="123456:ABC" {...register("api_token")} />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>{t("settings.telegram.proxyUrl", "Proxy URL")}</FormLabel>
-                      <Input placeholder="socks5://user:pass@host:port" {...register("proxy_url")} />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>{t("settings.telegram.adminChatIds", "Admin Chat IDs")}</FormLabel>
-                      <Input placeholder="12345, 67890" {...register("admin_chat_ids")} />
-                      <FormHelperText>
-                        {t("settings.telegram.adminChatIdsHint", "Comma-separated numeric IDs.")}
-                      </FormHelperText>
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>{t("settings.telegram.logsChatId", "Logs Chat ID")}</FormLabel>
-                      <Input placeholder="-100123456789" {...register("logs_chat_id")} />
-                      <FormHelperText>
-                        {t("settings.telegram.logsChatIdHint", "Use the numeric id of the target group or channel.")}
-                      </FormHelperText>
-                    </FormControl>
-                    <FormControl display="flex" alignItems="center">
-                      <FormLabel htmlFor="logs_chat_is_forum" mb="0">
-                        {t("settings.telegram.logsChatIsForum", "Logs chat is a forum")}
-                      </FormLabel>
-                      <Controller
-                        control={control}
-                        name="logs_chat_is_forum"
-                        render={({ field }) => <Switch id="logs_chat_is_forum" isChecked={field.value} onChange={field.onChange} />}
-                      />
-                    </FormControl>
-                    <FormControl>
-                      <FormLabel>{t("settings.telegram.defaultVlessFlow", "Default VLESS Flow")}</FormLabel>
-                      <Input placeholder="xtls-rprx-vision" {...register("default_vless_flow")} />
-                    </FormControl>
-                  </SimpleGrid>
+                  <Flex
+                    justify="space-between"
+                    align={{ base: "flex-start", md: "center" }}
+                    gap={4}
+                    flexDirection={{ base: "column", md: "row" }}
+                  >
+                    <Box>
+                      <Heading size="sm" mb={1}>
+                        {t("settings.telegram.enableBot", "Enable Telegram bot")}
+                      </Heading>
+                      <Text fontSize="sm" color="gray.500">
+                        {t(
+                          "settings.telegram.enableBotDescription",
+                          "Turn the bot on or off without clearing the API token."
+                        )}
+                      </Text>
+                    </Box>
+                    <Controller
+                      control={control}
+                      name="use_telegram"
+                      render={({ field }) => (
+                        <Switch
+                          isChecked={field.value}
+                          onChange={(event) => field.onChange(event.target.checked)}
+                        />
+                      )}
+                    />
+                  </Flex>
+                  <DisabledCard disabled={!isTelegramEnabled} message={telegramDisabledMessage}>
+                    <Box borderWidth="1px" borderRadius="lg" p={4}>
+                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+                        <FormControl>
+                          <FormLabel>{t("settings.telegram.apiToken", "Bot API Token")}</FormLabel>
+                          <Input placeholder="123456:ABC" {...register("api_token")} />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("settings.telegram.proxyUrl", "Proxy URL")}</FormLabel>
+                          <Input placeholder="socks5://user:pass@host:port" {...register("proxy_url")} />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("settings.telegram.adminChatIds", "Admin Chat IDs")}</FormLabel>
+                          <Input placeholder="12345, 67890" {...register("admin_chat_ids")} />
+                          <FormHelperText>
+                            {t("settings.telegram.adminChatIdsHint", "Comma-separated numeric IDs.")}
+                          </FormHelperText>
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("settings.telegram.logsChatId", "Logs Chat ID")}</FormLabel>
+                          <Input placeholder="-100123456789" {...register("logs_chat_id")} />
+                          <FormHelperText>
+                            {t("settings.telegram.logsChatIdHint", "Use the numeric id of the target group or channel.")}
+                          </FormHelperText>
+                        </FormControl>
+                        <FormControl display="flex" alignItems="center">
+                          <FormLabel htmlFor="logs_chat_is_forum" mb="0">
+                            {t("settings.telegram.logsChatIsForum", "Logs chat is a forum")}
+                          </FormLabel>
+                          <Controller
+                            control={control}
+                            name="logs_chat_is_forum"
+                            render={({ field }) => (
+                              <Switch id="logs_chat_is_forum" isChecked={field.value} onChange={field.onChange} />
+                            )}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel>{t("settings.telegram.defaultVlessFlow", "Default VLESS Flow")}</FormLabel>
+                          <Input placeholder="xtls-rprx-vision" {...register("default_vless_flow")} />
+                        </FormControl>
+                      </SimpleGrid>
+                    </Box>
+                  </DisabledCard>
 
-                  <Box>
-                    <Heading size="sm" mb={4}>
-                      {t("settings.telegram.forumTopics", "Forum Topics")}
-                    </Heading>
-                    {forumTopics && Object.keys(forumTopics).length > 0 ? (
+                  <DisabledCard disabled={!isTelegramEnabled} message={telegramDisabledMessage}>
+                    <Box>
+                      <Heading size="sm" mb={4}>
+                        {t("settings.telegram.forumTopics", "Forum Topics")}
+                      </Heading>
+                      {forumTopics && Object.keys(forumTopics).length > 0 ? (
+                        <Stack spacing={4}>
+                          {Object.entries(forumTopics).map(([key]) => (
+                            <Box key={key} borderWidth="1px" borderRadius="lg" p={4}>
+                              <Text fontWeight="medium" mb={3}>
+                                {t("settings.telegram.topicKey", "Topic")}: {key}
+                              </Text>
+                              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                                <FormControl>
+                                  <FormLabel>{t("settings.telegram.topicTitle", "Topic Title")}</FormLabel>
+                                  <Input {...register(`forum_topics.${key}.title` as const)} />
+                                </FormControl>
+                                <FormControl>
+                                  <FormLabel>{t("settings.telegram.topicId", "Topic ID")}</FormLabel>
+                                  <Input type="number" {...register(`forum_topics.${key}.topic_id` as const)} />
+                                  <FormHelperText>
+                                    {t("settings.telegram.topicIdHint", "Leave empty to let the bot (re)create it.")}
+                                  </FormHelperText>
+                                </FormControl>
+                              </SimpleGrid>
+                            </Box>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Text color="gray.500">
+                          {t("settings.telegram.emptyTopics", "No topics available.")}
+                        </Text>
+                      )}
+                    </Box>
+                  </DisabledCard>
+
+                  <DisabledCard disabled={!isTelegramEnabled} message={telegramDisabledMessage}>
+                    <Box>
+                      <Heading size="sm" mb={2}>
+                        {t("settings.telegram.notificationsTitle", "Notifications")}
+                      </Heading>
+                      <Text fontSize="sm" color="gray.500" mb={4}>
+                        {t(
+                          "settings.telegram.notificationsDescription",
+                          "Choose which events should trigger Telegram notifications."
+                        )}
+                      </Text>
                       <Stack spacing={4}>
-                        {Object.entries(forumTopics).map(([key]) => (
-                          <Box key={key} borderWidth="1px" borderRadius="lg" p={4}>
-                            <Text fontWeight="medium" mb={3}>
-                              {t("settings.telegram.topicKey", "Topic")}: {key}
+                        {EVENT_TOGGLE_GROUPS.map((group) => (
+                          <Box key={group.key} borderWidth="1px" borderRadius="lg" p={4}>
+                            <Text fontWeight="semibold" mb={3}>
+                              {t(group.titleKey, group.defaultTitle)}
                             </Text>
                             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                              <FormControl>
-                                <FormLabel>{t("settings.telegram.topicTitle", "Topic Title")}</FormLabel>
-                                <Input {...register(`forum_topics.${key}.title` as const)} />
-                              </FormControl>
-                              <FormControl>
-                                <FormLabel>{t("settings.telegram.topicId", "Topic ID")}</FormLabel>
-                                <Input type="number" {...register(`forum_topics.${key}.topic_id` as const)} />
-                                <FormHelperText>
-                                  {t("settings.telegram.topicIdHint", "Leave empty to let the bot (re)create it.")}
-                                </FormHelperText>
-                              </FormControl>
+                              {group.events.map((event) => (
+                                <FormControl
+                                  key={event.key}
+                                  display="flex"
+                                  alignItems="center"
+                                  justifyContent="space-between"
+                                  gap={4}
+                                >
+                                  <Box flex="1">
+                                    <Text fontWeight="medium">
+                                      {t(event.labelKey, event.defaultLabel)}
+                                    </Text>
+                                    <Text fontSize="sm" color="gray.500">
+                                      {t(event.hintKey, event.defaultHint)}
+                                    </Text>
+                                  </Box>
+                                  <Controller
+                                    control={control}
+                                    name={`event_toggles.${encodeToggleKey(event.key)}` as const}
+                                    render={({ field }) => (
+                                      <Switch
+                                        isChecked={Boolean(field.value)}
+                                        onChange={(e) => field.onChange(e.target.checked)}
+                                      />
+                                    )}
+                                  />
+                                </FormControl>
+                              ))}
                             </SimpleGrid>
                           </Box>
                         ))}
                       </Stack>
-                    ) : (
-                      <Text color="gray.500">
-                        {t("settings.telegram.emptyTopics", "No topics available.")}
-                      </Text>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Heading size="sm" mb={2}>
-                      {t("settings.telegram.notificationsTitle", "Notifications")}
-                    </Heading>
-                    <Text fontSize="sm" color="gray.500" mb={4}>
-                      {t(
-                        "settings.telegram.notificationsDescription",
-                        "Choose which events should trigger Telegram notifications."
-                      )}
-                    </Text>
-                    <Stack spacing={4}>
-                      {EVENT_TOGGLE_GROUPS.map((group) => (
-                        <Box key={group.key} borderWidth="1px" borderRadius="lg" p={4}>
-                          <Text fontWeight="semibold" mb={3}>
-                            {t(group.titleKey, group.defaultTitle)}
-                          </Text>
-                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                            {group.events.map((event) => (
-                              <FormControl
-                                key={event.key}
-                                display="flex"
-                                alignItems="center"
-                                justifyContent="space-between"
-                                gap={4}
-                              >
-                                <Box flex="1">
-                                  <Text fontWeight="medium">
-                                    {t(event.labelKey, event.defaultLabel)}
-                                  </Text>
-                                  <Text fontSize="sm" color="gray.500">
-                                    {t(event.hintKey, event.defaultHint)}
-                                  </Text>
-                                </Box>
-                                <Controller
-                                  control={control}
-                                  name={`event_toggles.${encodeToggleKey(event.key)}` as const}
-                                  render={({ field }) => (
-                                    <Switch
-                                      isChecked={Boolean(field.value)}
-                                      onChange={(e) => field.onChange(e.target.checked)}
-                                    />
-                                  )}
-                                />
-                              </FormControl>
-                            ))}
-                          </SimpleGrid>
-                        </Box>
-                      ))}
-                    </Stack>
-                  </Box>
+                    </Box>
+                  </DisabledCard>
 
                   <Flex gap={3} justify="flex-end">
                     <Button
