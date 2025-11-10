@@ -18,7 +18,6 @@ from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config_and_restart
 from config import (
     XRAY_EXECUTABLE_PATH,
-    XRAY_JSON,
     XRAY_EXCLUDE_INBOUND_TAGS,
     XRAY_FALLBACKS_INBOUND_TAG,
 )
@@ -91,9 +90,12 @@ def get_inbounds(admin: Admin = Depends(Admin.get_current)):
     "/inbounds/full",
     responses={403: responses._403},
 )
-def get_inbounds_full(admin: Admin = Depends(Admin.check_sudo_admin)):
+def get_inbounds_full(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
     """Return detailed inbound definitions for manageable protocols."""
-    config = _load_config()
+    config = _load_config(db)
     return [_sanitize_inbound(inbound) for inbound in _managed_inbounds(config)]
 
 
@@ -136,8 +138,9 @@ def generate_vless_encryption_keys(
 def get_inbound_detail(
     tag: str,
     admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
 ):
-    config = _load_config()
+    config = _load_config(db)
     inbound = _get_inbound_by_tag(config, tag)
     if inbound is None:
         raise HTTPException(status_code=404, detail="Inbound not found")
@@ -155,7 +158,7 @@ def create_inbound(
 ):
     inbound = _prepare_inbound_payload(payload)
     tag = inbound["tag"]
-    config = _load_config()
+    config = _load_config(db)
 
     if any(existing.get("tag") == tag for existing in config.get("inbounds", [])):
         raise HTTPException(status_code=400, detail=f"Inbound {tag} already exists")
@@ -177,7 +180,7 @@ def update_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config()
+    config = _load_config(db)
     index = _find_inbound_index(config, tag)
     if index is None:
         raise HTTPException(status_code=404, detail="Inbound not found")
@@ -199,7 +202,7 @@ def delete_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config()
+    config = _load_config(db)
     index = _find_inbound_index(config, tag)
     if index is None:
         raise HTTPException(status_code=404, detail="Inbound not found")
@@ -261,17 +264,23 @@ def modify_hosts(
                 status_code=400, detail=f"Inbound {inbound_tag} doesn't exist"
             )
 
+    users_to_refresh: Dict[int, object] = {}
     for inbound_tag, hosts in modified_hosts.items():
-        crud.update_hosts(db, inbound_tag, hosts)
+        _, refreshed_users = crud.update_hosts(db, inbound_tag, hosts)
+        for user in refreshed_users:
+            if user.id is not None:
+                users_to_refresh[user.id] = user
 
     xray.hosts.update()
+
+    for user in users_to_refresh.values():
+        xray.operations.update_user(dbuser=user)
 
     return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
 
 
-def _load_config() -> dict:
-    with open(XRAY_JSON, "r", encoding="utf-8") as file:
-        return commentjson.loads(file.read())
+def _load_config(db: Session) -> dict:
+    return deepcopy(crud.get_xray_config(db))
 
 
 def _is_manageable_inbound(inbound: dict) -> bool:

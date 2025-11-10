@@ -18,3 +18,9 @@ docker-compose*.yml
 v2ray-core
 venv
 xray-core
+*.iml
+*.swp
+*.swo
+*.bak
+*.tmp
+*.old

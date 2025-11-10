@@ -2,13 +2,14 @@
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
 
+from copy import deepcopy
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
 
 import sqlalchemy as sa
-from sqlalchemy import and_, delete, func, or_
+from sqlalchemy import and_, delete, func, or_, inspect
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
@@ -33,11 +34,13 @@ from app.db.models import (
     User,
     UserTemplate,
     UserUsageResetLogs,
+    XrayConfig,
     excluded_inbounds_association,
     template_inbounds_association,
 )
 from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
+from app.utils.xray_defaults import load_legacy_xray_config
 from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
 from app.models.proxy import ProxyHost as ProxyHostModify
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
@@ -52,11 +55,50 @@ from app.models.user import (
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from config import USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
-
-
 MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
+
+
+def _get_or_create_xray_config(db: Session) -> XrayConfig:
+    if not _xray_config_table_exists(db):
+        raise RuntimeError("xray_config table is not available yet")
+
+    config = db.get(XrayConfig, 1)
+    if config is None:
+        config = XrayConfig(id=1, data=load_legacy_xray_config())
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+def get_xray_config(db: Session) -> Dict[str, Any]:
+    if not _xray_config_table_exists(db):
+        return deepcopy(load_legacy_xray_config())
+
+    config = _get_or_create_xray_config(db)
+    return deepcopy(config.data or {})
+
+
+def save_xray_config(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
+    config = _get_or_create_xray_config(db)
+    config.data = deepcopy(payload or {})
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return deepcopy(config.data or {})
+
+
+def _xray_config_table_exists(db: Session) -> bool:
+    bind = db.get_bind()
+    if bind is None:
+        return False
+    try:
+        inspector = inspect(bind)
+        return inspector.has_table("xray_config")
+    except Exception:
+        return False
 
 
 def _ensure_user_deleted_status(db: Session) -> bool:
@@ -115,211 +157,226 @@ def _ensure_user_deleted_status(db: Session) -> bool:
     return True
 
 
+def _apply_proxy_host_payload(
+    db_host: ProxyHost,
+    host_data: ProxyHostModify,
+    *,
+    sort_value: Optional[int] = None,
+) -> ProxyHost:
+    """
+    Copy shared host fields from the pydantic payload to the SQLAlchemy model.
+    """
+    db_host.remark = host_data.remark
+    db_host.address = host_data.address
+    db_host.port = host_data.port
+    if sort_value is not None:
+        db_host.sort = sort_value
+    elif host_data.sort is not None:
+        db_host.sort = host_data.sort
+    db_host.path = host_data.path
+    db_host.sni = host_data.sni
+    db_host.host = host_data.host
+    db_host.security = host_data.security
+    db_host.alpn = host_data.alpn
+    db_host.fingerprint = host_data.fingerprint
+    db_host.allowinsecure = host_data.allowinsecure
+    db_host.is_disabled = host_data.is_disabled
+    db_host.mux_enable = host_data.mux_enable
+    db_host.fragment_setting = host_data.fragment_setting
+    db_host.noise_setting = host_data.noise_setting
+    db_host.random_user_agent = host_data.random_user_agent
+    db_host.use_sni_as_host = host_data.use_sni_as_host
+    return db_host
+
+
+class ProxyInboundRepository:
+    """
+    Repository-like helper that encapsulates all host/inbound operations.
+    """
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    # region: inbound lifecycle -------------------------------------------------
+    def add_default_host(self, inbound: ProxyInbound) -> None:
+        host = ProxyHost(
+            remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+            address="{SERVER_IP}",
+            inbound=inbound,
+            sort=0,
+        )
+        self.db.add(host)
+        self.db.commit()
+
+    def get_or_create(self, inbound_tag: str) -> ProxyInbound:
+        inbound = (
+            self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
+        )
+        if inbound:
+            return inbound
+        inbound = ProxyInbound(tag=inbound_tag)
+        self.db.add(inbound)
+        self.db.commit()
+        self.add_default_host(inbound)
+        self.db.refresh(inbound)
+        return inbound
+
+    def delete(self, inbound_tag: str) -> bool:
+        inbound = (
+            self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
+        )
+        if inbound is None:
+            return False
+
+        if inbound.hosts:
+            raise ValueError("Inbound has hosts assigned. Remove hosts before deleting.")
+
+        self.db.execute(
+            delete(excluded_inbounds_association).where(
+                excluded_inbounds_association.c.inbound_tag == inbound_tag
+            )
+        )
+        self.db.execute(
+            delete(template_inbounds_association).where(
+                template_inbounds_association.c.inbound_tag == inbound_tag
+            )
+        )
+
+        self.db.delete(inbound)
+        self.db.flush()
+        return True
+
+    # endregion
+
+    # region: host CRUD --------------------------------------------------------
+    def list_hosts(self, inbound_tag: str) -> List[ProxyHost]:
+        inbound = self.get_or_create(inbound_tag)
+        return (
+            self.db.query(ProxyHost)
+            .filter(ProxyHost.inbound_tag == inbound.tag)
+            .order_by(ProxyHost.sort.asc(), ProxyHost.id.asc())
+            .all()
+        )
+
+    def add_host(self, inbound_tag: str, host_payload: ProxyHostModify) -> List[ProxyHost]:
+        inbound = self.get_or_create(inbound_tag)
+        existing_sorts = [existing_host.sort for existing_host in inbound.hosts]
+        next_sort = max(existing_sorts) + 1 if existing_sorts else 0
+        sort_value = host_payload.sort if host_payload.sort is not None else next_sort
+
+        new_host = ProxyHost(inbound=inbound)
+        _apply_proxy_host_payload(new_host, host_payload, sort_value=sort_value)
+        new_host.inbound_tag = inbound.tag
+        inbound.hosts.append(new_host)
+        self.db.commit()
+        self.db.refresh(inbound)
+        return inbound.hosts
+
+    def bulk_replace_hosts(
+        self, inbound_tag: str, modified_hosts: List[ProxyHostModify]
+    ) -> Tuple[List[ProxyHost], List[Service]]:
+        inbound = self.get_or_create(inbound_tag)
+        existing_by_id: Dict[int, ProxyHost] = {
+            host.id: host for host in inbound.hosts if host.id is not None
+        }
+
+        affected_services: Dict[int, Service] = {}
+        new_hosts: List[ProxyHost] = []
+
+        for index, host_payload in enumerate(modified_hosts):
+            sort_value = host_payload.sort if host_payload.sort is not None else index
+            db_host: Optional[ProxyHost] = None
+
+            if host_payload.id is not None:
+                db_host = existing_by_id.pop(host_payload.id, None)
+
+            if db_host is None:
+                db_host = ProxyHost(inbound=inbound)
+
+            db_host.inbound = inbound
+            db_host.inbound_tag = inbound.tag
+            _apply_proxy_host_payload(db_host, host_payload, sort_value=sort_value)
+
+            new_hosts.append(db_host)
+
+        # Remove hosts that no longer exist
+        removed_hosts = list(existing_by_id.values())
+        if removed_hosts:
+            affected_services.update(_detach_hosts_from_services(self.db, removed_hosts))
+            for host in removed_hosts:
+                self.db.delete(host)
+
+        inbound.hosts = new_hosts
+
+        disabled_hosts = [host for host in new_hosts if host.is_disabled]
+        if disabled_hosts:
+            affected_services.update(_detach_hosts_from_services(self.db, disabled_hosts))
+
+        self.db.flush()
+        self.db.refresh(inbound)
+        return inbound.hosts, list(affected_services.values())
+
+    def disable_hosts(self, inbound_tag: str) -> List[Service]:
+        hosts = (
+            self.db.query(ProxyHost)
+            .options(joinedload(ProxyHost.service_links).joinedload(ServiceHostLink.service))
+            .filter(ProxyHost.inbound_tag == inbound_tag)
+            .all()
+        )
+        affected_services: Dict[int, Service] = {}
+        for host in hosts:
+            host.is_disabled = True
+            for link in list(host.service_links):
+                if link.service and link.service.id is not None:
+                    affected_services[link.service.id] = link.service
+                self.db.delete(link)
+        self.db.flush()
+        return list(affected_services.values())
+
+    # endregion
+
 
 def add_default_host(db: Session, inbound: ProxyInbound):
-    """
-    Adds a default host to a proxy inbound.
-
-    Args:
-        db (Session): Database session.
-        inbound (ProxyInbound): Proxy inbound to add the default host to.
-    """
-    host = ProxyHost(
-        remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
-        address="{SERVER_IP}",
-        inbound=inbound,
-        sort=0,
-    )
-    db.add(host)
-    db.commit()
+    ProxyInboundRepository(db).add_default_host(inbound)
 
 
 def get_or_create_inbound(db: Session, inbound_tag: str) -> ProxyInbound:
-    """
-    Retrieves or creates a proxy inbound based on the given tag.
-
-    Args:
-        db (Session): Database session.
-        inbound_tag (str): The tag of the inbound.
-
-    Returns:
-        ProxyInbound: The retrieved or newly created proxy inbound.
-    """
-    inbound = db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
-    if not inbound:
-        inbound = ProxyInbound(tag=inbound_tag)
-        db.add(inbound)
-        db.commit()
-        add_default_host(db, inbound)
-        db.refresh(inbound)
-    return inbound
+    return ProxyInboundRepository(db).get_or_create(inbound_tag)
 
 
 def get_hosts(db: Session, inbound_tag: str) -> List[ProxyHost]:
-    """
-    Retrieves hosts for a given inbound tag.
-
-    Args:
-        db (Session): Database session.
-        inbound_tag (str): The tag of the inbound.
-
-    Returns:
-        List[ProxyHost]: List of hosts for the inbound.
-    """
-    inbound = get_or_create_inbound(db, inbound_tag)
-    return (
-        db.query(ProxyHost)
-        .filter(ProxyHost.inbound_tag == inbound.tag)
-        .order_by(ProxyHost.sort.asc(), ProxyHost.id.asc())
-        .all()
-    )
+    return ProxyInboundRepository(db).list_hosts(inbound_tag)
 
 
 def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[ProxyHost]:
-    """
-    Adds a new host to a proxy inbound.
+    return ProxyInboundRepository(db).add_host(inbound_tag, host)
 
-    Args:
-        db (Session): Database session.
-        inbound_tag (str): The tag of the inbound.
-        host (ProxyHostModify): Host details to be added.
 
-    Returns:
-        List[ProxyHost]: Updated list of hosts for the inbound.
-    """
-    inbound = get_or_create_inbound(db, inbound_tag)
-    existing_sorts = [existing_host.sort for existing_host in inbound.hosts]
-    sort_value = (
-        host.sort
-        if host.sort is not None
-        else (max(existing_sorts) + 1 if existing_sorts else 0)
-    )
-    inbound.hosts.append(
-        ProxyHost(
-            remark=host.remark,
-            address=host.address,
-            port=host.port,
-            sort=sort_value,
-            path=host.path,
-            sni=host.sni,
-            host=host.host,
-            inbound=inbound,
-            security=host.security,
-            alpn=host.alpn,
-            fingerprint=host.fingerprint
-        )
-    )
+def update_hosts(
+    db: Session, inbound_tag: str, modified_hosts: List[ProxyHostModify]
+) -> Tuple[List[ProxyHost], List[User]]:
+    hosts, affected_services = ProxyInboundRepository(db).bulk_replace_hosts(inbound_tag, modified_hosts)
+
+    users_to_refresh: Dict[int, User] = {}
+    if affected_services:
+        repo = _service_repo(db)
+        for service in affected_services:
+            allowed = repo.get_allowed_inbounds(service)
+            refreshed = repo.refresh_users(service, allowed)
+            for user in refreshed:
+                if user.id is not None:
+                    users_to_refresh[user.id] = user
+
     db.commit()
-    db.refresh(inbound)
-    return inbound.hosts
-
-
-def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostModify]) -> List[ProxyHost]:
-    """
-    Updates hosts for a given inbound tag.
-
-    Args:
-        db (Session): Database session.
-        inbound_tag (str): The tag of the inbound.
-        modified_hosts (List[ProxyHostModify]): List of modified hosts.
-
-    Returns:
-        List[ProxyHost]: Updated list of hosts for the inbound.
-    """
-    inbound = get_or_create_inbound(db, inbound_tag)
-    existing_by_id: Dict[int, ProxyHost] = {
-        host.id: host for host in inbound.hosts if host.id is not None
-    }
-
-    new_hosts: List[ProxyHost] = []
-
-    for index, host in enumerate(modified_hosts):
-        sort_value = host.sort if host.sort is not None else index
-        db_host: Optional[ProxyHost] = None
-
-        if host.id is not None:
-            db_host = existing_by_id.pop(host.id, None)
-
-        if db_host is None:
-            db_host = ProxyHost(inbound=inbound)
-
-        db_host.inbound = inbound
-        db_host.inbound_tag = inbound.tag
-        db_host.remark = host.remark
-        db_host.address = host.address
-        db_host.port = host.port
-        db_host.sort = sort_value
-        db_host.path = host.path
-        db_host.sni = host.sni
-        db_host.host = host.host
-        db_host.security = host.security
-        db_host.alpn = host.alpn
-        db_host.fingerprint = host.fingerprint
-        db_host.allowinsecure = host.allowinsecure
-        db_host.is_disabled = host.is_disabled
-        db_host.mux_enable = host.mux_enable
-        db_host.fragment_setting = host.fragment_setting
-        db_host.noise_setting = host.noise_setting
-        db_host.random_user_agent = host.random_user_agent
-        db_host.use_sni_as_host = host.use_sni_as_host
-
-        new_hosts.append(db_host)
-
-    inbound.hosts = new_hosts
-    db.commit()
-    db.refresh(inbound)
-    return inbound.hosts
+    return hosts, list(users_to_refresh.values())
 
 
 def delete_inbound(db: Session, inbound_tag: str) -> bool:
-    """
-    Delete an inbound definition along with its association rows.
-
-    Returns:
-        bool: True if an inbound was removed, False if it did not exist.
-
-    Raises:
-        ValueError: If the inbound still has host overrides attached.
-    """
-    inbound = db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
-    if inbound is None:
-        return False
-
-    if inbound.hosts:
-        raise ValueError("Inbound has hosts assigned. Remove hosts before deleting.")
-
-    db.execute(
-        delete(excluded_inbounds_association).where(
-            excluded_inbounds_association.c.inbound_tag == inbound_tag
-        )
-    )
-    db.execute(
-        delete(template_inbounds_association).where(
-            template_inbounds_association.c.inbound_tag == inbound_tag
-        )
-    )
-
-    db.delete(inbound)
-    db.flush()
-    return True
+    return ProxyInboundRepository(db).delete(inbound_tag)
 
 
 def disable_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
-    hosts = (
-        db.query(ProxyHost)
-        .options(joinedload(ProxyHost.service_links).joinedload(ServiceHostLink.service))
-        .filter(ProxyHost.inbound_tag == inbound_tag)
-        .all()
-    )
-    affected_services: Dict[int, Service] = {}
-    for host in hosts:
-        host.is_disabled = True
-        for link in list(host.service_links):
-            if link.service and link.service.id is not None:
-                affected_services[link.service.id] = link.service
-            db.delete(link)
-    db.flush()
-    return list(affected_services.values())
+    return ProxyInboundRepository(db).disable_hosts(inbound_tag)
 
 
 def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, ProxyHost]:
@@ -333,106 +390,536 @@ def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, Proxy
     return {host.id: host for host in hosts}
 
 
+def _detach_hosts_from_services(db: Session, hosts: Iterable[ProxyHost]) -> Dict[int, Service]:
+    affected: Dict[int, Service] = {}
+    for host in hosts:
+        for link in list(host.service_links):
+            if link.service and link.service.id is not None:
+                affected[link.service.id] = link.service
+            db.delete(link)
+    return affected
+
+
+class ServiceRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def assign_hosts(
+        self, service: Service, assignments: Iterable[ServiceHostAssignment]
+    ) -> None:
+        assignments = list(assignments)
+        desired_ids = [assignment.host_id for assignment in assignments]
+        host_map = _fetch_hosts_by_ids(self.db, desired_ids)
+
+        if len(host_map) != len(set(desired_ids)):
+            raise ValueError("One or more hosts could not be found")
+
+        existing_links = {link.host_id: link for link in service.host_links}
+        desired_id_set = set(desired_ids)
+
+        for link in list(service.host_links):
+            if link.host_id not in desired_id_set:
+                service.host_links.remove(link)
+                self.db.delete(link)
+
+        for index, assignment in enumerate(assignments):
+            sort_value = assignment.sort if assignment.sort is not None else index
+            link = existing_links.get(assignment.host_id)
+            if link:
+                link.sort = sort_value
+            else:
+                service.host_links.append(
+                    ServiceHostLink(
+                        host=host_map[assignment.host_id],
+                        sort=sort_value,
+                    )
+                )
+
+    def assign_admins(self, service: Service, admin_ids: Iterable[int]) -> None:
+        admin_ids = list(dict.fromkeys(admin_ids))
+        existing_links = {link.admin_id: link for link in service.admin_links}
+        desired_id_set = set(admin_ids)
+
+        for link in list(service.admin_links):
+            if link.admin_id not in desired_id_set:
+                service.admin_links.remove(link)
+                self.db.delete(link)
+
+        if not admin_ids:
+            return
+
+        admins = (
+            self.db.query(Admin)
+            .filter(Admin.id.in_(desired_id_set))
+            .filter(Admin.status != AdminStatus.deleted)
+            .all()
+        )
+        if len(admins) != len(desired_id_set):
+            raise ValueError("One or more admins could not be found")
+
+        for admin in admins:
+            if admin.id in existing_links:
+                continue
+            service.admin_links.append(AdminServiceLink(admin=admin, service=service))
+
+    def ensure_admin_service_link(self, admin: Optional[Admin], service: Service) -> None:
+        if not admin or admin.id is None or service.id is None:
+            return
+
+        exists = (
+            self.db.query(AdminServiceLink)
+            .filter(
+                AdminServiceLink.admin_id == admin.id,
+                AdminServiceLink.service_id == service.id,
+            )
+            .first()
+        )
+        if exists:
+            return
+
+        self.db.add(AdminServiceLink(admin_id=admin.id, service_id=service.id))
+
+    def apply_service_to_user(
+        self,
+        dbuser: User,
+        service: Service,
+        allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
+    ) -> None:
+        from app.runtime import xray
+
+        if allowed_inbounds is None:
+            allowed_inbounds = self.compute_allowed_inbounds(service)
+
+        allowed_protocols = set(allowed_inbounds.keys())
+        existing_proxies: Dict[ProxyTypes, Proxy] = {}
+
+        for proxy in list(dbuser.proxies):
+            proxy_type = ProxyTypes(proxy.type)
+            if proxy_type not in allowed_protocols:
+                self.db.delete(proxy)
+                continue
+            existing_proxies[proxy_type] = proxy
+
+        for proxy_type in allowed_protocols:
+            allowed_tags = allowed_inbounds[proxy_type]
+            proxy = existing_proxies.get(proxy_type)
+            if not proxy:
+                settings_model = proxy_type.settings_model
+                proxy = Proxy(type=proxy_type, settings=settings_model().dict(no_obj=True))
+                dbuser.proxies.append(proxy)
+
+            available_tags = {
+                inbound["tag"]
+                for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])
+            }
+            excluded_tags = sorted(available_tags - set(allowed_tags))
+            proxy.excluded_inbounds = [
+                get_or_create_inbound(self.db, tag) for tag in excluded_tags
+            ]
+
+        dbuser.service = service
+        dbuser.edit_at = datetime.utcnow()
+
+    def refresh_users(
+        self,
+        service: Service,
+        allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
+    ) -> List[User]:
+        if allowed_inbounds is None:
+            allowed_inbounds = self.compute_allowed_inbounds(service)
+
+        updated_users: List[User] = []
+        for user in service.users:
+            self.apply_service_to_user(user, service, allowed_inbounds)
+            updated_users.append(user)
+
+        self.db.flush()
+        return updated_users
+
+    def get_allowed_inbounds(self, service: Service) -> Dict[ProxyTypes, Set[str]]:
+        return self.compute_allowed_inbounds(service)
+
+    def get(self, service_id: int) -> Optional[Service]:
+        return (
+            self.db.query(Service)
+            .options(
+                joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
+                joinedload(Service.host_links).joinedload(ServiceHostLink.host),
+            )
+            .filter(Service.id == service_id)
+            .first()
+        )
+
+    def list(
+        self,
+        name: Optional[str] = None,
+        admin: Optional[Admin] = None,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Union[List[Service], int]]:
+        query = self.db.query(Service)
+
+        if name:
+            query = query.filter(Service.name.ilike(f"%{name}%"))
+
+        if admin and not admin.is_sudo:
+            query = query.join(Service.admin_links).filter(
+                AdminServiceLink.admin_id == admin.id
+            )
+
+        total = query.count()
+        query = query.order_by(Service.created_at.desc())
+
+        if offset:
+            query = query.offset(offset)
+
+        if limit:
+            query = query.limit(limit)
+
+        services = query.all()
+
+        service_ids = [service.id for service in services if service.id is not None]
+
+        host_counts: Dict[int, int] = {}
+        user_counts: Dict[int, int] = {}
+
+        if service_ids:
+            host_counts = {
+                service_id: int(count or 0)
+                for service_id, count in (
+                    self.db.query(
+                        ServiceHostLink.service_id, func.count(ServiceHostLink.host_id)
+                    )
+                    .filter(ServiceHostLink.service_id.in_(service_ids))
+                    .group_by(ServiceHostLink.service_id)
+                    .all()
+                )
+            }
+            user_counts = {
+                service_id: int(count or 0)
+                for service_id, count in (
+                    self.db.query(User.service_id, func.count(User.id))
+                    .filter(User.service_id.in_(service_ids))
+                    .group_by(User.service_id)
+                    .all()
+                )
+            }
+
+        return {
+            "services": services,
+            "total": total,
+            "host_counts": host_counts,
+            "user_counts": user_counts,
+        }
+
+    def create(self, payload: ServiceCreate) -> Service:
+        if not payload.hosts:
+            raise ValueError("Service must include at least one host")
+
+        service = Service(
+            name=payload.name.strip(),
+            description=payload.description or None,
+        )
+        self.db.add(service)
+        self.db.flush()
+
+        self.assign_hosts(service, payload.hosts)
+        self.assign_admins(service, payload.admin_ids)
+
+        self.db.commit()
+        self.db.refresh(service)
+        return service
+
+    def update(
+        self,
+        service: Service,
+        modification: ServiceModify,
+    ) -> Tuple[
+        Service,
+        Optional[Dict[ProxyTypes, Set[str]]],
+        Optional[Dict[ProxyTypes, Set[str]]],
+    ]:
+        allowed_before: Optional[Dict[ProxyTypes, Set[str]]] = None
+
+        if modification.hosts is not None:
+            if not modification.hosts:
+                raise ValueError("Service must include at least one host")
+            allowed_before = self.compute_allowed_inbounds(service)
+            self.assign_hosts(service, modification.hosts)
+
+        if modification.name is not None:
+            service.name = modification.name.strip()
+
+        if modification.description is not None:
+            service.description = modification.description or None
+
+        if modification.admin_ids is not None:
+            self.assign_admins(service, modification.admin_ids)
+
+        self.db.flush()
+        allowed_after: Optional[Dict[ProxyTypes, Set[str]]] = (
+            self.compute_allowed_inbounds(service) if allowed_before is not None else None
+        )
+
+        self.db.commit()
+        self.db.refresh(service)
+
+        return service, allowed_before, allowed_after
+
+    def remove(
+        self,
+        service: Service,
+        *,
+        mode: Literal["delete_users", "transfer_users"] = "delete_users",
+        target_service: Optional[Service] = None,
+        unlink_admins: bool = False,
+    ) -> Tuple[List[User], List[User]]:
+        if service.admin_links and not unlink_admins:
+            raise ValueError("Service has admins assigned. Unlink them before deleting.")
+
+        deleted_users: List[User] = []
+        transferred_users: List[User] = []
+        service_users = list(service.users)
+
+        if unlink_admins and service.admin_links:
+            service.admin_links.clear()
+
+        if service_users:
+            if mode == "transfer_users":
+                if not target_service or target_service.id == service.id:
+                    raise ValueError("A different target service is required for transferring users")
+                for user in service_users:
+                    user.service_id = target_service.id
+                    transferred_users.append(user)
+            elif mode == "delete_users":
+                deleted_users.extend(service_users)
+                for user in service_users:
+                    self.db.delete(user)
+            else:
+                raise ValueError("Invalid delete mode")
+
+        self.db.delete(service)
+        self.db.commit()
+        return deleted_users, transferred_users
+
+    def reset_usage(self, service: Service) -> Service:
+        service.used_traffic = 0
+        service.updated_at = datetime.utcnow()
+
+        for link in service.admin_links:
+            link.used_traffic = 0
+            link.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(service)
+        return service
+
+    def usage_timeseries(
+        self,
+        service: Service,
+        start: datetime,
+        end: datetime,
+        granularity: str = "day",
+    ) -> List[Dict[str, Union[datetime, int]]]:
+        granularity_value = (granularity or "day").lower()
+        if granularity_value not in {"day", "hour"}:
+            granularity_value = "day"
+
+        start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+        end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+        tzinfo = start_aware.tzinfo or timezone.utc
+
+        if granularity_value == "hour":
+            current = start_aware.replace(minute=0, second=0, microsecond=0)
+            end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
+            step = timedelta(hours=1)
+        else:
+            current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+            step = timedelta(days=1)
+
+        if current > end_aligned:
+            return []
+
+        usage_map: Dict[datetime, int] = {}
+        cursor = current
+        while cursor <= end_aligned:
+            usage_map[cursor] = 0
+            cursor += step
+
+        rows = (
+            self.db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
+            .join(User, User.id == NodeUserUsage.user_id)
+            .filter(
+                User.service_id == service.id,
+                NodeUserUsage.created_at >= start_aware,
+                NodeUserUsage.created_at <= end_aware,
+            )
+            .all()
+        )
+
+        for created_at, used_traffic in rows:
+            if created_at is None or used_traffic is None:
+                continue
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=tzinfo)
+            else:
+                created_at = created_at.astimezone(tzinfo)
+            if granularity_value == "hour":
+                bucket = created_at.replace(minute=0, second=0, microsecond=0)
+            else:
+                bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+            usage_map.setdefault(bucket, 0)
+            usage_map[bucket] += int(used_traffic)
+
+        return [
+            {"timestamp": bucket, "used_traffic": value}
+            for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
+        ]
+
+    def admin_usage_timeseries(
+        self,
+        service: Service,
+        admin_id: Optional[int],
+        start: datetime,
+        end: datetime,
+        granularity: str = "day",
+    ) -> List[Dict[str, Union[datetime, int]]]:
+        granularity_value = (granularity or "day").lower()
+        if granularity_value not in {"day", "hour"}:
+            granularity_value = "day"
+
+        start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
+        end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
+        tzinfo = start_aware.tzinfo or timezone.utc
+
+        if granularity_value == "hour":
+            current = start_aware.replace(minute=0, second=0, microsecond=0)
+            end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
+            step = timedelta(hours=1)
+        else:
+            current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
+            step = timedelta(days=1)
+
+        if current > end_aligned:
+            return []
+
+        usage_map: Dict[datetime, int] = {}
+        cursor = current
+        while cursor <= end_aligned:
+            usage_map[cursor] = 0
+            cursor += step
+
+        query = (
+            self.db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
+            .join(User, User.id == NodeUserUsage.user_id)
+            .filter(
+                User.service_id == service.id,
+                NodeUserUsage.created_at >= start_aware,
+                NodeUserUsage.created_at <= end_aware,
+            )
+        )
+
+        if admin_id is None:
+            query = query.filter(User.admin_id.is_(None))
+        else:
+            query = query.filter(User.admin_id == admin_id)
+
+        rows = query.all()
+        for created_at, used_traffic in rows:
+            if created_at is None or used_traffic is None:
+                continue
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=tzinfo)
+            else:
+                created_at = created_at.astimezone(tzinfo)
+            if granularity_value == "hour":
+                bucket = created_at.replace(minute=0, second=0, microsecond=0)
+            else:
+                bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+            usage_map.setdefault(bucket, 0)
+            usage_map[bucket] += int(used_traffic)
+
+        return [
+            {"timestamp": bucket, "used_traffic": value}
+            for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
+        ]
+
+    def admin_usage(
+        self,
+        service: Service,
+        start: datetime,
+        end: datetime,
+    ) -> List[Dict[str, Union[int, None, str]]]:
+        usage_rows = (
+            self.db.query(
+                Admin.id.label("admin_id"),
+                Admin.username.label("username"),
+                func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
+            )
+            .select_from(NodeUserUsage)
+            .join(User, User.id == NodeUserUsage.user_id)
+            .outerjoin(Admin, Admin.id == User.admin_id)
+            .filter(
+                User.service_id == service.id,
+                NodeUserUsage.created_at >= start,
+                NodeUserUsage.created_at <= end,
+            )
+            .group_by(Admin.id, Admin.username)
+            .all()
+        )
+
+        usage_map: Dict[Optional[int], Dict[str, Union[int, None, str]]] = {}
+        for admin_id, username, used in usage_rows:
+            label = username or "Unassigned"
+            usage_map[admin_id] = {
+                "admin_id": admin_id,
+                "username": label,
+                "used_traffic": int(used or 0),
+            }
+
+        for link in service.admin_links:
+            if link.admin_id is None or not link.admin:
+                continue
+            usage_map.setdefault(
+                link.admin_id,
+                {
+                    "admin_id": link.admin_id,
+                    "username": link.admin.username,
+                    "used_traffic": 0,
+                },
+            )
+
+        return sorted(
+            usage_map.values(),
+            key=lambda entry: int(entry.get("used_traffic") or 0),
+            reverse=True,
+        )
+
+
+def _service_repo(db: Session) -> ServiceRepository:
+    return ServiceRepository(db)
+
+
 def _assign_service_hosts(
     db: Session, service: Service, assignments: Iterable[ServiceHostAssignment]
 ) -> None:
-    assignments = list(assignments)
-    desired_ids = [assignment.host_id for assignment in assignments]
-    host_map = _fetch_hosts_by_ids(db, desired_ids)
-
-    if len(host_map) != len(set(desired_ids)):
-        raise ValueError("One or more hosts could not be found")
-
-    existing_links = {link.host_id: link for link in service.host_links}
-    desired_id_set = set(desired_ids)
-
-    for link in list(service.host_links):
-        if link.host_id not in desired_id_set:
-            service.host_links.remove(link)
-            db.delete(link)
-
-    for index, assignment in enumerate(assignments):
-        sort_value = assignment.sort if assignment.sort is not None else index
-        link = existing_links.get(assignment.host_id)
-        if link:
-            link.sort = sort_value
-        else:
-            service.host_links.append(
-                ServiceHostLink(
-                    host=host_map[assignment.host_id],
-                    sort=sort_value,
-                )
-            )
+    _service_repo(db).assign_hosts(service, assignments)
 
 
 def _assign_service_admins(
     db: Session, service: Service, admin_ids: Iterable[int]
 ) -> None:
-    admin_ids = list(dict.fromkeys(admin_ids))
-    existing_links = {link.admin_id: link for link in service.admin_links}
-    desired_id_set = set(admin_ids)
-
-    for link in list(service.admin_links):
-        if link.admin_id not in desired_id_set:
-            service.admin_links.remove(link)
-            db.delete(link)
-
-    if not admin_ids:
-        return
-
-    admins = (
-        db.query(Admin)
-        .filter(Admin.id.in_(desired_id_set))
-        .filter(Admin.status != AdminStatus.deleted)
-        .all()
-    )
-    if len(admins) != len(desired_id_set):
-        raise ValueError("One or more admins could not be found")
-
-    for admin in admins:
-        if admin.id in existing_links:
-            continue
-        service.admin_links.append(AdminServiceLink(admin=admin, service=service))
+    _service_repo(db).assign_admins(service, admin_ids)
 
 
 def _service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
-    from app.runtime import xray
-    allowed: Dict[ProxyTypes, Set[str]] = defaultdict(set)
-    for link in service.host_links:
-        host = link.host
-        if not host:
-            continue
-        inbound_tag = host.inbound_tag
-        inbound_info = xray.config.inbounds_by_tag.get(inbound_tag)
-        if not inbound_info:
-            continue
-        protocol = inbound_info.get("protocol")
-        if not protocol:
-            continue
-        try:
-            proxy_type = ProxyTypes(protocol)
-        except ValueError:
-            continue
-        allowed[proxy_type].add(inbound_tag)
-    return allowed
+    return ServiceRepository.compute_allowed_inbounds(service)
 
 
 def _ensure_admin_service_link(db: Session, admin: Optional[Admin], service: Service) -> None:
-    if not admin or admin.id is None or service.id is None:
-        return
-
-    exists = (
-        db.query(AdminServiceLink)
-        .filter(
-            AdminServiceLink.admin_id == admin.id,
-            AdminServiceLink.service_id == service.id,
-        )
-        .first()
-    )
-    if exists:
-        return
-
-    db.add(AdminServiceLink(admin_id=admin.id, service_id=service.id))
+    _service_repo(db).ensure_admin_service_link(admin, service)
 
 
 def _apply_service_to_user(
@@ -441,39 +928,7 @@ def _apply_service_to_user(
     service: Service,
     allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
 ) -> None:
-    from app.runtime import xray
-    if allowed_inbounds is None:
-        allowed_inbounds = _service_allowed_inbounds(service)
-
-    allowed_protocols = set(allowed_inbounds.keys())
-    existing_proxies: Dict[ProxyTypes, Proxy] = {}
-
-    for proxy in list(dbuser.proxies):
-        proxy_type = ProxyTypes(proxy.type)
-        if proxy_type not in allowed_protocols:
-            db.delete(proxy)
-            continue
-        existing_proxies[proxy_type] = proxy
-
-    for proxy_type in allowed_protocols:
-        allowed_tags = allowed_inbounds[proxy_type]
-        proxy = existing_proxies.get(proxy_type)
-        if not proxy:
-            settings_model = proxy_type.settings_model
-            proxy = Proxy(type=proxy_type, settings=settings_model().dict(no_obj=True))
-            dbuser.proxies.append(proxy)
-
-        available_tags = {
-            inbound["tag"]
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])
-        }
-        excluded_tags = sorted(available_tags - set(allowed_tags))
-        proxy.excluded_inbounds = [
-            get_or_create_inbound(db, tag) for tag in excluded_tags
-        ]
-
-    dbuser.service = service
-    dbuser.edit_at = datetime.utcnow()
+    _service_repo(db).apply_service_to_user(dbuser, service, allowed_inbounds)
 
 
 def refresh_service_users(
@@ -481,16 +936,7 @@ def refresh_service_users(
     service: Service,
     allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
 ) -> List[User]:
-    if allowed_inbounds is None:
-        allowed_inbounds = _service_allowed_inbounds(service)
-
-    updated_users: List[User] = []
-    for user in service.users:
-        _apply_service_to_user(db, user, service, allowed_inbounds)
-        updated_users.append(user)
-
-    db.flush()
-    return updated_users
+    return _service_repo(db).refresh_users(service, allowed_inbounds)
 
 
 def get_service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
@@ -498,15 +944,7 @@ def get_service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]
 
 
 def get_service(db: Session, service_id: int) -> Optional[Service]:
-    return (
-        db.query(Service)
-        .options(
-            joinedload(Service.admin_links).joinedload(AdminServiceLink.admin),
-            joinedload(Service.host_links).joinedload(ServiceHostLink.host),
-        )
-        .filter(Service.id == service_id)
-        .first()
-    )
+    return _service_repo(db).get(service_id)
 
 
 def list_services(
@@ -516,76 +954,11 @@ def list_services(
     offset: int = 0,
     limit: Optional[int] = None,
 ) -> Dict[str, Union[List[Service], int]]:
-    query = db.query(Service)
-
-    if name:
-        query = query.filter(Service.name.ilike(f"%{name}%"))
-
-    if admin and not admin.is_sudo:
-        query = query.join(Service.admin_links).filter(
-            AdminServiceLink.admin_id == admin.id
-        )
-
-    total = query.count()
-    query = query.order_by(Service.created_at.desc())
-
-    if offset:
-        query = query.offset(offset)
-    if limit:
-        query = query.limit(limit)
-
-    services = query.all()
-
-    service_ids = [service.id for service in services if service.id is not None]
-
-    host_counts: Dict[int, int] = {}
-    user_counts: Dict[int, int] = {}
-
-    if service_ids:
-        host_counts = {
-            service_id: int(count or 0)
-            for service_id, count in (
-                db.query(ServiceHostLink.service_id, func.count(ServiceHostLink.host_id))
-                .filter(ServiceHostLink.service_id.in_(service_ids))
-                .group_by(ServiceHostLink.service_id)
-                .all()
-            )
-        }
-        user_counts = {
-            service_id: int(count or 0)
-            for service_id, count in (
-                db.query(User.service_id, func.count(User.id))
-                .filter(User.service_id.in_(service_ids))
-                .group_by(User.service_id)
-                .all()
-            )
-        }
-
-    return {
-        "services": services,
-        "total": total,
-        "host_counts": host_counts,
-        "user_counts": user_counts,
-    }
+    return _service_repo(db).list(name=name, admin=admin, offset=offset, limit=limit)
 
 
 def create_service(db: Session, payload: ServiceCreate) -> Service:
-    if not payload.hosts:
-        raise ValueError("Service must include at least one host")
-
-    service = Service(
-        name=payload.name.strip(),
-        description=payload.description or None,
-    )
-    db.add(service)
-    db.flush()
-
-    _assign_service_hosts(db, service, payload.hosts)
-    _assign_service_admins(db, service, payload.admin_ids)
-
-    db.commit()
-    db.refresh(service)
-    return service
+    return _service_repo(db).create(payload)
 
 
 def update_service(
@@ -593,32 +966,7 @@ def update_service(
     service: Service,
     modification: ServiceModify,
 ) -> Tuple[Service, Optional[Dict[ProxyTypes, Set[str]]], Optional[Dict[ProxyTypes, Set[str]]]]:
-    allowed_before: Optional[Dict[ProxyTypes, Set[str]]] = None
-
-    if modification.hosts is not None:
-        if not modification.hosts:
-            raise ValueError("Service must include at least one host")
-        allowed_before = _service_allowed_inbounds(service)
-        _assign_service_hosts(db, service, modification.hosts)
-
-    if modification.name is not None:
-        service.name = modification.name.strip()
-
-    if modification.description is not None:
-        service.description = modification.description or None
-
-    if modification.admin_ids is not None:
-        _assign_service_admins(db, service, modification.admin_ids)
-
-    db.flush()
-    allowed_after: Optional[Dict[ProxyTypes, Set[str]]] = (
-        _service_allowed_inbounds(service) if allowed_before is not None else None
-    )
-
-    db.commit()
-    db.refresh(service)
-
-    return service, allowed_before, allowed_after
+    return _service_repo(db).update(service, modification)
 
 
 def remove_service(
@@ -629,44 +977,16 @@ def remove_service(
     target_service: Optional[Service] = None,
     unlink_admins: bool = False,
 ) -> Tuple[List[User], List[User]]:
-    if service.admin_links and not unlink_admins:
-        raise ValueError("Service has admins assigned. Unlink them before deleting.")
-
-    deleted_users: List[User] = []
-    transferred_users: List[User] = []
-    service_users = list(service.users)
-
-    if unlink_admins and service.admin_links:
-        service.admin_links.clear()
-
-    if service_users:
-        if mode == "transfer_users":
-            if not target_service or target_service.id == service.id:
-                raise ValueError("A different target service is required for transferring users")
-            for user in service_users:
-                user.service_id = target_service.id
-                transferred_users.append(user)
-        elif mode == "delete_users":
-            deleted_users.extend(service_users)
-            for user in service_users:
-                db.delete(user)
-        else:
-            raise ValueError("Invalid delete mode")
-
-    db.delete(service)
-    db.commit()
-    return deleted_users, transferred_users
+    return _service_repo(db).remove(
+        service,
+        mode=mode,
+        target_service=target_service,
+        unlink_admins=unlink_admins,
+    )
 
 
 def reset_service_usage(db: Session, service: Service) -> Service:
-    service.used_traffic = 0
-    service.updated_at = datetime.utcnow()
-    for link in service.admin_links:
-        link.used_traffic = 0
-        link.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(service)
-    return service
+    return _service_repo(db).reset_usage(service)
 
 
 def get_service_usage_timeseries(
@@ -676,61 +996,7 @@ def get_service_usage_timeseries(
     end: datetime,
     granularity: str = "day",
 ) -> List[Dict[str, Union[datetime, int]]]:
-    granularity_value = (granularity or "day").lower()
-    if granularity_value not in {"day", "hour"}:
-        granularity_value = "day"
-
-    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
-    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
-    tzinfo = start_aware.tzinfo or timezone.utc
-
-    if granularity_value == "hour":
-        current = start_aware.replace(minute=0, second=0, microsecond=0)
-        end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
-        step = timedelta(hours=1)
-    else:
-        current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
-        step = timedelta(days=1)
-
-    if current > end_aligned:
-        return []
-
-    usage_map: Dict[datetime, int] = {}
-    cursor = current
-    while cursor <= end_aligned:
-        usage_map[cursor] = 0
-        cursor += step
-
-    rows = (
-        db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .filter(
-            User.service_id == service.id,
-            NodeUserUsage.created_at >= start_aware,
-            NodeUserUsage.created_at <= end_aware,
-        )
-        .all()
-    )
-
-    for created_at, used_traffic in rows:
-        if created_at is None or used_traffic is None:
-            continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=tzinfo)
-        else:
-            created_at = created_at.astimezone(tzinfo)
-        if granularity_value == "hour":
-            bucket = created_at.replace(minute=0, second=0, microsecond=0)
-        else:
-            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
-        usage_map.setdefault(bucket, 0)
-        usage_map[bucket] += int(used_traffic)
-
-    return [
-        {"timestamp": bucket, "used_traffic": value}
-        for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
-    ]
+    return _service_repo(db).usage_timeseries(service, start, end, granularity)
 
 
 def get_service_admin_usage_timeseries(
@@ -741,66 +1007,7 @@ def get_service_admin_usage_timeseries(
     end: datetime,
     granularity: str = "day",
 ) -> List[Dict[str, Union[datetime, int]]]:
-    granularity_value = (granularity or "day").lower()
-    if granularity_value not in {"day", "hour"}:
-        granularity_value = "day"
-
-    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
-    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
-    tzinfo = start_aware.tzinfo or timezone.utc
-
-    if granularity_value == "hour":
-        current = start_aware.replace(minute=0, second=0, microsecond=0)
-        end_aligned = end_aware.replace(minute=0, second=0, microsecond=0)
-        step = timedelta(hours=1)
-    else:
-        current = start_aware.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_aligned = end_aware.replace(hour=0, minute=0, second=0, microsecond=0)
-        step = timedelta(days=1)
-
-    if current > end_aligned:
-        return []
-
-    usage_map: Dict[datetime, int] = {}
-    cursor = current
-    while cursor <= end_aligned:
-        usage_map[cursor] = 0
-        cursor += step
-
-    query = (
-        db.query(NodeUserUsage.created_at, NodeUserUsage.used_traffic)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .filter(
-            User.service_id == service.id,
-            NodeUserUsage.created_at >= start_aware,
-            NodeUserUsage.created_at <= end_aware,
-        )
-    )
-
-    if admin_id is None:
-        query = query.filter(User.admin_id.is_(None))
-    else:
-        query = query.filter(User.admin_id == admin_id)
-
-    rows = query.all()
-    for created_at, used_traffic in rows:
-        if created_at is None or used_traffic is None:
-            continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=tzinfo)
-        else:
-            created_at = created_at.astimezone(tzinfo)
-        if granularity_value == "hour":
-            bucket = created_at.replace(minute=0, second=0, microsecond=0)
-        else:
-            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
-        usage_map.setdefault(bucket, 0)
-        usage_map[bucket] += int(used_traffic)
-
-    return [
-        {"timestamp": bucket, "used_traffic": value}
-        for bucket, value in sorted(usage_map.items(), key=lambda item: item[0])
-    ]
+    return _service_repo(db).admin_usage_timeseries(service, admin_id, start, end, granularity)
 
 
 def get_service_admin_usage(
@@ -809,50 +1016,7 @@ def get_service_admin_usage(
     start: datetime,
     end: datetime,
 ) -> List[Dict[str, Union[int, None, str]]]:
-    usage_rows = (
-        db.query(
-            Admin.id.label("admin_id"),
-            Admin.username.label("username"),
-            func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
-        )
-        .select_from(NodeUserUsage)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .outerjoin(Admin, Admin.id == User.admin_id)
-        .filter(
-            User.service_id == service.id,
-            NodeUserUsage.created_at >= start,
-            NodeUserUsage.created_at <= end,
-        )
-        .group_by(Admin.id, Admin.username)
-        .all()
-    )
-
-    usage_map: Dict[Optional[int], Dict[str, Union[int, None, str]]] = {}
-    for admin_id, username, used in usage_rows:
-        label = username or "Unassigned"
-        usage_map[admin_id] = {
-            "admin_id": admin_id,
-            "username": label,
-            "used_traffic": int(used or 0),
-        }
-
-    for link in service.admin_links:
-        if link.admin_id is None or not link.admin:
-            continue
-        usage_map.setdefault(
-            link.admin_id,
-            {
-                "admin_id": link.admin_id,
-                "username": link.admin.username,
-                "used_traffic": 0,
-            },
-        )
-
-    return sorted(
-        usage_map.values(),
-        key=lambda entry: int(entry.get("used_traffic") or 0),
-        reverse=True,
-    )
+    return _service_repo(db).admin_usage(service, start, end)
 
 
 def get_user_queryset(db: Session) -> Query:

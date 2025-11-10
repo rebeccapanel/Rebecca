@@ -291,7 +291,6 @@ By default the app will be run on `http://localhost:8000/dashboard`. You can con
 | UVICORN_SSL_CERTFILE                     | SSL certificate file to have application on https                                                                        |
 | UVICORN_SSL_KEYFILE                      | SSL key file to have application on https                                                                                |
 | UVICORN_SSL_CA_TYPE                      | Type of authority SSL certificate. Use `private` for testing self-signed CA (default: `public`)                          |
-| XRAY_JSON                                | Path of Xray's json config file (default: `xray_config.json`)                                                            |
 | XRAY_EXECUTABLE_PATH                     | Path of Xray binary (default: `/usr/local/bin/xray`)                                                                     |
 | XRAY_ASSETS_PATH                         | Path of Xray assets (default: `/usr/local/share/xray`)                                                                   |
 | XRAY_SUBSCRIPTION_URL_PREFIX             | Prefix of subscription URLs                                                                                              |

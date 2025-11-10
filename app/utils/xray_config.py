@@ -1,11 +1,10 @@
-import json
 from typing import Dict, Any
 
 from fastapi import HTTPException
 
+from app.db import GetDB, crud
 from app.reb_node import XRayConfig
 from app.runtime import xray
-from config import XRAY_JSON
 
 
 def apply_config_and_restart(payload: Dict[str, Any]) -> None:
@@ -18,8 +17,8 @@ def apply_config_and_restart(payload: Dict[str, Any]) -> None:
         raise HTTPException(status_code=400, detail=str(err))
 
     xray.config = config
-    with open(XRAY_JSON, "w", encoding="utf-8") as file:
-        json.dump(payload, file, indent=4)
+    with GetDB() as db:
+        crud.save_xray_config(db, payload)
 
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)

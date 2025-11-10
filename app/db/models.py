@@ -408,6 +408,15 @@ class System(Base):
     downlink = Column(BigInteger, default=0)
 
 
+class XrayConfig(Base):
+    __tablename__ = "xray_config"
+
+    id = Column(Integer, primary_key=True)
+    data = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class WarpAccount(Base):
     __tablename__ = "warp_accounts"
 

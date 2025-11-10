@@ -1,12 +1,11 @@
 import asyncio
 import time
 
-import commentjson
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body
 from starlette.websockets import WebSocketDisconnect
 
 from app.runtime import xray
-from app.db import Session, get_db
+from app.db import Session, get_db, crud
 from app.models.admin import Admin
 from app.models.core import CoreStats
 from app.models.warp import (
@@ -20,7 +19,6 @@ from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
 from app.utils.xray_config import apply_config_and_restart
 from app.reb_node import XRayConfig
-from config import XRAY_JSON
 
 import os, platform, shutil, stat, zipfile, io, requests
 from pathlib import Path
@@ -115,12 +113,12 @@ def restart_core(admin: Admin = Depends(Admin.check_sudo_admin)):
 
 
 @router.get("/core/config", responses={403: responses._403})
-def get_core_config(admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
+def get_core_config(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+) -> dict:
     """Get the current core configuration."""
-    with open(XRAY_JSON, "r") as f:
-        config = commentjson.loads(f.read())
-
-    return config
+    return crud.get_xray_config(db)
 
 
 @router.put("/core/config", responses={403: responses._403})

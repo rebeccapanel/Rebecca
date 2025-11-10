@@ -284,7 +284,6 @@ server {
 | UVICORN_SSL_CERTFILE                     | SSL 证书文件路径                                                                                                              |
 | UVICORN_SSL_KEYFILE                      | SSL 密钥文件路径                                                                                                              |
 | UVICORN_SSL_CA_TYPE                      | 授权 SSL 证书的类型。使用“private”来测试自签名 CA（默认值：`public`）                                                                          |
-| XRAY_JSON                                | Xray 的 json 配置文件路径（默认: `xray_config.json`）                                                                              |
 | XRAY_EXECUTABLE_PATH                     | Xray 的执行程序路径: `/usr/local/bin/xray`）                                                                                    |
 | XRAY_ASSETS_PATH                         | Xray 的资源目录: `/usr/local/share/xray`）                                                                                    |
 | XRAY_SUBSCRIPTION_URL_PREFIX             | 订阅URL的前缀                                                                                                                |

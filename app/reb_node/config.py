@@ -168,8 +168,18 @@ class XRayConfig(dict):
                 "statsOutboundUplink": True
             }
         }
-        if self.get("policy"):
-            self["policy"] = merge_dicts(self.get("policy"), forced_policies)
+        current_policy = self.get("policy")
+        if not isinstance(current_policy, dict):
+            if isinstance(current_policy, str):
+                try:
+                    current_policy = json.loads(current_policy)
+                except Exception:
+                    current_policy = {}
+            else:
+                current_policy = {}
+
+        if current_policy:
+            self["policy"] = merge_dicts(current_policy, forced_policies)
         else:
             self["policy"] = forced_policies
         inbound = {
