@@ -732,6 +732,8 @@
   "usersTable.copied": "کپی شد",
   "usersTable.copyConfigs": "تنظیمات کپی",
   "usersTable.copyLink": "کپی لینک اشتراک",
+  "usersTable.copyKeyLink": "کپی لینک اشتراک جدید",
+  "usersTable.copyLegacyLink": "کپی لینک اشتراک قدیمی",
   "usersTable.dataUsage": "مصرف داده",
   "usersTable.noUser": "کاربری افزوده نشده است",
   "usersTable.noUserMatched": "به‌نظر میرسه کاربری که جستجو کردید، وجود ندارد",

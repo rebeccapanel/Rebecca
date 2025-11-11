@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.websockets import WebSocketDisconnect
 
 from app.runtime import logger, xray
-from app.db import Session, crud, get_db
+from app.db import Session, crud, get_db, GetDB
 from app.dependencies import get_dbnode, validate_dates
 from app.models.admin import Admin
 from app.models.node import (
@@ -140,11 +140,12 @@ def get_node(
 
 
 @router.websocket("/node/{node_id}/logs")
-async def node_logs(node_id: int, websocket: WebSocket, db: Session = Depends(get_db)):
+async def node_logs(node_id: int, websocket: WebSocket):
     token = websocket.query_params.get("token") or websocket.headers.get(
         "Authorization", ""
     ).removeprefix("Bearer ")
-    admin = Admin.get_admin(token, db)
+    with GetDB() as db:
+        admin = Admin.get_admin(token, db)
     if not admin:
         return await websocket.close(reason="Unauthorized", code=4401)
 

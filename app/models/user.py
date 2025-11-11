@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.admin import Admin
 from app.models.proxy import ProxySettings, ProxyTypes
 from app.subscription.share import generate_v2ray_links
+from app.utils.credentials import apply_credentials_to_settings
 from app.utils.jwt import create_subscription_token
 from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
 
@@ -78,6 +79,8 @@ class NextPlanModel(BaseModel):
 
 
 class User(BaseModel):
+    credential_key: Optional[str] = None
+    key_subscription_url: Optional[str] = None
     proxies: Dict[ProxyTypes, ProxySettings] = {}
     expire: Optional[int] = Field(None, nullable=True)
     data_limit: Optional[int] = Field(
@@ -370,11 +373,35 @@ class UserResponse(User):
 
     @model_validator(mode="after")
     def validate_subscription_url(self):
-        if not self.subscription_url:
+        if self.credential_key:
             salt = secrets.token_hex(8)
             url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
-            token = create_subscription_token(self.username)
-            self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+            self.subscription_url = (
+                f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            )
+        else:
+            if not self.subscription_url:
+                salt = secrets.token_hex(8)
+                url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
+                token = create_subscription_token(self.username)
+                self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+        return self
+
+    @model_validator(mode="after")
+    def populate_key_subscription_url(self):
+        if self.credential_key and not hasattr(self, 'key_subscription_url'):
+            salt = secrets.token_hex(8)
+            url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
+            self.key_subscription_url = (
+                f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def populate_proxy_credentials(self):
+        if self.credential_key:
+            for proxy_type, settings in self.proxies.items():
+                apply_credentials_to_settings(settings, proxy_type, self.credential_key)
         return self
 
     @field_validator("proxies", mode="before")

@@ -114,6 +114,12 @@ const TPROXY_OPTIONS: Array<"" | "off" | "redirect" | "tproxy"> = [
   "redirect",
   "tproxy",
 ];
+const XHTTP_MODE_OPTIONS: Array<InboundFormValues["xhttpMode"]> = [
+  "auto",
+  "packet-up",
+  "stream-up",
+  "stream-one",
+];
 
 export const InboundFormModal: FC<Props> = ({
   isOpen,
@@ -152,6 +158,14 @@ export const InboundFormModal: FC<Props> = ({
     control,
     name: "socksAccounts",
   });
+  const {
+    fields: xhttpHeaderFields,
+    append: appendXhttpHeader,
+    remove: removeXhttpHeader,
+  } = useFieldArray({
+    control,
+    name: "xhttpHeaders",
+  });
 
   const currentProtocol = useWatch({ control, name: "protocol" }) || watch("protocol");
   const streamNetwork = useWatch({ control, name: "streamNetwork" }) || watch("streamNetwork");
@@ -164,6 +178,8 @@ export const InboundFormModal: FC<Props> = ({
   const socksAuth = useWatch({ control, name: "socksAuth" }) || watch("socksAuth") || "noauth";
   const socksUdpEnabled =
     useWatch({ control, name: "socksUdpEnabled" }) ?? watch("socksUdpEnabled") ?? false;
+  const xhttpMode = useWatch({ control, name: "xhttpMode" }) || watch("xhttpMode") || "auto";
+  const supportsStreamSettings = currentProtocol !== "http" && currentProtocol !== "socks";
   const defaultVlessAuthLabels = useMemo(
     () => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
     []
@@ -658,13 +674,14 @@ export const InboundFormModal: FC<Props> = ({
               )}
             </Stack>
 
-            <Stack
-              spacing={4}
-              borderWidth="1px"
-              borderColor={sectionBorder}
-              borderRadius="lg"
-              p={4}
-            >
+            {supportsStreamSettings && (
+              <Stack
+                spacing={4}
+                borderWidth="1px"
+                borderColor={sectionBorder}
+                borderRadius="lg"
+                p={4}
+              >
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 <FormControl>
                   <FormLabel>{t("inbounds.network", "Network")}</FormLabel>
@@ -797,6 +814,97 @@ export const InboundFormModal: FC<Props> = ({
                   </FormControl>
                 </SimpleGrid>
               )}
+
+              {streamNetwork === "xhttp" && (
+                <Stack spacing={3}>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.xhttp.host", "Host")}</FormLabel>
+                      <Input {...register("xhttpHost")} placeholder="example.com" />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.xhttp.path", "Path")}</FormLabel>
+                      <Input {...register("xhttpPath")} placeholder="/" />
+                    </FormControl>
+                  </SimpleGrid>
+                  <Stack spacing={2}>
+                    <Flex justify="space-between" align="center">
+                      <Text fontWeight="medium">
+                        {t("inbounds.xhttp.headers", "Custom headers")}
+                      </Text>
+                      <Button size="xs" onClick={() => appendXhttpHeader({ name: "", value: "" })}>
+                        {t("inbounds.accounts.add", "Add")}
+                      </Button>
+                    </Flex>
+                    {xhttpHeaderFields.map((field, index) => (
+                      <HStack key={field.id} spacing={2} align="flex-start">
+                        <FormControl>
+                          <Input
+                            {...register(`xhttpHeaders.${index}.name` as const)}
+                            placeholder={t("inbounds.xhttp.headerName", "Header name")}
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <Input
+                            {...register(`xhttpHeaders.${index}.value` as const)}
+                            placeholder={t("inbounds.xhttp.headerValue", "Header value")}
+                          />
+                        </FormControl>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => removeXhttpHeader(index)}
+                        >
+                          {t("hostsPage.delete", "Delete")}
+                        </Button>
+                      </HStack>
+                    ))}
+                  </Stack>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.xhttp.mode", "Mode")}</FormLabel>
+                      <Select {...register("xhttpMode")}>
+                        {XHTTP_MODE_OPTIONS.map((mode) => (
+                          <option key={mode} value={mode}>
+                            {mode}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>{t("inbounds.xhttp.paddingBytes", "Padding bytes")}</FormLabel>
+                      <Input {...register("xhttpPaddingBytes")} placeholder="100-1000" />
+                    </FormControl>
+                  </SimpleGrid>
+                  {xhttpMode === "packet-up" && (
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                      <FormControl>
+                        <FormLabel>{t("inbounds.xhttp.maxBuffered", "Max buffered upload")}</FormLabel>
+                        <Input {...register("xhttpScMaxBufferedPosts")} placeholder="30" />
+                      </FormControl>
+                      <FormControl>
+                        <FormLabel>
+                          {t("inbounds.xhttp.maxUploadBytes", "Max upload size (bytes)")}
+                        </FormLabel>
+                        <Input {...register("xhttpScMaxEachPostBytes")} placeholder="1000000" />
+                      </FormControl>
+                    </SimpleGrid>
+                  )}
+                  {xhttpMode === "stream-up" && (
+                    <FormControl>
+                      <FormLabel>
+                        {t("inbounds.xhttp.streamUp", "Stream-up server seconds")}
+                      </FormLabel>
+                      <Input {...register("xhttpScStreamUpServerSecs")} placeholder="20-80" />
+                    </FormControl>
+                  )}
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel mb={0}>{t("inbounds.xhttp.noSSE", "Disable SSE header")}</FormLabel>
+                    <Switch {...register("xhttpNoSSEHeader")} />
+                  </FormControl>
+                </Stack>
+              )}
               <FormControl display="flex" alignItems="center">
                 <FormLabel mb={0}>{t("inbounds.sockopt.enable", "Enable sockopt")}</FormLabel>
                 <Controller
@@ -924,7 +1032,7 @@ export const InboundFormModal: FC<Props> = ({
                 </Stack>
               </Collapse>
             </Stack>
-
+            )}
             {streamSecurity === "tls" && (
               <Stack
                 spacing={4}

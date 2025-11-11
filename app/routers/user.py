@@ -18,6 +18,7 @@ from app.models.user import (
     UserUsagesResponse,
 )
 from app.utils import report, responses
+from app.utils.credentials import ensure_user_credential_key
 from app import runtime
 from app.runtime import logger
 
@@ -59,11 +60,15 @@ def add_user(
             )
 
     try:
+        ensure_user_credential_key(new_user)
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
         )
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     except IntegrityError:

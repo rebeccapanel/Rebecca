@@ -12,10 +12,29 @@ from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 @lru_cache(maxsize=None)
-def get_secret_key():
-    from app.db import GetDB, get_jwt_secret_key
+def get_admin_secret_key():
+    """Get admin secret key for authentication tokens."""
+    from app.db import GetDB, get_admin_secret_key as get_admin_key
     with GetDB() as db:
-        return get_jwt_secret_key(db)
+        return get_admin_key(db)
+
+
+@lru_cache(maxsize=None)
+def get_subscription_secret_key():
+    """Get subscription secret key for subscription tokens."""
+    from app.db import GetDB, get_subscription_secret_key as get_sub_key
+    with GetDB() as db:
+        return get_sub_key(db)
+
+
+@lru_cache(maxsize=None)
+def get_secret_key():
+    """
+    Legacy function for backward compatibility.
+    Returns admin secret key.
+    Use get_admin_secret_key() or get_subscription_secret_key() instead.
+    """
+    return get_admin_secret_key()
 
 
 def create_admin_token(username: str, is_sudo=False) -> str:
@@ -23,13 +42,13 @@ def create_admin_token(username: str, is_sudo=False) -> str:
     if JWT_ACCESS_TOKEN_EXPIRE_MINUTES > 0:
         expire = datetime.utcnow() + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         data["exp"] = expire
-    encoded_jwt = jwt.encode(data, get_secret_key(), algorithm="HS256")
+    encoded_jwt = jwt.encode(data, get_admin_secret_key(), algorithm="HS256")
     return encoded_jwt
 
 
 def get_admin_payload(token: str) -> Union[dict, None]:
     try:
-        payload = jwt.decode(token, get_secret_key(), algorithms=["HS256"])
+        payload = jwt.decode(token, get_admin_secret_key(), algorithms=["HS256"])
         username: str = payload.get("sub")
         access: str = payload.get("access")
         if not username or access not in ('admin', 'sudo'):
@@ -49,7 +68,7 @@ def create_subscription_token(username: str) -> str:
     data_b64_str = b64encode(data.encode('utf-8'), altchars=b'-_').decode('utf-8').rstrip('=')
     data_b64_sign = b64encode(
         sha256(
-            (data_b64_str+get_secret_key()).encode('utf-8')
+            (data_b64_str+get_subscription_secret_key()).encode('utf-8')
         ).digest(),
         altchars=b'-_'
     ).decode('utf-8')[:10]
@@ -63,7 +82,7 @@ def get_subscription_payload(token: str) -> Union[dict, None]:
             return
 
         if token.startswith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."):
-            payload = jwt.decode(token, get_secret_key(), algorithms=["HS256"])
+            payload = jwt.decode(token, get_subscription_secret_key(), algorithms=["HS256"])
             if payload.get("access") == "subscription":
                 return {"username": payload['sub'], "created_at": datetime.utcfromtimestamp(payload['iat'])}
             else:
@@ -78,7 +97,7 @@ def get_subscription_payload(token: str) -> Union[dict, None]:
                 u_token_dec_str = u_token_dec.decode('utf-8')
             except:
                 return
-            u_token_resign = b64encode(sha256((u_token+get_secret_key()).encode('utf-8')
+            u_token_resign = b64encode(sha256((u_token+get_subscription_secret_key()).encode('utf-8')
                                               ).digest(), altchars=b'-_').decode('utf-8')[:10]
             if u_signature == u_token_resign:
                 u_username = u_token_dec_str.split(',')[0]

@@ -1,11 +1,14 @@
 from typing import Optional, Union
 from app.models.admin import AdminInDB, AdminValidationResult, Admin
 from app.models.user import UserResponse, UserStatus
+from app.db.models import User
 from app.db import Session, crud, get_db
 from config import SUDOERS
 from fastapi import Depends, HTTPException
 from datetime import datetime, timezone, timedelta
 from app.utils.jwt import get_subscription_payload
+from sqlalchemy import func
+from app.utils.credentials import normalize_key
 
 
 def validate_admin(db: Session, username: str, password: str) -> Optional[AdminValidationResult]:
@@ -77,6 +80,58 @@ def get_validated_sub(
         raise HTTPException(status_code=404, detail="Not Found")
 
     if dbuser.sub_revoked_at and dbuser.sub_revoked_at > sub['created_at']:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    return dbuser
+
+
+def get_validated_sub_by_key(
+        username: str,
+        credential_key: str,
+        db: Session = Depends(get_db),
+) -> UserResponse:
+    try:
+        normalized_key = normalize_key(credential_key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid credential key")
+
+    dbuser = crud.get_user(db, username)
+    if not dbuser:
+        dbuser = (
+            db.query(User)
+            .filter(func.lower(User.username) == username.lower())
+            .filter(User.credential_key.isnot(None))
+            .first()
+        )
+    if not dbuser or not dbuser.credential_key:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    if normalize_key(dbuser.credential_key) != normalized_key:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    return dbuser
+
+
+def get_validated_sub_by_key_only(
+        credential_key: str,
+        db: Session = Depends(get_db),
+) -> UserResponse:
+    """
+    Validate subscription by credential_key only (no username provided).
+    Finds the user whose credential_key matches.
+    """
+    try:
+        normalized_key = normalize_key(credential_key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid credential key")
+
+    dbuser = (
+        db.query(User)
+        .filter(User.credential_key.isnot(None))
+        .filter(User.credential_key == normalized_key)
+        .first()
+    )
+    if not dbuser:
         raise HTTPException(status_code=404, detail="Not Found")
 
     return dbuser

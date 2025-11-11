@@ -18,6 +18,7 @@ from app.models.user import (
     UsersResponse,
 )
 from app.utils import report, responses
+from app.utils.credentials import ensure_user_credential_key
 
 router = APIRouter(prefix="/api/v2", tags=["User V2"], responses={401: responses._401})
 
@@ -62,6 +63,7 @@ def add_user_with_service(
 
     try:
         user_data = UserCreate.model_validate(user_payload)
+        ensure_user_credential_key(user_data)
         dbuser = crud.create_user(
             db,
             user_data,
@@ -71,12 +73,12 @@ def add_user_with_service(
     except UsersLimitReachedError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
     user = UserResponse.model_validate(dbuser)

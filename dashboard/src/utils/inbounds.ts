@@ -8,7 +8,8 @@ export type StreamNetwork =
   | "kcp"
   | "quic"
   | "httpupgrade"
-  | "splithttp";
+  | "splithttp"
+  | "xhttp";
 export type StreamSecurity = "none" | "tls" | "reality";
 
 export type RawInbound = {
@@ -32,6 +33,11 @@ export type FallbackForm = {
 export type ProxyAccountForm = {
   user: string;
   pass: string;
+};
+
+export type HeaderForm = {
+  name: string;
+  value: string;
 };
 
 export type SockoptFormValues = {
@@ -96,6 +102,15 @@ export type InboundFormValues = {
   httpupgradeHost: string;
   splithttpPath: string;
   splithttpHost: string;
+  xhttpHost: string;
+  xhttpPath: string;
+  xhttpHeaders: HeaderForm[];
+  xhttpMode: "auto" | "packet-up" | "stream-up" | "stream-one";
+  xhttpScMaxBufferedPosts: string;
+  xhttpScMaxEachPostBytes: string;
+  xhttpScStreamUpServerSecs: string;
+  xhttpPaddingBytes: string;
+  xhttpNoSSEHeader: boolean;
   vlessSelectedAuth: string;
   sockoptEnabled: boolean;
   sockopt: SockoptFormValues;
@@ -126,6 +141,7 @@ export const streamNetworks: StreamNetwork[] = [
   "quic",
   "httpupgrade",
   "splithttp",
+  "xhttp",
 ];
 export const streamSecurityOptions: StreamSecurity[] = ["none", "tls", "reality"];
 
@@ -194,6 +210,11 @@ const cleanObject = (value: Record<string, any>) => {
 const createDefaultProxyAccount = (): ProxyAccountForm => ({
   user: "",
   pass: "",
+});
+
+const createDefaultHeader = (): HeaderForm => ({
+  name: "",
+  value: "",
 });
 
 const accountToForm = (account: Record<string, any> | undefined): ProxyAccountForm => ({
@@ -284,6 +305,15 @@ export const createDefaultInboundForm = (protocol: Protocol = "vless"): InboundF
   httpupgradeHost: "",
   splithttpPath: "/",
   splithttpHost: "",
+  xhttpHost: "",
+  xhttpPath: "/",
+  xhttpHeaders: [createDefaultHeader()],
+  xhttpMode: "auto",
+  xhttpScMaxBufferedPosts: "30",
+  xhttpScMaxEachPostBytes: "1000000",
+  xhttpScStreamUpServerSecs: "20-80",
+  xhttpPaddingBytes: "100-1000",
+  xhttpNoSSEHeader: false,
   vlessSelectedAuth: "",
   sockoptEnabled: false,
   sockopt: createDefaultSockopt(),
@@ -376,6 +406,20 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
     httpupgradeHost: stream?.httpupgradeSettings?.host ?? base.httpupgradeHost,
     splithttpPath: stream?.splithttpSettings?.path ?? base.splithttpPath,
     splithttpHost: stream?.splithttpSettings?.host ?? base.splithttpHost,
+    xhttpHost: stream?.xhttpSettings?.host ?? base.xhttpHost,
+    xhttpPath: stream?.xhttpSettings?.path ?? base.xhttpPath,
+    xhttpHeaders: stream?.xhttpSettings?.headers
+      ? headersToForm(stream.xhttpSettings.headers)
+      : base.xhttpHeaders,
+    xhttpMode: stream?.xhttpSettings?.mode ?? base.xhttpMode,
+    xhttpScMaxBufferedPosts:
+      stream?.xhttpSettings?.scMaxBufferedPosts?.toString() ?? base.xhttpScMaxBufferedPosts,
+    xhttpScMaxEachPostBytes:
+      stream?.xhttpSettings?.scMaxEachPostBytes?.toString() ?? base.xhttpScMaxEachPostBytes,
+    xhttpScStreamUpServerSecs:
+      stream?.xhttpSettings?.scStreamUpServerSecs?.toString() ?? base.xhttpScStreamUpServerSecs,
+    xhttpPaddingBytes: stream?.xhttpSettings?.xPaddingBytes ?? base.xhttpPaddingBytes,
+    xhttpNoSSEHeader: Boolean(stream?.xhttpSettings?.noSSEHeader ?? base.xhttpNoSSEHeader),
     vlessSelectedAuth: settings.selectedAuth ?? base.vlessSelectedAuth,
     sockoptEnabled: Boolean(stream?.sockopt),
     sockopt: (() => {
@@ -490,6 +534,20 @@ const buildStreamSettings = (values: InboundFormValues): Record<string, any> => 
     });
   }
 
+  if (values.streamNetwork === "xhttp") {
+    stream.xhttpSettings = cleanObject({
+      path: values.xhttpPath,
+      host: values.xhttpHost,
+      headers: headersFromForm(values.xhttpHeaders),
+      mode: values.xhttpMode,
+      scMaxBufferedPosts: parseOptionalNumber(values.xhttpScMaxBufferedPosts),
+      scMaxEachPostBytes: values.xhttpScMaxEachPostBytes?.trim() || undefined,
+      scStreamUpServerSecs: values.xhttpScStreamUpServerSecs?.trim() || undefined,
+      xPaddingBytes: values.xhttpPaddingBytes?.trim() || undefined,
+      noSSEHeader: values.xhttpNoSSEHeader || undefined,
+    });
+  }
+
   if (values.streamSecurity === "tls") {
     stream.tlsSettings = cleanObject({
       serverName: values.tlsServerName || undefined,
@@ -587,14 +645,19 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 };
 
 export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
+  const supportsStream = values.protocol !== "http" && values.protocol !== "socks";
+  const streamSettings = supportsStream ? buildStreamSettings(values) : undefined;
   const payload: RawInbound = {
     tag: values.tag.trim(),
     listen: values.listen.trim() || undefined,
     port: parsePort(values.port),
     protocol: values.protocol,
     settings: buildSettings(values),
-    streamSettings: buildStreamSettings(values),
   };
+
+  if (streamSettings) {
+    payload.streamSettings = streamSettings;
+  }
 
   if (values.sniffingEnabled) {
     payload.sniffing = cleanObject({
@@ -606,4 +669,31 @@ export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
   }
 
   return payload;
+};
+const headersToForm = (headers: Record<string, string | string[]> | undefined): HeaderForm[] => {
+  if (!headers) {
+    return [createDefaultHeader()];
+  }
+  const result: HeaderForm[] = [];
+  Object.entries(headers).forEach(([name, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => result.push({ name, value: item?.toString() ?? "" }));
+    } else {
+      result.push({ name, value: value?.toString() ?? "" });
+    }
+  });
+  return result.length ? result : [createDefaultHeader()];
+};
+
+const headersFromForm = (headers: HeaderForm[]): Record<string, string> | undefined => {
+  const record: Record<string, string> = {};
+  headers.forEach(({ name, value }) => {
+    const trimmedName = name?.trim();
+    const trimmedValue = value?.trim();
+    if (!trimmedName || !trimmedValue) {
+      return;
+    }
+    record[trimmedName] = trimmedValue;
+  });
+  return Object.keys(record).length ? record : undefined;
 };

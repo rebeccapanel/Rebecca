@@ -15,6 +15,8 @@ from app.reb_node.node import XRayNode
 from xray_api import XRay as XRayAPI
 from xray_api import exceptions as xray_exceptions
 from xray_api.types.account import Account, XTLSFlows
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.models.proxy import ProxyTypes
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -71,29 +73,50 @@ def add_user(dbuser: "DBUser"):
             inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
-                proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
+                settings_model = user.proxies[proxy_type]
             except KeyError:
-                pass
-            account = proxy_type.account_model(email=email, **proxy_settings)
+                continue
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
+            existing_id = getattr(settings_model, 'id', None)
+            
+            account_to_add = None
+            
+            if existing_id and proxy_type in UUID_PROTOCOLS:
+                account_to_add = proxy_type.account_model(
+                    email=email,
+                    id=str(existing_id),
+                    flow=getattr(settings_model, 'flow', None)
                 )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+            elif user.credential_key and proxy_type in UUID_PROTOCOLS:
+                try:
+                    proxy_settings = runtime_proxy_settings(
+                        settings_model, proxy_type, user.credential_key
+                    )
+                    account_to_add = proxy_type.account_model(email=email, **proxy_settings)
+                except Exception as e:
+                    logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in add_user: {e}")
+                    account_to_add = None
+            
+            if account_to_add:
+                if getattr(account_to_add, 'flow', None) and (
+                    inbound.get('network', 'tcp') not in ('tcp', 'kcp')
+                    or
+                    (
+                        inbound.get('network', 'tcp') in ('tcp', 'kcp')
+                        and
+                        inbound.get('tls') not in ('tls', 'reality')
+                    )
+                    or
+                    inbound.get('header_type') == 'http'
+                ):
+                    account_to_add.flow = XTLSFlows.NONE
 
-            _add_user_to_inbound(state.api, inbound_tag, account)  # main core
-            for node in list(state.nodes.values()):
-                if node.connected and node.started:
-                    _add_user_to_inbound(node.api, inbound_tag, account)
+                _add_user_to_inbound(state.api, inbound_tag, account_to_add)
+                for node in list(state.nodes.values()):
+                    if node.connected and node.started:
+                        _add_user_to_inbound(node.api, inbound_tag, account_to_add)
+            else:
+                logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
 
 def remove_user(dbuser: "DBUser"):
@@ -117,29 +140,50 @@ def update_user(dbuser: "DBUser"):
             inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
-                proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
+                settings_model = user.proxies[proxy_type]
             except KeyError:
-                pass
-            account = proxy_type.account_model(email=email, **proxy_settings)
+                continue
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
+            existing_id = getattr(settings_model, 'id', None)
+            
+            account_to_add = None
+            
+            if existing_id and proxy_type in UUID_PROTOCOLS:
+                account_to_add = proxy_type.account_model(
+                    email=email,
+                    id=str(existing_id),
+                    flow=getattr(settings_model, 'flow', None)
                 )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+            elif user.credential_key and proxy_type in UUID_PROTOCOLS:
+                try:
+                    proxy_settings = runtime_proxy_settings(
+                        settings_model, proxy_type, user.credential_key
+                    )
+                    account_to_add = proxy_type.account_model(email=email, **proxy_settings)
+                except Exception as e:
+                    logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in update_user: {e}")
+                    account_to_add = None
+            
+            if account_to_add:
+                if getattr(account_to_add, 'flow', None) and (
+                    inbound.get('network', 'tcp') not in ('tcp', 'kcp')
+                    or
+                    (
+                        inbound.get('network', 'tcp') in ('tcp', 'kcp')
+                        and
+                        inbound.get('tls') not in ('tls', 'reality')
+                    )
+                    or
+                    inbound.get('header_type') == 'http'
+                ):
+                    account_to_add.flow = XTLSFlows.NONE
 
-            _alter_inbound_user(state.api, inbound_tag, account)  # main core
-            for node in list(state.nodes.values()):
-                if node.connected and node.started:
-                    _alter_inbound_user(node.api, inbound_tag, account)
+                _alter_inbound_user(state.api, inbound_tag, account_to_add)
+                for node in list(state.nodes.values()):
+                    if node.connected and node.started:
+                        _alter_inbound_user(node.api, inbound_tag, account_to_add)
+            else:
+                logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
     for inbound_tag in state.config.inbounds_by_tag:
         if inbound_tag in active_inbounds:

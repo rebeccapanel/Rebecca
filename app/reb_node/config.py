@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 import re
 import subprocess
 from collections import defaultdict
@@ -17,9 +18,10 @@ from sqlalchemy import func
 
 from app.db import GetDB
 from app.db import models as db_models
-from app.models.proxy import ProxyTypes
+from app.models.proxy import ProxyTypes, ProxySettings
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
 from config import (
     DEBUG,
     XRAY_EXECUTABLE_PATH,
@@ -453,6 +455,7 @@ class XRayConfig(dict):
             query = db.query(
                 db_models.User.id,
                 db_models.User.username,
+                db_models.User.credential_key,
                 func.lower(db_models.Proxy.type).label('type'),
                 db_models.Proxy.settings,
                 func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label('excluded_inbound_tags')
@@ -467,6 +470,7 @@ class XRayConfig(dict):
                 func.lower(db_models.Proxy.type),
                 db_models.User.id,
                 db_models.User.username,
+                db_models.User.credential_key,
                 db_models.Proxy.settings,
             )
             result = query.all()
@@ -477,6 +481,7 @@ class XRayConfig(dict):
                 grouped_data[row.type].append((
                     row.id,
                     row.username,
+                    row.credential_key,
                     row.settings,
                     [i for i in row.excluded_inbound_tags.split(',') if i] if row.excluded_inbound_tags else None
                 ))
@@ -491,31 +496,78 @@ class XRayConfig(dict):
                     clients = config.get_inbound(inbound['tag'])['settings']['clients']
 
                     for row in rows:
-                        user_id, username, settings, excluded_inbound_tags = row
+                        user_id, username, credential_key, settings, excluded_inbound_tags = row
 
                         if excluded_inbound_tags and inbound['tag'] in excluded_inbound_tags:
                             continue
 
-                        client = {
-                            "email": f"{user_id}.{username}",
-                            **settings
-                        }
+                        email = f"{user_id}.{username}"
+                        proxy_type_enum = None
+                        
+                        try:
+                            proxy_type_enum = ProxyTypes(proxy_type)
+                        except (ValueError, KeyError) as e:
+                            logger = logging.getLogger("uvicorn.error")
+                            logger.warning(f"Invalid proxy_type {proxy_type}: {e}")
+                            continue
 
-                        # XTLS currently only supports transmission methods of TCP and mKCP
-                        if client.get('flow') and (
-                                inbound.get('network', 'tcp') not in ('tcp', 'raw', 'kcp')
-                                or
-                                (
-                                    inbound.get('network', 'tcp') in ('tcp', 'raw', 'kcp')
-                                    and
-                                    inbound.get('tls') not in ('tls', 'reality')
+                        existing_id = settings.get('id')
+                        existing_settings = settings.copy()
+                        
+                        client_to_add = None
+                        
+                        if existing_id and existing_id is not None:
+                            client_to_add = {
+                                "email": email,
+                                **existing_settings
+                            }
+                        elif credential_key and proxy_type_enum in UUID_PROTOCOLS:
+                            try:
+                                settings_obj = ProxySettings.from_dict(proxy_type_enum, existing_settings)
+                                runtime_settings = runtime_proxy_settings(
+                                    settings_obj, proxy_type_enum, credential_key
                                 )
-                                or
-                                inbound.get('header_type') == 'http'
-                        ):
-                            del client['flow']
+                                
+                                client_to_add = {
+                                    "email": email,
+                                    **existing_settings.copy()
+                                }
+                                
+                                uuid_value = runtime_settings.get('id')
+                                if uuid_value:
+                                    if isinstance(uuid_value, str):
+                                        client_to_add['id'] = uuid_value
+                                    else:
+                                        client_to_add['id'] = str(uuid_value)
+                                
+                                for key, value in runtime_settings.items():
+                                    if key != 'id':
+                                        client_to_add[key] = value
+                            except Exception as e:
+                                logger = logging.getLogger("uvicorn.error")
+                                logger.warning(f"Failed to generate UUID from key for user {user_id}: {e}")
+                                client_to_add = None
+                        
+                        if client_to_add:
+                            # XTLS currently only supports transmission methods of TCP and mKCP
+                            if client_to_add.get('flow') and (
+                                    inbound.get('network', 'tcp') not in ('tcp', 'raw', 'kcp')
+                                    or
+                                    (
+                                        inbound.get('network', 'tcp') in ('tcp', 'raw', 'kcp')
+                                        and
+                                        inbound.get('tls') not in ('tls', 'reality')
+                                    )
+                                    or
+                                    inbound.get('header_type') == 'http'
+                            ):
+                                del client_to_add['flow']
 
-                        clients.append(client)
+                            clients.append(client_to_add)
+                        else:
+                            # If no client was added, this is an error case
+                            logger = logging.getLogger("uvicorn.error")
+                            logger.warning(f"User {user_id} has no UUID and no credential_key for {proxy_type} - skipping")
 
         if DEBUG:
             with open('generated_config-debug.json', 'w') as f:

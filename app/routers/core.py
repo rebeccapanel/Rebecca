@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body
 from starlette.websockets import WebSocketDisconnect
 
 from app.runtime import xray
-from app.db import Session, get_db, crud
+from app.db import Session, get_db, crud, GetDB
 from app.models.admin import Admin
 from app.models.core import CoreStats
 from app.models.warp import (
@@ -32,11 +32,12 @@ GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-tem
 
 
 @router.websocket("/core/logs")
-async def core_logs(websocket: WebSocket, db: Session = Depends(get_db)):
+async def core_logs(websocket: WebSocket):
     token = websocket.query_params.get("token") or websocket.headers.get(
         "Authorization", ""
     ).removeprefix("Bearer ")
-    admin = Admin.get_admin(token, db)
+    with GetDB() as db:
+        admin = Admin.get_admin(token, db)
     if not admin:
         return await websocket.close(reason="Unauthorized", code=4401)
 

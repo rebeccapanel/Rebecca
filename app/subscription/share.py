@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, List, Literal, Union
 from jdatetime import date as jd
 
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.models.proxy import ProxyTypes
 
 from . import *
 
@@ -350,11 +352,29 @@ def process_inbounds_and_tags(
             }
         )
 
+        credential_key = extra_data.get("credential_key")
+        if not credential_key and hasattr(settings, 'credential_key'):
+            credential_key = getattr(settings, 'credential_key', None)
+        
+        if isinstance(protocol, str):
+            proxy_type = ProxyTypes(protocol)
+        else:
+            proxy_type = protocol
+        
+        existing_id = getattr(settings, 'id', None) if hasattr(settings, 'id') else None
+        
+        if existing_id and proxy_type in UUID_PROTOCOLS:
+            runtime_settings = settings.model_dump()
+        else:
+            runtime_settings = runtime_proxy_settings(
+                settings, proxy_type, credential_key
+            )
+        
         conf.add(
             remark=host["remark"].format_map(format_variables),
             address=address.format_map(format_variables),
             inbound=host_inbound,
-            settings=settings.model_dump(),
+            settings=runtime_settings,
         )
 
     return conf.render(reverse=reverse)

@@ -43,6 +43,8 @@ export type NextPlan = {
 };
 
 export type User = {
+  credential_key?: string | null;
+  key_subscription_url?: string | null;
   proxies: ProxyType;
   expire: number | null;
   data_limit: number | null;

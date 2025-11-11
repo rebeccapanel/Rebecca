@@ -753,6 +753,8 @@
   "usersTable.copied": "Copied",
   "usersTable.copyConfigs": "Copy Configs",
   "usersTable.copyLink": "Copy Subscription Link",
+  "usersTable.copyKeyLink": "Copy Subscription Link (Key)",
+  "usersTable.copyLegacyLink": "Copy Legacy Subscription Link",
   "usersTable.dataUsage": "data usage",
   "usersTable.noUser": "There is no user added to the system",
   "usersTable.noUserMatched": "It seems there is no user matched with what you are looking for",

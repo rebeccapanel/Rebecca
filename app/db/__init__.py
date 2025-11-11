@@ -25,7 +25,7 @@ def get_db():  # Dependency
 
 from .crud import (create_admin,  # noqa
                    create_user, get_admin,
-                   get_admins, get_jwt_secret_key,
+                   get_admins, get_jwt_secret_key, get_admin_secret_key, get_subscription_secret_key, get_uuid_masks,
                    get_or_create_inbound, get_system_usage,
                    get_tls_certificate, get_user, get_user_by_id, get_users,
                    get_users_count, remove_admin, remove_user, revoke_user_sub,
@@ -52,6 +52,9 @@ __all__ = [
     "set_owner",
     "get_system_usage",
     "get_jwt_secret_key",
+    "get_admin_secret_key",
+    "get_subscription_secret_key",
+    "get_uuid_masks",
     "get_tls_certificate",
     "get_admin",
     "create_admin",

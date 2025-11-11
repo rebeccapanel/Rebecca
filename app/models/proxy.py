@@ -65,14 +65,14 @@ class ProxySettings(BaseModel, use_enum_values=True):
 
 
 class VMessSettings(ProxySettings):
-    id: UUID = Field(default_factory=uuid4)
+    id: Optional[UUID] = None
 
     def revoke(self):
         self.id = uuid4()
 
 
 class VLESSSettings(ProxySettings):
-    id: UUID = Field(default_factory=uuid4)
+    id: Optional[UUID] = None
     flow: XTLSFlows = XTLSFlows.NONE
 
     def revoke(self):
@@ -80,7 +80,7 @@ class VLESSSettings(ProxySettings):
 
 
 class TrojanSettings(ProxySettings):
-    password: str = Field(default_factory=random_password)
+    password: Optional[str] = None
     flow: XTLSFlows = XTLSFlows.NONE
 
     def revoke(self):
@@ -88,7 +88,7 @@ class TrojanSettings(ProxySettings):
 
 
 class ShadowsocksSettings(ProxySettings):
-    password: str = Field(default_factory=random_password)
+    password: Optional[str] = None
     method: ShadowsocksMethods = ShadowsocksMethods.CHACHA20_POLY1305
 
     def revoke(self):

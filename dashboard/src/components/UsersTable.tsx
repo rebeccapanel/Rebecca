@@ -659,6 +659,15 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
   const { setQRCode, setSubLink } = useDashboard();
 
   const proxyLinks = user.links.join("\r\n");
+  const formatLink = (link?: string | null) => {
+    if (!link) return "";
+    return link.startsWith("/")
+      ? window.location.origin + link
+      : link;
+  };
+  // Priority: key-based URL if credential_key exists, else legacy token-based URL
+  // subscription_url now contains the correct URL based on whether user has key or not
+  const subscriptionLink = formatLink(user.subscription_url);
 
   const [copied, setCopied] = useState([-1, false]);
   useEffect(() => {
@@ -677,11 +686,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
       }}
     >
       <CopyToClipboard
-        text={
-          user.subscription_url.startsWith("/")
-            ? window.location.origin + user.subscription_url
-            : user.subscription_url
-        }
+        text={subscriptionLink}
         onCopy={() => {
           setCopied([0, true]);
         }}
@@ -768,7 +773,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
           }}
           onClick={() => {
             setQRCode(user.links);
-            setSubLink(user.subscription_url);
+            setSubLink(subscriptionLink);
           }}
         >
           <QRIcon />

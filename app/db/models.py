@@ -102,6 +102,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     username = Column(String(34, collation='NOCASE'), index=True)
+    credential_key = Column(String(64), nullable=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
     used_traffic = Column(BigInteger, default=0)
@@ -436,8 +437,21 @@ class JWT(Base):
     __tablename__ = "jwt"
 
     id = Column(Integer, primary_key=True)
-    secret_key = Column(
+    # Legacy field - kept for backward compatibility during migration
+    secret_key = Column(String(64), nullable=True)
+    # Separate keys for subscription and admin authentication
+    subscription_secret_key = Column(
         String(64), nullable=False, default=lambda: os.urandom(32).hex()
+    )
+    admin_secret_key = Column(
+        String(64), nullable=False, default=lambda: os.urandom(32).hex()
+    )
+    # UUID masks for VMess and VLESS protocols
+    vmess_mask = Column(
+        String(32), nullable=False, default=lambda: os.urandom(16).hex()
+    )
+    vless_mask = Column(
+        String(32), nullable=False, default=lambda: os.urandom(16).hex()
     )
 
 

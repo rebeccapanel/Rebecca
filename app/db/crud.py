@@ -41,8 +41,16 @@ from app.db.models import (
 from app.models.admin import AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.utils.xray_defaults import load_legacy_xray_config
+from app.utils.credentials import (
+    generate_key,
+    normalize_key,
+    serialize_proxy_settings,
+    uuid_to_key,
+)
+from app.utils.credentials import UUID_PROTOCOLS, PASSWORD_PROTOCOLS
+from app.models.proxy import ProxyTypes
 from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
-from app.models.proxy import ProxyHost as ProxyHostModify
+from app.models.proxy import ProxyHost as ProxyHostModify, ProxySettings
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 from app.models.user import (
     UserCreate,
@@ -58,6 +66,31 @@ from app.db.exceptions import UsersLimitReachedError
 MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
+
+
+def _extract_key_from_proxies(proxies: Dict[ProxyTypes, ProxySettings]) -> Optional[str]:
+    candidate: Optional[str] = None
+    for proxy_type in (ProxyTypes.VMess, ProxyTypes.VLESS):
+        settings = proxies.get(proxy_type) or proxies.get(proxy_type.value)
+        if settings and getattr(settings, "id", None):
+            derived = uuid_to_key(settings.id, proxy_type)
+            if candidate and candidate != derived:
+                raise ValueError("VMess and VLESS UUIDs must match when deriving credential keys")
+            candidate = derived
+    return candidate
+
+
+def _apply_key_to_existing_proxies(dbuser: User, credential_key: str) -> None:
+    normalized = normalize_key(credential_key)
+    for proxy in dbuser.proxies:
+        proxy_type = proxy.type
+        if isinstance(proxy_type, str):
+            proxy_type = ProxyTypes(proxy_type)
+        settings_obj = ProxySettings.from_dict(proxy_type, proxy.settings)
+        # Preserve existing UUID if it exists in the database
+        existing_uuid = proxy.settings.get("id") if isinstance(proxy.settings, dict) else None
+        preserve_uuid = bool(existing_uuid and proxy_type in UUID_PROTOCOLS)
+        proxy.settings = serialize_proxy_settings(settings_obj, proxy_type, normalized, preserve_existing_uuid=preserve_uuid)
 
 
 def _get_or_create_xray_config(db: Session) -> XrayConfig:
@@ -479,6 +512,35 @@ class ServiceRepository:
 
         self.db.add(AdminServiceLink(admin_id=admin.id, service_id=service.id))
 
+    @staticmethod
+    def compute_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
+        from app.runtime import xray
+
+        allowed: Dict[ProxyTypes, Set[str]] = {}
+        if service is None:
+            return allowed
+
+        inbound_map = xray.config.inbounds_by_tag
+
+        for link in service.host_links:
+            host = link.host
+            if not host or host.is_disabled:
+                continue
+            inbound_tag = host.inbound_tag
+            inbound_info = inbound_map.get(inbound_tag)
+            if not inbound_info:
+                continue
+            protocol = inbound_info.get("protocol")
+            if not protocol:
+                continue
+            try:
+                proxy_type = ProxyTypes(protocol)
+            except ValueError:
+                continue
+            allowed.setdefault(proxy_type, set()).add(inbound_tag)
+
+        return allowed
+
     def apply_service_to_user(
         self,
         dbuser: User,
@@ -505,7 +567,10 @@ class ServiceRepository:
             proxy = existing_proxies.get(proxy_type)
             if not proxy:
                 settings_model = proxy_type.settings_model
-                proxy = Proxy(type=proxy_type, settings=settings_model().dict(no_obj=True))
+                serialized = serialize_proxy_settings(
+                    settings_model(), proxy_type, dbuser.credential_key
+                )
+                proxy = Proxy(type=proxy_type.value, settings=serialized)
                 dbuser.proxies.append(proxy)
 
             available_tags = {
@@ -1464,19 +1529,30 @@ def create_user(
         _ensure_active_user_capacity(db, admin, required_slots=1)
 
     excluded_inbounds_tags = user.excluded_inbounds
+    if user.credential_key:
+        credential_key = normalize_key(user.credential_key)
+    else:
+        try:
+            credential_key = _extract_key_from_proxies(user.proxies) or generate_key()
+        except ValueError as exc:
+            raise IntegrityError(None, {}, exc)
+
     proxies = []
-    for proxy_type, settings in user.proxies.items():
+    for proxy_key, settings in user.proxies.items():
+        proxy_type = ProxyTypes(proxy_key)
         excluded_inbounds = [
             get_or_create_inbound(db, tag) for tag in excluded_inbounds_tags[proxy_type]
         ]
+        serialized = serialize_proxy_settings(settings, proxy_type, credential_key)
         proxies.append(
             Proxy(type=proxy_type.value,
-                  settings=settings.dict(no_obj=True),
+                  settings=serialized,
                   excluded_inbounds=excluded_inbounds)
         )
 
     dbuser = User(
         username=user.username,
+        credential_key=credential_key,
         proxies=proxies,
         status=resolved_status,
         data_limit=(user.data_limit or None),
@@ -1618,20 +1694,42 @@ def update_user(
         User: The updated user object.
     """
     original_status_value = _status_to_str(dbuser.status)
+    credential_key = dbuser.credential_key
     added_proxies: Dict[ProxyTypes, Proxy] = {}
+
     if modify.proxies:
-        for proxy_type, settings in modify.proxies.items():
+        try:
+            new_key = _extract_key_from_proxies(modify.proxies)
+        except ValueError as exc:
+            raise ValueError(str(exc))
+        if new_key:
+            normalized_key = normalize_key(new_key)
+            if credential_key != normalized_key:
+                credential_key = normalized_key
+                dbuser.credential_key = credential_key
+                _apply_key_to_existing_proxies(dbuser, credential_key)
+
+        modify_proxy_types = {ProxyTypes(key) for key in modify.proxies}
+
+        for proxy_key, settings in modify.proxies.items():
+            proxy_type = ProxyTypes(proxy_key)
             dbproxy = db.query(Proxy) \
                 .where(Proxy.user == dbuser, Proxy.type == proxy_type) \
                 .first()
             if dbproxy:
-                dbproxy.settings = settings.dict(no_obj=True)
+                # Preserve existing UUID if it exists in the database
+                existing_uuid = dbproxy.settings.get("id") if isinstance(dbproxy.settings, dict) else None
+                preserve_uuid = bool(existing_uuid and proxy_type in UUID_PROTOCOLS)
+                dbproxy.settings = serialize_proxy_settings(settings, proxy_type, credential_key, preserve_existing_uuid=preserve_uuid)
             else:
-                new_proxy = Proxy(type=proxy_type, settings=settings.dict(no_obj=True))
+                # New proxy for existing user - don't preserve UUID (will be generated at runtime from key)
+                serialized = serialize_proxy_settings(settings, proxy_type, credential_key)
+                new_proxy = Proxy(type=proxy_type.value, settings=serialized)
                 dbuser.proxies.append(new_proxy)
                 added_proxies.update({proxy_type: new_proxy})
+        existing_types = {pt.value for pt in modify_proxy_types}
         for proxy in dbuser.proxies:
-            if proxy.type not in modify.proxies:
+            if proxy.type not in modify.proxies and proxy.type not in existing_types:
                 db.delete(proxy)
     if modify.inbounds:
         for proxy_type, tags in modify.excluded_inbounds.items():
@@ -1805,6 +1903,10 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
 def revoke_user_sub(db: Session, dbuser: User) -> User:
     """
     Revokes the subscription of a user and updates proxies settings.
+    
+    If user has UUID/password stored in proxies table (legacy method), removes them
+    and assigns a new credential_key (migrates to new method).
+    If user already has credential_key, generates a new one.
 
     Args:
         db (Session): Database session.
@@ -1815,11 +1917,46 @@ def revoke_user_sub(db: Session, dbuser: User) -> User:
     """
     dbuser.sub_revoked_at = datetime.utcnow()
 
-    user = UserResponse.model_validate(dbuser)
-    for proxy_type, settings in user.proxies.copy().items():
-        settings.revoke()
-        user.proxies[proxy_type] = settings
-    dbuser = update_user(db, dbuser, user)
+    # Check if user has UUID/password stored in proxies table (legacy method)
+    has_legacy_credentials = False
+    for proxy in dbuser.proxies:
+        proxy_type = proxy.type
+        if isinstance(proxy_type, str):
+            proxy_type = ProxyTypes(proxy_type)
+        settings = proxy.settings if isinstance(proxy.settings, dict) else {}
+        
+        # Check if UUID or password exists in settings
+        if proxy_type in UUID_PROTOCOLS and settings.get("id"):
+            has_legacy_credentials = True
+            break
+        elif proxy_type in PASSWORD_PROTOCOLS and settings.get("password"):
+            has_legacy_credentials = True
+            break
+
+    # Generate new key (either first time or update existing)
+    new_key = generate_key()
+    dbuser.credential_key = new_key
+
+    if has_legacy_credentials:
+        # User has legacy credentials - remove UUID/password from proxies table
+        # and migrate to key-based method
+        for proxy in dbuser.proxies:
+            proxy_type = proxy.type
+            if isinstance(proxy_type, str):
+                proxy_type = ProxyTypes(proxy_type)
+            settings_obj = ProxySettings.from_dict(proxy_type, proxy.settings)
+            
+            # Remove UUID/password from settings (will be generated from key at runtime)
+            if proxy_type in UUID_PROTOCOLS:
+                settings_obj.id = None
+            if proxy_type in PASSWORD_PROTOCOLS:
+                settings_obj.password = None
+            
+            # Serialize without preserving existing UUID/password
+            proxy.settings = serialize_proxy_settings(settings_obj, proxy_type, new_key, preserve_existing_uuid=False)
+    else:
+        # User already has key or no legacy credentials - just update key
+        _apply_key_to_existing_proxies(dbuser, new_key)
 
     db.commit()
     db.refresh(dbuser)
@@ -2106,15 +2243,157 @@ def get_system_usage(db: Session) -> System:
 
 def get_jwt_secret_key(db: Session) -> str:
     """
-    Retrieves the JWT secret key.
+    Retrieves the JWT secret key for admin authentication.
+    This is a legacy function - use get_admin_secret_key() instead.
 
     Args:
         db (Session): Database session.
 
     Returns:
-        str: JWT secret key.
+        str: Admin JWT secret key.
     """
-    return db.query(JWT).first().secret_key
+    jwt_record = db.query(JWT).first()
+    if jwt_record is None:
+        import os
+        jwt_record = JWT(
+            subscription_secret_key=os.urandom(32).hex(),
+            admin_secret_key=os.urandom(32).hex(),
+            vmess_mask=os.urandom(16).hex(),
+            vless_mask=os.urandom(16).hex(),
+        )
+        db.add(jwt_record)
+        db.commit()
+        db.refresh(jwt_record)
+    
+    if hasattr(jwt_record, 'admin_secret_key') and jwt_record.admin_secret_key:
+        return jwt_record.admin_secret_key
+    elif hasattr(jwt_record, 'secret_key') and jwt_record.secret_key:
+        return jwt_record.secret_key
+    else:
+        import os
+        if not hasattr(jwt_record, 'admin_secret_key'):
+            jwt_record.admin_secret_key = os.urandom(32).hex()
+            db.commit()
+            db.refresh(jwt_record)
+        return jwt_record.admin_secret_key
+
+
+def get_subscription_secret_key(db: Session) -> str:
+    """
+    Retrieves the secret key for subscription tokens.
+
+    Args:
+        db (Session): Database session.
+
+    Returns:
+        str: Subscription secret key.
+    """
+    jwt_record = db.query(JWT).first()
+    if jwt_record is None:
+        import os
+        jwt_record = JWT(
+            subscription_secret_key=os.urandom(32).hex(),
+            admin_secret_key=os.urandom(32).hex(),
+            vmess_mask=os.urandom(16).hex(),
+            vless_mask=os.urandom(16).hex(),
+        )
+        db.add(jwt_record)
+        db.commit()
+        db.refresh(jwt_record)
+    return jwt_record.subscription_secret_key
+
+
+def get_admin_secret_key(db: Session) -> str:
+    """
+    Retrieves the secret key for admin authentication tokens.
+
+    Args:
+        db (Session): Database session.
+
+    Returns:
+        str: Admin secret key.
+    """
+    jwt_record = db.query(JWT).first()
+    if jwt_record is None:
+        import os
+        jwt_record = JWT(
+            subscription_secret_key=os.urandom(32).hex(),
+            admin_secret_key=os.urandom(32).hex(),
+            vmess_mask=os.urandom(16).hex(),
+            vless_mask=os.urandom(16).hex(),
+        )
+        db.add(jwt_record)
+        db.commit()
+        db.refresh(jwt_record)
+    return jwt_record.admin_secret_key
+
+
+def get_uuid_masks(db: Session) -> dict:
+    """
+    Retrieves the UUID masks for VMess and VLESS protocols.
+
+    Args:
+        db (Session): Database session.
+
+    Returns:
+        dict: Dictionary with 'vmess_mask' and 'vless_mask' keys, each containing a 32-character hex string.
+    """
+    import os
+    from sqlalchemy import text
+
+    jwt_record = db.query(JWT).first()
+    if jwt_record is None:
+        jwt_record = JWT(
+            subscription_secret_key=os.urandom(32).hex(),
+            admin_secret_key=os.urandom(32).hex(),
+        )
+        try:
+            setattr(jwt_record, "vmess_mask", os.urandom(16).hex())
+            setattr(jwt_record, "vless_mask", os.urandom(16).hex())
+        except Exception:
+            pass
+        db.add(jwt_record)
+        db.commit()
+        try:
+            db.refresh(jwt_record)
+        except Exception:
+            pass
+
+    try:
+        vm = getattr(jwt_record, "vmess_mask")
+        vl = getattr(jwt_record, "vless_mask")
+    except AttributeError:
+        try:
+            row = db.execute(text("SELECT vmess_mask, vless_mask FROM jwt LIMIT 1")).first()
+            if row and row[0] and row[1]:
+                return {"vmess_mask": row[0], "vless_mask": row[1]}
+        except Exception:
+            pass
+        return {"vmess_mask": os.urandom(16).hex(), "vless_mask": os.urandom(16).hex()}
+
+    updated = False
+    if not vm:
+        vm = os.urandom(16).hex()
+        try:
+            setattr(jwt_record, "vmess_mask", vm)
+            updated = True
+        except Exception:
+            pass
+    if not vl:
+        vl = os.urandom(16).hex()
+        try:
+            setattr(jwt_record, "vless_mask", vl)
+            updated = True
+        except Exception:
+            pass
+    if updated:
+        try:
+            db.add(jwt_record)
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    return {"vmess_mask": vm, "vless_mask": vl}
 
 
 def get_tls_certificate(db: Session) -> TLS:
