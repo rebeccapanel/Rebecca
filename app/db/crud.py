@@ -595,6 +595,8 @@ class ServiceRepository:
 
         updated_users: List[User] = []
         for user in service.users:
+            if user.status == UserStatus.deleted:
+                continue
             self.apply_service_to_user(user, service, allowed_inbounds)
             updated_users.append(user)
 
@@ -1563,7 +1565,7 @@ def create_user(
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
-        ip_limit=user.ip_limit or 0,
+        ip_limit=user.ip_limit,
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -1767,7 +1769,7 @@ def update_user(
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
 
     if "ip_limit" in modify.model_fields_set:
-        dbuser.ip_limit = modify.ip_limit or 0
+        dbuser.ip_limit = modify.ip_limit
 
     if modify.on_hold_timeout is not None:
         dbuser.on_hold_timeout = modify.on_hold_timeout
@@ -2545,25 +2547,34 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
 def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     """
-    Permanently remove an admin, their users, and related usage records from the database.
+    Soft delete an admin, their users, and remove from services.
+    This performs soft delete (sets status to deleted) rather than hard delete.
     """
     if dbadmin.id is None:
         raise ValueError("Admin must have a valid identifier before removal")
 
-    # Collect admin users and ensure their usage data is cleared.
-    admin_users = db.query(User).filter(User.admin_id == dbadmin.id).all()
-    user_ids = [user.id for user in admin_users if user.id is not None]
-    _delete_user_usage_rows(db, user_ids)
-
+    # Soft delete all users belonging to this admin
+    admin_users = db.query(User).filter(
+        User.admin_id == dbadmin.id,
+        User.status != UserStatus.deleted
+    ).all()
+    
     for dbuser in admin_users:
-        db.delete(dbuser)
+        dbuser.status = UserStatus.deleted
+        # Remove user from Xray
+        from app.reb_node import operations as core_operations
+        try:
+            core_operations.remove_user(dbuser=dbuser)
+        except Exception:
+            pass  # Ignore errors if user already removed
 
-    # Remove admin usage history and service link associations.
-    db.query(AdminUsageLogs).filter(AdminUsageLogs.admin_id == dbadmin.id).delete(synchronize_session=False)
+    # Remove admin from all services (unlink from services)
     db.query(AdminServiceLink).filter(AdminServiceLink.admin_id == dbadmin.id).delete(synchronize_session=False)
 
-    db.delete(dbadmin)
+    # Soft delete the admin
+    dbadmin.status = AdminStatus.deleted
     db.commit()
+    db.refresh(dbadmin)
     return dbadmin
 
 

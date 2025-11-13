@@ -102,7 +102,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
 
   const handleRefresh = () => {
     if (target === "users") {
-      refetchUsers();
+      refetchUsers(true);
     } else {
       fetchAdmins();
     }

@@ -558,7 +558,7 @@ const ServicesPage: FC = () => {
           title: t("services.created", "Service created"),
         });
       }
-      refetchUsers();
+      refetchUsers(true);
       dialogDisclosure.onClose();
     } catch (error: any) {
       toast({
@@ -658,7 +658,7 @@ const ServicesPage: FC = () => {
         status: "success",
         title: t("services.deleted", "Service removed"),
       });
-      refetchUsers();
+      refetchUsers(true);
       handleCloseDeleteDialog();
     } catch (error: any) {
       toast({

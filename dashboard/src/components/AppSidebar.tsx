@@ -1,4 +1,4 @@
-import { Box, VStack, HStack, Text, chakra, Collapse } from "@chakra-ui/react";
+import { Box, VStack, HStack, Text, chakra, Collapse, useColorMode, Tooltip } from "@chakra-ui/react";
 import {
   HomeIcon,
   UsersIcon,
@@ -14,6 +14,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ElementType, FC, useEffect, useState } from "react";
 import useGetUser from "hooks/useGetUser";
+import logoUrl from "assets/logo.svg";
 
 const iconProps = {
   baseStyle: {
@@ -35,6 +36,8 @@ interface AppSidebarProps {
   collapsed: boolean;
   /** when rendered inside a Drawer on mobile */
   inDrawer?: boolean;
+  /** optional callback to request the parent to expand the sidebar */
+  onRequestExpand?: () => void;
 }
 
 type SidebarItem = {
@@ -44,9 +47,17 @@ type SidebarItem = {
   subItems?: { title: string; url: string; icon: ElementType }[];
 };
 
-export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false }) => {
+const LogoIcon = chakra("img", {
+  baseStyle: {
+    w: 8,
+    h: 8,
+  },
+});
+
+export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, onRequestExpand }) => {
   const { t } = useTranslation();
   const location = useLocation();
+  const { colorMode } = useColorMode();
   const { userData, getUserIsSuccess } = useGetUser();
   const isSudo = getUserIsSuccess && userData.is_sudo;
 
@@ -107,19 +118,35 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
       overflowX="hidden"
       flexShrink={0}
     >
-      <VStack spacing={1} p={4} align="stretch">
-        {!collapsed && (
-          <Text
-            fontSize="xs"
-            fontWeight="bold"
-            color="gray.500"
-            _dark={{ color: "gray.400" }}
-            px={2}
-            mb={2}
-          >
-            {t("menu")}
-          </Text>
-        )}
+      <VStack spacing={2} p={collapsed ? 2 : 4} align="stretch" h="100%" justify="space-between">
+        <Box flex="1" overflowY="auto">
+          {!collapsed ? (
+            <HStack spacing={3} align="center" mb={6} px={2}>
+              <LogoIcon
+                src={logoUrl}
+                alt="Rebecca"
+                filter={colorMode === "dark" ? "brightness(0) invert(1)" : "none"}
+              />
+              <Text
+                fontSize="lg"
+                fontWeight="bold"
+                color="primary.600"
+                _dark={{ color: "primary.300" }}
+              >
+                {t("menu")}
+              </Text>
+            </HStack>
+          ) : (
+            <HStack justify="center" mb={6}>
+              <Tooltip label="Rebecca" placement="right" hasArrow>
+                <LogoIcon
+                  src={logoUrl}
+                  alt="Rebecca"
+                  filter={colorMode === "dark" ? "brightness(0) invert(1)" : "none"}
+                />
+              </Tooltip>
+            </HStack>
+          )}
         {items.map((item) => {
           const itemUrl = item.url;
           const isActive =
@@ -134,38 +161,48 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
             <Box key={item.title}>
               {item.subItems ? (
                 <>
-                  <HStack
-                    spacing={3}
-                    px={3}
-                    py={2}
-                    borderRadius="md"
-                    cursor="pointer"
-                    bg={isActive ? "primary.50" : "transparent"}
-                    color={isActive ? "primary.600" : "gray.700"}
-                    _dark={{
-                      bg: isActive ? "primary.900" : "transparent",
-                      color: isActive ? "primary.200" : "gray.300",
-                    }}
-                    _hover={{
-                      bg: isActive ? "primary.50" : "gray.50",
-                      _dark: {
-                        bg: isActive ? "primary.900" : "gray.700",
-                      },
-                    }}
-                    transition="all 0.2s"
-                    justifyContent={collapsed ? "center" : "space-between"}
-                    onClick={() => setSettingsOpen(!isSettingsOpen)}
-                  >
-                    <HStack>
-                      <Icon />
-                      {!collapsed && (
-                        <Text fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
-                          {item.title}
-                        </Text>
-                      )}
+                  <Tooltip label={collapsed ? item.title : ""} placement="right" hasArrow>
+                    <HStack
+                      spacing={3}
+                      px={3}
+                      py={2}
+                      borderRadius="md"
+                      cursor="pointer"
+                      bg={isActive ? "primary.50" : "transparent"}
+                      color={isActive ? "primary.600" : "gray.700"}
+                      _dark={{
+                        bg: isActive ? "primary.900" : "transparent",
+                        color: isActive ? "primary.200" : "gray.300",
+                      }}
+                      _hover={{
+                        bg: isActive ? "primary.50" : "gray.50",
+                        _dark: {
+                          bg: isActive ? "primary.900" : "gray.700",
+                        },
+                      }}
+                      transition="all 0.2s"
+                      justifyContent={collapsed ? "center" : "space-between"}
+                      onClick={() => {
+                        if (collapsed) {
+                          // request parent to expand the sidebar and open settings
+                          onRequestExpand && onRequestExpand();
+                          setSettingsOpen(true);
+                        } else {
+                          setSettingsOpen(!isSettingsOpen);
+                        }
+                      }}
+                    >
+                      <HStack spacing={3}>
+                        <Icon w={collapsed ? 5 : undefined} h={collapsed ? 5 : undefined} />
+                        {!collapsed && (
+                          <Text fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
+                            {item.title}
+                          </Text>
+                        )}
+                      </HStack>
+                      {!collapsed && <ChevronDownIconStyled transform={isSettingsOpen ? "rotate(180deg)" : "rotate(0deg)"} />}
                     </HStack>
-                    {!collapsed && <ChevronDownIconStyled transform={isSettingsOpen ? "rotate(180deg)" : "rotate(0deg)"} />}
-                  </HStack>
+                  </Tooltip>
                   {!collapsed && (
                     <Collapse in={isSettingsOpen} animateOpacity>
                       <VStack align="stretch" pl={6} spacing={1} mt={2}>
@@ -194,7 +231,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
                                 }}
                                 transition="all 0.2s"
                               >
-                                <SubIcon />
+                                <SubIcon w={collapsed ? 5 : undefined} h={collapsed ? 5 : undefined} />
                                 <Text fontSize="sm" fontWeight={isSubActive ? "semibold" : "normal"}>
                                   {subItem.title}
                                 </Text>
@@ -209,40 +246,100 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false })
               ) : (
                 item.url ? (
                   <NavLink to={item.url}>
-                  <HStack
-                    spacing={3}
-                    px={3}
-                    py={2}
-                    borderRadius="md"
-                    cursor="pointer"
-                    bg={isActive ? "primary.50" : "transparent"}
-                    color={isActive ? "primary.600" : "gray.700"}
-                    _dark={{
-                      bg: isActive ? "primary.900" : "transparent",
-                      color: isActive ? "primary.200" : "gray.300",
-                    }}
-                    _hover={{
-                      bg: isActive ? "primary.50" : "gray.50",
-                      _dark: {
-                        bg: isActive ? "primary.900" : "gray.700",
-                      },
-                    }}
-                    transition="all 0.2s"
-                    justifyContent={collapsed ? "center" : "flex-start"}
-                  >
-                    <Icon />
-                    {!collapsed && (
-                      <Text fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
-                        {item.title}
-                      </Text>
-                    )}
-                  </HStack>
+                    <Tooltip label={collapsed ? item.title : ""} placement="right" hasArrow>
+                      <HStack
+                        spacing={3}
+                        px={3}
+                        py={2}
+                        borderRadius="md"
+                        cursor="pointer"
+                        bg={isActive ? "primary.50" : "transparent"}
+                        color={isActive ? "primary.600" : "gray.700"}
+                        _dark={{
+                          bg: isActive ? "primary.900" : "transparent",
+                          color: isActive ? "primary.200" : "gray.300",
+                        }}
+                        _hover={{
+                          bg: isActive ? "primary.50" : "gray.50",
+                          _dark: {
+                            bg: isActive ? "primary.900" : "gray.700",
+                          },
+                        }}
+                        transition="all 0.2s"
+                        justifyContent={collapsed ? "center" : "flex-start"}
+                      >
+                        <Icon w={collapsed ? 5 : undefined} h={collapsed ? 5 : undefined} />
+                        {!collapsed && (
+                          <Text fontSize="sm" fontWeight={isActive ? "semibold" : "normal"}>
+                            {item.title}
+                          </Text>
+                        )}
+                      </HStack>
+                    </Tooltip>
                   </NavLink>
                 ) : null
               )}
             </Box>
           );
         })}
+        </Box>
+        {getUserIsSuccess && userData.username && (
+          <Box
+            px={collapsed ? 2 : 3}
+            py={2}
+            borderTop="1px"
+            borderColor="light-border"
+            _dark={{ borderColor: "whiteAlpha.200" }}
+            mt={4}
+          >
+            {!collapsed ? (
+              <VStack align="flex-start" spacing={0}>
+                <Text
+                  fontSize="xs"
+                  fontWeight="semibold"
+                  color="gray.500"
+                  _dark={{ color: "gray.500" }}
+                >
+                  username:
+                </Text>
+                <Text
+                  fontSize="sm"
+                  fontWeight="medium"
+                  color="gray.700"
+                  _dark={{ color: "gray.300" }}
+                  noOfLines={1}
+                >
+                  {userData.username}
+                </Text>
+              </VStack>
+            ) : (
+              <Tooltip label={userData.username} placement="right" hasArrow>
+                <Box
+                  w="8"
+                  h="8"
+                  borderRadius="full"
+                  bg="primary.100"
+                  _dark={{ bg: "primary.800" }}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  mx="auto"
+                  flexShrink={0}
+                >
+                  <Text
+                    fontSize="sm"
+                    fontWeight="bold"
+                    color="primary.600"
+                    _dark={{ color: "primary.300" }}
+                    textAlign="center"
+                  >
+                    {userData.username.charAt(0).toUpperCase()}
+                  </Text>
+                </Box>
+              </Tooltip>
+            )}
+          </Box>
+        )}
       </VStack>
     </Box>
   );

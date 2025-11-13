@@ -111,7 +111,7 @@ def modify_admin(
     if (dbadmin.username != current_admin.username) and dbadmin.is_sudo:
         raise HTTPException(
             status_code=403,
-            detail="You're not allowed to edit another sudoer's account. Use marzban-cli instead.",
+            detail="You're not allowed to edit another sudoer's account. Use rebecca-cli instead.",
         )
 
     previous_admin_state = Admin.model_validate(dbadmin)
@@ -140,7 +140,7 @@ def remove_admin(
     if dbadmin.is_sudo:
         raise HTTPException(
             status_code=403,
-            detail="You're not allowed to delete sudo accounts. Use marzban-cli instead.",
+            detail="You're not allowed to delete sudo accounts. Use rebecca-cli instead.",
         )
 
     username = dbadmin.username

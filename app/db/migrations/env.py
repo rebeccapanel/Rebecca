@@ -6,7 +6,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-os.environ.setdefault("MARZBAN_SKIP_RUNTIME_INIT", "1")
+os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 
 from app.db.base import Base
 from config import SQLALCHEMY_DATABASE_URL

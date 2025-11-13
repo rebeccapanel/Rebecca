@@ -20,7 +20,7 @@ runtime.xray = xray
 logger = logging.getLogger("uvicorn.error")
 runtime.logger = logger
 
-SKIP_RUNTIME_INIT = os.getenv("MARZBAN_SKIP_RUNTIME_INIT") == "1"
+SKIP_RUNTIME_INIT = os.getenv("REBECCA_SKIP_RUNTIME_INIT") == "1"
 runtime.scheduler = None
 runtime.app = None
 
@@ -29,7 +29,7 @@ if SKIP_RUNTIME_INIT:
     scheduler = None  # type: ignore[assignment]
 else:
     app = FastAPI(
-        title="MarzbanAPI",
+        title="RebeccaAPI",
         description="Unified GUI Censorship Resistant Solution Powered by Xray",
         version=__version__,
         docs_url="/docs" if DOCS else None,

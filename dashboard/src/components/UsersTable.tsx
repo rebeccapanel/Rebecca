@@ -10,6 +10,8 @@ import {
   HStack,
   IconButton,
   Select,
+  Skeleton,
+  SkeletonText,
   Slider,
   SliderFilledTrack,
   SliderProps,
@@ -192,6 +194,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
     users: { users, total },
     onEditingUser,
     onFilterChange,
+    loading,
   } = useDashboard();
 
   const { t } = useTranslation();
@@ -204,6 +207,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   
 
   const isFiltered = users.length !== total;
+
+  const rowsToRender = filters.limit || 10;
 
   const handleSort = (column: string) => {
     let newSort = filters.sort;
@@ -322,7 +327,33 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           </Thead>
           <Tbody>
             {!useTable &&
-              users?.map((user, i) => {
+              (loading
+                ? Array.from({ length: rowsToRender }).map((_, i) => (
+                    <Fragment key={"skeleton-" + i}>
+                      <Tr>
+                        <Td borderBottom={0} minW="100px" pl={4} pr={4}>
+                          <SkeletonText noOfLines={1} width="40%" />
+                        </Td>
+                        <Td borderBottom={0} minW="50px" pl={0} pr={0}>
+                          <Skeleton height="16px" width="64px" />
+                        </Td>
+                        <Td borderBottom={0} minW="100px" pr={0}>
+                          <Skeleton height="16px" width="120px" />
+                        </Td>
+                        <Td p={0} borderBottom={0} w="32px" minW="32px">
+                          <Skeleton height="16px" width="16px" />
+                        </Td>
+                      </Tr>
+                      <Tr className="collapsible">
+                        <Td p={0} colSpan={4}>
+                          <Box px={6} py={3}>
+                            <SkeletonText noOfLines={3} />
+                          </Box>
+                        </Td>
+                      </Tr>
+                    </Fragment>
+                  ))
+                : users?.map((user, i) => {
                 return (
                   <Fragment key={user.username}>
                     <Tr
@@ -495,7 +526,14 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                     </Tr>
                   </Fragment>
                 );
-              })}
+              }))}
+            {!loading && !useTable && users.length === 0 && (
+              <Tr>
+                <Td colSpan={4} border={0}>
+                  <EmptySection isFiltered={isFiltered} />
+                </Td>
+              </Tr>
+            )}
           </Tbody>
         </Table>
       </Accordion>
@@ -590,57 +628,77 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
         </Thead>
         <Tbody>
           {useTable &&
-            users?.map((user, i) => {
-              return (
-                <Tr
-                  key={user.username}
-                  className={classNames("interactive", {
-                    "last-row": i === users.length - 1,
-                  })}
-                  onClick={() => onEditingUser(user)}
-                >
-                  <Td minW="140px">
-                    <div className="flex-status">
-                      <OnlineBadge lastOnline={user.online_at} />
-                      {user.username}
-                      <OnlineStatus lastOnline={user.online_at} />
-                    </div>
-                  </Td>
-                  <Td width="400px" minW="150px">
-                    <StatusBadge
-                      expiryDate={user.expire}
-                      status={user.status}
-                    />
-                  </Td>
-                  <Td minW="150px">
-                    <Text
-                      fontSize="sm"
-                      color={user.service_name ? "gray.700" : "gray.500"}
-                      _dark={{ color: user.service_name ? "gray.200" : "gray.500" }}
-                      isTruncated
+            (loading
+              ? Array.from({ length: rowsToRender }).map((_, i) => (
+                  <Tr key={"skeleton-desktop-" + i}>
+                    <Td minW="140px">
+                      <SkeletonText noOfLines={1} width="40%" />
+                    </Td>
+                    <Td width="400px" minW="150px">
+                      <Skeleton height="16px" width="120px" />
+                    </Td>
+                    <Td minW="150px">
+                      <SkeletonText noOfLines={1} width="60%" />
+                    </Td>
+                    <Td width="350px" minW="230px">
+                      <Skeleton height="16px" width="200px" />
+                    </Td>
+                    <Td width="200px" minW="180px">
+                      <Skeleton height="16px" width="64px" />
+                    </Td>
+                  </Tr>
+                ))
+              : users?.map((user, i) => {
+                  return (
+                    <Tr
+                      key={user.username}
+                      className={classNames("interactive", {
+                        "last-row": i === users.length - 1,
+                      })}
+                      onClick={() => onEditingUser(user)}
                     >
-                      {user.service_name ??
-                        t("usersTable.defaultService", "Default")}
-                    </Text>
-                  </Td>
-                  <Td width="350px" minW="230px">
-                    <UsageSlider
-                      totalUsedTraffic={user.lifetime_used_traffic}
-                      dataLimitResetStrategy={user.data_limit_reset_strategy}
-                      used={user.used_traffic}
-                      total={user.data_limit}
-                      colorScheme={statusColors[user.status].bandWidthColor}
-                    />
-                  </Td>
-                  <Td width="200px" minW="180px">
-                    <ActionButtons user={user} />
-                  </Td>
-                </Tr>
-              );
-            })}
-          {users.length == 0 && (
+                      <Td minW="140px">
+                        <div className="flex-status">
+                          <OnlineBadge lastOnline={user.online_at} />
+                          {user.username}
+                          <OnlineStatus lastOnline={user.online_at} />
+                        </div>
+                      </Td>
+                      <Td width="400px" minW="150px">
+                        <StatusBadge
+                          expiryDate={user.expire}
+                          status={user.status}
+                        />
+                      </Td>
+                      <Td minW="150px">
+                        <Text
+                          fontSize="sm"
+                          color={user.service_name ? "gray.700" : "gray.500"}
+                          _dark={{ color: user.service_name ? "gray.200" : "gray.500" }}
+                          isTruncated
+                        >
+                          {user.service_name ??
+                            t("usersTable.defaultService", "Default")}
+                        </Text>
+                      </Td>
+                      <Td width="350px" minW="230px">
+                        <UsageSlider
+                          totalUsedTraffic={user.lifetime_used_traffic}
+                          dataLimitResetStrategy={user.data_limit_reset_strategy}
+                          used={user.used_traffic}
+                          total={user.data_limit}
+                          colorScheme={statusColors[user.status].bandWidthColor}
+                        />
+                      </Td>
+                      <Td width="200px" minW="180px">
+                        <ActionButtons user={user} />
+                      </Td>
+                    </Tr>
+                  );
+                }))}
+          {!loading && users.length == 0 && (
             <Tr>
-              <Td colSpan={4}>
+              <Td colSpan={5}>
                 <EmptySection isFiltered={isFiltered} />
               </Td>
             </Tr>

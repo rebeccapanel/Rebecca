@@ -20,6 +20,28 @@ export type FilterUsageType = {
   end?: string;
 };
 
+const USERS_CACHE_WINDOW_MS = 60 * 60 * 1000;
+
+const sanitizeFilterQuery = (query: FilterType): FilterType => {
+  const normalized: FilterType = {};
+  (Object.keys(query) as (keyof FilterType)[]).forEach((key) => {
+    const value = query[key];
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+    (normalized as any)[key] = value;
+  });
+  return normalized;
+};
+
+const buildUsersCacheKey = (query: FilterType): string => {
+  return JSON.stringify(
+    Object.keys(query)
+      .sort()
+      .map((key) => [key, query[key as keyof FilterType]])
+  );
+};
+
 export type InboundType = {
   tag: string;
   protocol: ProtocolType;
@@ -43,6 +65,8 @@ type DashboardStateType = {
   QRcodeLinks: string[] | null;
   isEditingNodes: boolean;
   isResetingAllUsage: boolean;
+  lastUsersFetchAt: number | null;
+  usersCacheKey: string | null;
   resetUsageUser: User | null;
   revokeSubscriptionUser: User | null;
   isEditingCore: boolean;
@@ -50,7 +74,7 @@ type DashboardStateType = {
   onEditingUser: (user: User | null) => void;
   onDeletingUser: (user: User | null) => void;
   onResetAllUsage: (isResetingAllUsage: boolean) => void;
-  refetchUsers: () => void;
+  refetchUsers: (force?: boolean) => void;
   resetAllUsage: () => Promise<void>;
   onFilterChange: (filters: Partial<FilterType>) => void;
   deleteUser: (user: User) => Promise<void>;
@@ -66,12 +90,23 @@ type DashboardStateType = {
   onEditingCore: (isEditingCore: boolean) => void;
 };
 
-const fetchUsers = (query: FilterType): Promise<UsersListResponse> => {
-  for (const key in query) {
-    if (!query[key as keyof FilterType]) delete query[key as keyof FilterType];
+const fetchUsers = (query: FilterType, options: { force?: boolean } = {}): Promise<UsersListResponse> => {
+  const sanitizedQuery = sanitizeFilterQuery(query);
+  const cacheKey = buildUsersCacheKey(sanitizedQuery);
+  const { lastUsersFetchAt, usersCacheKey, users } = useDashboard.getState();
+  const now = Date.now();
+
+  if (
+    !options.force &&
+    lastUsersFetchAt &&
+    usersCacheKey === cacheKey &&
+    now - lastUsersFetchAt < USERS_CACHE_WINDOW_MS
+  ) {
+    return Promise.resolve(users);
   }
+
   useDashboard.setState({ loading: true });
-  return fetch<UsersListResponse>("/users", { query })
+  return fetch<UsersListResponse>("/users", { query: sanitizedQuery })
     .then((usersResponse) => {
       const limit = usersResponse.users_limit ?? null;
       const activeTotal = usersResponse.active_total ?? null;
@@ -82,6 +117,8 @@ const fetchUsers = (query: FilterType): Promise<UsersListResponse> => {
       useDashboard.setState({
         users: usersResponse,
         isUserLimitReached,
+        lastUsersFetchAt: Date.now(),
+        usersCacheKey: cacheKey,
       });
       return usersResponse;
     })
@@ -119,6 +156,8 @@ export const useDashboard = create(
     loading: true,
     isUserLimitReached: false,
     isResetingAllUsage: false,
+    lastUsersFetchAt: null,
+    usersCacheKey: null,
     isEditingNodes: false,
     resetUsageUser: null,
     revokeSubscriptionUser: null,
@@ -129,13 +168,13 @@ export const useDashboard = create(
     },
     inbounds: new Map(),
     isEditingCore: false,
-    refetchUsers: () => {
-      fetchUsers(get().filters);
+    refetchUsers: (force = false) => {
+      fetchUsers(get().filters, { force });
     },
     resetAllUsage: () => {
       return fetch(`/users/reset`, { method: "POST" }).then(() => {
         get().onResetAllUsage(false);
-        get().refetchUsers();
+        get().refetchUsers(true);
       });
     },
     onResetAllUsage: (isResetingAllUsage) => set({ isResetingAllUsage }),
@@ -162,21 +201,21 @@ export const useDashboard = create(
       set({ editingUser: null });
       return fetch(`/user/${user.username}`, { method: "DELETE" }).then(() => {
         set({ deletingUser: null });
-        get().refetchUsers();
+        get().refetchUsers(true);
         queryClient.invalidateQueries(StatisticsQueryKey);
       });
     },
     createUser: (body: UserCreate) => {
       return fetch(`/user`, { method: "POST", body }).then(() => {
         set({ editingUser: null });
-        get().refetchUsers();
+        get().refetchUsers(true);
         queryClient.invalidateQueries(StatisticsQueryKey);
       });
     },
     createUserWithService: (body: UserCreateWithService) => {
       return fetch(`/v2/users`, { method: "POST", body }).then(() => {
         set({ editingUser: null });
-        get().refetchUsers();
+        get().refetchUsers(true);
         queryClient.invalidateQueries(StatisticsQueryKey);
       });
     },
@@ -184,7 +223,7 @@ export const useDashboard = create(
       return fetch(`/v2/users/${username}`, { method: "PUT", body }).then(
         () => {
           get().onEditingUser(null);
-          get().refetchUsers();
+          get().refetchUsers(true);
         }
       );
     },
@@ -205,7 +244,7 @@ export const useDashboard = create(
       return fetch(`/user/${user.username}/reset`, { method: "POST" }).then(
         () => {
           set({ resetUsageUser: null });
-          get().refetchUsers();
+          get().refetchUsers(true);
         }
       );
     },
@@ -214,7 +253,7 @@ export const useDashboard = create(
         method: "POST",
       }).then((user) => {
         set({ revokeSubscriptionUser: null, editingUser: user });
-        get().refetchUsers();
+        get().refetchUsers(true);
       });
     },
     onEditingCore: (isEditingCore) => set({ isEditingCore }),

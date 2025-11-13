@@ -1,7 +1,7 @@
 import re
 import string
 from distutils.version import LooseVersion
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
 from fastapi.responses import HTMLResponse
@@ -213,9 +213,17 @@ def _build_usage_payload(
 
 def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
     """
-    Resolve a subscription identifier which may be either a credential key (32 hex)
-    or a legacy token.
+    Resolve a subscription identifier which may be either a token or a credential key.
+    We prefer token validation first because legacy tokens can look like hex keys too.
     """
+    token_error: Optional[HTTPException] = None
+    try:
+        return get_validated_sub(token=identifier, db=db)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 404):
+            raise
+        token_error = exc
+
     looks_like_key = len(identifier) == 32 and all(ch in string.hexdigits for ch in identifier)
     if looks_like_key:
         try:
@@ -223,7 +231,12 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
         except HTTPException as exc:
             if exc.status_code not in (400, 404):
                 raise
-    return get_validated_sub(token=identifier, db=db)
+            if token_error is None:
+                token_error = exc
+
+    if token_error:
+        raise token_error
+    raise HTTPException(status_code=404, detail="Not Found")
 
 
 @router.get("/{username}/{credential_key}/")

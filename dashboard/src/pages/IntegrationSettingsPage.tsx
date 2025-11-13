@@ -21,13 +21,15 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import {
+  ArrowDownTrayIcon,
   ArrowPathIcon,
+  ArrowUpTrayIcon,
   PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
 import { chakra } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { Controller, useForm } from "react-hook-form";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import {
   getPanelSettings,
@@ -39,6 +41,9 @@ import {
   updatePanelSettings,
   updateTelegramSettings,
 } from "service/settings";
+import { fetch as apiFetch } from "service/http";
+import { getAuthToken } from "utils/authStorage";
+import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 
 type EventToggleItem = {
   key: string;
@@ -59,6 +64,11 @@ const TOGGLE_KEY_PLACEHOLDER = "__dot__";
 
 const encodeToggleKey = (key: string) => key.replace(/\./g, TOGGLE_KEY_PLACEHOLDER);
 const decodeToggleKey = (key: string) => key.replace(new RegExp(TOGGLE_KEY_PLACEHOLDER, "g"), ".");
+
+type MaintenanceInfo = {
+  panel?: { image?: string; tag?: string } | null;
+  node?: { image?: string; tag?: string } | null;
+};
 
 const flattenEventToggleValues = (source: Record<string, unknown>): Record<string, boolean> => {
   const result: Record<string, boolean> = {};
@@ -428,7 +438,16 @@ export const IntegrationSettingsPage = () => {
     refetchOnWindowFocus: false,
   });
 
+  const maintenanceInfoQuery = useQuery<MaintenanceInfo>(
+    "maintenance-info",
+    () => apiFetch<MaintenanceInfo>("/maintenance/info"),
+    { refetchOnWindowFocus: false }
+  );
+
   const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(panelData?.use_nobetci ?? false);
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
+  const [isUploadingBackup, setIsUploadingBackup] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (panelData) {
@@ -526,12 +545,86 @@ export const IntegrationSettingsPage = () => {
     mutation.mutate(payload);
   };
 
+  const downloadFilenameFromHeader = (header: string | null) => {
+    if (!header) {
+      return `rebecca-backup-${Date.now()}.zip`;
+    }
+    const parts = header.split(";");
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.toLowerCase().startsWith("filename=")) {
+        return trimmed.split("=", 1)[1].trim().replace(/(^\"|\"$)/g, "") || `rebecca-backup-${Date.now()}.zip`;
+      }
+    }
+    return `rebecca-backup-${Date.now()}.zip`;
+  };
+
+  const handleBackupDownload = async () => {
+    setIsDownloadingBackup(true);
+    try {
+      const token = getAuthToken();
+      const response = await fetch("/api/maintenance/backup/export", {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const blob = await response.blob();
+      const filename = downloadFilenameFromHeader(response.headers.get("content-disposition"));
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      generateSuccessMessage(t("settings.panel.backupDownloadSuccess"), toast);
+    } catch (error) {
+      generateErrorMessage(error, toast);
+    } finally {
+      setIsDownloadingBackup(false);
+    }
+  };
+
+  const handleBackupUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setIsUploadingBackup(true);
+    try {
+      const token = getAuthToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/maintenance/backup/import", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      generateSuccessMessage(t("settings.panel.backupUploadSuccess"), toast);
+    } catch (error) {
+      generateErrorMessage(error, toast);
+    } finally {
+      setIsUploadingBackup(false);
+      event.target.value = "";
+    }
+  };
+
   const forumTopics = watch("forum_topics");
   const isTelegramEnabled = watch("use_telegram");
   const telegramDisabledMessage = t(
     "settings.telegram.disabledOverlay",
     "Telegram bot is disabled. Enable it to edit these settings."
   );
+
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
+  };
 
   return (
     <Box px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
@@ -582,6 +675,121 @@ export const IntegrationSettingsPage = () => {
                       isDisabled={panelMutation.isLoading || isPanelLoading}
                     />
                   </Flex>
+                </Box>
+                <Box borderWidth="1px" borderRadius="lg" p={4}>
+                  <Flex
+                    justify="space-between"
+                    align={{ base: "flex-start", md: "center" }}
+                    gap={4}
+                    flexDirection={{ base: "column", md: "row" }}
+                  >
+                    <Box>
+                      <Heading size="sm" mb={1}>
+                        {t("settings.panel.maintenanceTitle", "Maintenance status")}
+                      </Heading>
+                      <Text fontSize="sm" color="gray.500">
+                        {t(
+                          "settings.panel.maintenanceDescription",
+                          "Inspect which container images are currently used by the panel and node."
+                        )}
+                      </Text>
+                    </Box>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leftIcon={<ArrowPathIcon width={16} height={16} />}
+                      onClick={() => maintenanceInfoQuery.refetch()}
+                      isLoading={maintenanceInfoQuery.isFetching}
+                    >
+                      {t("actions.refresh", "Refresh")}
+                    </Button>
+                  </Flex>
+                  <Stack spacing={2} mt={4}>
+                    {maintenanceInfoQuery.isLoading && !maintenanceInfoQuery.data ? (
+                      <Flex align="center" justify="center" py={4}>
+                        <Spinner size="sm" />
+                      </Flex>
+                    ) : (
+                      <>
+                        <Box>
+                          <Text fontWeight="semibold">
+                            {t("settings.panel.panelVersion", "Panel image")}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">
+                            {maintenanceInfoQuery.data?.panel?.image
+                              ? `${maintenanceInfoQuery.data.panel.image}${
+                                  maintenanceInfoQuery.data.panel.tag
+                                    ? ` (${maintenanceInfoQuery.data.panel.tag})`
+                                    : ""
+                                }`
+                              : t("settings.panel.versionUnknown", "Unknown")}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text fontWeight="semibold">
+                            {t("settings.panel.nodeVersion", "Node image")}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">
+                            {maintenanceInfoQuery.data?.node
+                              ? maintenanceInfoQuery.data.node.image
+                                ? `${maintenanceInfoQuery.data.node.image}${
+                                    maintenanceInfoQuery.data.node.tag
+                                      ? ` (${maintenanceInfoQuery.data.node.tag})`
+                                      : ""
+                                  }`
+                                : t("settings.panel.versionUnknown", "Unknown")
+                              : t(
+                                  "settings.panel.nodeVersionUnavailable",
+                                  "Node deployment not detected"
+                                )}
+                          </Text>
+                        </Box>
+                      </>
+                    )}
+                  </Stack>
+                </Box>
+                <Box borderWidth="1px" borderRadius="lg" p={4}>
+                  <Flex
+                    justify="space-between"
+                    align={{ base: "flex-start", md: "center" }}
+                    gap={4}
+                    flexDirection={{ base: "column", md: "row" }}
+                  >
+                    <Box>
+                      <Heading size="sm" mb={1}>
+                        {t("settings.panel.backupTitle", "Backup & Restore")}
+                      </Heading>
+                      <Text fontSize="sm" color="gray.500">
+                        {t(
+                          "settings.panel.backupDescription",
+                          "Create or restore backups directly through the maintenance service."
+                        )}
+                      </Text>
+                    </Box>
+                    <Stack spacing={3} direction={{ base: "column", md: "row" }}>
+                      <Button
+                        leftIcon={<ArrowDownTrayIcon width={16} height={16} />}
+                        onClick={handleBackupDownload}
+                        isLoading={isDownloadingBackup}
+                      >
+                        {t("settings.panel.backupDownload", "Download backup")}
+                      </Button>
+                      <Button
+                        leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
+                        onClick={handleUploadButtonClick}
+                        isLoading={isUploadingBackup}
+                      >
+                        {t("settings.panel.backupUpload", "Restore backup")}
+                      </Button>
+                    </Stack>
+                  </Flex>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".zip,.tar.gz"
+                    style={{ display: "none" }}
+                    onChange={handleBackupUpload}
+                  />
                 </Box>
                 <Flex gap={3} justify="flex-end">
                   <Button

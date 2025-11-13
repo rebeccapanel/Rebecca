@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import List
+from typing import List, Union
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, Body
 from sqlalchemy.exc import IntegrityError
@@ -42,6 +42,17 @@ def add_host_if_needed(new_node: NodeCreate, db: Session):
 
 
 MASTER_NODE_NAME = "Master"
+
+
+def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeResponse:
+    """Convert DB node rows to API responses enriched with runtime metadata."""
+    node_response = (
+        dbnode if isinstance(dbnode, NodeResponse) else NodeResponse.model_validate(dbnode)
+    )
+    runtime_node = xray.nodes.get(node_response.id)
+    if runtime_node:
+        node_response.node_service_version = getattr(runtime_node, "node_version", None)
+    return node_response
 
 
 def _build_master_response(master: DBMasterNodeState) -> MasterNodeResponse:
@@ -127,7 +138,7 @@ def add_node(
     report.node_created(dbnode, admin)
 
     logger.info(f'New node "{dbnode.name}" added')
-    return dbnode
+    return _serialize_node_response(dbnode)
 
 
 @router.get("/node/{node_id}", response_model=NodeResponse)
@@ -136,7 +147,7 @@ def get_node(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Retrieve details of a specific node by its ID."""
-    return dbnode
+    return _serialize_node_response(dbnode)
 
 
 @router.websocket("/node/{node_id}/logs")
@@ -213,14 +224,15 @@ def get_nodes(
     db: Session = Depends(get_db), _: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Retrieve a list of all nodes. Accessible only to sudo admins."""
-    return crud.get_nodes(db)
+    nodes = crud.get_nodes(db)
+    return [_serialize_node_response(node) for node in nodes]
 
 
 @router.put("/node/{node_id}", response_model=NodeResponse)
 def modify_node(
     modified_node: NodeModify,
     bg: BackgroundTasks,
-    dbnode: NodeResponse = Depends(get_node),
+    dbnode: DBNode = Depends(get_dbnode),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -237,13 +249,13 @@ def modify_node(
         bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
 
     logger.info(f'Node "{dbnode.name}" modified')
-    return updated_node_resp
+    return _serialize_node_response(updated_node_resp)
 
 
 @router.post("/node/{node_id}/usage/reset", response_model=NodeResponse)
 def reset_node_usage(
     bg: BackgroundTasks,
-    dbnode: NodeResponse = Depends(get_node),
+    dbnode: DBNode = Depends(get_dbnode),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -252,7 +264,7 @@ def reset_node_usage(
     bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
     report.node_usage_reset(updated_node, admin)
     logger.info(f'Node "{dbnode.name}" usage reset')
-    return updated_node
+    return _serialize_node_response(updated_node)
 
 
 @router.post("/node/{node_id}/reconnect")
@@ -407,6 +419,54 @@ def update_node_geo(
         raise HTTPException(502, detail=f"Geo update failed: {e}")
 
     return {"detail": f"Geo assets updated on node {dbnode.name}"}
+
+
+def _node_operation_or_raise(node, action, failure_message: str):
+    try:
+        return action()
+    except Exception as exc:
+        logger.exception(failure_message)
+        status_code = getattr(exc, "status_code", None) or 502
+        detail = getattr(exc, "detail", None) or str(exc)
+        raise HTTPException(status_code, detail=detail) from exc
+
+
+@router.post("/node/{node_id}/service/restart", responses={403: responses._403, 404: responses._404})
+def restart_node_service(
+    node_id: int,
+    dbnode: NodeResponse = Depends(get_node),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Trigger the Rebecca-node maintenance service to restart containers on a node."""
+    node = xray.nodes.get(node_id)
+    if not node:
+        raise HTTPException(404, detail="Node not connected")
+
+    _node_operation_or_raise(
+        node,
+        node.restart_host_service,
+        f"Unable to restart node service for {dbnode.name}",
+    )
+    return {"detail": f"Restart requested for node {dbnode.name}"}
+
+
+@router.post("/node/{node_id}/service/update", responses={403: responses._403, 404: responses._404})
+def update_node_service(
+    node_id: int,
+    dbnode: NodeResponse = Depends(get_node),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Trigger the Rebecca-node maintenance service to update node containers."""
+    node = xray.nodes.get(node_id)
+    if not node:
+        raise HTTPException(404, detail="Node not connected")
+
+    _node_operation_or_raise(
+        node,
+        node.update_host_service,
+        f"Unable to update Rebecca-node service for {dbnode.name}",
+    )
+    return {"detail": f"Update requested for node {dbnode.name}"}
 
 
 

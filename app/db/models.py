@@ -100,7 +100,7 @@ class PanelSettings(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(34, collation='NOCASE'), index=True)
     credential_key = Column(String(64), nullable=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")

@@ -17,10 +17,14 @@ import {
   Collapse,
   IconButton,
   Tooltip,
+  Input as ChakraInput,
+  InputGroup,
+  InputRightAddon,
+  FormErrorMessage,
 } from "@chakra-ui/react";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FC, useState } from "react";
+import { FC, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
@@ -33,6 +37,34 @@ type LegacyTextRange = { moveToElementText: (el: Element) => void; select: () =>
 
 const EyeIconStyled = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const EyeSlashIconStyled = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
+
+const BYTES_IN_GB = 1024 ** 3;
+
+const formatDataLimitInput = (bytes?: number | null) => {
+  if (bytes === null || bytes === undefined || bytes <= 0) {
+    return "";
+  }
+  const gbValue = bytes / BYTES_IN_GB;
+  if (!Number.isFinite(gbValue)) {
+    return "";
+  }
+  return (Math.round(gbValue * 100) / 100).toString();
+};
+
+const parseDataLimitInput = (value: string): number | null | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed.length) {
+    return null;
+  }
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return undefined;
+  }
+  if (numeric === 0) {
+    return null;
+  }
+  return Math.round(numeric * BYTES_IN_GB);
+};
 
 const getInputError = (error: unknown): string | undefined => {
   if (error && typeof error === "object" && "message" in error) {
@@ -62,6 +94,8 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
   const { t } = useTranslation();
   const toast = useToast();
   const [showCertificate, setShowCertificate] = useState(false);
+  const [dataLimitInput, setDataLimitInput] = useState("");
+  const [dataLimitError, setDataLimitError] = useState<string | undefined>(undefined);
 
   const { data: nodeSettings, isLoading: nodeSettingsLoading } = useQuery({
     queryKey: "node-settings",
@@ -73,8 +107,34 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     defaultValues: isAddMode ? { ...getNodeDefaultValues(), add_as_new_host: false } : node,
   });
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    if (isAddMode) {
+      form.reset({ ...getNodeDefaultValues(), add_as_new_host: false });
+      setDataLimitInput("");
+    } else if (node) {
+      form.reset(node);
+      setDataLimitInput(formatDataLimitInput(node?.data_limit ?? null));
+    }
+    setDataLimitError(undefined);
+  }, [isAddMode, isOpen, node, form]);
+
   const handleSubmit = form.handleSubmit((data) => {
-    mutate(data);
+    const parsedLimit = parseDataLimitInput(dataLimitInput);
+    if (parsedLimit === undefined) {
+      setDataLimitError(t("nodes.dataLimitValidation", "Data limit must be a non-negative number"));
+      return;
+    }
+    setDataLimitError(undefined);
+    
+    const submitData = {
+      ...data,
+      data_limit: parsedLimit,
+    };
+    
+    mutate(submitData);
   });
 
   function selectText(node: HTMLElement) {
@@ -100,7 +160,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
       <ModalContent mx="3">
         <ModalHeader pt={6}>
           <Text fontWeight="semibold" fontSize="lg">
-            {isAddMode ? t("nodes.addNewMarzbanNode") : t("nodes.editNode")}
+            {isAddMode ? t("nodes.addNewRebeccaNode") : t("nodes.editNode")}
           </Text>
         </ModalHeader>
         <ModalCloseButton mt={3} />
@@ -108,22 +168,24 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
           <form onSubmit={handleSubmit}>
             <VStack spacing={4}>
               {isAddMode && nodeSettings?.certificate && (
-                <Collapse in={showCertificate} animateOpacity>
-                  <Text
-                    bg="rgba(255,255,255,.5)"
-                    _dark={{ bg: "rgba(255,255,255,.2)" }}
-                    rounded="md"
-                    p="2"
-                    lineHeight="1.2"
-                    fontSize="10px"
-                    fontFamily="Courier"
-                    whiteSpace="pre"
-                    overflow="auto"
-                    onClick={(e) => selectText(e.target as HTMLElement)}
-                  >
-                    {nodeSettings.certificate}
-                  </Text>
-                  <HStack justify="end" py={2}>
+                <VStack w="full" spacing={2}>
+                  <Collapse in={showCertificate} animateOpacity style={{ width: "100%" }}>
+                    <Text
+                      bg="rgba(255,255,255,.5)"
+                      _dark={{ bg: "rgba(255,255,255,.2)" }}
+                      rounded="md"
+                      p="2"
+                      lineHeight="1.2"
+                      fontSize="10px"
+                      fontFamily="Courier"
+                      whiteSpace="pre"
+                      overflow="auto"
+                      onClick={(e) => selectText(e.target as HTMLElement)}
+                    >
+                      {nodeSettings.certificate}
+                    </Text>
+                  </Collapse>
+                  <HStack justify="end" py={2} w="full">
                     <Button
                       as="a"
                       colorScheme="primary"
@@ -154,13 +216,13 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                       </IconButton>
                     </Tooltip>
                   </HStack>
-                </Collapse>
+                </VStack>
               )}
               <FormControl>
                   <Input
                     label={t("nodes.nodeName")}
                     size="sm"
-                    placeholder="Marzban-S2"
+                    placeholder="Rebecca-S2"
                     {...form.register("name")}
                     error={getInputError(form.formState?.errors?.name)}
                 />
@@ -179,6 +241,8 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   <Input
                     label={t("nodes.nodePort")}
                     size="sm"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="62050"
                     {...form.register("port")}
                     error={getInputError(form.formState?.errors?.port)}
@@ -188,6 +252,8 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   <Input
                     label={t("nodes.nodeAPIPort")}
                     size="sm"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="62051"
                     {...form.register("api_port")}
                     error={getInputError(form.formState?.errors?.api_port)}
@@ -198,10 +264,34 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   <Input
                     label={t("nodes.usageCoefficient")}
                     size="sm"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="1"
                     {...form.register("usage_coefficient")}
                     error={getInputError(form.formState?.errors?.usage_coefficient)}
                 />
+              </FormControl>
+              <FormControl isInvalid={!!dataLimitError}>
+                <FormLabel fontSize="xs" mb={1.5}>
+                  {t("nodes.dataLimitField", "Data limit (GB)")}
+                </FormLabel>
+                <InputGroup size="sm">
+                  <ChakraInput
+                    type="text"
+                    inputMode="decimal"
+                    value={dataLimitInput}
+                    onChange={(e) => {
+                      setDataLimitInput(e.target.value);
+                      if (dataLimitError) {
+                        setDataLimitError(undefined);
+                      }
+                    }}
+                    placeholder={t("nodes.dataLimitPlaceholder", "e.g., 500 (empty = unlimited)")}
+                    borderRightRadius={0}
+                  />
+                  <InputRightAddon borderLeftRadius={0}>GB</InputRightAddon>
+                </InputGroup>
+                {dataLimitError && <FormErrorMessage>{dataLimitError}</FormErrorMessage>}
               </FormControl>
               {isAddMode && (
                 <FormControl>

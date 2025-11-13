@@ -133,6 +133,8 @@ export const NodesPage: FC = () => {
     addNode,
     updateNode,
     reconnectNode,
+    restartNodeService,
+    updateNodeService,
     resetNodeUsage,
     updateMasterNode,
     resetMasterUsage,
@@ -155,6 +157,8 @@ export const NodesPage: FC = () => {
   const [pendingStatus, setPendingStatus] = useState<Record<number, boolean>>({});
   const [resettingNodeId, setResettingNodeId] = useState<number | null>(null);
   const [resetCandidate, setResetCandidate] = useState<NodeType | null>(null);
+  const [restartingServiceNodeId, setRestartingServiceNodeId] = useState<number | null>(null);
+  const [updatingServiceNodeId, setUpdatingServiceNodeId] = useState<number | null>(null);
   const { isOpen: isResetConfirmOpen, onOpen: openResetConfirm, onClose: closeResetConfirm } = useDisclosure();
   const cancelResetRef = useRef<HTMLButtonElement | null>(null);
   const [masterLimitInput, setMasterLimitInput] = useState<string>("");
@@ -276,6 +280,50 @@ export const NodesPage: FC = () => {
     },
   });
 
+  const { mutate: restartServiceMutate, isLoading: isRestartingService } = useMutation(
+    restartNodeService,
+    {
+      onMutate: (node: NodeType) => {
+        setRestartingServiceNodeId(node.id ?? null);
+      },
+      onSuccess: () => {
+        generateSuccessMessage(
+          t("nodes.restartServiceTriggered", "Node restart requested"),
+          toast,
+        );
+        queryClient.invalidateQueries(FetchNodesQueryKey);
+      },
+      onError: (err) => {
+        generateErrorMessage(err, toast);
+      },
+      onSettled: () => {
+        setRestartingServiceNodeId(null);
+      },
+    },
+  );
+
+  const { mutate: updateServiceMutate, isLoading: isUpdatingService } = useMutation(
+    updateNodeService,
+    {
+      onMutate: (node: NodeType) => {
+        setUpdatingServiceNodeId(node.id ?? null);
+      },
+      onSuccess: () => {
+        generateSuccessMessage(
+          t("nodes.updateServiceTriggered", "Node update requested"),
+          toast,
+        );
+        queryClient.invalidateQueries(FetchNodesQueryKey);
+      },
+      onError: (err) => {
+        generateErrorMessage(err, toast);
+      },
+      onSettled: () => {
+        setUpdatingServiceNodeId(null);
+      },
+    },
+  );
+
   const { isLoading: isUpdatingMasterLimit, mutate: updateMasterLimitMutate } = useMutation(
     updateMasterNode,
     {
@@ -371,6 +419,34 @@ export const NodesPage: FC = () => {
     if (!node?.id) return;
     setResetCandidate(node);
     openResetConfirm();
+  };
+
+  const handleRestartNodeService = (node: NodeType) => {
+    if (!node?.id) return;
+    const label = node.name || node.address || t("nodes.thisNode", "this node");
+    const confirmed = window.confirm(
+      t(
+        "nodes.restartServiceConfirm",
+        "Send a restart request to {{name}}? Services will be interrupted briefly.",
+        { name: label },
+      ),
+    );
+    if (!confirmed) return;
+    restartServiceMutate(node);
+  };
+
+  const handleUpdateNodeService = (node: NodeType) => {
+    if (!node?.id) return;
+    const label = node.name || node.address || t("nodes.thisNode", "this node");
+    const confirmed = window.confirm(
+      t(
+        "nodes.updateServiceConfirm",
+        "Send an update request to {{name}}? The node will download updates and restart.",
+        { name: label },
+      ),
+    );
+    if (!confirmed) return;
+    updateServiceMutate(node);
   };
 
   const confirmResetUsage = () => {
@@ -962,6 +1038,19 @@ export const NodesPage: FC = () => {
               const isToggleLoading = nodeId != null && togglingNodeId === nodeId && isToggling;
               const isCoreUpdating = nodeId != null && updatingCoreNodeId === nodeId;
               const isGeoUpdating = nodeId != null && updatingGeoNodeId === nodeId;
+              const isRestartingMaintenance =
+                isRestartingService && nodeId != null && restartingServiceNodeId === nodeId;
+              const isUpdatingMaintenance =
+                isUpdatingService && nodeId != null && updatingServiceNodeId === nodeId;
+              const statusBadge = <NodeModalStatusBadge status={status} compact />;
+              const statusDisplay =
+                status === "error" && node.message ? (
+                  <Tooltip label={node.message} hasArrow placement="top" openDelay={300}>
+                    <Box as="span">{statusBadge}</Box>
+                  </Tooltip>
+                ) : (
+                  statusBadge
+                );
 
               return (
                 <Box
@@ -1000,12 +1089,22 @@ export const NodesPage: FC = () => {
                         )}
                       </HStack>
                       <HStack spacing={2} flexWrap="wrap">
-                        <NodeModalStatusBadge status={status} compact />
+                        {statusDisplay}
                         <HStack spacing={1} align="center">
                           <Tag colorScheme="blue" size="sm">
                             {node.xray_version
                               ? `Xray ${node.xray_version}`
                               : t("nodes.versionUnknown", "Version unknown")}
+                          </Tag>
+                          <Tag colorScheme="green" size="sm">
+                            {node.node_service_version
+                              ? t("nodes.nodeServiceVersionTag", {
+                                  version: node.node_service_version,
+                                })
+                              : t(
+                                  "nodes.nodeServiceVersionUnknown",
+                                  "Node version unknown",
+                                )}
                           </Tag>
                           <Button
                             size="xs"
@@ -1026,6 +1125,26 @@ export const NodesPage: FC = () => {
                           isDisabled={!nodeId}
                         >
                           {t("nodes.updateGeoAction", "Update geo")}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="orange"
+                          onClick={() => handleRestartNodeService(node)}
+                          isLoading={isRestartingMaintenance}
+                          isDisabled={!nodeId}
+                        >
+                          {t("nodes.restartServiceAction", "Restart node service")}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="teal"
+                          onClick={() => handleUpdateNodeService(node)}
+                          isLoading={isUpdatingMaintenance}
+                          isDisabled={!nodeId}
+                        >
+                          {t("nodes.updateServiceAction", "Update node service")}
                         </Button>
                         <Button
                           size="xs"

@@ -15,6 +15,7 @@ import { chakra } from "@chakra-ui/react";
 import { AppSidebar } from "./AppSidebar";
 import { Language } from "./Language";
 import ThemeSelector from "./ThemeSelector";
+import { GitHubStars } from "./GitHubStars";
 import { Outlet, Link } from "react-router-dom";
 import { useState } from "react";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
@@ -39,7 +40,7 @@ export function AppLayout() {
     <Flex minH="100vh" maxH="100vh" overflow="hidden">
       {/* persistent sidebar on md+; drawer on mobile */}
       {!isMobile ? (
-        <AppSidebar collapsed={sidebarCollapsed} />
+        <AppSidebar collapsed={sidebarCollapsed} onRequestExpand={() => setSidebarCollapsed(false)} />
       ) : null}
 
       <Flex 
@@ -75,6 +76,7 @@ export function AppLayout() {
             icon={<MenuIcon />}
           />
           <HStack spacing={2}>
+            <GitHubStars />
             <Language />
             <ThemeSelector />
             <Link to="/login">

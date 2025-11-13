@@ -494,6 +494,16 @@ const baseSchema = {
 
   next_plan_fire_on_either: z.boolean().default(true),
 
+  ip_limit: z
+    .union([z.number().min(0), z.null()])
+    .optional()
+    .transform((value) => {
+      if (typeof value !== "number") {
+        return null;
+      }
+      return Number.isFinite(value) ? value : null;
+    }),
+
 };
 
 

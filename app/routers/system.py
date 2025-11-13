@@ -1,10 +1,12 @@
 import logging
 import subprocess
+import time
 from copy import deepcopy
 from typing import Dict, List, Union
 
 import commentjson
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 from app import __version__
 from app.runtime import xray
@@ -16,11 +18,8 @@ from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config_and_restart
-from config import (
-    XRAY_EXECUTABLE_PATH,
-    XRAY_EXCLUDE_INBOUND_TAGS,
-    XRAY_FALLBACKS_INBOUND_TAG,
-)
+from app.utils.maintenance import maintenance_request
+from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 logger = logging.getLogger(__name__)
@@ -32,6 +31,30 @@ if XRAY_FALLBACKS_INBOUND_TAG:
     _EXCLUDED_TAGS.add(XRAY_FALLBACKS_INBOUND_TAG)
 
 _MANAGEABLE_PROTOCOLS = set(ProxyTypes._value2member_map_.keys())
+
+
+def _try_maintenance_json(path: str) -> dict | None:
+    try:
+        resp = maintenance_request("GET", path, timeout=20)
+    except HTTPException as exc:
+        if exc.status_code in (404, 502, 503):
+            return None
+        raise
+    try:
+        return resp.json()
+    except Exception:
+        return None
+
+
+def _extract_filename(disposition: str | None, default: str) -> str:
+    if not disposition:
+        return default
+    parts = disposition.split(";")
+    for part in parts:
+        if "filename=" in part:
+            filename = part.split("=", 1)[1].strip().strip('"')
+            return filename or default
+    return default
 
 
 @router.get("/system", response_model=SystemStats)
@@ -78,6 +101,41 @@ def get_system_stats(
         incoming_bandwidth_speed=realtime_bandwidth_stats.incoming_bytes,
         outgoing_bandwidth_speed=realtime_bandwidth_stats.outgoing_bytes,
     )
+
+
+@router.get("/maintenance/info", responses={403: responses._403})
+def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Return maintenance service insights (panel/node images)."""
+    panel_info = _try_maintenance_json("/version/panel")
+    node_info = _try_maintenance_json("/version/node")
+    return {"panel": panel_info, "node": node_info}
+
+
+@router.get("/maintenance/backup/export", responses={403: responses._403})
+def download_backup(admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Stream maintenance backup archive through the API."""
+    resp = maintenance_request("POST", "/backup/export", timeout=1800, stream=True)
+    filename = _extract_filename(
+        resp.headers.get("content-disposition"), f"rebecca-backup-{int(time.time())}.zip"
+    )
+    media_type = resp.headers.get("content-type", "application/zip")
+    return StreamingResponse(
+        resp.iter_content(chunk_size=8192),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/maintenance/backup/import", responses={403: responses._403})
+async def upload_backup(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    file: UploadFile = File(...),
+):
+    """Proxy backup import to the maintenance service."""
+    data = await file.read()
+    files = {"file": (file.filename, data, file.content_type or "application/octet-stream")}
+    resp = maintenance_request("POST", "/backup/import", files=files, timeout=1800)
+    return resp.json()
 
 
 @router.get("/inbounds", response_model=Dict[ProxyTypes, List[ProxyInbound]])

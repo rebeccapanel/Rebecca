@@ -16,6 +16,7 @@ export const NodeSchema = z.object({
     .min(1)
     .or(z.string().transform((v) => parseFloat(v))),
   xray_version: z.string().nullable().optional(),
+  node_service_version: z.string().nullable().optional(),
   id: z.number().nullable().optional(),
   status: z
     .enum(["connected", "connecting", "error", "disabled", "limited"])
@@ -39,6 +40,7 @@ export const getNodeDefaultValues = (): NodeType => ({
   port: 62050,
   api_port: 62051,
   xray_version: "",
+  node_service_version: "",
   usage_coefficient: 1,
   data_limit: null,
   uplink: 0,
@@ -56,6 +58,8 @@ export type NodeStore = {
   fetchNodesUsage: (query: FilterUsageType) => Promise<any>;
   updateNode: (node: NodeType) => Promise<unknown>;
   reconnectNode: (node: NodeType) => Promise<unknown>;
+  restartNodeService: (node: NodeType) => Promise<unknown>;
+  updateNodeService: (node: NodeType) => Promise<unknown>;
   resetNodeUsage: (node: NodeType) => Promise<unknown>;
   updateMasterNode: (payload: { data_limit: number | null }) => Promise<unknown>;
   resetMasterUsage: () => Promise<unknown>;
@@ -96,6 +100,16 @@ export const useNodes = create<NodeStore>((set, get) => ({
   },
   reconnectNode(body) {
     return fetch(`/node/${body.id}/reconnect`, {
+      method: "POST",
+    });
+  },
+  restartNodeService(body) {
+    return fetch(`/node/${body.id}/service/restart`, {
+      method: "POST",
+    });
+  },
+  updateNodeService(body) {
+    return fetch(`/node/${body.id}/service/update`, {
       method: "POST",
     });
   },

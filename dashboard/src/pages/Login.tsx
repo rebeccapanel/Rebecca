@@ -31,6 +31,7 @@ import logoUrl from "assets/logo.svg";
 import { useTranslation } from "react-i18next";
 import { Language } from "components/Language";
 import ThemeSelector from "components/ThemeSelector";
+import { useColorMode } from "@chakra-ui/react";
 
 const schema = z.object({
   username: z.string().min(1, "login.fieldRequired"),
@@ -61,6 +62,7 @@ export const Login: FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { colorMode } = useColorMode();
   // slightly off-white in light mode so the card is visible against a plain white page
   // const cardBg = useColorModeValue("gray.50", "gray.700");
   // const cardBorder = useColorModeValue("gray.200", "gray.600");
@@ -113,7 +115,11 @@ export const Login: FC = () => {
             <ThemeSelector minimal />
           </HStack>
           <VStack alignItems="center" w="full" spacing={4}>
-            <LogoIcon src={logoUrl} alt={t("appName") || "Rebecca"} />
+            <LogoIcon
+              src={logoUrl}
+              alt={t("appName") || "Rebecca"}
+              filter={colorMode === "dark" ? "brightness(0) invert(1)" : "none"}
+            />
             <Text fontSize="2xl" fontWeight="semibold">
               {t("login.loginYourAccount")}
             </Text>

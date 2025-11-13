@@ -92,12 +92,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 ? value
                 : Number(parseFloat(String(value)).toFixed(5));
             },
-            min: 0,
+            min: props.min ?? 0,
             step,
             name,
             type,
             placeholder,
-            value: value ?? "",
             onBlur,
             onClick,
             disabled,

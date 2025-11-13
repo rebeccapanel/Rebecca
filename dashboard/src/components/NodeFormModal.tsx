@@ -224,7 +224,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
       <ModalContent mx="3" as="form" onSubmit={handleSubmit}>
         <ModalHeader pt={6}>
           <Text fontWeight="semibold" fontSize="lg">
-            {isAddMode ? t("nodes.addNewMarzbanNode") : t("nodes.editNode")}
+            {isAddMode ? t("nodes.addNewRebeccaNode") : t("nodes.editNode")}
           </Text>
         </ModalHeader>
         <ModalCloseButton mt={3} />
@@ -315,7 +315,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   <Input
                     label={t("nodes.nodeName")}
                     size="sm"
-                    placeholder="Marzban-S2"
+                    placeholder="Rebecca-S2"
                     {...form.register("name")}
                     error={getInputError(form.formState?.errors?.name)}
                   />
