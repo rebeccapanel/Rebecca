@@ -237,6 +237,41 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
     raise HTTPException(status_code=404, detail="Not Found")
 
 
+@router.get("/{identifier}/")
+@router.get("/{identifier}", include_in_schema=False)
+def user_subscription(
+    request: Request,
+    identifier: str,
+    db: Session = Depends(get_db),
+    user_agent: str = Header(default=""),
+):
+    """Provides a subscription link based on the identifier (credential key or token)."""
+    dbuser = _get_user_by_identifier(identifier, db)
+    return _serve_subscription_response(request, identifier, db, dbuser, user_agent)
+
+
+@router.get("/{identifier}/info", response_model=SubscriptionUserResponse)
+def user_subscription_info(
+    identifier: str,
+    db: Session = Depends(get_db),
+):
+    """Retrieves detailed information about the user's subscription."""
+    dbuser = _get_user_by_identifier(identifier, db)
+    return dbuser
+
+
+@router.get("/{identifier}/usage")
+def user_get_usage(
+    identifier: str,
+    start: str = "",
+    end: str = "",
+    db: Session = Depends(get_db),
+):
+    """Fetches the usage statistics for the user within a specified date range."""
+    dbuser = _get_user_by_identifier(identifier, db)
+    return _build_usage_payload(dbuser, start, end, db)
+
+
 @router.get("/{username}/{credential_key}/")
 @router.get("/{username}/{credential_key}", include_in_schema=False)
 def user_subscription_by_key(
@@ -270,41 +305,6 @@ def user_get_usage_by_key(
     db: Session = Depends(get_db),
 ):
     """Key-based variant of the usage endpoint."""
-    return _build_usage_payload(dbuser, start, end, db)
-
-
-@router.get("/{identifier}/")
-@router.get("/{identifier}", include_in_schema=False)
-def user_subscription(
-    request: Request,
-    identifier: str,
-    db: Session = Depends(get_db),
-    user_agent: str = Header(default=""),
-):
-    """Provides a subscription link based on the identifier (credential key or token)."""
-    dbuser = _get_user_by_identifier(identifier, db)
-    return _serve_subscription_response(request, identifier, db, dbuser, user_agent)
-
-
-@router.get("/{identifier}/info", response_model=SubscriptionUserResponse)
-def user_subscription_info(
-    identifier: str,
-    db: Session = Depends(get_db),
-):
-    """Retrieves detailed information about the user's subscription."""
-    dbuser = _get_user_by_identifier(identifier, db)
-    return dbuser
-
-
-@router.get("/{identifier}/usage")
-def user_get_usage(
-    identifier: str,
-    start: str = "",
-    end: str = "",
-    db: Session = Depends(get_db),
-):
-    """Fetches the usage statistics for the user within a specified date range."""
-    dbuser = _get_user_by_identifier(identifier, db)
     return _build_usage_payload(dbuser, start, end, db)
 
 
