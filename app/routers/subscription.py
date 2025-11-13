@@ -242,7 +242,7 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
 def user_subscription_by_key(
     request: Request,
     username: str,
-    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
+    credential_key: str = Path(...),
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     user_agent: str = Header(default=""),
@@ -254,7 +254,7 @@ def user_subscription_by_key(
 
 @router.get("/{username}/{credential_key}/info", response_model=SubscriptionUserResponse)
 def user_subscription_info_by_key(
-    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
+    credential_key: str = Path(...),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
 ):
     """Key-based variant of the subscription info endpoint."""
@@ -263,7 +263,7 @@ def user_subscription_info_by_key(
 
 @router.get("/{username}/{credential_key}/usage")
 def user_get_usage_by_key(
-    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
+    credential_key: str = Path(...),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     start: str = "",
     end: str = "",
@@ -271,17 +271,6 @@ def user_get_usage_by_key(
 ):
     """Key-based variant of the usage endpoint."""
     return _build_usage_payload(dbuser, start, end, db)
-
-
-@router.get("/{username}/{credential_key}/{client_type}")
-def user_subscription_with_client_type_by_key(
-    request: Request,
-    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
-    dbuser: UserResponse = Depends(get_validated_sub_by_key),
-    client_type: str = Path(..., regex="sing-box|clash-meta|clash|outline|v2ray|v2ray-json"),
-):
-    """Key-based variant for client specific subscription links."""
-    return _subscription_with_client_type(request, dbuser, client_type)
 
 
 @router.get("/{identifier}/")
@@ -319,13 +308,40 @@ def user_get_usage(
     return _build_usage_payload(dbuser, start, end, db)
 
 
-@router.get("/{identifier}/{client_type}")
-def user_subscription_with_client_type(
-    request: Request,
-    identifier: str,
-    db: Session = Depends(get_db),
-    client_type: str = Path(..., regex="sing-box|clash-meta|clash|outline|v2ray|v2ray-json"),
-):
-    """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
-    dbuser = _get_user_by_identifier(identifier, db)
-    return _subscription_with_client_type(request, dbuser, client_type)
+def _make_client_type_by_key_endpoint(client_type: str):
+    def endpoint(
+        request: Request,
+        username: str,
+        credential_key: str,
+        dbuser: UserResponse = Depends(get_validated_sub_by_key),
+    ):
+        return _subscription_with_client_type(request, dbuser, client_type)
+
+    endpoint.__name__ = f"user_subscription_with_client_type_by_key_{client_type.replace('-', '_')}"
+    return endpoint
+
+
+def _make_client_type_endpoint(client_type: str):
+    def endpoint(
+        request: Request,
+        identifier: str,
+        db: Session = Depends(get_db),
+    ):
+        dbuser = _get_user_by_identifier(identifier, db)
+        return _subscription_with_client_type(request, dbuser, client_type)
+
+    endpoint.__name__ = f"user_subscription_with_client_type_{client_type.replace('-', '_')}"
+    return endpoint
+
+
+for client_type in client_config:
+    router.add_api_route(
+        f"/{{username}}/{{credential_key}}/{client_type}",
+        _make_client_type_by_key_endpoint(client_type),
+        methods=["GET"],
+    )
+    router.add_api_route(
+        f"/{{identifier}}/{client_type}",
+        _make_client_type_endpoint(client_type),
+        methods=["GET"],
+    )
