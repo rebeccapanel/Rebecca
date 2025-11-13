@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/Gozargah/Marzban-docs/raw/master/screenshots/logo-dark.png">
-      <img width="160" height="160" src="https://github.com/Gozargah/Marzban-docs/raw/master/screenshots/logo-light.png">
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-dark.png">
+      <img width="160" height="160" src="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-light.png">
     </picture>
   </a>
 </p>
@@ -49,7 +49,7 @@
 
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer" >
-    <img src="https://github.com/Gozargah/Marzban-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
+    <img src="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
   </a>
 </p>
 
@@ -178,10 +178,10 @@ python3 -m pip install -r requirements.txt
 alembic upgrade head
 ```
 
-اگر می‌خواهید از CLI استفاده کنید، می‌توانید فایل `marzban-cli.py` موجود را به نام اجرایی جدید لینک کنید و تکمیل خودکار آن را نصب کنید:
+اگر می‌خواهید از CLI استفاده کنید، می‌توانید فایل `rebecca-cli.py` موجود را به نام اجرایی جدید لینک کنید و تکمیل خودکار آن را نصب کنید:
 
 ```bash
-sudo ln -s $(pwd)/marzban-cli.py /usr/bin/rebecca-cli
+sudo ln -s $(pwd)/rebecca-cli.py /usr/bin/rebecca-cli
 sudo chmod +x /usr/bin/rebecca-cli
 rebecca-cli completion install
 ```

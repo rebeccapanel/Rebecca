@@ -1,6 +1,7 @@
 import base64
 import random
 import secrets
+import string
 from collections import defaultdict
 from datetime import datetime as dt
 from datetime import timedelta
@@ -43,6 +44,13 @@ STATUS_TEXTS = {
     "disabled": DISABLED_STATUS_TEXT,
     "on_hold": ONHOLD_STATUS_TEXT,
 }
+
+
+def is_credential_key(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    cleaned = value.replace("-", "").strip()
+    return len(cleaned) == 32 and all(ch in string.hexdigits for ch in cleaned)
 
 
 def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:

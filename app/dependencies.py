@@ -4,7 +4,7 @@ from app.models.user import UserResponse, UserStatus
 from app.db.models import User
 from app.db import Session, crud, get_db
 from config import SUDOERS
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Path
 from datetime import datetime, timezone, timedelta
 from app.utils.jwt import get_subscription_payload
 from sqlalchemy import func
@@ -87,7 +87,7 @@ def get_validated_sub(
 
 def get_validated_sub_by_key(
         username: str,
-        credential_key: str,
+        credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
         db: Session = Depends(get_db),
 ) -> UserResponse:
     try:

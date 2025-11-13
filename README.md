@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/logo-dark.png">
-      <img width="160" height="160" src="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/logo-light.png">
+      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/xmohammad1/Rebecca-docs/raw/master/screenshots/logo-dark.png">
+      <img width="160" height="160" src="https://github.com/xmohammad1/Rebecca-docs/raw/master/screenshots/logo-light.png">
     </picture>
   </a>
 </p>
@@ -49,14 +49,14 @@
 
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer" >
-    <img src="https://github.com/xmohammad1/Marzban-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
+    <img src="https://github.com/xmohammad1/Rebecca-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
   </a>
 </p>
 
 ## Table of Contents
 
 - [Overview](#overview)
-  - [Why using Marzban?](#why-using-marzban)
+  - [Why using Rebecca?](#why-using-rebecca)
     - [Features](#features)
 - [Installation guide](#installation-guide)
 - [Configuration](#configuration)
@@ -83,7 +83,7 @@ Rebecca is user-friendly, feature-rich and reliable. It lets you create differen
 
 - Built-in **Web UI**
 - Fully **REST API** backend
-- [**Multiple Nodes**](#marzban-node) support (for infrastructure distribution & scalability)
+- [**Multiple Nodes**](#rebecca-node) support (for infrastructure distribution & scalability)
 - Supports protocols **Vmess**, **VLESS**, **Trojan** and **Shadowsocks**
 - **Multi-protocol** for a single user
 - **Multi-user** on a single inbound
@@ -126,7 +126,7 @@ Once the installation is complete:
 - The configuration file can be found at `/opt/rebecca/.env` (refer to [configurations](#configuration) section to see variables)
 - The data files will be placed at `/var/lib/rebecca`
 - For security reasons, the Rebecca dashboard is not accessible via IP address. Therefore, you must obtain an SSL certificate and access your Rebecca dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
-- You can also use SSH port forwarding to access the Marzban dashboard locally without a domain. Replace `user@serverip` with your actual SSH username and server IP and Run the command below:
+- You can also use SSH port forwarding to access the Rebecca dashboard locally without a domain. Replace `user@serverip` with your actual SSH username and server IP and Run the command below:
 
 ```bash
 ssh -L 8000:localhost:8000 user@serverip
@@ -181,10 +181,10 @@ Then run the following command to run the database migration scripts
 alembic upgrade head
 ```
 
-If you want to use the CLI, you can link the bundled `marzban-cli.py` to a new executable name and install the auto-completion:
+If you want to use the CLI, you can link the bundled `rebecca-cli.py` to a new executable name and install the auto-completion:
 
 ```bash
-sudo ln -s $(pwd)/marzban-cli.py /usr/bin/rebecca-cli
+sudo ln -s $(pwd)/rebecca-cli.py /usr/bin/rebecca-cli
 sudo chmod +x /usr/bin/rebecca-cli
 rebecca-cli completion install
 ```
@@ -354,7 +354,7 @@ Get an Immediate Backup:
 rebecca backup
 ```
 
-By following these steps, you can ensure that you have a backup of all your Marzban files and data, as well as your configuration variables and Xray configuration, in case you need to restore them in the future. Remember to update your backups regularly to keep them up-to-date.
+By following these steps, you can ensure that you have a backup of all your Rebecca files and data, as well as your configuration variables and Xray configuration, in case you need to restore them in the future. Remember to update your backups regularly to keep them up-to-date.
 
 # Telegram Bot
 
@@ -384,7 +384,7 @@ For more detailed information and installation instructions, please refer to the
 
 # Webhook notifications
 
-You can set a webhook address and Marzban will send the notifications to that address.
+You can set a webhook address and Rebecca will send the notifications to that address.
 
 the requests will be sent as a post request to the adress provided by `WEBHOOK_ADDRESS` with `WEBHOOK_SECRET` as `x-webhook-secret` in the headers.
 
@@ -411,7 +411,7 @@ Different action typs are: `user_created`, `user_updated`, `user_deleted`, `user
 
 # Donation
 
-If you found Marzban useful and would like to support its development, you can make a donation in one of the following crypto networks:
+If you found Rebecca useful and would like to support its development, you can make a donation in one of the following crypto networks:
 
 - TRON network (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
 - ETH, BNB, MATIC network (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
@@ -430,7 +430,7 @@ We ❤️‍🔥 contributors! If you'd like to contribute, please check out our
 Check [open issues](https://github.com/rebeccapanel/Rebecca/issues) to help the progress of this project.
 
 <p align="center">
-Thanks to the all contributors who have helped improve Marzban:
+Thanks to the all contributors who have helped improve Rebecca:
 </p>
 <p align="center">
 <a href="https://github.com/rebeccapanel/Rebecca/graphs/contributors">

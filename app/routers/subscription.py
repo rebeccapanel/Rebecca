@@ -1,5 +1,4 @@
 import re
-import string
 from distutils.version import LooseVersion
 from typing import Dict, List, Optional, Union
 
@@ -14,7 +13,7 @@ from app.dependencies import (
     validate_dates,
 )
 from app.models.user import SubscriptionUserResponse, UserResponse
-from app.subscription.share import encode_title, generate_subscription
+from app.subscription.share import encode_title, generate_subscription, is_credential_key
 from app.templates import render_template
 from config import (
     SUB_PROFILE_TITLE,
@@ -224,8 +223,7 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
             raise
         token_error = exc
 
-    looks_like_key = len(identifier) == 32 and all(ch in string.hexdigits for ch in identifier)
-    if looks_like_key:
+    if is_credential_key(identifier):
         try:
             return get_validated_sub_by_key_only(credential_key=identifier, db=db)
         except HTTPException as exc:
@@ -244,7 +242,7 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
 def user_subscription_by_key(
     request: Request,
     username: str,
-    credential_key: str,
+    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     user_agent: str = Header(default=""),
@@ -256,6 +254,7 @@ def user_subscription_by_key(
 
 @router.get("/{username}/{credential_key}/info", response_model=SubscriptionUserResponse)
 def user_subscription_info_by_key(
+    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
 ):
     """Key-based variant of the subscription info endpoint."""
@@ -264,6 +263,7 @@ def user_subscription_info_by_key(
 
 @router.get("/{username}/{credential_key}/usage")
 def user_get_usage_by_key(
+    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     start: str = "",
     end: str = "",
@@ -276,6 +276,7 @@ def user_get_usage_by_key(
 @router.get("/{username}/{credential_key}/{client_type}")
 def user_subscription_with_client_type_by_key(
     request: Request,
+    credential_key: str = Path(..., regex="^[0-9a-fA-F]{32}$"),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     client_type: str = Path(..., regex="sing-box|clash-meta|clash|outline|v2ray|v2ray-json"),
 ):
