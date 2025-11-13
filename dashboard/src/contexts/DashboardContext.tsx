@@ -6,6 +6,8 @@ import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
+const DEFAULT_SORT = "-created_at";
+
 export type FilterType = {
   search?: string;
   limit?: number;
@@ -23,8 +25,13 @@ export type FilterUsageType = {
 const USERS_CACHE_WINDOW_MS = 60 * 60 * 1000;
 
 const sanitizeFilterQuery = (query: FilterType): FilterType => {
-  const normalized: FilterType = {};
+  const normalized: FilterType = {
+    sort: query.sort || DEFAULT_SORT,
+  };
   (Object.keys(query) as (keyof FilterType)[]).forEach((key) => {
+    if (key === "sort") {
+      return;
+    }
     const value = query[key];
     if (value === undefined || value === null || value === "") {
       return;
@@ -164,7 +171,7 @@ export const useDashboard = create(
     filters: {
       username: "",
       limit: getUsersPerPageLimitSize(),
-      sort: "-created_at",
+      sort: DEFAULT_SORT,
     },
     inbounds: new Map(),
     isEditingCore: false,
