@@ -28,7 +28,8 @@ COPY --from=build /usr/local/share/xray /usr/local/share/xray
 
 COPY . /code
 
-RUN ln -s /code/rebecca-cli.py /usr/bin/rebecca-cli \
+RUN rm -f /usr/bin/rebecca-cli \
+    && ln -s /code/rebecca-cli.py /usr/bin/rebecca-cli \
     && chmod +x /usr/bin/rebecca-cli \
     && rebecca-cli completion install --shell bash
 
