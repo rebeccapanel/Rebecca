@@ -79,6 +79,7 @@ export type InboundFormValues = {
   tlsAlpn: string[];
   tlsAllowInsecure: boolean;
   tlsFingerprint: string;
+  tlsRawSettings: Record<string, any>;
   realityPrivateKey: string;
   realityServerNames: string;
   realityShortIds: string;
@@ -282,6 +283,7 @@ export const createDefaultInboundForm = (protocol: Protocol = "vless"): InboundF
   tlsAlpn: [],
   tlsAllowInsecure: false,
   tlsFingerprint: "",
+  tlsRawSettings: {},
   realityPrivateKey: "",
   realityServerNames: "",
   realityShortIds: "",
@@ -355,6 +357,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
   const sniffing = raw.sniffing ?? {};
   const stream = raw.streamSettings ?? {};
   const tlsSettings = stream.tlsSettings ?? {};
+  const rawTlsSettings =
+    stream.tlsSettings !== undefined && stream.tlsSettings !== null
+      ? JSON.parse(JSON.stringify(stream.tlsSettings))
+      : {};
   const realitySettings = stream.realitySettings ?? {};
 
   return {
@@ -381,6 +387,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
     tlsAlpn: Array.isArray(tlsSettings.alpn) ? tlsSettings.alpn : base.tlsAlpn,
     tlsAllowInsecure: Boolean(tlsSettings.allowInsecure ?? base.tlsAllowInsecure),
     tlsFingerprint: tlsSettings.fingerprint ?? base.tlsFingerprint,
+    tlsRawSettings: rawTlsSettings,
     realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
     realityServerNames: joinLines(realitySettings.serverNames),
     realityShortIds: joinLines(realitySettings.shortIds),
@@ -549,12 +556,15 @@ const buildStreamSettings = (values: InboundFormValues): Record<string, any> => 
   }
 
   if (values.streamSecurity === "tls") {
-    stream.tlsSettings = cleanObject({
-      serverName: values.tlsServerName || undefined,
-      alpn: values.tlsAlpn?.length ? values.tlsAlpn : undefined,
-      allowInsecure: values.tlsAllowInsecure || undefined,
-      fingerprint: values.tlsFingerprint || undefined,
-    });
+    const tlsPayload =
+      values.tlsRawSettings && typeof values.tlsRawSettings === "object"
+        ? { ...values.tlsRawSettings }
+        : {};
+    tlsPayload.serverName = values.tlsServerName || undefined;
+    tlsPayload.alpn = values.tlsAlpn?.length ? values.tlsAlpn : undefined;
+    tlsPayload.allowInsecure = values.tlsAllowInsecure;
+    tlsPayload.fingerprint = values.tlsFingerprint || undefined;
+    stream.tlsSettings = cleanObject(tlsPayload);
   }
 
   if (values.streamSecurity === "reality") {

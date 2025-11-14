@@ -43,6 +43,8 @@ else:
     runtime.scheduler = scheduler
 
     runtime.app = app
+    from app.db.schema import ensure_core_schema
+    ensure_core_schema()
     allowed_origins = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
     if not allowed_origins:
         allowed_origins = ["*"]
@@ -104,4 +106,3 @@ if not SKIP_RUNTIME_INIT:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content=jsonable_encoder({"detail": details}),
         )
-

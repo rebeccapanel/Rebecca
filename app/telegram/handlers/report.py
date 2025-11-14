@@ -1,5 +1,7 @@
+import re
+import time
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from telebot.apihelper import ApiTelegramException
 from telebot.formatting import escape_html
@@ -19,6 +21,70 @@ CATEGORY_LOGIN = "login"
 CATEGORY_NODES = "nodes"
 CATEGORY_ADMINS = "admins"
 CATEGORY_ERRORS = "errors"
+
+_MAX_RATE_LIMIT_DELAY = 60
+
+
+def _extract_retry_after(exc: ApiTelegramException) -> Optional[int]:
+    """
+    Extract retry_after seconds from Telegram exception payload or description.
+    """
+    retry_after = None
+    result_json = getattr(exc, "result_json", None)
+    if isinstance(result_json, dict):
+        parameters = result_json.get("parameters") or {}
+        retry_after = parameters.get("retry_after") or result_json.get("retry_after")
+    if retry_after is None:
+        match = re.search(r"retry after (\d+)", getattr(exc, "description", ""), re.IGNORECASE)
+        if match:
+            retry_after = match.group(1)
+    try:
+        if retry_after is None:
+            return None
+        wait_seconds = int(retry_after)
+        if wait_seconds <= 0:
+            return None
+        return min(wait_seconds, _MAX_RATE_LIMIT_DELAY)
+    except (TypeError, ValueError):
+        return None
+
+
+def _send_with_retry(send_callable: Callable[[], None], *, category: str, target_desc: str) -> bool:
+    """
+    Attempt to send a Telegram message and retry once when hitting the rate limit.
+    """
+    attempts = 2
+    for attempt in range(attempts):
+        try:
+            send_callable()
+            return True
+        except ApiTelegramException as exc:
+            retry_delay = _extract_retry_after(exc)
+            should_retry = exc.error_code == 429 and retry_delay and attempt + 1 < attempts
+            if should_retry:
+                logger.warning(
+                    "Telegram rate limit triggered while sending '%s' notification to %s; retrying in %s seconds",
+                    category,
+                    target_desc,
+                    retry_delay,
+                )
+                time.sleep(retry_delay)
+                continue
+            logger.error(
+                "Failed to send Telegram notification to %s for category '%s': %s",
+                target_desc,
+                category,
+                exc,
+            )
+            return False
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Unexpected error while sending Telegram notification to %s for category '%s'",
+                target_desc,
+                category,
+            )
+            return False
+    return False
 
 
 def _format_expire(timestamp: Optional[int]) -> str:
@@ -64,40 +130,57 @@ def _dispatch(
         )
         return
 
-    try:
-        delivered = False
-        if settings.logs_chat_id:
-            kwargs = {"parse_mode": parse_mode}
-            if settings.logs_chat_is_forum:
-                thread_id = ensure_forum_topic(
-                    category, bot_instance=bot_instance, settings=settings
-                )
-                if thread_id:
-                    kwargs["message_thread_id"] = thread_id
-            bot_instance.send_message(settings.logs_chat_id, text, **kwargs)
-            delivered = True
-        else:
-            for admin_id in settings.admin_chat_ids or []:
-                kwargs = {"parse_mode": parse_mode}
-                if keyboard:
-                    kwargs["reply_markup"] = keyboard
-                bot_instance.send_message(admin_id, text, **kwargs)
-                delivered = True
+    delivered = False
 
-        if chat_id:
+    def _send_to(target_chat_id: int, kwargs: dict, target_desc: str) -> None:
+        nonlocal delivered
+        send_kwargs = dict(kwargs)
+
+        def _call() -> None:
+            bot_instance.send_message(target_chat_id, text, **send_kwargs)
+
+        if _send_with_retry(_call, category=category, target_desc=target_desc):
+            delivered = True
+
+    if settings.logs_chat_id:
+        kwargs = {"parse_mode": parse_mode}
+        if settings.logs_chat_is_forum:
+            thread_id = ensure_forum_topic(
+                category, bot_instance=bot_instance, settings=settings
+            )
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+        _send_to(
+            settings.logs_chat_id,
+            kwargs,
+            f"logs chat {settings.logs_chat_id}",
+        )
+    else:
+        for admin_id in settings.admin_chat_ids or []:
             kwargs = {"parse_mode": parse_mode}
             if keyboard:
                 kwargs["reply_markup"] = keyboard
-            bot_instance.send_message(chat_id, text, **kwargs)
-            delivered = True
-
-        if not delivered:
-            logger.warning(
-                "Telegram notification for category '%s' had no recipients configured",
-                category,
+            _send_to(
+                admin_id,
+                kwargs,
+                f"admin chat {admin_id}",
             )
-    except ApiTelegramException as exc:
-        logger.error("Failed to send Telegram notification: %s", exc)
+
+    if chat_id:
+        kwargs = {"parse_mode": parse_mode}
+        if keyboard:
+            kwargs["reply_markup"] = keyboard
+        _send_to(
+            chat_id,
+            kwargs,
+            f"user chat {chat_id}",
+        )
+
+    if not delivered:
+        logger.warning(
+            "Telegram notification for category '%s' had no recipients configured",
+            category,
+        )
 
 
 def report(

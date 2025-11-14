@@ -73,6 +73,10 @@ import {
 
 import {
 
+  ArrowLeftIcon,
+
+  ArrowRightIcon,
+
   ChartPieIcon,
 
   CheckIcon,
@@ -120,6 +124,7 @@ import { DeleteIcon } from "./DeleteUserModal";
 
 import { Icon } from "./Icon";
 
+import { DateTimePicker } from "./DateTimePicker";
 import { Input } from "./Input";
 
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
@@ -649,6 +654,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const [nextPlanDays, setNextPlanDays] = useState<number | null>(() =>
     deriveDaysFromSeconds(nextPlanInitialValue)
   );
+
+  const quickExpiryOptions = [
+    { label: t("userDialog.quickSelectOneMonth", "+1 month"), amount: 1, unit: "month" },
+    { label: t("userDialog.quickSelectThreeMonths", "+3 months"), amount: 3, unit: "month" },
+    { label: t("userDialog.quickSelectOneYear", "+1 year"), amount: 1, unit: "year" },
+  ] as const;
 
 
   
@@ -1829,56 +1840,61 @@ export const UserDialog: FC<UserDialogProps> = () => {
                           />
                         ) : (
                           <>
-                            <Controller
-                              name="expire"
-                              control={form.control}
-                              render={({ field }) => {
-                                const { status, time } = relativeExpiryDate(field.value);
-                                const handleDaysChange = (valueAsString: string) => {
-                                  if (!valueAsString) {
-                                    setExpireDays(null);
-                                    field.onChange(null);
-                                    return;
-                                  }
-                                  const parsed = Number(valueAsString);
-                                  if (Number.isNaN(parsed) || parsed < 0) {
-                                    return;
-                                  }
-                                  const normalizedDays = Math.min(Math.round(parsed), 3650);
-                                  setExpireDays(normalizedDays);
+                          <Controller
+                            name="expire"
+                            control={form.control}
+                            render={({ field }) => {
+                              const { status, time } = relativeExpiryDate(field.value);
+                              const selectedDate = field.value
+                                ? dayjs.unix(field.value).toDate()
+                                : null;
+
+                              const handleDateChange = (value: Date | null) => {
+                                if (!value) {
+                                  field.onChange(null);
                                   form.setValue("on_hold_expire_duration", null, {
                                     shouldDirty: false,
                                   });
-                                  const normalized = convertDaysToSecondsFromNow(
-                                    normalizedDays
-                                  );
-                                  field.onChange(normalized);
-                                };
+                                  return;
+                                }
+                                const normalized = dayjs(value).utc().unix();
+                                form.setValue("on_hold_expire_duration", null, {
+                                  shouldDirty: false,
+                                });
+                                field.onChange(normalized);
+                              };
 
-                                return (
-                                  <Box flex="1" minW="180px">
-                                    <Input
-                                      endAdornment={t("userDialog.days", "Days")}
-                                      type="number"
-                                      size="sm"
-                                      borderRadius="6px"
-                                      value={
-                                        typeof expireDays === "number" ? String(expireDays) : ""
-                                      }
-                                      onChange={(event) => handleDaysChange(event.target.value)}
-                                      disabled={disabled}
-                                      error={form.formState.errors.expire?.message}
-                                    />
-                                    {field.value ? (
-                                      <FormHelperText>{t(status, { time })}</FormHelperText>
-                                    ) : null}
-                                  </Box>
-                                );
-                              }}
-                            />
-                            <FormErrorMessage>
-                              {form.formState.errors.expire?.message}
-                            </FormErrorMessage>
+                              return (
+                                <Box>
+                                  <DateTimePicker
+                                    value={selectedDate}
+                                    onChange={handleDateChange}
+                                    placeholder={t(
+                                      "userDialog.selectExpiryDate",
+                                      "Select expiration date"
+                                    )}
+                                    disabled={disabled}
+                                    minDate={new Date()}
+                                    quickSelects={quickExpiryOptions.map((option) => ({
+                                      label: option.label,
+                                      onClick: () => {
+                                        const newDate = dayjs()
+                                          .add(option.amount, option.unit)
+                                          .endOf('day');
+                                        handleDateChange(newDate.toDate());
+                                      },
+                                    }))}
+                                  />
+                                  {field.value ? (
+                                    <FormHelperText>{t(status, { time })}</FormHelperText>
+                                  ) : null}
+                                </Box>
+                              );
+                            }}
+                          />
+                          <FormErrorMessage>
+                            {form.formState.errors.expire?.message}
+                          </FormErrorMessage>
                           </>
                         )}
                       </FormControl>
