@@ -223,6 +223,11 @@ class Admin(BaseModel):
                 if key.startswith("_sa_"):
                     continue
                 source[key] = value
+            mapper = getattr(data, "__mapper__", None)
+            if mapper is not None:
+                for column in mapper.columns.keys():
+                    if column not in source and hasattr(data, column):
+                        source[column] = getattr(data, column)
         for key in ("role", "permissions"):
             if key not in source and hasattr(data, key):
                 source[key] = getattr(data, key)
