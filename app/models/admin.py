@@ -214,7 +214,9 @@ class Admin(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def apply_role_and_permissions(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        if not isinstance(data, Mapping):
+        if isinstance(data, Mapping):
+            source = dict(data)
+        else:
             source = {}
             raw_dict = getattr(data, "__dict__", {})
             for key, value in raw_dict.items():

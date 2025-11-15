@@ -46,6 +46,7 @@ type SidebarItem = {
   url?: string;
   subItems?: { title: string; url: string; icon: ElementType }[];
 };
+type SidebarSubItems = NonNullable<SidebarItem["subItems"]>;
 
 const LogoIcon = chakra("img", {
   baseStyle: {
@@ -75,7 +76,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
   const canViewAdmins = Boolean(sectionAccess?.admins);
   const canViewServicesSection = Boolean(sectionAccess?.services);
 
-  const baseSettingsSubItems: SidebarItem["subItems"] = [
+  const baseSettingsSubItems: SidebarSubItems = [
     sectionAccess?.hosts
       ? { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled }
       : null,
@@ -92,9 +93,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
     sectionAccess?.xray
       ? { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled }
       : null,
-  ].filter(Boolean) as SidebarItem["subItems"];
+  ].filter(Boolean) as SidebarSubItems;
 
-  const settingsSubItems: SidebarItem["subItems"] = [...baseSettingsSubItems];
+  const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
 
   if (canViewServicesSection) {
     settingsSubItems.unshift({

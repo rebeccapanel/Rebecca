@@ -1,7 +1,7 @@
 """Add admin roles and per-admin permission settings.
 
 Revision ID: 0f1b2c3d4e5f
-Revises: f123456789ab
+Revises: 4d5e6f7g8h9i
 Create Date: 2025-11-15 09:30:00.000000
 
 This migration is intentionally defensive so it can be re-applied safely in
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0f1b2c3d4e5f"
-down_revision = "f123456789ab"
+down_revision = "4d5e6f7g8h9i"
 branch_labels = None
 depends_on = None
 

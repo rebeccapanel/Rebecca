@@ -136,6 +136,34 @@ const clonePermissions = (role: AdminRole): AdminPermissions =>
 const formatBytesToGbString = (value?: number | null) =>
   value && value > 0 ? String(Math.floor(value / GB_IN_BYTES)) : "";
 
+const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
+  users: z.object({
+    create: z.boolean(),
+    delete: z.boolean(),
+    reset_usage: z.boolean(),
+    revoke: z.boolean(),
+    create_on_hold: z.boolean(),
+    allow_unlimited_data: z.boolean(),
+    allow_unlimited_expire: z.boolean(),
+    allow_next_plan: z.boolean(),
+    max_data_limit_per_user: z.number().nullable(),
+  }),
+  admin_management: z.object({
+    can_view: z.boolean(),
+    can_edit: z.boolean(),
+    can_manage_sudo: z.boolean(),
+  }),
+  sections: z.object({
+    usage: z.boolean(),
+    admins: z.boolean(),
+    services: z.boolean(),
+    hosts: z.boolean(),
+    nodes: z.boolean(),
+    integrations: z.boolean(),
+    xray: z.boolean(),
+  }),
+});
+
 type AdminFormValues = {
   username: string;
   password?: string;
@@ -170,10 +198,13 @@ export const AdminDialog: FC = () => {
   const schema = useMemo(() => {
     const base = z
       .object({
-        username: mode === "create" ? z
-          .string()
-          .trim()
-          .min(3, { message: t("admins.validation.usernameMin") }) : z.string().optional(),
+        username:
+          mode === "create"
+            ? z
+                .string()
+                .trim()
+                .min(3, { message: t("admins.validation.usernameMin") })
+            : z.string().optional(),
         password: z
           .string()
           .trim()
@@ -216,6 +247,7 @@ export const AdminDialog: FC = () => {
           .trim()
           .optional()
           .transform((value) => (value === "" ? undefined : value)),
+        permissions: adminPermissionsSchema,
       })
       .superRefine((values, ctx) => {
         if (mode === "create" && !values.password) {
@@ -310,6 +342,7 @@ export const AdminDialog: FC = () => {
 
   useEffect(() => {
     register("maxDataLimitPerUserGb");
+    register("permissions");
   }, [register]);
 
   useEffect(() => {
@@ -353,7 +386,7 @@ export const AdminDialog: FC = () => {
     let permissionPayload: AdminPermissions | undefined;
 
     if (mode === "create") {
-      permissionPayload = JSON.parse(
+      const computedPermissions: AdminPermissions = JSON.parse(
         JSON.stringify(values.permissions ?? clonePermissions(selectedRole))
       );
       const maxLimitInput = values.maxDataLimitPerUserGb?.trim();
@@ -369,11 +402,12 @@ export const AdminDialog: FC = () => {
           });
           return;
         }
-        permissionPayload.users.max_data_limit_per_user =
+        computedPermissions.users.max_data_limit_per_user =
           parsed === 0 ? null : Math.round(parsed * GB_IN_BYTES);
       } else {
-        permissionPayload.users.max_data_limit_per_user = null;
+        computedPermissions.users.max_data_limit_per_user = null;
       }
+      permissionPayload = computedPermissions;
     }
 
     if (mode === "edit" && admin) {

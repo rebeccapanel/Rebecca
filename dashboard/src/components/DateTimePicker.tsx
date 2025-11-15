@@ -15,6 +15,7 @@ import {
   Text,
   VStack,
   useDisclosure,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
@@ -48,6 +49,18 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
     hour: value ? dayjs(value).hour() : 12,
     minute: value ? dayjs(value).minute() : 0,
   });
+  const popoverBg = useColorModeValue("white", "gray.900");
+  const popoverText = useColorModeValue("gray.900", "white");
+  const popoverBorderColor = useColorModeValue("gray.200", "gray.700");
+  const quickSelectBg = useColorModeValue("gray.50", "gray.800");
+  const quickSelectBorderColor = useColorModeValue("gray.100", "gray.700");
+  const quickSelectHoverBg = useColorModeValue("gray.100", "gray.700");
+  const dayNameColor = useColorModeValue("gray.500", "gray.400");
+  const disabledDayColor = useColorModeValue("gray.400", "gray.500");
+  const dayHoverBg = useColorModeValue("gray.100", "gray.700");
+  const timeDividerColor = useColorModeValue("gray.200", "gray.700");
+  const timeLabelColor = useColorModeValue("gray.600", "gray.400");
+  const todayBorderColor = useColorModeValue("primary.500", "primary.400");
 
   useEffect(() => {
     if (value) {
@@ -146,11 +159,11 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
             fontSize="xs"
             fontWeight={isToday ? "bold" : "normal"}
             bg={isSelected ? "primary.500" : "transparent"}
-            color={isSelected ? "white" : isPast ? "gray.500" : "inherit"}
+            color={isSelected ? "white" : isPast ? disabledDayColor : "inherit"}
             border={isToday ? "1px solid" : "none"}
-            borderColor="primary.400"
+            borderColor={todayBorderColor}
             _hover={{
-              bg: isPast ? "transparent" : isSelected ? "primary.600" : "gray.700",
+              bg: isPast ? "transparent" : isSelected ? "primary.600" : dayHoverBg,
             }}
             onClick={() => !isPast && handleDateSelect(day)}
             isDisabled={!!isPast}
@@ -194,9 +207,9 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
         <PopoverContent
           w="auto"
           maxW="min(90vw, 420px)"
-          bg="gray.900"
-          borderColor="gray.700"
-          color="white"
+          bg={popoverBg}
+          borderColor={popoverBorderColor}
+          color={popoverText}
           _focus={{ boxShadow: "none" }}
         >
           <PopoverBody p={0}>
@@ -207,11 +220,11 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
               align="stretch"
               px={2}
               py={2}
-              bg="gray.800"
+              bg={quickSelectBg}
               minW="100px"
               maxW="110px"
               borderRight="1px solid"
-              borderColor="gray.700"
+              borderColor={quickSelectBorderColor}
               flexShrink={0}
             >
               {/* Built-in Quick Selects */}
@@ -222,7 +235,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(1)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +1 Day
               </Button>
@@ -233,7 +246,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(30)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +1 Month
               </Button>
@@ -244,7 +257,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(90)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +3 Months
               </Button>
@@ -255,7 +268,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(180)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +6 Months
               </Button>
@@ -266,7 +279,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(365)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +1 Year
               </Button>
@@ -277,7 +290,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                 fontSize="xs"
                 whiteSpace="nowrap"
                 onClick={() => handleQuickSelect(1095)}
-                _hover={{ bg: "gray.700" }}
+                _hover={{ bg: quickSelectHoverBg }}
               >
                 +3 Years
               </Button>
@@ -294,7 +307,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                     variant="ghost"
                     icon={<ChevronLeftIcon width={14} height={14} />}
                     onClick={prevMonth}
-                    _hover={{ bg: "gray.700" }}
+                    _hover={{ bg: quickSelectHoverBg }}
                   />
                   <IconButton
                     aria-label="Next month"
@@ -302,7 +315,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                     variant="ghost"
                     icon={<ChevronRightIcon width={14} height={14} />}
                     onClick={nextMonth}
-                    _hover={{ bg: "gray.700" }}
+                    _hover={{ bg: quickSelectHoverBg }}
                   />
                 </HStack>
                 <Text fontSize="xs" fontWeight="semibold">
@@ -317,7 +330,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
                     <Text
                       fontSize="2xs"
                       textAlign="center"
-                      color="gray.400"
+                      color={dayNameColor}
                       fontWeight="semibold"
                     >
                       {day}
@@ -332,8 +345,8 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
               </Grid>
 
               {/* Time Picker */}
-              <HStack spacing={2} justify="center" pt={2} borderTop="1px solid" borderColor="gray.700">
-                <Text fontSize="2xs" color="gray.400">
+              <HStack spacing={2} justify="center" pt={2} borderTop="1px solid" borderColor={timeDividerColor}>
+                <Text fontSize="2xs" color={timeLabelColor}>
                   Time:
                 </Text>
                 <Input
