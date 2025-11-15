@@ -1,14 +1,14 @@
 import {
   Box,
   Button,
-  Drawer,
-  DrawerBody,
-  DrawerCloseButton,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerOverlay,
   HStack,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
   SimpleGrid,
   Stack,
   Text,
@@ -68,16 +68,16 @@ export const AdminDetailsDrawer = () => {
   const lifetimeUsageBytes = admin?.lifetime_usage ?? null;
 
   return (
-    <Drawer
+    <Modal
+      isCentered
       isOpen={isAdminDetailsOpen}
-      placement="right"
-      size="md"
       onClose={closeAdminDetails}
+      scrollBehavior="inside"
+      size="xl"
     >
-      <DrawerOverlay />
-      <DrawerContent>
-        <DrawerCloseButton />
-        <DrawerHeader bg={headerBg}>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader bg={headerBg}>
           <Stack spacing={1}>
             <HStack spacing={2}>
               <Text fontWeight="semibold" fontSize="lg">
@@ -106,9 +106,10 @@ export const AdminDetailsDrawer = () => {
               </Text>
             )}
           </Stack>
-        </DrawerHeader>
+        </ModalHeader>
+        <ModalCloseButton />
 
-        <DrawerBody>
+        <ModalBody>
           {admin ? (
             <Stack spacing={8}>
               <Box>
@@ -180,15 +181,15 @@ export const AdminDetailsDrawer = () => {
               </Text>
             </Box>
           )}
-        </DrawerBody>
+        </ModalBody>
 
-        <DrawerFooter>
+        <ModalFooter>
           <Button variant="outline" mr={3} onClick={closeAdminDetails}>
             {t("close", "Close")}
           </Button>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
   );
 };
 

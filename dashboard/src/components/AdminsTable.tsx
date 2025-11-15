@@ -50,6 +50,8 @@ export const AdminsTable = () => {
   const toast = useToast();
   const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
   const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
+  const dialogBg = useColorModeValue("surface.light", "surface.dark");
+  const dialogBorderColor = useColorModeValue("light-border", "gray.700");
   const {
     admins,
     loading,
@@ -429,8 +431,8 @@ export const AdminsTable = () => {
         leastDestructiveRef={deleteCancelRef}
         onClose={closeDeleteDialog}
       >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
+        <AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
+          <AlertDialogContent bg={dialogBg} borderWidth="1px" borderColor={dialogBorderColor}>
             <AlertDialogHeader fontSize="lg" fontWeight="bold">
               {t("admins.confirmDeleteTitle", "Delete admin")}
             </AlertDialogHeader>
@@ -444,7 +446,12 @@ export const AdminsTable = () => {
               )}
             </AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={deleteCancelRef} onClick={closeDeleteDialog}>
+              <Button
+                ref={deleteCancelRef}
+                onClick={closeDeleteDialog}
+                variant="ghost"
+                colorScheme="primary"
+              >
                 {t("cancel")}
               </Button>
               <Button colorScheme="red" onClick={handleDeleteAdmin} ml={3}>
@@ -459,8 +466,8 @@ export const AdminsTable = () => {
         leastDestructiveRef={disableCancelRef}
         onClose={closeDisableDialogAndReset}
       >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
+        <AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
+          <AlertDialogContent bg={dialogBg} borderWidth="1px" borderColor={dialogBorderColor}>
             <AlertDialogHeader fontSize="lg" fontWeight="bold">
               {t("admins.disableAdminTitle", "Disable admin")}
             </AlertDialogHeader>
@@ -484,7 +491,12 @@ export const AdminsTable = () => {
               />
             </AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={disableCancelRef} onClick={closeDisableDialogAndReset}>
+              <Button
+                ref={disableCancelRef}
+                onClick={closeDisableDialogAndReset}
+                variant="ghost"
+                colorScheme="primary"
+              >
                 {t("cancel")}
               </Button>
               <Button
