@@ -185,6 +185,38 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
         utils.success(f'Admin "{username}" updated successfully.')
 
 
+@app.command(name="change-role")
+def change_role(
+    username: str = typer.Option(..., *utils.FLAGS["username"], prompt=True, show_default=False),
+    role: str = typer.Option(
+        AdminRole.full_access.value,
+        *utils.FLAGS["role"],
+        help="Target role (standard, sudo, full_access)",
+        show_default=True,
+    ),
+    yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_all"], help="Skips confirmations"),
+):
+    """
+    Changes an admin's role (e.g. promote a sudo admin to full access).
+    """
+    target_role = parse_role(role)
+    with GetDB() as db:
+        admin: Union[Admin, None] = crud.get_admin(db, username=username)
+        if not admin:
+            utils.error(f"There's no admin with username \"{username}\"!")
+
+        if admin.role == target_role:
+            utils.success(f'Admin "{username}" is already {target_role.value}.')
+
+        if not yes_to_all and not typer.confirm(
+            f'Change "{username}" role from {admin.role.value} to {target_role.value}?', default=False
+        ):
+            utils.error("Operation aborted!")
+
+        crud.partial_update_admin(db, admin, AdminPartialModify(role=target_role))
+        utils.success(f'Admin "{username}" role updated to {target_role.value}.')
+
+
 @app.command(name="import-from-env")
 def import_from_env(yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_all"], help="Skips confirmations")):
     """

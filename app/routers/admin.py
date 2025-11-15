@@ -12,7 +12,7 @@ from app.models.user import UserStatus
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_admin_by_username, validate_admin
-from app.models.admin import Admin, AdminCreate, AdminModify, AdminStatus, Token
+from app.models.admin import Admin, AdminCreate, AdminModify, AdminRole, AdminStatus, Token
 from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
@@ -89,6 +89,12 @@ def create_admin(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Create a new admin if the current admin has sudo privileges."""
+    target_role = new_admin.role or AdminRole.standard
+    if target_role == AdminRole.full_access and not admin.has_full_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only full access admins (or the Rebecca CLI) can create another full access admin.",
+        )
     if not (admin.has_full_access or admin.permissions.admin_management.can_edit):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -120,6 +126,11 @@ def modify_admin(
     target_admin = Admin.model_validate(dbadmin)
     if dbadmin.username != current_admin.username:
         current_admin.ensure_can_manage_admin(target_admin)
+    if modified_admin.role == AdminRole.full_access and not current_admin.has_full_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only full access admins (or the Rebecca CLI) can grant full access to others.",
+        )
 
     previous_admin_state = Admin.model_validate(dbadmin)
     try:

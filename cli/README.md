@@ -33,6 +33,7 @@ $ admin [OPTIONS] COMMAND [ARGS]...
 
 * `create`: Creates an admin
 * `delete`: Deletes the specified admin
+* `change-role`: Changes the role of the specified admin
 * `import-from-env`: Imports the sudo admin from env
 * `list`: Displays a table of admins
 * `update`: Updates the specified admin
@@ -52,7 +53,7 @@ $ admin create [OPTIONS]
 **Options**:
 
 * `-u, --username TEXT`: [required]
-* `--sudo / --no-sudo`: [default: no-sudo]
+* `--role TEXT`: Admin role (standard, sudo, full_access)
 * `-tg, --telegram-id TEXT`
 * `--help`: Show this message and exit.
 
@@ -127,6 +128,23 @@ $ admin update [OPTIONS]
 **Options**:
 
 * `-u, --username TEXT`: [required]
+* `--help`: Show this message and exit.
+
+### `admin change-role`
+
+Changes an admin's role (e.g. promote a sudo admin to full access).
+
+**Usage**:
+
+```console
+$ admin change-role [OPTIONS]
+```
+
+**Options**:
+
+* `-u, --username TEXT`: [required]
+* `--role TEXT`: Target role (standard, sudo, full_access) [default: full_access]
+* `-y, --yes`: Skips confirmations
 * `--help`: Show this message and exit.
 
 ## `completion`
