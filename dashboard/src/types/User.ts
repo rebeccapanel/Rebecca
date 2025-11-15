@@ -104,6 +104,8 @@ export type UserApi = {
   telegram_id: number | string;
   username: string;
   users_usage?: number | null;
+  status?: "active" | "disabled" | "deleted";
+  disabled_reason?: string | null;
 }
 
 export type UseGetUserReturn = {

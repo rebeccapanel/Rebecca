@@ -16,7 +16,9 @@ const useGetUser = (): UseGetUserReturn => {
         is_sudo: false,
         telegram_id: "",
         username: "",
-        users_usage: 0
+        users_usage: 0,
+        status: "active",
+        disabled_reason: null
       }
     
     return {

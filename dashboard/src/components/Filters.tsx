@@ -23,6 +23,7 @@ import {
 import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
+import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
 import React, { FC, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -76,6 +77,9 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
   } = useAdminsStore();
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
+  const { userData } = useGetUser();
+  const isSudo = Boolean(userData.is_sudo);
+  const isCurrentAdminDisabled = !isSudo && userData.status === "disabled";
 
   const loading = target === "users" ? usersLoading : adminsLoading;
   const filters = target === "users" ? userFilters : adminFilters;
@@ -110,6 +114,9 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
 
   const handleCreate = () => {
     if (target === "users") {
+      if (isCurrentAdminDisabled) {
+        return;
+      }
       onCreateUser(true);
     } else {
       openAdminDialog();
@@ -196,6 +203,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             colorScheme="primary"
             size={isMobile ? "sm" : "md"}
             onClick={handleCreate}
+            isDisabled={target === "users" && isCurrentAdminDisabled}
             px={isMobile ? 3 : 5}
             leftIcon={isMobile ? undefined : <PlusIconStyled />}
             w="auto"

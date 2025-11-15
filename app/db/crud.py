@@ -2545,6 +2545,28 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     return dbadmin
 
 
+def disable_admin(db: Session, dbadmin: Admin, reason: str) -> Admin:
+    """
+    Disable an admin account and store the provided reason.
+    """
+    dbadmin.status = AdminStatus.disabled
+    dbadmin.disabled_reason = reason
+    db.commit()
+    db.refresh(dbadmin)
+    return dbadmin
+
+
+def enable_admin(db: Session, dbadmin: Admin) -> Admin:
+    """
+    Re-activate a previously disabled admin account.
+    """
+    dbadmin.status = AdminStatus.active
+    dbadmin.disabled_reason = None
+    db.commit()
+    db.refresh(dbadmin)
+    return dbadmin
+
+
 def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     """
     Soft delete an admin, their users, and remove from services.

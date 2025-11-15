@@ -32,7 +32,7 @@ def add_user(
     new_user: UserCreate,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """
     Add a new user
@@ -94,7 +94,7 @@ def modify_user(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UsersResponse = Depends(get_validated_user),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """
     Modify an existing user
@@ -167,7 +167,7 @@ def remove_user(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Remove a user"""
     crud.remove_user(db, dbuser)
@@ -186,7 +186,7 @@ def reset_user_data_usage(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Reset user data usage"""
     try:
@@ -212,7 +212,7 @@ def revoke_user_subscription(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Revoke users subscription (Subscription link and proxies)"""
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)

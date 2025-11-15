@@ -35,7 +35,7 @@ def add_user_with_service(
     payload: UserServiceCreate,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     service = crud.get_service(db, payload.service_id)
     if not service:
@@ -93,7 +93,7 @@ def modify_user_with_service(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UsersResponse = Depends(get_validated_user),
-    admin: Admin = Depends(Admin.get_current),
+    admin: Admin = Depends(Admin.require_active),
 ):
     for proxy_type in modified_user.proxies:
         if not xray.config.inbounds_by_protocol.get(proxy_type):

@@ -56,6 +56,7 @@ class Admin(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     users_limit = Column(Integer, nullable=True, default=None)
     status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
+    disabled_reason = Column(String(512), nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 

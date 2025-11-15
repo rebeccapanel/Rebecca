@@ -25,8 +25,8 @@ type AdminsStore = {
   updateAdmin: (username: string, payload: AdminUpdatePayload) => Promise<void>;
   deleteAdmin: (username: string) => Promise<void>;
   resetUsage: (username: string) => Promise<void>;
-  disableUsers: (username: string) => Promise<void>;
-  activateUsers: (username: string) => Promise<void>;
+  disableAdmin: (username: string, reason: string) => Promise<void>;
+  enableAdmin: (username: string) => Promise<void>;
   openAdminDialog: (admin?: Admin) => void;
   closeAdminDialog: () => void;
   openAdminDetails: (admin: Admin) => void;
@@ -140,15 +140,18 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
     });
     await get().fetchAdmins();
   },
-  async disableUsers(username) {
-    await fetch(`/admin/${encodeURIComponent(username)}/users/disable`, {
+  async disableAdmin(username, reason) {
+    await fetch(`/admin/${encodeURIComponent(username)}/disable`, {
       method: "POST",
+      body: { reason },
     });
+    await get().fetchAdmins();
   },
-  async activateUsers(username) {
-    await fetch(`/admin/${encodeURIComponent(username)}/users/activate`, {
+  async enableAdmin(username) {
+    await fetch(`/admin/${encodeURIComponent(username)}/enable`, {
       method: "POST",
     });
+    await get().fetchAdmins();
   },
   openAdminDialog(admin) {
     set({ isAdminDialogOpen: true, adminInDialog: admin || null });

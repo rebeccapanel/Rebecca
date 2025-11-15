@@ -5,6 +5,7 @@ import {
   AccordionPanel,
   Box,
   Button,
+  Flex,
   chakra,
   ExpandedIndex,
   HStack,
@@ -36,10 +37,12 @@ import {
   PencilIcon,
   QrCodeIcon,
 } from "@heroicons/react/24/outline";
+import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
 import classNames from "classnames";
 import { resetStrategy, statusColors } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
+import useGetUser from "hooks/useGetUser";
 import { t } from "i18next";
 import { FC, Fragment, useEffect, useLayoutEffect, useState } from "react";
 import CopyToClipboard from "react-copy-to-clipboard";
@@ -75,6 +78,18 @@ const SortIcon = chakra(ChevronDownIcon, {
   baseStyle: {
     width: "15px",
     height: "15px",
+  },
+});
+const LockOverlayIcon = chakra(LockClosedIcon, {
+  baseStyle: {
+    width: {
+      base: 16,
+      md: 20,
+    },
+    height: {
+      base: 16,
+      md: 20,
+    },
   },
 });
 type UsageSliderProps = {
@@ -204,7 +219,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   
   const useTable = useBreakpointValue({ base: false, md: true });
 
-  
+  const { userData } = useGetUser();
+  const isAdminDisabled = Boolean(
+    !userData.is_sudo && userData.status === "disabled"
+  );
+  const disabledReason = userData.disabled_reason;
+
 
   const isFiltered = users.length !== total;
 
@@ -236,7 +256,14 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   };
 
   return (
-    <Box id="users-table" overflowX={{ base: "unset", md: "unset" }}>
+    <Box position="relative">
+      <Box
+        id="users-table"
+        overflowX={{ base: "unset", md: "unset" }}
+        filter={isAdminDisabled ? "blur(4px)" : undefined}
+        pointerEvents={isAdminDisabled ? "none" : undefined}
+        aria-hidden={isAdminDisabled ? true : undefined}
+      >
       <Accordion
         allowMultiple
         display={{ base: "block", md: "none" }}
@@ -530,7 +557,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
             {!loading && !useTable && users.length === 0 && (
               <Tr>
                 <Td colSpan={4} border={0}>
-                  <EmptySection isFiltered={isFiltered} />
+                  <EmptySection isFiltered={isFiltered} isCreateDisabled={isAdminDisabled} />
                 </Td>
               </Tr>
             )}
@@ -699,12 +726,44 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           {!loading && users.length == 0 && (
             <Tr>
               <Td colSpan={5}>
-                <EmptySection isFiltered={isFiltered} />
+                <EmptySection isFiltered={isFiltered} isCreateDisabled={isAdminDisabled} />
               </Td>
             </Tr>
           )}
         </Tbody>
       </Table>
+      </Box>
+      {isAdminDisabled && (
+        <Flex
+          position="absolute"
+          inset={0}
+          align="center"
+          justify="center"
+          direction="column"
+          textAlign="center"
+          px={6}
+          py={8}
+          bg="rgba(255, 255, 255, 0.85)"
+          _dark={{ bg: "rgba(15, 23, 42, 0.9)" }}
+          zIndex="overlay"
+        >
+          <LockOverlayIcon color="red.400" mb={6} />
+          <Text fontSize="xl" fontWeight="bold" mb={3}>
+            {t("usersTable.adminDisabledTitle", "Your account is disabled")}
+          </Text>
+          <Text
+            maxW="480px"
+            color="gray.600"
+            _dark={{ color: "gray.200" }}
+          >
+            {disabledReason ||
+              t(
+                "usersTable.adminDisabledDescription",
+                "Please contact the sudo admin to regain access."
+              )}
+          </Text>
+        </Flex>
+      )}
     </Box>
   );
 };
@@ -843,10 +902,17 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
 
 type EmptySectionProps = {
   isFiltered: boolean;
+  isCreateDisabled: boolean;
 };
 
-const EmptySection: FC<EmptySectionProps> = ({ isFiltered }) => {
+const EmptySection: FC<EmptySectionProps> = ({ isFiltered, isCreateDisabled }) => {
   const { onCreateUser } = useDashboard();
+  const handleCreate = () => {
+    if (isCreateDisabled) {
+      return;
+    }
+    onCreateUser(true);
+  };
   return (
     <Box
       padding="5"
@@ -887,7 +953,8 @@ const EmptySection: FC<EmptySectionProps> = ({ isFiltered }) => {
         <Button
           size="sm"
           colorScheme="primary"
-          onClick={() => onCreateUser(true)}
+          onClick={handleCreate}
+          isDisabled={isCreateDisabled}
         >
           {t("createUser")}
         </Button>

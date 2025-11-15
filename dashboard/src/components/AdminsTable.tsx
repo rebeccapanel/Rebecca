@@ -24,6 +24,7 @@ import {
   Thead,
   Tr,
   Stack,
+  Textarea,
   useColorModeValue,
   useDisclosure,
   useToast,
@@ -58,17 +59,29 @@ export const AdminsTable = () => {
     fetchAdmins,
     deleteAdmin,
     resetUsage,
-    disableUsers,
-    activateUsers,
+    disableAdmin,
+    enableAdmin,
     openAdminDialog,
     openAdminDetails,
     adminInDetails,
   } = useAdminsStore();
-  const cancelRef = useRef<HTMLButtonElement | null>(null);
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const disableCancelRef = useRef<HTMLButtonElement | null>(null);
+  const {
+    isOpen: isDeleteDialogOpen,
+    onOpen: openDeleteDialog,
+    onClose: closeDeleteDialog,
+  } = useDisclosure();
+  const {
+    isOpen: isDisableDialogOpen,
+    onOpen: openDisableDialog,
+    onClose: closeDisableDialog,
+  } = useDisclosure();
   const [adminToDelete, setAdminToDelete] = useState<Admin | null>(null);
+  const [adminToDisable, setAdminToDisable] = useState<Admin | null>(null);
+  const [disableReason, setDisableReason] = useState("");
   const [actionState, setActionState] = useState<{
-    type: "reset" | "disable" | "activate";
+    type: "reset" | "disableAdmin" | "enableAdmin";
     username: string;
   } | null>(null);
 
@@ -87,9 +100,9 @@ export const AdminsTable = () => {
     }
   };
 
-  const openDeleteDialog = (admin: Admin) => {
+  const startDeleteDialog = (admin: Admin) => {
     setAdminToDelete(admin);
-    onOpen();
+    openDeleteDialog();
   };
 
   const handleDeleteAdmin = async () => {
@@ -97,38 +110,73 @@ export const AdminsTable = () => {
     try {
       await deleteAdmin(adminToDelete.username);
       generateSuccessMessage(t("admins.deleteSuccess", "Admin removed"), toast);
-      onClose();
+      closeDeleteDialog();
       setAdminToDelete(null);
     } catch (error) {
       generateErrorMessage(error, toast);
     }
   };
 
-  const runAction = async (
-    type: "reset" | "disable" | "activate",
-    admin: Admin
-  ) => {
-    setActionState({ type, username: admin.username });
+  const runResetUsage = async (admin: Admin) => {
+    setActionState({ type: "reset", username: admin.username });
     try {
-      if (type === "reset") {
-        await resetUsage(admin.username);
-        generateSuccessMessage(
-          t("admins.resetUsageSuccess", "Usage reset"),
-          toast
-        );
-      } else if (type === "disable") {
-        await disableUsers(admin.username);
-        generateSuccessMessage(
-          t("admins.disableUsersSuccess", "Users disabled"),
-          toast
-        );
-      } else if (type === "activate") {
-        await activateUsers(admin.username);
-        generateSuccessMessage(
-          t("admins.activateUsersSuccess", "Users activated"),
-          toast
-        );
-      }
+      await resetUsage(admin.username);
+      generateSuccessMessage(
+        t("admins.resetUsageSuccess", "Usage reset"),
+        toast
+      );
+      fetchAdmins();
+    } catch (error) {
+      generateErrorMessage(error, toast);
+    } finally {
+      setActionState(null);
+    }
+  };
+
+  const startDisableAdmin = (admin: Admin) => {
+    setAdminToDisable(admin);
+    setDisableReason("");
+    openDisableDialog();
+  };
+
+  const closeDisableDialogAndReset = () => {
+    closeDisableDialog();
+    setAdminToDisable(null);
+    setDisableReason("");
+  };
+
+  const confirmDisableAdmin = async () => {
+    if (!adminToDisable) {
+      return;
+    }
+    const reason = disableReason.trim();
+    if (reason.length < 3) {
+      return;
+    }
+    setActionState({ type: "disableAdmin", username: adminToDisable.username });
+    try {
+      await disableAdmin(adminToDisable.username, reason);
+      generateSuccessMessage(
+        t("admins.disableAdminSuccess", "Admin disabled"),
+        toast
+      );
+      closeDisableDialogAndReset();
+      fetchAdmins();
+    } catch (error) {
+      generateErrorMessage(error, toast);
+    } finally {
+      setActionState(null);
+    }
+  };
+
+  const handleEnableAdmin = async (admin: Admin) => {
+    setActionState({ type: "enableAdmin", username: admin.username });
+    try {
+      await enableAdmin(admin.username);
+      generateSuccessMessage(
+        t("admins.enableAdminSuccess", "Admin re-enabled"),
+        toast
+      );
       fetchAdmins();
     } catch (error) {
       generateErrorMessage(error, toast);
@@ -265,6 +313,16 @@ export const AdminsTable = () => {
                         {t("sudo")}
                       </Badge>
                     )}
+                    {!admin.is_sudo && admin.status === "disabled" && (
+                      <Badge colorScheme="red" fontSize="xs" mt={1}>
+                        {t("admins.disabledLabel", "Disabled")}
+                      </Badge>
+                    )}
+                    {!admin.is_sudo && admin.status === "disabled" && admin.disabled_reason && (
+                      <Text fontSize="xs" color="red.400" mt={1}>
+                        {admin.disabled_reason}
+                      </Text>
+                    )}
                   </Td>
                   <Td>
                     <Text whiteSpace="nowrap">
@@ -306,40 +364,53 @@ export const AdminsTable = () => {
                           icon={<ArrowPathIcon width={20} />}
                           onClick={(event) => {
                             event.stopPropagation();
-                            runAction("reset", admin);
+                            runResetUsage(admin);
                           }}
-                          isDisabled={actionState?.username === admin.username}
+                          isDisabled={
+                            actionState?.username === admin.username &&
+                            actionState?.type === "reset"
+                          }
                         >
                           {t("admins.resetUsage")}
                         </MenuItem>
                         <MenuDivider />
-                        <MenuItem
-                          icon={<PlayIcon width={20} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            runAction("activate", admin);
-                          }}
-                          isDisabled={actionState?.username === admin.username}
-                        >
-                          {t("admins.activateUsers")}
-                        </MenuItem>
-                        <MenuItem
-                          icon={<NoSymbolIcon width={20} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            runAction("disable", admin);
-                          }}
-                          isDisabled={actionState?.username === admin.username}
-                        >
-                          {t("admins.disableUsers")}
-                        </MenuItem>
+                        {!admin.is_sudo && admin.status !== "disabled" && (
+                          <MenuItem
+                            icon={<NoSymbolIcon width={20} />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startDisableAdmin(admin);
+                            }}
+                            isDisabled={
+                              actionState?.username === admin.username &&
+                              actionState?.type === "disableAdmin"
+                            }
+                          >
+                            {t("admins.disableAdmin", "Disable admin")}
+                          </MenuItem>
+                        )}
+                        {!admin.is_sudo && admin.status === "disabled" && (
+                          <MenuItem
+                            icon={<PlayIcon width={20} />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEnableAdmin(admin);
+                            }}
+                            isDisabled={
+                              actionState?.username === admin.username &&
+                              actionState?.type === "enableAdmin"
+                            }
+                          >
+                            {t("admins.enableAdmin", "Enable admin")}
+                          </MenuItem>
+                        )}
                         <MenuDivider />
                         <MenuItem
                           color="red.500"
                           icon={<TrashIcon width={20} />}
                           onClick={(event) => {
                             event.stopPropagation();
-                            openDeleteDialog(admin);
+                            startDeleteDialog(admin);
                           }}
                         >
                           {t("delete")}
@@ -354,9 +425,9 @@ export const AdminsTable = () => {
         </Table>
       </Box>
       <AlertDialog
-        isOpen={isOpen}
-        leastDestructiveRef={cancelRef}
-        onClose={onClose}
+        isOpen={isDeleteDialogOpen}
+        leastDestructiveRef={deleteCancelRef}
+        onClose={closeDeleteDialog}
       >
         <AlertDialogOverlay>
           <AlertDialogContent>
@@ -373,11 +444,60 @@ export const AdminsTable = () => {
               )}
             </AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={onClose}>
+              <Button ref={deleteCancelRef} onClick={closeDeleteDialog}>
                 {t("cancel")}
               </Button>
               <Button colorScheme="red" onClick={handleDeleteAdmin} ml={3}>
                 {t("delete")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+      <AlertDialog
+        isOpen={isDisableDialogOpen}
+        leastDestructiveRef={disableCancelRef}
+        onClose={closeDisableDialogAndReset}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              {t("admins.disableAdminTitle", "Disable admin")}
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              <Text mb={3}>
+                {t(
+                  "admins.disableAdminMessage",
+                  "All users owned by {{username}} will be disabled. Provide a reason for this action.",
+                  {
+                    username: adminToDisable?.username ?? "",
+                  }
+                )}
+              </Text>
+              <Textarea
+                value={disableReason}
+                onChange={(event) => setDisableReason(event.target.value)}
+                placeholder={t(
+                  "admins.disableAdminReasonPlaceholder",
+                  "Reason for disabling"
+                )}
+              />
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={disableCancelRef} onClick={closeDisableDialogAndReset}>
+                {t("cancel")}
+              </Button>
+              <Button
+                colorScheme="red"
+                onClick={confirmDisableAdmin}
+                ml={3}
+                isDisabled={disableReason.trim().length < 3}
+                isLoading={
+                  actionState?.type === "disableAdmin" &&
+                  actionState?.username === adminToDisable?.username
+                }
+              >
+                {t("admins.disableAdminConfirm", "Disable admin")}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

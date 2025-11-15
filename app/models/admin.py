@@ -16,6 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/token")  # Admin view 
 
 class AdminStatus(str, Enum):
     active = "active"
+    disabled = "disabled"
     deleted = "deleted"
 
 
@@ -29,6 +30,9 @@ class Admin(BaseModel):
     username: str
     is_sudo: bool
     status: AdminStatus = AdminStatus.active
+    disabled_reason: Optional[str] = Field(
+        None, description="Reason provided by sudo admin when account is disabled"
+    )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(None, description="Maximum data limit for admin in bytes (null = unlimited)", example=107374182400)
@@ -98,6 +102,25 @@ class Admin(BaseModel):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed"
+            )
+        return admin
+
+    @classmethod
+    def require_active(cls,
+                       db: Session = Depends(get_db),
+                       token: str = Depends(oauth2_scheme)):
+        admin = cls.get_current(db=db, token=token)
+        if admin.is_sudo:
+            return admin
+
+        if admin.status == AdminStatus.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Your account has been disabled",
+                    "reason": admin.disabled_reason or "",
+                    "code": "admin_disabled",
+                },
             )
         return admin
 

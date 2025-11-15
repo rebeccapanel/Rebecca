@@ -2,7 +2,8 @@ export type Admin = {
   id: number;
   username: string;
   is_sudo: boolean;
-  status: "active" | "deleted";
+  status: "active" | "disabled" | "deleted";
+  disabled_reason?: string | null;
   telegram_id?: number | null;
   users_usage?: number | null;
   data_limit?: number | null;

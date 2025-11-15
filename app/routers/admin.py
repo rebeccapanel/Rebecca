@@ -5,14 +5,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.runtime import xray
 from app.models.user import UserStatus
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_admin_by_username, validate_admin
-from app.models.admin import Admin, AdminCreate, AdminModify, Token
+from app.models.admin import Admin, AdminCreate, AdminModify, AdminStatus, Token
 from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
@@ -24,6 +24,10 @@ router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401
 class AdminsListResponse(BaseModel):
     admins: List[Admin]
     total: int
+
+
+class AdminDisablePayload(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=512, description="Reason shown to the disabled admin")
 
 
 def get_client_ip(request: Request) -> str:
@@ -170,6 +174,86 @@ def get_admins(
 ):
     """Fetch a list of admins with optional filters for pagination and username."""
     return crud.get_admins(db, offset, limit, username, sort)
+
+
+@router.post(
+    "/admin/{username}/disable",
+    response_model=Admin,
+    responses={403: responses._403, 404: responses._404},
+)
+def disable_admin_account(
+    payload: AdminDisablePayload,
+    bg: BackgroundTasks,
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Disable an admin account and all of its active users."""
+    if dbadmin.is_sudo:
+        raise HTTPException(
+            status_code=403,
+            detail="You're not allowed to disable sudo accounts. Use rebecca-cli instead.",
+        )
+    if dbadmin.status == AdminStatus.deleted:
+        raise HTTPException(status_code=400, detail="Admin already deleted")
+    if dbadmin.status == AdminStatus.disabled:
+        raise HTTPException(status_code=400, detail="Admin already disabled")
+
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Reason is required")
+    reason = reason[:512]
+
+    users_query = db.query(DBUser).filter(DBUser.status.in_((UserStatus.active, UserStatus.on_hold)))
+    if dbadmin:
+        users_query = users_query.filter(DBUser.admin_id == dbadmin.id)
+    users_snapshot = [SimpleNamespace(id=user.id, username=user.username) for user in users_query.all()]
+
+    crud.disable_all_active_users(db=db, admin=dbadmin)
+    for user in users_snapshot:
+        bg.add_task(xray.operations.remove_user, dbuser=user)
+
+    previous_state = Admin.model_validate(dbadmin)
+    updated_admin = crud.disable_admin(db, dbadmin, reason)
+    admin_schema = Admin.model_validate(updated_admin)
+    report.admin_updated(admin_schema, current_admin, previous=previous_state)
+    return admin_schema
+
+
+@router.post(
+    "/admin/{username}/enable",
+    response_model=Admin,
+    responses={403: responses._403, 404: responses._404},
+)
+def enable_admin_account(
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Re-activate a previously disabled admin and restore their users."""
+    if dbadmin.status == AdminStatus.deleted:
+        raise HTTPException(status_code=400, detail="Admin already deleted")
+    if dbadmin.status != AdminStatus.disabled:
+        raise HTTPException(status_code=400, detail="Admin is not disabled")
+
+    previous_state = Admin.model_validate(dbadmin)
+    updated_admin = crud.enable_admin(db, dbadmin)
+    try:
+        crud.activate_all_disabled_users(db=db, admin=dbadmin)
+    except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(dbadmin, exc.limit, exc.current_active)
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
+
+    admin_schema = Admin.model_validate(updated_admin)
+    report.admin_updated(admin_schema, current_admin, previous=previous_state)
+    return admin_schema
 
 
 @router.post("/admin/{username}/users/disable", responses={403: responses._403, 404: responses._404})
