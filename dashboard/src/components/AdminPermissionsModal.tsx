@@ -93,6 +93,7 @@ export const AdminPermissionsModal = ({ isOpen, onClose, admin }: AdminPermissio
                 },
               }));
             }}
+            hideExtendedSections={admin?.role === "standard"}
           />
         </ModalBody>
         <ModalFooter>

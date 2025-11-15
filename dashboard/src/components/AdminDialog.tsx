@@ -18,6 +18,7 @@ import {
   ModalOverlay,
   Radio,
   RadioGroup,
+  SimpleGrid,
   Tab,
   TabList,
   TabPanel,
@@ -30,6 +31,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { EyeIcon, EyeSlashIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { useAdminsStore } from "contexts/AdminsContext";
+import useGetUser from "hooks/useGetUser";
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -177,6 +179,8 @@ type AdminFormValues = {
 
 export const AdminDialog: FC = () => {
   const { t } = useTranslation();
+  const { userData } = useGetUser();
+  const canCreateFullAccess = userData.role === "full_access";
   const toast = useToast();
   const {
     admins,
@@ -558,15 +562,17 @@ export const AdminDialog: FC = () => {
                 )}
               </FormHelperText>
             </Radio>
-            <Radio value="full_access">
-              <Text fontWeight="medium">{t("admins.roles.fullAccess", "Full access")}</Text>
-              <FormHelperText m={0}>
-                {t(
-                  "admins.roles.fullAccessDescription",
-                  "Complete control, including other sudo admins."
-                )}
-              </FormHelperText>
-            </Radio>
+            {canCreateFullAccess && (
+              <Radio value="full_access">
+                <Text fontWeight="medium">{t("admins.roles.fullAccess", "Full access")}</Text>
+                <FormHelperText m={0}>
+                  {t(
+                    "admins.roles.fullAccessDescription",
+                    "Complete control, including other sudo admins."
+                  )}
+                </FormHelperText>
+              </Radio>
+            )}
           </VStack>
         </RadioGroup>
       </FormControl>
@@ -588,30 +594,32 @@ export const AdminDialog: FC = () => {
         />
         <FormErrorMessage>{errors.telegram_id?.message as string}</FormErrorMessage>
       </FormControl>
-      <FormControl isInvalid={!!errors.data_limit}>
-        <FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
-        <Input
-          placeholder={t("admins.dataLimitPlaceholder", "e.g., 100 for 100GB (empty = unlimited)")}
-          inputMode="numeric"
-          {...register("data_limit")}
-        />
-        <FormErrorMessage>{errors.data_limit?.message as string}</FormErrorMessage>
-        <Text fontSize="xs" color="gray.500" mt={1}>
-          {t("admins.dataLimitHint", "Leave empty for unlimited data")}
-        </Text>
-      </FormControl>
-      <FormControl isInvalid={!!errors.users_limit}>
-        <FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
-        <Input
-          placeholder={t("admins.usersLimitPlaceholder", "e.g., 100 (empty = unlimited)")}
-          inputMode="numeric"
-          {...register("users_limit")}
-        />
-        <FormErrorMessage>{errors.users_limit?.message as string}</FormErrorMessage>
-        <Text fontSize="xs" color="gray.500" mt={1}>
-          {t("admins.usersLimitHint", "Leave empty for unlimited users")}
-        </Text>
-      </FormControl>
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+        <FormControl isInvalid={!!errors.data_limit}>
+          <FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
+          <Input
+            placeholder={t("admins.dataLimitPlaceholder", "e.g., 100 for 100GB (empty = unlimited)")}
+            inputMode="numeric"
+            {...register("data_limit")}
+          />
+          <FormErrorMessage>{errors.data_limit?.message as string}</FormErrorMessage>
+          <Text fontSize="xs" color="gray.500" mt={1}>
+            {t("admins.dataLimitHint", "Leave empty for unlimited data")}
+          </Text>
+        </FormControl>
+        <FormControl isInvalid={!!errors.users_limit}>
+          <FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
+          <Input
+            placeholder={t("admins.usersLimitPlaceholder", "e.g., 100 (empty = unlimited)")}
+            inputMode="numeric"
+            {...register("users_limit")}
+          />
+          <FormErrorMessage>{errors.users_limit?.message as string}</FormErrorMessage>
+          <Text fontSize="xs" color="gray.500" mt={1}>
+            {t("admins.usersLimitHint", "Leave empty for unlimited users")}
+          </Text>
+        </FormControl>
+      </SimpleGrid>
     </VStack>
   );
 
