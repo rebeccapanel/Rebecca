@@ -1100,12 +1100,25 @@ def get_user_queryset(db: Session) -> Query:
     Returns:
         Query: Base user query.
     """
+    options = [joinedload(User.admin)]
+    if _next_plan_table_exists(db):
+        options.append(joinedload(User.next_plan))
     return (
         db.query(User)
-        .options(joinedload(User.admin))
-        .options(joinedload(User.next_plan))
+        .options(*options)
         .filter(User.status != UserStatus.deleted)
     )
+
+
+def _next_plan_table_exists(db: Session) -> bool:
+    bind = db.get_bind()
+    if bind is None:
+        return False
+    try:
+        inspector = inspect(bind)
+        return inspector.has_table("next_plans")
+    except Exception:
+        return False
 
 
 def get_user(db: Session, username: str) -> Optional[User]:
