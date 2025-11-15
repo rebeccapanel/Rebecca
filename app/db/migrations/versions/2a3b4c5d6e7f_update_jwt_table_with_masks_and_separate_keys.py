@@ -34,10 +34,24 @@ def upgrade() -> None:
     new_vmess_mask = os.urandom(16).hex()
     new_vless_mask = os.urandom(16).hex()
 
-    op.add_column("jwt", sa.Column("subscription_secret_key", sa.String(length=64), nullable=True))
-    op.add_column("jwt", sa.Column("admin_secret_key", sa.String(length=64), nullable=True))
-    op.add_column("jwt", sa.Column("vmess_mask", sa.String(length=32), nullable=True))
-    op.add_column("jwt", sa.Column("vless_mask", sa.String(length=32), nullable=True))
+    inspector = sa.inspect(connection)
+    column_names = {col["name"] for col in inspector.get_columns("jwt")}
+
+    # Add columns only if they don't already exist to make the migration idempotent.
+    if "subscription_secret_key" not in column_names:
+        op.add_column(
+            "jwt",
+            sa.Column("subscription_secret_key", sa.String(length=64), nullable=True),
+        )
+    if "admin_secret_key" not in column_names:
+        op.add_column(
+            "jwt",
+            sa.Column("admin_secret_key", sa.String(length=64), nullable=True),
+        )
+    if "vmess_mask" not in column_names:
+        op.add_column("jwt", sa.Column("vmess_mask", sa.String(length=32), nullable=True))
+    if "vless_mask" not in column_names:
+        op.add_column("jwt", sa.Column("vless_mask", sa.String(length=32), nullable=True))
 
     try:
         count_res = connection.execute(sa.text("SELECT COUNT(*) FROM jwt"))
@@ -80,36 +94,49 @@ def upgrade() -> None:
             },
         )
 
-    op.alter_column(
-        "jwt",
-        "subscription_secret_key",
-        existing_type=sa.String(length=64),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "admin_secret_key",
-        existing_type=sa.String(length=64),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "vmess_mask",
-        existing_type=sa.String(length=32),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "vless_mask",
-        existing_type=sa.String(length=32),
-        nullable=False,
-    )
+    # Alter column nullability safely only if the column exists.
+    if "subscription_secret_key" in column_names:
+        op.alter_column(
+            "jwt",
+            "subscription_secret_key",
+            existing_type=sa.String(length=64),
+            nullable=False,
+        )
+    if "admin_secret_key" in column_names:
+        op.alter_column(
+            "jwt",
+            "admin_secret_key",
+            existing_type=sa.String(length=64),
+            nullable=False,
+        )
+    if "vmess_mask" in column_names:
+        op.alter_column(
+            "jwt",
+            "vmess_mask",
+            existing_type=sa.String(length=32),
+            nullable=False,
+        )
+    if "vless_mask" in column_names:
+        op.alter_column(
+            "jwt",
+            "vless_mask",
+            existing_type=sa.String(length=32),
+            nullable=False,
+        )
 
 
 def downgrade() -> None:
-    # Remove new columns
-    op.drop_column("jwt", "vless_mask")
-    op.drop_column("jwt", "vmess_mask")
-    op.drop_column("jwt", "admin_secret_key")
-    op.drop_column("jwt", "subscription_secret_key")
+    # Remove new columns only if they exist
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    column_names = {col["name"] for col in inspector.get_columns("jwt")}
+
+    if "vless_mask" in column_names:
+        op.drop_column("jwt", "vless_mask")
+    if "vmess_mask" in column_names:
+        op.drop_column("jwt", "vmess_mask")
+    if "admin_secret_key" in column_names:
+        op.drop_column("jwt", "admin_secret_key")
+    if "subscription_secret_key" in column_names:
+        op.drop_column("jwt", "subscription_secret_key")
 

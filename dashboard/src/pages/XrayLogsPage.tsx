@@ -6,6 +6,7 @@ import useWebSocket from "react-use-websocket";
 import { getAuthToken } from "utils/authStorage";
 import { joinPaths } from "@remix-run/router";
 import { debounce } from "lodash";
+import useGetUser from "hooks/useGetUser";
 
 const MAX_NUMBER_OF_LOGS = 500;
 
@@ -39,6 +40,24 @@ interface XrayLogsPageProps {
 
 export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
   const { t } = useTranslation();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canViewXrayLogs =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
+
+  if (!canViewXrayLogs) {
+    return (
+      <VStack spacing={4} align="stretch">
+        {showTitle && (
+          <Text as="h1" fontWeight="semibold" fontSize="2xl">
+            {t("xrayLogs.title", "Xray logs")}
+          </Text>
+        )}
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("xrayLogs.noPermission", "You do not have permission to view Xray logs.")}
+        </Text>
+      </VStack>
+    );
+  }
   const { data: nodes } = useNodesQuery();
   const [selectedNode, setNode] = useState<string>("");
   const [logs, setLogs] = useState<string[]>([]);

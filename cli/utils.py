@@ -21,7 +21,7 @@ FLAGS: Dict[str, tuple] = {
     "limit": ("--limit", "-l"),
     "offset": ("--offset", "-o"),
     "yes_to_all": ("--yes", "-y"),
-    "is_sudo": ("--sudo/--no-sudo",),
+    "role": ("--role",),
     "format": ("--format", "-f"),
     "output_file": ("--output", "-o"),
     "status": ("--status",),

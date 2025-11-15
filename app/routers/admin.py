@@ -75,7 +75,7 @@ def admin_token(
     if client_ip not in LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 
-    return Token(access_token=create_admin_token(form_data.username, dbadmin.is_sudo))
+    return Token(access_token=create_admin_token(form_data.username, dbadmin.role.value))
 
 
 @router.post(
@@ -89,6 +89,11 @@ def create_admin(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Create a new admin if the current admin has sudo privileges."""
+    if not (admin.has_full_access or admin.permissions.admin_management.can_edit):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You're not allowed to manage other admins.",
+        )
     try:
         dbadmin = crud.create_admin(db, new_admin)
     except IntegrityError:
@@ -112,11 +117,9 @@ def modify_admin(
     current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Modify an existing admin's details."""
-    if (dbadmin.username != current_admin.username) and dbadmin.is_sudo:
-        raise HTTPException(
-            status_code=403,
-            detail="You're not allowed to edit another sudoer's account. Use rebecca-cli instead.",
-        )
+    target_admin = Admin.model_validate(dbadmin)
+    if dbadmin.username != current_admin.username:
+        current_admin.ensure_can_manage_admin(target_admin)
 
     previous_admin_state = Admin.model_validate(dbadmin)
     try:
@@ -141,11 +144,8 @@ def remove_admin(
     current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Remove an admin from the database."""
-    if dbadmin.is_sudo:
-        raise HTTPException(
-            status_code=403,
-            detail="You're not allowed to delete sudo accounts. Use rebecca-cli instead.",
-        )
+    target_admin = Admin.model_validate(dbadmin)
+    current_admin.ensure_can_manage_admin(target_admin)
 
     username = dbadmin.username
     crud.remove_admin(db, dbadmin)
@@ -173,6 +173,11 @@ def get_admins(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Fetch a list of admins with optional filters for pagination and username."""
+    if not (admin.has_full_access or admin.permissions.admin_management.can_view):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You're not allowed to view admins.",
+        )
     return crud.get_admins(db, offset, limit, username, sort)
 
 
@@ -189,11 +194,8 @@ def disable_admin_account(
     current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Disable an admin account and all of its active users."""
-    if dbadmin.is_sudo:
-        raise HTTPException(
-            status_code=403,
-            detail="You're not allowed to disable sudo accounts. Use rebecca-cli instead.",
-        )
+    target_admin = Admin.model_validate(dbadmin)
+    current_admin.ensure_can_manage_admin(target_admin)
     if dbadmin.status == AdminStatus.deleted:
         raise HTTPException(status_code=400, detail="Admin already deleted")
     if dbadmin.status == AdminStatus.disabled:
@@ -231,6 +233,7 @@ def enable_admin_account(
     current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Re-activate a previously disabled admin and restore their users."""
+    current_admin.ensure_can_manage_admin(Admin.model_validate(dbadmin))
     if dbadmin.status == AdminStatus.deleted:
         raise HTTPException(status_code=400, detail="Admin already deleted")
     if dbadmin.status != AdminStatus.disabled:
@@ -309,6 +312,8 @@ def reset_admin_usage(
     current_admin: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Resets usage of admin."""
+    if dbadmin.username != current_admin.username:
+        current_admin.ensure_can_manage_admin(Admin.model_validate(dbadmin))
     updated_admin = crud.reset_admin_usage(db, dbadmin)
     admin_schema = Admin.model_validate(updated_admin)
     report.admin_usage_reset(admin_schema, current_admin)
@@ -325,7 +330,10 @@ def get_admin_usage(
     current_admin: Admin = Depends(Admin.get_current)
 ):
     """Retrieve the usage of given admin."""
-    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+    if not (
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
+        or current_admin.username == dbadmin.username
+    ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return dbadmin.users_usage
@@ -342,7 +350,10 @@ def get_admin_usage_daily(
     """
     Get admin usage per day (aggregated over all nodes and users).
     """
-    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+    if not (
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
+        or current_admin.username == dbadmin.username
+    ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     start, end = validate_dates(start, end)
@@ -365,7 +376,10 @@ def get_admin_usage_chart(
     Get admin usage timeseries for a specific node (or all nodes if node_id is not provided).
     Returns usage data grouped by date (daily by default, hourly if requested).
     """
-    if not (current_admin.is_sudo or current_admin.username == dbadmin.username):
+    if not (
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
+        or current_admin.username == dbadmin.username
+    ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     start, end = validate_dates(start, end)
@@ -405,7 +419,10 @@ def get_admin_usage_by_nodes(
     Retrieve usage statistics for a specific admin across all nodes within a date range.
     Returns uplink and downlink traffic grouped by node.
     """
-    if not (current_admin.is_sudo or current_admin.username == username):
+    if not (
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
+        or current_admin.username == username
+    ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     dbadmin = db.query(DBAdmin).filter(DBAdmin.username == username).first()

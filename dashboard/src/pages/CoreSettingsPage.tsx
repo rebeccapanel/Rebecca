@@ -78,6 +78,7 @@ import { DnsModal } from "../components/DnsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { SizeFormatter, Outbound } from "../utils/outbound";
 import { fetch as apiFetch } from "service/http";
+import useGetUser from "hooks/useGetUser";
 import { WarpModal } from "../components/WarpModal";
 
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 3.5, h: 3.5 } });
@@ -246,6 +247,22 @@ const TableGrid: FC<TableProps> = ({ children, ...props }) => {
 export const CoreSettingsPage: FC = () => {
   const { t } = useTranslation();
   const { fetchCoreSettings, updateConfig, isLoading, config, isPostLoading, restartCore } = useCoreSettings();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canManageXraySettings =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
+
+  if (!canManageXraySettings) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("header.xraySettings", "Xray settings")}
+        </Text>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("xraySettings.noPermission", "You do not have permission to manage Xray settings.")}
+        </Text>
+      </VStack>
+    );
+  }
   const { onEditingCore } = useDashboard();
   const toast = useToast();
   const { isOpen: isOutboundOpen, onOpen: onOutboundOpen, onClose: onOutboundClose } = useDisclosure();

@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import GetDB, crud
 from app.db.models import Admin, User
-from app.models.admin import AdminCreate, AdminPartialModify
+from app.models.admin import AdminCreate, AdminPartialModify, AdminRole
 from app.utils.system import readable_size
 
 from . import utils
@@ -26,6 +26,13 @@ def validate_telegram_id(value: Union[int, str]) -> Union[int, None]:
     if int(value) < 0:
         raise typer.BadParameter("Telegram ID must be a positive integer.")
     return value
+
+
+def parse_role(value: str) -> AdminRole:
+    try:
+        return AdminRole(value.lower())
+    except ValueError as exc:
+        raise typer.BadParameter("Role must be one of: standard, sudo, full_access.") from exc
 
 
 def calculate_admin_usage(admin_id: int) -> str:
@@ -57,7 +64,7 @@ def list_admins(
                     calculate_admin_usage(admin.id),
                     calculate_admin_reseted_usage(admin.id),
                     readable_size(admin.users_usage),
-                    ("YES" if admin.is_sudo else "NO"),
+                    admin.role.value,
                     utils.readable_datetime(admin.created_at),
                     str(admin.telegram_id or "-"),
                 )
@@ -69,7 +76,7 @@ def list_admins(
                 "Usage",
                 "Reseted usage",
                 "Users Usage",
-                "Is sudo",
+                "Role",
                 "Created at",
                 "Telegram ID",
             ),
@@ -101,7 +108,12 @@ def delete_admin(
 @app.command(name="create")
 def create_admin(
     username: str = typer.Option(..., *utils.FLAGS["username"], show_default=False, prompt=True),
-    is_sudo: bool = typer.Option(False, *utils.FLAGS["is_sudo"], prompt=True),
+    role: str = typer.Option(
+        AdminRole.standard.value,
+        *utils.FLAGS["role"],
+        prompt=True,
+        help="Admin role (standard, sudo, full_access)",
+    ),
     password: str = typer.Option(..., prompt=True, confirmation_prompt=True,
                                  hide_input=True, hidden=True, envvar=utils.PASSWORD_ENVIRON_NAME),
     telegram_id: str = typer.Option('', *utils.FLAGS["telegram_id"], prompt="Telegram ID",
@@ -114,10 +126,15 @@ def create_admin(
     """
     with GetDB() as db:
         try:
-            crud.create_admin(db, AdminCreate(username=username,
-                                              password=password,
-                                              is_sudo=is_sudo,
-                                              telegram_id=telegram_id))
+            crud.create_admin(
+                db,
+                AdminCreate(
+                    username=username,
+                    password=password,
+                    role=parse_role(role),
+                    telegram_id=telegram_id,
+                ),
+            )
             utils.success(f'Admin "{username}" created successfully.')
         except IntegrityError:
             utils.error(f'Admin "{username}" already exists!')
@@ -136,7 +153,11 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
             Panel(f'Editing "{username}". Just press "Enter" to leave each field unchanged.')
         )
 
-        is_sudo: bool = typer.confirm("Is sudo", default=admin.is_sudo)
+        new_role_value = typer.prompt(
+            "Role (standard/sudo/full_access)",
+            default=admin.role.value,
+            show_default=True,
+        ).strip() or admin.role.value
         new_password: Union[str, None] = typer.prompt(
             "New password",
             default="",
@@ -150,9 +171,9 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
         telegram_id = validate_telegram_id(telegram_id)
 
         return AdminPartialModify(
-            is_sudo=is_sudo,
+            role=parse_role(new_role_value),
             password=new_password,
-            telegram_id=telegram_id
+            telegram_id=telegram_id,
         )
 
     with GetDB() as db:
@@ -200,14 +221,14 @@ def import_from_env(yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_
             admin = crud.partial_update_admin(
                 db,
                 current_admin,
-                AdminPartialModify(password=password, is_sudo=True)
+                AdminPartialModify(password=password, role=AdminRole.full_access)
             )
         # If env admin does not exist yet
         else:
             admin = crud.create_admin(db, AdminCreate(
                 username=username,
                 password=password,
-                is_sudo=True
+                role=AdminRole.full_access
             ))
 
         updated_user_count = db.query(User).filter_by(admin_id=None).update({"admin_id": admin.id})

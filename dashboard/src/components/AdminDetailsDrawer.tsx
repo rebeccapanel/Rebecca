@@ -1,4 +1,5 @@
 import {
+  Badge,
   Box,
   Button,
   HStack,
@@ -83,18 +84,26 @@ export const AdminDetailsDrawer = () => {
               <Text fontWeight="semibold" fontSize="lg">
                 {admin?.username ?? t("admins.details.title", "Admin details")}
               </Text>
-              {admin?.is_sudo && (
-                <Box
-                  as="span"
+              {admin && (
+                <Badge
                   fontSize="xs"
                   px={2}
                   py={0.5}
                   borderRadius="full"
-                  bg="purple.500"
-                  color="white"
+                  colorScheme={
+                    admin.role === "full_access"
+                      ? "orange"
+                      : admin.role === "sudo"
+                      ? "purple"
+                      : "gray"
+                  }
                 >
-                  {t("admins.sudoBadge", "Sudo")}
-                </Box>
+                  {admin.role === "full_access"
+                    ? t("admins.roles.fullAccess", "Full access")
+                    : admin.role === "sudo"
+                    ? t("admins.roles.sudo", "Sudo")
+                    : t("admins.roles.standard", "Standard")}
+                </Badge>
               )}
             </HStack>
             {admin && (

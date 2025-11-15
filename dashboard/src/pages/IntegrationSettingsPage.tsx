@@ -31,6 +31,7 @@ import { useTranslation } from "react-i18next";
 import { Controller, useForm } from "react-hook-form";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import useGetUser from "hooks/useGetUser";
 import {
   getPanelSettings,
   getTelegramSettings,
@@ -424,6 +425,23 @@ const parseAdminChatIds = (value: string): number[] =>
 export const IntegrationSettingsPage = () => {
   const { t } = useTranslation();
   const toast = useToast();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canManageIntegrations =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.integrations);
+
+  if (!canManageIntegrations) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Heading size="lg">{t("header.integrationSettings", "Integration settings")}</Heading>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t(
+            "integrations.noPermission",
+            "You do not have permission to manage integration settings."
+          )}
+        </Text>
+      </VStack>
+    );
+  }
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery("telegram-settings", getTelegramSettings, {

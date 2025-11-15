@@ -78,8 +78,11 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const { userData } = useGetUser();
-  const isSudo = Boolean(userData.is_sudo);
-  const isCurrentAdminDisabled = !isSudo && userData.status === "disabled";
+  const hasElevatedRole = userData.role === "sudo" || userData.role === "full_access";
+  const isCurrentAdminDisabled = !hasElevatedRole && userData.status === "disabled";
+  const canManageAdmins = Boolean(
+    userData.permissions?.admin_management?.can_edit || userData.role === "full_access"
+  );
 
   const loading = target === "users" ? usersLoading : adminsLoading;
   const filters = target === "users" ? userFilters : adminFilters;
@@ -119,7 +122,9 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       }
       onCreateUser(true);
     } else {
-      openAdminDialog();
+      if (canManageAdmins) {
+        openAdminDialog();
+      }
     }
   };
 
@@ -203,7 +208,10 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             colorScheme="primary"
             size={isMobile ? "sm" : "md"}
             onClick={handleCreate}
-            isDisabled={target === "users" && isCurrentAdminDisabled}
+            isDisabled={
+              (target === "users" && isCurrentAdminDisabled) ||
+              (target === "admins" && !canManageAdmins)
+            }
             px={isMobile ? 3 : 5}
             leftIcon={isMobile ? undefined : <PlusIconStyled />}
             w="auto"

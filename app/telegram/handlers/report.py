@@ -535,7 +535,7 @@ def report_admin_created(
 ━━━━━━━━━━━━
 <b>By:</b> <b>#{by}</b>""".format(
         username=escape_html(admin.username),
-        sudo="Yes" if getattr(admin, "is_sudo", False) else "No",
+        sudo="Yes" if getattr(admin, "role", None) in ("sudo", "full_access") else "No",
         users_limit=_format_users_limit(getattr(admin, "users_limit", None)),
         data_limit=_format_data_limit(getattr(admin, "data_limit", None)),
         by=escape_html(by),
@@ -567,7 +567,21 @@ def report_admin_updated(
         return str(status) if status is not None else None
 
     comparisons = [
-        ("Sudo", _to_yes_no(getattr(admin, "is_sudo", None)), _to_yes_no(getattr(previous, "is_sudo", None)) if previous else None),
+        (
+            "Sudo",
+            _to_yes_no(
+                getattr(admin, "role", None) in ("sudo", "full_access")
+                if getattr(admin, "role", None) is not None
+                else None
+            ),
+            _to_yes_no(
+                getattr(previous, "role", None) in ("sudo", "full_access")
+                if previous
+                else None
+            )
+            if previous
+            else None,
+        ),
         ("Users Limit", _format_users_limit(getattr(admin, "users_limit", None)), _format_users_limit(getattr(previous, "users_limit", None)) if previous else None),
         ("Data Limit", _format_data_limit(getattr(admin, "data_limit", None)), _format_data_limit(getattr(previous, "data_limit", None)) if previous else None),
         ("Telegram ID", _to_text(getattr(admin, "telegram_id", None)), _to_text(getattr(previous, "telegram_id", None)) if previous else None),

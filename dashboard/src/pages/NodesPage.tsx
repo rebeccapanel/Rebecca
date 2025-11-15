@@ -38,6 +38,7 @@ import {
   MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import { useNodes, useNodesQuery, FetchNodesQueryKey, NodeType } from "contexts/NodesContext";
+import useGetUser from "hooks/useGetUser";
 import { useDashboard } from "contexts/DashboardContext";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -142,6 +143,22 @@ export const NodesPage: FC = () => {
   } = useNodes();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canManageNodes =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.nodes);
+
+  if (!canManageNodes) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("nodes.title", "Nodes")}
+        </Text>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("nodes.noPermission", "You do not have permission to manage nodes.")}
+        </Text>
+      </VStack>
+    );
+  }
 
   const [editingNode, setEditingNode] = useState<NodeType | null>(null);
   const [isAddNodeOpen, setAddNodeOpen] = useState(false);

@@ -13,15 +13,16 @@ export const AdminsPage: FC = () => {
   const { t } = useTranslation();
   const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
   const { userData, getUserIsSuccess } = useGetUser();
-  const isSudo = getUserIsSuccess && userData.is_sudo;
+  const canViewAdmins =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.admins);
 
   useEffect(() => {
-    if (isSudo) {
+    if (canViewAdmins) {
       fetchAdmins();
     }
-  }, [fetchAdmins, isSudo]);
+  }, [fetchAdmins, canViewAdmins]);
 
-  if (!isSudo) {
+  if (!canViewAdmins) {
     return (
       <VStack spacing={4} align="stretch">
         <Text as="h1" fontWeight="semibold" fontSize="2xl">

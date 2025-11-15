@@ -14,9 +14,29 @@ import { InboundsManager } from "components/InboundsManager";
 import { FC } from "react";
 import { useTranslation } from "react-i18next";
 import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import useGetUser from "hooks/useGetUser";
 
 export const HostsPage: FC = () => {
   const { t } = useTranslation();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canManageHosts =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.hosts);
+
+  if (!canManageHosts) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("header.hostSettings", "Inbounds & Hosts")}
+        </Text>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t(
+            "hostsPage.noPermission",
+            "You do not have permission to manage host or inbound settings."
+          )}
+        </Text>
+      </VStack>
+    );
+  }
 
   return (
     <VStack spacing={4} align="stretch">

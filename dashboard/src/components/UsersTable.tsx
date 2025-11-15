@@ -220,8 +220,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   const useTable = useBreakpointValue({ base: false, md: true });
 
   const { userData } = useGetUser();
+  const hasElevatedRole = userData.role === "sudo" || userData.role === "full_access";
   const isAdminDisabled = Boolean(
-    !userData.is_sudo && userData.status === "disabled"
+    !hasElevatedRole && userData.status === "disabled"
   );
   const disabledReason = userData.disabled_reason;
 

@@ -30,6 +30,7 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import {
+  AdjustmentsHorizontalIcon,
   ArrowPathIcon,
   ChevronDownIcon,
   EllipsisVerticalIcon,
@@ -42,12 +43,15 @@ import { useAdminsStore } from "contexts/AdminsContext";
 import type { Admin } from "types/Admin";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import useGetUser from "hooks/useGetUser";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { formatBytes } from "utils/formatByte";
+import AdminPermissionsModal from "./AdminPermissionsModal";
 
 export const AdminsTable = () => {
   const { t } = useTranslation();
   const toast = useToast();
+  const { userData } = useGetUser();
   const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
   const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
   const dialogBg = useColorModeValue("surface.light", "surface.dark");
@@ -79,6 +83,11 @@ export const AdminsTable = () => {
     onOpen: openDisableDialog,
     onClose: closeDisableDialog,
   } = useDisclosure();
+  const {
+    isOpen: isPermissionsModalOpen,
+    onOpen: openPermissionsModal,
+    onClose: closePermissionsModal,
+  } = useDisclosure();
   const [adminToDelete, setAdminToDelete] = useState<Admin | null>(null);
   const [adminToDisable, setAdminToDisable] = useState<Admin | null>(null);
   const [disableReason, setDisableReason] = useState("");
@@ -86,6 +95,27 @@ export const AdminsTable = () => {
     type: "reset" | "disableAdmin" | "enableAdmin";
     username: string;
   } | null>(null);
+  const [adminForPermissions, setAdminForPermissions] = useState<Admin | null>(null);
+  const currentAdminUsername = userData.username;
+  const hasFullAccess = userData.role === "full_access";
+  const adminManagement = userData.permissions?.admin_management;
+  const canEditAdmins = Boolean(adminManagement?.can_edit || hasFullAccess);
+  const canManageSudoAdmins = Boolean(adminManagement?.can_manage_sudo || hasFullAccess);
+  const canManageAdminAccount = (target: Admin) => {
+    if (target.username === currentAdminUsername) {
+      return true;
+    }
+    if (target.role === "full_access") {
+      return false;
+    }
+    if (!canEditAdmins) {
+      return false;
+    }
+    if (target.role === "sudo") {
+      return canManageSudoAdmins;
+    }
+    return true;
+  };
 
   const handleSort = (column: "username" | "users_count" | "data" | "data_usage" | "data_limit") => {
     if (column === "data_usage" || column === "data_limit") {
@@ -145,6 +175,16 @@ export const AdminsTable = () => {
     closeDisableDialog();
     setAdminToDisable(null);
     setDisableReason("");
+  };
+
+  const handleOpenPermissionsModal = (admin: Admin) => {
+    setAdminForPermissions(admin);
+    openPermissionsModal();
+  };
+
+  const handleClosePermissionsModal = () => {
+    setAdminForPermissions(null);
+    closePermissionsModal();
   };
 
   const confirmDisableAdmin = async () => {
@@ -298,6 +338,11 @@ export const AdminsTable = () => {
                   ? String(admin.users_limit)
                   : "∞";
               const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
+              const canManageThisAdmin = canManageAdminAccount(admin);
+              const canChangeStatus = canManageThisAdmin && admin.username !== currentAdminUsername;
+              const showDisableAction = canChangeStatus && admin.status !== "disabled";
+              const showEnableAction = canChangeStatus && admin.status === "disabled";
+              const showDeleteAction = canChangeStatus;
 
               return (
                 <Tr
@@ -310,17 +355,23 @@ export const AdminsTable = () => {
                 >
                   <Td>
                     <Text fontWeight="medium">{admin.username}</Text>
-                    {admin.is_sudo && (
-                      <Badge colorScheme="purple" fontSize="xs" mt={1}>
-                        {t("sudo")}
+                    {admin.role !== "standard" && (
+                      <Badge
+                        colorScheme={admin.role === "full_access" ? "orange" : "purple"}
+                        fontSize="xs"
+                        mt={1}
+                      >
+                        {admin.role === "full_access"
+                          ? t("admins.roles.fullAccess", "Full access")
+                          : t("admins.roles.sudo", "Sudo")}
                       </Badge>
                     )}
-                    {!admin.is_sudo && admin.status === "disabled" && (
+                    {admin.status === "disabled" && (
                       <Badge colorScheme="red" fontSize="xs" mt={1}>
                         {t("admins.disabledLabel", "Disabled")}
                       </Badge>
                     )}
-                    {!admin.is_sudo && admin.status === "disabled" && admin.disabled_reason && (
+                    {admin.status === "disabled" && admin.disabled_reason && (
                       <Text fontSize="xs" color="red.400" mt={1}>
                         {admin.disabled_reason}
                       </Text>
@@ -350,33 +401,49 @@ export const AdminsTable = () => {
                         as={IconButton}
                         icon={<EllipsisVerticalIcon width={20} />}
                         variant="ghost"
+                        isDisabled={!canManageThisAdmin && !canChangeStatus}
                         onClick={(event) => event.stopPropagation()}
                       />
                       <MenuList onClick={(event) => event.stopPropagation()}>
-                        <MenuItem
-                          icon={<PencilIcon width={20} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openAdminDialog(admin);
-                          }}
-                        >
-                          {t("edit")}
-                        </MenuItem>
-                        <MenuItem
-                          icon={<ArrowPathIcon width={20} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            runResetUsage(admin);
-                          }}
-                          isDisabled={
-                            actionState?.username === admin.username &&
-                            actionState?.type === "reset"
-                          }
-                        >
-                          {t("admins.resetUsage")}
-                        </MenuItem>
-                        <MenuDivider />
-                        {!admin.is_sudo && admin.status !== "disabled" && (
+                        {canManageThisAdmin && (
+                          <>
+                            <MenuItem
+                              icon={<PencilIcon width={20} />}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openAdminDialog(admin);
+                              }}
+                            >
+                              {t("edit")}
+                            </MenuItem>
+                            <MenuItem
+                              icon={<AdjustmentsHorizontalIcon width={20} />}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenPermissionsModal(admin);
+                              }}
+                            >
+                              {t("admins.editPermissionsButton", "Edit permissions")}
+                            </MenuItem>
+                            <MenuItem
+                              icon={<ArrowPathIcon width={20} />}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                runResetUsage(admin);
+                              }}
+                              isDisabled={
+                                actionState?.username === admin.username &&
+                                actionState?.type === "reset"
+                              }
+                            >
+                              {t("admins.resetUsage")}
+                            </MenuItem>
+                          </>
+                        )}
+                        {(showDisableAction || showEnableAction || showDeleteAction) && canManageThisAdmin && (
+                          <MenuDivider />
+                        )}
+                        {showDisableAction && (
                           <MenuItem
                             icon={<NoSymbolIcon width={20} />}
                             onClick={(event) => {
@@ -391,7 +458,7 @@ export const AdminsTable = () => {
                             {t("admins.disableAdmin", "Disable admin")}
                           </MenuItem>
                         )}
-                        {!admin.is_sudo && admin.status === "disabled" && (
+                        {showEnableAction && (
                           <MenuItem
                             icon={<PlayIcon width={20} />}
                             onClick={(event) => {
@@ -406,17 +473,19 @@ export const AdminsTable = () => {
                             {t("admins.enableAdmin", "Enable admin")}
                           </MenuItem>
                         )}
-                        <MenuDivider />
-                        <MenuItem
-                          color="red.500"
-                          icon={<TrashIcon width={20} />}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startDeleteDialog(admin);
-                          }}
-                        >
-                          {t("delete")}
-                        </MenuItem>
+                        {showDeleteAction && (showDisableAction || showEnableAction) && <MenuDivider />}
+                        {showDeleteAction && (
+                          <MenuItem
+                            color="red.500"
+                            icon={<TrashIcon width={20} />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startDeleteDialog(admin);
+                            }}
+                          >
+                            {t("delete")}
+                          </MenuItem>
+                        )}
                       </MenuList>
                     </Menu>
                   </Td>
@@ -515,6 +584,11 @@ export const AdminsTable = () => {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+      <AdminPermissionsModal
+        isOpen={isPermissionsModalOpen}
+        onClose={handleClosePermissionsModal}
+        admin={adminForPermissions}
+      />
     </>
   );
 };

@@ -1,5 +1,5 @@
 from typing import Optional, Union
-from app.models.admin import AdminInDB, AdminValidationResult, Admin
+from app.models.admin import AdminInDB, AdminValidationResult, Admin, AdminRole
 from app.models.user import UserResponse, UserStatus
 from app.db.models import User
 from app.db import Session, crud, get_db
@@ -14,11 +14,11 @@ from app.utils.credentials import normalize_key
 def validate_admin(db: Session, username: str, password: str) -> Optional[AdminValidationResult]:
     """Validate admin credentials with environment variables or database."""
     if SUDOERS.get(username) == password:
-        return AdminValidationResult(username=username, is_sudo=True)
+        return AdminValidationResult(username=username, role=AdminRole.full_access)
 
     dbadmin = crud.get_admin(db, username)
     if dbadmin and AdminInDB.model_validate(dbadmin).verify_password(password):
-        return AdminValidationResult(username=dbadmin.username, is_sudo=dbadmin.is_sudo)
+        return AdminValidationResult(username=dbadmin.username, role=dbadmin.role)
 
     return None
 
@@ -146,7 +146,10 @@ def get_validated_user(
     if not dbuser:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not (admin.is_sudo or (dbuser.admin and dbuser.admin.username == admin.username)):
+    if not (
+        admin.role in (AdminRole.sudo, AdminRole.full_access)
+        or (dbuser.admin and dbuser.admin.username == admin.username)
+    ):
         raise HTTPException(status_code=403, detail="You're not allowed")
 
     return dbuser
@@ -161,7 +164,7 @@ def get_expired_users_list(db: Session, admin: Admin, expired_after: Optional[da
     dbusers = crud.get_users(
         db=db,
         status=[UserStatus.expired, UserStatus.limited],
-        admin=dbadmin if not admin.is_sudo else None
+        admin=dbadmin if admin.role not in (AdminRole.sudo, AdminRole.full_access) else None
     )
 
     return [
@@ -179,7 +182,7 @@ def get_service_for_admin(
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    if not admin.is_sudo:
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         if admin.id is None or admin.id not in service.admin_ids:
             raise HTTPException(status_code=403, detail="You're not allowed")
 

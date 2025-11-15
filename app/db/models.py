@@ -22,7 +22,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
 
 from app.db.base import Base
-from app.models.admin import AdminStatus
+from app.models.admin import AdminRole, AdminStatus
 from app.models.node import NodeStatus, GeoMode
 from app.models.proxy import (
     ProxyHostALPN,
@@ -48,7 +48,8 @@ class Admin(Base):
     )
     services = association_proxy("service_links", "service")
     created_at = Column(DateTime, default=datetime.utcnow)
-    is_sudo = Column(Boolean, default=False)
+    role = Column(Enum(AdminRole), nullable=False, default=AdminRole.standard)
+    permissions = Column(JSON, nullable=True, default=dict)
     password_reset_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)

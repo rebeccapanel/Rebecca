@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import SystemStats
 from app.models.user import UserStatus
@@ -66,21 +66,22 @@ def get_system_stats(
     system = crud.get_system_usage(db)
     dbadmin: Union[Admin, None] = crud.get_admin(db, admin.username)
 
-    total_user = crud.get_users_count(db, admin=dbadmin if not admin.is_sudo else None)
+    scoped_admin = None if admin.role in (AdminRole.sudo, AdminRole.full_access) else dbadmin
+    total_user = crud.get_users_count(db, admin=scoped_admin)
     users_active = crud.get_users_count(
-        db, status=UserStatus.active, admin=dbadmin if not admin.is_sudo else None
+        db, status=UserStatus.active, admin=scoped_admin
     )
     users_disabled = crud.get_users_count(
-        db, status=UserStatus.disabled, admin=dbadmin if not admin.is_sudo else None
+        db, status=UserStatus.disabled, admin=scoped_admin
     )
     users_on_hold = crud.get_users_count(
-        db, status=UserStatus.on_hold, admin=dbadmin if not admin.is_sudo else None
+        db, status=UserStatus.on_hold, admin=scoped_admin
     )
     users_expired = crud.get_users_count(
-        db, status=UserStatus.expired, admin=dbadmin if not admin.is_sudo else None
+        db, status=UserStatus.expired, admin=scoped_admin
     )
     users_limited = crud.get_users_count(
-        db, status=UserStatus.limited, admin=dbadmin if not admin.is_sudo else None
+        db, status=UserStatus.limited, admin=scoped_admin
     )
     online_users = crud.count_online_users(db, 24)
     realtime_bandwidth_stats = realtime_bandwidth()

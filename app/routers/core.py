@@ -6,7 +6,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.runtime import xray
 from app.db import Session, get_db, crud, GetDB
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.core import CoreStats
 from app.models.warp import (
     WarpAccountResponse,
@@ -41,7 +41,7 @@ async def core_logs(websocket: WebSocket):
     if not admin:
         return await websocket.close(reason="Unauthorized", code=4401)
 
-    if not admin.is_sudo:
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         return await websocket.close(reason="You're not allowed", code=4403)
 
     interval = websocket.query_params.get("interval")

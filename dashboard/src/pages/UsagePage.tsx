@@ -21,16 +21,18 @@ import { useServicesStore } from "contexts/ServicesContext";
 export const UsagePage: FC = () => {
   const { t } = useTranslation();
   const { userData, getUserIsSuccess } = useGetUser();
-  const isSudo = getUserIsSuccess && userData.is_sudo;
+  const canViewUsage = Boolean(
+    getUserIsSuccess && userData.permissions?.sections.usage
+  );
 
   const services = useServicesStore((state) => state.services);
   const fetchServices = useServicesStore((state) => state.fetchServices);
 
   useEffect(() => {
-    if (isSudo) {
+    if (canViewUsage) {
       fetchServices({ limit: 500 });
     }
-  }, [fetchServices, isSudo]);
+  }, [fetchServices, canViewUsage]);
 
   if (!getUserIsSuccess) {
     return (
@@ -40,7 +42,7 @@ export const UsagePage: FC = () => {
     );
   }
 
-  if (!isSudo) {
+  if (!canViewUsage) {
     return (
       <VStack spacing={4} align="stretch">
         <Text as="h1" fontWeight="semibold" fontSize="2xl">

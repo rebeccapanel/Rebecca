@@ -52,12 +52,12 @@ const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
 export const Header: FC<HeaderProps> = ({ actions }) => {
   const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
 
-  const isSudo = () => {
-    if (!getUserIsPending && getUserIsSuccess) {
-      return userData.is_sudo;
-    }
-    return false;
-  };
+  const sectionAccess = userData.permissions?.sections;
+  const canAccessHosts = Boolean(sectionAccess?.hosts);
+  const canAccessNodes = Boolean(sectionAccess?.nodes);
+  const canResetAllUsage = Boolean(userData.permissions?.users.reset_usage);
+  const canOpenCoreSettings = Boolean(sectionAccess?.integrations || sectionAccess?.xray);
+  const hasSettingsActions = canAccessHosts || canAccessNodes || canResetAllUsage;
 
   const { onResetAllUsage, onEditingNodes } =
     useDashboard();
@@ -93,44 +93,55 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
               position="relative"
             ></MenuButton>
             <MenuList minW="170px" zIndex={99999} className="menuList">
-              {isSudo() && (
+              {hasSettingsActions && (
                 <>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<HostsIcon />}
-                    as={Link}
-                    to="/hosts"
-                  >
-                    {t("header.hostSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesIcon />}
-                    onClick={onEditingNodes.bind(null, true)}
-                  >
-                    {t("header.nodeSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<ResetUsageIcon />}
-                    onClick={onResetAllUsage.bind(null, true)}
-                  >
-                    {t("resetAllUsage")}
+                  {canAccessHosts && (
+                    <MenuItem
+                      maxW="170px"
+                      fontSize="sm"
+                      icon={<HostsIcon />}
+                      as={Link}
+                      to="/hosts"
+                    >
+                      {t("header.hostSettings")}
+                    </MenuItem>
+                  )}
+                  {canAccessNodes && (
+                    <MenuItem
+                      maxW="170px"
+                      fontSize="sm"
+                      icon={<NodesIcon />}
+                      onClick={onEditingNodes.bind(null, true)}
+                    >
+                      {t("header.nodeSettings")}
+                    </MenuItem>
+                  )}
+                  {canResetAllUsage && (
+                    <MenuItem
+                      maxW="170px"
+                      fontSize="sm"
+                      icon={<ResetUsageIcon />}
+                      onClick={onResetAllUsage.bind(null, true)}
+                    >
+                      {t("resetAllUsage")}
+                    </MenuItem>
+                  )}
+                  <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />} as={Link} to="/login">
+                    {t("header.logout")}
                   </MenuItem>
                 </>
               )}
-              <Link to="/login">
-                <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
-                  {t("header.logout")}
-                </MenuItem>
-              </Link>
+              {!hasSettingsActions && (
+                <Link to="/login">
+                  <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
+                    {t("header.logout")}
+                  </MenuItem>
+                </Link>
+              )}
             </MenuList>
           </Menu>
 
-          {isSudo() && (
+          {(canOpenCoreSettings || canAccessHosts || canAccessNodes) && (
             <IconButton
               size="sm"
               variant="outline"

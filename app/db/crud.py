@@ -38,7 +38,7 @@ from app.db.models import (
     excluded_inbounds_association,
     template_inbounds_association,
 )
-from app.models.admin import AdminStatus
+from app.models.admin import AdminRole, AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.utils.xray_defaults import load_legacy_xray_config
 from app.utils.credentials import (
@@ -629,7 +629,7 @@ class ServiceRepository:
         if name:
             query = query.filter(Service.name.ilike(f"%{name}%"))
 
-        if admin and not admin.is_sudo:
+        if admin and admin.role not in (AdminRole.sudo, AdminRole.full_access):
             query = query.join(Service.admin_links).filter(
                 AdminServiceLink.admin_id == admin.id
             )
@@ -2456,10 +2456,12 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
             Exception("Admin username already exists"),
         )
 
+    role = admin.role or AdminRole.standard
     dbadmin = Admin(
         username=admin.username,
         hashed_password=admin.hashed_password,
-        is_sudo=admin.is_sudo,
+        role=role,
+        permissions=admin.permissions.model_dump() if admin.permissions else None,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
@@ -2483,8 +2485,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     Returns:
         Admin: The updated admin object.
     """
-    if modified_admin.is_sudo:
-        dbadmin.is_sudo = modified_admin.is_sudo
+    if modified_admin.role is not None:
+        dbadmin.role = modified_admin.role
+    if modified_admin.permissions is not None:
+        dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.utcnow()
@@ -2520,8 +2524,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     Returns:
         Admin: The updated admin object.
     """
-    if modified_admin.is_sudo is not None:
-        dbadmin.is_sudo = modified_admin.is_sudo
+    if modified_admin.role is not None:
+        dbadmin.role = modified_admin.role
+    if modified_admin.permissions is not None:
+        dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.utcnow()

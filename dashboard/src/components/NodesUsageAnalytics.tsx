@@ -566,16 +566,20 @@ const NodesUsageAnalytics: FC = () => {
   }, [fetchNodesUsage, nodesUsageRange, parseNodeUsageSlices, toast, t]);
 
   useEffect(() => {
+    const canViewAllAdmins =
+      Boolean(userData.permissions?.admin_management.can_view) || userData.role === "full_access";
     if (!userData?.username) return;
     setSelectedAdminDaily((prev) => prev ?? userData.username);
     setSelectedAdminTotals((prev) => prev ?? userData.username);
-    if (!userData.is_sudo) {
+    if (!canViewAllAdmins) {
       setAdminOptions([userData.username]);
     }
   }, [userData]);
 
   useEffect(() => {
-    if (!userData?.is_sudo) return;
+    const canViewAllAdmins =
+      Boolean(userData?.permissions?.admin_management.can_view) || userData?.role === "full_access";
+    if (!userData?.username || !canViewAllAdmins) return;
     let cancelled = false;
     apiFetch("/admins")
       .then((payload: any) => {
@@ -617,7 +621,7 @@ const NodesUsageAnalytics: FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [userData?.is_sudo, userData?.username]);
+  }, [userData?.permissions?.admin_management, userData?.role, userData?.username]);
 
   useEffect(() => {
     if (nodeDailySelectedNodeId !== null) return;

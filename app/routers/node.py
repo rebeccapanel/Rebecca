@@ -9,7 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.runtime import logger, xray
 from app.db import Session, crud, get_db, GetDB
 from app.dependencies import get_dbnode, validate_dates
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.node import (
     MasterNodeResponse,
     MasterNodeUpdate,
@@ -160,7 +160,7 @@ async def node_logs(node_id: int, websocket: WebSocket):
     if not admin:
         return await websocket.close(reason="Unauthorized", code=4401)
 
-    if not admin.is_sudo:
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         return await websocket.close(reason="You're not allowed", code=4403)
 
     if not xray.nodes.get(node_id):

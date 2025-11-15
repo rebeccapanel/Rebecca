@@ -471,7 +471,8 @@ const ServicesPage: FC = () => {
   const { t } = useTranslation();
   const toast = useToast();
   const { userData, getUserIsSuccess } = useGetUser();
-  const isSudo = getUserIsSuccess && userData.is_sudo;
+  const canManageServices =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.services);
   const servicesStore = useServicesStore();
   const adminStore = useAdminsStore();
   const hostsStore = useHosts();
@@ -481,7 +482,7 @@ const ServicesPage: FC = () => {
   const [editingService, setEditingService] = useState<ServiceDetail | null>(null);
 
   useEffect(() => {
-    if (!getUserIsSuccess || !isSudo) {
+    if (!getUserIsSuccess || !canManageServices) {
       return;
     }
     servicesStore.fetchServices();
@@ -489,7 +490,7 @@ const ServicesPage: FC = () => {
     fetchInbounds();
     hostsStore.fetchHosts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getUserIsSuccess, isSudo]);
+  }, [getUserIsSuccess, canManageServices]);
 
   const adminOptions = useMemo(() => {
     return adminStore.admins
@@ -795,7 +796,7 @@ const ServicesPage: FC = () => {
                         event.stopPropagation();
                         openEditDialog(service.id);
                       }}
-                      isDisabled={!isSudo}
+                      isDisabled={!canManageServices}
                     />
                   </Tooltip>
                   <Tooltip label={t("services.resetUsage", "Reset usage")}>
@@ -808,7 +809,7 @@ const ServicesPage: FC = () => {
                         event.stopPropagation();
                         openResetConfirmation(service.id);
                       }}
-                      isDisabled={!isSudo}
+                      isDisabled={!canManageServices}
                     />
                   </Tooltip>
                   <Tooltip label={t("services.delete", "Delete")}>
@@ -822,7 +823,7 @@ const ServicesPage: FC = () => {
                         event.stopPropagation();
                         beginDeleteService(service.id);
                       }}
-                      isDisabled={!isSudo}
+                      isDisabled={!canManageServices}
                     />
                   </Tooltip>
                 </HStack>
@@ -861,7 +862,7 @@ const ServicesPage: FC = () => {
               onClick={() => servicesStore.fetchServiceDetail(service.id)}
             />
           </Tooltip>
-          {isSudo && (
+          {canManageServices && (
             <>
               <Tooltip label={t("services.edit", "Edit")}>
                 <IconButton
@@ -907,7 +908,7 @@ const ServicesPage: FC = () => {
     );
   }
 
-  if (!isSudo) {
+  if (!canManageServices) {
     return (
       <VStack spacing={4} align="stretch">
         <Text as="h1" fontWeight="semibold" fontSize="2xl">
@@ -939,7 +940,7 @@ const ServicesPage: FC = () => {
             )}
           </Text>
         </Box>
-        {isSudo && (
+        {canManageServices && (
           <Button
             leftIcon={<PlusIcon width={18} />}
             colorScheme="primary"

@@ -10,7 +10,7 @@ from app.runtime import xray
 from app.db import crud, get_db
 from app.db.models import Service, User
 from app.dependencies import validate_dates
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.service import (
     ServiceAdmin,
     ServiceBase,
@@ -38,7 +38,7 @@ router = APIRouter(
 
 
 def _ensure_service_visibility(service: Service, admin: Admin) -> None:
-    if admin.is_sudo:
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
         return
 
     if admin.id is None:

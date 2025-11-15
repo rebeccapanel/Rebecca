@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.user import (
     UserCreate,
     UserModify,
@@ -51,6 +51,14 @@ def add_user(
     """
 
     # TODO expire should be datetime instead of timestamp
+
+    admin.ensure_user_permission("create")
+    admin.ensure_user_constraints(
+        status_value=new_user.status.value if new_user.status else None,
+        data_limit=new_user.data_limit,
+        expire=new_user.expire,
+        next_plan=new_user.next_plan.model_dump() if new_user.next_plan else None,
+    )
 
     for proxy_type in new_user.proxies:
         if not xray.config.inbounds_by_protocol.get(proxy_type):
@@ -114,6 +122,13 @@ def modify_user(
     Note: Fields set to `null` or omitted will not be modified.
     """
 
+    admin.ensure_user_constraints(
+        status_value=modified_user.status.value if modified_user.status else None,
+        data_limit=modified_user.data_limit,
+        expire=modified_user.expire,
+        next_plan=modified_user.next_plan.model_dump() if modified_user.next_plan else None,
+    )
+
     for proxy_type in modified_user.proxies:
         if not xray.config.inbounds_by_protocol.get(proxy_type):
             raise HTTPException(
@@ -121,7 +136,11 @@ def modify_user(
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
 
-    if "service_id" in modified_user.model_fields_set and modified_user.service_id is None and not admin.is_sudo:
+    if (
+        "service_id" in modified_user.model_fields_set
+        and modified_user.service_id is None
+        and admin.role not in (AdminRole.sudo, AdminRole.full_access)
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only sudo admins can set service to null.",
@@ -170,6 +189,7 @@ def remove_user(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Remove a user"""
+    admin.ensure_user_permission("delete")
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -189,6 +209,7 @@ def reset_user_data_usage(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Reset user data usage"""
+    admin.ensure_user_permission("reset_usage")
     try:
         dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -215,6 +236,7 @@ def revoke_user_subscription(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Revoke users subscription (Subscription link and proxies)"""
+    admin.ensure_user_permission("revoke")
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
@@ -261,13 +283,13 @@ def get_users(
         usernames=username,
         status=status,
         sort=sort,
-        admins=owner if admin.is_sudo else [admin.username],
+        admins=owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username],
         return_with_count=True,
     )
 
     users_limit = None
     active_total = None
-    if not admin.is_sudo:
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         dbadmin = crud.get_admin(db, admin.username)
         if dbadmin:
             users_limit = dbadmin.users_limit
@@ -290,6 +312,7 @@ def reset_users_data_usage(
     db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Reset all users data usage"""
+    admin.ensure_user_permission("reset_usage")
     dbadmin = crud.get_admin(db, admin.username)
     try:
         crud.reset_all_users_data_usage(db=db, admin=dbadmin)
@@ -325,8 +348,10 @@ def active_next_plan(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Reset user by next plan"""
+    admin.ensure_user_permission("allow_next_plan")
     try:
         dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -364,7 +389,10 @@ def get_users_usage(
     start, end = validate_dates(start, end)
 
     usages = crud.get_all_users_usages(
-        db=db, start=start, end=end, admin=owner if admin.is_sudo else [admin.username]
+        db=db,
+        start=start,
+        end=end,
+        admin=owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username],
     )
 
     return {"usages": usages}
@@ -437,6 +465,7 @@ def delete_expired_users(
             status_code=404, detail="No expired users found in the specified date range"
         )
 
+    admin.ensure_user_permission("delete")
     crud.remove_users(db, expired_users)
 
     for removed_user in removed_users:

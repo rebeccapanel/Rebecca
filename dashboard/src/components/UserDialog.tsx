@@ -666,10 +666,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   
 
-    const services = useServicesStore((state) => state.services);
+  const services = useServicesStore((state) => state.services);
   const servicesLoading = useServicesStore((state) => state.isLoading);
   const { userData, getUserIsSuccess } = useGetUser();
-  const isSudo = Boolean(getUserIsSuccess && userData.is_sudo);
+  const hasElevatedRole = Boolean(
+    getUserIsSuccess && (userData.role === "sudo" || userData.role === "full_access")
+  );
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
 
   const hasServices = services.length > 0;
@@ -677,11 +679,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
     ? services.find((service) => service.id === selectedServiceId) ?? null
     : null;
   const isServiceManagedUser = Boolean(editingUser?.service_id);
-  const nonSudoSingleService = !isSudo && services.length === 1;
-  const showServiceSelector = isSudo || services.length !== 1;
+  const nonSudoSingleService = !hasElevatedRole && services.length === 1;
+  const showServiceSelector = hasElevatedRole || services.length !== 1;
   const useTwoColumns = showServiceSelector && services.length > 0;
   const shouldCenterForm = !useTwoColumns;
-  const shouldCompactModal = !isSudo && services.length === 0;
+  const shouldCompactModal = !hasElevatedRole && services.length === 0;
 
   const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
     enabled: isOpen,
@@ -715,30 +717,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
     if (isEditing) {
 
       if (editingUser?.service_id) {
-
         setSelectedServiceId(editingUser.service_id);
-
-      } else if (isSudo) {
-
+      } else if (hasElevatedRole) {
         setSelectedServiceId(null);
-
       } else if (services.length) {
-
         setSelectedServiceId(services[0]?.id ?? null);
-
       } else {
-
         setSelectedServiceId(null);
-
       }
-
     } else if (!isOpen) {
-
       setSelectedServiceId(null);
-
     }
-
-  }, [isEditing, editingUser, isOpen, isSudo, services]);
+  }, [isEditing, editingUser, isOpen, hasElevatedRole, services]);
 
 
 
@@ -1190,21 +1180,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 
     if (typeof selectedServiceId !== "undefined") {
-
       if (selectedServiceId === null) {
-
-        if (isSudo) {
-
+        if (hasElevatedRole) {
           body.service_id = null;
-
         }
-
       } else if (selectedServiceId !== editingUser?.service_id) {
-
         body.service_id = selectedServiceId;
-
       }
-
     }
 
 
@@ -2105,7 +2087,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                       <VStack align="stretch" spacing={3}>
 
-                        {isEditing && isSudo && (
+                        {isEditing && hasElevatedRole && (
 
                           <Box
 

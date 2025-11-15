@@ -1,3 +1,5 @@
+import type { AdminPermissions, AdminRole } from "./Admin";
+
 export type Status =
   | "active"
   | "disabled"
@@ -100,7 +102,8 @@ export type UserCreateWithService = Pick<
 };
 
 export type UserApi = {
-  is_sudo: boolean;
+  role: AdminRole;
+  permissions: AdminPermissions;
   telegram_id: number | string;
   username: string;
   users_usage?: number | null;

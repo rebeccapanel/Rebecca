@@ -12,7 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ElementType, FC, useEffect, useState } from "react";
+import { ElementType, FC, useEffect, useMemo, useState } from "react";
 import useGetUser from "hooks/useGetUser";
 import logoUrl from "assets/logo.svg";
 
@@ -59,17 +59,44 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
   const location = useLocation();
   const { colorMode } = useColorMode();
   const { userData, getUserIsSuccess } = useGetUser();
-  const isSudo = getUserIsSuccess && userData.is_sudo;
+  const roleLabel = useMemo(() => {
+    switch (userData.role) {
+      case "full_access":
+        return t("admins.roles.fullAccess", "Full access");
+      case "sudo":
+        return t("admins.roles.sudo", "Sudo");
+      case "standard":
+      default:
+        return t("admins.roles.standard", "Standard");
+    }
+  }, [t, userData.role]);
+  const sectionAccess = userData.permissions?.sections;
+  const canViewUsage = Boolean(sectionAccess?.usage);
+  const canViewAdmins = Boolean(sectionAccess?.admins);
+  const canViewServicesSection = Boolean(sectionAccess?.services);
 
   const baseSettingsSubItems: SidebarItem["subItems"] = [
-        { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled },
-    { title: t("header.nodeSettings"), url: "/node-settings", icon: NetworkIconStyled },
-    { title: t("header.integrationSettings", "Master Settings"), url: "/integrations", icon: SettingsIconStyled },
-    { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled },
-  ];
+    sectionAccess?.hosts
+      ? { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled }
+      : null,
+    sectionAccess?.nodes
+      ? { title: t("header.nodeSettings"), url: "/node-settings", icon: NetworkIconStyled }
+      : null,
+    sectionAccess?.integrations
+      ? {
+          title: t("header.integrationSettings", "Master Settings"),
+          url: "/integrations",
+          icon: SettingsIconStyled,
+        }
+      : null,
+    sectionAccess?.xray
+      ? { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled }
+      : null,
+  ].filter(Boolean) as SidebarItem["subItems"];
+
   const settingsSubItems: SidebarItem["subItems"] = [...baseSettingsSubItems];
 
-  if (isSudo) {
+  if (canViewServicesSection) {
     settingsSubItems.unshift({
       title: t("services.menu", "Services"),
       url: "/services",
@@ -91,9 +118,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
     { title: t("users"), url: "/users", icon: UsersIconStyled },
   ];
 
-  if (isSudo) {
+  if (canViewUsage) {
     items.push({ title: t("usage.menu", "Usage"), url: "/usage", icon: UsageIconStyled });
+  }
+  if (canViewAdmins) {
     items.push({ title: t("admins", "Admins"), url: "/admins", icon: AdminIconStyled });
+  }
+  if (settingsSubItems.length > 0) {
     items.push({
       title: t("header.settings"),
       icon: SettingsIconStyled,
@@ -293,7 +324,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
             mt={4}
           >
             {!collapsed ? (
-              <VStack align="flex-start" spacing={0}>
+              <VStack align="flex-start" spacing={1}>
                 <Text
                   fontSize="xs"
                   fontWeight="semibold"
@@ -311,9 +342,20 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
                 >
                   {userData.username}
                 </Text>
+                <Text
+                  fontSize="xs"
+                  fontWeight="semibold"
+                  color="gray.500"
+                  _dark={{ color: "gray.500" }}
+                >
+                  {t("admins.roleLabel", "Admin role")}
+                </Text>
+                <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+                  {roleLabel}
+                </Text>
               </VStack>
             ) : (
-              <Tooltip label={userData.username} placement="right" hasArrow>
+              <Tooltip label={`${userData.username} · ${roleLabel}`} placement="right" hasArrow>
                 <Box
                   w="8"
                   h="8"

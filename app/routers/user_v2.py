@@ -8,7 +8,7 @@ from app.runtime import logger, xray
 from app.db import crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user
-from app.models.admin import Admin
+from app.models.admin import Admin, AdminRole
 from app.models.user import (
     UserCreate,
     UserModify,
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/v2", tags=["User V2"], responses={401: responses
 
 
 def _ensure_service_visibility(service, admin: Admin):
-    if admin.is_sudo:
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
         return
     if admin.id is None or admin.id not in service.admin_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
@@ -61,8 +61,15 @@ def add_user_with_service(
     user_payload["proxies"] = proxies_payload
     user_payload["inbounds"] = inbounds_payload
 
+    admin.ensure_user_permission("create")
     try:
         user_data = UserCreate.model_validate(user_payload)
+        admin.ensure_user_constraints(
+            status_value=user_data.status.value if user_data.status else None,
+            data_limit=user_data.data_limit,
+            expire=user_data.expire,
+            next_plan=user_data.next_plan.model_dump() if user_data.next_plan else None,
+        )
         ensure_user_credential_key(user_data)
         dbuser = crud.create_user(
             db,
@@ -109,7 +116,7 @@ def modify_user_with_service(
 
     if "service_id" in modified_user.model_fields_set:
         service_set = True
-        if modified_user.service_id is None and not admin.is_sudo:
+        if modified_user.service_id is None and admin.role not in (AdminRole.sudo, AdminRole.full_access):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only sudo admins can remove a user from a service.",
@@ -123,6 +130,13 @@ def modify_user_with_service(
             if not db_admin:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
             service_assignment = service
+
+    admin.ensure_user_constraints(
+        status_value=modified_user.status.value if modified_user.status else None,
+        data_limit=modified_user.data_limit,
+        expire=modified_user.expire,
+        next_plan=modified_user.next_plan.model_dump() if modified_user.next_plan else None,
+    )
 
     try:
         dbuser_obj = crud.update_user(
