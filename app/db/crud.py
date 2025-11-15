@@ -2,6 +2,7 @@
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
 
+import logging
 from copy import deepcopy
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -66,6 +67,9 @@ from app.db.exceptions import UsersLimitReachedError
 MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
+
+
+_logger = logging.getLogger(__name__)
 
 
 def _extract_key_from_proxies(proxies: Dict[ProxyTypes, ProxySettings]) -> Optional[str]:
@@ -1703,7 +1707,8 @@ def update_user(
         try:
             new_key = _extract_key_from_proxies(modify.proxies)
         except ValueError as exc:
-            raise ValueError(str(exc))
+            _logger.warning("Unable to derive credential key from proxy UUIDs: %s", exc)
+            new_key = None
         if new_key:
             normalized_key = normalize_key(new_key)
             if credential_key != normalized_key:

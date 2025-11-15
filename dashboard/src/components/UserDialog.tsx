@@ -1564,7 +1564,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               return (
                                 <Input
                                   endAdornment="GB"
-                                  type="number"
+                                  type="text"
+                                  inputMode="decimal"
                                   size="sm"
                                   borderRadius="6px"
                                   onChange={field.onChange}
@@ -1905,7 +1906,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               </FormLabel>
                               <Input
                                 endAdornment="GB"
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 size="sm"
                                 borderRadius="6px"
                                 disabled={disabled}
