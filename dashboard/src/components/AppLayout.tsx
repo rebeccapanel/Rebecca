@@ -100,7 +100,7 @@ export function AppLayout() {
             <DrawerOverlay />
             <DrawerContent bg="surface.light" _dark={{ bg: "surface.dark" }}>
               <DrawerBody p={0}>
-                <AppSidebar collapsed={false} inDrawer />
+                <AppSidebar collapsed={false} inDrawer onRequestExpand={drawer.onClose} />
               </DrawerBody>
             </DrawerContent>
           </Drawer>

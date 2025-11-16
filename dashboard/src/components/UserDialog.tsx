@@ -672,6 +672,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const hasElevatedRole = Boolean(
     getUserIsSuccess && (userData.role === "sudo" || userData.role === "full_access")
   );
+  const canCreateUsers =
+    hasElevatedRole || Boolean(userData.permissions?.users.create);
+  const canDeleteUsers =
+    hasElevatedRole || Boolean(userData.permissions?.users.delete);
+  const canResetUsage =
+    hasElevatedRole || Boolean(userData.permissions?.users.reset_usage);
+  const canRevokeSubscription =
+    hasElevatedRole || Boolean(userData.permissions?.users.revoke);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
 
   const hasServices = services.length > 0;
@@ -1280,17 +1288,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 
   const handleResetUsage = () => {
-
+    if (!canResetUsage) {
+      return;
+    }
     useDashboard.setState({ resetUsageUser: editingUser });
-
   };
 
 
 
   const handleRevokeSubscription = () => {
-
+    if (!canRevokeSubscription) {
+      return;
+    }
     useDashboard.setState({ revokeSubscriptionUser: editingUser });
-
   };
 
 
@@ -2471,10 +2481,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                 >
 
-                  {isEditing && (
+                {isEditing && (
 
-                    <>
+                  <>
 
+                    {canDeleteUsers && (
                       <Tooltip label={t("delete")} placement="top">
 
                         <IconButton
@@ -2498,40 +2509,45 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         </IconButton>
 
                       </Tooltip>
+                    )}
 
-                      <Tooltip label={t("userDialog.usage")} placement="top">
+                    <Tooltip label={t("userDialog.usage")} placement="top">
 
-                        <IconButton
+                      <IconButton
 
-                          aria-label="usage"
+                        aria-label="usage"
 
-                          size="sm"
+                        size="sm"
 
-                          onClick={handleUsageToggle}
+                        onClick={handleUsageToggle}
 
-                        >
+                      >
 
-                          <UserUsageIcon />
+                        <UserUsageIcon />
 
-                        </IconButton>
+                      </IconButton>
 
-                      </Tooltip>
+                    </Tooltip>
 
+                    {canResetUsage && (
                       <Button onClick={handleResetUsage} size="sm">
 
                         {t("userDialog.resetUsage")}
 
                       </Button>
+                    )}
 
+                    {canRevokeSubscription && (
                       <Button onClick={handleRevokeSubscription} size="sm">
 
                         {t("userDialog.revokeSubscription")}
 
                       </Button>
+                    )}
 
-                    </>
+                  </>
 
-                  )}
+                )}
 
                 </HStack>
 

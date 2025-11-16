@@ -224,6 +224,14 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   const isAdminDisabled = Boolean(
     !hasElevatedRole && userData.status === "disabled"
   );
+  const canCreateUsers =
+    hasElevatedRole || Boolean(userData.permissions?.users.create);
+  const canDeleteUsers =
+    hasElevatedRole || Boolean(userData.permissions?.users.delete);
+  const canResetUsage =
+    hasElevatedRole || Boolean(userData.permissions?.users.reset_usage);
+  const canRevokeSubscription =
+    hasElevatedRole || Boolean(userData.permissions?.users.revoke);
   const disabledReason = userData.disabled_reason;
 
 
@@ -520,31 +528,33 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                                 </Box>
                                 <HStack>
                                   <ActionButtons user={user} />
-                                  <Tooltip
-                                    label={t("userDialog.editUser")}
-                                    placement="top"
-                                  >
-                                    <IconButton
-                                      p="0 !important"
-                                      aria-label="Edit user"
-                                      bg="transparent"
-                                      _dark={{
-                                        _hover: {
-                                          bg: "gray.700",
-                                        },
-                                      }}
-                                      size={{
-                                        base: "sm",
-                                        md: "md",
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onEditingUser(user);
-                                      }}
+                                  {canCreateUsers && (
+                                    <Tooltip
+                                      label={t("userDialog.editUser")}
+                                      placement="top"
                                     >
-                                      <EditIcon />
-                                    </IconButton>
-                                  </Tooltip>
+                                      <IconButton
+                                        p="0 !important"
+                                        aria-label="Edit user"
+                                        bg="transparent"
+                                        _dark={{
+                                          _hover: {
+                                            bg: "gray.700",
+                                          },
+                                        }}
+                                        size={{
+                                          base: "sm",
+                                          md: "md",
+                                        }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onEditingUser(user);
+                                        }}
+                                      >
+                                        <EditIcon />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
                                 </HStack>
                               </HStack>
                             </VStack>
@@ -683,7 +693,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                       className={classNames("interactive", {
                         "last-row": i === users.length - 1,
                       })}
-                      onClick={() => onEditingUser(user)}
+                      onClick={() => {
+                        if (canCreateUsers) {
+                          onEditingUser(user);
+                        }
+                      }}
+                      cursor={canCreateUsers ? "pointer" : "default"}
                     >
                       <Td minW="140px">
                         <div className="flex-status">
@@ -727,7 +742,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           {!loading && users.length == 0 && (
             <Tr>
               <Td colSpan={5}>
-                <EmptySection isFiltered={isFiltered} isCreateDisabled={isAdminDisabled} />
+                <EmptySection
+                  isFiltered={isFiltered}
+                  isCreateDisabled={isAdminDisabled || !canCreateUsers}
+                />
               </Td>
             </Tr>
           )}
@@ -950,12 +968,11 @@ const EmptySection: FC<EmptySectionProps> = ({ isFiltered, isCreateDisabled }) =
       <Text fontWeight="medium" color="gray.600" _dark={{ color: "gray.400" }}>
         {isFiltered ? t("usersTable.noUserMatched") : t("usersTable.noUser")}
       </Text>
-      {!isFiltered && (
+      {!isFiltered && !isCreateDisabled && (
         <Button
           size="sm"
           colorScheme="primary"
           onClick={handleCreate}
-          isDisabled={isCreateDisabled}
         >
           {t("createUser")}
         </Button>

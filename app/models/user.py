@@ -119,7 +119,7 @@ class User(BaseModel):
     @field_validator("proxies", mode="before")
     def validate_proxies(cls, v, values, **kwargs):
         if not v:
-            raise ValueError("Each user needs at least one proxy")
+            return {}
         return {
             proxy_type: ProxySettings.from_dict(
                 proxy_type, v.get(proxy_type, {}))
@@ -225,6 +225,12 @@ class UserCreate(User):
                 ]
 
         return inbounds
+
+    @model_validator(mode="after")
+    def ensure_proxies(self):
+        if not self.proxies:
+            raise ValueError("Each user needs at least one proxy")
+        return self
 
     @field_validator("status", mode="before")
     def validate_status(cls, status, values):

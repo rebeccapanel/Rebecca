@@ -97,6 +97,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
 
   const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
 
+  const handleNavClick = () => {
+    if (inDrawer && onRequestExpand) {
+      onRequestExpand();
+    }
+  };
   if (canViewServicesSection) {
     settingsSubItems.unshift({
       title: t("services.menu", "Services"),
@@ -115,8 +120,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
   }, [isSettingsRoute]);
 
   const items: SidebarItem[] = [
-    { title: t("dashboard"), url: "/", icon: HomeIconStyled },
-    { title: t("users"), url: "/users", icon: UsersIconStyled },
+  { title: t("dashboard"), url: "/", icon: HomeIconStyled },
+  { title: t("users"), url: "/users", icon: UsersIconStyled },
   ];
 
   if (canViewUsage) {
@@ -242,7 +247,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
                           const isSubActive = location.pathname === subItem.url;
                           const SubIcon = subItem.icon;
                           return (
-                            <NavLink key={subItem.url} to={subItem.url}>
+                            <NavLink key={subItem.url} to={subItem.url} onClick={handleNavClick}>
                               <HStack
                                 spacing={3}
                                 px={3}
@@ -277,7 +282,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
                 </>
               ) : (
                 item.url ? (
-                  <NavLink to={item.url}>
+                  <NavLink to={item.url} onClick={handleNavClick}>
                     <Tooltip label={collapsed ? item.title : ""} placement="right" hasArrow>
                       <HStack
                         spacing={3}

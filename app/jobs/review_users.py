@@ -1,25 +1,31 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import List
 
 from sqlalchemy.orm import Session
 
 from app.runtime import logger, scheduler, xray
 from app.db import (
     GetDB,
-    get_users,
+    get_user_queryset,
     start_user_expire,
     update_user_status,
     reset_user_by_next,
 )
+from app.db.models import User
 from app.models.user import UserResponse, UserStatus
 from app.utils import report
-from config import JOB_REVIEW_USERS_INTERVAL
+from config import JOB_REVIEW_USERS_BATCH_SIZE, JOB_REVIEW_USERS_INTERVAL
 
-if TYPE_CHECKING:
-    from app.db.models import User
+def _batch_users_by_status(db: Session, status: UserStatus) -> List[User]:
+    return (
+        get_user_queryset(db)
+        .filter(User.status == status)
+        .limit(JOB_REVIEW_USERS_BATCH_SIZE)
+        .all()
+    )
 
 
-def reset_user_by_next_report(db: Session, user: "User"):
+def reset_user_by_next_report(db: Session, user: User):
     user = reset_user_by_next(db, user)
 
     xray.operations.update_user(user)
@@ -31,7 +37,7 @@ def review():
     now = datetime.utcnow()
     now_ts = now.timestamp()
     with GetDB() as db:
-        for user in get_users(db, status=UserStatus.active):
+        for user in _batch_users_by_status(db, UserStatus.active):
 
             limited = user.data_limit and user.used_traffic >= user.data_limit
             expired = user.expire and user.expire <= now_ts
@@ -62,7 +68,7 @@ def review():
 
             logger.info(f"User \"{user.username}\" status changed to {status}")
 
-        for user in get_users(db, status=UserStatus.on_hold):
+        for user in _batch_users_by_status(db, UserStatus.on_hold):
 
             if user.edit_at:
                 base_time = datetime.timestamp(user.edit_at)

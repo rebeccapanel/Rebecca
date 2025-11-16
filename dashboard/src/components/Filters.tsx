@@ -83,6 +83,12 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
   const canManageAdmins = Boolean(
     userData.permissions?.admin_management?.can_edit || userData.role === "full_access"
   );
+  const canCreateUsers =
+    hasElevatedRole || Boolean(userData.permissions?.users.create);
+  const showCreateButton =
+    target === "users"
+      ? canCreateUsers && !isCurrentAdminDisabled
+      : canManageAdmins;
 
   const loading = target === "users" ? usersLoading : adminsLoading;
   const filters = target === "users" ? userFilters : adminFilters;
@@ -117,7 +123,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
 
   const handleCreate = () => {
     if (target === "users") {
-      if (isCurrentAdminDisabled) {
+      if (isCurrentAdminDisabled || !canCreateUsers) {
         return;
       }
       onCreateUser(true);
@@ -204,27 +210,26 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
           w="full"
           flexWrap="wrap"
         >
-          <Button
-            colorScheme="primary"
-            size={isMobile ? "sm" : "md"}
-            onClick={handleCreate}
-            isDisabled={
-              (target === "users" && isCurrentAdminDisabled) ||
-              (target === "admins" && !canManageAdmins)
-            }
-            px={isMobile ? 3 : 5}
-            leftIcon={isMobile ? undefined : <PlusIconStyled />}
-            w="auto"
-            h={isMobile ? "36px" : undefined}
-            minW={isMobile ? "auto" : "8.5rem"}
-            fontSize={isMobile ? "sm" : "md"}
-            fontWeight="semibold"
-            whiteSpace="nowrap"
-          >
-            {target === "users"
-              ? t("createUser")
-              : t("admins.addAdmin", "Add admin")}
-          </Button>
+          {showCreateButton && (
+            <Button
+              colorScheme="primary"
+              size={isMobile ? "sm" : "md"}
+              onClick={handleCreate}
+              isDisabled={target === "admins" && !canManageAdmins}
+              px={isMobile ? 3 : 5}
+              leftIcon={isMobile ? undefined : <PlusIconStyled />}
+              w="auto"
+              h={isMobile ? "36px" : undefined}
+              minW={isMobile ? "auto" : "8.5rem"}
+              fontSize={isMobile ? "sm" : "md"}
+              fontWeight="semibold"
+              whiteSpace="nowrap"
+            >
+              {target === "users"
+                ? t("createUser")
+                : t("admins.addAdmin", "Add admin")}
+            </Button>
+          )}
         </Stack>
       </GridItem>
     </Grid>
