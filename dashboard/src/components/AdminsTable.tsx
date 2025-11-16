@@ -41,6 +41,7 @@ import {
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { useAdminsStore } from "contexts/AdminsContext";
 import type { Admin } from "types/Admin";
+import { AdminManagementPermission, AdminRole, AdminStatus } from "types/Admin";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useGetUser from "hooks/useGetUser";
@@ -97,21 +98,25 @@ export const AdminsTable = () => {
   } | null>(null);
   const [adminForPermissions, setAdminForPermissions] = useState<Admin | null>(null);
   const currentAdminUsername = userData.username;
-  const hasFullAccess = userData.role === "full_access";
+  const hasFullAccess = userData.role === AdminRole.FullAccess;
   const adminManagement = userData.permissions?.admin_management;
-  const canEditAdmins = Boolean(adminManagement?.can_edit || hasFullAccess);
-  const canManageSudoAdmins = Boolean(adminManagement?.can_manage_sudo || hasFullAccess);
+  const canEditAdmins = Boolean(
+    adminManagement?.[AdminManagementPermission.Edit] || hasFullAccess
+  );
+  const canManageSudoAdmins = Boolean(
+    adminManagement?.[AdminManagementPermission.ManageSudo] || hasFullAccess
+  );
   const canManageAdminAccount = (target: Admin) => {
     if (target.username === currentAdminUsername) {
       return true;
     }
-    if (target.role === "full_access") {
+    if (target.role === AdminRole.FullAccess) {
       return false;
     }
     if (!canEditAdmins) {
       return false;
     }
-    if (target.role === "sudo") {
+    if (target.role === AdminRole.Sudo) {
       return canManageSudoAdmins;
     }
     return true;
@@ -340,8 +345,10 @@ export const AdminsTable = () => {
               const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
               const canManageThisAdmin = canManageAdminAccount(admin);
               const canChangeStatus = canManageThisAdmin && admin.username !== currentAdminUsername;
-              const showDisableAction = canChangeStatus && admin.status !== "disabled";
-              const showEnableAction = canChangeStatus && admin.status === "disabled";
+              const showDisableAction =
+                canChangeStatus && admin.status !== AdminStatus.Disabled;
+              const showEnableAction =
+                canChangeStatus && admin.status === AdminStatus.Disabled;
               const showDeleteAction = canChangeStatus;
 
               return (
@@ -355,23 +362,23 @@ export const AdminsTable = () => {
                 >
                   <Td>
                     <Text fontWeight="medium">{admin.username}</Text>
-                    {admin.role !== "standard" && (
+                    {admin.role !== AdminRole.Standard && (
                       <Badge
-                        colorScheme={admin.role === "full_access" ? "orange" : "purple"}
+                        colorScheme={admin.role === AdminRole.FullAccess ? "orange" : "purple"}
                         fontSize="xs"
                         mt={1}
                       >
-                        {admin.role === "full_access"
+                        {admin.role === AdminRole.FullAccess
                           ? t("admins.roles.fullAccess", "Full access")
                           : t("admins.roles.sudo", "Sudo")}
                       </Badge>
                     )}
-                    {admin.status === "disabled" && (
+                    {admin.status === AdminStatus.Disabled && (
                       <Badge colorScheme="red" fontSize="xs" mt={1}>
                         {t("admins.disabledLabel", "Disabled")}
                       </Badge>
                     )}
-                    {admin.status === "disabled" && admin.disabled_reason && (
+                    {admin.status === AdminStatus.Disabled && admin.disabled_reason && (
                       <Text fontSize="xs" color="red.400" mt={1}>
                         {admin.disabled_reason}
                       </Text>

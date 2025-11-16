@@ -14,7 +14,11 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ElementType, FC, useEffect, useMemo, useState } from "react";
 import useGetUser from "hooks/useGetUser";
+import useAds from "hooks/useAds";
 import logoUrl from "assets/logo.svg";
+import { AdvertisementCard } from "./AdvertisementCard";
+import { pickLocalizedAd } from "utils/ads";
+import { AdminRole, AdminSection } from "types/Admin";
 
 const iconProps = {
   baseStyle: {
@@ -56,41 +60,49 @@ const LogoIcon = chakra("img", {
 });
 
 export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, onRequestExpand }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const { colorMode } = useColorMode();
   const { userData, getUserIsSuccess } = useGetUser();
+  const shouldShowAds =
+    getUserIsSuccess &&
+    [AdminRole.Sudo, AdminRole.FullAccess].includes(userData.role);
+  const { data: adsData } = useAds(shouldShowAds);
+  const currentLanguage = i18n.language || "en";
+  const sidebarAd = shouldShowAds
+    ? pickLocalizedAd(adsData, "sidebar", currentLanguage)
+    : undefined;
   const roleLabel = useMemo(() => {
     switch (userData.role) {
-      case "full_access":
+      case AdminRole.FullAccess:
         return t("admins.roles.fullAccess", "Full access");
-      case "sudo":
+      case AdminRole.Sudo:
         return t("admins.roles.sudo", "Sudo");
-      case "standard":
+      case AdminRole.Standard:
       default:
         return t("admins.roles.standard", "Standard");
     }
   }, [t, userData.role]);
   const sectionAccess = userData.permissions?.sections;
-  const canViewUsage = Boolean(sectionAccess?.usage);
-  const canViewAdmins = Boolean(sectionAccess?.admins);
-  const canViewServicesSection = Boolean(sectionAccess?.services);
+  const canViewUsage = Boolean(sectionAccess?.[AdminSection.Usage]);
+  const canViewAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
+  const canViewServicesSection = Boolean(sectionAccess?.[AdminSection.Services]);
 
   const baseSettingsSubItems: SidebarSubItems = [
-    sectionAccess?.hosts
+    sectionAccess?.[AdminSection.Hosts]
       ? { title: t("header.hostSettings"), url: "/hosts", icon: ServerIconStyled }
       : null,
-    sectionAccess?.nodes
+    sectionAccess?.[AdminSection.Nodes]
       ? { title: t("header.nodeSettings"), url: "/node-settings", icon: NetworkIconStyled }
       : null,
-    sectionAccess?.integrations
+    sectionAccess?.[AdminSection.Integrations]
       ? {
           title: t("header.integrationSettings", "Master Settings"),
           url: "/integrations",
           icon: SettingsIconStyled,
         }
       : null,
-    sectionAccess?.xray
+    sectionAccess?.[AdminSection.Xray]
       ? { title: t("header.xraySettings"), url: "/xray-settings", icon: SettingsIconStyled }
       : null,
   ].filter(Boolean) as SidebarSubItems;
@@ -320,6 +332,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
           );
         })}
         </Box>
+        {sidebarAd && !collapsed && (
+          <Box px={collapsed ? 2 : 3} py={3} mt={4} w="full">
+            <AdvertisementCard ad={sidebarAd} />
+          </Box>
+        )}
         {getUserIsSuccess && userData.username && (
           <Box
             px={collapsed ? 2 : 3}

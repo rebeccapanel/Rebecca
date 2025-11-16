@@ -1,29 +1,34 @@
-import { AdminPermissions } from "types/Admin";
+import {
+  AdminManagementPermission,
+  AdminPermissions,
+  AdminSection,
+  UserPermissionToggle,
+} from "types/Admin";
 
 export const DEFAULT_ADMIN_PERMISSIONS: AdminPermissions = {
   users: {
-    create: true,
-    delete: false,
-    reset_usage: false,
-    revoke: false,
-    create_on_hold: false,
-    allow_unlimited_data: false,
-    allow_unlimited_expire: false,
-    allow_next_plan: false,
+    [UserPermissionToggle.Create]: true,
+    [UserPermissionToggle.Delete]: false,
+    [UserPermissionToggle.ResetUsage]: false,
+    [UserPermissionToggle.Revoke]: false,
+    [UserPermissionToggle.CreateOnHold]: false,
+    [UserPermissionToggle.AllowUnlimitedData]: false,
+    [UserPermissionToggle.AllowUnlimitedExpire]: false,
+    [UserPermissionToggle.AllowNextPlan]: false,
     max_data_limit_per_user: null,
   },
   admin_management: {
-    can_view: false,
-    can_edit: false,
-    can_manage_sudo: false,
+    [AdminManagementPermission.View]: false,
+    [AdminManagementPermission.Edit]: false,
+    [AdminManagementPermission.ManageSudo]: false,
   },
   sections: {
-    usage: false,
-    admins: false,
-    services: false,
-    hosts: false,
-    nodes: false,
-    integrations: false,
-    xray: false,
+    [AdminSection.Usage]: false,
+    [AdminSection.Admins]: false,
+    [AdminSection.Services]: false,
+    [AdminSection.Hosts]: false,
+    [AdminSection.Nodes]: false,
+    [AdminSection.Integrations]: false,
+    [AdminSection.Xray]: false,
   },
 };

@@ -34,6 +34,7 @@ import { useNodes, useNodesQuery } from "contexts/NodesContext";
 import { createUsageConfig } from "./UsageFilter";
 import { formatBytes } from "utils/formatByte";
 import { fetch as apiFetch } from "service/http";
+import { AdminManagementPermission, AdminRole } from "types/Admin";
 
 dayjs.extend(utc);
 
@@ -567,7 +568,9 @@ const NodesUsageAnalytics: FC = () => {
 
   useEffect(() => {
     const canViewAllAdmins =
-      Boolean(userData.permissions?.admin_management.can_view) || userData.role === "full_access";
+      Boolean(
+        userData.permissions?.admin_management?.[AdminManagementPermission.View]
+      ) || userData.role === AdminRole.FullAccess;
     if (!userData?.username) return;
     setSelectedAdminDaily((prev) => prev ?? userData.username);
     setSelectedAdminTotals((prev) => prev ?? userData.username);
@@ -578,7 +581,9 @@ const NodesUsageAnalytics: FC = () => {
 
   useEffect(() => {
     const canViewAllAdmins =
-      Boolean(userData?.permissions?.admin_management.can_view) || userData?.role === "full_access";
+      Boolean(
+        userData?.permissions?.admin_management?.[AdminManagementPermission.View]
+      ) || userData?.role === AdminRole.FullAccess;
     if (!userData?.username || !canViewAllAdmins) return;
     let cancelled = false;
     apiFetch("/admins")

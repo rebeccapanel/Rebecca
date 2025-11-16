@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from collections.abc import Mapping
 
 from fastapi import Depends, HTTPException, status
@@ -27,6 +27,33 @@ class AdminRole(str, Enum):
     full_access = "full_access"
 
 
+class UserPermission(str, Enum):
+    create = "create"
+    delete = "delete"
+    reset_usage = "reset_usage"
+    revoke = "revoke"
+    create_on_hold = "create_on_hold"
+    allow_unlimited_data = "allow_unlimited_data"
+    allow_unlimited_expire = "allow_unlimited_expire"
+    allow_next_plan = "allow_next_plan"
+
+
+class AdminManagementPermission(str, Enum):
+    view = "can_view"
+    edit = "can_edit"
+    manage_sudo = "can_manage_sudo"
+
+
+class SectionAccess(str, Enum):
+    usage = "usage"
+    admins = "admins"
+    services = "services"
+    hosts = "hosts"
+    nodes = "nodes"
+    integrations = "integrations"
+    xray = "xray"
+
+
 class UserPermissionSettings(BaseModel):
     create: bool = True
     delete: bool = False
@@ -39,12 +66,18 @@ class UserPermissionSettings(BaseModel):
     max_data_limit_per_user: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
+    def allows(self, permission: UserPermission) -> bool:
+        return getattr(self, permission.value, False)
+
 
 class AdminManagementPermissions(BaseModel):
     can_view: bool = False
     can_edit: bool = False
     can_manage_sudo: bool = False
     model_config = ConfigDict(from_attributes=True)
+
+    def allows(self, permission: AdminManagementPermission) -> bool:
+        return getattr(self, permission.value, False)
 
 
 class SectionPermissionSettings(BaseModel):
@@ -56,6 +89,9 @@ class SectionPermissionSettings(BaseModel):
     integrations: bool = False
     xray: bool = False
     model_config = ConfigDict(from_attributes=True)
+
+    def allows(self, section: SectionAccess) -> bool:
+        return getattr(self, section.value, False)
 
 
 class AdminPermissions(BaseModel):
@@ -163,15 +199,15 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
     ),
 }
 
-USER_PERMISSION_MESSAGES: Dict[str, str] = {
-    "create": "create users",
-    "delete": "delete users",
-    "reset_usage": "reset user usage",
-    "revoke": "revoke user subscriptions",
-    "create_on_hold": "create or move users to on-hold",
-    "allow_unlimited_data": "create unlimited data users",
-    "allow_unlimited_expire": "create unlimited duration users",
-    "allow_next_plan": "use next plan features",
+USER_PERMISSION_MESSAGES: Dict[UserPermission, str] = {
+    UserPermission.create: "create users",
+    UserPermission.delete: "delete users",
+    UserPermission.reset_usage: "reset user usage",
+    UserPermission.revoke: "revoke user subscriptions",
+    UserPermission.create_on_hold: "create or move users to on-hold",
+    UserPermission.allow_unlimited_data: "create unlimited data users",
+    UserPermission.allow_unlimited_expire: "create unlimited duration users",
+    UserPermission.allow_next_plan: "use next plan features",
 }
 
 def _resolve_role(value: Optional[AdminRole]) -> AdminRole:
@@ -242,13 +278,14 @@ class Admin(BaseModel):
     def has_full_access(self) -> bool:
         return self.role == AdminRole.full_access
 
-    def ensure_user_permission(self, action: str) -> None:
+    def ensure_user_permission(self, action: Union[UserPermission, str]) -> None:
+        permission = UserPermission(action) if isinstance(action, str) else action
         if self.has_full_access:
             return
-        allowed = getattr(self.permissions.users, action, False)
+        allowed = self.permissions.users.allows(permission)
         if allowed:
             return
-        readable = USER_PERMISSION_MESSAGES.get(action, action.replace("_", " "))
+        readable = USER_PERMISSION_MESSAGES.get(permission, permission.value.replace("_", " "))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"You're not allowed to {readable}.",
@@ -265,13 +302,13 @@ class Admin(BaseModel):
         if self.has_full_access:
             return
         perms = self.permissions.users
-        if status_value == "on_hold" and not perms.create_on_hold:
+        if status_value == "on_hold" and not perms.allows(UserPermission.create_on_hold):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to create or move users to on-hold.",
             )
         if data_limit is not None:
-            if data_limit == 0 and not perms.allow_unlimited_data:
+            if data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Unlimited data users are not allowed for your role.",
@@ -285,25 +322,25 @@ class Admin(BaseModel):
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Requested data limit exceeds the configured maximum for this admin.",
                 )
-        if expire == 0 and not perms.allow_unlimited_expire:
+        if expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Unlimited validity users are not allowed for your role.",
             )
         if next_plan:
-            if not perms.allow_next_plan:
+            if not perms.allows(UserPermission.allow_next_plan):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You are not allowed to configure next plans.",
                 )
             next_data_limit = next_plan.get("data_limit")
-            if next_data_limit == 0 and not perms.allow_unlimited_data:
+            if next_data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Next plan with unlimited data is not allowed for your role.",
                 )
             next_expire = next_plan.get("expire")
-            if next_expire == 0 and not perms.allow_unlimited_expire:
+            if next_expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Next plan with unlimited duration is not allowed for your role.",
@@ -322,15 +359,18 @@ class Admin(BaseModel):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Full access admins cannot manage other full access accounts.",
             )
-        perms = self.permissions.admin_management
         if self.has_full_access:
             return
-        if not perms.can_edit:
+        perms = self.permissions.admin_management
+        if not perms.allows(AdminManagementPermission.edit):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage other admins.",
             )
-        if target.role in (AdminRole.sudo, AdminRole.full_access) and not perms.can_manage_sudo:
+        if (
+            target.role in (AdminRole.sudo, AdminRole.full_access)
+            and not perms.allows(AdminManagementPermission.manage_sudo)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage sudo admins.",

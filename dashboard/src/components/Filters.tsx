@@ -27,6 +27,12 @@ import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
 import React, { FC, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  AdminManagementPermission,
+  AdminRole,
+  AdminStatus,
+  UserPermissionToggle,
+} from "types/Admin";
 
 const iconProps = {
   baseStyle: {
@@ -78,13 +84,17 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const { userData } = useGetUser();
-  const hasElevatedRole = userData.role === "sudo" || userData.role === "full_access";
-  const isCurrentAdminDisabled = !hasElevatedRole && userData.status === "disabled";
+  const hasElevatedRole =
+    userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+  const isCurrentAdminDisabled =
+    !hasElevatedRole && userData.status === AdminStatus.Disabled;
   const canManageAdmins = Boolean(
-    userData.permissions?.admin_management?.can_edit || userData.role === "full_access"
+    userData.permissions?.admin_management?.[AdminManagementPermission.Edit] ||
+    userData.role === AdminRole.FullAccess
   );
   const canCreateUsers =
-    hasElevatedRole || Boolean(userData.permissions?.users.create);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
   const showCreateButton =
     target === "users"
       ? canCreateUsers && !isCurrentAdminDisabled

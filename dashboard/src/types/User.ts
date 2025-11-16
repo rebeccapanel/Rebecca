@@ -1,4 +1,4 @@
-import type { AdminPermissions, AdminRole } from "./Admin";
+import type { AdminPermissions, AdminRole, AdminStatus } from "./Admin";
 
 export type Status =
   | "active"
@@ -107,7 +107,7 @@ export type UserApi = {
   telegram_id: number | string;
   username: string;
   users_usage?: number | null;
-  status?: "active" | "disabled" | "deleted";
+  status?: AdminStatus;
   disabled_reason?: string | null;
 }
 

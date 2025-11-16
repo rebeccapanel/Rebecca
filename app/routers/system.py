@@ -1,19 +1,29 @@
 import logging
+import os
 import subprocess
 import time
+from collections import deque
 from copy import deepcopy
 from typing import Dict, List, Union
 
 import commentjson
+import psutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
+from app.db.models import Admin as AdminModel
 from app.models.admin import Admin, AdminRole
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
-from app.models.system import SystemStats
+from app.models.system import (
+    AdminOverviewStats,
+    PersonalUsageStats,
+    SystemStats,
+    UsageStats,
+)
 from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
@@ -31,6 +41,21 @@ if XRAY_FALLBACKS_INBOUND_TAG:
     _EXCLUDED_TAGS.add(XRAY_FALLBACKS_INBOUND_TAG)
 
 _MANAGEABLE_PROTOCOLS = set(ProxyTypes._value2member_map_.keys())
+
+HISTORY_MAX_ENTRIES = 6000
+_system_history = {
+    "cpu": deque(maxlen=HISTORY_MAX_ENTRIES),
+    "memory": deque(maxlen=HISTORY_MAX_ENTRIES),
+    "network": deque(maxlen=HISTORY_MAX_ENTRIES),
+}
+
+_panel_history = {
+    "cpu": deque(maxlen=HISTORY_MAX_ENTRIES),
+    "memory": deque(maxlen=HISTORY_MAX_ENTRIES),
+}
+
+_PANEL_PROCESS = psutil.Process(os.getpid())
+_PANEL_PROCESS.cpu_percent(interval=None)
 
 
 def _try_maintenance_json(path: str) -> dict | None:
@@ -85,6 +110,83 @@ def get_system_stats(
     )
     online_users = crud.count_online_users(db, 24)
     realtime_bandwidth_stats = realtime_bandwidth()
+    now = time.time()
+    system_memory = psutil.virtual_memory()
+    system_swap = psutil.swap_memory()
+    system_disk = psutil.disk_usage(os.path.abspath(os.sep))
+    load_avg: List[float] = []
+    try:
+        load_avg = list(psutil.getloadavg())
+    except (AttributeError, OSError):
+        load_avg = []
+
+    uptime_seconds = max(0, int(now - psutil.boot_time()))
+    current_process = _PANEL_PROCESS
+    panel_cpu_percent = float(current_process.cpu_percent(interval=None))
+    panel_memory_percent = float(current_process.memory_percent())
+    panel_uptime_seconds = max(0, int(now - current_process.create_time()))
+    app_memory = current_process.memory_info().rss
+    app_threads = current_process.num_threads()
+
+    xray_running = False
+    xray_uptime_seconds = 0
+    xray_version = None
+    if xray and getattr(xray, "core", None):
+        xray_running = bool(xray.core.started)
+        xray_version = xray.core.version
+        xray_proc = getattr(xray.core, "process", None)
+        if xray_proc:
+            try:
+                xray_process = psutil.Process(xray_proc.pid)
+                if xray_running:
+                    xray_uptime_seconds = max(0, int(now - xray_process.create_time()))
+            except (psutil.NoSuchProcess, AttributeError):
+                xray_uptime_seconds = 0
+
+    timestamp = int(now)
+    _system_history["cpu"].append({"timestamp": timestamp, "value": float(cpu.percent)})
+    _system_history["memory"].append({"timestamp": timestamp, "value": float(system_memory.percent)})
+    _system_history["network"].append(
+        {
+            "timestamp": timestamp,
+            "incoming": realtime_bandwidth_stats.incoming_bytes,
+            "outgoing": realtime_bandwidth_stats.outgoing_bytes,
+        }
+    )
+    _panel_history["cpu"].append({"timestamp": timestamp, "value": panel_cpu_percent})
+    _panel_history["memory"].append({"timestamp": timestamp, "value": panel_memory_percent})
+
+    personal_total_users = total_user if scoped_admin else 0
+    if dbadmin and admin.role in (AdminRole.sudo, AdminRole.full_access):
+        personal_total_users = crud.get_users_count(db, admin=dbadmin)
+
+    consumed_bytes = int(getattr(dbadmin, "users_usage", 0) or 0)
+    built_bytes = int(getattr(dbadmin, "lifetime_usage", 0) or 0)
+    reset_bytes = max(built_bytes - consumed_bytes, 0)
+    personal_usage = PersonalUsageStats(
+        total_users=personal_total_users,
+        consumed_bytes=consumed_bytes,
+        built_bytes=built_bytes,
+        reset_bytes=reset_bytes,
+    )
+
+    role_counts = {
+        (role.name if isinstance(role, AdminRole) else str(role)): count
+        for role, count in db.query(AdminModel.role, func.count()).group_by(AdminModel.role).all()
+    }
+    total_admins = int(sum(role_counts.values()))
+    admin_overview = AdminOverviewStats(
+        total_admins=total_admins,
+        sudo_admins=int(role_counts.get(AdminRole.sudo.name, 0)),
+        full_access_admins=int(role_counts.get(AdminRole.full_access.name, 0)),
+        standard_admins=int(role_counts.get(AdminRole.standard.name, 0)),
+        top_admin_username=None,
+        top_admin_usage=0,
+    )
+    top_admin = db.query(AdminModel).order_by(AdminModel.users_usage.desc()).first()
+    if top_admin:
+        admin_overview.top_admin_username = top_admin.username
+        admin_overview.top_admin_usage = int(top_admin.users_usage or 0)
 
     return SystemStats(
         version=__version__,
@@ -101,6 +203,38 @@ def get_system_stats(
         outgoing_bandwidth=system.downlink,
         incoming_bandwidth_speed=realtime_bandwidth_stats.incoming_bytes,
         outgoing_bandwidth_speed=realtime_bandwidth_stats.outgoing_bytes,
+        memory=UsageStats(
+            current=system_memory.used,
+            total=system_memory.total,
+            percent=float(system_memory.percent),
+        ),
+        swap=UsageStats(
+            current=system_swap.used,
+            total=system_swap.total,
+            percent=float(system_swap.percent),
+        ),
+        disk=UsageStats(
+            current=system_disk.used,
+            total=system_disk.total,
+            percent=float(system_disk.percent),
+        ),
+        load_avg=load_avg,
+        uptime_seconds=uptime_seconds,
+        panel_uptime_seconds=panel_uptime_seconds,
+        xray_uptime_seconds=xray_uptime_seconds,
+        xray_running=xray_running,
+        xray_version=xray_version,
+        app_memory=app_memory,
+        app_threads=app_threads,
+        panel_cpu_percent=panel_cpu_percent,
+        panel_memory_percent=panel_memory_percent,
+        cpu_history=list(_system_history["cpu"]),
+        memory_history=list(_system_history["memory"]),
+        network_history=list(_system_history["network"]),
+        panel_cpu_history=list(_panel_history["cpu"]),
+        panel_memory_history=list(_panel_history["memory"]),
+        personal_usage=personal_usage,
+        admin_overview=admin_overview,
     )
 
 

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
-from app.models.admin import Admin, AdminRole
+from app.models.admin import Admin, AdminRole, UserPermission
 from app.models.user import (
     UserCreate,
     UserModify,
@@ -52,7 +52,7 @@ def add_user(
 
     # TODO expire should be datetime instead of timestamp
 
-    admin.ensure_user_permission("create")
+    admin.ensure_user_permission(UserPermission.create)
     admin.ensure_user_constraints(
         status_value=new_user.status.value if new_user.status else None,
         data_limit=new_user.data_limit,
@@ -189,7 +189,7 @@ def remove_user(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Remove a user"""
-    admin.ensure_user_permission("delete")
+    admin.ensure_user_permission(UserPermission.delete)
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -209,7 +209,7 @@ def reset_user_data_usage(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Reset user data usage"""
-    admin.ensure_user_permission("reset_usage")
+    admin.ensure_user_permission(UserPermission.reset_usage)
     try:
         dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -236,7 +236,7 @@ def revoke_user_subscription(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Revoke users subscription (Subscription link and proxies)"""
-    admin.ensure_user_permission("revoke")
+    admin.ensure_user_permission(UserPermission.revoke)
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
@@ -312,7 +312,7 @@ def reset_users_data_usage(
     db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
 ):
     """Reset all users data usage"""
-    admin.ensure_user_permission("reset_usage")
+    admin.ensure_user_permission(UserPermission.reset_usage)
     dbadmin = crud.get_admin(db, admin.username)
     try:
         crud.reset_all_users_data_usage(db=db, admin=dbadmin)
@@ -351,7 +351,7 @@ def active_next_plan(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Reset user by next plan"""
-    admin.ensure_user_permission("allow_next_plan")
+    admin.ensure_user_permission(UserPermission.allow_next_plan)
     try:
         dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -465,7 +465,7 @@ def delete_expired_users(
             status_code=404, detail="No expired users found in the specified date range"
         )
 
-    admin.ensure_user_permission("delete")
+    admin.ensure_user_permission(UserPermission.delete)
     crud.remove_users(db, expired_users)
 
     for removed_user in removed_users:

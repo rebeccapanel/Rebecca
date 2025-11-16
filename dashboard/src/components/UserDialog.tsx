@@ -115,6 +115,7 @@ import { useTranslation } from "react-i18next";
 
 import { getPanelSettings } from "service/settings";
 import { User, UserCreate, UserCreateWithService } from "types/User";
+import { AdminRole, UserPermissionToggle } from "types/Admin";
 
 import { relativeExpiryDate } from "utils/dateFormatter";
 
@@ -670,16 +671,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const servicesLoading = useServicesStore((state) => state.isLoading);
   const { userData, getUserIsSuccess } = useGetUser();
   const hasElevatedRole = Boolean(
-    getUserIsSuccess && (userData.role === "sudo" || userData.role === "full_access")
+    getUserIsSuccess &&
+    (userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess)
   );
   const canCreateUsers =
-    hasElevatedRole || Boolean(userData.permissions?.users.create);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
   const canDeleteUsers =
-    hasElevatedRole || Boolean(userData.permissions?.users.delete);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
   const canResetUsage =
-    hasElevatedRole || Boolean(userData.permissions?.users.reset_usage);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
   const canRevokeSubscription =
-    hasElevatedRole || Boolean(userData.permissions?.users.revoke);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
 
   const hasServices = services.length > 0;

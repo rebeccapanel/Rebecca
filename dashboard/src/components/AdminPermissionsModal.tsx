@@ -13,6 +13,7 @@ import { useAdminsStore } from "contexts/AdminsContext";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Admin, AdminPermissions } from "types/Admin";
+import { AdminRole } from "types/Admin";
 import { DEFAULT_ADMIN_PERMISSIONS } from "constants/adminPermissions";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
@@ -93,7 +94,7 @@ export const AdminPermissionsModal = ({ isOpen, onClose, admin }: AdminPermissio
                 },
               }));
             }}
-            hideExtendedSections={admin?.role === "standard"}
+            hideExtendedSections={admin?.role === AdminRole.Standard}
           />
         </ModalBody>
         <ModalFooter>

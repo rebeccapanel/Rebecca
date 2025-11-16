@@ -1,154 +1,785 @@
-import { Box, BoxProps, Card, chakra, HStack, Text } from "@chakra-ui/react";
-import { ChartBarIcon, UsersIcon } from "@heroicons/react/24/outline";
+import {
+  Badge,
+  Box,
+  BoxProps,
+  Button,
+  Card,
+  chakra,
+  Flex,
+  HStack,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  SimpleGrid,
+  Stack,
+  Tag,
+  Text,
+  useColorMode,
+  useColorModeValue,
+  VStack,
+} from "@chakra-ui/react";
+import {
+  ChartBarIcon,
+  CpuChipIcon,
+} from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
-import { FC, PropsWithChildren, ReactElement, ReactNode } from "react";
+import { TFunction } from "i18next";
+import { FC, PropsWithChildren, ReactElement, ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
+import Chart from "react-apexcharts";
 import { fetch } from "service/http";
 import { formatBytes, numberWithCommas } from "utils/formatByte";
+import { formatDuration } from "utils/formatDuration";
+import { SystemStats } from "types/System";
 
-const TotalUsersIcon = chakra(UsersIcon, {
+export const StatisticsQueryKey = "statistics-query-key";
+import { AdminRole } from "types/Admin";
+
+const iconProps = {
   baseStyle: {
     w: 5,
     h: 5,
     position: "relative",
     zIndex: "2",
   },
-});
+};
 
-const NetworkIcon = chakra(ChartBarIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-    position: "relative",
-    zIndex: "2",
-  },
-});
+const CpuIcon = chakra(CpuChipIcon, iconProps);
+const ChartIcon = chakra(ChartBarIcon, iconProps);
+
+const formatNumberValue = (value: number) => numberWithCommas(value) ?? value.toString();
 
 type StatisticCardProps = {
   title: string;
   content: ReactNode;
   icon: ReactElement;
+  onClick?: () => void;
+  variant?: "default" | "compact";
 };
 
 const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
   title,
   content,
   icon,
-}) => {
-  return (
-    <Card
-      p={6}
-      borderStyle="solid"
-      boxShadow="none"
-      borderRadius="12px"
-      width="full"
-      display="flex"
-      justifyContent="space-between"
-      flexDirection="row"
-    >
-      <HStack alignItems="center" columnGap="4">
-        <Box
-          p="2"
-          position="relative"
-          color="white"
-          _before={{
-            content: `""`,
-            position: "absolute",
-            top: 0,
-            left: 0,
-            bg: "primary.400",
-            display: "block",
-            w: "full",
-            h: "full",
-            borderRadius: "5px",
-            opacity: ".5",
-            z: "1",
-          }}
-          _after={{
-            content: `""`,
-            position: "absolute",
-            top: "-5px",
-            left: "-5px",
-            bg: "primary.400",
-            display: "block",
-            w: "calc(100% + 10px)",
-            h: "calc(100% + 10px)",
-            borderRadius: "8px",
-            opacity: ".4",
-            z: "1",
-          }}
-        >
-          {icon}
-        </Box>
-        <Text
-          color="gray.600"
-          _dark={{
-            color: "gray.300",
-          }}
-          fontWeight="medium"
-          textTransform="capitalize"
-          fontSize="sm"
-        >
-          {title}
-        </Text>
-      </HStack>
-      <Box fontSize="3xl" fontWeight="semibold" mt="2">
-        {content}
+  onClick,
+  variant = "default",
+}) => (
+  <Card
+    as={onClick ? "button" : undefined}
+    onClick={onClick}
+    cursor={onClick ? "pointer" : "default"}
+    p={variant === "compact" ? 3 : 4}
+    borderStyle="solid"
+    boxShadow="none"
+    borderRadius="12px"
+    width="full"
+    display="flex"
+    justifyContent="space-between"
+    flexDirection="row"
+  >
+    <HStack alignItems="center" columnGap="3">
+      <Box
+        p="2"
+        position="relative"
+        color="white"
+        _before={{
+          content: `""`,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          bg: "primary.400",
+          display: "block",
+          w: "full",
+          h: "full",
+          borderRadius: "4px",
+          opacity: ".5",
+          z: "1",
+        }}
+        _after={{
+          content: `""`,
+          position: "absolute",
+          top: "-4px",
+          left: "-4px",
+          bg: "primary.400",
+          display: "block",
+          w: "calc(100% + 8px)",
+          h: "calc(100% + 8px)",
+          borderRadius: "6px",
+          opacity: ".4",
+          z: "1",
+        }}
+      >
+        {icon}
       </Box>
+      <Text
+        color="gray.600"
+        _dark={{
+          color: "gray.300",
+        }}
+        fontWeight="medium"
+        textTransform="capitalize"
+        fontSize="xs"
+      >
+        {title}
+      </Text>
+    </HStack>
+    <Box fontSize={variant === "compact" ? "xl" : "2xl"} fontWeight="semibold" mt="2">
+      {content}
+    </Box>
+  </Card>
+);
+
+const HISTORY_INTERVALS = [
+  { labelKey: "historyInterval.2m", seconds: 120 },
+  { labelKey: "historyInterval.10m", seconds: 600 },
+  { labelKey: "historyInterval.30m", seconds: 1800 },
+  { labelKey: "historyInterval.1h", seconds: 3600 },
+  { labelKey: "historyInterval.3h", seconds: 10800 },
+  { labelKey: "historyInterval.5h", seconds: 18000 },
+];
+
+type CpuMemoryHistoryPayload = {
+  type: "cpu" | "memory";
+  title: string;
+  metricLabel: string;
+  entries: SystemStats["cpu_history"];
+};
+
+type NetworkHistoryPayload = {
+  type: "network";
+  title: string;
+  entries: SystemStats["network_history"];
+};
+
+type PanelHistoryPayload = {
+  type: "panel";
+  title: string;
+  cpuEntries: SystemStats["panel_cpu_history"];
+  memoryEntries: SystemStats["panel_memory_history"];
+};
+
+type HistoryModalPayload =
+  | CpuMemoryHistoryPayload
+  | NetworkHistoryPayload
+  | PanelHistoryPayload;
+
+const HistoryModal: FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  payload: HistoryModalPayload | null;
+  intervalSeconds: number;
+  onIntervalChange: (value: number) => void;
+  t: TFunction;
+}> = ({ isOpen, onClose, payload, intervalSeconds, onIntervalChange, t }) => {
+  const { colorMode } = useColorMode();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const cutoff = nowSeconds - intervalSeconds;
+  const filteredStandardEntries = useMemo(() => {
+    if (!payload || payload.type === "network" || payload.type === "panel") {
+      return [];
+    }
+    return payload.entries.filter((entry) => entry.timestamp >= cutoff);
+  }, [payload, cutoff]);
+
+  const filteredNetworkEntries = useMemo(() => {
+    if (!payload || payload.type !== "network") {
+      return [];
+    }
+    return payload.entries.filter((entry) => entry.timestamp >= cutoff);
+  }, [payload, cutoff]);
+
+  const filteredPanelCpu = useMemo(() => {
+    if (!payload || payload.type !== "panel") return [];
+    return payload.cpuEntries.filter((entry) => entry.timestamp >= cutoff);
+  }, [payload, cutoff]);
+
+  const filteredPanelMemory = useMemo(() => {
+    if (!payload || payload.type !== "panel") return [];
+    return payload.memoryEntries.filter((entry) => entry.timestamp >= cutoff);
+  }, [payload, cutoff]);
+
+  const chartSeries = useMemo(() => {
+    if (!payload) {
+      return [];
+    }
+    if (payload.type === "network") {
+      return [
+        {
+          name: t("networkIncoming"),
+          data: filteredNetworkEntries.map((entry) => [
+            entry.timestamp * 1000,
+            entry.incoming,
+          ]),
+        },
+        {
+          name: t("networkOutgoing"),
+          data: filteredNetworkEntries.map((entry) => [
+            entry.timestamp * 1000,
+            entry.outgoing,
+          ]),
+        },
+      ];
+    }
+    if (payload.type === "panel") {
+      return [
+        {
+          name: t("cpuUsage"),
+          data: filteredPanelCpu.map((entry) => [
+            entry.timestamp * 1000,
+            entry.value,
+          ]),
+        },
+        {
+          name: t("memoryUsage"),
+          data: filteredPanelMemory.map((entry) => [
+            entry.timestamp * 1000,
+            entry.value,
+          ]),
+        },
+      ];
+    }
+    return [
+      {
+        name: payload.metricLabel,
+        data: filteredStandardEntries.map((entry) => [
+          entry.timestamp * 1000,
+          entry.value,
+        ]),
+      },
+    ];
+  }, [
+    filteredStandardEntries,
+    filteredNetworkEntries,
+    filteredPanelCpu,
+    filteredPanelMemory,
+    payload,
+    t,
+  ]);
+
+  const options = useMemo(
+    () => ({
+      chart: {
+        type: "line" as const,
+        animations: { enabled: false },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        background: "transparent",
+      },
+      theme: { mode: colorMode },
+      stroke: { curve: "smooth" as const },
+      xaxis: {
+        type: "datetime" as const,
+        labels: {
+          datetimeFormatter: { hour: "HH:mm" },
+        },
+      },
+      yaxis: {
+        decimalsInFloat: 0,
+      },
+      tooltip: {
+        x: { format: "HH:mm:ss" },
+      },
+    }),
+    [colorMode]
+  );
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>
+          {t("historyModalTitle", { metric: payload?.title ?? "" })}
+        </ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          <Stack spacing={3}>
+            <Flex wrap="wrap" gap={2}>
+              {HISTORY_INTERVALS.map((interval) => (
+                <Button
+                  key={interval.seconds}
+                  size="sm"
+                  variant={intervalSeconds === interval.seconds ? "solid" : "outline"}
+                  onClick={() => onIntervalChange(interval.seconds)}
+                >
+                  {t(interval.labelKey)}
+                </Button>
+              ))}
+            </Flex>
+            <Chart
+              options={options}
+              series={chartSeries}
+              type="line"
+              height={300}
+            />
+          </Stack>
+        </ModalBody>
+        <ModalFooter>
+          <Button onClick={onClose}>{t("close")}</Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
+const HistorySparkline: FC<{ values: number[]; accent?: string }> = ({
+  values,
+  accent,
+}) => {
+  const defaultColor = useColorModeValue("primary.500", "primary.300");
+  const normalized = values.length ? values : [0];
+  const maxValue = Math.max(...normalized, 1);
+  
+  return (
+    <HStack alignItems="flex-end" spacing="2px" mt={2} minH="42px" w="full" overflow="hidden">
+      {normalized.map((value, index) => {
+        const heightPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
+        const height = Math.max(4, Math.round((heightPct / 100) * 40));
+        return (
+          <Box
+            key={index}
+            flex="0 1 4px"
+            minW="2px"
+            maxW="4px"
+            h={`${height}px`}
+            bg={accent ?? defaultColor}
+            borderRadius="1px"
+            transition="all 0.2s"
+          />
+        );
+      })}
+    </HStack>
+  );
+};
+
+const HistoryPreview: FC<{
+  label: string;
+  value: string;
+  history: number[];
+  accent?: string;
+  onOpen?: () => void;
+  actionLabel: string;
+}> = ({ label, value, history, accent, onOpen, actionLabel }) => (
+  <Stack spacing={1}>
+    <HStack justifyContent="space-between" alignItems="center">
+      <Box>
+        <Text fontSize="xs" color="gray.500">
+          {label}
+        </Text>
+        <Text fontSize="lg" fontWeight="semibold">
+          {value}
+        </Text>
+      </Box>
+      {onOpen && (
+        <Button size="xs" variant="ghost" onClick={onOpen}>
+          {actionLabel}
+        </Button>
+      )}
+    </HStack>
+    <HistorySparkline values={history} accent={accent} />
+  </Stack>
+);
+
+const MetricBadge: FC<{ label: string; value: string; colorScheme?: string }> = ({
+  label,
+  value,
+  colorScheme = "gray",
+}) => (
+  <Box
+    px={3}
+    py={2}
+    borderRadius="md"
+    borderWidth="1px"
+    borderColor={`${colorScheme}.200`}
+    bg={`${colorScheme}.50`}
+    _dark={{ bg: `${colorScheme}.900`, borderColor: `${colorScheme}.700` }}
+  >
+    <Text fontSize="xs" color="gray.500">
+      {label}
+    </Text>
+    <Text fontWeight="semibold">{value}</Text>
+  </Box>
+);
+
+const SystemOverviewCard: FC<{
+  data: SystemStats;
+  t: TFunction;
+  onOpenHistory: (payload: HistoryModalPayload) => void;
+}> = ({ data, t, onOpenHistory }) => {
+  const cpuHistoryValues = data.cpu_history.map((entry) => entry.value);
+  const memoryHistoryValues = data.memory_history.map((entry) => entry.value);
+  const networkHistoryValues = data.network_history.map((entry) => entry.incoming);
+  return (
+    <Card p={5} borderRadius="12px" boxShadow="none">
+      <Stack spacing={4}>
+        <HStack justifyContent="space-between" alignItems="center">
+          <Text fontSize="lg" fontWeight="semibold">
+            {t("systemOverview")}
+          </Text>
+          <HStack spacing={2}>
+            <Tag colorScheme="gray">v{data.version}</Tag>
+            <Tag colorScheme="gray">
+              {t("loadAverage")}:{" "}
+              {data.load_avg.length
+                ? data.load_avg.map((value) => value.toFixed(2)).join(" | ")
+                : "-"}
+            </Tag>
+          </HStack>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+          <HistoryPreview
+            label={t("cpuUsage")}
+            value={`${data.cpu_usage.toFixed(1)}%`}
+            history={cpuHistoryValues}
+            accent="purple.400"
+            actionLabel={t("viewHistory")}
+            onOpen={() =>
+              onOpenHistory({
+                type: "cpu",
+                title: t("cpuUsage"),
+                metricLabel: t("cpuUsage"),
+                entries: data.cpu_history,
+              })
+            }
+          />
+          <HistoryPreview
+            label={t("memoryUsage")}
+            value={`${data.memory.percent.toFixed(1)}%`}
+            history={memoryHistoryValues}
+            accent="pink.400"
+            actionLabel={t("viewHistory")}
+            onOpen={() =>
+              onOpenHistory({
+                type: "memory",
+                title: t("memoryUsage"),
+                metricLabel: t("memoryUsage"),
+                entries: data.memory_history,
+              })
+            }
+          />
+          <HistoryPreview
+            label={t("networkHistory")}
+            value={`${formatBytes(data.incoming_bandwidth_speed)}/s`}
+            history={networkHistoryValues}
+            accent="green.400"
+            actionLabel={t("viewHistory")}
+            onOpen={() =>
+              onOpenHistory({
+                type: "network",
+                title: t("networkHistory"),
+                entries: data.network_history,
+              })
+            }
+          />
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+          <MetricBadge
+            label={t("incomingSpeed")}
+            value={`${formatBytes(data.incoming_bandwidth_speed)}/s`}
+            colorScheme="green"
+          />
+          <MetricBadge
+            label={t("outgoingSpeed")}
+            value={`${formatBytes(data.outgoing_bandwidth_speed)}/s`}
+            colorScheme="blue"
+          />
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+          <MetricBadge
+            label={t("memoryUsage")}
+            value={`${formatBytes(data.memory.current)} / ${formatBytes(data.memory.total)}`}
+          />
+          <MetricBadge
+            label={t("swapUsage")}
+            value={`${formatBytes(data.swap.current)} / ${formatBytes(data.swap.total)}`}
+          />
+          <MetricBadge
+            label={t("diskUsage")}
+            value={`${formatBytes(data.disk.current)} / ${formatBytes(data.disk.total)}`}
+          />
+        </SimpleGrid>
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          spacing={2}
+          flexWrap="wrap"
+          alignItems="flex-start"
+        >
+          <Tag colorScheme="green">
+            {t("systemUptime")}: {formatDuration(data.uptime_seconds)}
+          </Tag>
+          <Tag colorScheme="blue">
+            {t("panelUptime")}: {formatDuration(data.panel_uptime_seconds)}
+          </Tag>
+          <Tag colorScheme="orange">
+            {t("xrayUptime")}: {formatDuration(data.xray_uptime_seconds)}
+          </Tag>
+        </Stack>
+      </Stack>
     </Card>
   );
 };
-export const StatisticsQueryKey = "statistics-query-key";
+
+const PanelOverviewCard: FC<{
+  data: SystemStats;
+  t: TFunction;
+  onOpenHistory: (payload: HistoryModalPayload) => void;
+}> = ({ data, t, onOpenHistory }) => {
+  const panelCpuHistory = data.panel_cpu_history.map((entry) => entry.value);
+  const panelMemoryHistory = data.panel_memory_history.map((entry) => entry.value);
+  return (
+    <Card p={5} borderRadius="12px" boxShadow="none">
+      <Stack spacing={4}>
+        <HStack justifyContent="space-between" alignItems="center">
+          <Text fontSize="lg" fontWeight="semibold">
+            {t("panelUsage")}
+          </Text>
+          <Badge colorScheme={data.xray_running ? "green" : "red"}>
+            {data.xray_running ? t("status.running") : t("status.stopped")}
+          </Badge>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+          <HistoryPreview
+            label={t("cpuUsage")}
+            value={`${data.panel_cpu_percent.toFixed(1)}%`}
+            history={panelCpuHistory}
+            accent="purple.300"
+            actionLabel={t("viewHistory")}
+            onOpen={() =>
+              onOpenHistory({
+                type: "panel",
+                title: t("panelUsage"),
+                cpuEntries: data.panel_cpu_history,
+                memoryEntries: data.panel_memory_history,
+              })
+            }
+          />
+          <HistoryPreview
+            label={t("memoryUsage")}
+            value={`${data.panel_memory_percent.toFixed(1)}%`}
+            history={panelMemoryHistory}
+            accent="pink.300"
+            actionLabel={t("viewHistory")}
+            onOpen={() =>
+              onOpenHistory({
+                type: "panel",
+                title: t("panelUsage"),
+                cpuEntries: data.panel_cpu_history,
+                memoryEntries: data.panel_memory_history,
+              })
+            }
+          />
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+          <MetricBadge
+            label={t("threads")}
+            value={formatNumberValue(data.app_threads)}
+            colorScheme="purple"
+          />
+          <MetricBadge
+            label={t("appMemory")}
+            value={formatBytes(data.app_memory)}
+            colorScheme="blue"
+          />
+        </SimpleGrid>
+      </Stack>
+    </Card>
+  );
+};
+
+const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => (
+  <StatisticCard
+    title={t("UsersUsage")}
+    content={formatBytes(value)}
+    icon={<ChartIcon />}
+    variant="compact"
+  />
+);
+
+const UsersOverviewCard: FC<{ data: SystemStats; t: TFunction }> = ({
+  data,
+  t,
+}) => (
+  <Card p={5} borderRadius="12px" boxShadow="none">
+    <Stack spacing={4}>
+      <Text fontSize="lg" fontWeight="semibold">
+        {t("usersOverview")}
+      </Text>
+      <MetricBadge
+        label={t("totalUsersLabel")}
+        value={formatNumberValue(data.total_user)}
+        colorScheme="blue"
+      />
+      <SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
+        <MetricBadge
+          label={t("status.active")}
+          value={formatNumberValue(data.users_active)}
+          colorScheme="green"
+        />
+        <MetricBadge
+          label={t("status.disabled")}
+          value={formatNumberValue(data.users_disabled)}
+          colorScheme="red"
+        />
+        <MetricBadge
+          label={t("status.expired")}
+          value={formatNumberValue(data.users_expired)}
+          colorScheme="orange"
+        />
+        <MetricBadge
+          label={t("status.limited")}
+          value={formatNumberValue(data.users_limited)}
+          colorScheme="yellow"
+        />
+        <MetricBadge
+          label={t("status.on_hold")}
+          value={formatNumberValue(data.users_on_hold)}
+          colorScheme="purple"
+        />
+      </SimpleGrid>
+    </Stack>
+  </Card>
+);
+
+const YourUsageCard: FC<{
+  data?: SystemStats["personal_usage"];
+  t: TFunction;
+}> = ({ data, t }) => {
+  if (!data) return null;
+  return (
+    <Card p={5} borderRadius="12px" boxShadow="none">
+      <Stack spacing={4}>
+        <Text fontSize="lg" fontWeight="semibold">
+          {t("yourUsage")}
+        </Text>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+          <MetricBadge
+            label={t("totalUsersLabel")}
+            value={formatNumberValue(data.total_users)}
+            colorScheme="blue"
+          />
+          <MetricBadge
+            label={t("consumedData")}
+            value={formatBytes(data.consumed_bytes)}
+            colorScheme="green"
+          />
+          <MetricBadge
+            label={t("builtData")}
+            value={formatBytes(data.built_bytes)}
+            colorScheme="purple"
+          />
+          <MetricBadge
+            label={t("resetData")}
+            value={formatBytes(data.reset_bytes)}
+            colorScheme="orange"
+          />
+        </SimpleGrid>
+      </Stack>
+    </Card>
+  );
+};
+
+const AdminOverviewCard: FC<{
+  data?: SystemStats["admin_overview"];
+  t: TFunction;
+}> = ({ data, t }) => {
+  if (!data) return null;
+  return (
+    <Card p={5} borderRadius="12px" boxShadow="none">
+      <Stack spacing={4}>
+        <Text fontSize="lg" fontWeight="semibold">
+          {t("adminOverview")}
+        </Text>
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
+          <MetricBadge
+            label={t("totalAdmins")}
+            value={formatNumberValue(data.total_admins)}
+            colorScheme="blue"
+          />
+          <MetricBadge
+            label={t("sudoAdmins")}
+            value={formatNumberValue(data.sudo_admins)}
+            colorScheme="purple"
+          />
+          <MetricBadge
+            label={t("fullAccessAdmins")}
+            value={formatNumberValue(data.full_access_admins)}
+            colorScheme="green"
+          />
+          <MetricBadge
+            label={t("standardAdmins")}
+            value={formatNumberValue(data.standard_admins)}
+            colorScheme="orange"
+          />
+        </SimpleGrid>
+        {data.top_admin_username && (
+          <Box>
+            <Text fontSize="sm" color="gray.500">
+              {t("topAdmin")}:{" "}
+              <Text as="span" fontWeight="semibold">
+                {data.top_admin_username}
+              </Text>
+            </Text>
+            <Text fontSize="sm" color="gray.500">
+              {t("topAdminUsage")}: {formatBytes(data.top_admin_usage)}
+            </Text>
+          </Box>
+        )}
+      </Stack>
+    </Card>
+  );
+};
+
 export const Statistics: FC<BoxProps> = (props) => {
   const { version } = useDashboard();
   const { userData } = useGetUser();
-  const { data: systemData } = useQuery({
-    queryKey: StatisticsQueryKey,
+  const { t } = useTranslation();
+  const { data: systemData } = useQuery<SystemStats>({
+    queryKey: "statistics-query-key",
     queryFn: () => fetch("/system"),
-    refetchInterval: 600_000,
+    refetchInterval: 3_000,
     onSuccess: ({ version: currentVersion }) => {
-      if (version !== currentVersion)
-        useDashboard.setState({ version: currentVersion });
+      if (version !== currentVersion) useDashboard.setState({ version: currentVersion });
     },
   });
-  const { t } = useTranslation();
+  const [historyPayload, setHistoryPayload] = useState<HistoryModalPayload | null>(null);
+  const [historyInterval, setHistoryInterval] = useState(HISTORY_INTERVALS[0].seconds);
+
+  const canSeeGlobal =
+    userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+
+  const openHistory = (payload: HistoryModalPayload) => {
+    setHistoryPayload(payload);
+  };
+
   return (
-    <HStack
-      justifyContent="space-between"
-      gap={0}
-      columnGap={{ lg: 4, md: 0 }}
-      rowGap={{ lg: 0, base: 4 }}
-      display="flex"
-      flexDirection={{ lg: "row", base: "column" }}
-      {...props}
-    >
-      <StatisticCard
-        title={t("activeUsers")}
-        content={
-          systemData && (
-            <HStack alignItems="flex-end">
-              <Text>{numberWithCommas(systemData.users_active)}</Text>
-              <Text
-                fontWeight="normal"
-                fontSize="lg"
-                as="span"
-                display="inline-block"
-                pb="5px"
-              >
-                / {numberWithCommas(systemData.total_user)}
-              </Text>
-            </HStack>
-          )
-        }
-        icon={<TotalUsersIcon />}
+    <Stack spacing={4} width="full" {...props}>
+      {systemData && (
+        <>
+          <SystemOverviewCard data={systemData} t={t} onOpenHistory={openHistory} />
+          <PanelOverviewCard data={systemData} t={t} onOpenHistory={openHistory} />
+        </>
+      )}
+      <SimpleGrid columns={{ base: 1, md: canSeeGlobal ? 2 : 1, xl: canSeeGlobal ? 3 : 2 }} gap={4}>
+        <UsersUsageCard value={userData.users_usage ?? 0} t={t} />
+        {canSeeGlobal && systemData && <UsersOverviewCard data={systemData} t={t} />}
+      </SimpleGrid>
+      {systemData && <YourUsageCard data={systemData.personal_usage} t={t} />}
+      {canSeeGlobal && systemData && (
+        <AdminOverviewCard data={systemData.admin_overview} t={t} />
+      )}
+      <HistoryModal
+        isOpen={Boolean(historyPayload)}
+        onClose={() => setHistoryPayload(null)}
+        payload={historyPayload}
+        intervalSeconds={historyInterval}
+        onIntervalChange={setHistoryInterval}
+        t={t}
       />
-      <StatisticCard
-        title={t("UsersUsage")}
-        content={formatBytes(userData.users_usage ?? 0)}
-        icon={<NetworkIcon />}
-      />
-    </HStack>
+    </Stack>
   );
 };

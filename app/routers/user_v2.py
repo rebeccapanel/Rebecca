@@ -8,7 +8,7 @@ from app.runtime import logger, xray
 from app.db import crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user
-from app.models.admin import Admin, AdminRole
+from app.models.admin import Admin, AdminRole, UserPermission
 from app.models.user import (
     UserCreate,
     UserModify,
@@ -61,7 +61,7 @@ def add_user_with_service(
     user_payload["proxies"] = proxies_payload
     user_payload["inbounds"] = inbounds_payload
 
-    admin.ensure_user_permission("create")
+    admin.ensure_user_permission(UserPermission.create)
     try:
         user_data = UserCreate.model_validate(user_payload)
         admin.ensure_user_constraints(

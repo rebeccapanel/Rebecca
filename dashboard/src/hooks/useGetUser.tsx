@@ -3,6 +3,7 @@ import { fetch } from "service/http";
 import { UserApi, UseGetUserReturn } from "types/User";
 import { useQuery } from "react-query";
 import { DEFAULT_ADMIN_PERMISSIONS } from "constants/adminPermissions";
+import { AdminRole, AdminStatus } from "types/Admin";
 
 const fetchUser = async () => {
     return await fetch("/admin");
@@ -14,19 +15,19 @@ const useGetUser = (): UseGetUserReturn => {
     })
 
     const userDataEmpty: UserApi =  {
-        role: "standard",
+        role: AdminRole.Standard,
         permissions: DEFAULT_ADMIN_PERMISSIONS,
         telegram_id: "",
         username: "",
         users_usage: 0,
-        status: "active",
+        status: AdminStatus.Active,
         disabled_reason: null
       }
 
     const normalizedData: UserApi = data
       ? {
           ...data,
-          role: data.role || "standard",
+          role: data.role || AdminRole.Standard,
           permissions: data.permissions || DEFAULT_ADMIN_PERMISSIONS,
         }
       : userDataEmpty;

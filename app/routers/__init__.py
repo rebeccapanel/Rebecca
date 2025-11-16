@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from . import (
+    ads,
     admin, 
     core, 
     node, 
@@ -16,6 +17,7 @@ from . import (
 api_router = APIRouter()
 
 routers = [
+    ads.router,
     admin.router,
     core.router,
     node.router,

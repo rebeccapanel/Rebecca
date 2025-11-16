@@ -13,7 +13,12 @@ import {
   Tooltip,
 } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
-import { AdminPermissions } from "types/Admin";
+import {
+  AdminManagementPermission,
+  AdminPermissions,
+  AdminSection,
+  UserPermissionToggle,
+} from "types/Admin";
 
 type AdminPermissionsEditorProps = {
   value: AdminPermissions;
@@ -26,33 +31,44 @@ type AdminPermissionsEditorProps = {
   hideExtendedSections?: boolean;
 };
 
-const userPermissionKeys: Array<{ key: keyof AdminPermissions["users"]; label: string }> = [
-  { key: "create", label: "admins.permissions.createUser" },
-  { key: "delete", label: "admins.permissions.deleteUser" },
-  { key: "reset_usage", label: "admins.permissions.resetUsage" },
-  { key: "revoke", label: "admins.permissions.revoke" },
-  { key: "create_on_hold", label: "admins.permissions.createOnHold" },
-  { key: "allow_unlimited_data", label: "admins.permissions.unlimitedData" },
-  { key: "allow_unlimited_expire", label: "admins.permissions.unlimitedExpire" },
-  { key: "allow_next_plan", label: "admins.permissions.nextPlan" },
+const userPermissionKeys: Array<{ key: UserPermissionToggle; label: string }> = [
+  { key: UserPermissionToggle.Create, label: "admins.permissions.createUser" },
+  { key: UserPermissionToggle.Delete, label: "admins.permissions.deleteUser" },
+  { key: UserPermissionToggle.ResetUsage, label: "admins.permissions.resetUsage" },
+  { key: UserPermissionToggle.Revoke, label: "admins.permissions.revoke" },
+  { key: UserPermissionToggle.CreateOnHold, label: "admins.permissions.createOnHold" },
+  {
+    key: UserPermissionToggle.AllowUnlimitedData,
+    label: "admins.permissions.unlimitedData",
+  },
+  {
+    key: UserPermissionToggle.AllowUnlimitedExpire,
+    label: "admins.permissions.unlimitedExpire",
+  },
+  { key: UserPermissionToggle.AllowNextPlan, label: "admins.permissions.nextPlan" },
 ];
 
-const adminManagementKeys: Array<{ key: keyof AdminPermissions["admin_management"]; label: string }> =
-  [
-    { key: "can_view", label: "admins.permissions.viewAdmins" },
-    { key: "can_edit", label: "admins.permissions.editAdmins" },
-    { key: "can_manage_sudo", label: "admins.permissions.manageSudo" },
-  ];
-
-const sectionPermissionKeys: Array<{ key: keyof AdminPermissions["sections"]; label: string }> = [
-  { key: "usage", label: "admins.sections.usage" },
-  { key: "admins", label: "admins.sections.admins" },
-  { key: "services", label: "admins.sections.services" },
-  { key: "hosts", label: "admins.sections.hosts" },
-  { key: "nodes", label: "admins.sections.nodes" },
-  { key: "integrations", label: "admins.sections.integrations" },
-  { key: "xray", label: "admins.sections.xray" },
+const adminManagementKeys: Array<{ key: AdminManagementPermission; label: string }> = [
+  { key: AdminManagementPermission.View, label: "admins.permissions.viewAdmins" },
+  { key: AdminManagementPermission.Edit, label: "admins.permissions.editAdmins" },
+  { key: AdminManagementPermission.ManageSudo, label: "admins.permissions.manageSudo" },
 ];
+
+const sectionPermissionKeys: Array<{ key: AdminSection; label: string }> = [
+  { key: AdminSection.Usage, label: "admins.sections.usage" },
+  { key: AdminSection.Admins, label: "admins.sections.admins" },
+  { key: AdminSection.Services, label: "admins.sections.services" },
+  { key: AdminSection.Hosts, label: "admins.sections.hosts" },
+  { key: AdminSection.Nodes, label: "admins.sections.nodes" },
+  { key: AdminSection.Integrations, label: "admins.sections.integrations" },
+  { key: AdminSection.Xray, label: "admins.sections.xray" },
+];
+
+type PermissionKeyMap = {
+  users: UserPermissionToggle;
+  admin_management: AdminManagementPermission;
+  sections: AdminSection;
+};
 
 export const AdminPermissionsEditor = ({
   value,
@@ -66,14 +82,18 @@ export const AdminPermissionsEditor = ({
 }: AdminPermissionsEditorProps) => {
   const { t } = useTranslation();
 
-  const updatePermissions = (path: ["users" | "admin_management" | "sections", string], next: boolean) => {
-    const [section, key] = path;
+  const updatePermissions = <T extends keyof PermissionKeyMap>(
+    section: T,
+    key: PermissionKeyMap[T],
+    next: boolean
+  ) => {
+    const updatedSection = {
+      ...value[section],
+      [key]: next,
+    } as AdminPermissions[T];
     const updated: AdminPermissions = {
       ...value,
-      [section]: {
-        ...value[section],
-        [key]: next,
-      },
+      [section]: updatedSection,
     };
     onChange(updated);
   };
@@ -107,7 +127,7 @@ export const AdminPermissionsEditor = ({
             <Text fontSize="sm">{t(label)}</Text>
             <Switch
               isChecked={Boolean(value.users[key])}
-              onChange={(event) => updatePermissions(["users", key], event.target.checked)}
+              onChange={(event) => updatePermissions("users", key, event.target.checked)}
             />
           </HStack>
         ))}
@@ -169,7 +189,7 @@ export const AdminPermissionsEditor = ({
                 <Switch
                   isChecked={Boolean(value.admin_management[key])}
                   onChange={(event) =>
-                    updatePermissions(["admin_management", key], event.target.checked)
+                    updatePermissions("admin_management", key, event.target.checked)
                   }
                 />
               </HStack>
@@ -193,7 +213,7 @@ export const AdminPermissionsEditor = ({
                 <Text fontSize="sm">{t(label)}</Text>
                 <Switch
                   isChecked={Boolean(value.sections[key])}
-                  onChange={(event) => updatePermissions(["sections", key], event.target.checked)}
+                  onChange={(event) => updatePermissions("sections", key, event.target.checked)}
                 />
               </HStack>
             ))}

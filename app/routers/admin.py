@@ -12,7 +12,15 @@ from app.models.user import UserStatus
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_admin_by_username, validate_admin
-from app.models.admin import Admin, AdminCreate, AdminModify, AdminRole, AdminStatus, Token
+from app.models.admin import (
+    Admin,
+    AdminCreate,
+    AdminManagementPermission,
+    AdminModify,
+    AdminRole,
+    AdminStatus,
+    Token,
+)
 from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
@@ -95,7 +103,10 @@ def create_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only full access admins (or the Rebecca CLI) can create another full access admin.",
         )
-    if not (admin.has_full_access or admin.permissions.admin_management.can_edit):
+    if not (
+        admin.has_full_access
+        or admin.permissions.admin_management.allows(AdminManagementPermission.edit)
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You're not allowed to manage other admins.",
@@ -184,7 +195,7 @@ def get_admins(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Fetch a list of admins with optional filters for pagination and username."""
-    if not (admin.has_full_access or admin.permissions.admin_management.can_view):
+    if not (admin.has_full_access or admin.permissions.admin_management.allows(AdminManagementPermission.view)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You're not allowed to view admins.",
@@ -444,6 +455,7 @@ def get_admin_usage_by_nodes(
     usages = crud.get_admin_usage_by_nodes(db, dbadmin, start, end)
 
     return {"usages": usages}
+
 
 
 

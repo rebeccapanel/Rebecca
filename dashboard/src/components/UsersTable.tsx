@@ -48,6 +48,7 @@ import { FC, Fragment, useEffect, useLayoutEffect, useState } from "react";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { User } from "types/User";
+import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
@@ -220,18 +221,23 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   const useTable = useBreakpointValue({ base: false, md: true });
 
   const { userData } = useGetUser();
-  const hasElevatedRole = userData.role === "sudo" || userData.role === "full_access";
+  const hasElevatedRole =
+    userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
   const isAdminDisabled = Boolean(
-    !hasElevatedRole && userData.status === "disabled"
+    !hasElevatedRole && userData.status === AdminStatus.Disabled
   );
   const canCreateUsers =
-    hasElevatedRole || Boolean(userData.permissions?.users.create);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
   const canDeleteUsers =
-    hasElevatedRole || Boolean(userData.permissions?.users.delete);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
   const canResetUsage =
-    hasElevatedRole || Boolean(userData.permissions?.users.reset_usage);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
   const canRevokeSubscription =
-    hasElevatedRole || Boolean(userData.permissions?.users.revoke);
+    hasElevatedRole ||
+    Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
   const disabledReason = userData.disabled_reason;
 
 

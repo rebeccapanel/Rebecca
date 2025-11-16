@@ -18,6 +18,7 @@ import {
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useTranslation } from "react-i18next";
 import { formatBytes } from "utils/formatByte";
+import { AdminRole } from "types/Admin";
 
 const formatLimit = (limit?: number | null, unlimitedLabel?: string) => {
   if (!limit || limit <= 0) {
@@ -91,16 +92,16 @@ export const AdminDetailsDrawer = () => {
                   py={0.5}
                   borderRadius="full"
                   colorScheme={
-                    admin.role === "full_access"
+                    admin.role === AdminRole.FullAccess
                       ? "orange"
-                      : admin.role === "sudo"
+                      : admin.role === AdminRole.Sudo
                       ? "purple"
                       : "gray"
                   }
                 >
-                  {admin.role === "full_access"
+                  {admin.role === AdminRole.FullAccess
                     ? t("admins.roles.fullAccess", "Full access")
-                    : admin.role === "sudo"
+                    : admin.role === AdminRole.Sudo
                     ? t("admins.roles.sudo", "Sudo")
                     : t("admins.roles.standard", "Standard")}
                 </Badge>

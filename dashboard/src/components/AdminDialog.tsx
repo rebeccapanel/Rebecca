@@ -35,12 +35,8 @@ import useGetUser from "hooks/useGetUser";
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type {
-  AdminCreatePayload,
-  AdminPermissions,
-  AdminRole,
-  AdminUpdatePayload,
-} from "types/Admin";
+import type { AdminCreatePayload, AdminPermissions, AdminUpdatePayload } from "types/Admin";
+import { AdminRole } from "types/Admin";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
@@ -49,7 +45,7 @@ import { z } from "zod";
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 
 const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
-  standard: {
+  [AdminRole.Standard]: {
     users: {
       create: true,
       delete: false,
@@ -76,7 +72,7 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
       xray: false,
     },
   },
-  sudo: {
+  [AdminRole.Sudo]: {
     users: {
       create: true,
       delete: true,
@@ -103,7 +99,7 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
       xray: true,
     },
   },
-  full_access: {
+  [AdminRole.FullAccess]: {
     users: {
       create: true,
       delete: true,
@@ -180,7 +176,7 @@ type AdminFormValues = {
 export const AdminDialog: FC = () => {
   const { t } = useTranslation();
   const { userData } = useGetUser();
-  const canCreateFullAccess = userData.role === "full_access";
+  const canCreateFullAccess = userData.role === AdminRole.FullAccess;
   const toast = useToast();
   const {
     admins,
@@ -227,7 +223,7 @@ export const AdminDialog: FC = () => {
             (value) => value === undefined || /^\d+$/.test(value),
             t("admins.validation.telegramNumeric")
           ),
-        role: z.enum(["standard", "sudo", "full_access"]).optional(),
+        role: z.nativeEnum(AdminRole).optional(),
         data_limit: z
           .string()
           .trim()
@@ -271,8 +267,8 @@ export const AdminDialog: FC = () => {
       username: "",
       password: "",
       telegram_id: "",
-      role: "standard",
-      permissions: clonePermissions("standard"),
+      role: AdminRole.Standard,
+      permissions: clonePermissions(AdminRole.Standard),
       maxDataLimitPerUserGb: "",
       data_limit: "",
       users_limit: "",
@@ -325,7 +321,7 @@ export const AdminDialog: FC = () => {
   const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 
   const resetPermissionsToRole = useCallback(() => {
-    const role = watchRole ?? "standard";
+    const role = watchRole ?? AdminRole.Standard;
     setValue("permissions", clonePermissions(role), { shouldDirty: true });
     setValue("maxDataLimitPerUserGb", "", { shouldDirty: true });
   }, [setValue, watchRole]);
@@ -351,7 +347,7 @@ export const AdminDialog: FC = () => {
 
   useEffect(() => {
     if (isOpen) {
-      const nextRole: AdminRole = admin?.role ?? "standard";
+      const nextRole: AdminRole = admin?.role ?? AdminRole.Standard;
       const nextPermissions = admin
         ? JSON.parse(JSON.stringify(admin.permissions)) ?? clonePermissions(nextRole)
         : clonePermissions(nextRole);
@@ -386,7 +382,7 @@ export const AdminDialog: FC = () => {
   }, [isOpen]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    const selectedRole: AdminRole = values.role ?? "standard";
+    const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
     let permissionPayload: AdminPermissions | undefined;
 
     if (mode === "create") {
@@ -540,11 +536,11 @@ export const AdminDialog: FC = () => {
       <FormControl>
         <FormLabel>{t("admins.roleLabel", "Admin role")}</FormLabel>
         <RadioGroup
-          value={watchRole ?? "standard"}
+          value={watchRole ?? AdminRole.Standard}
           onChange={(value) => setValue("role", value as AdminRole, { shouldDirty: true })}
         >
           <VStack align="flex-start" spacing={2}>
-            <Radio value="standard">
+            <Radio value={AdminRole.Standard}>
               <Text fontWeight="medium">{t("admins.roles.standard", "Standard")}</Text>
               <FormHelperText m={0}>
                 {t(
@@ -553,7 +549,7 @@ export const AdminDialog: FC = () => {
                 )}
               </FormHelperText>
             </Radio>
-            <Radio value="sudo">
+            <Radio value={AdminRole.Sudo}>
               <Text fontWeight="medium">{t("admins.roles.sudo", "Sudo")}</Text>
               <FormHelperText m={0}>
                 {t(
@@ -563,7 +559,7 @@ export const AdminDialog: FC = () => {
               </FormHelperText>
             </Radio>
             {canCreateFullAccess && (
-              <Radio value="full_access">
+              <Radio value={AdminRole.FullAccess}>
                 <Text fontWeight="medium">{t("admins.roles.fullAccess", "Full access")}</Text>
                 <FormHelperText m={0}>
                   {t(
@@ -645,7 +641,7 @@ export const AdminDialog: FC = () => {
                   <TabPanel px={0}>{detailsForm}</TabPanel>
                   <TabPanel px={0}>
                     <AdminPermissionsEditor
-                      value={permissionsValue ?? clonePermissions(watchRole ?? "standard")}
+                      value={permissionsValue ?? clonePermissions(watchRole ?? AdminRole.Standard)}
                       onChange={handlePermissionsChange}
                       showReset
                       onReset={resetPermissionsToRole}

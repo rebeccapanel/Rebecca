@@ -1,32 +1,49 @@
-export type AdminRole = "standard" | "sudo" | "full_access";
+export enum AdminRole {
+  Standard = "standard",
+  Sudo = "sudo",
+  FullAccess = "full_access",
+}
 
-export type UserPermissionSettings = {
-  create: boolean;
-  delete: boolean;
-  reset_usage: boolean;
-  revoke: boolean;
-  create_on_hold: boolean;
-  allow_unlimited_data: boolean;
-  allow_unlimited_expire: boolean;
-  allow_next_plan: boolean;
+export enum AdminStatus {
+  Active = "active",
+  Disabled = "disabled",
+  Deleted = "deleted",
+}
+
+export enum UserPermissionToggle {
+  Create = "create",
+  Delete = "delete",
+  ResetUsage = "reset_usage",
+  Revoke = "revoke",
+  CreateOnHold = "create_on_hold",
+  AllowUnlimitedData = "allow_unlimited_data",
+  AllowUnlimitedExpire = "allow_unlimited_expire",
+  AllowNextPlan = "allow_next_plan",
+}
+
+export enum AdminManagementPermission {
+  View = "can_view",
+  Edit = "can_edit",
+  ManageSudo = "can_manage_sudo",
+}
+
+export enum AdminSection {
+  Usage = "usage",
+  Admins = "admins",
+  Services = "services",
+  Hosts = "hosts",
+  Nodes = "nodes",
+  Integrations = "integrations",
+  Xray = "xray",
+}
+
+export type UserPermissionSettings = Record<UserPermissionToggle, boolean> & {
   max_data_limit_per_user: number | null;
 };
 
-export type AdminManagementPermissions = {
-  can_view: boolean;
-  can_edit: boolean;
-  can_manage_sudo: boolean;
-};
+export type AdminManagementPermissions = Record<AdminManagementPermission, boolean>;
 
-export type SectionPermissionSettings = {
-  usage: boolean;
-  admins: boolean;
-  services: boolean;
-  hosts: boolean;
-  nodes: boolean;
-  integrations: boolean;
-  xray: boolean;
-};
+export type SectionPermissionSettings = Record<AdminSection, boolean>;
 
 export type AdminPermissions = {
   users: UserPermissionSettings;
@@ -39,7 +56,7 @@ export type Admin = {
   username: string;
   role: AdminRole;
   permissions: AdminPermissions;
-  status: "active" | "disabled" | "deleted";
+  status: AdminStatus;
   disabled_reason?: string | null;
   telegram_id?: number | null;
   users_usage?: number | null;
