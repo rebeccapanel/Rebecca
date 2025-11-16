@@ -8,7 +8,6 @@ Create Date: 2023-10-22 13:58:12.431246
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
-from app.utils.crypto import generate_certificate
 
 # revision identifiers, used by Alembic.
 revision = '7a0dbb8a2f65'
@@ -27,6 +26,8 @@ def upgrade() -> None:
                             )
 
     # INSERT DEFAULT ROW
+    from app.utils.crypto import generate_certificate
+
     tls = generate_certificate()
     op.bulk_insert(table, [{"id": 1, "key": tls['key'], "certificate": tls['cert']}])
 

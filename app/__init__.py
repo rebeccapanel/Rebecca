@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, status
@@ -11,18 +12,27 @@ from fastapi.routing import APIRoute
 
 from config import ALLOWED_ORIGINS, DOCS, XRAY_SUBSCRIPTION_PATH
 from app import runtime
-from . import reb_node as xray  # noqa: F401
 from app.utils.system import register_scheduler_jobs
 
 __version__ = "0.8.4"
 
-runtime.xray = xray
+IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
+if IS_RUNNING_ALEMBIC:
+    os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
+
+SKIP_RUNTIME_INIT = (
+    os.getenv("REBECCA_SKIP_RUNTIME_INIT") == "1" or IS_RUNNING_ALEMBIC
+)
+runtime.scheduler = None
+runtime.app = None
+
 logger = logging.getLogger("uvicorn.error")
 runtime.logger = logger
 
-SKIP_RUNTIME_INIT = os.getenv("REBECCA_SKIP_RUNTIME_INIT") == "1"
-runtime.scheduler = None
-runtime.app = None
+xray = None
+if not SKIP_RUNTIME_INIT:
+    from . import reb_node as xray  # noqa: F401
+runtime.xray = xray
 
 if SKIP_RUNTIME_INIT:
     app = None  # type: ignore[assignment]

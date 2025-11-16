@@ -593,6 +593,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
       size="4xl"
       scrollBehavior="inside"
       isCentered
+      returnFocusOnClose={false}
     >
       <ModalOverlay />
       <ModalContent>
@@ -926,7 +927,13 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" initialFocusRef={initialRef}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="lg"
+      initialFocusRef={initialRef}
+      returnFocusOnClose={false}
+    >
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(6px)" />
       <ModalContent>
         <ModalHeader>
@@ -1101,11 +1108,6 @@ export const HostsManager: FC = () => {
   const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
   const [confirmDeleteUid, setConfirmDeleteUid] = useState<string | null>(null);
-  const [pendingSelection, setPendingSelection] = useState<{
-    inboundTag: string;
-    remark: string;
-    address: string;
-  } | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
 
   const [orderDirtyState, setOrderDirtyState] = useState(false);
@@ -1130,29 +1132,13 @@ export const HostsManager: FC = () => {
   }, [hosts, applyHostItems]);
 
   useEffect(() => {
-    if (pendingSelection) {
-      const match = hostItemsRef.current.find(
-        (host) =>
-          host.inboundTag === pendingSelection.inboundTag &&
-          host.data.remark.trim() === pendingSelection.remark &&
-          host.data.address.trim() === pendingSelection.address
-      );
-      if (match) {
-        setSelectedHostUid(match.uid);
-        setPendingSelection(null);
-      }
-    }
-  }, [hostItemsState, pendingSelection]);
-
-  useEffect(() => {
     if (
       selectedHostUid &&
-      !hostItemsRef.current.some((host) => host.uid === selectedHostUid) &&
-      !pendingSelection
+      !hostItemsRef.current.some((host) => host.uid === selectedHostUid)
     ) {
       setSelectedHostUid(null);
     }
-  }, [hostItemsState, selectedHostUid, pendingSelection]);
+  }, [hostItemsState, selectedHostUid]);
 
   const setOrderDirtyFlag = useCallback((value: boolean) => {
     orderDirtyRef.current = value;
@@ -1397,11 +1383,6 @@ export const HostsManager: FC = () => {
     const host = hostItemsRef.current.find((item) => item.uid === uid);
     if (!host) return;
     setSavingHostUid(uid);
-    setPendingSelection({
-      inboundTag: host.inboundTag,
-      remark: host.data.remark.trim(),
-      address: host.data.address.trim(),
-    });
     try {
       const payload = buildInboundPayload(hostItemsRef.current, [
         host.inboundTag,
@@ -1415,6 +1396,7 @@ export const HostsManager: FC = () => {
         isClosable: true,
         position: "top",
       });
+      setSelectedHostUid(null);
     } catch (error) {
       toast({
         title: t("hostsPage.error.save"),
@@ -1488,11 +1470,6 @@ export const HostsManager: FC = () => {
       ? Math.max(...hostItemsRef.current.map((host) => host.data.sort)) + 1
       : 0;
     setSavingHostUid("create");
-    setPendingSelection({
-      inboundTag: values.inboundTag,
-      remark: values.remark.trim(),
-      address: values.address.trim(),
-    });
     try {
       const newHost: HostState = {
         uid: createUid(),
