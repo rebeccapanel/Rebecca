@@ -39,35 +39,38 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
     return a
 
 
+def _encode_reality_key(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("utf-8")
+
+
+def _normalize_reality_key(private_key: str) -> str:
+    decoded = _decode_reality_key(private_key)
+    return _encode_reality_key(decoded)
+
+
+def _decode_reality_key(private_key: str) -> bytes:
+    normalized = "".join(private_key.split())
+    padding = "=" * ((4 - len(normalized) % 4) % 4)
+    candidate = normalized + padding
+    last_error: Exception | None = None
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        try:
+            decoded = decoder(candidate.encode("utf-8"))
+        except (binascii.Error, ValueError) as exc:
+            last_error = exc
+            continue
+        if len(decoded) != 32:
+            raise ValueError("Reality private key must decode to 32 bytes")
+        return decoded
+    raise ValueError("Reality private key is not valid Base64") from last_error
+
+
 def _derive_reality_public_key_python(private_key: str) -> str:
     """
     Derive the public key for a Reality inbound using pure Python (X25519).
     Raises ValueError when the provided key cannot be decoded or is invalid.
     """
-    if not private_key:
-        raise ValueError("Reality private key is empty")
-
-    normalized = "".join(private_key.split())
-    padding = "=" * ((4 - len(normalized) % 4) % 4)
-    candidate = normalized + padding
-
-    decoded: bytes | None = None
-    errors: list[Exception] = []
-    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
-        try:
-            decoded = decoder(candidate.encode("utf-8"))
-            break
-        except (binascii.Error, ValueError) as exc:  # pragma: no cover - defensive
-            errors.append(exc)
-            continue
-
-    if decoded is None:
-        last_error = errors[-1] if errors else None
-        raise ValueError("Reality private key is not valid Base64") from last_error
-
-    if len(decoded) != 32:
-        raise ValueError("Reality private key must decode to 32 bytes")
-
+    decoded = _decode_reality_key(private_key)
     try:
         private_key_obj = x25519.X25519PrivateKey.from_private_bytes(decoded)
     except ValueError as exc:
@@ -90,10 +93,9 @@ def derive_reality_public_key(private_key: str) -> str:
     if not private_key:
         raise ValueError("Reality private key is empty")
 
+    normalized = _normalize_reality_key(private_key)
     try:
-        cmd = [XRAY_EXECUTABLE_PATH, "x25519"]
-        if private_key:
-            cmd.extend(["-i", private_key])
+        cmd = [XRAY_EXECUTABLE_PATH, "x25519", "-i", normalized]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
         match = re.match(r"Private key: (.+)\nPublic key: (.+)", output)
         if match:
@@ -101,7 +103,7 @@ def derive_reality_public_key(private_key: str) -> str:
     except Exception:  # pragma: no cover - fallback handled below
         pass
 
-    return _derive_reality_public_key_python(private_key)
+    return _derive_reality_public_key_python(normalized)
 
 
 class XRayConfig(dict):
@@ -321,7 +323,14 @@ class XRayConfig(dict):
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
 
                         try:
-                            settings['pbk'] = derive_reality_public_key(pvk)
+                            normalized_pvk = _normalize_reality_key(pvk)
+                        except ValueError as exc:
+                            raise ValueError(
+                                f"Invalid privateKey in realitySettings of {inbound['tag']}: {exc}") from exc
+
+                        tls_settings['privateKey'] = normalized_pvk
+                        try:
+                            settings['pbk'] = derive_reality_public_key(normalized_pvk)
                         except ValueError as exc:
                             raise ValueError(
                                 f"Invalid privateKey in realitySettings of {inbound['tag']}: {exc}") from exc

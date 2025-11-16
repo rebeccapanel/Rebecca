@@ -22,14 +22,11 @@ import {
   useColorModeValue,
   VStack,
 } from "@chakra-ui/react";
-import {
-  ChartBarIcon,
-  CpuChipIcon,
-} from "@heroicons/react/24/outline";
+import { ChartBarIcon } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import { TFunction } from "i18next";
-import { FC, PropsWithChildren, ReactElement, ReactNode, useMemo, useState } from "react";
+import { FC, ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
 import Chart from "react-apexcharts";
@@ -50,90 +47,9 @@ const iconProps = {
   },
 };
 
-const CpuIcon = chakra(CpuChipIcon, iconProps);
 const ChartIcon = chakra(ChartBarIcon, iconProps);
 
 const formatNumberValue = (value: number) => numberWithCommas(value) ?? value.toString();
-
-type StatisticCardProps = {
-  title: string;
-  content: ReactNode;
-  icon: ReactElement;
-  onClick?: () => void;
-  variant?: "default" | "compact";
-};
-
-const StatisticCard: FC<PropsWithChildren<StatisticCardProps>> = ({
-  title,
-  content,
-  icon,
-  onClick,
-  variant = "default",
-}) => (
-  <Card
-    as={onClick ? "button" : undefined}
-    onClick={onClick}
-    cursor={onClick ? "pointer" : "default"}
-    p={variant === "compact" ? 3 : 4}
-    borderStyle="solid"
-    boxShadow="none"
-    borderRadius="12px"
-    width="full"
-    display="flex"
-    justifyContent="space-between"
-    flexDirection="row"
-  >
-    <HStack alignItems="center" columnGap="3">
-      <Box
-        p="2"
-        position="relative"
-        color="white"
-        _before={{
-          content: `""`,
-          position: "absolute",
-          top: 0,
-          left: 0,
-          bg: "primary.400",
-          display: "block",
-          w: "full",
-          h: "full",
-          borderRadius: "4px",
-          opacity: ".5",
-          z: "1",
-        }}
-        _after={{
-          content: `""`,
-          position: "absolute",
-          top: "-4px",
-          left: "-4px",
-          bg: "primary.400",
-          display: "block",
-          w: "calc(100% + 8px)",
-          h: "calc(100% + 8px)",
-          borderRadius: "6px",
-          opacity: ".4",
-          z: "1",
-        }}
-      >
-        {icon}
-      </Box>
-      <Text
-        color="gray.600"
-        _dark={{
-          color: "gray.300",
-        }}
-        fontWeight="medium"
-        textTransform="capitalize"
-        fontSize="xs"
-      >
-        {title}
-      </Text>
-    </HStack>
-    <Box fontSize={variant === "compact" ? "xl" : "2xl"} fontWeight="semibold" mt="2">
-      {content}
-    </Box>
-  </Card>
-);
 
 const HISTORY_INTERVALS = [
   { labelKey: "historyInterval.2m", seconds: 120 },
@@ -591,18 +507,38 @@ const PanelOverviewCard: FC<{
   );
 };
 
-const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => (
-  <StatisticCard
-    title={t("UsersUsage")}
-    content={formatBytes(value)}
-    icon={<ChartIcon />}
-    variant="compact"
-  />
-);
+const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => {
+  const borderColor = useColorModeValue("gray.200", "gray.700");
+  const bg = useColorModeValue("gray.50", "gray.900");
+  const iconBg = useColorModeValue("primary.100", "primary.900");
+  const iconColor = useColorModeValue("primary.500", "primary.200");
+  return (
+    <Box borderWidth="1px" borderColor={borderColor} borderRadius="md" bg={bg} p={4}>
+      <HStack justifyContent="space-between" alignItems="center">
+        <HStack alignItems="center" spacing={3}>
+          <Box p={2} borderRadius="md" bg={iconBg}>
+            <ChartIcon color={iconColor} />
+          </Box>
+          <Text fontSize="xs" color="gray.500">
+            {t("UsersUsage")}
+          </Text>
+        </HStack>
+        <Text fontSize="2xl" fontWeight="semibold">
+          {formatBytes(value)}
+        </Text>
+      </HStack>
+    </Box>
+  );
+};
 
-const UsersOverviewCard: FC<{ data: SystemStats; t: TFunction }> = ({
+const UsersOverviewCard: FC<{
+  data: SystemStats;
+  t: TFunction;
+  usersUsage?: number;
+}> = ({
   data,
   t,
+  usersUsage,
 }) => (
   <Card p={5} borderRadius="12px" boxShadow="none">
     <Stack spacing={4}>
@@ -614,6 +550,9 @@ const UsersOverviewCard: FC<{ data: SystemStats; t: TFunction }> = ({
         value={formatNumberValue(data.total_user)}
         colorScheme="blue"
       />
+      {typeof usersUsage === "number" && (
+        <UsersUsageCard value={usersUsage} t={t} />
+      )}
       <SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
         <MetricBadge
           label={t("status.active")}
@@ -756,6 +695,30 @@ export const Statistics: FC<BoxProps> = (props) => {
     setHistoryPayload(payload);
   };
 
+  const userCards: ReactNode[] = [];
+  if (systemData) {
+    userCards.push(
+      <UsersOverviewCard
+        key="users-overview"
+        data={systemData}
+        t={t}
+        usersUsage={userData.users_usage ?? undefined}
+      />
+    );
+  }
+  const personalUsageCard =
+    systemData?.personal_usage && (
+      <YourUsageCard
+        key="your-usage"
+        data={systemData.personal_usage}
+        t={t}
+      />
+    );
+  if (personalUsageCard) {
+    userCards.push(personalUsageCard);
+  }
+  const userGridColumns = userCards.length > 1 ? 2 : 1;
+
   return (
     <Stack spacing={4} width="full" {...props}>
       {systemData && (
@@ -764,11 +727,11 @@ export const Statistics: FC<BoxProps> = (props) => {
           <PanelOverviewCard data={systemData} t={t} onOpenHistory={openHistory} />
         </>
       )}
-      <SimpleGrid columns={{ base: 1, md: canSeeGlobal ? 2 : 1, xl: canSeeGlobal ? 3 : 2 }} gap={4}>
-        <UsersUsageCard value={userData.users_usage ?? 0} t={t} />
-        {canSeeGlobal && systemData && <UsersOverviewCard data={systemData} t={t} />}
-      </SimpleGrid>
-      {systemData && <YourUsageCard data={systemData.personal_usage} t={t} />}
+      {userCards.length > 0 && (
+        <SimpleGrid columns={{ base: 1, md: userGridColumns }} gap={4}>
+          {userCards}
+        </SimpleGrid>
+      )}
       {canSeeGlobal && systemData && (
         <AdminOverviewCard data={systemData.admin_overview} t={t} />
       )}

@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union, Liter
 
 import sqlalchemy as sa
 from sqlalchemy import and_, delete, func, or_, inspect
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
 from app.db.models import (
@@ -70,6 +70,18 @@ _USER_STATUS_ENUM_ENSURED = False
 
 
 _logger = logging.getLogger(__name__)
+_RECORD_CHANGED_ERRNO = 1020
+
+
+def _is_record_changed_error(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    if not orig:
+        return False
+    try:
+        err_code = orig.args[0]
+    except (AttributeError, IndexError):
+        return False
+    return err_code == _RECORD_CHANGED_ERRNO
 
 
 def _extract_key_from_proxies(proxies: Dict[ProxyTypes, ProxySettings]) -> Optional[str]:
@@ -1984,23 +1996,28 @@ def revoke_user_sub(db: Session, dbuser: User) -> User:
 
 
 def update_user_sub(db: Session, dbuser: User, user_agent: str) -> User:
-    """
-    Updates the user's subscription details.
+    """Updates the user's subscription metadata, retrying if the row changes underneath us."""
 
-    Args:
-        db (Session): Database session.
-        dbuser (User): The user object whose subscription is to be updated.
-        user_agent (str): The user agent string to update.
-
-    Returns:
-        User: The updated user object.
-    """
-    dbuser.sub_updated_at = datetime.utcnow()
-    dbuser.sub_last_user_agent = user_agent
-
-    db.commit()
-    db.refresh(dbuser)
-    return dbuser
+    max_attempts = 3
+    attempts = 0
+    while attempts < max_attempts:
+        attempts += 1
+        dbuser.sub_updated_at = datetime.utcnow()
+        dbuser.sub_last_user_agent = user_agent
+        try:
+            db.commit()
+            db.refresh(dbuser)
+            return dbuser
+        except OperationalError as exc:
+            db.rollback()
+            if not _is_record_changed_error(exc) or attempts >= max_attempts:
+                raise
+            # Re-fetch the user to ensure we start from the latest row state
+            refreshed = db.get(User, dbuser.id)
+            if refreshed is None:
+                raise
+            dbuser = refreshed
+            continue
 
 
 def reset_all_users_data_usage(db: Session, admin: Optional[Admin] = None):

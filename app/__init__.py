@@ -14,7 +14,7 @@ from config import ALLOWED_ORIGINS, DOCS, XRAY_SUBSCRIPTION_PATH
 from app import runtime
 from app.utils.system import register_scheduler_jobs
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
 if IS_RUNNING_ALEMBIC:

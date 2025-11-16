@@ -1,8 +1,11 @@
-import { getAuthToken } from "utils/authStorage";
 import { fetch } from "service/http";
 import { UserApi, UseGetUserReturn } from "types/User";
 import { useQuery } from "react-query";
-import { DEFAULT_ADMIN_PERMISSIONS } from "constants/adminPermissions";
+import {
+  DEFAULT_ADMIN_PERMISSIONS,
+  getDefaultPermissionsForRole,
+  mergePermissionsWithRoleDefaults,
+} from "constants/adminPermissions";
 import { AdminRole, AdminStatus } from "types/Admin";
 
 const fetchUser = async () => {
@@ -16,7 +19,7 @@ const useGetUser = (): UseGetUserReturn => {
 
     const userDataEmpty: UserApi =  {
         role: AdminRole.Standard,
-        permissions: DEFAULT_ADMIN_PERMISSIONS,
+        permissions: getDefaultPermissionsForRole(AdminRole.Standard),
         telegram_id: "",
         username: "",
         users_usage: 0,
@@ -24,13 +27,22 @@ const useGetUser = (): UseGetUserReturn => {
         disabled_reason: null
       }
 
+    const resolvedRole = data?.role || AdminRole.Standard;
+    const resolvedPermissions = data?.permissions
+      ? mergePermissionsWithRoleDefaults(resolvedRole, data.permissions)
+      : getDefaultPermissionsForRole(resolvedRole);
+
     const normalizedData: UserApi = data
       ? {
           ...data,
-          role: data.role || AdminRole.Standard,
-          permissions: data.permissions || DEFAULT_ADMIN_PERMISSIONS,
+          role: resolvedRole,
+          permissions: resolvedPermissions,
         }
-      : userDataEmpty;
+      : {
+          ...userDataEmpty,
+          role: resolvedRole,
+          permissions: resolvedPermissions,
+        };
 
     return {
         userData: normalizedData,
