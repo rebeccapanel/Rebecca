@@ -19,7 +19,7 @@ grpcio-tools==1.67.1
 grpcio==1.67.1
 httptools==0.6.4
 jdatetime==4.1.1
-passlib==1.7.4
+passlib[bcrypt]==1.7.4
 psutil==5.9.4
 pyOpenSSL==24.2.1
 PySocks==1.7.1
