@@ -17,19 +17,50 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "panel_settings",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("use_nobetci", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-    )
-    op.add_column(
-        "telegram_settings",
-        sa.Column("use_telegram", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    if "panel_settings" not in tables:
+        op.create_table(
+            "panel_settings",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "use_nobetci", sa.Boolean(), nullable=False, server_default=sa.text("0")
+            ),
+            sa.Column(
+                "created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+            ),
+            sa.Column(
+                "updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+            ),
+        )
+
+    if "telegram_settings" in tables:
+        telegram_columns = {
+            column["name"] for column in inspector.get_columns("telegram_settings")
+        }
+        if "use_telegram" not in telegram_columns:
+            with op.batch_alter_table("telegram_settings") as batch_op:
+                batch_op.add_column(
+                    sa.Column(
+                        "use_telegram", sa.Boolean(), nullable=False, server_default=sa.text("1")
+                    )
+                )
 
 
 def downgrade() -> None:
-    op.drop_column("telegram_settings", "use_telegram")
-    op.drop_table("panel_settings")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    if "telegram_settings" in tables:
+        telegram_columns = {
+            column["name"] for column in inspector.get_columns("telegram_settings")
+        }
+        if "use_telegram" in telegram_columns:
+            with op.batch_alter_table("telegram_settings") as batch_op:
+                batch_op.drop_column("use_telegram")
+
+    if "panel_settings" in tables:
+        op.drop_table("panel_settings")

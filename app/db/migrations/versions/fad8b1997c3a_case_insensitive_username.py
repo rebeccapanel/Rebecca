@@ -25,8 +25,16 @@ def upgrade() -> None:
         pass
 
     elif bind.engine.name == 'sqlite':
-        # Drop the existing index
-        op.drop_index('ix_users_username', table_name='users')
+        table_sql = bind.execute(
+            sa.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'")
+        ).scalar()
+        if table_sql and 'COLLATE NOCASE' in table_sql.upper():
+            return
+
+        inspector = sa.inspect(bind)
+        indexes = {index['name'] for index in inspector.get_indexes('users')}
+        if 'ix_users_username' in indexes:
+            op.drop_index('ix_users_username', table_name='users')
 
         # Define the 'users' table for SQLAlchemy Core operations
         users_table = sa.Table(
@@ -65,8 +73,8 @@ def upgrade() -> None:
         with op.batch_alter_table('users') as batch_op:
             batch_op.alter_column('username', type_=sa.String(length=34, collation='NOCASE'))
 
-        # Recreate the unique index
-        op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
+    # Recreate the unique index
+    op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
 
 
 def downgrade() -> None:
@@ -76,10 +84,17 @@ def downgrade() -> None:
         pass  # MySQL remains unchanged
 
     elif bind.engine.name == 'sqlite':
-        # Revert the column alteration
+        table_sql = bind.execute(
+            sa.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'")
+        ).scalar()
+        if not table_sql or 'COLLATE NOCASE' not in table_sql.upper():
+            return
+
         with op.batch_alter_table('users') as batch_op:
             batch_op.alter_column('username', type_=sa.String(length=34))
 
-        # Drop and recreate the index without case-insensitivity
-        op.drop_index('ix_users_username', table_name='users')
+        inspector = sa.inspect(bind)
+        indexes = {index['name'] for index in inspector.get_indexes('users')}
+        if 'ix_users_username' in indexes:
+            op.drop_index('ix_users_username', table_name='users')
         op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)

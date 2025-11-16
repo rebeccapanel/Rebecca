@@ -17,12 +17,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table('nodes') as batch_op:
-        batch_op.drop_column('certificate')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    node_columns = {column['name'] for column in inspector.get_columns('nodes')}
+    if 'certificate' in node_columns:
+        with op.batch_alter_table('nodes') as batch_op:
+            batch_op.drop_column('certificate')
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('nodes') as batch_op:
-        batch_op.add_column(sa.Column(
-            'certificate', mysql.VARCHAR(length=2048),
-            nullable=False, server_default=''))
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    node_columns = {column['name'] for column in inspector.get_columns('nodes')}
+    if 'certificate' not in node_columns:
+        with op.batch_alter_table('nodes') as batch_op:
+            batch_op.add_column(sa.Column(
+                'certificate', mysql.VARCHAR(length=2048),
+                nullable=False, server_default=''))

@@ -17,38 +17,63 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("nodes") as batch:
-        batch.add_column(
-            sa.Column(
-                "use_nobetci",
-                sa.Boolean(),
-                nullable=False,
-                server_default=sa.text("0"),
-            )
-        )
-        batch.add_column(
-            sa.Column(
-                "nobetci_port",
-                sa.Integer(),
-                nullable=True,
-            )
-        )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
-    with op.batch_alter_table("users") as batch:
-        batch.add_column(
-            sa.Column(
-                "ip_limit",
-                sa.Integer(),
-                nullable=False,
-                server_default=sa.text("0"),
+    node_columns = {column["name"] for column in inspector.get_columns("nodes")}
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+
+    needs_use_nobetci = "use_nobetci" not in node_columns
+    needs_nobetci_port = "nobetci_port" not in node_columns
+
+    if needs_use_nobetci or needs_nobetci_port:
+        with op.batch_alter_table("nodes") as batch:
+            if needs_use_nobetci:
+                batch.add_column(
+                    sa.Column(
+                        "use_nobetci",
+                        sa.Boolean(),
+                        nullable=False,
+                        server_default=sa.text("0"),
+                    )
+                )
+            if needs_nobetci_port:
+                batch.add_column(
+                    sa.Column(
+                        "nobetci_port",
+                        sa.Integer(),
+                        nullable=True,
+                    )
+                )
+
+    if "ip_limit" not in user_columns:
+        with op.batch_alter_table("users") as batch:
+            batch.add_column(
+                sa.Column(
+                    "ip_limit",
+                    sa.Integer(),
+                    nullable=False,
+                    server_default=sa.text("0"),
+                )
             )
-        )
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("users") as batch:
-        batch.drop_column("ip_limit")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
-    with op.batch_alter_table("nodes") as batch:
-        batch.drop_column("nobetci_port")
-        batch.drop_column("use_nobetci")
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    if "ip_limit" in user_columns:
+        with op.batch_alter_table("users") as batch:
+            batch.drop_column("ip_limit")
+
+    node_columns = {column["name"] for column in inspector.get_columns("nodes")}
+    needs_drop_nobetci_port = "nobetci_port" in node_columns
+    needs_drop_use_nobetci = "use_nobetci" in node_columns
+
+    if needs_drop_nobetci_port or needs_drop_use_nobetci:
+        with op.batch_alter_table("nodes") as batch:
+            if needs_drop_nobetci_port:
+                batch.drop_column("nobetci_port")
+            if needs_drop_use_nobetci:
+                batch.drop_column("use_nobetci")

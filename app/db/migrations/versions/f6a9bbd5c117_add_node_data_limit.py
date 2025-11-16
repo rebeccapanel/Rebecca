@@ -45,14 +45,14 @@ def upgrade() -> None:
         if not has_data_limit:
             op.add_column("nodes", sa.Column("data_limit", sa.BigInteger(), nullable=True))
     elif dialect == "sqlite":
-        with op.batch_alter_table("nodes", recreate="always") as batch_op:
-            batch_op.alter_column(
-                "status",
-                type_=NEW_STATUS_ENUM,
-                existing_type=OLD_STATUS_ENUM,
-                existing_nullable=False,
-            )
-            if not has_data_limit:
+        if not has_data_limit:
+            with op.batch_alter_table("nodes", recreate="always") as batch_op:
+                batch_op.alter_column(
+                    "status",
+                    type_=NEW_STATUS_ENUM,
+                    existing_type=OLD_STATUS_ENUM,
+                    existing_nullable=False,
+                )
                 batch_op.add_column(sa.Column("data_limit", sa.BigInteger(), nullable=True))
     else:
         if not has_data_limit:
@@ -78,14 +78,14 @@ def downgrade() -> None:
             "ENUM('connected','connecting','error','disabled') NOT NULL"
         )
     elif dialect == "sqlite":
-        with op.batch_alter_table("nodes", recreate="always") as batch_op:
-            batch_op.alter_column(
-                "status",
-                type_=OLD_STATUS_ENUM,
-                existing_type=NEW_STATUS_ENUM,
-                existing_nullable=False,
-            )
-            if has_data_limit:
+        if has_data_limit:
+            with op.batch_alter_table("nodes", recreate="always") as batch_op:
+                batch_op.alter_column(
+                    "status",
+                    type_=OLD_STATUS_ENUM,
+                    existing_type=NEW_STATUS_ENUM,
+                    existing_nullable=False,
+                )
                 batch_op.drop_column("data_limit")
     else:
         if has_data_limit:

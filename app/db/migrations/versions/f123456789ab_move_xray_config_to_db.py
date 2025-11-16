@@ -26,22 +26,32 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
 
-    op.create_table(
-        "xray_config",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("data", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-    )
+    created_table = False
+    if "xray_config" not in tables:
+        op.create_table(
+            "xray_config",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("data", sa.JSON(), nullable=False),
+            sa.Column(
+                "created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+            ),
+            sa.Column(
+                "updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+            ),
+        )
+        created_table = True
 
     payload = _load_initial_payload()
-    config_table = sa.table(
-        "xray_config",
-        sa.column("id", sa.Integer),
-        sa.column("data", sa.JSON),
-    )
-    op.bulk_insert(config_table, [{"id": 1, "data": payload}])
+    if created_table or _is_table_empty(bind):
+        config_table = sa.table(
+            "xray_config",
+            sa.column("id", sa.Integer),
+            sa.column("data", sa.JSON),
+        )
+        op.bulk_insert(config_table, [{"id": 1, "data": payload}])
 
     config_path = _config_path()
     if config_path.exists():
@@ -52,7 +62,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if op.get_bind().dialect.name == "mysql":
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    if "xray_config" not in tables:
+        return
+
+    if bind.dialect.name == "mysql":
         op.execute("DROP TABLE IF EXISTS xray_config")
     else:
         op.drop_table("xray_config")
@@ -70,3 +87,11 @@ def _load_initial_payload() -> Dict[str, Any]:
         except Exception:
             pass
     return load_legacy_xray_config()
+
+
+def _is_table_empty(bind) -> bool:
+    try:
+        result = bind.execute(sa.text("SELECT 1 FROM xray_config LIMIT 1")).first()
+    except sa.exc.SQLAlchemyError:
+        return True
+    return result is None

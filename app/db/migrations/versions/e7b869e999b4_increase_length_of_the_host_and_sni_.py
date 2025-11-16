@@ -16,26 +16,75 @@ depends_on = None
 
 
 def upgrade():
-    # Increase the length of 'sni' and 'host' columns to 1000
-    with op.batch_alter_table('hosts') as batch_op:
-        batch_op.alter_column('host',
-                              existing_type=sa.String(length=256),
-                              type_=sa.String(length=1000),
-                              nullable=True)
-        batch_op.alter_column('sni',
-                              existing_type=sa.String(length=256),
-                              type_=sa.String(length=1000),
-                              nullable=True)
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = {column['name']: column for column in inspector.get_columns('hosts')}
+
+    def get_length(column_name: str):
+        column = columns.get(column_name)
+        if column is None:
+            return None
+        return getattr(column.get('type'), 'length', None)
+
+    def needs_resize(column_name: str, target: int) -> bool:
+        length = get_length(column_name)
+        column = columns.get(column_name)
+        if column is None:
+            return False
+        return length is None or length < target
+
+    resize_host = needs_resize('host', 1000)
+    resize_sni = needs_resize('sni', 1000)
+
+    if resize_host or resize_sni:
+        with op.batch_alter_table('hosts') as batch_op:
+            if resize_host:
+                batch_op.alter_column(
+                    'host',
+                    existing_type=sa.String(length=get_length('host') or 256),
+                    type_=sa.String(length=1000),
+                    nullable=True,
+                )
+            if resize_sni:
+                batch_op.alter_column(
+                    'sni',
+                    existing_type=sa.String(length=get_length('sni') or 256),
+                    type_=sa.String(length=1000),
+                    nullable=True,
+                )
 
 
 def downgrade():
-    # Revert the column lengths back to their original size
-    with op.batch_alter_table('hosts') as batch_op:
-        batch_op.alter_column('host',
-                              existing_type=sa.String(length=1000),
-                              type_=sa.String(length=256),
-                              nullable=True)
-        batch_op.alter_column('sni',
-                              existing_type=sa.String(length=1000),
-                              type_=sa.String(length=256),
-                              nullable=True)
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = {column['name']: column for column in inspector.get_columns('hosts')}
+
+    def get_length(column_name: str):
+        column = columns.get(column_name)
+        if column is None:
+            return None
+        return getattr(column.get('type'), 'length', None)
+
+    def needs_shrink(column_name: str, target: int) -> bool:
+        length = get_length(column_name)
+        return length is not None and length > target
+
+    shrink_host = needs_shrink('host', 256)
+    shrink_sni = needs_shrink('sni', 256)
+
+    if shrink_host or shrink_sni:
+        with op.batch_alter_table('hosts') as batch_op:
+            if shrink_host:
+                batch_op.alter_column(
+                    'host',
+                    existing_type=sa.String(length=get_length('host') or 1000),
+                    type_=sa.String(length=256),
+                    nullable=True,
+                )
+            if shrink_sni:
+                batch_op.alter_column(
+                    'sni',
+                    existing_type=sa.String(length=get_length('sni') or 1000),
+                    type_=sa.String(length=256),
+                    nullable=True,
+                )
