@@ -9,6 +9,9 @@ from xray_api import exc as xray_exc
 
 
 def core_health_check():
+    if not xray.core.available:
+        return
+
     config = None
 
     # main core
@@ -36,6 +39,10 @@ def core_health_check():
 
 @app.on_event("startup")
 def start_core():
+    if not xray.core.available:
+        logger.warning("XRay core is not available. Skipping XRay core startup.")
+        return
+
     logger.info("Generating Xray core config")
 
     start_time = time.time()
@@ -60,9 +67,9 @@ def start_core():
     for node_id in node_ids:
         xray.operations.connect_node(node_id, config)
 
-    scheduler.add_job(core_health_check, 'interval',
-                      seconds=JOB_CORE_HEALTH_CHECK_INTERVAL,
-                      coalesce=True, max_instances=1)
+    scheduler.add_job(
+        core_health_check, "interval", seconds=JOB_CORE_HEALTH_CHECK_INTERVAL, coalesce=True, max_instances=1
+    )
 
 
 @app.on_event("shutdown")
@@ -76,5 +83,3 @@ def app_shutdown():
             node.disconnect()
         except Exception:
             pass
-
-
