@@ -41,6 +41,10 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     existing_columns = {col["name"] for col in inspector.get_columns("admins")}
 
+    def _drop_tmp_admins_if_sqlite():
+        if dialect_name == "sqlite":
+            op.execute("DROP TABLE IF EXISTS _alembic_tmp_admins")
+
     role_type = _role_type(dialect_name)
     permissions_type = _permissions_type()
 
@@ -62,6 +66,7 @@ def upgrade() -> None:
             )
         )
         backup_created = True
+        _drop_tmp_admins_if_sqlite()
         with op.batch_alter_table("admins") as batch:
             if "permissions" in existing_columns:
                 batch.drop_column("permissions")
@@ -75,6 +80,7 @@ def upgrade() -> None:
     role_flag_column: str | None = None
     if "is_sudo" in existing_columns:
         role_flag_column = ROLE_FLAG_COLUMN
+        _drop_tmp_admins_if_sqlite()
         with op.batch_alter_table("admins") as batch:
             batch.alter_column(
                 "is_sudo",
@@ -84,6 +90,7 @@ def upgrade() -> None:
                 existing_server_default=sa.text("0"),
             )
 
+    _drop_tmp_admins_if_sqlite()
     with op.batch_alter_table("admins") as batch:
         batch.add_column(
             sa.Column(
@@ -93,6 +100,7 @@ def upgrade() -> None:
                 server_default="standard",
             )
         )
+    _drop_tmp_admins_if_sqlite()
     with op.batch_alter_table("admins") as batch:
         batch.add_column(sa.Column("permissions", permissions_type, nullable=True))
 
@@ -148,9 +156,16 @@ def upgrade() -> None:
             """
         )
     )
-    op.alter_column("admins", "role", server_default=None)
+    if dialect_name == "sqlite":
+        _drop_tmp_admins_if_sqlite()
+        _drop_tmp_admins_if_sqlite()
+        with op.batch_alter_table("admins") as batch:
+            batch.alter_column("role", server_default=None)
+    else:
+        op.alter_column("admins", "role", server_default=None)
 
     if role_flag_column:
+        _drop_tmp_admins_if_sqlite()
         with op.batch_alter_table("admins") as batch:
             batch.drop_column(role_flag_column)
 

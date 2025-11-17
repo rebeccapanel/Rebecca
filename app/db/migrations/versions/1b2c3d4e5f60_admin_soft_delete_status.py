@@ -33,6 +33,8 @@ def upgrade() -> None:
 
     if dialect == "sqlite":
         op.execute("DROP TABLE IF EXISTS _alembic_tmp_admins")
+        op.execute("DROP INDEX IF EXISTS ix_admins_username")
+        op.execute("DROP INDEX IF EXISTS ix_admins_status")
         with op.batch_alter_table("admins", recreate="always") as batch_op:
             if needs_status_column:
                 batch_op.add_column(

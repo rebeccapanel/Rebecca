@@ -46,30 +46,27 @@ def upgrade() -> None:
     _populate_jwt_secrets(connection)
     _populate_jwt_secrets(connection)
 
-    op.alter_column(
-        "jwt",
-        "subscription_secret_key",
-        existing_type=sa.String(length=64),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "admin_secret_key",
-        existing_type=sa.String(length=64),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "vmess_mask",
-        existing_type=sa.String(length=32),
-        nullable=False,
-    )
-    op.alter_column(
-        "jwt",
-        "vless_mask",
-        existing_type=sa.String(length=32),
-        nullable=False,
-    )
+    with op.batch_alter_table("jwt") as batch_op:
+        batch_op.alter_column(
+            "subscription_secret_key",
+            existing_type=sa.String(length=64),
+            nullable=False,
+        )
+        batch_op.alter_column(
+            "admin_secret_key",
+            existing_type=sa.String(length=64),
+            nullable=False,
+        )
+        batch_op.alter_column(
+            "vmess_mask",
+            existing_type=sa.String(length=32),
+            nullable=False,
+        )
+        batch_op.alter_column(
+            "vless_mask",
+            existing_type=sa.String(length=32),
+            nullable=False,
+        )
 
 
 def downgrade() -> None:
