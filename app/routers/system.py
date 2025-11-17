@@ -404,8 +404,7 @@ def delete_inbound(
     if not _is_manageable_inbound(inbound):
         raise HTTPException(status_code=400, detail="This inbound cannot be managed via the dashboard")
 
-    affected_services = crud.disable_hosts_for_inbound(db, tag)
-
+    affected_services = crud.remove_hosts_for_inbound(db, tag)
     del config["inbounds"][index]
     apply_config_and_restart(config)
 

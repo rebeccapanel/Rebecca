@@ -257,6 +257,7 @@ def process_inbounds_and_tags(
         reverse=False,
 ) -> Union[List, str]:
     from app.runtime import xray
+    xray.hosts.update()
     inbound_index = {
         tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
     }

@@ -134,9 +134,8 @@ const setSearchField = debounce(
   (search: string, target: "users" | "admins") => {
     if (target === "users") {
       useDashboard.getState().onFilterChange({
-        ...useDashboard.getState().filters,
-        offset: 0,
         search,
+        offset: 0,
       });
     } else {
       useAdminsStore.getState().onFilterChange({
@@ -202,6 +201,13 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       fetchAdmins({ limit: 200, offset: 0 });
     }
   }, [fetchAdmins, hasElevatedRole]);
+
+  useEffect(() => {
+    const nextSearch = isUserFilters
+      ? userFilters.search ?? ""
+      : adminFilters.search ?? "";
+    setSearch(nextSearch);
+  }, [isUserFilters, userFilters.search, adminFilters.search]);
 
   const getFilterLabel = (filterKey: string) => {
     const option = ADVANCED_FILTER_OPTIONS.find((item) => item.key === filterKey);

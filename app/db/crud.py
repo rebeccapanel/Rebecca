@@ -367,6 +367,24 @@ class ProxyInboundRepository:
         self.db.refresh(inbound)
         return inbound.hosts, list(affected_services.values())
 
+    def remove_all_hosts(self, inbound_tag: str) -> List[Service]:
+        hosts = (
+            self.db.query(ProxyHost)
+            .options(joinedload(ProxyHost.service_links).joinedload(ServiceHostLink.service))
+            .filter(ProxyHost.inbound_tag == inbound_tag)
+            .all()
+        )
+
+        if not hosts:
+            return []
+
+        affected_services = _detach_hosts_from_services(self.db, hosts)
+        for host in hosts:
+            self.db.delete(host)
+
+        self.db.flush()
+        return list(affected_services.values())
+
     def disable_hosts(self, inbound_tag: str) -> List[Service]:
         hosts = (
             self.db.query(ProxyHost)
@@ -428,6 +446,10 @@ def delete_inbound(db: Session, inbound_tag: str) -> bool:
 
 def disable_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
     return ProxyInboundRepository(db).disable_hosts(inbound_tag)
+
+
+def remove_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
+    return ProxyInboundRepository(db).remove_all_hosts(inbound_tag)
 
 
 def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, ProxyHost]:
