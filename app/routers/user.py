@@ -259,11 +259,17 @@ def get_users(
     search: Union[str, None] = None,
     owner: Union[List[str], None] = Query(None, alias="admin"),
     status: UserStatus = None,
+    advanced_filters: List[str] = Query(None, alias="filter"),
+    service_id: int = Query(None, alias="service_id"),
     sort: str = None,
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.get_current),
 ):
-    """Get all users"""
+    """Get all users
+
+    - **filter**: repeatable advanced filter keys (online, offline, finished, limit, unlimited, sub_not_updated, sub_never_updated, expired, limited, disabled, on_hold).
+    - **service_id**: Filter users who belong to a specific service.
+    """
     if sort is not None:
         opts = sort.strip(",").split(",")
         sort = []
@@ -283,6 +289,8 @@ def get_users(
         usernames=username,
         status=status,
         sort=sort,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
         admins=owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username],
         return_with_count=True,
     )

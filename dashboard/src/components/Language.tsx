@@ -53,7 +53,13 @@ export const Language: FC<HeaderProps> = ({ actions }) => {
   return (
     <Menu placement="bottom-end">
       <MenuButton as={IconButton} size="sm" variant="outline" icon={<LangIcon />} position="relative" />
-      <MenuList minW="160px" zIndex={9999} bg={menuBg} borderColor={borderColor} color={textColor}>
+      <MenuList
+        minW={{ base: "70vw", sm: "160px" }}
+        zIndex={9999}
+        bg={menuBg}
+        borderColor={borderColor}
+        color={textColor}
+      >
         {items.map(({ code, label, flag }) => (
           <MenuItem
             key={code}

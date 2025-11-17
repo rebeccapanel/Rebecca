@@ -7,6 +7,7 @@ from copy import deepcopy
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+import uuid
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
 
 import sqlalchemy as sa
@@ -47,8 +48,9 @@ from app.utils.credentials import (
     normalize_key,
     serialize_proxy_settings,
     uuid_to_key,
+    UUID_PROTOCOLS,
+    PASSWORD_PROTOCOLS,
 )
-from app.utils.credentials import UUID_PROTOCOLS, PASSWORD_PROTOCOLS
 from app.models.proxy import ProxyTypes
 from app.models.node import GeoMode, NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
 from app.models.proxy import ProxyHost as ProxyHostModify, ProxySettings
@@ -1179,6 +1181,108 @@ UsersSortingOptions = Enum('UsersSortingOptions', {
     '-created_at': User.created_at.desc(),
 })
 
+ONLINE_ACTIVE_WINDOW = timedelta(minutes=5)
+OFFLINE_STALE_WINDOW = timedelta(hours=24)
+UPDATE_STALE_WINDOW = timedelta(hours=24)
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
+STATUS_FILTER_MAP = {
+    "expired": UserStatus.expired,
+    "limited": UserStatus.limited,
+    "disabled": UserStatus.disabled,
+    "on_hold": UserStatus.on_hold,
+}
+
+
+def _derive_search_tokens(value: str) -> Tuple[Set[str], Set[str]]:
+    normalized = value.strip().lower()
+    if not normalized:
+        return set(), set()
+
+    key_candidates: Set[str] = set()
+    uuid_candidates: Set[str] = set()
+    cleaned = normalized.replace("-", "")
+
+    if len(cleaned) == 32 and all(ch in _HEX_DIGITS for ch in cleaned):
+        key_candidates.add(cleaned)
+        try:
+            uuid_candidates.add(str(uuid.UUID(cleaned)))
+        except ValueError:
+            pass
+    try:
+        parsed = uuid.UUID(normalized)
+        uuid_candidates.add(str(parsed))
+    except ValueError:
+        pass
+
+    for candidate in list(uuid_candidates):
+        for proxy_type in UUID_PROTOCOLS:
+            try:
+                key_candidates.add(uuid_to_key(candidate, proxy_type))
+            except Exception:
+                continue
+
+    return key_candidates, uuid_candidates
+
+
+def _apply_advanced_user_filters(
+    query: Query,
+    filters: Optional[List[str]],
+    now: datetime,
+) -> Query:
+    if not filters:
+        return query
+    normalized_filters = {f.lower() for f in filters if f}
+    if not normalized_filters:
+        return query
+
+    if "online" in normalized_filters:
+        online_threshold = now - ONLINE_ACTIVE_WINDOW
+        query = query.filter(
+            User.online_at.isnot(None),
+            User.online_at >= online_threshold,
+        )
+
+    if "offline" in normalized_filters:
+        offline_threshold = now - OFFLINE_STALE_WINDOW
+        query = query.filter(
+            or_(
+                User.online_at.is_(None),
+                User.online_at < offline_threshold,
+            )
+        )
+
+    if "finished" in normalized_filters:
+        query = query.filter(User.status.in_((UserStatus.limited, UserStatus.expired)))
+
+    if "limit" in normalized_filters:
+        query = query.filter(User.data_limit.isnot(None), User.data_limit > 0)
+
+    if "unlimited" in normalized_filters:
+        query = query.filter(or_(User.data_limit.is_(None), User.data_limit == 0))
+
+    if "sub_not_updated" in normalized_filters:
+        update_threshold = now - UPDATE_STALE_WINDOW
+        query = query.filter(
+            or_(
+                User.sub_updated_at.is_(None),
+                User.sub_updated_at < update_threshold,
+            )
+        )
+
+    if "sub_never_updated" in normalized_filters:
+        query = query.filter(User.sub_updated_at.is_(None))
+
+    status_candidates = [
+        STATUS_FILTER_MAP[key]
+        for key in normalized_filters
+        if key in STATUS_FILTER_MAP
+    ]
+    if status_candidates:
+        query = query.filter(User.status.in_(status_candidates))
+
+    return query
+
 
 def get_users(db: Session,
               offset: Optional[int] = None,
@@ -1189,6 +1293,8 @@ def get_users(db: Session,
               sort: Optional[List[UsersSortingOptions]] = None,
               admin: Optional[Admin] = None,
               admins: Optional[List[str]] = None,
+              advanced_filters: Optional[List[str]] = None,
+              service_id: Optional[int] = None,
               reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
               return_with_count: bool = False) -> Union[List[User], Tuple[List[User], int]]:
     """
@@ -1204,6 +1310,8 @@ def get_users(db: Session,
         sort (Optional[List[UsersSortingOptions]]): Sorting options.
         admin (Optional[Admin]): Admin to filter users by.
         admins (Optional[List[str]]): List of admin usernames to filter users by.
+        advanced_filters (Optional[List[str]]): Advanced filter keys such as 'online', 'offline', 'finished', 'limit', 'unlimited', 'sub_not_updated', or 'sub_never_updated'.
+        service_id (Optional[int]): Filter users attached to a specific service.
         reset_strategy (Optional[Union[UserDataLimitResetStrategy, list]]): Data limit reset strategy to filter by.
         return_with_count (bool): Whether to return the total count of users.
 
@@ -1211,9 +1319,27 @@ def get_users(db: Session,
         Union[List[User], Tuple[List[User], int]]: List of users or tuple of users and total count.
     """
     query = get_user_queryset(db)
+    query = _apply_advanced_user_filters(
+        query,
+        advanced_filters,
+        datetime.utcnow(),
+    )
 
     if search:
-        query = query.filter(or_(User.username.ilike(f"%{search}%"), User.note.ilike(f"%{search}%")))
+        like_pattern = f"%{search}%"
+        key_candidates, uuid_candidates = _derive_search_tokens(search)
+        search_clauses = [
+            User.username.ilike(like_pattern),
+            User.note.ilike(like_pattern),
+            User.credential_key.ilike(like_pattern),
+        ]
+        if key_candidates:
+            search_clauses.append(User.credential_key.in_(key_candidates))
+        if uuid_candidates:
+            search_clauses.append(
+                User.proxies.any(Proxy.settings["id"].astext.in_(uuid_candidates))
+            )
+        query = query.filter(or_(*search_clauses))
 
     if usernames:
         query = query.filter(User.username.in_(usernames))
@@ -1223,6 +1349,9 @@ def get_users(db: Session,
             query = query.filter(User.status.in_(status))
         else:
             query = query.filter(User.status == status)
+
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
 
     if reset_strategy:
         if isinstance(reset_strategy, list):

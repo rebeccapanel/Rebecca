@@ -21,6 +21,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
+  Portal,
   SimpleGrid,
   Stack,
   Text,
@@ -43,6 +44,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   FC,
+  MutableRefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -94,6 +96,12 @@ type PresetDefinition = {
 type ThemeSelectorProps = {
   /** when true, render a minimal menu (only built-in themes) — used on the login screen */
   minimal?: boolean;
+  /** Optional container ref to keep the Dropdown portal constrained */
+  portalContainer?: MutableRefObject<HTMLElement | null>;
+  /** Optional trigger variant */
+  trigger?: "icon" | "menu";
+  /** Optional custom label when using the menu trigger */
+  triggerLabel?: string;
 };
 
 const PRIMARY_VARS = [
@@ -405,7 +413,12 @@ const createDefaultDraft = (): CustomDraft => ({
 
 const sanitizeColor = (value: string, fallback: string) => (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : fallback);
 
-export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
+export const ThemeSelector: FC<ThemeSelectorProps> = ({
+  minimal = false,
+  portalContainer,
+  trigger = "icon",
+  triggerLabel,
+}) => {
   const { t } = useTranslation();
   const toast = useToast();
   const { colorMode, toggleColorMode } = useColorMode();
@@ -758,11 +771,17 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
     );
   };
 
-  return (
-    <>
-      <Menu placement="bottom-end">
-        <MenuButton as={IconButton} size="sm" variant="outline" icon={<SwatchIconChakra />} position="relative" />
-        <MenuList minW="260px" zIndex={9999} bg={popoverBg} color={primaryText} borderColor={popoverBorder}>
+  const menuList = (
+    <MenuList
+      minW={{ base: "82vw", sm: "240px" }}
+      maxW="320px"
+      zIndex={9999}
+      bg={popoverBg}
+      color={primaryText}
+      borderColor={popoverBorder}
+      maxH="70vh"
+      overflowY="auto"
+    >
           <MenuGroup title={t("theme.builtIn")} sx={menuGroupStyles}>
             {BUILTIN_THEMES.map((theme) => {
               const selected = active === theme.key;
@@ -900,6 +919,32 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({ minimal = false }) => {
             </>
           )}
         </MenuList>
+  );
+
+  const triggerContent =
+    trigger === "icon" ? (
+      <MenuButton as={IconButton} size="sm" variant="outline" icon={<SwatchIconChakra />} position="relative" />
+    ) : (
+      <MenuButton
+        as={Button}
+        w="full"
+        justifyContent="space-between"
+        variant="ghost"
+        rightIcon={<SwatchIconChakra />}
+      >
+        {triggerLabel || t("theme.triggerLabel", "Theme")}
+      </MenuButton>
+    );
+
+  return (
+    <>
+      <Menu placement="bottom-end">
+        {triggerContent}
+        {portalContainer ? (
+          <Portal containerRef={portalContainer}>{menuList}</Portal>
+        ) : (
+          menuList
+        )}
       </Menu>
 
       <Modal isOpen={createModal.isOpen} onClose={createModal.onClose} isCentered size="xl">

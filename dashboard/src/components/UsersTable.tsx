@@ -324,7 +324,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                     {filters.status ? ": " + filters.status : ""}
                   </Text>
                   <Select
-                    value={filters.sort}
+                    value={filters.status ?? ""}
                     fontSize="xs"
                     fontWeight="extrabold"
                     textTransform="uppercase"
@@ -339,12 +339,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                     }}
                     onChange={handleStatusFilter}
                   >
-                    <option></option>
-                    <option>active</option>
-                    <option>on_hold</option>
-                    <option>disabled</option>
-                    <option>limited</option>
-                    <option>expired</option>
+                    <option value=""></option>
+                    <option value="active">active</option>
+                    <option value="on_hold">on_hold</option>
+                    <option value="disabled">disabled</option>
+                    <option value="limited">limited</option>
+                    <option value="expired">expired</option>
                   </Select>
                 </HStack>
               </Th>

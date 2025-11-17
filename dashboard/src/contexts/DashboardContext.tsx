@@ -14,6 +14,9 @@ export type FilterType = {
   offset?: number;
   sort: string;
   status?: "active" | "disabled" | "limited" | "expired" | "on_hold";
+  advancedFilters?: string[];
+  owner?: string;
+  serviceId?: number;
 };
 export type ProtocolType = "vmess" | "vless" | "trojan" | "shadowsocks";
 
@@ -33,6 +36,13 @@ const sanitizeFilterQuery = (query: FilterType): FilterType => {
       return;
     }
     const value = query[key];
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return;
+      }
+      (normalized as any)[key] = value;
+      return;
+    }
     if (value === undefined || value === null || value === "") {
       return;
     }
@@ -113,7 +123,23 @@ const fetchUsers = (query: FilterType, options: { force?: boolean } = {}): Promi
   }
 
   useDashboard.setState({ loading: true });
-  return fetch<UsersListResponse>("/users", { query: sanitizedQuery })
+  const requestQuery: Record<string, unknown> = {
+    ...sanitizedQuery,
+  };
+  if (sanitizedQuery.advancedFilters?.length) {
+    requestQuery.filter = sanitizedQuery.advancedFilters;
+  }
+  if (sanitizedQuery.owner) {
+    requestQuery.admin = sanitizedQuery.owner;
+  }
+  if (sanitizedQuery.serviceId !== undefined) {
+    requestQuery.service_id = sanitizedQuery.serviceId;
+  }
+  delete requestQuery.advancedFilters;
+  delete requestQuery.owner;
+  delete requestQuery.serviceId;
+
+  return fetch<UsersListResponse>("/users", { query: requestQuery })
     .then((usersResponse) => {
       const limit = usersResponse.users_limit ?? null;
       const activeTotal = usersResponse.active_total ?? null;
@@ -169,9 +195,11 @@ export const useDashboard = create(
     resetUsageUser: null,
     revokeSubscriptionUser: null,
     filters: {
-      username: "",
       limit: getUsersPerPageLimitSize(),
       sort: DEFAULT_SORT,
+      advancedFilters: [],
+      owner: undefined,
+      serviceId: undefined,
     },
     inbounds: new Map(),
     isEditingCore: false,

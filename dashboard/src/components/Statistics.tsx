@@ -21,6 +21,8 @@ import {
   useColorMode,
   useColorModeValue,
   VStack,
+  Wrap,
+  WrapItem,
 } from "@chakra-ui/react";
 import { ChartBarIcon } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
@@ -247,7 +249,7 @@ const HistorySparkline: FC<{ values: number[]; accent?: string }> = ({
   values,
   accent,
 }) => {
-  const defaultColor = useColorModeValue("primary.500", "primary.300");
+  const defaultColor = useColorModeValue("gray.600", "gray.300");
   const normalized = values.length ? values : [0];
   const maxValue = Math.max(...normalized, 1);
   
@@ -305,22 +307,33 @@ const MetricBadge: FC<{ label: string; value: string; colorScheme?: string }> = 
   label,
   value,
   colorScheme = "gray",
-}) => (
-  <Box
-    px={3}
-    py={2}
-    borderRadius="md"
-    borderWidth="1px"
-    borderColor={`${colorScheme}.200`}
-    bg={`${colorScheme}.50`}
-    _dark={{ bg: `${colorScheme}.900`, borderColor: `${colorScheme}.700` }}
-  >
-    <Text fontSize="xs" color="gray.500">
-      {label}
-    </Text>
-    <Text fontWeight="semibold">{value}</Text>
-  </Box>
-);
+}) => {
+  const borderColor = useColorModeValue("gray.200", "gray.700");
+  const bg = useColorModeValue("white", "gray.900");
+  const valueColor = useColorModeValue(
+    colorScheme === "gray" ? "gray.800" : `${colorScheme}.600`,
+    colorScheme === "gray" ? "gray.100" : `${colorScheme}.300`
+  );
+
+  return (
+    <Box
+      px={3}
+      py={2}
+      borderRadius="md"
+      borderWidth="1px"
+      borderColor={borderColor}
+      bg={bg}
+      _dark={{ bg: "gray.800", borderColor: "gray.700" }}
+    >
+      <Text fontSize="xs" color="gray.500">
+        {label}
+      </Text>
+      <Text fontWeight="semibold" color={valueColor}>
+        {value}
+      </Text>
+    </Box>
+  );
+};
 
 const SystemOverviewCard: FC<{
   data: SystemStats;
@@ -333,26 +346,34 @@ const SystemOverviewCard: FC<{
   return (
     <Card p={5} borderRadius="12px" boxShadow="none">
       <Stack spacing={4}>
-        <HStack justifyContent="space-between" alignItems="center">
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          spacing={{ base: 2, md: 4 }}
+          justifyContent="space-between"
+          align={{ base: "flex-start", md: "center" }}
+        >
           <Text fontSize="lg" fontWeight="semibold">
             {t("systemOverview")}
           </Text>
-          <HStack spacing={2}>
-            <Tag colorScheme="gray">v{data.version}</Tag>
-            <Tag colorScheme="gray">
-              {t("loadAverage")}:{" "}
-              {data.load_avg.length
-                ? data.load_avg.map((value) => value.toFixed(2)).join(" | ")
-                : "-"}
-            </Tag>
-          </HStack>
-        </HStack>
+          <Wrap spacing={2} shouldWrapChildren justify={{ base: "flex-start", md: "flex-end" }}>
+            <WrapItem>
+              <Tag colorScheme="gray">v{data.version}</Tag>
+            </WrapItem>
+            <WrapItem>
+              <Tag colorScheme="gray">
+                {t("loadAverage")}: {" "}
+                {data.load_avg.length
+                  ? data.load_avg.map((value) => value.toFixed(2)).join(" | ")
+                  : "-"}
+              </Tag>
+            </WrapItem>
+          </Wrap>
+        </Stack>
         <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
           <HistoryPreview
             label={t("cpuUsage")}
             value={`${data.cpu_usage.toFixed(1)}%`}
             history={cpuHistoryValues}
-            accent="purple.400"
             actionLabel={t("viewHistory")}
             onOpen={() =>
               onOpenHistory({
@@ -367,7 +388,6 @@ const SystemOverviewCard: FC<{
             label={t("memoryUsage")}
             value={`${data.memory.percent.toFixed(1)}%`}
             history={memoryHistoryValues}
-            accent="pink.400"
             actionLabel={t("viewHistory")}
             onOpen={() =>
               onOpenHistory({
@@ -382,7 +402,6 @@ const SystemOverviewCard: FC<{
             label={t("networkHistory")}
             value={`${formatBytes(data.incoming_bandwidth_speed)}/s`}
             history={networkHistoryValues}
-            accent="green.400"
             actionLabel={t("viewHistory")}
             onOpen={() =>
               onOpenHistory({
@@ -463,7 +482,6 @@ const PanelOverviewCard: FC<{
             label={t("cpuUsage")}
             value={`${data.panel_cpu_percent.toFixed(1)}%`}
             history={panelCpuHistory}
-            accent="purple.300"
             actionLabel={t("viewHistory")}
             onOpen={() =>
               onOpenHistory({
@@ -478,7 +496,6 @@ const PanelOverviewCard: FC<{
             label={t("memoryUsage")}
             value={`${data.panel_memory_percent.toFixed(1)}%`}
             history={panelMemoryHistory}
-            accent="pink.300"
             actionLabel={t("viewHistory")}
             onOpen={() =>
               onOpenHistory({

@@ -1,16 +1,22 @@
 import {
   Box,
+  Button,
   chakra,
+  Divider,
   HStack,
   IconButton,
   Menu,
   MenuButton,
   MenuItem,
   MenuList,
+  Popover,
+  PopoverArrow,
+  PopoverBody,
+  PopoverContent,
+  PopoverTrigger,
+  Stack,
   Text,
-  useColorMode,
-  useBreakpointValue,
-  MenuDivider,
+  useDisclosure,
 } from "@chakra-ui/react";
 import {
   ArrowLeftOnRectangleIcon,
@@ -18,22 +24,17 @@ import {
   Cog6ToothIcon,
   DocumentMinusIcon,
   LinkIcon,
-  MoonIcon,
   SquaresPlusIcon,
-  SunIcon,
   EllipsisVerticalIcon,
   LanguageIcon,
-  SwatchIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
-import { FC, ReactNode, useState } from "react";
+import { FC, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { updateThemeColor } from "utils/themeColor";
-import { Language } from "./Language";
-import ThemeSelector from "./ThemeSelector";
 import { GitHubStars } from "./GitHubStars";
+import ThemeSelector from "./ThemeSelector";
 import useGetUser from "hooks/useGetUser";
 import useAds from "hooks/useAds";
 import { AdvertisementCard } from "./AdvertisementCard";
@@ -51,8 +52,6 @@ const iconProps = {
   },
 };
 
-const DarkIcon = chakra(MoonIcon, iconProps);
-const LightIcon = chakra(SunIcon, iconProps);
 const CoreSettingsIcon = chakra(Cog6ToothIcon, iconProps);
 const SettingsIcon = chakra(Bars3Icon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
@@ -61,7 +60,6 @@ const NodesIcon = chakra(SquaresPlusIcon, iconProps);
 const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
 const MoreIcon = chakra(EllipsisVerticalIcon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
-const ThemeIconStyled = chakra(SwatchIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
   const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
@@ -85,9 +83,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
   const hasSettingsActions = canAccessHosts || canAccessNodes || canResetAllUsage;
 
   const { onResetAllUsage, onEditingNodes } = useDashboard();
-  const { colorMode, toggleColorMode } = useColorMode();
-  
-  const isMobile = useBreakpointValue({ base: true, md: false });
+  const actionsMenu = useDisclosure();
 
   const languageItems = [
     { code: "en", label: "English", flag: "US" },
@@ -171,19 +167,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                       {t("resetAllUsage")}
                     </MenuItem>
                   )}
-                  {!isMobile && (
-                    <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />} as={Link} to="/login">
-                      {t("header.logout")}
-                    </MenuItem>
-                  )}
                 </>
-              )}
-              {!hasSettingsActions && !isMobile && (
-                <Link to="/login">
-                  <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
-                    {t("header.logout")}
-                  </MenuItem>
-                </Link>
               )}
             </MenuList>
           </Menu>
@@ -203,94 +187,80 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 
           <GitHubStars />
 
-          {/* Desktop: Show individual buttons */}
-          {!isMobile && (
-            <>
-              <Language />
-              <ThemeSelector />
-              <IconButton
-                size="sm"
-                variant="outline"
-                aria-label="switch theme"
-                onClick={() => {
-                  updateThemeColor(colorMode == "dark" ? "light" : "dark");
-                  toggleColorMode();
-                }}
+              <Popover
+                isOpen={actionsMenu.isOpen}
+                onOpen={actionsMenu.onOpen}
+                onClose={actionsMenu.onClose}
+                placement="bottom-end"
               >
-                {colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-              </IconButton>
-            </>
-          )}
-
-          {/* Mobile: Show menu with all options */}
-          {isMobile && (
-            <Menu>
-              <MenuButton
-                as={IconButton}
-                size="sm"
-                variant="outline"
-                icon={<MoreIcon />}
-                aria-label="more options"
-              />
-              <MenuList minW="170px" zIndex={99999} className="menuList">
-                {/* Language submenu */}
-                <Menu placement="left-start">
-                  <MenuButton
-                    as={MenuItem}
-                    fontSize="sm"
-                    icon={<LanguageIconStyled />}
-                  >
-                    {t("header.language", "Language")}
-                  </MenuButton>
-                  <MenuList minW="160px" zIndex={99999}>
-                    {languageItems.map(({ code, label, flag }) => (
-                      <MenuItem
-                        key={code}
-                        fontSize="sm"
-                        onClick={() => changeLanguage(code)}
+                <PopoverTrigger>
+                  <IconButton
+                    size="sm"
+                    variant="outline"
+                    icon={<MoreIcon />}
+                    aria-label="more options"
+                    onClick={() =>
+                      actionsMenu.isOpen ? actionsMenu.onClose() : actionsMenu.onOpen()
+                    }
+                  />
+                </PopoverTrigger>
+                <PopoverContent w={{ base: "90vw", sm: "56" }}>
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <Stack spacing={2}>
+                      <Menu placement="left-start">
+                        <MenuButton
+                          as={Button}
+                          justifyContent="space-between"
+                          rightIcon={<LanguageIconStyled />}
+                          variant="ghost"
+                        >
+                          {t("header.language", "Language")}
+                        </MenuButton>
+                        <MenuList minW={{ base: "100%", sm: "200px" }}>
+                          {languageItems.map(({ code, label, flag }) => {
+                            const isActiveLang = i18n.language === code;
+                            return (
+                              <MenuItem
+                                key={code}
+                                onClick={() => {
+                                  changeLanguage(code);
+                                  actionsMenu.onClose();
+                                }}
+                              >
+                                <HStack justify="space-between" w="full">
+                                  <HStack spacing={2}>
+                                    <ReactCountryFlag
+                                      countryCode={flag}
+                                      svg
+                                      style={{ width: "16px", height: "12px" }}
+                                    />
+                                    <Text>{label}</Text>
+                                  </HStack>
+                                  {isActiveLang && <CheckIcon width={16} />}
+                                </HStack>
+                              </MenuItem>
+                            );
+                          })}
+                        </MenuList>
+                      </Menu>
+                      <Divider />
+                      <ThemeSelector trigger="menu" triggerLabel={t("header.theme", "Theme")} />
+                      <Divider />
+                      <Button
+                        colorScheme="red"
+                        leftIcon={<LogoutIcon />}
+                        justifyContent="flex-start"
+                        as={Link}
+                        to="/login"
+                        onClick={actionsMenu.onClose}
                       >
-                        <HStack justify="space-between" w="full">
-                          <HStack spacing={2}>
-                            <ReactCountryFlag 
-                              countryCode={flag} 
-                              svg 
-                              style={{ width: "16px", height: "12px" }} 
-                            />
-                            <Text>{label}</Text>
-                          </HStack>
-                          {i18n.language === code && <CheckIcon width={16} />}
-                        </HStack>
-                      </MenuItem>
-                    ))}
-                  </MenuList>
-                </Menu>
-
-                {/* Theme Mode Toggle */}
-                <MenuItem
-                  fontSize="sm"
-                  icon={colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-                  onClick={() => {
-                    updateThemeColor(colorMode == "dark" ? "light" : "dark");
-                    toggleColorMode();
-                  }}
-                >
-                  {colorMode === "light" ? t("header.darkMode", "Dark Mode") : t("header.lightMode", "Light Mode")}
-                </MenuItem>
-
-                <MenuDivider />
-
-                {/* Logout */}
-                <MenuItem
-                  fontSize="sm"
-                  icon={<LogoutIcon />}
-                  as={Link}
-                  to="/login"
-                >
-                  {t("header.logout")}
-                </MenuItem>
-              </MenuList>
-            </Menu>
-          )}
+                        {t("header.logout")}
+                      </Button>
+                    </Stack>
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
 
         </HStack>
       </Box>

@@ -1,6 +1,8 @@
 import {
+  Box,
   BoxProps,
   Button,
+  Checkbox,
   chakra,
   Grid,
   GridItem,
@@ -10,22 +12,37 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
+  Popover,
+  PopoverArrow,
+  PopoverBody,
+  PopoverCloseButton,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTrigger,
+  Select,
   Spinner,
   Stack,
+  Tag,
+  TagCloseButton,
+  TagLabel,
+  Text,
+  Wrap,
   useBreakpointValue,
 } from "@chakra-ui/react";
 import {
   ArrowPathIcon,
+  FunnelIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
+import { useServicesStore } from "contexts/ServicesContext";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
-import React, { FC, useState } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AdminManagementPermission,
@@ -42,9 +59,74 @@ const iconProps = {
 };
 
 const SearchIcon = chakra(MagnifyingGlassIcon, iconProps);
+const FilterIcon = chakra(FunnelIcon, iconProps);
 const ClearIcon = chakra(XMarkIcon, iconProps);
 export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 const PlusIconStyled = chakra(PlusIcon, iconProps);
+
+type AdvancedFilterOption = {
+  key: string;
+  labelKey: string;
+  fallback: string;
+};
+
+const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
+  {
+    key: "online",
+    labelKey: "filters.advanced.online",
+    fallback: "Online right now",
+  },
+  {
+    key: "offline",
+    labelKey: "filters.advanced.offline",
+    fallback: "Offline for 24h",
+  },
+  {
+    key: "sub_not_updated",
+    labelKey: "filters.advanced.subNotUpdated",
+    fallback: "Sub link stale for 24h",
+  },
+  {
+    key: "sub_never_updated",
+    labelKey: "filters.advanced.subNeverUpdated",
+    fallback: "Sub link never updated",
+  },
+  {
+    key: "limit",
+    labelKey: "filters.advanced.limit",
+    fallback: "Has data limit",
+  },
+  {
+    key: "unlimited",
+    labelKey: "filters.advanced.unlimited",
+    fallback: "Unlimited users",
+  },
+  {
+    key: "finished",
+    labelKey: "filters.advanced.finished",
+    fallback: "Finished (limited or expired)",
+  },
+  {
+    key: "expired",
+    labelKey: "filters.advanced.statusExpired",
+    fallback: "Expired users",
+  },
+  {
+    key: "limited",
+    labelKey: "filters.advanced.statusLimited",
+    fallback: "Limited users",
+  },
+  {
+    key: "disabled",
+    labelKey: "filters.advanced.statusDisabled",
+    fallback: "Disabled users",
+  },
+  {
+    key: "on_hold",
+    labelKey: "filters.advanced.statusOnHold",
+    fallback: "On-hold users",
+  },
+];
 
 export type FilterProps = { for?: "users" | "admins" } & BoxProps;
 
@@ -80,6 +162,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
     onFilterChange: onAdminFilterChange,
     fetchAdmins,
     openAdminDialog,
+    admins: adminList,
   } = useAdminsStore();
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -101,7 +184,66 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       : canManageAdmins;
 
   const loading = target === "users" ? usersLoading : adminsLoading;
-  const filters = target === "users" ? userFilters : adminFilters;
+  const isUserFilters = target === "users";
+  const filters = isUserFilters ? userFilters : adminFilters;
+  const userFiltersOnly = isUserFilters ? userFilters : undefined;
+  const showAdvancedFilters = Boolean(userFiltersOnly);
+  const activeFilters: string[] = userFiltersOnly?.advancedFilters ?? [];
+  const serviceId = userFiltersOnly?.serviceId;
+  const ownerFilter = userFiltersOnly?.owner;
+  const { services, fetchServices } = useServicesStore();
+
+  useEffect(() => {
+    fetchServices({ limit: 500 });
+  }, [fetchServices]);
+
+  useEffect(() => {
+    if (hasElevatedRole) {
+      fetchAdmins({ limit: 200, offset: 0 });
+    }
+  }, [fetchAdmins, hasElevatedRole]);
+
+  const getFilterLabel = (filterKey: string) => {
+    const option = ADVANCED_FILTER_OPTIONS.find((item) => item.key === filterKey);
+    return option ? t(option.labelKey, option.fallback) : filterKey;
+  };
+
+  const toggleAdvancedFilter = (filterKey: string) => {
+    if (!showAdvancedFilters) {
+      return;
+    }
+    const nextFilters = activeFilters.includes(filterKey)
+      ? activeFilters.filter((item) => item !== filterKey)
+      : [...activeFilters, filterKey];
+    onUserFilterChange({
+      advancedFilters: nextFilters,
+      offset: 0,
+    });
+  };
+
+  const clearAdvancedFilters = () => {
+    if (!showAdvancedFilters || activeFilters.length === 0) {
+      return;
+    }
+    onUserFilterChange({
+      advancedFilters: [],
+      offset: 0,
+    });
+  };
+
+  const handleServiceChange = (value: string) => {
+    onUserFilterChange({
+      serviceId: value ? Number(value) : undefined,
+      offset: 0,
+    });
+  };
+
+  const handleAdminChange = (value: string) => {
+    onUserFilterChange({
+      owner: value || undefined,
+      offset: 0,
+    });
+  };
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -109,9 +251,9 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
   };
   const clear = () => {
     setSearch("");
-    if (target === "users") {
+    if (isUserFilters) {
       onUserFilterChange({
-        ...filters,
+        ...userFilters,
         offset: 0,
         search: "",
       });
@@ -193,6 +335,98 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
               )}
             </InputRightElement>
           </InputGroup>
+          {showAdvancedFilters && (
+            <Popover placement="bottom-start">
+              <PopoverTrigger>
+                <Button
+                  leftIcon={<FilterIcon />}
+                  size={isMobile ? "sm" : "md"}
+                  variant="outline"
+                  borderRadius="full"
+                  minW={isMobile ? "auto" : "8rem"}
+                  h={isMobile ? "36px" : undefined}
+                  fontSize={isMobile ? "xs" : "sm"}
+                >
+                  {t("filters.advancedButton", "Filters")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent borderColor="light-border" minW="250px">
+                <PopoverArrow />
+                <PopoverCloseButton />
+                <PopoverHeader fontWeight="semibold">
+                  {t("filters.advancedTitle", "Advanced filters")}
+                </PopoverHeader>
+                <PopoverBody>
+                  <Stack spacing={2}>
+                    {ADVANCED_FILTER_OPTIONS.map((option) => (
+                      <Checkbox
+                        key={option.key}
+                        isChecked={activeFilters.includes(option.key)}
+                        onChange={() => toggleAdvancedFilter(option.key)}
+                      >
+                        {getFilterLabel(option.key)}
+                      </Checkbox>
+                    ))}
+                  </Stack>
+                  <Stack spacing={3} mt={3}>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="semibold" mb={1}>
+                        {t("filters.advanced.serviceLabel", "Service filter")}
+                      </Text>
+                      <Select
+                        value={serviceId ? String(serviceId) : ""}
+                        onChange={(event) => handleServiceChange(event.target.value)}
+                        size="sm"
+                      >
+                        <option value="">
+                          {t("filters.advanced.serviceAll", "All services")}
+                        </option>
+                        {services.map((service) => (
+                          <option key={service.id} value={String(service.id)}>
+                            {service.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Box>
+                    {hasElevatedRole && (
+                      <Box>
+                        <Text fontSize="sm" fontWeight="semibold" mb={1}>
+                          {t("filters.advanced.adminLabel", "Admin filter")}
+                        </Text>
+                        <Select
+                          value={ownerFilter ?? ""}
+                          onChange={(event) => handleAdminChange(event.target.value)}
+                          size="sm"
+                        >
+                          <option value="">
+                            {t("filters.advanced.adminAll", "All admins")}
+                          </option>
+                          <option value={userData.username}>
+                            {t("filters.advanced.adminMyUsers", "My users")}
+                          </option>
+                          {adminList.map((record) => (
+                            <option key={record.username} value={record.username}>
+                              {record.username}
+                            </option>
+                          ))}
+                        </Select>
+                      </Box>
+                    )}
+                  </Stack>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    mt={3}
+                    w="full"
+                    onClick={clearAdvancedFilters}
+                    isDisabled={activeFilters.length === 0}
+                  >
+                    {t("filters.advancedClear", "Clear filters")}
+                  </Button>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+          )}
           <IconButton
             aria-label="refresh"
             disabled={loading}
@@ -210,6 +444,79 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             />
           </IconButton>
         </HStack>
+        {showAdvancedFilters &&
+          (activeFilters.length > 0 || Boolean(serviceId) || Boolean(ownerFilter)) && (
+          <Wrap mt={2} spacing={2}>
+            {activeFilters.map((filterKey) => (
+              <Tag
+                key={filterKey}
+                size="sm"
+                borderRadius="full"
+                variant="solid"
+                colorScheme="primary"
+              >
+                <TagLabel>{getFilterLabel(filterKey)}</TagLabel>
+                <TagCloseButton
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleAdvancedFilter(filterKey);
+                  }}
+                />
+              </Tag>
+            ))}
+            {serviceId && (
+              <Tag
+                key="service"
+                size="sm"
+                borderRadius="full"
+                variant="solid"
+                colorScheme="primary"
+              >
+                <TagLabel>
+                  {t(
+                    "filters.advanced.serviceTag",
+                    "Service: {{name}}",
+                    {
+                      name:
+                        services.find((service) => service.id === serviceId)
+                          ?.name ?? serviceId,
+                    }
+                  )}
+                </TagLabel>
+                <TagCloseButton
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleServiceChange("");
+                  }}
+                />
+              </Tag>
+            )}
+            {ownerFilter && (
+              <Tag
+                key="owner"
+                size="sm"
+                borderRadius="full"
+                variant="solid"
+                colorScheme="primary"
+              >
+                <TagLabel>
+                  {ownerFilter === userData.username
+                    ? t("filters.advanced.adminTagMine", "My users")
+                    : ownerFilter}
+                </TagLabel>
+                <TagCloseButton
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleAdminChange("");
+                  }}
+                />
+              </Tag>
+            )}
+          </Wrap>
+        )}
       </GridItem>
       <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
         <Stack
