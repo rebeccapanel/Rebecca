@@ -12,6 +12,11 @@
   border: 0;
 }
 
+.ace_editor,
+.jsoneditor {
+  font-family: "Source Code Pro", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+}
+
 .ace-one-dark {
   background-color: #1e1e1e;
   color: #d4d4d4;

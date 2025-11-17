@@ -7,7 +7,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.runtime import xray
-from app.db import crud, get_db
+from app.db import GetDB, crud, get_db
+from app.utils.concurrency import threaded_function
 from app.db.models import Service, User
 from app.dependencies import validate_dates
 from app.models.admin import Admin, AdminRole
@@ -35,6 +36,19 @@ router = APIRouter(
     tags=["Service V2"],
     responses={401: responses._401},
 )
+
+
+@threaded_function
+def _refresh_service_users_background(service_id: int):
+    with GetDB() as db:
+        service = crud.get_service(db, service_id)
+        if not service:
+            return
+        allowed = crud.get_service_allowed_inbounds(service)
+        users_to_update = crud.refresh_service_users(db, service, allowed)
+        db.commit()
+        for dbuser in users_to_update:
+            xray.operations.update_user(dbuser=dbuser)
 
 
 def _ensure_service_visibility(service: Service, admin: Admin) -> None:
@@ -191,7 +205,6 @@ def modify_service(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    users_to_update: List[User] = []
     allowed_changed = (
         hosts_modified
         and allowed_before is not None
@@ -199,14 +212,8 @@ def modify_service(
         and allowed_before != allowed_after
     )
 
-    if hosts_modified:
-        allowed_for_refresh = allowed_after or crud.get_service_allowed_inbounds(service)
-        users_to_update = crud.refresh_service_users(db, service, allowed_for_refresh)
-        db.commit()
-        for dbuser in users_to_update:
-            xray.operations.update_user(dbuser=dbuser)
-    else:
-        db.commit()
+    if hosts_modified and allowed_changed and service.id is not None:
+        _refresh_service_users_background(service.id)
 
     db.refresh(service)
     return _service_to_detail(db, service)
