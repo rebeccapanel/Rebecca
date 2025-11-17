@@ -32,6 +32,7 @@ def upgrade() -> None:
     needs_status_column = "status" not in existing_columns
 
     if dialect == "sqlite":
+        op.execute("DROP TABLE IF EXISTS _alembic_tmp_admins")
         with op.batch_alter_table("admins", recreate="always") as batch_op:
             if needs_status_column:
                 batch_op.add_column(
