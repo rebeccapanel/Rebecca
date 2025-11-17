@@ -1337,7 +1337,7 @@ def get_users(db: Session,
             search_clauses.append(User.credential_key.in_(key_candidates))
         if uuid_candidates:
             search_clauses.append(
-                User.proxies.any(Proxy.settings["id"].astext.in_(uuid_candidates))
+                User.proxies.any(Proxy.settings["id"].as_string().in_(uuid_candidates))
             )
         query = query.filter(or_(*search_clauses))
 
