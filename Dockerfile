@@ -1,36 +1,42 @@
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.13
 
-FROM python:$PYTHON_VERSION-slim AS build
+FROM ghcr.io/astral-sh/uv:python$PYTHON_VERSION-bookworm-slim AS builder
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
 
-ENV PYTHONUNBUFFERED=1
-
-WORKDIR /code
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl unzip gcc python3-dev libpq-dev \
-    && curl -L https://github.com/rebeccapanel/Rebecca-scripts/raw/master/install_latest_xray.sh | bash \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libc6-dev \
+    build-essential \
+    curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements.txt /code/
-RUN python3 -m pip install --upgrade pip setuptools \
-    && pip install --no-cache-dir --upgrade -r /code/requirements.txt
+RUN curl -L https://github.com/rebeccapanel/Rebecca-scripts/raw/master/install_latest_xray.sh | bash \
+    && apt-get remove --purge -y curl unzip \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM python:$PYTHON_VERSION-slim
+WORKDIR /build
 
-ENV PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION%.*}/site-packages
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
+
+ADD . /build
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+FROM python:$PYTHON_VERSION-slim-bookworm
+
+COPY --from=builder /build /code
+COPY --from=builder /usr/local/share/xray /usr/local/share/xray
+
 WORKDIR /code
 
-RUN rm -rf $PYTHON_LIB_PATH/*
+ENV PATH="/code/.venv/bin:$PATH"
 
-COPY --from=build $PYTHON_LIB_PATH $PYTHON_LIB_PATH
-COPY --from=build /usr/local/bin /usr/local/bin
-COPY --from=build /usr/local/share/xray /usr/local/share/xray
+RUN chmod +x /code/scripts/entrypoint.sh
 
-COPY . /code
-
-RUN rm -f /usr/bin/rebecca-cli \
-    && ln -s /code/rebecca-cli.py /usr/bin/rebecca-cli \
-    && chmod +x /usr/bin/rebecca-cli \
-    && rebecca-cli completion install --shell bash
-
-CMD ["bash", "-c", "alembic upgrade head; python main.py"]
+ENTRYPOINT ["/code/scripts/entrypoint.sh"]

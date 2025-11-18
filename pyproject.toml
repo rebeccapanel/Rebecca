@@ -39,31 +39,34 @@ dependencies = [
     "websocket-client==1.7.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "pytest-watch>=4.2.0",
+    "ruff>=0.11.6",
+]
+
 [tool.ruff]
 line-length = 120
+indent-width = 4
+respect-gitignore = true
+exclude = ["app/db/migrations"]
 fix = true
-show-fixes = true
 
 [tool.ruff.lint]
-select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # Pyflakes
-    "I",      # isort
-    "N",      # pep8-naming
-    "UP",     # pyupgrade
-    "S",      # bandit
-    "B",      # flake8-bugbear
-    "A",      # flake8-builtins
-    "C4",     # flake8-comprehensions
-    "DTZ",    # flake8-datetimez
-    "T20",    # flake8-print
-    "SIM",    # flake8-simplify
-    "LOG",    # flake8-logging
-    "RUF",    # Ruff-specific rules
-]
+fixable = ["ALL"]
 ignore = [
     "S101",   # Use of assert detected (needed for tests)
     "T20",    # print statements (CLI tool)
     "A003",   # Class attribute shadows builtin
 ]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
