@@ -161,5 +161,4 @@ xray-core
 *-dev.yaml
 *-debug.*
 
-uv.lock
 .ruff_cache/
