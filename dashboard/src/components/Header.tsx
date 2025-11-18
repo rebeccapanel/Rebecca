@@ -40,7 +40,7 @@ import useAds from "hooks/useAds";
 import { AdvertisementCard } from "./AdvertisementCard";
 import { pickLocalizedAd } from "utils/ads";
 import ReactCountryFlag from "react-country-flag";
-import { AdminRole, AdminSection, UserPermissionToggle } from "types/Admin";
+import { AdminSection, UserPermissionToggle } from "types/Admin";
 
 type HeaderProps = {
   actions?: ReactNode;
@@ -63,9 +63,7 @@ const LanguageIconStyled = chakra(LanguageIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
   const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
-  const shouldShowAds =
-    getUserIsSuccess &&
-    [AdminRole.Sudo, AdminRole.FullAccess].includes(userData.role);
+  const shouldShowAds = getUserIsSuccess;
   const { data: adsData } = useAds(shouldShowAds);
   const { t, i18n } = useTranslation();
   const currentLanguage = i18n.language || "en";

@@ -9,9 +9,10 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 import uuid
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
+from types import SimpleNamespace
 
 import sqlalchemy as sa
-from sqlalchemy import and_, delete, func, or_, inspect
+from sqlalchemy import and_, case, delete, func, or_, inspect
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import Query, Session, joinedload
 from sqlalchemy.sql.functions import coalesce
@@ -73,6 +74,7 @@ _USER_STATUS_ENUM_ENSURED = False
 
 _logger = logging.getLogger(__name__)
 _RECORD_CHANGED_ERRNO = 1020
+ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 
 def _is_record_changed_error(exc: OperationalError) -> bool:
@@ -2617,6 +2619,78 @@ def get_admin(db: Session, username: str) -> Admin:
     )
 
 
+def _admin_disabled_due_to_data_limit(dbadmin: Admin) -> bool:
+    return (
+        dbadmin.status == AdminStatus.disabled
+        and dbadmin.disabled_reason == ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
+    )
+
+
+def _admin_usage_within_limit(dbadmin: Admin) -> bool:
+    limit = dbadmin.data_limit
+    if limit is None:
+        return True
+    usage = dbadmin.users_usage or 0
+    return usage < limit
+
+
+def _maybe_enable_admin_after_data_limit(dbadmin: Admin) -> bool:
+    if not _admin_disabled_due_to_data_limit(dbadmin):
+        return False
+    if not _admin_usage_within_limit(dbadmin):
+        return False
+    dbadmin.status = AdminStatus.active
+    dbadmin.disabled_reason = None
+    return True
+
+
+def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
+    """
+    Ensure admin state reflects assigned data limit; disable admin and their users
+    (plus remove users from Xray) when usage exceeds the configured limit.
+    """
+    limit = dbadmin.data_limit
+    usage = dbadmin.users_usage or 0
+
+    if not limit or usage < limit:
+        return False
+
+    if (
+        dbadmin.status == AdminStatus.disabled
+        and dbadmin.disabled_reason != ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
+    ):
+        return False
+
+    active_users = (
+        db.query(User.id, User.username)
+        .filter(User.admin_id == dbadmin.id)
+        .filter(User.status.in_((UserStatus.active, UserStatus.on_hold)))
+        .all()
+    )
+
+    dbadmin.status = AdminStatus.disabled
+    dbadmin.disabled_reason = ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
+    db.flush()
+
+    if active_users:
+        disable_all_active_users(db, dbadmin)
+        try:
+            from app.runtime import xray
+        except ImportError:
+            xray = None
+
+        if xray:
+            for user_row in active_users:
+                try:
+                    xray.operations.remove_user(
+                        dbuser=SimpleNamespace(id=user_row.id, username=user_row.username)
+                    )
+                except Exception:
+                    continue
+
+    return True
+
+
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
     """
     Creates a new admin in the database.
@@ -2680,8 +2754,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.password_reset_at = datetime.utcnow()
     if modified_admin.telegram_id:
         dbadmin.telegram_id = modified_admin.telegram_id
+    data_limit_modified = False
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
+        data_limit_modified = True
     if modified_admin.users_limit is not None:
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
@@ -2692,6 +2768,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
                     current_active=active_count,
                 )
         dbadmin.users_limit = new_limit
+
+    if data_limit_modified:
+        enforce_admin_data_limit(db, dbadmin)
+    _maybe_enable_admin_after_data_limit(dbadmin)
 
     db.commit()
     db.refresh(dbadmin)
@@ -2719,8 +2799,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.password_reset_at = datetime.utcnow()
     if modified_admin.telegram_id is not None:
         dbadmin.telegram_id = modified_admin.telegram_id
+    data_limit_modified = False
     if modified_admin.data_limit is not None:
         dbadmin.data_limit = modified_admin.data_limit
+        data_limit_modified = True
     if modified_admin.users_limit is not None:
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
@@ -2731,6 +2813,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
                     current_active=active_count,
                 )
         dbadmin.users_limit = new_limit
+
+    if data_limit_modified:
+        enforce_admin_data_limit(db, dbadmin)
+    _maybe_enable_admin_after_data_limit(dbadmin)
 
     db.commit()
     db.refresh(dbadmin)
@@ -2889,6 +2975,8 @@ def get_admins(db: Session,
             "active": 0,
             "limited": 0,
             "expired": 0,
+            "on_hold": 0,
+            "disabled": 0,
         }
         for admin_id in admin_ids
     }
@@ -2910,6 +2998,10 @@ def get_admins(db: Session,
             counts_by_admin[admin_id]["limited"] = count or 0
         elif status == UserStatus.expired:
             counts_by_admin[admin_id]["expired"] = count or 0
+        elif status == UserStatus.on_hold:
+            counts_by_admin[admin_id]["on_hold"] = count or 0
+        elif status == UserStatus.disabled:
+            counts_by_admin[admin_id]["disabled"] = count or 0
 
     online_threshold = datetime.utcnow() - timedelta(hours=24)
     online_counts = {
@@ -2941,6 +3033,84 @@ def get_admins(db: Session,
         )
     }
 
+    # Aggregate assigned data limits
+    data_limit_rows = (
+        db.query(
+            User.admin_id,
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(User.data_limit.isnot(None), User.data_limit > 0),
+                            User.data_limit,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("data_limit_allocated"),
+        )
+        .filter(
+            User.admin_id.in_(admin_ids),
+            User.status != UserStatus.deleted,
+        )
+        .group_by(User.admin_id)
+        .all()
+    )
+    data_limit_map = {
+        row.admin_id: row.data_limit_allocated
+        for row in data_limit_rows
+        if row.admin_id is not None
+    }
+
+    unlimited_usage_rows = (
+        db.query(
+            User.admin_id,
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            or_(User.data_limit.is_(None), User.data_limit <= 0),
+                            User.used_traffic,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("unlimited_users_usage"),
+        )
+        .filter(
+            User.admin_id.in_(admin_ids),
+            User.status != UserStatus.deleted,
+        )
+        .group_by(User.admin_id)
+        .all()
+    )
+    unlimited_usage_map = {
+        row.admin_id: row.unlimited_users_usage
+        for row in unlimited_usage_rows
+        if row.admin_id is not None
+    }
+
+    reset_rows = (
+        db.query(
+            User.admin_id,
+            func.coalesce(
+                func.sum(UserUsageResetLogs.used_traffic_at_reset),
+                0,
+            ).label("reset_bytes"),
+        )
+        .join(UserUsageResetLogs, User.id == UserUsageResetLogs.user_id)
+        .filter(User.admin_id.in_(admin_ids))
+        .group_by(User.admin_id)
+        .all()
+    )
+    reset_map = {
+        row.admin_id: row.reset_bytes
+        for row in reset_rows
+        if row.admin_id is not None
+    }
+
     for admin in admins:
         admin_id = getattr(admin, "id", None)
         if admin_id is None:
@@ -2949,8 +3119,13 @@ def get_admins(db: Session,
         setattr(admin, "active_users", counts.get("active", 0))
         setattr(admin, "limited_users", counts.get("limited", 0))
         setattr(admin, "expired_users", counts.get("expired", 0))
+        setattr(admin, "on_hold_users", counts.get("on_hold", 0))
+        setattr(admin, "disabled_users", counts.get("disabled", 0))
         setattr(admin, "online_users", online_counts.get(admin_id, 0))
         setattr(admin, "users_count", users_counts.get(admin_id, 0))
+        setattr(admin, "data_limit_allocated", data_limit_map.get(admin_id, 0))
+        setattr(admin, "unlimited_users_usage", unlimited_usage_map.get(admin_id, 0))
+        setattr(admin, "reset_bytes", reset_map.get(admin_id, 0))
 
     return {"admins": admins, "total": total}
 
@@ -2973,6 +3148,7 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     )
     db.add(usage_log)
     dbadmin.users_usage = 0
+    _maybe_enable_admin_after_data_limit(dbadmin)
 
     db.commit()
     db.refresh(dbadmin)
@@ -3424,11 +3600,15 @@ def reset_node_usage(db: Session, dbnode: Node) -> Node:
     return dbnode
 
 
-def count_online_users(db: Session, hours: int = 24):
+def count_online_users(db: Session, hours: int = 24, admin: Admin | None = None):
     twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=hours)
-    query = db.query(func.count(User.id)).filter(User.online_at.isnot(
-        None), User.online_at >= twenty_four_hours_ago)
-    return query.scalar()
+    query = db.query(func.count(User.id)).filter(
+        User.online_at.isnot(None),
+        User.online_at >= twenty_four_hours_ago,
+    )
+    if admin and admin.id is not None:
+        query = query.filter(User.admin_id == admin.id)
+    return query.scalar() or 0
 
 
 def get_admin_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[UserUsageResponse]:

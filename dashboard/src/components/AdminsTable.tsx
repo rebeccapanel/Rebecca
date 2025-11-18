@@ -49,6 +49,8 @@ import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler
 import { formatBytes } from "utils/formatByte";
 import AdminPermissionsModal from "./AdminPermissionsModal";
 
+const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
+
 export const AdminsTable = () => {
   const { t } = useTranslation();
   const toast = useToast();
@@ -347,8 +349,18 @@ export const AdminsTable = () => {
               const canChangeStatus = canManageThisAdmin && admin.username !== currentAdminUsername;
               const showDisableAction =
                 canChangeStatus && admin.status !== AdminStatus.Disabled;
+              const hasLimitDisabledReason =
+                admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+              const disabledReasonLabel = admin.disabled_reason
+                ? hasLimitDisabledReason
+                  ? t(
+                      "admins.disabledReason.dataLimitExceeded",
+                      "Your data limit has been reached"
+                    )
+                  : admin.disabled_reason
+                : null;
               const showEnableAction =
-                canChangeStatus && admin.status === AdminStatus.Disabled;
+                canChangeStatus && admin.status === AdminStatus.Disabled && !hasLimitDisabledReason;
               const showDeleteAction = canChangeStatus;
 
               return (
@@ -378,9 +390,9 @@ export const AdminsTable = () => {
                         {t("admins.disabledLabel", "Disabled")}
                       </Badge>
                     )}
-                    {admin.status === AdminStatus.Disabled && admin.disabled_reason && (
+                    {admin.status === AdminStatus.Disabled && disabledReasonLabel && (
                       <Text fontSize="xs" color="red.400" mt={1}>
-                        {admin.disabled_reason}
+                        {disabledReasonLabel}
                       </Text>
                     )}
                   </Td>

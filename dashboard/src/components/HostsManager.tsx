@@ -412,7 +412,11 @@ const HostCard: FC<HostCardProps> = ({
               )}
             </HStack>
           </VStack>
-          <HStack spacing={2}>
+          <HStack
+            spacing={2}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             <Switch
               size="sm"
               colorScheme="primary"
@@ -421,6 +425,8 @@ const HostCard: FC<HostCardProps> = ({
                 event.stopPropagation();
                 onToggleActive(host.uid, event.target.checked);
               }}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
               aria-label={t("hostsPage.toggleActive")}
             />
             <Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
@@ -1104,6 +1110,7 @@ export const HostsManager: FC = () => {
 
   const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
   const [includeDisabled, setIncludeDisabled] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
@@ -1200,13 +1207,46 @@ export const HostsManager: FC = () => {
     [activeHosts, allHosts, includeDisabled]
   );
 
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const filteredHosts = useMemo(() => {
+    if (!normalizedSearchQuery) {
+      return baseFilteredHosts;
+    }
+    return baseFilteredHosts.filter((host) => {
+      const values = [
+        host.data.remark,
+        host.data.address,
+        host.data.host,
+        host.data.path,
+        host.data.sni,
+        host.inboundTag,
+        host.data.port != null ? String(host.data.port) : "",
+      ];
+      return values.some(
+        (value) => value && value.toLowerCase().includes(normalizedSearchQuery)
+      );
+    });
+  }, [baseFilteredHosts, normalizedSearchQuery]);
+
   useEffect(() => {
     if (isSorting) {
       setVisualOrder((prev) => prev ?? [...activeHosts]);
     }
   }, [activeHosts, isSorting]);
 
-  const displayedHosts = isSorting ? visualOrder ?? activeHosts : baseFilteredHosts;
+  const displayedHosts = isSorting ? visualOrder ?? activeHosts : filteredHosts;
+
+  const hasLoadedHosts = hostItemsRef.current.length > 0;
+  const isInitialLoading = isLoading && !hasLoadedHosts;
+  const isRefreshing = isLoading && hasLoadedHosts;
+  const isSearchActive = normalizedSearchQuery.length > 0;
+  const showSearchEmptyState =
+    !isSorting &&
+    !isInitialLoading &&
+    isSearchActive &&
+    baseFilteredHosts.length > 0 &&
+    filteredHosts.length === 0;
 
 
   const orderIndexMap = useMemo(() => {
@@ -1578,8 +1618,13 @@ export const HostsManager: FC = () => {
           ) : null}
         </VStack>
       ) : (
-        <HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
-          <HStack spacing={3}>
+        <Stack
+          direction={{ base: "column", md: "row" }}
+          spacing={3}
+          align={{ base: "stretch", md: "center" }}
+          justify="space-between"
+        >
+          <HStack spacing={3} flexWrap="wrap">
             <Button
               colorScheme="primary"
               size="sm"
@@ -1596,19 +1641,39 @@ export const HostsManager: FC = () => {
               {t("hostsPage.showDisabled")}
             </Switch>
           </HStack>
-          <Button
-            size="sm"
-            variant="outline"
-            leftIcon={<HandleIcon />}
-            onClick={enterSortMode}
-            isDisabled={isLoading || !activeHosts.length}
+          <Stack
+            direction={{ base: "column", sm: "row" }}
+            spacing={2}
+            align={{ base: "stretch", sm: "center" }}
+            justify="flex-end"
+            w="full"
           >
-            {t("hostsPage.enterSort")}
-          </Button>
-        </HStack>
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("hostsPage.searchPlaceholder", {
+                defaultValue: "Search hosts...",
+              })}
+              size="sm"
+              w="100%"
+            />
+            <HStack spacing={2} justify="flex-end">
+              {isRefreshing && <Spinner size="sm" />}
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<HandleIcon />}
+                onClick={enterSortMode}
+                isDisabled={isInitialLoading || !activeHosts.length}
+              >
+                {t("hostsPage.enterSort")}
+              </Button>
+            </HStack>
+          </Stack>
+        </Stack>
       )}
 
-      {isLoading ? (
+      {isInitialLoading ? (
         <HStack justify="center" py={10}>
           <Spinner />
         </HStack>
@@ -1622,7 +1687,11 @@ export const HostsManager: FC = () => {
           borderColor="gray.300"
           _dark={{ borderColor: "gray.600" }}
         >
-          <Text>{t("hostsPage.emptyState")}</Text>
+          <Text>
+            {showSearchEmptyState
+              ? t("hostsPage.searchEmpty")
+              : t("hostsPage.emptyState")}
+          </Text>
         </Box>
       ) : isSorting ? (
         <Reorder.Group
@@ -1645,7 +1714,7 @@ export const HostsManager: FC = () => {
         </Reorder.Group>
       ) : (
         <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-          {baseFilteredHosts.map((host, index) => (
+          {displayedHosts.map((host, index) => (
             <HostCard
               key={host.uid}
               host={host}

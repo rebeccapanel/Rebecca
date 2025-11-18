@@ -13,9 +13,8 @@ router = APIRouter(
 
 
 @router.get("/ads", response_model=AdsResponse)
-def read_ads(admin: Admin = Depends(Admin.check_sudo_admin)):
+def read_ads(admin: Admin = Depends(Admin.get_current)):
     """
-    Return the cached advertisement payload. Only sudo or full-access admins can
-    reach this endpoint.
+    Return the cached advertisement payload for any authenticated admin.
     """
     return get_cached_ads()

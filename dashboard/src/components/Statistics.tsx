@@ -507,7 +507,7 @@ const PanelOverviewCard: FC<{
             }
           />
         </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+        <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
           <MetricBadge
             label={t("threads")}
             value={formatNumberValue(data.app_threads)}
@@ -517,6 +517,11 @@ const PanelOverviewCard: FC<{
             label={t("appMemory")}
             value={formatBytes(data.app_memory)}
             colorScheme="blue"
+          />
+          <MetricBadge
+            label={t("panel.totalConsumption")}
+            value={formatBytes(data.panel_total_bandwidth)}
+            colorScheme="cyan"
           />
         </SimpleGrid>
       </Stack>

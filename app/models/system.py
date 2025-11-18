@@ -49,6 +49,7 @@ class SystemStats(BaseModel):
     users_limited: int
     incoming_bandwidth: int
     outgoing_bandwidth: int
+    panel_total_bandwidth: int
     incoming_bandwidth_speed: int
     outgoing_bandwidth_speed: int
     memory: UsageStats

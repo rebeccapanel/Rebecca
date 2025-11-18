@@ -22,7 +22,7 @@ from app.db.models import (
     System,
     User,
 )
-from app.models.admin import Admin as AdminSchema
+from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.node import NodeStatus, NodeResponse
 from config import (
     DISABLE_RECORDING_NODE_USAGE,
@@ -292,11 +292,12 @@ def record_user_usages():
                     new_usage = previous_usage + increments.get(admin_row.id, 0)
                     if previous_usage < limit <= new_usage:
                         admin_limit_events.append(
-                            (
-                                AdminSchema.model_validate(admin_row),
-                                limit,
-                                new_usage,
-                            )
+                            {
+                                "admin_id": admin_row.id,
+                                "admin": AdminSchema.model_validate(admin_row),
+                                "limit": limit,
+                                "current": new_usage,
+                            }
                         )
 
             admin_update_stmt = (
@@ -357,8 +358,19 @@ def record_user_usages():
             ]
             safe_execute(db, admin_service_update_stmt, admin_service_params)
 
-    for admin_obj, limit, current in admin_limit_events:
-        report.admin_data_limit_reached(admin_obj, limit, current)
+        admin_ids_to_disable = {
+            event["admin_id"]
+            for event in admin_limit_events
+            if event.get("admin_id") is not None
+        }
+        for admin_id in admin_ids_to_disable:
+            dbadmin = db.query(Admin).filter(Admin.id == admin_id).first()
+            if not dbadmin:
+                continue
+            crud.enforce_admin_data_limit(db, dbadmin)
+
+    for event in admin_limit_events:
+        report.admin_data_limit_reached(event["admin"], event["limit"], event["current"])
 
     if DISABLE_RECORDING_NODE_USAGE:
         return

@@ -67,6 +67,11 @@ export type Admin = {
   online_users?: number | null;
   limited_users?: number | null;
   expired_users?: number | null;
+  on_hold_users?: number | null;
+  disabled_users?: number | null;
+  data_limit_allocated?: number | null;
+  unlimited_users_usage?: number | null;
+  reset_bytes?: number | null;
   lifetime_usage?: number | null;
 };
 
