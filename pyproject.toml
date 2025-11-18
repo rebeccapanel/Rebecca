@@ -1,0 +1,69 @@
+[project]
+name = "rebecca"
+version = "0.1.0"
+description = "Rebecca, Unified GUI Censorship Resistant Solution Powered by Xray."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic==1.14.0",
+    "anyio==4.2.0",
+    "apscheduler==3.9.1.post1",
+    "bcrypt==4.0.1",
+    "click==8.1.7",
+    "commentjson==0.9.0",
+    "cryptography==43.0.1",
+    "fastapi==0.115.2",
+    "grpcio==1.67.1",
+    "jdatetime==4.1.1",
+    "jinja2==3.1.4",
+    "passlib[bcrypt]==1.7.4",
+    "psutil==5.9.4",
+    "pydantic==2.10.4",
+    "pyjwt==2.8.0",
+    "pymysql==1.1.1",
+    "pyopenssl==24.2.1",
+    "pytelegrambotapi==4.9.0",
+    "python-dateutil==2.8.2",
+    "python-decouple==3.6",
+    "python-dotenv==0.21.1",
+    "python-multipart>=0.0.20",
+    "pyyaml==6.0.2",
+    "qrcode==7.4.2",
+    "requests==2.32.3",
+    "rich==13.7.1",
+    "sqlalchemy==2.0.36",
+    "starlette==0.40.0",
+    "typer==0.7.0",
+    "urllib3==1.26.19",
+    "uvicorn==0.27.0.post1",
+    "websocket-client==1.7.0",
+]
+
+[tool.ruff]
+line-length = 120
+fix = true
+show-fixes = true
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "S",      # bandit
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T20",    # flake8-print
+    "SIM",    # flake8-simplify
+    "LOG",    # flake8-logging
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "S101",   # Use of assert detected (needed for tests)
+    "T20",    # print statements (CLI tool)
+    "A003",   # Class attribute shadows builtin
+]
