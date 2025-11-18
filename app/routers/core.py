@@ -7,7 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.runtime import xray
 from app.db import Session, get_db, crud, GetDB
 from app.models.admin import Admin, AdminRole
-from app.models.core import CoreStats
+from app.models.core import CoreStats, ServerIPs
 from app.models.warp import (
     WarpAccountResponse,
     WarpConfigResponse,
@@ -18,6 +18,7 @@ from app.models.warp import (
 from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
 from app.utils.maintenance import maintenance_request
+from app.utils.system import get_public_ip, get_public_ipv6
 from app.utils.xray_config import apply_config_and_restart
 from app.reb_node import XRayConfig
 
@@ -33,9 +34,7 @@ GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-tem
 
 @router.websocket("/core/logs")
 async def core_logs(websocket: WebSocket):
-    token = websocket.query_params.get("token") or websocket.headers.get(
-        "Authorization", ""
-    ).removeprefix("Bearer ")
+    token = websocket.query_params.get("token") or websocket.headers.get("Authorization", "").removeprefix("Bearer ")
     with GetDB() as db:
         admin = Admin.get_admin(token, db)
     if not admin:
@@ -51,9 +50,7 @@ async def core_logs(websocket: WebSocket):
         except ValueError:
             return await websocket.close(reason="Invalid interval value", code=4400)
         if interval > 10:
-            return await websocket.close(
-                reason="Interval must be more than 0 and at most 10 seconds", code=4400
-            )
+            return await websocket.close(reason="Interval must be more than 0 and at most 10 seconds", code=4400)
 
     await websocket.accept()
 
@@ -100,6 +97,15 @@ def get_core_stats(admin: Admin = Depends(Admin.get_current)):
     )
 
 
+@router.get("/core/ips", response_model=ServerIPs)
+def get_server_ips(admin: Admin = Depends(Admin.get_current)):
+    """Retrieve server's public IPv4 and IPv6 addresses."""
+    return ServerIPs(
+        ipv4=get_public_ip(),
+        ipv6=get_public_ipv6(),
+    )
+
+
 @router.post("/core/restart", responses={403: responses._403})
 def restart_core(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Restart the core and all connected nodes."""
@@ -123,9 +129,7 @@ def get_core_config(
 
 
 @router.put("/core/config", responses={403: responses._403})
-def modify_core_config(
-    payload: dict, admin: Admin = Depends(Admin.check_sudo_admin)
-) -> dict:
+def modify_core_config(payload: dict, admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
     """Modify the core configuration and restart the core."""
     apply_config_and_restart(payload)
     return payload
@@ -167,7 +171,7 @@ def _update_env_envfile(env_path: Path, key: str, value: str) -> str:
 def list_xray_releases(limit: int = 10, admin: Admin = Depends(Admin.check_sudo_admin)):
     """List latest Xray-core tags"""
     try:
-        r = requests.get(f"{GITHUB_RELEASES}?per_page={max(1,min(limit,50))}", timeout=30)
+        r = requests.get(f"{GITHUB_RELEASES}?per_page={max(1, min(limit, 50))}", timeout=30)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(502, detail=f"Failed to fetch releases: {e}")
@@ -222,10 +226,7 @@ def _resolve_assets_path_master(persist_env: bool) -> Path:
 
 
 @router.get("/core/geo/templates", responses={403: responses._403})
-def list_geo_templates(
-    index_url: str = "",
-    admin: Admin = Depends(Admin.check_sudo_admin)
-):
+def list_geo_templates(index_url: str = "", admin: Admin = Depends(Admin.check_sudo_admin)):
     """Fetch and list geo templates."""
     url = index_url.strip() or os.getenv("GEO_TEMPLATES_INDEX_URL", "").strip()
     if not url:
@@ -261,16 +262,21 @@ def list_geo_templates(
 
 @router.post("/core/geo/apply", responses={403: responses._403})
 def apply_geo_assets(
-    payload: dict = Body(..., example={
-        "mode": "default",
-        "files": [{"name": "geosite.dat", "url": "https://.../geosite.dat"},
-                  {"name": "geoip.dat", "url": "https://.../geoip.dat"}],
-        "persist_env": True,
-        "apply_to_nodes": True,
-        "skip_node_ids": []
-    }),
+    payload: dict = Body(
+        ...,
+        example={
+            "mode": "default",
+            "files": [
+                {"name": "geosite.dat", "url": "https://.../geosite.dat"},
+                {"name": "geoip.dat", "url": "https://.../geoip.dat"},
+            ],
+            "persist_env": True,
+            "apply_to_nodes": True,
+            "skip_node_ids": [],
+        },
+    ),
     admin: Admin = Depends(Admin.check_sudo_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Download and apply geo assets."""
     mode = (payload.get("mode") or "default").strip().lower()
@@ -343,9 +349,7 @@ def _serialize_warp_account(service: WarpService, account):
 
 
 @router.get("/core/warp", response_model=WarpAccountResponse, responses={403: responses._403})
-def get_warp_account(
-    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
-):
+def get_warp_account(admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)):
     """Return the stored Cloudflare WARP account (if any)."""
     service = _warp_service(db)
     account = service.get_account()
@@ -365,9 +369,7 @@ def register_warp_account(
     """Register a new WARP device via Cloudflare and persist credentials."""
     service = _warp_service(db)
     try:
-        account, config = service.register(
-            payload.private_key.strip(), payload.public_key.strip()
-        )
+        account, config = service.register(payload.private_key.strip(), payload.public_key.strip())
     except WarpServiceError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"account": service.serialize_account(account), "config": config}
@@ -399,9 +401,7 @@ def update_warp_license(
     response_model=WarpConfigResponse,
     responses={403: responses._403},
 )
-def get_warp_config(
-    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
-):
+def get_warp_config(admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)):
     """Fetch the latest device+account info from Cloudflare."""
     service = _warp_service(db)
     try:
@@ -414,9 +414,7 @@ def get_warp_config(
 
 
 @router.delete("/core/warp", response_model=WarpAccountResponse, responses={403: responses._403})
-def delete_warp_account(
-    admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)
-):
+def delete_warp_account(admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)):
     """Remove the locally stored WARP credentials."""
     service = _warp_service(db)
     service.delete()

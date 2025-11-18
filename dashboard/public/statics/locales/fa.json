@@ -574,6 +574,7 @@
   "pages.xray.Outbounds": "خروجی‌ها",
   "pages.xray.RoutingStrategy": "استراتژی مسیریابی کلی",
   "pages.xray.Routings": "قوانین مسیریابی",
+  "pages.xray.serverIPs": "آی‌پی‌های سرور",
   "pages.xray.Template": "قالب",
   "pages.xray.TemplateDesc": "بخش پیکربندی را برای ویرایش انتخاب کنید",
   "pages.xray.accessLog": "لاگ دسترسی",

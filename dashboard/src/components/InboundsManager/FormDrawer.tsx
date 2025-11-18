@@ -255,7 +255,7 @@ export const InboundFormModal: FC<Props> = ({
     ),
     [register]
   );
-  
+
   const supportsFallback = currentProtocol === "vless" || currentProtocol === "trojan";
 
   const sectionBorder = useColorModeValue("gray.200", "gray.700");
@@ -441,7 +441,7 @@ export const InboundFormModal: FC<Props> = ({
                 </FormControl>
                 <FormControl>
                   <FormLabel>{t("inbounds.listen", "Listen address")}</FormLabel>
-                  <Input placeholder="0.0.0.0" {...register("listen")} />
+                  <Input placeholder="::" {...register("listen")} />
                 </FormControl>
               </SimpleGrid>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>

@@ -1,8 +1,10 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
+from ipaddress import ip_address
+from re import match
 
-from pydantic import ConfigDict, BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field, field_validator
 
 
 class NodeStatus(str, Enum):
@@ -23,9 +25,24 @@ class NodeSettings(BaseModel):
     certificate: str
 
 
+def validate_address(value: str) -> str:
+    if not value:
+        raise ValueError("Address cannot be empty")
+
+    try:
+        ip_address(value)
+        return value
+    except ValueError:
+        pass
+    # Check if it's a valid domain
+    if match(r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$", value):
+        return value
+    raise ValueError("Address must be a valid IP address or domain name")
+
+
 class Node(BaseModel):
     name: str
-    address: str
+    address: str = Field(..., validate_default=True)
     port: int = 62050
     api_port: int = 62051
     usage_coefficient: float = Field(gt=0, default=1.0)
@@ -42,21 +59,28 @@ class Node(BaseModel):
         description="Port to use when Nobetci integration is enabled",
     )
 
+    @field_validator("address")
+    @classmethod
+    def validate_address_field(cls, v):
+        return validate_address(v)
+
 
 class NodeCreate(Node):
     add_as_new_host: bool = True
     geo_mode: GeoMode = GeoMode.default
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "name": "DE node",
-            "address": "192.168.1.1",
-            "port": 62050,
-            "api_port": 62051,
-            "add_as_new_host": True,
-            "usage_coefficient": 1,
-            "geo_mode": "default"
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "DE node",
+                "address": "192.168.1.1",
+                "port": 62050,
+                "api_port": 62051,
+                "add_as_new_host": True,
+                "usage_coefficient": 1,
+                "geo_mode": "default",
+            }
         }
-    })
+    )
 
 
 class NodeModify(Node):
@@ -70,17 +94,19 @@ class NodeModify(Node):
     data_limit: Optional[int] = Field(None, nullable=True)
     use_nobetci: Optional[bool] = Field(None, nullable=True)
     nobetci_port: Optional[int] = Field(None, nullable=True)
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "name": "DE node",
-            "address": "192.168.1.1",
-            "port": 62050,
-            "api_port": 62051,
-            "status": "disabled",
-            "usage_coefficient": 1.0,
-            "geo_mode": "default"
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "DE node",
+                "address": "192.168.1.1",
+                "port": 62050,
+                "api_port": 62051,
+                "status": "disabled",
+                "usage_coefficient": 1.0,
+                "geo_mode": "default",
+            }
         }
-    })
+    )
 
 
 class NodeResponse(Node):
@@ -103,7 +129,7 @@ class NodeUsageResponse(BaseModel):
 
 
 class NodesUsageResponse(BaseModel):
-    usages: List[NodeUsageResponse]
+    usages: list[NodeUsageResponse]
 
 
 class MasterNodeResponse(BaseModel):

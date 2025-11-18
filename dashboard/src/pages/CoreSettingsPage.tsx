@@ -263,7 +263,9 @@ export const CoreSettingsPage: FC = () => {
       </VStack>
     );
   }
-  const { onEditingCore } = useDashboard();
+  const { data: serverIPs } = useQuery(["server-ips"], () => apiFetch<{ ipv4: string; ipv6: string }>("/core/ips"), {
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
   const toast = useToast();
   const { isOpen: isOutboundOpen, onOpen: onOutboundOpen, onClose: onOutboundClose } = useDisclosure();
   const { isOpen: isRuleOpen, onOpen: onRuleOpen, onClose: onRuleClose } = useDisclosure();
@@ -1160,6 +1162,18 @@ export const CoreSettingsPage: FC = () => {
         <TabPanels>
           <TabPanel>
             <VStack spacing={4} align="stretch">
+              <SettingsSection title={t("pages.xray.serverIPs", "Server IPs")}>
+                <SettingRow label="IPv4" controlId="server-ipv4">
+                  {(id) => (
+                    <CompactTextWithCopy id={id} text={serverIPs?.ipv4 || "Loading..."} />
+                  )}
+                </SettingRow>
+                <SettingRow label="IPv6" controlId="server-ipv6">
+                  {(id) => (
+                    <CompactTextWithCopy id={id} text={serverIPs?.ipv6 || "Loading..."} />
+                  )}
+                </SettingRow>
+              </SettingsSection>
               <SettingsSection title={t("pages.xray.generalConfigs")}>
               <SettingRow label={t("pages.xray.FreedomStrategy")} controlId="freedom-domain-strategy">
                 {(id) => (
