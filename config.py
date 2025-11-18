@@ -6,7 +6,7 @@ load_dotenv()
 
 SQLALCHEMY_DATABASE_URL = config("SQLALCHEMY_DATABASE_URL", default="sqlite:///db.sqlite3")
 SQLALCHEMY_POOL_SIZE = config("SQLALCHEMY_POOL_SIZE", cast=int, default=10)
-SQLIALCHEMY_MAX_OVERFLOW = config("SQLIALCHEMY_MAX_OVERFLOW", cast=int, default=30)
+SQLALCHEMY_MAX_OVERFLOW = config("SQLALCHEMY_MAX_OVERFLOW", cast=int, default=30)
 
 UVICORN_HOST = config("UVICORN_HOST", default="0.0.0.0")
 UVICORN_PORT = config("UVICORN_PORT", cast=int, default=8000)
@@ -21,16 +21,18 @@ DOCS = config("DOCS", default=False, cast=bool)
 
 ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
 
-VITE_BASE_API = f"http://127.0.0.1:{UVICORN_PORT}/api/" \
-    if DEBUG and config("VITE_BASE_API", default="/api/") == "/api/" \
+VITE_BASE_API = (
+    f"http://127.0.0.1:{UVICORN_PORT}/api/"
+    if DEBUG and config("VITE_BASE_API", default="/api/") == "/api/"
     else config("VITE_BASE_API", default="/api/")
+)
 
 XRAY_FALLBACKS_INBOUND_TAG = config("XRAY_FALLBACKS_INBOUND_TAG", cast=str, default="") or config(
     "XRAY_FALLBACK_INBOUND_TAG", cast=str, default=""
 )
 XRAY_EXECUTABLE_PATH = config("XRAY_EXECUTABLE_PATH", default="/usr/local/bin/xray")
 XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
-XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default='').split()
+XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
 XRAY_SUBSCRIPTION_URL_PREFIX = config("XRAY_SUBSCRIPTION_URL_PREFIX", default="").strip("/")
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
 MAINTENANCE_API_BASE_URL = config("MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3000").rstrip("/")
@@ -61,8 +63,9 @@ USER_AGENT_TEMPLATE = config("USER_AGENT_TEMPLATE", default="user_agent/default.
 GRPC_USER_AGENT_TEMPLATE = config("GRPC_USER_AGENT_TEMPLATE", default="user_agent/grpc.json")
 
 EXTERNAL_CONFIG = config("EXTERNAL_CONFIG", default="", cast=str)
-LOGIN_NOTIFY_WHITE_LIST = [ip.strip() for ip in config("LOGIN_NOTIFY_WHITE_LIST",
-                                                       default="", cast=str).split(",") if ip.strip()]
+LOGIN_NOTIFY_WHITE_LIST = [
+    ip.strip() for ip in config("LOGIN_NOTIFY_WHITE_LIST", default="", cast=str).split(",") if ip.strip()
+]
 
 USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=bool)
 USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=bool)
@@ -81,15 +84,17 @@ USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config("USER_AUTODELETE_INCLUDE_LIMIT
 
 
 # USERNAME: PASSWORD
-SUDOERS = {config("SUDO_USERNAME"): config("SUDO_PASSWORD")} \
-    if config("SUDO_USERNAME", default='') and config("SUDO_PASSWORD", default='') \
+SUDOERS = (
+    {config("SUDO_USERNAME"): config("SUDO_PASSWORD")}
+    if config("SUDO_USERNAME", default="") and config("SUDO_PASSWORD", default="")
     else {}
+)
 
 
 WEBHOOK_ADDRESS = config(
-    'WEBHOOK_ADDRESS',
+    "WEBHOOK_ADDRESS",
     default="",
-    cast=lambda v: [address.strip() for address in v.split(',')] if v else []
+    cast=lambda v: [address.strip() for address in v.split(",")] if v else [],
 )
 WEBHOOK_SECRET = config("WEBHOOK_SECRET", default=None)
 

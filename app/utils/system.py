@@ -119,14 +119,14 @@ def get_public_ip():
         resp = requests.get('http://api4.ipify.org/', timeout=5).text.strip()
         if ipaddress.IPv4Address(resp).is_global:
             return resp
-    except:
+    except Exception:
         pass
 
     try:
         resp = requests.get('http://ipv4.icanhazip.com/', timeout=5).text.strip()
         if ipaddress.IPv4Address(resp).is_global:
             return resp
-    except:
+    except Exception:
         pass
 
     try:
@@ -158,14 +158,14 @@ def get_public_ipv6():
         resp = requests.get('http://api6.ipify.org/', timeout=5).text.strip()
         if ipaddress.IPv6Address(resp).is_global:
             return '[%s]' % resp
-    except:
+    except Exception:
         pass
 
     try:
         resp = requests.get('http://ipv6.icanhazip.com/', timeout=5).text.strip()
         if ipaddress.IPv6Address(resp).is_global:
             return '[%s]' % resp
-    except:
+    except Exception:
         pass
 
     return '[::1]'
