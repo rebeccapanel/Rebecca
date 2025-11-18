@@ -281,6 +281,13 @@ def get_users(
                     status_code=400, detail=f'"{opt}" is not a valid sort option'
                 )
 
+    owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else None
+    dbadmin = None
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
+        dbadmin = crud.get_admin(db, admin.username)
+        if not dbadmin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+
     users, count = crud.get_users(
         db=db,
         offset=offset,
@@ -291,7 +298,8 @@ def get_users(
         sort=sort,
         advanced_filters=advanced_filters,
         service_id=service_id,
-        admins=owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username],
+        admin=dbadmin,
+        admins=owners,
         return_with_count=True,
     )
 
