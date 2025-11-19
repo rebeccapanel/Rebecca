@@ -51,6 +51,14 @@ class UserStatus(str, Enum):
     deleted = "deleted"
 
 
+class AdvancedUserAction(str, Enum):
+    extend_expire = "extend_expire"
+    reduce_expire = "reduce_expire"
+    increase_traffic = "increase_traffic"
+    decrease_traffic = "decrease_traffic"
+    cleanup_status = "cleanup_status"
+
+
 class UserStatusModify(str, Enum):
     active = "active"
     disabled = "disabled"
@@ -68,6 +76,49 @@ class UserDataLimitResetStrategy(str, Enum):
     week = "week"
     month = "month"
     year = "year"
+
+
+class BulkUsersActionRequest(BaseModel):
+    action: AdvancedUserAction
+    days: Optional[int] = None
+    gigabytes: Optional[float] = None
+    statuses: Optional[List[UserStatus]] = None
+    admin_username: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_action(cls, values):
+        action = values.get("action")
+        days = values.get("days")
+        gigabytes = values.get("gigabytes")
+        statuses = values.get("statuses")
+
+        needs_days = {
+            AdvancedUserAction.extend_expire,
+            AdvancedUserAction.reduce_expire,
+            AdvancedUserAction.cleanup_status,
+        }
+
+        if action in needs_days:
+            if not isinstance(days, int) or days <= 0:
+                raise ValueError("days must be a positive integer")
+
+        if action in (AdvancedUserAction.increase_traffic, AdvancedUserAction.decrease_traffic):
+            if (
+                gigabytes is None
+                or not isinstance(gigabytes, (int, float))
+                or gigabytes <= 0
+            ):
+                raise ValueError("gigabytes must be a positive number")
+
+        if action == AdvancedUserAction.cleanup_status:
+            allowed = {UserStatus.expired, UserStatus.limited}
+            resolved_statuses = statuses or list(allowed)
+            invalid = [status for status in resolved_statuses if status not in allowed]
+            if invalid:
+                raise ValueError("cleanup_status only accepts expired or limited")
+            values["statuses"] = resolved_statuses
+
+        return values
 
 
 class NextPlanModel(BaseModel):

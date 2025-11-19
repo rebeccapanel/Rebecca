@@ -2212,6 +2212,112 @@ def reset_all_users_data_usage(db: Session, admin: Optional[Admin] = None):
     db.commit()
 
 
+def _sync_user_status_from_expire(db: Session, dbuser: User, now: float) -> None:
+    status_value = _status_to_str(dbuser.status)
+    if status_value not in (UserStatus.active.value, UserStatus.expired.value):
+        return
+    if not dbuser.expire or dbuser.expire > now:
+        target_status = UserStatus.active
+    else:
+        target_status = UserStatus.expired
+    if target_status.value == status_value:
+        return
+    dbuser.status = target_status
+    dbuser.last_status_change = datetime.utcnow()
+    if target_status == UserStatus.active:
+        _ensure_active_user_capacity(
+            db,
+            dbuser.admin,
+            exclude_user_ids=(dbuser.id,),
+        )
+
+
+def adjust_all_users_expire(
+    db: Session,
+    delta_seconds: int,
+    admin: Optional[Admin] = None,
+) -> int:
+    if delta_seconds == 0:
+        return 0
+    query = get_user_queryset(db).filter(User.expire.isnot(None))
+    if admin:
+        query = query.filter(User.admin == admin)
+    now = datetime.utcnow().timestamp()
+    count = 0
+    for dbuser in query.all():
+        dbuser.expire = (dbuser.expire or 0) + delta_seconds
+        _sync_user_status_from_expire(db, dbuser, now)
+        db.add(dbuser)
+        count += 1
+    if count:
+        db.commit()
+    return count
+
+
+def _sync_user_status_from_usage(db: Session, dbuser: User) -> None:
+    status_value = _status_to_str(dbuser.status)
+    if status_value in (UserStatus.expired.value, UserStatus.disabled.value):
+        return
+    limit = dbuser.data_limit or 0
+    target_status: Optional[UserStatus] = None
+    if limit > 0 and dbuser.used_traffic >= limit:
+        target_status = UserStatus.limited
+    elif status_value == UserStatus.on_hold.value:
+        return
+    else:
+        target_status = UserStatus.active
+
+    if target_status and target_status.value != status_value:
+        dbuser.status = target_status
+        dbuser.last_status_change = datetime.utcnow()
+        if target_status == UserStatus.active:
+            _ensure_active_user_capacity(
+                db,
+                dbuser.admin,
+                exclude_user_ids=(dbuser.id,),
+            )
+
+
+def adjust_all_users_usage(
+    db: Session,
+    delta_bytes: int,
+    admin: Optional[Admin] = None,
+) -> int:
+    if delta_bytes == 0:
+        return 0
+    query = get_user_queryset(db)
+    if admin:
+        query = query.filter(User.admin == admin)
+    count = 0
+    for dbuser in query.all():
+        dbuser.used_traffic = max(dbuser.used_traffic + delta_bytes, 0)
+        _sync_user_status_from_usage(db, dbuser)
+        db.add(dbuser)
+        count += 1
+    if count:
+        db.commit()
+    return count
+
+
+def delete_users_by_status_age(
+    db: Session,
+    statuses: List[UserStatus],
+    days: int,
+    admin: Optional[Admin] = None,
+) -> int:
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    query = get_user_queryset(db).filter(User.status.in_(statuses))
+    if admin:
+        query = query.filter(User.admin == admin)
+    query = query.filter(User.last_status_change.isnot(None))
+    query = query.filter(User.last_status_change <= cutoff)
+    candidates = query.all()
+    if not candidates:
+        return 0
+    remove_users(db, candidates)
+    return len(candidates)
+
+
 def disable_all_active_users(db: Session, admin: Optional[Admin] = None):
     """
     Disable all active users or users under a specific admin.

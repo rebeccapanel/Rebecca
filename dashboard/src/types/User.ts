@@ -125,3 +125,25 @@ export type UsersListResponse = {
   active_total?: number | null;
   users_limit?: number | null;
 };
+
+export type AdvancedUserActionStatus = "expired" | "limited";
+
+export type AdvancedUserActionType =
+  | "extend_expire"
+  | "reduce_expire"
+  | "increase_traffic"
+  | "decrease_traffic"
+  | "cleanup_status";
+
+export type AdvancedUserActionPayload = {
+  action: AdvancedUserActionType;
+  days?: number;
+  gigabytes?: number;
+  statuses?: AdvancedUserActionStatus[];
+  admin_username?: string | null;
+};
+
+export type AdvancedUserActionResponse = {
+  detail: string;
+  count: number;
+};

@@ -833,13 +833,30 @@ export const CoreSettingsPage: FC = () => {
   const handleWarpDomainAdd = (domain: string) => {
     const trimmed = domain.trim();
     if (!trimmed) return;
-    if (warpDomains.includes(trimmed)) return;
+    if (warpDomains.includes(trimmed)) {
+      toast({
+        title: t(
+          "pages.xray.warp.domainExists",
+          "This domain already exists in the list."
+        ),
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+      return;
+    }
     handleWarpDomainsChange([...warpDomains, trimmed]);
   };
 
   const handleWarpDomainRemove = (domain: string) => {
     handleWarpDomainsChange(warpDomains.filter((item) => item !== domain));
   };
+
+  const availableWarpOptions = useMemo(
+    () => SERVICES_OPTIONS.filter((option) => !warpDomains.includes(option.value)),
+    [warpDomains]
+  );
 
   const warpSectionBg = useColorModeValue("white", "blackAlpha.400");
   const warpSectionBorder = useColorModeValue("gray.200", "whiteAlpha.200");
@@ -1248,8 +1265,9 @@ export const CoreSettingsPage: FC = () => {
                       }
                       setWarpOptionValue("");
                     }}
+                    isDisabled={availableWarpOptions.length === 0}
                   >
-                    {SERVICES_OPTIONS.map((option) => (
+                    {availableWarpOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
