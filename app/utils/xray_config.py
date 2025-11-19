@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from app.db import GetDB, crud
 from app.reb_node import XRayConfig
@@ -15,6 +15,12 @@ def apply_config_and_restart(payload: Dict[str, Any]) -> None:
         config = XRayConfig(payload, api_port=xray.config.api_port)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
+
+    if not xray.core.available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="XRay core is not available in this environment. Please install XRay before applying a configuration.",
+        )
 
     xray.config = config
     with GetDB() as db:
