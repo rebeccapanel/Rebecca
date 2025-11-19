@@ -3125,20 +3125,6 @@ def get_admins(db: Session,
         )
     }
 
-    # Add users_count for each admin
-    users_counts = {
-        admin_id: count
-        for admin_id, count in (
-            db.query(User.admin_id, func.count(User.id))
-            .filter(
-                User.admin_id.in_(admin_ids),
-                User.status != UserStatus.deleted,
-            )
-            .group_by(User.admin_id)
-            .all()
-        )
-    }
-
     # Aggregate assigned data limits
     data_limit_rows = (
         db.query(
@@ -3228,7 +3214,8 @@ def get_admins(db: Session,
         setattr(admin, "on_hold_users", counts.get("on_hold", 0))
         setattr(admin, "disabled_users", counts.get("disabled", 0))
         setattr(admin, "online_users", online_counts.get(admin_id, 0))
-        setattr(admin, "users_count", users_counts.get(admin_id, 0))
+        total_users_for_admin = sum(counts.values())
+        setattr(admin, "users_count", total_users_for_admin)
         setattr(admin, "data_limit_allocated", data_limit_map.get(admin_id, 0))
         setattr(admin, "unlimited_users_usage", unlimited_usage_map.get(admin_id, 0))
         setattr(admin, "reset_bytes", reset_map.get(admin_id, 0))

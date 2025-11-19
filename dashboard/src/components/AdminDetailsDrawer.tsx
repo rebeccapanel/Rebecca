@@ -135,32 +135,39 @@ export const AdminDetailsDrawer = () => {
                   <StatCard
                     label={t("admins.details.activeLabel", "Active")}
                     value={String(activeUsers)}
+                    valueColor="blue.600"
                   />
                   <StatCard
                     label={t("admins.details.onlineLabel", "Online")}
                     value={String(onlineUsers)}
+                    valueColor="green.600"
                   />
                   <StatCard
                     label={t("admins.details.limitedLabel", "Limited")}
                     value={String(limitedUsers)}
+                    valueColor="orange.600"
                   />
                   <StatCard
                     label={t("status.expired", "Expired")}
                     value={String(expiredUsers)}
+                    valueColor="red.600"
                   />
                   <StatCard
                     label={t("status.on_hold", "On hold")}
                     value={String(onHoldUsers)}
+                    valueColor="yellow.600"
                   />
                   <StatCard
                     label={t("status.disabled", "Disabled")}
                     value={String(disabledUsers)}
+                    valueColor="gray.600"
                   />
                 </SimpleGrid>
                 <SimpleGrid columns={{ base: 2, md: 2 }} spacing={4} mt={3}>
                   <StatCard
                     label={t("admins.details.totalUsers", "Total users")}
-                    value={String(totalUsers)}
+                    value={String(admin.users_count ?? 0)}
+                    valueColor="blue.600"
                   />
                   <StatCard
                     label={t("admins.details.usersLimit", "Users limit")}
@@ -237,7 +244,7 @@ export const AdminDetailsDrawer = () => {
   );
 };
 
-const StatCard = ({ label, value }: { label: string; value: string }) => {
+const StatCard = ({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) => {
   return (
     <Box
       borderWidth="1px"
@@ -252,7 +259,9 @@ const StatCard = ({ label, value }: { label: string; value: string }) => {
       <Text fontSize="xs" textTransform="uppercase" color="gray.500">
         {label}
       </Text>
-      <Text fontWeight="semibold">{value}</Text>
+      <Text fontWeight="semibold" color={valueColor || undefined}>
+        {value}
+      </Text>
     </Box>
   );
 };
