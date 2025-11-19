@@ -534,7 +534,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
           w="full"
           flexWrap="wrap"
         >
-          <AdvancedUserActions />
+          {target === "users" && <AdvancedUserActions />}
           {showCreateButton && (
             <Button
               colorScheme="primary"

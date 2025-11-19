@@ -308,40 +308,31 @@ def user_get_usage_by_key(
     return _build_usage_payload(dbuser, start, end, db)
 
 
-def _make_client_type_by_key_endpoint(client_type: str):
-    def endpoint(
-        request: Request,
-        username: str,
-        credential_key: str,
-        dbuser: UserResponse = Depends(get_validated_sub_by_key),
-    ):
-        return _subscription_with_client_type(request, dbuser, client_type)
-
-    endpoint.__name__ = f"user_subscription_with_client_type_by_key_{client_type.replace('-', '_')}"
-    return endpoint
+def _validate_client_type(client_type: str) -> str:
+    if client_type not in client_config:
+        raise HTTPException(status_code=404, detail="Unsupported client type")
+    return client_type
 
 
-def _make_client_type_endpoint(client_type: str):
-    def endpoint(
-        request: Request,
-        identifier: str,
-        db: Session = Depends(get_db),
-    ):
-        dbuser = _get_user_by_identifier(identifier, db)
-        return _subscription_with_client_type(request, dbuser, client_type)
+@router.get("/{username}/{credential_key}/{client_type}")
+def user_subscription_with_client_type_by_key(
+    request: Request,
+    username: str,
+    credential_key: str = Path(...),
+    client_type: str = Path(...),
+    dbuser: UserResponse = Depends(get_validated_sub_by_key),
+):
+    _validate_client_type(client_type)
+    return _subscription_with_client_type(request, dbuser, client_type)
 
-    endpoint.__name__ = f"user_subscription_with_client_type_{client_type.replace('-', '_')}"
-    return endpoint
 
-
-for client_type in client_config:
-    router.add_api_route(
-        f"/{{username}}/{{credential_key}}/{client_type}",
-        _make_client_type_by_key_endpoint(client_type),
-        methods=["GET"],
-    )
-    router.add_api_route(
-        f"/{{identifier}}/{client_type}",
-        _make_client_type_endpoint(client_type),
-        methods=["GET"],
-    )
+@router.get("/{identifier}/{client_type}")
+def user_subscription_with_client_type(
+    request: Request,
+    identifier: str,
+    client_type: str = Path(...),
+    db: Session = Depends(get_db),
+):
+    dbuser = _get_user_by_identifier(identifier, db)
+    _validate_client_type(client_type)
+    return _subscription_with_client_type(request, dbuser, client_type)

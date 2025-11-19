@@ -36,7 +36,7 @@ import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { AdminCreatePayload, AdminPermissions, AdminUpdatePayload } from "types/Admin";
-import { AdminRole } from "types/Admin";
+import { AdminRole, AdminStatus } from "types/Admin";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
@@ -194,6 +194,17 @@ export const AdminDialog: FC = () => {
   }, [adminFromStore, admins]);
 
   const mode = useMemo(() => (admin ? "edit" : "create"), [admin]);
+  const statusLabels = useMemo(
+    () => ({
+      [AdminStatus.Active]: t("admins.statusActive", "Active"),
+      [AdminStatus.Disabled]: t("admins.statusDisabled", "Disabled"),
+      [AdminStatus.Deleted]: t("admins.statusDeleted", "Deleted"),
+    }),
+    [t]
+  );
+  const statusLabel = admin
+    ? statusLabels[admin.status] ?? admin.status
+    : t("admins.statusNew", "New admin");
 
   const schema = useMemo(() => {
     const base = z
@@ -473,6 +484,18 @@ export const AdminDialog: FC = () => {
 
   const detailsForm = (
     <VStack spacing={4} align="stretch">
+      {mode === "edit" && admin?.id !== undefined && (
+        <FormControl>
+          <FormLabel>{t("admins.idLabel", "Admin ID")}</FormLabel>
+          <Input value={String(admin.id)} isReadOnly />
+        </FormControl>
+      )}
+      {mode === "edit" && (
+        <FormControl>
+          <FormLabel>{t("admins.status", "Status")}</FormLabel>
+          <Input value={statusLabel} isReadOnly />
+        </FormControl>
+      )}
       <FormControl isInvalid={!!errors.username}>
         <FormLabel>{t("username")}</FormLabel>
         <InputGroup>

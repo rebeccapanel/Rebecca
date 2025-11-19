@@ -6,6 +6,7 @@ import {
   FormHelperText,
   FormLabel,
   Heading,
+  HStack,
   Input,
   SimpleGrid,
   Spinner,
@@ -24,6 +25,7 @@ import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
   ArrowUpTrayIcon,
+  ArrowsRightLeftIcon,
   PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
 import { chakra } from "@chakra-ui/react";
@@ -473,6 +475,38 @@ export const IntegrationSettingsPage = () => {
     }
   }, [panelData]);
 
+  const updateMutation = useMutation(
+    () => apiFetch("/maintenance/update", { method: "POST" }),
+    {
+      onSuccess: () => {
+        generateSuccessMessage(
+          t("settings.panel.updateTriggered", "Panel update started"),
+          toast
+        );
+        maintenanceInfoQuery.refetch();
+      },
+      onError: (error) => {
+        generateErrorMessage(error, toast);
+      },
+    }
+  );
+
+  const restartMutation = useMutation(
+    () => apiFetch("/maintenance/restart", { method: "POST" }),
+    {
+      onSuccess: () => {
+        generateSuccessMessage(
+          t("settings.panel.restartTriggered", "Panel restart started"),
+          toast
+        );
+        maintenanceInfoQuery.refetch();
+      },
+      onError: (error) => {
+        generateErrorMessage(error, toast);
+      },
+    }
+  );
+
   const {
     register,
     control,
@@ -764,6 +798,34 @@ export const IntegrationSettingsPage = () => {
                         </Box>
                       </>
                     )}
+                  </Stack>
+                  <Stack spacing={2} mt={4}>
+                    <Text fontSize="sm" color="gray.500">
+                      {t(
+                        "settings.panel.maintenanceActionsDescription",
+                        "Use the maintenance service to pull the latest images and restart the containers from the panel."
+                      )}
+                    </Text>
+                    <HStack spacing={3} flexWrap="wrap">
+                      <Button
+                        size="sm"
+                        colorScheme="yellow"
+                        leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
+                        onClick={() => updateMutation.mutate()}
+                        isLoading={updateMutation.isLoading}
+                      >
+                        {t("settings.panel.updateAction", "Update panel")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        colorScheme="red"
+                        leftIcon={<ArrowsRightLeftIcon width={16} height={16} />}
+                        onClick={() => restartMutation.mutate()}
+                        isLoading={restartMutation.isLoading}
+                      >
+                        {t("settings.panel.restartAction", "Restart panel")}
+                      </Button>
+                    </HStack>
                   </Stack>
                 </Box>
                 <Box borderWidth="1px" borderRadius="lg" p={4}>
