@@ -2,6 +2,6 @@ from pydantic import BaseModel
 
 
 class CoreStats(BaseModel):
-    version: str
+    version: str | None
     started: bool
     logs_websocket: str
