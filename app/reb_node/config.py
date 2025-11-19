@@ -230,7 +230,7 @@ class XRayConfig(dict):
 
     def _resolve_inbounds(self):
         for inbound in self['inbounds']:
-            if not inbound['protocol'] in ProxyTypes._value2member_map_:
+            if inbound['protocol'] not in ProxyTypes._value2member_map_:
                 continue
 
             if inbound['tag'] in XRAY_EXCLUDE_INBOUND_TAGS:

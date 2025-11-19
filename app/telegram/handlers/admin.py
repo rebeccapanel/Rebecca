@@ -221,7 +221,7 @@ def edit_all_command(call: types.CallbackQuery):
 @bot.callback_query_handler(cb_query_equals('delete_expired'), is_admin=True)
 def delete_expired_command(call: types.CallbackQuery):
     bot.edit_message_text(
-        f"⚠️ Are you sure? This will *DELETE All Expired Users*‼️",
+        "⚠️ Are you sure? This will *DELETE All Expired Users*‼️",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="markdown",
@@ -231,7 +231,7 @@ def delete_expired_command(call: types.CallbackQuery):
 @bot.callback_query_handler(cb_query_equals('delete_limited'), is_admin=True)
 def delete_limited_command(call: types.CallbackQuery):
     bot.edit_message_text(
-        f"⚠️ Are you sure? This will *DELETE All Limited Users*‼️",
+        "⚠️ Are you sure? This will *DELETE All Limited Users*‼️",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="markdown",
@@ -241,7 +241,7 @@ def delete_limited_command(call: types.CallbackQuery):
 @bot.callback_query_handler(cb_query_equals('add_data'), is_admin=True)
 def add_data_command(call: types.CallbackQuery):
     msg = bot.edit_message_text(
-        f"🔋 Enter Data Limit to increase or decrease (GB):",
+        "🔋 Enter Data Limit to increase or decrease (GB):",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=BotKeyboard.inline_cancel_action())
@@ -273,7 +273,7 @@ def add_data_step(message):
 @bot.callback_query_handler(cb_query_equals('add_time'), is_admin=True)
 def add_time_command(call: types.CallbackQuery):
     msg = bot.edit_message_text(
-        f"📅 Enter Days to increase or decrease expiry:",
+        "📅 Enter Days to increase or decrease expiry:",
         call.message.chat.id,
         call.message.message_id,
         reply_markup=BotKeyboard.inline_cancel_action())
@@ -1424,7 +1424,7 @@ def select_inbounds(call: types.CallbackQuery):
         for i in inbounds:
             if i['tag'] != inbound:
                 continue
-            if not inbound in protocols[protocol]:
+            if inbound not in protocols[protocol]:
                 protocols[protocol].append(inbound)
             else:
                 protocols[protocol].remove(inbound)
@@ -1714,7 +1714,7 @@ def confirm_user_command(call: types.CallbackQuery):
         with GetDB() as db:
             db_user = crud.get_user(db, username)
             if not db_user:
-                return bot.answer_callback_query(call.id, text=f"User not found!", show_alert=True)
+                return bot.answer_callback_query(call.id, text="User not found!", show_alert=True)
 
             proxies = {p.type.value: p.settings for p in db_user.proxies}
 
@@ -2129,7 +2129,7 @@ def confirm_user_command(call: types.CallbackQuery):
         with GetDB() as db:
             db_user = crud.get_user(db, username)
             if not db_user:
-                return bot.answer_callback_query(call.id, text=f"User not found!", show_alert=True)
+                return bot.answer_callback_query(call.id, text="User not found!", show_alert=True)
             db_user = crud.revoke_user_sub(db, db_user)
             user = UserResponse.model_validate(db_user)
             bot.answer_callback_query(call.id, "✅ Subscription Successfully Revoked!")

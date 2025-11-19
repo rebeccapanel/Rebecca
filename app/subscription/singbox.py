@@ -36,12 +36,12 @@ class SingBoxConfiguration(str):
         del user_agent_data
 
     def _remark_validation(self, remark):
-        if not remark in self.proxy_remarks:
+        if remark not in self.proxy_remarks:
             return remark
         c = 2
         while True:
             new = f'{remark} ({c})'
-            if not new in self.proxy_remarks:
+            if new not in self.proxy_remarks:
                 return new
             c += 1
 
