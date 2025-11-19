@@ -324,7 +324,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
                   <Input
                     label={t("nodes.nodeAddress")}
                     size="sm"
-                    placeholder="51.20.12.13"
+                    placeholder="192.168.1.1 or 2001:db8::1"
                     {...form.register("address")}
                     error={getInputError(form.formState?.errors?.address)}
                   />
@@ -476,4 +476,3 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
     </Modal>
   );
 };
-
