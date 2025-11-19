@@ -11,7 +11,7 @@ from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun, get_grpc_multi
 from app.templates import render_template
-from app.utils.helpers import UUIDEncoder
+from app.utils.helpers import UUIDEncoder, format_ip_for_url
 from config import (
     EXTERNAL_CONFIG,
     GRPC_USER_AGENT_TEMPLATE,
@@ -37,6 +37,7 @@ class V2rayShareLink(str):
         return self.links
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
+        address_formatted = format_ip_for_url(address)
         net = inbound["network"]
         multi_mode = inbound.get("multiMode", False)
         old_path: str = inbound["path"]
@@ -86,7 +87,7 @@ class V2rayShareLink(str):
         elif inbound["protocol"] == "vless":
             link = self.vless(
                 remark=remark,
-                address=address,
+                address=address_formatted,
                 port=inbound["port"],
                 id=settings["id"],
                 flow=settings.get("flow", ""),
@@ -118,7 +119,7 @@ class V2rayShareLink(str):
         elif inbound["protocol"] == "trojan":
             link = self.trojan(
                 remark=remark,
-                address=address,
+                address=address_formatted,
                 port=inbound["port"],
                 password=settings["password"],
                 flow=settings.get("flow", ""),
@@ -150,7 +151,7 @@ class V2rayShareLink(str):
         elif inbound["protocol"] == "shadowsocks":
             link = self.shadowsocks(
                 remark=remark,
-                address=address,
+                address=address_formatted,
                 port=inbound["port"],
                 password=settings["password"],
                 method=settings["method"],

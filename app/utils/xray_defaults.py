@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Iterable
 import os
 
 import commentjson
 
 
-_DEFAULT_XRAY_CONFIG: Dict[str, Any] = {
+_DEFAULT_XRAY_CONFIG: dict[str, Any] = {
     "log": {
         "loglevel": "warning",
     },
@@ -26,7 +26,7 @@ _DEFAULT_XRAY_CONFIG: Dict[str, Any] = {
     "inbounds": [
         {
             "tag": "Shadowsocks TCP",
-            "listen": "0.0.0.0",
+            "listen": "::",
             "port": 1080,
             "protocol": "shadowsocks",
             "settings": {
@@ -48,12 +48,12 @@ _DEFAULT_XRAY_CONFIG: Dict[str, Any] = {
 }
 
 
-def get_default_xray_config() -> Dict[str, Any]:
+def get_default_xray_config() -> dict[str, Any]:
     """Return a deep copy of the built-in fallback Xray configuration."""
     return deepcopy(_DEFAULT_XRAY_CONFIG)
 
 
-def _candidate_paths() -> List[Path]:
+def _candidate_paths() -> list[Path]:
     base = Path.cwd()
     raw_candidates: Iterable[str | Path | None] = [
         os.environ.get("XRAY_JSON"),
@@ -64,7 +64,7 @@ def _candidate_paths() -> List[Path]:
         "config/xray_config.json",
         base / "config" / "xray_config.json",
     ]
-    paths: List[Path] = []
+    paths: list[Path] = []
     seen: set[Path] = set()
     for candidate in raw_candidates:
         if not candidate:
@@ -83,7 +83,7 @@ def _candidate_paths() -> List[Path]:
     return paths
 
 
-def load_legacy_xray_config() -> Dict[str, Any]:
+def load_legacy_xray_config() -> dict[str, Any]:
     """
     Attempt to read the legacy xray_config.json file (or any override provided
     via environment variables) and return its parsed JSON content. Falls back

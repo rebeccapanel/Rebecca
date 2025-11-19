@@ -450,6 +450,7 @@
   "pages.xray.Outbounds": "Outbounds",
   "pages.xray.RoutingStrategy": "Overall Routing Strategy",
   "pages.xray.Routings": "Routing Rules",
+  "pages.xray.serverIPs": "Server IPs",
   "pages.xray.Template": "Template",
   "pages.xray.TemplateDesc": "Select which configuration section to edit",
   "pages.xray.accessLog": "Access Log",
