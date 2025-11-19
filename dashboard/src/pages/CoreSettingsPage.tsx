@@ -70,7 +70,7 @@ import { JsonEditor } from "../components/JsonEditor";
 import { CompactChips, CompactTextWithCopy } from "components/CompactPopover";
 import XrayLogsPage from "./XrayLogsPage";
 import { Controller, useForm, useWatch } from "react-hook-form";
-import { useMutation } from "react-query";
+import { useMutation, useQuery } from "react-query";
 import { OutboundModal } from "../components/OutboundModal";
 import { RuleModal, RoutingRule } from "../components/RuleModal";
 import { BalancerModal } from "../components/BalancerModal";
@@ -248,6 +248,7 @@ export const CoreSettingsPage: FC = () => {
   const { t } = useTranslation();
   const { fetchCoreSettings, updateConfig, isLoading, config, isPostLoading, restartCore } = useCoreSettings();
   const { userData, getUserIsSuccess } = useGetUser();
+  const { onEditingCore } = useDashboard();
   const canManageXraySettings =
     getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
 
@@ -1181,13 +1182,13 @@ export const CoreSettingsPage: FC = () => {
             <VStack spacing={4} align="stretch">
               <SettingsSection title={t("pages.xray.serverIPs", "Server IPs")}>
                 <SettingRow label="IPv4" controlId="server-ipv4">
-                  {(id) => (
-                    <CompactTextWithCopy id={id} text={serverIPs?.ipv4 || "Loading..."} />
+                  {(_controlId) => (
+                    <CompactTextWithCopy text={serverIPs?.ipv4 || "Loading..."} />
                   )}
                 </SettingRow>
                 <SettingRow label="IPv6" controlId="server-ipv6">
-                  {(id) => (
-                    <CompactTextWithCopy id={id} text={serverIPs?.ipv6 || "Loading..."} />
+                  {(_controlId) => (
+                    <CompactTextWithCopy text={serverIPs?.ipv6 || "Loading..."} />
                   )}
                 </SettingRow>
               </SettingsSection>
