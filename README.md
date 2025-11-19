@@ -146,8 +146,8 @@ rebecca cli admin create --role sudo
 
 That's it! You can login to your dashboard using these credentials
 
-> **Full access admins** can only be created by another full access admin from the dashboard or by using the on-box `rebecca cli`.  
-> If you ever need to promote an existing sudo admin, run  
+> **Full access admins** can only be created by another full access admin from the dashboard or by using the on-box `rebecca cli`.
+> If you ever need to promote an existing sudo admin, run
 > `rebecca cli admin change-role --username YOUR_ADMIN --role full_access`
 
 To see the help message of the Rebecca script, run the following command
