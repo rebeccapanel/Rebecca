@@ -285,6 +285,20 @@ async def upload_backup(
     return resp.json()
 
 
+@router.post("/maintenance/update", responses={403: responses._403})
+def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Trigger the maintenance service to pull the latest panel/node images."""
+    maintenance_request("POST", "/update")
+    return {"status": "ok"}
+
+
+@router.post("/maintenance/restart", responses={403: responses._403})
+def restart_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Ask the maintenance service to restart the Rebecca stack."""
+    maintenance_request("POST", "/restart")
+    return {"status": "ok"}
+
+
 @router.get("/inbounds", response_model=Dict[ProxyTypes, List[ProxyInbound]])
 def get_inbounds(admin: Admin = Depends(Admin.get_current)):
     """Retrieve inbound configurations grouped by protocol."""
