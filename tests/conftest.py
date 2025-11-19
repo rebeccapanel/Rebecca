@@ -1,4 +1,3 @@
-import os
 # os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 
 import pytest
@@ -37,11 +36,8 @@ with (
         app = _app
     from app.db.base import Base
     from app.db import get_db
-    from app.models.admin import Admin
-    from config import SQLALCHEMY_DATABASE_URL
 
     # Import models to register tables
-    from app.db import models
 
 
 TEST_DATABASE_URL = "sqlite:///./test.db"

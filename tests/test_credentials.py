@@ -1,4 +1,3 @@
-import pytest
 from uuid import UUID
 from app.utils.credentials import generate_key, normalize_key, key_to_uuid, uuid_to_key, key_to_password
 

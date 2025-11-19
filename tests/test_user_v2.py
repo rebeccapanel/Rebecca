@@ -1,6 +1,4 @@
-import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
 
 
 def test_create_user_v2(auth_client: TestClient):

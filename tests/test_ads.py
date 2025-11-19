@@ -1,7 +1,6 @@
-import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
-from app.utils.ads import refresh_ads, _should_refresh, _now, AdsState, _ads_state
+from datetime import datetime, timezone
+from app.utils.ads import refresh_ads, _should_refresh, _ads_state
 from app.models.ads import AdsResponse
 
 
