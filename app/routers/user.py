@@ -283,12 +283,22 @@ def get_users(
                     status_code=400, detail=f'"{opt}" is not a valid sort option'
                 )
 
+    # Determine admin filtering based on role
     owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else None
     dbadmin = None
+    users_limit = None
+    active_total = None
+    
     if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         dbadmin = crud.get_admin(db, admin.username)
         if not dbadmin:
             raise HTTPException(status_code=404, detail="Admin not found")
+        users_limit = dbadmin.users_limit
+        active_total = crud.get_users_count(
+            db,
+            status=UserStatus.active,
+            admin=dbadmin,
+        )
 
     users, count = crud.get_users(
         db=db,
@@ -304,18 +314,6 @@ def get_users(
         admins=owners,
         return_with_count=True,
     )
-
-    users_limit = None
-    active_total = None
-    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
-        dbadmin = crud.get_admin(db, admin.username)
-        if dbadmin:
-            users_limit = dbadmin.users_limit
-            active_total = crud.get_users_count(
-                db,
-                status=UserStatus.active,
-                admin=dbadmin,
-            )
 
     return {
         "users": users,

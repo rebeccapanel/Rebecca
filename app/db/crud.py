@@ -12,9 +12,9 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union, Liter
 from types import SimpleNamespace
 
 import sqlalchemy as sa
-from sqlalchemy import and_, case, delete, func, or_, inspect
+from sqlalchemy import and_, case, delete, exists, func, or_, inspect, select
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
-from sqlalchemy.orm import Query, Session, joinedload
+from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.sql.functions import coalesce
 from app.db.models import (
     JWT,
@@ -1128,24 +1128,33 @@ def get_service_admin_usage(
     return _service_repo(db).admin_usage(service, start, end)
 
 
-def get_user_queryset(db: Session) -> Query:
+def get_user_queryset(db: Session, eager_load: bool = True) -> Query:
     """
-    Retrieves the base user query with joined admin details.
+    Retrieves the base user query with optional eager loading.
 
     Args:
         db (Session): Database session.
+        eager_load (bool): Whether to eager load relationships (default: True).
 
     Returns:
         Query: Base user query.
     """
-    options = [joinedload(User.admin)]
-    if _next_plan_table_exists(db):
-        options.append(joinedload(User.next_plan))
-    return (
-        db.query(User)
-        .options(*options)
-        .filter(User.status != UserStatus.deleted)
-    )
+    query = db.query(User).filter(User.status != UserStatus.deleted)
+    
+    if eager_load:
+        # Use selectinload for one-to-many relationships (more efficient)
+        # Use joinedload for many-to-one relationships (single row per user)
+        options = [
+            joinedload(User.admin),  # many-to-one: one admin per user
+            selectinload(User.proxies),  # one-to-many: multiple proxies per user
+            selectinload(User.usage_logs),  # one-to-many: for lifetime_used_traffic
+        ]
+        if _next_plan_table_exists(db):
+            options.append(joinedload(User.next_plan))  # one-to-one: one plan per user
+        
+        query = query.options(*options)
+    
+    return query
 
 
 def _next_plan_table_exists(db: Session) -> bool:
@@ -1323,6 +1332,7 @@ def get_users(db: Session,
               return_with_count: bool = False) -> Union[List[User], Tuple[List[User], int]]:
     """
     Retrieves users based on various filters and options.
+    Optimized for performance with efficient eager loading and count queries.
 
     Args:
         db (Session): Database session.
@@ -1342,7 +1352,7 @@ def get_users(db: Session,
     Returns:
         Union[List[User], Tuple[List[User], int]]: List of users or tuple of users and total count.
     """
-    query = get_user_queryset(db)
+    query = get_user_queryset(db, eager_load=False)
     query = _apply_advanced_user_filters(
         query,
         advanced_filters,
@@ -1360,9 +1370,13 @@ def get_users(db: Session,
         if key_candidates:
             search_clauses.append(User.credential_key.in_(key_candidates))
         if uuid_candidates:
-            search_clauses.append(
-                User.proxies.any(Proxy.settings["id"].as_string().in_(uuid_candidates))
+            proxy_exists = exists().where(
+                and_(
+                    Proxy.user_id == User.id,
+                    Proxy.settings["id"].as_string().in_(uuid_candidates)
+                )
             )
+            search_clauses.append(proxy_exists)
         query = query.filter(or_(*search_clauses))
 
     if usernames:
@@ -1389,8 +1403,18 @@ def get_users(db: Session,
     if admins:
         query = query.filter(User.admin.has(Admin.username.in_(admins)))
 
+    count = None
     if return_with_count:
-        count = query.count()
+        # Use func.count() directly for better performance
+        count = query.with_entities(func.count(User.id)).scalar() or 0
+
+    query = query.options(
+        joinedload(User.admin),
+        selectinload(User.proxies),
+        selectinload(User.usage_logs),
+    )
+    if _next_plan_table_exists(db):
+        query = query.options(joinedload(User.next_plan))
 
     if sort:
         query = query.order_by(*(opt.value for opt in sort))
@@ -1400,10 +1424,12 @@ def get_users(db: Session,
     if limit:
         query = query.limit(limit)
 
-    if return_with_count:
-        return query.all(), count
+    users = query.all()
 
-    return query.all()
+    if return_with_count:
+        return users, count
+
+    return users
 
 
 def get_user_usage_timeseries(
@@ -1600,6 +1626,7 @@ def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -
 def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None) -> int:
     """
     Retrieves the count of users based on status and admin filters.
+    Optimized for performance using direct count query.
 
     Args:
         db (Session): Database session.
@@ -1609,14 +1636,18 @@ def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None)
     Returns:
         int: Count of users matching the criteria.
     """
-    query = db.query(User.id)
-    if status is None:
-        query = query.filter(User.status != UserStatus.deleted)
+    # Use optimized count query: only select User.id for faster counting
+    query = db.query(func.count(User.id))
+    query = query.filter(User.status != UserStatus.deleted)
+    
     if admin:
         query = query.filter(User.admin == admin)
+    
     if status:
         query = query.filter(User.status == status)
-    return query.count()
+    
+    # Use scalar() for single value result (faster than count())
+    return query.scalar() or 0
 
 
 def _status_to_str(status: Union[UserStatus, str, None]) -> Optional[str]:
