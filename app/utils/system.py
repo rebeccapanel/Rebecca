@@ -114,17 +114,25 @@ def check_port(port: int) -> bool:
         s.close()
 
 
+
+def _is_global_ipv4(address: str) -> bool:
+    try:
+        return ipaddress.IPv4Address(address).is_global
+    except ipaddress.AddressValueError:
+        return False
+
+
 def get_public_ip():
     try:
         resp = requests.get('http://api4.ipify.org/', timeout=5).text.strip()
-        if ipaddress.IPv4Address(resp).is_global:
+        if _is_global_ipv4(resp):
             return resp
     except Exception:
         pass
 
     try:
         resp = requests.get('http://ipv4.icanhazip.com/', timeout=5).text.strip()
-        if ipaddress.IPv4Address(resp).is_global:
+        if _is_global_ipv4(resp):
             return resp
     except Exception:
         pass
@@ -132,7 +140,7 @@ def get_public_ip():
     try:
         requests.packages.urllib3.util.connection.HAS_IPV6 = False
         resp = requests.get('https://ifconfig.io/ip', timeout=5).text.strip()
-        if ipaddress.IPv4Address(resp).is_global:
+        if _is_global_ipv4(resp):
             return resp
     except requests.exceptions.RequestException:
         pass
@@ -143,7 +151,7 @@ def get_public_ip():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(('8.8.8.8', 80))
         resp = sock.getsockname()[0]
-        if ipaddress.IPv4Address(resp).is_global:
+        if _is_global_ipv4(resp):
             return resp
     except (socket.error, IndexError):
         pass
