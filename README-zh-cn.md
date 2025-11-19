@@ -278,7 +278,7 @@ server {
 | SUDO_USERNAME                            | 管理员用户名（默认: admin）                                                                                                       |
 | SUDO_PASSWORD                            | 管理员密码（默认: admin）                                                                                                        |
 | SQLALCHEMY_DATABASE_URL                  | 数据库文档（[SQLAlchemy's docs](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls)）                           |
-| UVICORN_HOST                             | 绑定应用程序到此主机（默认为 `0.0.0.0`）                                                                                               |
+| UVICORN_HOST                             | 绑定应用程序到此主机（默认为 `::`）                                                                                               |
 | UVICORN_PORT                             | 绑定应用程序到此端口（默认为 `8000`）                                                                                                  |
 | UVICORN_UDS                              | 将应用程序绑定到一个 UNIX 域套接字                                                                                                    |
 | UVICORN_SSL_CERTFILE                     | SSL 证书文件路径                                                                                                              |

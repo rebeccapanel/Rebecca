@@ -290,7 +290,7 @@ server {
 | SUDO_USERNAME                            | Имя пользователя главного администратора                                                                                       |
 | SUDO_PASSWORD                            | Пароль главного администратора                                                                                                 |
 | SQLALCHEMY_DATABASE_URL                  | Путь к файлу БД ([SQLAlchemy's docs](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls))                       |
-| UVICORN_HOST                             | Привязка приложения к хосту (по умолчанию: `0.0.0.0`)                                                                          |
+| UVICORN_HOST                             | Привязка приложения к хосту (по умолчанию: `::`)                                                                          |
 | UVICORN_PORT                             | Привязка приложения к порту (по умолчанию: `8000`)                                                                             |
 | UVICORN_UDS                              | Привязка приложения к UNIX domain socket                                                                                       |
 | UVICORN_SSL_CERTFILE                     | Адрес файла сертификата SSL                                                                                                    |

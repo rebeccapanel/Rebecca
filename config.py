@@ -22,7 +22,7 @@ DOCS = config("DOCS", default=False, cast=bool)
 ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
 
 VITE_BASE_API = (
-    f"http://127.0.0.1:{UVICORN_PORT}/api/"
+    f"http://localhost:{UVICORN_PORT}/api/"
     if DEBUG and config("VITE_BASE_API", default="/api/") == "/api/"
     else config("VITE_BASE_API", default="/api/")
 )

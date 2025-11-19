@@ -1,4 +1,5 @@
 import grpc
+from app.utils.helpers import format_ip_for_url
 
 
 class XRayBase(object):
@@ -13,8 +14,10 @@ class XRayBase(object):
         self.address = address
         self.port = port
 
+        target = f"{format_ip_for_url(address)}:{port}"
+
         if not use_tls:
-            self._channel = grpc.insecure_channel(f"{address}:{port}")
+            self._channel = grpc.insecure_channel(target)
             return
 
         root_cert = None
@@ -29,5 +32,5 @@ class XRayBase(object):
             options = (("grpc.ssl_target_name_override", ssl_target_name),)
 
         self._channel = grpc.secure_channel(
-            f"{address}:{port}", credentials=creds, options=options
+            target, credentials=creds, options=options
         )
