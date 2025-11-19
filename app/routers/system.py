@@ -15,8 +15,8 @@ from sqlalchemy import func
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
-from app.db.models import Admin as AdminModel
-from app.models.admin import Admin, AdminRole
+from app.db.models import Admin as AdminModel, System as SystemModel
+from app.models.admin import Admin, AdminRole, AdminStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import (
     AdminOverviewStats,
@@ -88,7 +88,7 @@ def get_system_stats(
 ):
     """Fetch system stats including CPU and user metrics."""
     cpu = cpu_usage()
-    system = crud.get_system_usage(db)
+    system = crud.get_system_usage(db) or SystemModel(uplink=0, downlink=0)
     dbadmin: Union[Admin, None] = crud.get_admin(db, admin.username)
 
     scoped_admin = None if admin.role in (AdminRole.sudo, AdminRole.full_access) else dbadmin
@@ -108,12 +108,13 @@ def get_system_stats(
     users_limited = crud.get_users_count(
         db, status=UserStatus.limited, admin=scoped_admin
     )
-    online_users = crud.count_online_users(db, 24)
+    online_users = crud.count_online_users(db, 24, scoped_admin)
     realtime_bandwidth_stats = realtime_bandwidth()
     now = time.time()
     system_memory = psutil.virtual_memory()
     system_swap = psutil.swap_memory()
     system_disk = psutil.disk_usage(os.path.abspath(os.sep))
+    panel_total_bandwidth = int((system.uplink or 0) + (system.downlink or 0))
     load_avg: List[float] = []
     try:
         load_avg = list(psutil.getloadavg())
@@ -172,7 +173,12 @@ def get_system_stats(
 
     role_counts = {
         (role.name if isinstance(role, AdminRole) else str(role)): count
-        for role, count in db.query(AdminModel.role, func.count()).group_by(AdminModel.role).all()
+        for role, count in (
+            db.query(AdminModel.role, func.count())
+            .filter(AdminModel.status != AdminStatus.deleted)
+            .group_by(AdminModel.role)
+            .all()
+        )
     }
     total_admins = int(sum(role_counts.values()))
     admin_overview = AdminOverviewStats(
@@ -183,7 +189,12 @@ def get_system_stats(
         top_admin_username=None,
         top_admin_usage=0,
     )
-    top_admin = db.query(AdminModel).order_by(AdminModel.users_usage.desc()).first()
+    top_admin = (
+        db.query(AdminModel)
+        .filter(AdminModel.status != AdminStatus.deleted)
+        .order_by(AdminModel.users_usage.desc())
+        .first()
+    )
     if top_admin:
         admin_overview.top_admin_username = top_admin.username
         admin_overview.top_admin_usage = int(top_admin.users_usage or 0)
@@ -201,6 +212,7 @@ def get_system_stats(
         users_on_hold=users_on_hold,
         incoming_bandwidth=system.uplink,
         outgoing_bandwidth=system.downlink,
+        panel_total_bandwidth=panel_total_bandwidth,
         incoming_bandwidth_speed=realtime_bandwidth_stats.incoming_bytes,
         outgoing_bandwidth_speed=realtime_bandwidth_stats.outgoing_bytes,
         memory=UsageStats(

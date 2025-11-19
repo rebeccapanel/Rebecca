@@ -44,6 +44,7 @@ export interface SystemStats {
   users_limited: number;
   incoming_bandwidth: number;
   outgoing_bandwidth: number;
+  panel_total_bandwidth: number;
   incoming_bandwidth_speed: number;
   outgoing_bandwidth_speed: number;
   memory: UsageStats;

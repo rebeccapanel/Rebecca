@@ -60,6 +60,8 @@ export const AdminDetailsDrawer = () => {
   const limitedUsers = admin?.limited_users ?? 0;
   const expiredUsers = admin?.expired_users ?? 0;
   const onlineUsers = admin?.online_users ?? 0;
+  const onHoldUsers = admin?.on_hold_users ?? 0;
+  const disabledUsers = admin?.disabled_users ?? 0;
 
   const usedBytes = admin?.users_usage ?? 0;
   const dataLimitBytes = admin?.data_limit ?? null;
@@ -68,6 +70,9 @@ export const AdminDetailsDrawer = () => {
       ? Math.max(dataLimitBytes - usedBytes, 0)
       : null;
   const lifetimeUsageBytes = admin?.lifetime_usage ?? null;
+  const dataLimitAllocated = admin?.data_limit_allocated ?? 0;
+  const resetBytes = admin?.reset_bytes ?? 0;
+  const unlimitedUsersUsage = admin?.unlimited_users_usage ?? 0;
 
   return (
     <Modal
@@ -140,9 +145,19 @@ export const AdminDetailsDrawer = () => {
                     value={String(limitedUsers)}
                   />
                   <StatCard
-                    label={t("admins.details.expiredLabel", "Expired")}
+                    label={t("status.expired", "Expired")}
                     value={String(expiredUsers)}
                   />
+                  <StatCard
+                    label={t("status.on_hold", "On hold")}
+                    value={String(onHoldUsers)}
+                  />
+                  <StatCard
+                    label={t("status.disabled", "Disabled")}
+                    value={String(disabledUsers)}
+                  />
+                </SimpleGrid>
+                <SimpleGrid columns={{ base: 2, md: 2 }} spacing={4} mt={3}>
                   <StatCard
                     label={t("admins.details.totalUsers", "Total users")}
                     value={String(totalUsers)}
@@ -180,6 +195,25 @@ export const AdminDetailsDrawer = () => {
                   <StatCard
                     label={t("admins.details.lifetime", "Lifetime usage")}
                     value={formatBytesOrUnlimited(lifetimeUsageBytes, undefined)}
+                  />
+                </SimpleGrid>
+              </Box>
+              <Box>
+                <Text fontWeight="semibold" mb={3}>
+                  {t("admins.details.allocationSection", "Data allocation")}
+                </Text>
+                <SimpleGrid columns={{ base: 2, md: 3 }} spacing={4}>
+                  <StatCard
+                    label={t("admins.details.dataAllocated", "Allocated data")}
+                    value={formatBytes(dataLimitAllocated, 2)}
+                  />
+                  <StatCard
+                    label={t("admins.details.resetVolume", "Reset volume")}
+                    value={formatBytes(resetBytes, 2)}
+                  />
+                  <StatCard
+                    label={t("admins.details.unlimitedUsage", "Unlimited users usage")}
+                    value={formatBytes(unlimitedUsersUsage, 2)}
                   />
                 </SimpleGrid>
               </Box>

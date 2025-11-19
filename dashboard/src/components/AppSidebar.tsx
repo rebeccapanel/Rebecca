@@ -64,9 +64,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({ collapsed, inDrawer = false, o
   const location = useLocation();
   const { colorMode } = useColorMode();
   const { userData, getUserIsSuccess } = useGetUser();
-  const shouldShowAds =
-    getUserIsSuccess &&
-    [AdminRole.Sudo, AdminRole.FullAccess].includes(userData.role);
+  const shouldShowAds = getUserIsSuccess;
   const { data: adsData } = useAds(shouldShowAds);
   const currentLanguage = i18n.language || "en";
   const sidebarAd = shouldShowAds

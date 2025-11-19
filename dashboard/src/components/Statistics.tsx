@@ -507,7 +507,7 @@ const PanelOverviewCard: FC<{
             }
           />
         </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+        <SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
           <MetricBadge
             label={t("threads")}
             value={formatNumberValue(data.app_threads)}
@@ -551,12 +551,7 @@ const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => {
 const UsersOverviewCard: FC<{
   data: SystemStats;
   t: TFunction;
-  usersUsage?: number;
-}> = ({
-  data,
-  t,
-  usersUsage,
-}) => (
+}> = ({ data, t }) => (
   <Card p={5} borderRadius="12px" boxShadow="none">
     <Stack spacing={4}>
       <Text fontSize="lg" fontWeight="semibold">
@@ -567,9 +562,7 @@ const UsersOverviewCard: FC<{
         value={formatNumberValue(data.total_user)}
         colorScheme="blue"
       />
-      {typeof usersUsage === "number" && (
-        <UsersUsageCard value={usersUsage} t={t} />
-      )}
+      <UsersUsageCard value={data.panel_total_bandwidth} t={t} />
       <SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
         <MetricBadge
           label={t("status.active")}
@@ -719,7 +712,6 @@ export const Statistics: FC<BoxProps> = (props) => {
         key="users-overview"
         data={systemData}
         t={t}
-        usersUsage={userData.users_usage ?? undefined}
       />
     );
   }

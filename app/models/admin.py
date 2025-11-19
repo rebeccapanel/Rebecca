@@ -245,6 +245,20 @@ class Admin(BaseModel):
     online_users: Optional[int] = None
     limited_users: Optional[int] = None
     expired_users: Optional[int] = None
+    on_hold_users: Optional[int] = None
+    disabled_users: Optional[int] = None
+    data_limit_allocated: Optional[int] = Field(
+        None,
+        description="Total data limit assigned to this admin's users",
+    )
+    unlimited_users_usage: Optional[int] = Field(
+        None,
+        description="Total usage reported by unlimited users under this admin",
+    )
+    reset_bytes: Optional[int] = Field(
+        None,
+        description="Traffic that was reset for this admin's users",
+    )
     model_config = ConfigDict(from_attributes=True)
 
     @model_validator(mode="before")

@@ -1,6 +1,13 @@
 import { StatisticsQueryKey } from "components/Statistics";
 import { fetch } from "service/http";
-import { User, UserCreate, UserCreateWithService, UsersListResponse } from "types/User";
+import {
+  AdvancedUserActionPayload,
+  AdvancedUserActionResponse,
+  User,
+  UserCreate,
+  UserCreateWithService,
+  UsersListResponse,
+} from "types/User";
 import { queryClient } from "utils/react-query";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
@@ -104,6 +111,7 @@ type DashboardStateType = {
   onEditingNodes: (isEditingNodes: boolean) => void;
   resetDataUsage: (user: User) => Promise<void>;
   revokeSubscription: (user: User) => Promise<void>;
+  performBulkUserAction: (payload: AdvancedUserActionPayload) => Promise<AdvancedUserActionResponse>;
   onEditingCore: (isEditingCore: boolean) => void;
 };
 
@@ -290,6 +298,15 @@ export const useDashboard = create(
         set({ revokeSubscriptionUser: null, editingUser: user });
         get().refetchUsers(true);
       });
+    },
+    performBulkUserAction: (payload) => {
+      return fetch(`/users/actions`, { method: "POST", body: payload }).then(
+        (response) => {
+          get().refetchUsers(true);
+          queryClient.invalidateQueries(StatisticsQueryKey);
+          return response;
+        }
+      );
     },
     onEditingCore: (isEditingCore) => set({ isEditingCore }),
   }))

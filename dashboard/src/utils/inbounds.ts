@@ -676,6 +676,8 @@ export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
       routeOnly: values.sniffingRouteOnly,
       metadataOnly: values.sniffingMetadataOnly,
     });
+  } else {
+    payload.sniffing = { enabled: false };
   }
 
   return payload;

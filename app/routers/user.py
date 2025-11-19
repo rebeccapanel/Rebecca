@@ -9,6 +9,8 @@ from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
 from app.models.admin import Admin, AdminRole, UserPermission
 from app.models.user import (
+    AdvancedUserAction,
+    BulkUsersActionRequest,
     UserCreate,
     UserModify,
     UserResponse,
@@ -281,6 +283,13 @@ def get_users(
                     status_code=400, detail=f'"{opt}" is not a valid sort option'
                 )
 
+    owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else None
+    dbadmin = None
+    if admin.role not in (AdminRole.sudo, AdminRole.full_access):
+        dbadmin = crud.get_admin(db, admin.username)
+        if not dbadmin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+
     users, count = crud.get_users(
         db=db,
         offset=offset,
@@ -291,7 +300,8 @@ def get_users(
         sort=sort,
         advanced_filters=advanced_filters,
         service_id=service_id,
-        admins=owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username],
+        admin=dbadmin,
+        admins=owners,
         return_with_count=True,
     )
 
@@ -334,6 +344,71 @@ def reset_users_data_usage(
         if node.connected:
             xray.operations.restart_node(node_id, startup_config)
     return {"detail": "Users successfully reset."}
+
+
+@router.post("/users/actions", responses={403: responses._403})
+def perform_users_bulk_action(
+    payload: BulkUsersActionRequest,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.require_active),
+):
+    """Perform advanced bulk operations across all users."""
+    affected = 0
+    detail = "Advanced action applied"
+    target_admin: Optional[Admin] = None
+
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        if payload.admin_username:
+            target_admin = crud.get_admin(db, payload.admin_username)
+            if not target_admin:
+                raise HTTPException(status_code=404, detail="Admin not found")
+    else:
+        if "admin_username" in payload.model_fields_set:
+            if payload.admin_username is None or payload.admin_username != admin.username:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Standard admins can only target their own users",
+                )
+        target_admin = crud.get_admin(db, admin.username)
+        if not target_admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+
+    try:
+        if payload.action == AdvancedUserAction.extend_expire:
+            affected = crud.adjust_all_users_expire(
+                db, payload.days * 86400, admin=target_admin
+            )
+            detail = "Expiration dates extended"
+        elif payload.action == AdvancedUserAction.reduce_expire:
+            affected = crud.adjust_all_users_expire(
+                db, -payload.days * 86400, admin=target_admin
+            )
+            detail = "Expiration dates shortened"
+        elif payload.action == AdvancedUserAction.increase_traffic:
+            delta = max(1, int(round(payload.gigabytes * 1073741824)))
+            affected = crud.adjust_all_users_usage(db, delta, admin=target_admin)
+            detail = "Traffic increased for users"
+        elif payload.action == AdvancedUserAction.decrease_traffic:
+            delta = max(1, int(round(payload.gigabytes * 1073741824)))
+            affected = crud.adjust_all_users_usage(db, -delta, admin=target_admin)
+            detail = "Traffic decreased for users"
+        elif payload.action == AdvancedUserAction.cleanup_status:
+            affected = crud.delete_users_by_status_age(
+                db, payload.statuses, payload.days, admin=target_admin
+            )
+            detail = "Users removed by status age"
+    except UsersLimitReachedError as exc:
+        report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
+
+    return {"detail": detail, "count": affected}
 
 
 @router.get("/user/{username}/usage", response_model=UserUsagesResponse, responses={403: responses._403, 404: responses._404})

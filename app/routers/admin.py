@@ -260,6 +260,11 @@ def enable_admin_account(
         raise HTTPException(status_code=400, detail="Admin already deleted")
     if dbadmin.status != AdminStatus.disabled:
         raise HTTPException(status_code=400, detail="Admin is not disabled")
+    if dbadmin.disabled_reason == crud.ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="Admin is disabled because the assigned data limit has been exhausted.",
+        )
 
     previous_state = Admin.model_validate(dbadmin)
     updated_admin = crud.enable_admin(db, dbadmin)

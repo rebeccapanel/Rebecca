@@ -50,6 +50,7 @@ import {
   AdminStatus,
   UserPermissionToggle,
 } from "types/Admin";
+import AdvancedUserActions from "./AdvancedUserActions";
 
 const iconProps = {
   baseStyle: {
@@ -533,6 +534,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
           w="full"
           flexWrap="wrap"
         >
+          <AdvancedUserActions />
           {showCreateButton && (
             <Button
               colorScheme="primary"
