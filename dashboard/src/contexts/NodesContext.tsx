@@ -74,13 +74,14 @@ export type NodeStore = {
   setDeletingNode: (node: NodeType | null) => void;
 };
 
-export const useNodesQuery = () => {
+export const useNodesQuery = (options?: { enabled?: boolean }) => {
   const { isEditingNodes } = useDashboard();
   return useQuery({
     queryKey: FetchNodesQueryKey,
     queryFn: useNodes.getState().fetchNodes,
     refetchInterval: isEditingNodes ? 3000 : undefined,
     refetchOnWindowFocus: false,
+    enabled: options?.enabled ?? true,
   });
 };
 

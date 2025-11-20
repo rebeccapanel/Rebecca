@@ -43,22 +43,7 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
   const { userData, getUserIsSuccess } = useGetUser();
   const canViewXrayLogs =
     getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
-
-  if (!canViewXrayLogs) {
-    return (
-      <VStack spacing={4} align="stretch">
-        {showTitle && (
-          <Text as="h1" fontWeight="semibold" fontSize="2xl">
-            {t("xrayLogs.title", "Xray logs")}
-          </Text>
-        )}
-        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-          {t("xrayLogs.noPermission", "You do not have permission to view Xray logs.")}
-        </Text>
-      </VStack>
-    );
-  }
-  const { data: nodes } = useNodesQuery();
+  const { data: nodes } = useNodesQuery({ enabled: canViewXrayLogs });
   const [selectedNode, setNode] = useState<string>("");
   const [logs, setLogs] = useState<string[]>([]);
   const logsDiv = useRef<HTMLDivElement | null>(null);
@@ -95,14 +80,23 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
     };
   }, [appendLog]);
 
-  const { readyState } = useWebSocket(getWebsocketUrl(selectedNode), {
-    onMessage: (e: any) => {
-      appendLog(e.data ?? "");
+  const socketUrl = useMemo(
+    () => (canViewXrayLogs ? getWebsocketUrl(selectedNode) : null),
+    [canViewXrayLogs, selectedNode]
+  );
+
+  const { readyState } = useWebSocket(
+    socketUrl,
+    {
+      onMessage: (e: any) => {
+        appendLog(e.data ?? "");
+      },
+      shouldReconnect: () => Boolean(socketUrl),
+      reconnectAttempts: 10,
+      reconnectInterval: 1000,
     },
-    shouldReconnect: () => true,
-    reconnectAttempts: 10,
-    reconnectInterval: 1000,
-  });
+    Boolean(socketUrl)
+  );
 
   useEffect(() => {
     const element = logsDiv.current;
@@ -169,6 +163,21 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
     if (/debug/i.test(message)) return "debug" as const;
     return "default" as const;
   };
+
+  if (!canViewXrayLogs) {
+    return (
+      <VStack spacing={4} align="stretch">
+        {showTitle && (
+          <Text as="h1" fontWeight="semibold" fontSize="2xl">
+            {t("xrayLogs.title", "Xray logs")}
+          </Text>
+        )}
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("xrayLogs.noPermission", "You do not have permission to view Xray logs.")}
+        </Text>
+      </VStack>
+    );
+  }
 
   return (
     <VStack spacing={6} align="stretch">
