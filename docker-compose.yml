@@ -1,0 +1,8 @@
+services:
+  rebecca:
+    image:  rebeccapanel/rebecca:latest
+    restart: always
+    env_file: .env
+    network_mode: host
+    volumes:
+      - /var/lib/rebecca:/var/lib/rebecca

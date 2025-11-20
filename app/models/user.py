@@ -1,10 +1,45 @@
+import re
+import secrets
+from datetime import datetime
+import math
 from enum import Enum
-from pydantic import BaseModel, validator
+from typing import Dict, List, Optional, Union
 
-from app.models.proxy import ProxyTypes, ProxySettings
-from app.utils import get_share_links
-from app import xray
-from xray_api.types.account import Account
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.models.admin import Admin
+from app.models.proxy import ProxySettings, ProxyTypes
+from app.subscription.share import generate_v2ray_links
+from app.utils.credentials import apply_credentials_to_settings
+from app.utils.jwt import create_subscription_token
+from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
+
+USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.]+)*$")
+
+
+def _normalize_ip_limit(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed or trimmed == "-":
+            return 0
+        try:
+            value = int(float(trimmed))
+        except (TypeError, ValueError):
+            raise ValueError("ip_limit must be a number or '-' for unlimited")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("ip_limit must be a finite number")
+        value = int(value)
+    if isinstance(value, int):
+        return value if value > 0 else 0
+    raise ValueError("ip_limit must be numeric")
+
+
+class ReminderType(str, Enum):
+    expiration_date = "expiration_date"
+    data_usage = "data_usage"
 
 
 class UserStatus(str, Enum):
@@ -12,61 +47,473 @@ class UserStatus(str, Enum):
     disabled = "disabled"
     limited = "limited"
     expired = "expired"
+    on_hold = "on_hold"
+    deleted = "deleted"
+
+
+class AdvancedUserAction(str, Enum):
+    extend_expire = "extend_expire"
+    reduce_expire = "reduce_expire"
+    increase_traffic = "increase_traffic"
+    decrease_traffic = "decrease_traffic"
+    cleanup_status = "cleanup_status"
+
+
+class UserStatusModify(str, Enum):
+    active = "active"
+    disabled = "disabled"
+    on_hold = "on_hold"
+
+
+class UserStatusCreate(str, Enum):
+    active = "active"
+    on_hold = "on_hold"
+
+
+class UserDataLimitResetStrategy(str, Enum):
+    no_reset = "no_reset"
+    day = "day"
+    week = "week"
+    month = "month"
+    year = "year"
+
+
+class BulkUsersActionRequest(BaseModel):
+    action: AdvancedUserAction
+    days: Optional[int] = None
+    gigabytes: Optional[float] = None
+    statuses: Optional[List[UserStatus]] = None
+    admin_username: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_action(cls, values):
+        action = values.get("action")
+        days = values.get("days")
+        gigabytes = values.get("gigabytes")
+        statuses = values.get("statuses")
+
+        needs_days = {
+            AdvancedUserAction.extend_expire,
+            AdvancedUserAction.reduce_expire,
+            AdvancedUserAction.cleanup_status,
+        }
+
+        if action in needs_days:
+            if not isinstance(days, int) or days <= 0:
+                raise ValueError("days must be a positive integer")
+
+        if action in (AdvancedUserAction.increase_traffic, AdvancedUserAction.decrease_traffic):
+            if (
+                gigabytes is None
+                or not isinstance(gigabytes, (int, float))
+                or gigabytes <= 0
+            ):
+                raise ValueError("gigabytes must be a positive number")
+
+        if action == AdvancedUserAction.cleanup_status:
+            allowed = {UserStatus.expired, UserStatus.limited}
+            resolved_statuses = statuses or list(allowed)
+            invalid = [status for status in resolved_statuses if status not in allowed]
+            if invalid:
+                raise ValueError("cleanup_status only accepts expired or limited")
+            values["statuses"] = resolved_statuses
+
+        return values
+
+
+class NextPlanModel(BaseModel):
+    data_limit: Optional[int] = None
+    expire: Optional[int] = None
+    add_remaining_traffic: bool = False
+    fire_on_either: bool = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class User(BaseModel):
-    proxy_type: ProxyTypes
-    settings: ProxySettings = {}
-    expire: int = None
-    data_limit: int = None
+    credential_key: Optional[str] = None
+    key_subscription_url: Optional[str] = None
+    proxies: Dict[ProxyTypes, ProxySettings] = {}
+    expire: Optional[int] = Field(None, nullable=True)
+    data_limit: Optional[int] = Field(
+        ge=0, default=None, description="data_limit can be 0 or greater"
+    )
+    data_limit_reset_strategy: UserDataLimitResetStrategy = (
+        UserDataLimitResetStrategy.no_reset
+    )
+    inbounds: Dict[ProxyTypes, List[str]] = {}
+    note: Optional[str] = Field(None, nullable=True)
+    sub_updated_at: Optional[datetime] = Field(None, nullable=True)
+    sub_last_user_agent: Optional[str] = Field(None, nullable=True)
+    online_at: Optional[datetime] = Field(None, nullable=True)
+    on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
+    on_hold_timeout: Optional[Union[datetime, None]] = Field(None, nullable=True)
+    ip_limit: int = Field(
+        0,
+        ge=0,
+        description="Maximum number of unique IPs allowed (0 = unlimited)",
+    )
 
-    @validator('settings', pre=True, always=True)
-    def validate_settings(cls, v, values, **kwargs):
-        if isinstance(v, dict):
-            return ProxySettings.from_dict(values['proxy_type'], v)
+    auto_delete_in_days: Optional[int] = Field(None, nullable=True)
+
+    next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
+
+    @field_validator('data_limit', mode='before')
+    def cast_to_int(cls, v):
+        if v is None:  # Allow None values
+            return v
+        if isinstance(v, float):  # Allow float to int conversion
+            return int(v)
+        if isinstance(v, int):  # Allow integers directly
+            return v
+        raise ValueError("data_limit must be an integer or a float, not a string")  # Reject strings
+
+    @field_validator("proxies", mode="before")
+    def validate_proxies(cls, v, values, **kwargs):
+        if not v:
+            return {}
+        return {
+            proxy_type: ProxySettings.from_dict(
+                proxy_type, v.get(proxy_type, {}))
+            for proxy_type in v
+        }
+
+    @field_validator("username", check_fields=False)
+    @classmethod
+    def validate_username(cls, v):
+        if not USERNAME_REGEXP.match(v):
+            raise ValueError(
+                "Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between."
+            )
         return v
 
-    def get_account(self) -> Account:
-        if not getattr(self, 'username'):
-            return
+    @field_validator("note", check_fields=False)
+    @classmethod
+    def validate_note(cls, v):
+        if v and len(v) > 500:
+            raise ValueError("User's note can be a maximum of 500 character")
+        return v
 
-        if isinstance(self.settings, ProxySettings):
-            return self.proxy_type.account_model(email=self.username, **self.settings.dict())
+    @field_validator("on_hold_expire_duration", "on_hold_timeout", mode="before")
+    def validate_timeout(cls, v, values):
+        # Check if expire is 0 or None and timeout is not 0 or None
+        if (v in (0, None)):
+            return None
+        return v
 
-        return self.proxy_type.account_model(email=self.username, **self.settings)
+    @field_validator("ip_limit", mode="before")
+    def normalize_ip_limit(cls, value):
+        return _normalize_ip_limit(value)
 
 
 class UserCreate(User):
     username: str
+    status: UserStatusCreate = None
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "username": "user1234",
+            "proxies": {
+                "vmess": {"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"},
+                "vless": {},
+            },
+            "inbounds": {
+                "vmess": ["VMess TCP", "VMess Websocket"],
+                "vless": ["VLESS TCP REALITY", "VLESS GRPC REALITY"],
+            },
+            "next_plan": {
+                "data_limit": 0,
+                "expire": 0,
+                "add_remaining_traffic": False,
+                "fire_on_either": True
+            },
+            "expire": 0,
+            "data_limit": 0,
+            "data_limit_reset_strategy": "no_reset",
+            "status": "active",
+            "note": "",
+            "on_hold_timeout": "2023-11-03T20:30:00",
+            "on_hold_expire_duration": 0,
+        }
+    })
+
+    @property
+    def excluded_inbounds(self):
+        from app.runtime import xray
+        excluded = {}
+        for proxy_type in self.proxies:
+            excluded[proxy_type] = []
+            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+                if not inbound["tag"] in self.inbounds.get(proxy_type, []):
+                    excluded[proxy_type].append(inbound["tag"])
+
+        return excluded
+
+    @field_validator("inbounds", mode="before")
+    def validate_inbounds(cls, inbounds, values, **kwargs):
+        from app.runtime import xray
+        proxies = values.data.get("proxies", [])
+
+        # delete inbounds that are for protocols not activated
+        for proxy_type in inbounds.copy():
+            if proxy_type not in proxies:
+                del inbounds[proxy_type]
+
+        # check by proxies to ensure that every protocol has inbounds set
+        for proxy_type in proxies:
+            tags = inbounds.get(proxy_type)
+
+            if tags:
+                for tag in tags:
+                    if tag not in xray.config.inbounds_by_tag:
+                        raise ValueError(f"Inbound {tag} doesn't exist")
+
+            # elif isinstance(tags, list) and not tags:
+            #     raise ValueError(f"{proxy_type} inbounds cannot be empty")
+
+            else:
+                inbounds[proxy_type] = [
+                    i["tag"]
+                    for i in xray.config.inbounds_by_protocol.get(proxy_type, [])
+                ]
+
+        return inbounds
+
+    @model_validator(mode="after")
+    def ensure_proxies(self):
+        if not self.proxies:
+            raise ValueError("Each user needs at least one proxy")
+        return self
+
+    @field_validator("status", mode="before")
+    def validate_status(cls, status, values):
+        on_hold_expire = values.data.get("on_hold_expire_duration")
+        expire = values.data.get("expire")
+        if status == UserStatusCreate.on_hold:
+            if (on_hold_expire == 0 or on_hold_expire is None):
+                raise ValueError("User cannot be on hold without a valid on_hold_expire_duration.")
+            if expire:
+                raise ValueError("User cannot be on hold with specified expire.")
+        return status
 
 
 class UserModify(User):
-    proxy_type: ProxyTypes = None
-    expire: int = None
-    data_limit: int = None
-    settings: ProxySettings = None
+    status: UserStatusModify = None
+    data_limit_reset_strategy: UserDataLimitResetStrategy = None
+    service_id: Optional[int] = None
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "proxies": {
+                "vmess": {"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"},
+                "vless": {},
+            },
+            "inbounds": {
+                "vmess": ["VMess TCP", "VMess Websocket"],
+                "vless": ["VLESS TCP REALITY", "VLESS GRPC REALITY"],
+            },
+            "next_plan": {
+                "data_limit": 0,
+                "expire": 0,
+                "add_remaining_traffic": False,
+                "fire_on_either": True
+            },
+            "expire": 0,
+            "data_limit": 0,
+            "data_limit_reset_strategy": "no_reset",
+            "status": "active",
+            "note": "",
+            "on_hold_timeout": "2023-11-03T20:30:00",
+            "on_hold_expire_duration": 0,
+        }
+    })
 
-    @validator('settings', pre=True, always=True)
-    def validate_settings(cls, v, values, **kwargs):
-        if v is not None and values.get('proxy_type') is None:
-            raise ValueError("proxy_type field must be specified when settings field is set")
-        return super().validate_settings(v, values, **kwargs)
+    @property
+    def excluded_inbounds(self):
+        from app.runtime import xray
+        excluded = {}
+        for proxy_type in self.inbounds:
+            excluded[proxy_type] = []
+            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+                if not inbound["tag"] in self.inbounds.get(proxy_type, []):
+                    excluded[proxy_type].append(inbound["tag"])
+
+        return excluded
+
+    @field_validator("inbounds", mode="before")
+    def validate_inbounds(cls, inbounds, values, **kwargs):
+        from app.runtime import xray
+        # check with inbounds, "proxies" is optional on modifying
+        # so inbounds particularly can be modified
+        if inbounds:
+            for proxy_type, tags in inbounds.items():
+
+                # if not tags:
+                #     raise ValueError(f"{proxy_type} inbounds cannot be empty")
+
+                for tag in tags:
+                    if tag not in xray.config.inbounds_by_tag:
+                        raise ValueError(f"Inbound {tag} doesn't exist")
+
+        return inbounds
+
+    @field_validator("proxies", mode="before")
+    def validate_proxies(cls, v):
+        return {
+            proxy_type: ProxySettings.from_dict(
+                proxy_type, v.get(proxy_type, {}))
+            for proxy_type in v
+        }
+
+    @field_validator("status", mode="before")
+    def validate_status(cls, status, values):
+        on_hold_expire = values.data.get("on_hold_expire_duration")
+        expire = values.data.get("expire")
+        if status == UserStatusCreate.on_hold:
+            if (on_hold_expire == 0 or on_hold_expire is None):
+                raise ValueError("User cannot be on hold without a valid on_hold_expire_duration.")
+            if expire:
+                raise ValueError("User cannot be on hold with specified expire.")
+        return status
+
+
+class UserServiceCreate(BaseModel):
+    username: str
+    service_id: int
+    status: UserStatusCreate | None = None
+    expire: Optional[int] = None
+    data_limit: Optional[int] = Field(None, ge=0)
+    data_limit_reset_strategy: UserDataLimitResetStrategy = UserDataLimitResetStrategy.no_reset
+    note: Optional[str] = Field(None, nullable=True)
+    on_hold_timeout: Optional[Union[datetime, None]] = Field(None, nullable=True)
+    on_hold_expire_duration: Optional[int] = Field(None, nullable=True)
+    auto_delete_in_days: Optional[int] = Field(None, nullable=True)
+    next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
+    ip_limit: int = 0
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value):
+        return User.validate_username(value)
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value):
+        return User.validate_note(value)
+
+    @field_validator("ip_limit", mode="before")
+    def normalize_ip_limit(cls, value):
+        return _normalize_ip_limit(value)
 
 
 class UserResponse(User):
     username: str
     status: UserStatus
     used_traffic: int
-    settings: dict | ProxyTypes
-    links: list[str] = []
+    lifetime_used_traffic: int = 0
+    created_at: datetime
+    links: List[str] = []
+    subscription_url: str = ""
+    proxies: dict
+    excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
+    service_id: int | None = None
+    service_name: str | None = None
+    service_host_orders: Dict[int, int] = Field(default_factory=dict)
 
-    class Config:
-        orm_mode = True
+    admin: Optional[Admin] = None
+    model_config = ConfigDict(from_attributes=True)
 
-    @validator('links', pre=False, always=True)
-    def validate_links(cls, v, values, **kwargs):
-        if not v:
-            if isinstance(values['settings'], ProxySettings):
-                return get_share_links(values['proxy_type'], values['settings'].dict())
-            return get_share_links(values['proxy_type'], values['settings'])
-        return v
+    @model_validator(mode="after")
+    def validate_links(self):
+        if not self.links:
+            self.links = generate_v2ray_links(
+                self.proxies, self.inbounds, extra_data=self.model_dump(), reverse=False,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_subscription_url(self):
+        if self.credential_key:
+            salt = secrets.token_hex(8)
+            url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
+            self.subscription_url = (
+                f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            )
+        else:
+            if not self.subscription_url:
+                salt = secrets.token_hex(8)
+                url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
+                token = create_subscription_token(self.username)
+                self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+        return self
+
+    @model_validator(mode="after")
+    def populate_key_subscription_url(self):
+        if self.credential_key and not hasattr(self, 'key_subscription_url'):
+            salt = secrets.token_hex(8)
+            url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
+            self.key_subscription_url = (
+                f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def populate_proxy_credentials(self):
+        if self.credential_key:
+            for proxy_type, settings in self.proxies.items():
+                apply_credentials_to_settings(settings, proxy_type, self.credential_key)
+        return self
+
+    @field_validator("proxies", mode="before")
+    def validate_proxies(cls, v, values, **kwargs):
+        if isinstance(v, list):
+            v = {p.type: p.settings for p in v}
+        return super().validate_proxies(v, values, **kwargs)
+
+    @field_validator("used_traffic", "lifetime_used_traffic", mode='before')
+    def cast_to_int(cls, v):
+        if v is None:  # Allow None values
+            return v
+        if isinstance(v, float):  # Allow float to int conversion
+            return int(v)
+        if isinstance(v, int):  # Allow integers directly
+            return v
+        raise ValueError("must be an integer or a float, not a string")  # Reject strings
+
+
+class SubscriptionUserResponse(UserResponse):
+    admin: Admin | None = Field(default=None, exclude=True)
+    excluded_inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
+    note: str | None = Field(None, exclude=True)
+    inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
+    auto_delete_in_days: int | None = Field(None, exclude=True)
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UsersResponse(BaseModel):
+    users: List[UserResponse]
+    total: int
+    active_total: Optional[int] = None
+    users_limit: Optional[int] = None
+
+
+class UserUsageResponse(BaseModel):
+    node_id: Union[int, None] = None
+    node_name: str
+    used_traffic: int
+
+    @field_validator("used_traffic",  mode='before')
+    def cast_to_int(cls, v):
+        if v is None:  # Allow None values
+            return v
+        if isinstance(v, float):  # Allow float to int conversion
+            return int(v)
+        if isinstance(v, int):  # Allow integers directly
+            return v
+        raise ValueError("must be an integer or a float, not a string")  # Reject strings
+
+
+class UserUsagesResponse(BaseModel):
+    username: str
+    usages: List[UserUsageResponse]
+
+
+class UsersUsagesResponse(BaseModel):
+    usages: List[UserUsageResponse]
