@@ -108,17 +108,16 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
       <Text as="h1" fontWeight="semibold" fontSize="2xl">
         {t("users")}
       </Text>
-      <Box overflow="auto" css={{ direction: "rtl" }}>
-          <HStack alignItems="center" spacing={3}>
-            {headerAd && (
-              <Box
-                flexShrink={0}
-                h={{ base: "40px", md: "60px" }}
-                w={{ base: "120px", md: "180px" }}
-              >
-                <AdvertisementCard ad={headerAd} compact ratio={3 / 1} maxSize={460} />
-              </Box>
-            )}
+      <HStack alignItems="center" spacing={3} flexWrap="wrap" justifyContent="flex-end">
+        {headerAd && (
+          <Box
+            flexShrink={0}
+            h={{ base: "40px", md: "60px" }}
+            w={{ base: "140px", md: "200px" }}
+          >
+            <AdvertisementCard ad={headerAd} compact ratio={3 / 1} maxSize={520} />
+          </Box>
+        )}
           <Menu>
             <MenuButton
               as={IconButton}
@@ -259,9 +258,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   </PopoverBody>
                 </PopoverContent>
               </Popover>
-
-        </HStack>
-      </Box>
+      </HStack>
     </HStack>
   );
 };

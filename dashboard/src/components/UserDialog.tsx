@@ -1864,7 +1864,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               };
 
                               return (
-                                <Box>
+                                <Box mt="3px">
                                   <DateTimePicker
                                     value={selectedDate}
                                     onChange={handleDateChange}

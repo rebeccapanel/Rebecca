@@ -24,7 +24,7 @@ import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/out
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import DatePicker from "components/common/DatePicker";
-import dayjs, { ManipulateType } from "dayjs";
+import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,6 +35,12 @@ import { createUsageConfig } from "./UsageFilter";
 import { formatBytes } from "utils/formatByte";
 import { fetch as apiFetch } from "service/http";
 import { AdminManagementPermission, AdminRole } from "types/Admin";
+import {
+  buildRangeFromPreset,
+  normalizeCustomRange,
+  type RangeState as SharedRangeState,
+  type UsagePreset as SharedUsagePreset,
+} from "utils/usageRange";
 
 dayjs.extend(utc);
 
@@ -44,19 +50,8 @@ const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
 type RangeKey = "24h" | "7d" | "30d" | "90d" | "custom";
 type PresetRangeKey = Exclude<RangeKey, "custom">;
 
-type UsagePreset = {
-  key: PresetRangeKey;
-  label: string;
-  amount: number;
-  unit: ManipulateType;
-};
-
-type RangeState = {
-  key: RangeKey;
-  start: Date;
-  end: Date;
-  unit: ManipulateType;
-};
+type UsagePreset = SharedUsagePreset<PresetRangeKey>;
+type RangeState = SharedRangeState<RangeKey>;
 
 type NodeUsageSlice = {
   nodeId: number;
@@ -84,34 +79,6 @@ const formatTimeseriesLabel = (value: string) => {
 
 const formatApiStart = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ss");
 const formatApiEnd = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ss");
-
-const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
-  const alignUnit: ManipulateType = preset.unit === "hour" ? "hour" : "day";
-  const end = dayjs().utc().endOf(alignUnit);
-  const span = Math.max(preset.amount - 1, 0);
-  const start = end.subtract(span, preset.unit).startOf(alignUnit);
-  return {
-    key: preset.key,
-    start: start.toDate(),
-    end: end.toDate(),
-    unit: preset.unit,
-  };
-};
-
-const normalizeCustomRange = (start: Date, end: Date): RangeState => {
-  const startDate = dayjs(start);
-  const endDate = dayjs(end);
-  const [minDate, maxDate] = startDate.isBefore(endDate) ? [startDate, endDate] : [endDate, startDate];
-  const startAligned = minDate.startOf("day");
-  const endAligned = maxDate.endOf("day");
-  const isSingleDay = startAligned.isSame(endAligned, "day");
-  return {
-    key: "custom",
-    start: startAligned.toDate(),
-    end: endAligned.toDate(),
-    unit: isSingleDay ? "hour" : "day",
-  };
-};
 
 const buildDailyUsageOptions = (colorMode: string, categories: string[]): ApexOptions => {
   const axisColor = colorMode === "dark" ? "#d8dee9" : "#1a202c";
@@ -872,7 +839,7 @@ const NodesUsageAnalytics: FC = () => {
           direction={{ base: "column", lg: "row" }}
           spacing={{ base: 4, lg: 6 }}
           justifyContent="space-between"
-          alignItems={{ base: "stretch", lg: "flex-start" }}
+          alignItems={{ base: "stretch", lg: "center" }}
           w="full"
         >
           <VStack align="start" spacing={1}>

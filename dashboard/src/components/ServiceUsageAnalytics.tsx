@@ -36,14 +36,22 @@ import {
   ServiceUsageTimeseries,
 } from "types/Service";
 import { formatBytes } from "utils/formatByte";
+import {
+  buildRangeFromPreset,
+  normalizeCustomRange,
+  type RangeState as SharedRangeState,
+  type UsagePreset as SharedUsagePreset,
+} from "utils/usageRange";
 
 dayjs.extend(utc);
 
 const CalendarIcon = chakra(CalendarDaysIcon, { baseStyle: { w: 4, h: 4 } });
 const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
 
-type UsagePreset = { key: string; label: string; amount: number; unit: "day" | "hour" };
-type RangeState = { key: string; start: Date; end: Date; unit: "day" | "hour" };
+type RangeKey = "24h" | "7d" | "30d" | "90d" | "custom";
+type PresetRangeKey = Exclude<RangeKey, "custom">;
+type UsagePreset = SharedUsagePreset<PresetRangeKey>;
+type RangeState = SharedRangeState<RangeKey>;
 
 const presets: UsagePreset[] = [
   { key: "24h", label: "24h", amount: 24, unit: "hour" },
@@ -51,29 +59,6 @@ const presets: UsagePreset[] = [
   { key: "30d", label: "30d", amount: 30, unit: "day" },
   { key: "90d", label: "90d", amount: 90, unit: "day" },
 ];
-
-const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
-  const alignUnit: dayjs.ManipulateType = preset.unit === "hour" ? "hour" : "day";
-  const end = dayjs().utc().endOf(alignUnit);
-  const span = Math.max(preset.amount - 1, 0);
-  const start = end.subtract(span, preset.unit).startOf(alignUnit);
-  return { key: preset.key, start: start.toDate(), end: end.toDate(), unit: preset.unit };
-};
-
-const normalizeCustomRange = (start: Date, end: Date): RangeState => {
-  const startDate = dayjs(start);
-  const endDate = dayjs(end);
-  const [minDate, maxDate] = startDate.isBefore(endDate) ? [startDate, endDate] : [endDate, startDate];
-  const startDay = minDate.startOf("day");
-  const endDay = maxDate.endOf("day");
-  const isSingleDay = startDay.isSame(endDay, "day");
-  return {
-    key: "custom",
-    start: startDay.toDate(),
-    end: endDay.toDate(),
-    unit: isSingleDay ? "hour" : "day",
-  };
-};
 
 const formatApiStart = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ssZ");
 const formatApiEnd = (date: Date) => dayjs(date).utc().format("YYYY-MM-DDTHH:mm:ssZ");

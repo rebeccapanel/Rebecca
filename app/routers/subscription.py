@@ -70,11 +70,14 @@ router = APIRouter(tags=["Subscription"], prefix=f"/{XRAY_SUBSCRIPTION_PATH}")
 
 def get_subscription_user_info(user: UserResponse) -> dict:
     """Retrieve user subscription information including upload, download, total data, and expiry."""
+    used_traffic = int(getattr(user, "used_traffic", 0) or 0)
+    total_limit = getattr(user, "data_limit", None)
+    expire_ts = getattr(user, "expire", None)
     return {
         "upload": 0,
-        "download": user.used_traffic,
-        "total": user.data_limit if user.data_limit is not None else 0,
-        "expire": user.expire if user.expire is not None else 0,
+        "download": used_traffic,
+        "total": total_limit if total_limit is not None else 0,
+        "expire": expire_ts if expire_ts is not None else 0,
     }
 
 
@@ -177,28 +180,42 @@ def _build_usage_payload(
     end: str,
     db: Session,
 ):
-    start_dt, end_dt = validate_dates(start, end)
-    timeline_daily = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="day")
-    daily_usages = [
-        {
-            "date": entry["timestamp"].date().isoformat(),
-            "used_traffic": int(entry["total"] or 0),
-        }
-        for entry in timeline_daily
-    ]
+    try:
+        start_dt, end_dt = validate_dates(start, end)
+    except HTTPException:
+        # bubble FastAPI-friendly errors
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid date range or format") from exc
 
-    hourly_usages: List[Dict[str, Union[str, int]]] = []
-    if start_dt.date() == end_dt.date():
-        timeline_hourly = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="hour")
-        hourly_usages = [
+    try:
+        timeline_daily = crud.get_user_usage_timeseries(
+            db, dbuser, start_dt, end_dt, granularity="day"
+        )
+        daily_usages = [
             {
-                "timestamp": entry["timestamp"].isoformat(),
+                "date": entry["timestamp"].date().isoformat(),
                 "used_traffic": int(entry["total"] or 0),
             }
-            for entry in timeline_hourly
+            for entry in timeline_daily
         ]
 
-    node_usages = crud.get_user_usage_by_nodes(db, dbuser, start_dt, end_dt)
+        hourly_usages: List[Dict[str, Union[str, int]]] = []
+        if start_dt.date() == end_dt.date():
+            timeline_hourly = crud.get_user_usage_timeseries(
+                db, dbuser, start_dt, end_dt, granularity="hour"
+            )
+            hourly_usages = [
+                {
+                    "timestamp": entry["timestamp"].isoformat(),
+                    "used_traffic": int(entry["total"] or 0),
+                }
+                for entry in timeline_hourly
+            ]
+
+        node_usages = crud.get_user_usage_by_nodes(db, dbuser, start_dt, end_dt)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Failed to load usage data") from exc
 
     return {
         "username": dbuser.username,

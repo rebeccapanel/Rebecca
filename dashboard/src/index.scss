@@ -226,7 +226,7 @@ table thead {
   width: auto;
   min-width: 300px;
   max-width: min(420px, calc(100vw - 32px));
-  padding: 0 4px;
+  padding: 0 2px;
   font-size: 0.95rem;
 }
 
@@ -245,9 +245,9 @@ table thead {
 
 .usage-range-datepicker .react-datepicker__day,
 .usage-range-datepicker .react-datepicker__day-name {
-  width: 2.45rem;
-  line-height: 2.45rem;
-  margin: 0;
+  width: 2.1rem;
+  line-height: 2.1rem;
+  margin: 2px;
 }
 
 .usage-range-datepicker-popper {

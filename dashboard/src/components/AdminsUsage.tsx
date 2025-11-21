@@ -1,27 +1,26 @@
 import React, { FC, useEffect, useMemo, useState } from "react";
 import {
   Box,
+  Button,
   HStack,
+  Popover,
+  PopoverArrow,
+  PopoverBody,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   Spinner,
   Stack,
   Text,
   VStack,
-  useColorMode,
-  Button,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverBody,
-  PopoverArrow,
   chakra,
   Tooltip,
   useBreakpointValue,
+  useColorMode,
 } from "@chakra-ui/react";
 import type { PlacementWithLogical } from "@chakra-ui/react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
-import DatePicker from "components/common/DatePicker";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { useTranslation } from "react-i18next";
@@ -34,8 +33,11 @@ import {
   ServiceListResponse,
   ServiceSummary,
 } from "types/Service";
+import { buildRangeFromPreset, normalizeCustomRange } from "utils/usageRange";
 import type { Admin } from "types/Admin";
 import { CalendarDaysIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import DatePicker from "components/common/DatePicker";
+import TimeRangePicker, { TimeRangeValue } from "components/common/TimeRangePicker";
 
 dayjs.extend(utc);
 const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
@@ -53,13 +55,6 @@ interface AdminUsageApiResponse {
   }>;
 }
 
-type PresetRangeKey = string;
-
-type UsagePreset = { key: string; label: string; amount: number; unit: "day" | "hour" };
-type RangeState = { key: string; start: Date; end: Date; unit: "day" | "hour" };
-
-const FALLBACK_PRESET: UsagePreset = { key: "30d", label: "30d", amount: 30, unit: "day" };
-
 const formatTimeseriesLabel = (value: string) => {
   if (!value) return value;
   const hasTime = value.includes(" ");
@@ -76,29 +71,6 @@ const toUtcMillis = (value: string) => {
   const hasTime = value.includes(" ");
   const normalized = hasTime ? value.replace(" ", "T") : `${value}T00:00`;
   return dayjs.utc(normalized).valueOf();
-};
-
-const buildRangeFromPreset = (preset: UsagePreset): RangeState => {
-  const alignUnit: dayjs.ManipulateType = preset.unit === "hour" ? "hour" : "day";
-  const end = dayjs().utc().endOf(alignUnit);
-  const span = Math.max(preset.amount - 1, 0);
-  const start = end.subtract(span, preset.unit).startOf(alignUnit);
-  return { key: preset.key, start: start.toDate(), end: end.toDate(), unit: preset.unit };
-};
-
-const normalizeCustomRange = (start: Date, end: Date): RangeState => {
-  const startDate = dayjs(start);
-  const endDate = dayjs(end);
-  const [minDate, maxDate] = startDate.isBefore(endDate) ? [startDate, endDate] : [endDate, startDate];
-  const startDay = minDate.startOf("day");
-  const endDay = maxDate.endOf("day");
-  const isSingleDay = startDay.isSame(endDay, "day");
-  return {
-    key: "custom",
-    start: startDay.toDate(),
-    end: endDay.toDate(),
-    unit: isSingleDay ? "hour" : "day",
-  };
 };
 
 const buildDailyUsageOptions = (colorMode: string, categories: string[]): ApexOptions => {
@@ -146,29 +118,33 @@ const AdminsUsage: FC = () => {
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
   const { admins: pagedAdmins } = useAdminsStore();
-const fallbackPlacement: PlacementWithLogical = "auto-end";
-const popoverPlacement: PlacementWithLogical =
-  useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
+  const fallbackPlacement: PlacementWithLogical = "auto-end";
+  const popoverPlacement: PlacementWithLogical =
+    useBreakpointValue<PlacementWithLogical>({ base: "bottom", md: "auto-end" }) ?? fallbackPlacement;
+
   const [admins, setAdmins] = useState<any[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [serviceAdminUsage, setServiceAdminUsage] = useState<ServiceAdminUsage[]>([]);
   const [loadingServiceUsage, setLoadingServiceUsage] = useState(false);
-
-  const presets = useMemo<UsagePreset[]>(
+  const presets = useMemo(
     () => [
-      { key: "24h", label: "24h", amount: 24, unit: "hour" },
-      { key: "7d", label: "7d", amount: 7, unit: "day" },
-      { key: "30d", label: "30d", amount: 30, unit: "day" },
-      { key: "90d", label: "90d", amount: 90, unit: "day" },
+      { key: "7h", label: "7h", amount: 7, unit: "hour" as const },
+      { key: "1d", label: "1d", amount: 1, unit: "day" as const },
+      { key: "3d", label: "3d", amount: 3, unit: "day" as const },
+      { key: "1w", label: "1w", amount: 7, unit: "day" as const },
+      { key: "1m", label: "1m", amount: 30, unit: "day" as const },
+      { key: "3m", label: "3m", amount: 90, unit: "day" as const },
     ],
     []
   );
 
-  const defaultPreset = presets.find((p) => p.key === "30d") ?? FALLBACK_PRESET;
-
-  const [range, setRange] = useState<RangeState>(() => buildRangeFromPreset(defaultPreset));
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string>(defaultPreset.key);
+  const [range, setRange] = useState<TimeRangeValue>(() => {
+    const end = dayjs().utc().endOf("day");
+    const start = end.subtract(30, "day").startOf("day");
+    return { start: start.toDate(), end: end.toDate(), presetKey: "1m" };
+  });
+  const [selectedPresetKey, setSelectedPresetKey] = useState<string>(range.presetKey || "custom");
   const [selectedAdmin, setSelectedAdmin] = useState<string | null>(null);
   const [points, setPoints] = useState<DailyUsagePoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,12 +180,6 @@ const popoverPlacement: PlacementWithLogical =
     () => buildServiceDonutOptions(colorMode, serviceDonutLabels),
     [colorMode, serviceDonutLabels]
   );
-
-useEffect(() => {
-  if (!isCalendarOpen) {
-    setDraftRange([range.start, range.end]);
-  }
-}, [isCalendarOpen, range.start, range.end]);
 
 useEffect(() => {
   let cancelled = false;
@@ -268,7 +238,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [selectedServiceId, range.start, range.end, range.unit]);
+}, [selectedServiceId, range.start, range.end]);
 
 // load all admins (not paginated) for the select list
 useEffect(() => {
@@ -295,7 +265,7 @@ useEffect(() => {
     if (!selectedAdmin) return;
     let cancelled = false;
     setLoading(true);
-    const isHourly = range.unit === "hour";
+    const isHourly = dayjs(range.start).isSame(range.end, "day");
     const query: Record<string, string> = {
       start: formatApiStart(range.start),
       end: formatApiEnd(range.end),
@@ -359,13 +329,6 @@ useEffect(() => {
     setSelectedAdmin(filteredAdmins[0].username);
   }
 }, [filteredAdmins, selectedAdmin]);
-
-  // keep selectedPresetKey in sync with range; if range doesn't match any preset mark as custom
-  useEffect(() => {
-    const found = presets.find((p) => p.key === range.key);
-    if (found) setSelectedPresetKey(found.key);
-    else setSelectedPresetKey("custom");
-  }, [range, presets]);
 
   const categories = useMemo(() => points.map((p) => formatTimeseriesLabel(p.date)), [points]);
   const series = useMemo(() => [{ name: t("nodes.usedTrafficSeries", "Used traffic"), data: points.map((p) => p.used_traffic) }], [points, t]);
@@ -525,7 +488,8 @@ useEffect(() => {
                   size="sm"
                   onClick={() => {
                     setSelectedPresetKey(p.key);
-                    setRange(buildRangeFromPreset(p));
+                    const nextRange = buildRangeFromPreset(p);
+                    setRange({ start: nextRange.start, end: nextRange.end, presetKey: p.key });
                   }}
                   variant={selectedPresetKey === p.key ? "solid" : "outline"}
                   colorScheme="primary"
@@ -594,7 +558,7 @@ useEffect(() => {
                           if (start && end) {
                             const normalized = normalizeCustomRange(start, end);
                             setSelectedPresetKey("custom");
-                            setRange(normalized);
+                            setRange({ start: normalized.start, end: normalized.end, presetKey: "custom" });
                             setCalendarOpen(false);
                           }
                         }}
