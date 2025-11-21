@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from xray_api.types.account import XTLSFlows
 
 
 class ServiceHostAssignment(BaseModel):
@@ -16,6 +17,9 @@ class ServiceCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=256)
     hosts: List[ServiceHostAssignment] = Field(default_factory=list)
     admin_ids: List[int] = Field(default_factory=list)
+    flow: Optional[XTLSFlows] = Field(
+        default=None, description="Optional flow applied to supported protocols (e.g. VLESS/Trojan)"
+    )
 
     @field_validator("hosts")
     @classmethod
@@ -31,6 +35,9 @@ class ServiceModify(BaseModel):
     description: Optional[str] = Field(None, max_length=256)
     hosts: Optional[List[ServiceHostAssignment]] = None
     admin_ids: Optional[List[int]] = None
+    flow: Optional[XTLSFlows] = Field(
+        default=None, description="Update flow for supported protocols (set to empty to clear)"
+    )
 
     @field_validator("hosts")
     @classmethod
@@ -66,6 +73,7 @@ class ServiceBase(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    flow: Optional[XTLSFlows] = None
     used_traffic: int = 0
     lifetime_used_traffic: int = 0
     host_count: int = 0

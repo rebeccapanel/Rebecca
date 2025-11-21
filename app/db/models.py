@@ -365,6 +365,7 @@ class Service(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(128), unique=True, nullable=False)
     description = Column(String(256), nullable=True)
+    flow = Column(String(255), nullable=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

@@ -121,6 +121,9 @@ type GeoDialogTarget =
 
 export const NodesPage: FC = () => {
   const { t } = useTranslation();
+  const { userData, getUserIsSuccess } = useGetUser();
+  const canManageNodes =
+    getUserIsSuccess && Boolean(userData.permissions?.sections.nodes);
   const { onEditingNodes } = useDashboard();
   const isEditingNodes = useDashboard((state) => state.isEditingNodes);
   const {
@@ -129,7 +132,7 @@ export const NodesPage: FC = () => {
     error,
     refetch: refetchNodes,
     isFetching,
-  } = useNodesQuery();
+  } = useNodesQuery({ enabled: canManageNodes });
   const {
     addNode,
     updateNode,
@@ -143,23 +146,6 @@ export const NodesPage: FC = () => {
   } = useNodes();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { userData, getUserIsSuccess } = useGetUser();
-  const canManageNodes =
-    getUserIsSuccess && Boolean(userData.permissions?.sections.nodes);
-
-  if (!canManageNodes) {
-    return (
-      <VStack spacing={4} align="stretch">
-        <Text as="h1" fontWeight="semibold" fontSize="2xl">
-          {t("nodes.title", "Nodes")}
-        </Text>
-        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-          {t("nodes.noPermission", "You do not have permission to manage nodes.")}
-        </Text>
-      </VStack>
-    );
-  }
-
   const [editingNode, setEditingNode] = useState<NodeType | null>(null);
   const [isAddNodeOpen, setAddNodeOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -194,6 +180,7 @@ export const NodesPage: FC = () => {
     error: coreError,
   } = useQuery<CoreStatsResponse>(["core-stats"], () => apiFetch<CoreStatsResponse>("/core"), {
     refetchOnWindowFocus: false,
+    enabled: canManageNodes,
   });
 
   const {
@@ -205,17 +192,23 @@ export const NodesPage: FC = () => {
     ["master-node-state"],
     () => apiFetch<MasterNodeSummary>("/node/master"),
     {
-      refetchInterval: isEditingNodes ? 3000 : undefined,
+      refetchInterval: canManageNodes && isEditingNodes ? 3000 : undefined,
       refetchOnWindowFocus: false,
+      enabled: canManageNodes,
     },
   );
 
   useEffect(() => {
+    if (!canManageNodes) {
+      onEditingNodes(false);
+      return;
+    }
+
     onEditingNodes(true);
     return () => {
       onEditingNodes(false);
     };
-  }, [onEditingNodes]);
+  }, [canManageNodes, onEditingNodes]);
 
   useEffect(() => {
     if (!masterState) {
@@ -734,6 +727,27 @@ export const NodesPage: FC = () => {
           name: geoDialogTarget.node.name ?? t("nodes.unnamedNode", "Unnamed node"),
         })
       : "";
+
+  if (!getUserIsSuccess) {
+    return (
+      <VStack spacing={4} align="center" py={10}>
+        <Spinner size="lg" />
+      </VStack>
+    );
+  }
+
+  if (!canManageNodes) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("nodes.title", "Nodes")}
+        </Text>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("nodes.noPermission", "You do not have permission to manage nodes.")}
+        </Text>
+      </VStack>
+    );
+  }
 
   return (
     <VStack spacing={6} align="stretch">

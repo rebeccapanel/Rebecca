@@ -122,5 +122,8 @@ def review():
 
 scheduler.add_job(review, 'interval',
                   seconds=JOB_REVIEW_USERS_INTERVAL,
-                  coalesce=True, max_instances=1)
+                  coalesce=True,
+                  max_instances=3,
+                  misfire_grace_time=JOB_REVIEW_USERS_INTERVAL,
+                  replace_existing=True)
 

@@ -48,13 +48,40 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
   [AdminRole.Standard]: {
     users: {
       create: true,
-      delete: false,
-      reset_usage: false,
-      revoke: false,
-      create_on_hold: false,
-      allow_unlimited_data: false,
-      allow_unlimited_expire: false,
-      allow_next_plan: false,
+      delete: true,
+      reset_usage: true,
+      revoke: true,
+      create_on_hold: true,
+      allow_unlimited_data: true,
+      allow_unlimited_expire: true,
+      allow_next_plan: true,
+      max_data_limit_per_user: null,
+    },
+    admin_management: {
+      can_view: false,
+      can_edit: false,
+      can_manage_sudo: false,
+    },
+    sections: {
+      usage: false,
+      admins: false,
+      services: false,
+      hosts: false,
+      nodes: false,
+      integrations: false,
+      xray: false,
+    },
+  },
+  [AdminRole.Reseller]: {
+    users: {
+      create: true,
+      delete: true,
+      reset_usage: true,
+      revoke: true,
+      create_on_hold: true,
+      allow_unlimited_data: true,
+      allow_unlimited_expire: true,
+      allow_next_plan: true,
       max_data_limit_per_user: null,
     },
     admin_management: {
@@ -328,6 +355,7 @@ export const AdminDialog: FC = () => {
   }, [generateRandomString, setValue]);
   const { errors, isSubmitting } = formState;
   const watchRole = watch("role");
+  const hideExtendedPermissions = watchRole === AdminRole.Standard;
   const permissionsValue = watch("permissions");
   const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 
@@ -568,7 +596,16 @@ export const AdminDialog: FC = () => {
               <FormHelperText m={0}>
                 {t(
                   "admins.roles.standardDescription",
-                  "Can manage own users with limited privileges."
+                  "Can manage own users; only user-related permissions are available."
+                )}
+              </FormHelperText>
+            </Radio>
+            <Radio value={AdminRole.Reseller}>
+              <Text fontWeight="medium">{t("admins.roles.reseller", "Reseller")}</Text>
+              <FormHelperText m={0}>
+                {t(
+                  "admins.roles.resellerDescription",
+                  "Can create and manage their own admins."
                 )}
               </FormHelperText>
             </Radio>
@@ -671,6 +708,7 @@ export const AdminDialog: FC = () => {
                       maxDataLimitValue={maxDataLimitValue}
                       onMaxDataLimitChange={handleMaxDataLimitChange}
                       maxDataLimitError={errors.maxDataLimitPerUserGb?.message as string | undefined}
+                      hideExtendedSections={watchRole === AdminRole.Standard}
                     />
                   </TabPanel>
                 </TabPanels>

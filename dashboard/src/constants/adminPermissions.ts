@@ -10,16 +10,16 @@ type PermissionTemplate = AdminPermissions;
 
 const cloneTemplate = <T>(template: T): T => JSON.parse(JSON.stringify(template));
 
-const STANDARD_TEMPLATE: PermissionTemplate = {
+const USER_ONLY_TEMPLATE: PermissionTemplate = {
   users: {
     [UserPermissionToggle.Create]: true,
-    [UserPermissionToggle.Delete]: false,
-    [UserPermissionToggle.ResetUsage]: false,
-    [UserPermissionToggle.Revoke]: false,
-    [UserPermissionToggle.CreateOnHold]: false,
-    [UserPermissionToggle.AllowUnlimitedData]: false,
-    [UserPermissionToggle.AllowUnlimitedExpire]: false,
-    [UserPermissionToggle.AllowNextPlan]: false,
+    [UserPermissionToggle.Delete]: true,
+    [UserPermissionToggle.ResetUsage]: true,
+    [UserPermissionToggle.Revoke]: true,
+    [UserPermissionToggle.CreateOnHold]: true,
+    [UserPermissionToggle.AllowUnlimitedData]: true,
+    [UserPermissionToggle.AllowUnlimitedExpire]: true,
+    [UserPermissionToggle.AllowNextPlan]: true,
     max_data_limit_per_user: null,
   },
   admin_management: {
@@ -95,7 +95,8 @@ const FULL_ACCESS_TEMPLATE: PermissionTemplate = {
 };
 
 export const ROLE_DEFAULT_ADMIN_PERMISSIONS: Record<AdminRole, PermissionTemplate> = {
-  [AdminRole.Standard]: STANDARD_TEMPLATE,
+  [AdminRole.Standard]: USER_ONLY_TEMPLATE,
+  [AdminRole.Reseller]: USER_ONLY_TEMPLATE,
   [AdminRole.Sudo]: SUDO_TEMPLATE,
   [AdminRole.FullAccess]: FULL_ACCESS_TEMPLATE,
 };

@@ -430,24 +430,11 @@ export const IntegrationSettingsPage = () => {
   const { userData, getUserIsSuccess } = useGetUser();
   const canManageIntegrations =
     getUserIsSuccess && Boolean(userData.permissions?.sections.integrations);
-
-  if (!canManageIntegrations) {
-    return (
-      <VStack spacing={4} align="stretch">
-        <Heading size="lg">{t("header.integrationSettings", "Integration settings")}</Heading>
-        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-          {t(
-            "integrations.noPermission",
-            "You do not have permission to manage integration settings."
-          )}
-        </Text>
-      </VStack>
-    );
-  }
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery("telegram-settings", getTelegramSettings, {
     refetchOnWindowFocus: false,
+    enabled: canManageIntegrations,
   });
 
   const {
@@ -456,12 +443,13 @@ export const IntegrationSettingsPage = () => {
     refetch: refetchPanelSettings,
   } = useQuery<PanelSettingsResponse>("panel-settings", getPanelSettings, {
     refetchOnWindowFocus: false,
+    enabled: canManageIntegrations,
   });
 
   const maintenanceInfoQuery = useQuery<MaintenanceInfo>(
     "maintenance-info",
     () => apiFetch<MaintenanceInfo>("/maintenance/info"),
-    { refetchOnWindowFocus: false }
+    { refetchOnWindowFocus: false, enabled: canManageIntegrations }
   );
 
   const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(panelData?.use_nobetci ?? false);
@@ -677,6 +665,28 @@ export const IntegrationSettingsPage = () => {
   const handleUploadButtonClick = () => {
     fileInputRef.current?.click();
   };
+
+  if (!getUserIsSuccess) {
+    return (
+      <Flex align="center" justify="center" py={12}>
+        <Spinner size="lg" />
+      </Flex>
+    );
+  }
+
+  if (!canManageIntegrations) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Heading size="lg">{t("header.integrationSettings", "Integration settings")}</Heading>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t(
+            "integrations.noPermission",
+            "You do not have permission to manage integration settings."
+          )}
+        </Text>
+      </VStack>
+    );
+  }
 
   return (
     <Box px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>

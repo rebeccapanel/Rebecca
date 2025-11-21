@@ -23,6 +23,7 @@ class AdminStatus(str, Enum):
 
 class AdminRole(str, Enum):
     standard = "standard"
+    reseller = "reseller"
     sudo = "sudo"
     full_access = "full_access"
 
@@ -119,13 +120,40 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
     AdminRole.standard: AdminPermissions(
         users=UserPermissionSettings(
             create=True,
-            delete=False,
-            reset_usage=False,
-            revoke=False,
-            create_on_hold=False,
-            allow_unlimited_data=False,
-            allow_unlimited_expire=False,
-            allow_next_plan=False,
+            delete=True,
+            reset_usage=True,
+            revoke=True,
+            create_on_hold=True,
+            allow_unlimited_data=True,
+            allow_unlimited_expire=True,
+            allow_next_plan=True,
+            max_data_limit_per_user=None,
+        ),
+        admin_management=AdminManagementPermissions(
+            can_view=False,
+            can_edit=False,
+            can_manage_sudo=False,
+        ),
+        sections=SectionPermissionSettings(
+            usage=False,
+            admins=False,
+            services=False,
+            hosts=False,
+            nodes=False,
+            integrations=False,
+            xray=False,
+        ),
+    ),
+    AdminRole.reseller: AdminPermissions(
+        users=UserPermissionSettings(
+            create=True,
+            delete=True,
+            reset_usage=True,
+            revoke=True,
+            create_on_hold=True,
+            allow_unlimited_data=True,
+            allow_unlimited_expire=True,
+            allow_next_plan=True,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
@@ -217,6 +245,9 @@ def _resolve_role(value: Optional[AdminRole]) -> AdminRole:
 
 
 def _build_permissions(role: AdminRole, raw_permissions: Optional[Dict[str, Any] | AdminPermissions]) -> AdminPermissions:
+    # Full-access should always get the baked-in defaults and ignore any overrides
+    if role == AdminRole.full_access:
+        return ROLE_DEFAULT_PERMISSIONS[role]
     defaults = ROLE_DEFAULT_PERMISSIONS[role]
     if not raw_permissions:
         return defaults

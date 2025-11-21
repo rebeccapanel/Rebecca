@@ -102,6 +102,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
   const { t } = useTranslation();
   const [name, setName] = useState(initialService?.name ?? "");
   const [description, setDescription] = useState(initialService?.description ?? "");
+  const [flow, setFlow] = useState(initialService?.flow ?? "");
   const [selectedAdmins, setSelectedAdmins] = useState<number[]>(
     initialService?.admin_ids ?? []
   );
@@ -117,6 +118,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
     if (isOpen) {
       setName(initialService?.name ?? "");
       setDescription(initialService?.description ?? "");
+      setFlow(initialService?.flow ?? "");
       setSelectedAdmins(initialService?.admin_ids ?? []);
       setSelectedHosts(initialService?.hosts.map((host) => host.id) ?? []);
       setAdminSearch("");
@@ -160,6 +162,11 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
   }, [adminSearch, allAdmins]);
 
   const selectedAdminsSet = useMemo(() => new Set(selectedAdmins), [selectedAdmins]);
+
+  const handleToggleAllAdmins = () => {
+    const hasAllSelected = selectedAdmins.length === allAdmins.length && allAdmins.length > 0;
+    setSelectedAdmins(hasAllSelected ? [] : allAdmins.map((admin) => admin.id));
+  };
 
   const handleAdminToggle = (adminId: number) => {
     setSelectedAdmins((prev) =>
@@ -212,6 +219,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
       {
         name: name.trim(),
         description: description?.trim() || null,
+        flow: flow?.trim() ? flow.trim() : null,
         admin_ids: selectedAdmins,
         hosts: assignments,
       },
@@ -244,11 +252,31 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
                 maxLength={256}
               />
             </HStack>
+            <FormControl maxW={{ base: "100%", md: "320px" }}>
+              <FormLabel>{t("services.fields.flow", "Flow")}</FormLabel>
+              <Select
+                value={flow}
+                onChange={(event) => setFlow(event.target.value)}
+                placeholder={t("services.flow.placeholder", "No flow")}
+              >
+                <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+              </Select>
+              <FormHelperText>
+                {t("services.flow.helper", "Applies to supported protocols (e.g. VLESS/Trojan)")}
+              </FormHelperText>
+            </FormControl>
             <Box>
               <Text fontWeight="medium" mb={2}>
                 {t("services.fields.admins", "Admins")}
               </Text>
               <Stack spacing={3}>
+                <Checkbox
+                  isChecked={selectedAdmins.length === allAdmins.length && allAdmins.length > 0}
+                  onChange={handleToggleAllAdmins}
+                  isDisabled={allAdmins.length === 0}
+                >
+                  {t("services.selectAllAdmins", "Select all admins")}
+                </Checkbox>
                 <Input
                   value={adminSearch}
                   onChange={(event) => setAdminSearch(event.target.value)}
@@ -1000,6 +1028,11 @@ const ServicesPage: FC = () => {
                 {selectedService.description && (
                   <Text fontSize="sm" color="gray.500">
                     {selectedService.description}
+                  </Text>
+                )}
+                {selectedService.flow && (
+                  <Text fontSize="sm" color="gray.500">
+                    {t("services.currentFlow", "Flow")}: {selectedService.flow}
                   </Text>
                 )}
               </Box>

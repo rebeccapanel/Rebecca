@@ -41,6 +41,7 @@ import {
   Input,
   Wrap,
   WrapItem,
+  Spinner,
 } from "@chakra-ui/react";
 import type { TableProps } from "@chakra-ui/react";
 import {
@@ -251,21 +252,9 @@ export const CoreSettingsPage: FC = () => {
   const { onEditingCore } = useDashboard();
   const canManageXraySettings =
     getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
-
-  if (!canManageXraySettings) {
-    return (
-      <VStack spacing={4} align="stretch">
-        <Text as="h1" fontWeight="semibold" fontSize="2xl">
-          {t("header.xraySettings", "Xray settings")}
-        </Text>
-        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-          {t("xraySettings.noPermission", "You do not have permission to manage Xray settings.")}
-        </Text>
-      </VStack>
-    );
-  }
   const { data: serverIPs } = useQuery(["server-ips"], () => apiFetch<{ ipv4: string; ipv6: string }>("/core/ips"), {
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: canManageXraySettings,
   });
   const toast = useToast();
   const { isOpen: isOutboundOpen, onOpen: onOutboundOpen, onClose: onOutboundClose } = useDisclosure();
@@ -390,21 +379,28 @@ export const CoreSettingsPage: FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!canManageXraySettings) {
+      onEditingCore(false);
+      return;
+    }
+
     onEditingCore(true);
-    fetchCoreSettings().then(() => {
-      console.log("Core settings fetched successfully");
-    }).catch((error) => {
-      toast({
-        title: t("core.errorFetchingConfig"),
-        description: error.message,
-        status: "error",
-        isClosable: true,
-        position: "top",
-        duration: 3000,
+    fetchCoreSettings()
+      .then(() => {
+        console.log("Core settings fetched successfully");
+      })
+      .catch((error) => {
+        toast({
+          title: t("core.errorFetchingConfig"),
+          description: error.message,
+          status: "error",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
       });
-    });
     return () => onEditingCore(false);
-  }, [fetchCoreSettings, onEditingCore, toast, t]);
+  }, [canManageXraySettings, fetchCoreSettings, onEditingCore, toast, t]);
 
   useEffect(() => {
     if (config) {
@@ -1071,6 +1067,27 @@ export const CoreSettingsPage: FC = () => {
       </Text>
     );
   };
+
+  if (!getUserIsSuccess) {
+    return (
+      <VStack spacing={4} align="center" py={10}>
+        <Spinner size="lg" />
+      </VStack>
+    );
+  }
+
+  if (!canManageXraySettings) {
+    return (
+      <VStack spacing={4} align="stretch">
+        <Text as="h1" fontWeight="semibold" fontSize="2xl">
+          {t("header.xraySettings", "Xray settings")}
+        </Text>
+        <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+          {t("xraySettings.noPermission", "You do not have permission to manage Xray settings.")}
+        </Text>
+      </VStack>
+    );
+  }
 
   const observatoryJsonValue = getObsJson();
   const advancedJsonValue = getAdvancedJson();

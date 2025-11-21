@@ -1,5 +1,6 @@
 export enum AdminRole {
   Standard = "standard",
+  Reseller = "reseller",
   Sudo = "sudo",
   FullAccess = "full_access",
 }

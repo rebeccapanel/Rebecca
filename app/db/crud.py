@@ -42,7 +42,7 @@ from app.db.models import (
     template_inbounds_association,
 )
 from app.models.admin import AdminRole, AdminStatus
-from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
+from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS
 from app.utils.xray_defaults import load_legacy_xray_config
 from app.utils.credentials import (
     generate_key,
@@ -67,6 +67,7 @@ from app.models.user import (
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from config import USERS_AUTODELETE_DAYS
 from app.db.exceptions import UsersLimitReachedError
+from xray_api.types.account import XTLSFlows
 MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
@@ -479,6 +480,25 @@ class ServiceRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    @staticmethod
+    def _normalize_flow_value(flow: Optional[Union[str, XTLSFlows]]) -> Optional[str]:
+        if flow is None:
+            return None
+        try:
+            enum_value = XTLSFlows(flow)
+        except ValueError as exc:
+            raise ValueError("Invalid flow value") from exc
+        return enum_value.value or None
+
+    @staticmethod
+    def _service_flow_enum(service: Service) -> XTLSFlows:
+        if not getattr(service, "flow", None):
+            return XTLSFlows.NONE
+        try:
+            return XTLSFlows(service.flow)
+        except ValueError:
+            return XTLSFlows.NONE
+
     def assign_hosts(
         self, service: Service, assignments: Iterable[ServiceHostAssignment]
     ) -> None:
@@ -594,6 +614,12 @@ class ServiceRepository:
         if allowed_inbounds is None:
             allowed_inbounds = self.compute_allowed_inbounds(service)
 
+        target_flow = self._service_flow_enum(service)
+
+        def _apply_flow(settings_obj: ProxySettings) -> None:
+            if hasattr(settings_obj, "flow"):
+                settings_obj.flow = target_flow
+
         allowed_protocols = set(allowed_inbounds.keys())
         existing_proxies: Dict[ProxyTypes, Proxy] = {}
 
@@ -608,12 +634,26 @@ class ServiceRepository:
             allowed_tags = allowed_inbounds[proxy_type]
             proxy = existing_proxies.get(proxy_type)
             if not proxy:
-                settings_model = proxy_type.settings_model
+                settings_model = proxy_type.settings_model()
+                _apply_flow(settings_model)
                 serialized = serialize_proxy_settings(
-                    settings_model(), proxy_type, dbuser.credential_key
+                    settings_model, proxy_type, dbuser.credential_key
                 )
                 proxy = Proxy(type=proxy_type.value, settings=serialized)
                 dbuser.proxies.append(proxy)
+            else:
+                if hasattr(proxy_type.settings_model, "model_validate"):
+                    settings_obj = proxy_type.settings_model.model_validate(proxy.settings or {})
+                else:
+                    settings_obj = proxy.settings or {}
+                if isinstance(settings_obj, ProxySettings):
+                    _apply_flow(settings_obj)
+                    proxy.settings = serialize_proxy_settings(
+                        settings_obj,
+                        proxy_type,
+                        dbuser.credential_key,
+                        preserve_existing_uuid=True,
+                    )
 
             available_tags = {
                 inbound["tag"]
@@ -725,9 +765,11 @@ class ServiceRepository:
         if not payload.hosts:
             raise ValueError("Service must include at least one host")
 
+        flow_value = self._normalize_flow_value(getattr(payload, "flow", None))
         service = Service(
             name=payload.name.strip(),
             description=payload.description or None,
+            flow=flow_value,
         )
         self.db.add(service)
         self.db.flush()
@@ -761,6 +803,9 @@ class ServiceRepository:
 
         if modification.description is not None:
             service.description = modification.description or None
+
+        if "flow" in modification.model_fields_set:
+            service.flow = self._normalize_flow_value(modification.flow)
 
         if modification.admin_ids is not None:
             self.assign_admins(service, modification.admin_ids)
@@ -2771,11 +2816,30 @@ def _admin_usage_within_limit(dbadmin: Admin) -> bool:
     return usage < limit
 
 
-def _maybe_enable_admin_after_data_limit(dbadmin: Admin) -> bool:
+def _restore_admin_users_and_nodes(db: Session, dbadmin: Admin) -> None:
+    """
+    Bring back an admin's users and reload nodes after the admin is re-enabled.
+    """
+    activate_all_disabled_users(db=db, admin=dbadmin)
+    try:
+        from app.runtime import xray
+    except ImportError:
+        return
+
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
+
+
+def _maybe_enable_admin_after_data_limit(db: Session, dbadmin: Admin) -> bool:
     if not _admin_disabled_due_to_data_limit(dbadmin):
         return False
     if not _admin_usage_within_limit(dbadmin):
         return False
+
+    _restore_admin_users_and_nodes(db, dbadmin)
     dbadmin.status = AdminStatus.active
     dbadmin.disabled_reason = None
     return True
@@ -2854,11 +2918,18 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         )
 
     role = admin.role or AdminRole.standard
+    # Full-access must always carry full permissions; ignore custom overrides
+    permissions_payload = None
+    if role == AdminRole.full_access:
+        permissions_payload = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+    elif admin.permissions:
+        permissions_payload = admin.permissions.model_dump()
+
     dbadmin = Admin(
         username=admin.username,
         hashed_password=admin.hashed_password,
         role=role,
-        permissions=admin.permissions.model_dump() if admin.permissions else None,
+        permissions=permissions_payload,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
@@ -2882,9 +2953,12 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     Returns:
         Admin: The updated admin object.
     """
+    target_role = modified_admin.role or dbadmin.role
     if modified_admin.role is not None:
         dbadmin.role = modified_admin.role
-    if modified_admin.permissions is not None:
+    if target_role == AdminRole.full_access:
+        dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+    elif modified_admin.permissions is not None:
         dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
@@ -2892,10 +2966,10 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if modified_admin.telegram_id:
         dbadmin.telegram_id = modified_admin.telegram_id
     data_limit_modified = False
-    if modified_admin.data_limit is not None:
+    if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit
         data_limit_modified = True
-    if modified_admin.users_limit is not None:
+    if "users_limit" in modified_admin.model_fields_set:
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
@@ -2908,7 +2982,7 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
 
     if data_limit_modified:
         enforce_admin_data_limit(db, dbadmin)
-    _maybe_enable_admin_after_data_limit(dbadmin)
+    _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()
     db.refresh(dbadmin)
@@ -2927,9 +3001,12 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     Returns:
         Admin: The updated admin object.
     """
+    target_role = modified_admin.role or dbadmin.role
     if modified_admin.role is not None:
         dbadmin.role = modified_admin.role
-    if modified_admin.permissions is not None:
+    if target_role == AdminRole.full_access:
+        dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+    elif modified_admin.permissions is not None:
         dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
@@ -2937,10 +3014,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if modified_admin.telegram_id is not None:
         dbadmin.telegram_id = modified_admin.telegram_id
     data_limit_modified = False
-    if modified_admin.data_limit is not None:
+    if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit
         data_limit_modified = True
-    if modified_admin.users_limit is not None:
+    if "users_limit" in modified_admin.model_fields_set:
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
@@ -2953,7 +3030,7 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
     if data_limit_modified:
         enforce_admin_data_limit(db, dbadmin)
-    _maybe_enable_admin_after_data_limit(dbadmin)
+    _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()
     db.refresh(dbadmin)
@@ -3272,7 +3349,7 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     )
     db.add(usage_log)
     dbadmin.users_usage = 0
-    _maybe_enable_admin_after_data_limit(dbadmin)
+    _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()
     db.refresh(dbadmin)

@@ -67,6 +67,7 @@ def _service_to_summary(service: Service, *, host_count: int, user_count: int) -
         id=service.id,
         name=service.name,
         description=service.description,
+        flow=service.flow,
         used_traffic=int(service.used_traffic or 0),
         lifetime_used_traffic=int(service.lifetime_used_traffic or 0),
         host_count=host_count,
@@ -116,6 +117,7 @@ def _service_to_detail(db: Session, service: Service) -> ServiceDetail:
         id=service.id,
         name=service.name,
         description=service.description,
+        flow=service.flow,
         used_traffic=int(service.used_traffic or 0),
         lifetime_used_traffic=int(service.lifetime_used_traffic or 0),
         host_count=len(hosts),
@@ -198,6 +200,7 @@ def modify_service(
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
 
+    previous_flow = service.flow
     hosts_modified = modification.hosts is not None
     try:
         service, allowed_before, allowed_after = crud.update_service(db, service, modification)
@@ -211,8 +214,9 @@ def modify_service(
         and allowed_after is not None
         and allowed_before != allowed_after
     )
+    flow_changed = ("flow" in modification.model_fields_set) and previous_flow != service.flow
 
-    if hosts_modified and allowed_changed and service.id is not None:
+    if service.id is not None and ((hosts_modified and allowed_changed) or flow_changed):
         _refresh_service_users_background(service.id)
 
     db.refresh(service)

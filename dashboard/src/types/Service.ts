@@ -19,6 +19,7 @@ export type ServiceSummary = {
   id: number;
   name: string;
   description: string | null;
+  flow: string | null;
   used_traffic: number;
   lifetime_used_traffic: number;
   host_count: number;
@@ -45,6 +46,7 @@ export type ServiceHostAssignment = {
 export type ServiceCreatePayload = {
   name: string;
   description?: string | null;
+  flow?: string | null;
   admin_ids: number[];
   hosts: ServiceHostAssignment[];
 };
