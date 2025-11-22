@@ -3,7 +3,7 @@ from typing import Dict, Any
 from fastapi import HTTPException, status
 
 from app.db import GetDB, crud
-from app.reb_node import XRayConfig
+from app.reb_node import XRayConfig, state
 from app.runtime import xray
 
 
@@ -23,6 +23,7 @@ def apply_config_and_restart(payload: Dict[str, Any]) -> None:
         )
 
     xray.config = config
+    state.config = config
     with GetDB() as db:
         crud.save_xray_config(db, payload)
 

@@ -63,7 +63,13 @@ def _alter_inbound_user_sync(api: XRayAPI, inbound_tag: str, account: Account):
         pass
     try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except (xray_exceptions.EmailExistsError, xray_exceptions.ConnectionError):
+    except xray_exceptions.EmailExistsError:
+        try:
+            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
+            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
+        except Exception:
+            pass
+    except xray_exceptions.ConnectionError:
         pass
 
 
@@ -74,11 +80,18 @@ def add_user(dbuser: "DBUser", threaded: bool = True):
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
     
-    add_func = _add_user_to_inbound if threaded else _add_user_to_inbound_sync
+    add_func = _alter_inbound_user if threaded else _alter_inbound_user_sync
 
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
-            inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
+            inbound = state.config.inbounds_by_tag.get(inbound_tag)
+            if not inbound:
+                from app.db import GetDB, crud
+                from app.reb_node.config import XRayConfig
+                with GetDB() as db:
+                    raw_config = crud.get_xray_config(db)
+                state.config = XRayConfig(raw_config, api_port=state.config.api_port)
+                inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
                 settings_model = user.proxies[proxy_type]
@@ -150,7 +163,14 @@ def update_user(dbuser: "DBUser", threaded: bool = True):
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
             active_inbounds.append(inbound_tag)
-            inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
+            inbound = state.config.inbounds_by_tag.get(inbound_tag)
+            if not inbound:
+                from app.db import GetDB, crud
+                from app.reb_node.config import XRayConfig
+                with GetDB() as db:
+                    raw_config = crud.get_xray_config(db)
+                state.config = XRayConfig(raw_config, api_port=state.config.api_port)
+                inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
 
             try:
                 settings_model = user.proxies[proxy_type]
