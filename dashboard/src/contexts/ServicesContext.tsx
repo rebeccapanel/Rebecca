@@ -28,6 +28,10 @@ type ServicesStore = {
   deleteService: (id: number, payload?: ServiceDeletePayload) => Promise<void>;
   resetServiceUsage: (id: number) => Promise<ServiceDetail>;
   setServiceDetail: (service: ServiceDetail | null) => void;
+  performServiceUserAction: (
+    id: number,
+    payload: Record<string, unknown>
+  ) => Promise<{ detail: string; count?: number }>;
 };
 
 export const useServicesStore = create<ServicesStore>((set, get) => ({
@@ -117,5 +121,12 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 
   setServiceDetail(service) {
     set({ serviceDetail: service });
+  },
+
+  async performServiceUserAction(id, payload) {
+    return fetch<{ detail: string; count?: number }>(`/v2/services/${id}/users/actions`, {
+      method: "POST",
+      body: payload,
+    });
   },
 }));

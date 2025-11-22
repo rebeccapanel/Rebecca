@@ -27,7 +27,13 @@ from app.models.service import (
     ServiceUsageTimeseries,
     ServiceDeletePayload,
 )
-from app.models.user import UserResponse, UsersResponse
+from app.models.user import (
+    AdvancedUserAction,
+    BulkUsersActionRequest,
+    UserResponse,
+    UserStatus,
+    UsersResponse,
+)
 from app.reb_node import operations as core_operations
 from app.utils import responses
 
@@ -428,3 +434,92 @@ def get_service_users(
         users=[UserResponse.model_validate(user) for user in users],
         total=total,
     )
+
+
+@router.post("/{service_id}/users/actions", responses={403: responses._403})
+def perform_service_users_action(
+    service_id: int,
+    payload: BulkUsersActionRequest,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.require_active),
+):
+    service = crud.get_service(db, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    target_admin: Optional[Admin] = None
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        if payload.admin_username:
+            target_admin = crud.get_admin(db, payload.admin_username)
+            if not target_admin:
+                raise HTTPException(status_code=404, detail="Admin not found")
+            if target_admin.id not in service.admin_ids:
+                raise HTTPException(status_code=403, detail="Admin not assigned to this service")
+    else:
+        target_admin = crud.get_admin(db, admin.username)
+        if not target_admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        if target_admin.id not in service.admin_ids:
+            raise HTTPException(status_code=403, detail="Service not assigned to admin")
+
+    payload = payload.model_copy(update={"service_id": service.id})
+
+    affected = 0
+    detail = "Advanced action applied"
+    try:
+        if payload.action == AdvancedUserAction.extend_expire:
+            affected = crud.adjust_all_users_expire(
+                db, payload.days * 86400, admin=target_admin, service_id=service.id
+            )
+            detail = "Expiration dates extended"
+        elif payload.action == AdvancedUserAction.reduce_expire:
+            affected = crud.adjust_all_users_expire(
+                db, -payload.days * 86400, admin=target_admin, service_id=service.id
+            )
+            detail = "Expiration dates shortened"
+        elif payload.action == AdvancedUserAction.increase_traffic:
+            delta = max(1, int(round(payload.gigabytes * 1073741824)))
+            affected = crud.adjust_all_users_usage(
+                db, delta, admin=target_admin, service_id=service.id
+            )
+            detail = "Traffic increased for users"
+        elif payload.action == AdvancedUserAction.decrease_traffic:
+            delta = max(1, int(round(payload.gigabytes * 1073741824)))
+            affected = crud.adjust_all_users_usage(
+                db, -delta, admin=target_admin, service_id=service.id
+            )
+            detail = "Traffic decreased for users"
+        elif payload.action == AdvancedUserAction.cleanup_status:
+            affected = crud.delete_users_by_status_age(
+                db,
+                payload.statuses,
+                payload.days,
+                admin=target_admin,
+                service_id=service.id,
+            )
+            detail = "Users removed by status age"
+        elif payload.action == AdvancedUserAction.activate_users:
+            affected = crud.bulk_update_user_status(
+                db, UserStatus.active, admin=target_admin, service_id=service.id
+            )
+            detail = "Users activated"
+        elif payload.action == AdvancedUserAction.disable_users:
+            affected = crud.bulk_update_user_status(
+                db, UserStatus.disabled, admin=target_admin, service_id=service.id
+            )
+            detail = "Users disabled"
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported action")
+    except Exception as exc:
+        db.rollback()
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
+
+    return {"detail": detail, "count": affected}

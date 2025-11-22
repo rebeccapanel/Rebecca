@@ -354,12 +354,17 @@ def perform_users_bulk_action(
     affected = 0
     detail = "Advanced action applied"
     target_admin: Optional[Admin] = None
+    target_service = None
 
     if admin.role in (AdminRole.sudo, AdminRole.full_access):
         if payload.admin_username:
             target_admin = crud.get_admin(db, payload.admin_username)
             if not target_admin:
                 raise HTTPException(status_code=404, detail="Admin not found")
+        if payload.service_id is not None:
+            target_service = crud.get_service(db, payload.service_id)
+            if not target_service:
+                raise HTTPException(status_code=404, detail="Service not found")
     else:
         if "admin_username" in payload.model_fields_set:
             if payload.admin_username is None or payload.admin_username != admin.username:
@@ -370,31 +375,47 @@ def perform_users_bulk_action(
         target_admin = crud.get_admin(db, admin.username)
         if not target_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
+        if payload.service_id is not None:
+            target_service = crud.get_service(db, payload.service_id)
+            if not target_service:
+                raise HTTPException(status_code=404, detail="Service not found")
+            if target_admin.id not in target_service.admin_ids:
+                raise HTTPException(status_code=403, detail="Service not assigned to admin")
 
     try:
         if payload.action == AdvancedUserAction.extend_expire:
             affected = crud.adjust_all_users_expire(
-                db, payload.days * 86400, admin=target_admin
+                db, payload.days * 86400, admin=target_admin, service_id=payload.service_id
             )
             detail = "Expiration dates extended"
         elif payload.action == AdvancedUserAction.reduce_expire:
             affected = crud.adjust_all_users_expire(
-                db, -payload.days * 86400, admin=target_admin
+                db, -payload.days * 86400, admin=target_admin, service_id=payload.service_id
             )
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(db, delta, admin=target_admin)
+            affected = crud.adjust_all_users_usage(db, delta, admin=target_admin, service_id=payload.service_id)
             detail = "Traffic increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(db, -delta, admin=target_admin)
+            affected = crud.adjust_all_users_usage(db, -delta, admin=target_admin, service_id=payload.service_id)
             detail = "Traffic decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
             affected = crud.delete_users_by_status_age(
-                db, payload.statuses, payload.days, admin=target_admin
+                db, payload.statuses, payload.days, admin=target_admin, service_id=payload.service_id
             )
             detail = "Users removed by status age"
+        elif payload.action == AdvancedUserAction.activate_users:
+            affected = crud.bulk_update_user_status(
+                db, UserStatus.active, admin=target_admin, service_id=payload.service_id
+            )
+            detail = "Users activated"
+        elif payload.action == AdvancedUserAction.disable_users:
+            affected = crud.bulk_update_user_status(
+                db, UserStatus.disabled, admin=target_admin, service_id=payload.service_id
+            )
+            detail = "Users disabled"
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()

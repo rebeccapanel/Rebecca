@@ -2312,12 +2312,15 @@ def adjust_all_users_expire(
     db: Session,
     delta_seconds: int,
     admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
 ) -> int:
     if delta_seconds == 0:
         return 0
     query = get_user_queryset(db).filter(User.expire.isnot(None))
     if admin:
         query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
     now = datetime.utcnow().timestamp()
     count = 0
     for dbuser in query.all():
@@ -2358,12 +2361,15 @@ def adjust_all_users_usage(
     db: Session,
     delta_bytes: int,
     admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
 ) -> int:
     if delta_bytes == 0:
         return 0
     query = get_user_queryset(db)
     if admin:
         query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
     count = 0
     for dbuser in query.all():
         dbuser.used_traffic = max(dbuser.used_traffic + delta_bytes, 0)
@@ -2380,11 +2386,14 @@ def delete_users_by_status_age(
     statuses: List[UserStatus],
     days: int,
     admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
 ) -> int:
     cutoff = datetime.utcnow() - timedelta(days=days)
     query = get_user_queryset(db).filter(User.status.in_(statuses))
     if admin:
         query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
     query = query.filter(User.last_status_change.isnot(None))
     query = query.filter(User.last_status_change <= cutoff)
     candidates = query.all()
@@ -2452,6 +2461,38 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         user.last_status_change = datetime.utcnow()
 
     db.commit()
+
+
+def bulk_update_user_status(
+    db: Session,
+    target_status: UserStatus,
+    admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
+) -> int:
+    query = get_user_queryset(db)
+    if admin:
+        query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+
+    count = 0
+    for user in query.all():
+        if user.status == target_status:
+            continue
+        if target_status == UserStatus.active and _status_to_str(user.status) != UserStatus.active.value:
+            _ensure_active_user_capacity(
+                db,
+                user.admin,
+                exclude_user_ids=(user.id,),
+            )
+        user.status = target_status
+        user.last_status_change = datetime.utcnow()
+        db.add(user)
+        count += 1
+
+    if count:
+        db.commit()
+    return count
 
 
 def autodelete_expired_users(db: Session,

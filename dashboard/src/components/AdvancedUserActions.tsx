@@ -37,6 +37,7 @@ import {
   AdvancedUserActionType,
 } from "types/User";
 import { useAdminsStore } from "contexts/AdminsContext";
+import { useServicesStore } from "contexts/ServicesContext";
 
 const cleanupOptions: AdvancedUserActionStatus[] = ["expired", "limited"];
 
@@ -61,7 +62,9 @@ const AdvancedUserActions = () => {
   const [isDecreasingTraffic, setIsDecreasingTraffic] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [ownerSelection, setOwnerSelection] = useState<OwnerSelection>("my_users");
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const { admins: adminList, fetchAdmins } = useAdminsStore();
+  const servicesStore = useServicesStore();
 
   const hasScopeSelect =
     userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
@@ -70,7 +73,10 @@ const AdvancedUserActions = () => {
     if (isOpen && hasScopeSelect) {
       fetchAdmins({ limit: 200, offset: 0 });
     }
-  }, [fetchAdmins, hasScopeSelect, isOpen]);
+    if (isOpen && servicesStore.services.length === 0) {
+      servicesStore.fetchServices({ limit: 200, offset: 0 });
+    }
+  }, [fetchAdmins, hasScopeSelect, isOpen, servicesStore]);
 
   const resolveTargetAdminUsername = () => {
     if (!hasScopeSelect) {
@@ -97,6 +103,9 @@ const AdvancedUserActions = () => {
     });
   };
 
+  const resolveErrorMessage = (error?: any, fallback?: string) =>
+    error?.data?.detail || error?.message || fallback;
+
   const handleError = (message?: string) => {
     showToast(
       message ?? t("filters.advancedActions.error.general", "Unable to perform action"),
@@ -121,6 +130,7 @@ const AdvancedUserActions = () => {
         action,
         days: Math.floor(days),
         admin_username: targetAdminUsername,
+        service_id: selectedServiceId ?? undefined,
       };
       const result = await performBulkUserAction(payload);
       showToast(
@@ -131,7 +141,7 @@ const AdvancedUserActions = () => {
       );
       setExpireDays("");
     } catch (error) {
-      handleError();
+      handleError(resolveErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -154,6 +164,7 @@ const AdvancedUserActions = () => {
         action,
         gigabytes: value,
         admin_username: targetAdminUsername,
+        service_id: selectedServiceId ?? undefined,
       };
       const result = await performBulkUserAction(payload);
       showToast(
@@ -165,7 +176,7 @@ const AdvancedUserActions = () => {
       );
       setTrafficGb("");
     } catch (error) {
-      handleError();
+      handleError(resolveErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -195,6 +206,7 @@ const AdvancedUserActions = () => {
         days: Math.floor(days),
         statuses: selectedStatuses,
         admin_username: targetAdminUsername,
+        service_id: selectedServiceId ?? undefined,
       };
       const result = await performBulkUserAction(payload);
       showToast(
@@ -205,7 +217,7 @@ const AdvancedUserActions = () => {
       );
       setCleanupDays("");
     } catch (error) {
-      handleError();
+      handleError(resolveErrorMessage(error));
     } finally {
       setIsCleaning(false);
     }
@@ -287,6 +299,35 @@ const AdvancedUserActions = () => {
                 </FormControl>
               )}
 
+              <FormControl>
+                <FormLabel fontWeight="semibold">
+                  {t("filters.advancedActions.service.label", "Service scope")}
+                </FormLabel>
+                <Select
+                  value={selectedServiceId ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedServiceId(value ? Number(value) : null);
+                  }}
+                  size="sm"
+                >
+                  <option value="">
+                    {t("filters.advancedActions.service.all", "All services")}
+                  </option>
+                  {servicesStore.services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                    </option>
+                  ))}
+                </Select>
+                <FormHelperText fontSize="sm">
+                  {t(
+                    "filters.advancedActions.service.helper",
+                    "Apply these actions only to users of the selected service."
+                  )}
+                </FormHelperText>
+              </FormControl>
+
               <Stack spacing={4}>
                 <Box borderWidth="1px" borderRadius="md" px={4} py={4}>
                   <Stack spacing={2}>
@@ -305,7 +346,7 @@ const AdvancedUserActions = () => {
                       </FormLabel>
                       <NumberInput
                         value={expireDays}
-                        onChange={setExpireDays}
+                        onChange={(value) => setExpireDays(value)}
                         min={1}
                         step={1}
                         w="full"
@@ -369,7 +410,7 @@ const AdvancedUserActions = () => {
                       </FormLabel>
                       <NumberInput
                         value={trafficGb}
-                        onChange={setTrafficGb}
+                        onChange={(value) => setTrafficGb(value)}
                         min={0.01}
                         step={0.1}
                         w="full"
@@ -430,7 +471,7 @@ const AdvancedUserActions = () => {
                       </FormLabel>
                       <NumberInput
                         value={cleanupDays}
-                        onChange={setCleanupDays}
+                        onChange={(value) => setCleanupDays(value)}
                         min={1}
                         step={1}
                         w="full"

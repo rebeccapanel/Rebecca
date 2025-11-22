@@ -109,6 +109,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
         {t("users")}
       </Text>
       <HStack alignItems="center" spacing={3} flexWrap="wrap" justifyContent="flex-end">
+        {actions}
+
         {headerAd && (
           <Box
             flexShrink={0}
@@ -118,146 +120,143 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             <AdvertisementCard ad={headerAd} compact ratio={3 / 1} maxSize={520} />
           </Box>
         )}
-          <Menu>
-            <MenuButton
-              as={IconButton}
-              size="sm"
-              variant="outline"
-              icon={
-                <>
-                  <SettingsIcon />
-                </>
-              }
-              position="relative"
-            ></MenuButton>
-            <MenuList minW="170px" zIndex={99999} className="menuList">
-              {hasSettingsActions && (
-                <>
-                  {canAccessHosts && (
-                    <MenuItem
-                      maxW="170px"
-                      fontSize="sm"
-                      icon={<HostsIcon />}
-                      as={Link}
-                      to="/hosts"
-                    >
-                      {t("header.hostSettings")}
-                    </MenuItem>
-                  )}
-                  {canAccessNodes && (
-                    <MenuItem
-                      maxW="170px"
-                      fontSize="sm"
-                      icon={<NodesIcon />}
-                      onClick={onEditingNodes.bind(null, true)}
-                    >
-                      {t("header.nodeSettings")}
-                    </MenuItem>
-                  )}
-                  {canResetAllUsage && (
-                    <MenuItem
-                      maxW="170px"
-                      fontSize="sm"
-                      icon={<ResetUsageIcon />}
-                      onClick={onResetAllUsage.bind(null, true)}
-                    >
-                      {t("resetAllUsage")}
-                    </MenuItem>
-                  )}
-                </>
-              )}
-            </MenuList>
-          </Menu>
 
-          {(canOpenCoreSettings || canAccessHosts || canAccessNodes) && (
+        <Menu>
+          <MenuButton
+            as={IconButton}
+            size="sm"
+            variant="outline"
+            icon={<SettingsIcon />}
+            position="relative"
+          />
+          <MenuList minW="170px" zIndex={99999} className="menuList">
+            {hasSettingsActions && (
+              <>
+                {canAccessHosts && (
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<HostsIcon />}
+                    as={Link}
+                    to="/hosts"
+                  >
+                    {t("header.hostSettings")}
+                  </MenuItem>
+                )}
+                {canAccessNodes && (
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<NodesIcon />}
+                    onClick={onEditingNodes.bind(null, true)}
+                  >
+                    {t("header.nodeSettings")}
+                  </MenuItem>
+                )}
+                {canResetAllUsage && (
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<ResetUsageIcon />}
+                    onClick={onResetAllUsage.bind(null, true)}
+                  >
+                    {t("resetAllUsage")}
+                  </MenuItem>
+                )}
+              </>
+            )}
+          </MenuList>
+        </Menu>
+
+        {(canOpenCoreSettings || canAccessHosts || canAccessNodes) && (
+          <IconButton
+            size="sm"
+            variant="outline"
+            aria-label="core settings"
+            onClick={() => {
+              useDashboard.setState({ isEditingCore: true });
+            }}
+          >
+            <CoreSettingsIcon />
+          </IconButton>
+        )}
+
+        <GitHubStars />
+
+        <Popover
+          isOpen={actionsMenu.isOpen}
+          onOpen={actionsMenu.onOpen}
+          onClose={actionsMenu.onClose}
+          placement="bottom-end"
+        >
+          <PopoverTrigger>
             <IconButton
               size="sm"
               variant="outline"
-              aria-label="core settings"
-              onClick={() => {
-                useDashboard.setState({ isEditingCore: true });
-              }}
-            >
-              <CoreSettingsIcon />
-            </IconButton>
-          )}
-
-          <GitHubStars />
-
-              <Popover
-                isOpen={actionsMenu.isOpen}
-                onOpen={actionsMenu.onOpen}
-                onClose={actionsMenu.onClose}
-                placement="bottom-end"
-              >
-                <PopoverTrigger>
-                  <IconButton
-                    size="sm"
-                    variant="outline"
-                    icon={<MoreIcon />}
-                    aria-label="more options"
-                    onClick={() =>
-                      actionsMenu.isOpen ? actionsMenu.onClose() : actionsMenu.onOpen()
-                    }
-                  />
-                </PopoverTrigger>
-                <PopoverContent w={{ base: "90vw", sm: "56" }}>
-                  <PopoverArrow />
-                  <PopoverBody>
-                    <Stack spacing={2}>
-                      <Menu placement="left-start">
-                        <MenuButton
-                          as={Button}
-                          justifyContent="space-between"
-                          rightIcon={<LanguageIconStyled />}
-                          variant="ghost"
+              icon={<MoreIcon />}
+              aria-label="more options"
+              onClick={() =>
+                actionsMenu.isOpen ? actionsMenu.onClose() : actionsMenu.onOpen()
+              }
+            />
+          </PopoverTrigger>
+          <PopoverContent w={{ base: "90vw", sm: "56" }}>
+            <PopoverArrow />
+            <PopoverBody>
+              <Stack spacing={2}>
+                <Menu placement="left-start">
+                  <MenuButton
+                    as={Button}
+                    justifyContent="space-between"
+                    rightIcon={<LanguageIconStyled />}
+                    variant="ghost"
+                  >
+                    {t("header.language", "Language")}
+                  </MenuButton>
+                  <MenuList minW={{ base: "100%", sm: "200px" }}>
+                    {languageItems.map(({ code, label, flag }) => {
+                      const isActiveLang = i18n.language === code;
+                      return (
+                        <MenuItem
+                          key={code}
+                          onClick={() => {
+                            changeLanguage(code);
+                            actionsMenu.onClose();
+                          }}
                         >
-                          {t("header.language", "Language")}
-                        </MenuButton>
-                        <MenuList minW={{ base: "100%", sm: "200px" }}>
-                          {languageItems.map(({ code, label, flag }) => {
-                            const isActiveLang = i18n.language === code;
-                            return (
-                              <MenuItem
-                                key={code}
-                                onClick={() => {
-                                  changeLanguage(code);
-                                  actionsMenu.onClose();
-                                }}
-                              >
-                                <HStack justify="space-between" w="full">
-                                  <HStack spacing={2}>
-                                    <ReactCountryFlag
-                                      countryCode={flag}
-                                      svg
-                                      style={{ width: "16px", height: "12px" }}
-                                    />
-                                    <Text>{label}</Text>
-                                  </HStack>
-                                  {isActiveLang && <CheckIcon width={16} />}
-                                </HStack>
-                              </MenuItem>
-                            );
-                          })}
-                        </MenuList>
-                      </Menu>
-                      <Divider />
-                      <ThemeSelector trigger="menu" triggerLabel={t("header.theme", "Theme")} />
-                      <Divider />
-                      <Button
-                        colorScheme="red"
-                        leftIcon={<LogoutIcon />}
-                        justifyContent="flex-start"
-                        as={Link}
-                        to="/login"
-                        onClick={actionsMenu.onClose}
-                      >
-                        {t("header.logout")}
-                      </Button>
-                    </Stack>
-                  </PopoverBody>
-                </PopoverContent>
-              </Popover>
+                          <HStack justify="space-between" w="full">
+                            <HStack spacing={2}>
+                              <ReactCountryFlag
+                                countryCode={flag}
+                                svg
+                                style={{ width: "16px", height: "12px" }}
+                              />
+                              <Text>{label}</Text>
+                            </HStack>
+                            {isActiveLang && <CheckIcon width={16} />}
+                          </HStack>
+                        </MenuItem>
+                      );
+                    })}
+                  </MenuList>
+                </Menu>
+                <Divider />
+                <ThemeSelector trigger="menu" triggerLabel={t("header.theme", "Theme")} />
+                <Divider />
+                <Button
+                  colorScheme="red"
+                  leftIcon={<LogoutIcon />}
+                  justifyContent="flex-start"
+                  as={Link}
+                  to="/login"
+                  onClick={actionsMenu.onClose}
+                >
+                  {t("header.logout")}
+                </Button>
+              </Stack>
+            </PopoverBody>
+          </PopoverContent>
+        </Popover>
       </HStack>
     </HStack>
   );

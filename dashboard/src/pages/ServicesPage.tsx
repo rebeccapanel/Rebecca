@@ -71,6 +71,7 @@ import useGetUser from "hooks/useGetUser";
 import { formatBytes } from "utils/formatByte";
 import { Input } from "components/Input";
 import { motion } from "framer-motion";
+import ServiceUserActions from "components/ServiceUserActions";
 
 type HostOption = {
   id: number;
@@ -1101,6 +1102,9 @@ const ServicesPage: FC = () => {
                 </Stack>
               </Box>
             </SimpleGrid>
+            <Box mt={6}>
+              <ServiceUserActions serviceId={selectedService.id} />
+            </Box>
           </CardBody>
         </Card>
       )}

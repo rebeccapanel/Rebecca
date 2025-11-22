@@ -37,9 +37,17 @@ if TYPE_CHECKING:
 
 @DictStorage
 def hosts(storage: dict):
+    """
+    Reload hosts from the database using the latest in-memory Xray config.
+    Falls back to the initial config snapshot if runtime config is not set yet.
+    """
+    from app import runtime
+
     storage.clear()
+    current_config = getattr(getattr(runtime, "xray", None), "config", None) or config
+
     with GetDB() as db:
-        for inbound_tag in config.inbounds_by_tag:
+        for inbound_tag in current_config.inbounds_by_tag:
             inbound_hosts: Sequence["ProxyHost"] = crud.get_hosts(db, inbound_tag)
             sorted_hosts = sorted(
                 inbound_hosts,

@@ -133,7 +133,9 @@ export type AdvancedUserActionType =
   | "reduce_expire"
   | "increase_traffic"
   | "decrease_traffic"
-  | "cleanup_status";
+  | "cleanup_status"
+  | "activate_users"
+  | "disable_users";
 
 export type AdvancedUserActionPayload = {
   action: AdvancedUserActionType;
@@ -141,6 +143,7 @@ export type AdvancedUserActionPayload = {
   gigabytes?: number;
   statuses?: AdvancedUserActionStatus[];
   admin_username?: string | null;
+  service_id?: number;
 };
 
 export type AdvancedUserActionResponse = {

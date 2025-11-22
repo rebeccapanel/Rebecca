@@ -22,6 +22,8 @@ from app.utils.xray_config import apply_config_and_restart
 from app.reb_node import XRayConfig
 
 import os
+import shutil
+import tempfile
 from pathlib import Path
 import requests
 import platform
@@ -54,27 +56,47 @@ def _detect_asset_name() -> str:
 
 
 def _install_xray_zip(zip_bytes: bytes, target_dir: Path) -> Path:
-    """Extract Xray archive into target_dir and return executable path."""
+    """Extract Xray archive safely and return the executable path."""
     target_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-        archive.extractall(target_dir)
 
-    candidates = [
-        target_dir / "xray",
-        target_dir / "Xray",
-        target_dir / "xray.exe",
-        target_dir / "Xray.exe",
-    ]
-    exe_path = next((path for path in candidates if path.exists()), None)
-    if exe_path is None:
-        raise HTTPException(status_code=500, detail="xray binary not found in archive")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            archive.extractall(tmp_path)
+
+        candidates = [
+            tmp_path / "xray",
+            tmp_path / "Xray",
+            tmp_path / "xray.exe",
+            tmp_path / "Xray.exe",
+        ]
+        exe_tmp = next((path for path in candidates if path.exists()), None)
+        if exe_tmp is None:
+            raise HTTPException(status_code=500, detail="xray binary not found in archive")
+
+        # Copy other assets first (README, LICENSE, geo files if shipped)
+        for item in tmp_path.iterdir():
+            if item.name.lower().startswith("xray"):
+                continue
+            dest = target_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)
+
+        # Atomically swap the executable to avoid ETXTBSY while the old binary is in use.
+        dest_exe = target_dir / exe_tmp.name
+        temp_exe = dest_exe.with_name(dest_exe.name + ".new")
+        shutil.copy2(exe_tmp, temp_exe)
+        os.replace(temp_exe, dest_exe)
 
     try:
-        exe_path.chmod(exe_path.stat().st_mode | stat.S_IEXEC)
+        dest_exe.chmod(dest_exe.stat().st_mode | stat.S_IEXEC)
     except Exception:
         pass
 
-    return exe_path
+    return dest_exe
 
 
 def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:

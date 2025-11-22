@@ -57,6 +57,8 @@ class AdvancedUserAction(str, Enum):
     increase_traffic = "increase_traffic"
     decrease_traffic = "decrease_traffic"
     cleanup_status = "cleanup_status"
+    activate_users = "activate_users"
+    disable_users = "disable_users"
 
 
 class UserStatusModify(str, Enum):
@@ -84,6 +86,7 @@ class BulkUsersActionRequest(BaseModel):
     gigabytes: Optional[float] = None
     statuses: Optional[List[UserStatus]] = None
     admin_username: Optional[str] = None
+    service_id: Optional[int] = None
 
     @model_validator(mode="after")
     def _validate_action(cls, values):
@@ -117,6 +120,10 @@ class BulkUsersActionRequest(BaseModel):
             if invalid:
                 raise ValueError("cleanup_status only accepts expired or limited")
             values["statuses"] = resolved_statuses
+
+        service_id = values.get("service_id")
+        if service_id is not None and service_id <= 0:
+            raise ValueError("service_id must be a positive integer")
 
         return values
 
