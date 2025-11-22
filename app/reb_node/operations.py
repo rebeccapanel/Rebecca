@@ -36,24 +36,27 @@ def get_tls():
         }
 
 
-@threaded_function
-def _add_user_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
+def _add_user_to_inbound_sync(api: XRayAPI, inbound_tag: str, account: Account):
     try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
     except (xray_exceptions.EmailExistsError, xray_exceptions.ConnectionError):
         pass
 
 
-@threaded_function
-def _remove_user_from_inbound(api: XRayAPI, inbound_tag: str, email: str):
+_add_user_to_inbound = threaded_function(_add_user_to_inbound_sync)
+
+
+def _remove_user_from_inbound_sync(api: XRayAPI, inbound_tag: str, email: str):
     try:
         api.remove_inbound_user(tag=inbound_tag, email=email, timeout=600)
     except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
         pass
 
 
-@threaded_function
-def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
+_remove_user_from_inbound = threaded_function(_remove_user_from_inbound_sync)
+
+
+def _alter_inbound_user_sync(api: XRayAPI, inbound_tag: str, account: Account):
     try:
         api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
     except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
@@ -64,9 +67,14 @@ def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
         pass
 
 
-def add_user(dbuser: "DBUser"):
+_alter_inbound_user = threaded_function(_alter_inbound_user_sync)
+
+
+def add_user(dbuser: "DBUser", threaded: bool = True):
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
+    
+    add_func = _add_user_to_inbound if threaded else _add_user_to_inbound_sync
 
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
@@ -111,27 +119,32 @@ def add_user(dbuser: "DBUser"):
                 ):
                     account_to_add.flow = XTLSFlows.NONE
 
-                _add_user_to_inbound(state.api, inbound_tag, account_to_add)
+                add_func(state.api, inbound_tag, account_to_add)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _add_user_to_inbound(node.api, inbound_tag, account_to_add)
+                        add_func(node.api, inbound_tag, account_to_add)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
 
-def remove_user(dbuser: "DBUser"):
+def remove_user(dbuser: "DBUser", threaded: bool = True):
     email = f"{dbuser.id}.{dbuser.username}"
+    
+    remove_func = _remove_user_from_inbound if threaded else _remove_user_from_inbound_sync
 
     for inbound_tag in state.config.inbounds_by_tag:
-        _remove_user_from_inbound(state.api, inbound_tag, email)
+        remove_func(state.api, inbound_tag, email)
         for node in list(state.nodes.values()):
             if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
+                remove_func(node.api, inbound_tag, email)
 
 
-def update_user(dbuser: "DBUser"):
+def update_user(dbuser: "DBUser", threaded: bool = True):
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
+    
+    alter_func = _alter_inbound_user if threaded else _alter_inbound_user_sync
+    remove_func = _remove_user_from_inbound if threaded else _remove_user_from_inbound_sync
 
     active_inbounds = []
     for proxy_type, inbound_tags in user.inbounds.items():
@@ -178,10 +191,10 @@ def update_user(dbuser: "DBUser"):
                 ):
                     account_to_add.flow = XTLSFlows.NONE
 
-                _alter_inbound_user(state.api, inbound_tag, account_to_add)
+                alter_func(state.api, inbound_tag, account_to_add)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _alter_inbound_user(node.api, inbound_tag, account_to_add)
+                        alter_func(node.api, inbound_tag, account_to_add)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
@@ -189,10 +202,10 @@ def update_user(dbuser: "DBUser"):
         if inbound_tag in active_inbounds:
             continue
         # remove disabled inbounds
-        _remove_user_from_inbound(state.api, inbound_tag, email)
+        remove_func(state.api, inbound_tag, email)
         for node in list(state.nodes.values()):
             if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
+                remove_func(node.api, inbound_tag, email)
 
 
 def remove_node(node_id: int):

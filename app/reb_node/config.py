@@ -517,10 +517,25 @@ class XRayConfig(dict):
                         client_to_add = None
                         
                         if existing_id and existing_id is not None:
-                            client_to_add = {
-                                "email": email,
-                                **existing_settings
-                            }
+                            try:
+                                settings_obj = ProxySettings.from_dict(proxy_type_enum, existing_settings)
+                                if proxy_type_enum in UUID_PROTOCOLS:
+                                    account = proxy_type_enum.account_model(
+                                        email=email,
+                                        id=str(existing_id),
+                                        flow=getattr(settings_obj, 'flow', None)
+                                    )
+                                    client_to_add = json.loads(account.json(exclude_none=True))
+                                else:
+                                    client_to_add = {
+                                        "email": email,
+                                        **existing_settings
+                                    }
+                            except Exception as e:
+                                logger = logging.getLogger("uvicorn.error")
+                                logger.warning(f"Failed to process existing settings for user {user_id}: {e}")
+                                client_to_add = None
+
                         elif credential_key and proxy_type_enum in UUID_PROTOCOLS:
                             try:
                                 settings_obj = ProxySettings.from_dict(proxy_type_enum, existing_settings)
@@ -528,21 +543,12 @@ class XRayConfig(dict):
                                     settings_obj, proxy_type_enum, credential_key
                                 )
                                 
-                                client_to_add = {
-                                    "email": email,
-                                    **existing_settings.copy()
-                                }
+                                account = proxy_type_enum.account_model(
+                                    email=email,
+                                    **runtime_settings
+                                )
+                                client_to_add = json.loads(account.json(exclude_none=True))
                                 
-                                uuid_value = runtime_settings.get('id')
-                                if uuid_value:
-                                    if isinstance(uuid_value, str):
-                                        client_to_add['id'] = uuid_value
-                                    else:
-                                        client_to_add['id'] = str(uuid_value)
-                                
-                                for key, value in runtime_settings.items():
-                                    if key != 'id':
-                                        client_to_add[key] = value
                             except Exception as e:
                                 logger = logging.getLogger("uvicorn.error")
                                 logger.warning(f"Failed to generate UUID from key for user {user_id}: {e}")
@@ -561,7 +567,7 @@ class XRayConfig(dict):
                                     or
                                     inbound.get('header_type') == 'http'
                             ):
-                                del client_to_add['flow']
+                                client_to_add['flow'] = ""
 
                             clients.append(client_to_add)
                         else:
