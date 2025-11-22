@@ -20,7 +20,9 @@ def generate_certificate():
     cert = crypto.X509()
     cert.get_subject().CN = "rebeccapanel"
     cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(100*365*24*60*60)
+    # Use a shorter validity to avoid overflowing 32-bit ints on platforms
+    # when using OpenSSL wrapper functions (e.g., 10 years).
+    cert.gmtime_adj_notAfter(10*365*24*60*60)
     cert.set_issuer(cert.get_subject())
     cert.set_pubkey(k)
     cert.sign(k, 'sha512')

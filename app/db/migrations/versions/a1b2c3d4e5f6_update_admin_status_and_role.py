@@ -64,7 +64,18 @@ def upgrade() -> None:
                 )
             )
         op.execute("UPDATE admins SET role = COALESCE(role, 'standard')")
-        op.alter_column("admins", "role", server_default=None)
+        # SQLite does not support DROP DEFAULT via ALTER COLUMN,
+        # use batch alter which recreates the table where necessary.
+        if dialect == "sqlite":
+            with op.batch_alter_table("admins") as batch:
+                batch.alter_column(
+                    "role",
+                    existing_type=role_type,
+                    existing_nullable=False,
+                    server_default=None,
+                )
+        else:
+            op.alter_column("admins", "role", server_default=None)
 
     if "is_sudo" in columns:
         op.execute("UPDATE admins SET role = 'sudo' WHERE is_sudo")

@@ -12,6 +12,8 @@ from fastapi.routing import APIRoute
 
 from config import ALLOWED_ORIGINS, DOCS, XRAY_SUBSCRIPTION_PATH
 from app import runtime
+from app.db import Session, crud
+from app.models.user import UserStatus
 from app.utils.system import register_scheduler_jobs
 
 __version__ = "0.0.7"
@@ -86,6 +88,22 @@ def use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
+def _sync_all_users_to_xray() -> None:
+    xray_instance = runtime.xray
+    if xray_instance is None or not getattr(xray_instance, "operations", None):
+        return
+    db = Session()
+    try:
+        query = crud.get_user_queryset(db, eager_load=True)
+        for user in query:
+            if user.status in (UserStatus.active, UserStatus.on_hold):
+                xray_instance.operations.update_user(dbuser=user)
+            else:
+                xray_instance.operations.remove_user(dbuser=user)
+    finally:
+        db.close()
+
+
 if not SKIP_RUNTIME_INIT:
     use_route_names_as_operation_ids(app)
 
@@ -100,6 +118,7 @@ if not SKIP_RUNTIME_INIT:
                 f"you can't use /{XRAY_SUBSCRIPTION_PATH}/ as subscription path it reserved for {app.title}"
             )
         scheduler.start()
+        _sync_all_users_to_xray()
 
 
     @app.on_event("shutdown")

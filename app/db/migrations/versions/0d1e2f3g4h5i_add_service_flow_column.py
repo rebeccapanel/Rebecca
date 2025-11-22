@@ -51,7 +51,19 @@ def upgrade() -> None:
                 server_default="standard",
             )
         op.execute("UPDATE admins SET role = COALESCE(role, 'standard')")
-        op.alter_column("admins", "role", server_default=None)
+        # SQLite does not support ALTER TABLE ... ALTER COLUMN
+        # Use a batch_alter_table which recreates the table and is supported
+        # There are different SQL dialects which handle removing defaults differently
+        if dialect == "sqlite":
+            with op.batch_alter_table("admins") as batch:
+                batch.alter_column(
+                    "role",
+                    existing_type=NEW_ROLE_ENUM if dialect != "sqlite" else sa.String(length=32),
+                    existing_nullable=False,
+                    server_default=None,
+                )
+        else:
+            op.alter_column("admins", "role", server_default=None)
 
 
 def downgrade() -> None:
