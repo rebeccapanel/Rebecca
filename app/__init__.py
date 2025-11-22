@@ -12,8 +12,6 @@ from fastapi.routing import APIRoute
 
 from config import ALLOWED_ORIGINS, DOCS, XRAY_SUBSCRIPTION_PATH
 from app import runtime
-from app.db import Session, crud
-from app.models.user import UserStatus
 from app.utils.system import register_scheduler_jobs
 
 __version__ = "0.0.7"
@@ -88,22 +86,6 @@ def use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
-def _sync_all_users_to_xray() -> None:
-    xray_instance = runtime.xray
-    if xray_instance is None or not getattr(xray_instance, "operations", None):
-        return
-    db = Session()
-    try:
-        query = crud.get_user_queryset(db, eager_load=True)
-        for user in query:
-            if user.status in (UserStatus.active, UserStatus.on_hold):
-                xray_instance.operations.update_user(dbuser=user)
-            else:
-                xray_instance.operations.remove_user(dbuser=user)
-    finally:
-        db.close()
-
-
 if not SKIP_RUNTIME_INIT:
     use_route_names_as_operation_ids(app)
 
@@ -118,63 +100,11 @@ if not SKIP_RUNTIME_INIT:
                 f"you can't use /{XRAY_SUBSCRIPTION_PATH}/ as subscription path it reserved for {app.title}"
             )
         scheduler.start()
-        _sync_all_users_to_xray()
 
 
     @app.on_event("shutdown")
     def on_shutdown():
-        if scheduler is None:
-            return
-        logger.info("Shutting down APScheduler gracefully...")
-        try:
-            scheduler.pause()
-        except Exception:
-            pass
-        try:
-            scheduler.remove_all_jobs()
-        except Exception:
-            pass
-        try:
-            scheduler.shutdown(wait=True)
-        except Exception:
-            try:
-                scheduler.shutdown(wait=False)
-            except Exception:
-                pass
-
-    # Additional safeguard - ensure the scheduler stops if interpreter exits
-    # unexpectedly (e.g., during reload/terminate). This helps prevent
-    # "cannot schedule new futures after interpreter shutdown" errors.
-    import atexit
-    import signal
-
-    def _shutdown_scheduler():
-        if scheduler is None:
-            return
-        logger.info("Scheduler shutdown via atexit/signal handler")
-        try:
-            scheduler.remove_all_jobs()
-        except Exception:
-            pass
-        try:
-            scheduler.shutdown(wait=False)
-        except Exception:
-            pass
-
-    atexit.register(_shutdown_scheduler)
-
-    def _signal_shutdown(signum, frame):
-        try:
-            _shutdown_scheduler()
-        finally:
-            signal.signal(signum, signal.SIG_DFL)
-            raise SystemExit(0)
-
-    try:
-        signal.signal(signal.SIGTERM, _signal_shutdown)
-        signal.signal(signal.SIGINT, _signal_shutdown)
-    except Exception:
-        pass
+        scheduler.shutdown()
 
 
     @app.exception_handler(RequestValidationError)
