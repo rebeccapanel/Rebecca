@@ -70,6 +70,8 @@ const AdvancedUserActions = () => {
 
   const hasScopeSelect =
     userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+  const canSeeServiceControls = hasScopeSelect;
+  const canUseAdvanced = Boolean(userData.permissions?.users?.advanced_actions ?? true);
 
   useEffect(() => {
     if (isOpen && hasScopeSelect) {
@@ -264,6 +266,10 @@ const AdvancedUserActions = () => {
     );
   };
 
+  if (!canUseAdvanced) {
+    return null;
+  }
+
   return (
     <>
       <Button
@@ -334,81 +340,85 @@ const AdvancedUserActions = () => {
                 </FormControl>
               )}
 
-              <FormControl>
-                <FormLabel fontWeight="semibold">
-                  {t("filters.advancedActions.service.label", "Service scope")}
-                </FormLabel>
-                <Select
-                  value={selectedServiceId ?? ""}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSelectedServiceId(value ? Number(value) : null);
-                  }}
-                  size="sm"
-                >
-                  <option value="">
-                    {t("filters.advancedActions.service.all", "All services")}
-                  </option>
-                  {servicesStore.services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                    </option>
-                  ))}
-                </Select>
-                <FormHelperText fontSize="sm">
-                  {t(
-                    "filters.advancedActions.service.helper",
-                    "Apply these actions only to users of the selected service."
-                  )}
-                </FormHelperText>
-              </FormControl>
-
-              <Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-                <Stack spacing={3}>
-                  <Text fontWeight="semibold">
-                    {t(
-                      "filters.advancedActions.serviceChange.title",
-                      "Change users' service"
-                    )}
-                  </Text>
-                  <Text fontSize="sm" color="gray.500">
-                    {t(
-                      "filters.advancedActions.serviceChange.helper",
-                      "Move the filtered users to another service."
-                    )}
-                  </Text>
-                  <Select
-                    placeholder={t(
-                      "filters.advancedActions.serviceChange.placeholder",
-                      "Select target service"
-                    )}
-                    value={targetServiceId ?? ""}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setTargetServiceId(value ? Number(value) : null);
-                    }}
-                    size="sm"
-                  >
-                    {servicesStore.services.map((service) => (
-                      <option key={service.id} value={service.id}>
-                        {service.name}
+              {canSeeServiceControls && (
+                <>
+                  <FormControl>
+                    <FormLabel fontWeight="semibold">
+                      {t("filters.advancedActions.service.label", "Service scope")}
+                    </FormLabel>
+                    <Select
+                      value={selectedServiceId ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSelectedServiceId(value ? Number(value) : null);
+                      }}
+                      size="sm"
+                    >
+                      <option value="">
+                        {t("filters.advancedActions.service.all", "All services")}
                       </option>
-                    ))}
-                  </Select>
-                  <Button
-                    colorScheme="primary"
-                    size="sm"
-                    alignSelf="flex-start"
-                    isLoading={isChangingService}
-                    onClick={handleChangeService}
-                  >
-                    {t(
-                      "filters.advancedActions.serviceChange.button",
-                      "Move to service"
-                    )}
-                  </Button>
-                </Stack>
-              </Box>
+                      {servicesStore.services.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <FormHelperText fontSize="sm">
+                      {t(
+                        "filters.advancedActions.service.helper",
+                        "Apply these actions only to users of the selected service."
+                      )}
+                    </FormHelperText>
+                  </FormControl>
+
+                  <Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+                    <Stack spacing={3}>
+                      <Text fontWeight="semibold">
+                        {t(
+                          "filters.advancedActions.serviceChange.title",
+                          "Change users' service"
+                        )}
+                      </Text>
+                      <Text fontSize="sm" color="gray.500">
+                        {t(
+                          "filters.advancedActions.serviceChange.helper",
+                          "Move the filtered users to another service."
+                        )}
+                      </Text>
+                      <Select
+                        placeholder={t(
+                          "filters.advancedActions.serviceChange.placeholder",
+                          "Select target service"
+                        )}
+                        value={targetServiceId ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setTargetServiceId(value ? Number(value) : null);
+                        }}
+                        size="sm"
+                      >
+                        {servicesStore.services.map((service) => (
+                          <option key={service.id} value={service.id}>
+                            {service.name}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        colorScheme="primary"
+                        size="sm"
+                        alignSelf="flex-start"
+                        isLoading={isChangingService}
+                        onClick={handleChangeService}
+                      >
+                        {t(
+                          "filters.advancedActions.serviceChange.button",
+                          "Move to service"
+                        )}
+                      </Button>
+                    </Stack>
+                  </Box>
+                </>
+              )}
 
               <Stack spacing={4}>
                 <Box borderWidth="1px" borderRadius="md" px={4} py={4}>

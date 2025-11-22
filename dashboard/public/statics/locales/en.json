@@ -83,6 +83,7 @@
   "admins.permissions.maxDataPerUser": "Max data per user (GB)",
   "admins.permissions.modalTitle": "Edit permissions for {{username}}",
   "admins.permissions.nextPlan": "Access next plan",
+  "admins.permissions.advancedActions": "Use advanced actions",
   "admins.permissions.resetToDefaults": "Reset to defaults",
   "admins.permissions.resetUsage": "Reset usage",
   "admins.permissions.revoke": "Revoke access",

@@ -238,6 +238,8 @@ type BaseFormFields = Pick<
 
   | "note"
 
+  | "credential_key"
+
   | "proxies"
 
   | "inbounds"
@@ -247,6 +249,10 @@ type BaseFormFields = Pick<
 
 
 export type FormType = BaseFormFields & {
+
+  credential_key: string | null;
+
+  manual_key_entry: boolean;
 
   service_id: number | null;
 
@@ -290,6 +296,10 @@ const formatUser = (user: User): FormType => {
 
     service_id: user.service_id ?? null,
 
+    credential_key: user.credential_key ?? null,
+
+    manual_key_entry: false,
+
     next_plan_enabled: Boolean(nextPlan),
 
     next_plan_data_limit: nextPlan?.data_limit
@@ -317,6 +327,10 @@ const getDefaultValues = (): FormType => {
     ip_limit: null,
 
     expire: null,
+
+    credential_key: null,
+
+    manual_key_entry: false,
 
     username: "",
 
@@ -359,6 +373,8 @@ const getDefaultValues = (): FormType => {
 };
 
 
+
+const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 
 const baseSchema = {
 
@@ -510,6 +526,19 @@ const baseSchema = {
       return Number.isFinite(value) ? value : null;
     }),
 
+  manual_key_entry: z.boolean().default(false),
+
+  credential_key: z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((value) => {
+      if (!value || typeof value !== "string") {
+        return null;
+      }
+      const trimmed = value.trim();
+      return trimmed === "" ? null : trimmed;
+    })
+    .nullable(),
+
 };
 
 
@@ -568,7 +597,27 @@ const schema = z.discriminatedUnion("status", [
 
   }),
 
-]);
+]).superRefine((values, ctx) => {
+  if (!values.manual_key_entry) {
+    return;
+  }
+  const key = values.credential_key;
+  if (!key) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["credential_key"],
+      message: "Credential key is required when manual entry is enabled.",
+    });
+    return;
+  }
+  if (!CREDENTIAL_KEY_REGEX.test(key)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["credential_key"],
+      message: "Credential key must be a 32-character hexadecimal string.",
+    });
+  }
+});
 
 
 
@@ -626,6 +675,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
     resolver: zodResolver(schema),
 
+  });
+
+
+  const manualKeyEntryEnabled = useWatch({
+    control: form.control,
+    name: "manual_key_entry",
   });
 
   const expireInitialValue = form.getValues("expire");
@@ -968,6 +1023,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
       ip_limit,
 
+      credential_key,
+
+      manual_key_entry,
+
       ...rest
 
     } = values;
@@ -1056,6 +1115,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
           status === "on_hold" ? on_hold_expire_duration : null,
 
       };
+
+      if (manual_key_entry && credential_key) {
+        serviceBody.credential_key = credential_key;
+      }
 
       if (nextPlanPayload) {
 
@@ -1160,6 +1223,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
         status === "on_hold" ? on_hold_expire_duration : null,
 
     };
+
+    if (manual_key_entry && credential_key) {
+      body.credential_key = credential_key;
+    }
 
 
 
@@ -2379,6 +2446,62 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
                 </GridItem>
                 )}
+
+                <GridItem colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}>
+                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                    <FormLabel mb={0}>
+                      {t(
+                        "userDialog.allowManualKeyEntry",
+                        "Allow custom credential key entry"
+                      )}
+                    </FormLabel>
+                    <Controller
+                      name="manual_key_entry"
+                      control={form.control}
+                      render={({ field }) => (
+                        <Switch
+                          size="sm"
+                          colorScheme="primary"
+                          isChecked={field.value}
+                          onChange={(event) => field.onChange(event.target.checked)}
+                          isDisabled={disabled}
+                        />
+                      )}
+                    />
+                  </FormControl>
+                  {manualKeyEntryEnabled && (
+                    <FormControl
+                      mt={4}
+                      isInvalid={Boolean(form.formState.errors.credential_key)}
+                    >
+                      <FormLabel>
+                        {t("userDialog.credentialKeyLabel", "Credential key")}
+                      </FormLabel>
+                      <Controller
+                        name="credential_key"
+                        control={form.control}
+                        render={({ field }) => (
+                          <ChakraInput
+                            placeholder="35e4e39c7d5c4f4b8b71558e4f37ff53"
+                            maxLength={32}
+                            value={field.value ?? ""}
+                            onChange={(event) => field.onChange(event.target.value)}
+                            isDisabled={disabled}
+                          />
+                        )}
+                      />
+                      <FormHelperText>
+                        {t(
+                          "userDialog.manualKeyHelper",
+                          "Enter a 32-character hexadecimal credential key."
+                        )}
+                      </FormHelperText>
+                      <FormErrorMessage>
+                        {form.formState.errors.credential_key?.message}
+                      </FormErrorMessage>
+                    </FormControl>
+                  )}
+                </GridItem>
 
                 {isEditing && usageVisible && (
 

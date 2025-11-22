@@ -447,6 +447,8 @@ def perform_service_users_action(
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
 
+    admin.ensure_user_permission(UserPermission.advanced_actions)
+
     target_admin: Optional[Admin] = None
     if admin.role in (AdminRole.sudo, AdminRole.full_access):
         if payload.admin_username:

@@ -1,6 +1,4 @@
 import base64
-import random
-import secrets
 import string
 from collections import defaultdict
 from datetime import datetime as dt
@@ -318,23 +316,37 @@ def process_inbounds_and_tags(
         sni = ""
         sni_list = host["sni"] or inbound["sni"]
         if sni_list:
-            salt = secrets.token_hex(8)
-            sni = random.choice(sni_list).replace("*", salt)
+            # Use first SNI to ensure consistent configs
+            sni = sni_list[0]
+            if "*" in sni:
+                # Generate a stable salt based on username for wildcards
+                username = format_variables.get("USERNAME", "user")
+                salt = username[:8].ljust(8, "0")
+                sni = sni.replace("*", salt)
 
         if sids := inbound.get("sids"):
-            inbound["sid"] = random.choice(sids)
+            # Use first SID to ensure consistent configs
+            inbound["sid"] = sids[0]
 
         req_host = ""
         req_host_list = host["host"] or inbound["host"]
         if req_host_list:
-            salt = secrets.token_hex(8)
-            req_host = random.choice(req_host_list).replace("*", salt)
+            # Use first host to ensure consistent configs
+            req_host = req_host_list[0]
+            if "*" in req_host:
+                username = format_variables.get("USERNAME", "user")
+                salt = username[:8].ljust(8, "0")
+                req_host = req_host.replace("*", salt)
 
         address = ""
         address_list = host["address"]
         if host["address"]:
-            salt = secrets.token_hex(8)
-            address = random.choice(address_list).replace("*", salt)
+            # Use first address to ensure consistent configs
+            address = address_list[0]
+            if "*" in address:
+                username = format_variables.get("USERNAME", "user")
+                salt = username[:8].ljust(8, "0")
+                address = address.replace("*", salt)
 
         if host["path"] is not None:
             path = host["path"].format_map(format_variables)

@@ -1,5 +1,5 @@
 import re
-from distutils.version import LooseVersion
+from packaging.version import Version as LooseVersion
 from typing import Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response

@@ -1164,5 +1164,6 @@
   "viewHistory": "نمایش تاریخچه",
   "xrayStatus": "وضعیت ایکس‌ری",
   "xrayUptime": "آپتایم ایکس‌ری",
-  "yourUsage": "مصرف شما"
+  "yourUsage": "مصرف شما",
+  "admins.permissions.advancedActions": "اجازه استفاده از عملیات پیشرفته"
 }

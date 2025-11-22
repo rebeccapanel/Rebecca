@@ -327,8 +327,14 @@ class ProxyInboundRepository:
         return inbound.hosts
 
     def bulk_replace_hosts(
-        self, inbound_tag: str, modified_hosts: List[ProxyHostModify]
+        self,
+        inbound_tag: str,
+        modified_hosts: List[ProxyHostModify],
+        kept_ids: Optional[Set[int]] = None,
     ) -> Tuple[List[ProxyHost], List[Service]]:
+        if kept_ids is None:
+            kept_ids = set()
+
         inbound = self.get_or_create(inbound_tag)
         existing_by_id: Dict[int, ProxyHost] = {
             host.id: host for host in inbound.hosts if host.id is not None
@@ -343,6 +349,8 @@ class ProxyInboundRepository:
 
             if host_payload.id is not None:
                 db_host = existing_by_id.pop(host_payload.id, None)
+                if db_host is None:
+                    db_host = self.db.query(ProxyHost).filter(ProxyHost.id == host_payload.id).first()
 
             if db_host is None:
                 db_host = ProxyHost(inbound=inbound)
@@ -355,9 +363,18 @@ class ProxyInboundRepository:
 
         # Remove hosts that no longer exist
         removed_hosts = list(existing_by_id.values())
-        if removed_hosts:
-            affected_services.update(_detach_hosts_from_services(self.db, removed_hosts))
-            for host in removed_hosts:
+        
+        hosts_to_delete = []
+        for h in removed_hosts:
+            if h.id not in kept_ids:
+                hosts_to_delete.append(h)
+            else:
+                # Keep it in the inbound to prevent orphan deletion
+                new_hosts.append(h)
+
+        if hosts_to_delete:
+            affected_services.update(_detach_hosts_from_services(self.db, hosts_to_delete))
+            for host in hosts_to_delete:
                 self.db.delete(host)
 
         inbound.hosts = new_hosts
@@ -425,9 +442,14 @@ def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[Proxy
 
 
 def update_hosts(
-    db: Session, inbound_tag: str, modified_hosts: List[ProxyHostModify]
+    db: Session,
+    inbound_tag: str,
+    modified_hosts: List[ProxyHostModify],
+    kept_ids: Optional[Set[int]] = None,
 ) -> Tuple[List[ProxyHost], List[User]]:
-    hosts, affected_services = ProxyInboundRepository(db).bulk_replace_hosts(inbound_tag, modified_hosts)
+    hosts, affected_services = ProxyInboundRepository(db).bulk_replace_hosts(
+        inbound_tag, modified_hosts, kept_ids=kept_ids
+    )
 
     users_to_refresh: Dict[int, User] = {}
     if affected_services:
@@ -1076,6 +1098,21 @@ def _ensure_admin_service_link(db: Session, admin: Optional[Admin], service: Ser
     _service_repo(db).ensure_admin_service_link(admin, service)
 
 
+def refresh_service_users(db: Session, service_id: int) -> List[User]:
+    """
+    Reapply the service definition to all users belonging to it, regenerating proxies.
+    """
+    repo = _service_repo(db)
+    service = repo.get(service_id)
+    if not service:
+        return []
+    allowed = repo.get_allowed_inbounds(service)
+    refreshed = repo.refresh_users(service, allowed)
+    if refreshed:
+        db.commit()
+    return refreshed
+
+
 def _apply_service_to_user(
     db: Session,
     dbuser: User,
@@ -1200,6 +1237,20 @@ def get_user_queryset(db: Session, eager_load: bool = True) -> Query:
         query = query.options(*options)
     
     return query
+
+
+def count_users(
+    db: Session,
+    admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
+) -> int:
+    """Return a lightweight count of users respecting admin/service filters."""
+    query = get_user_queryset(db, eager_load=False)
+    if admin:
+        query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+    return query.count()
 
 
 def _next_plan_table_exists(db: Session) -> bool:
@@ -1506,7 +1557,7 @@ def get_user_usage_timeseries(
     if current > end_aligned:
         return []
 
-    _ensure_master_state(db, for_update=False)
+    master = _ensure_master_state(db, for_update=False)
     node_lookup: Dict[Optional[int], str] = {None: MASTER_NODE_NAME}
     for node_id, node_name in db.query(Node.id, Node.name).all():
         node_lookup[node_id] = node_name
@@ -2408,6 +2459,32 @@ def move_users_to_service(
     if count:
         db.commit()
     return count
+
+
+def move_users_to_service_fast(
+    db: Session,
+    target_service: Service,
+    admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
+) -> int:
+    """
+    Move users with a single bulk UPDATE for very large batches.
+    Only touches users whose service differs from the target.
+    """
+    query = get_user_queryset(db, eager_load=False)
+    if admin:
+        query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+    query = query.filter(or_(User.service_id.is_(None), User.service_id != target_service.id))
+
+    affected = query.update(
+        {User.service_id: target_service.id},
+        synchronize_session=False,
+    )
+    if affected:
+        db.commit()
+    return affected
 
 
 def adjust_all_users_limit(

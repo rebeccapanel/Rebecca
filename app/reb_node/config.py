@@ -465,8 +465,7 @@ class XRayConfig(dict):
                 db_models.excluded_inbounds_association,
                 db_models.Proxy.id == db_models.excluded_inbounds_association.c.proxy_id
             ).filter(
-                db_models.User.status.in_([UserStatus.active, UserStatus.on_hold]),
-                db_models.User.service_id.isnot(None)
+                db_models.User.status.in_([UserStatus.active, UserStatus.on_hold])
             ).group_by(
                 func.lower(db_models.Proxy.type),
                 db_models.User.id,

@@ -351,6 +351,8 @@ def perform_users_bulk_action(
     admin: Admin = Depends(Admin.require_active),
 ):
     """Perform advanced bulk operations across all users."""
+    admin.ensure_user_permission(UserPermission.advanced_actions)
+
     affected = 0
     detail = "Advanced action applied"
     target_admin: Optional[Admin] = None
@@ -436,12 +438,24 @@ def perform_users_bulk_action(
         elif payload.action == AdvancedUserAction.change_service:
             if not destination_service:
                 raise HTTPException(status_code=400, detail="Target service not provided")
-            affected = crud.move_users_to_service(
-                db,
-                destination_service,
-                admin=target_admin,
-                service_id=payload.service_id,
-            )
+            user_count = crud.count_users(db, admin=target_admin, service_id=payload.service_id)
+            use_fast_path = payload.service_id is None or user_count > 1000
+            if use_fast_path:
+                affected = crud.move_users_to_service_fast(
+                    db,
+                    destination_service,
+                    admin=target_admin,
+                    service_id=payload.service_id,
+                )
+            else:
+                affected = crud.move_users_to_service(
+                    db,
+                    destination_service,
+                    admin=target_admin,
+                    service_id=payload.service_id,
+                )
+            if destination_service.id is not None:
+                crud.refresh_service_users(db, destination_service.id)
             detail = "Users moved to target service"
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)

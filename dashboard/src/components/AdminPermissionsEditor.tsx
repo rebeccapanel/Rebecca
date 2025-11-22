@@ -46,6 +46,10 @@ const userPermissionKeys: Array<{ key: UserPermissionToggle; label: string }> = 
     label: "admins.permissions.unlimitedExpire",
   },
   { key: UserPermissionToggle.AllowNextPlan, label: "admins.permissions.nextPlan" },
+  {
+    key: UserPermissionToggle.AdvancedActions,
+    label: "admins.permissions.advancedActions",
+  },
 ];
 
 const adminManagementKeys: Array<{ key: AdminManagementPermission; label: string }> = [

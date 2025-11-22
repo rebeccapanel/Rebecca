@@ -8,7 +8,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func
 
 from app import __version__
@@ -433,6 +433,7 @@ def get_hosts(
 )
 def modify_hosts(
     modified_hosts: Dict[str, List[ProxyHost]],
+    bg: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -443,9 +444,17 @@ def modify_hosts(
                 status_code=400, detail=f"Inbound {inbound_tag} doesn't exist"
             )
 
+    # Collect all host IDs that are present in the payload to prevent deletion
+    # when moving hosts between inbounds.
+    all_kept_ids = set()
+    for hosts in modified_hosts.values():
+        for host in hosts:
+            if host.id is not None:
+                all_kept_ids.add(host.id)
+
     users_to_refresh: Dict[int, object] = {}
     for inbound_tag, hosts in modified_hosts.items():
-        _, refreshed_users = crud.update_hosts(db, inbound_tag, hosts)
+        _, refreshed_users = crud.update_hosts(db, inbound_tag, hosts, kept_ids=all_kept_ids)
         for user in refreshed_users:
             if user.id is not None:
                 users_to_refresh[user.id] = user
@@ -453,7 +462,7 @@ def modify_hosts(
     xray.hosts.update()
 
     for user in users_to_refresh.values():
-        xray.operations.update_user(dbuser=user)
+        bg.add_task(xray.operations.update_user, dbuser=user)
 
     return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
 

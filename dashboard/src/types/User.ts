@@ -81,6 +81,7 @@ export type UserCreate = Pick<
   | "username"
   | "status"
   | "note"
+  | "credential_key"
 > & {
   next_plan?: NextPlan | null;
 };
@@ -99,6 +100,7 @@ export type UserCreateWithService = Pick<
   service_id: number;
   auto_delete_in_days?: number | null;
   next_plan?: NextPlan | null;
+  credential_key?: string;
 };
 
 export type UserApi = {

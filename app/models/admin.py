@@ -37,6 +37,7 @@ class UserPermission(str, Enum):
     allow_unlimited_data = "allow_unlimited_data"
     allow_unlimited_expire = "allow_unlimited_expire"
     allow_next_plan = "allow_next_plan"
+    advanced_actions = "advanced_actions"
 
 
 class AdminManagementPermission(str, Enum):
@@ -64,6 +65,7 @@ class UserPermissionSettings(BaseModel):
     allow_unlimited_data: bool = False
     allow_unlimited_expire: bool = False
     allow_next_plan: bool = False
+    advanced_actions: bool = True
     max_data_limit_per_user: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,6 +129,7 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             allow_unlimited_data=True,
             allow_unlimited_expire=True,
             allow_next_plan=True,
+            advanced_actions=True,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
