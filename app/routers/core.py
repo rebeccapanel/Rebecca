@@ -17,7 +17,6 @@ from app.models.warp import (
 )
 from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
-from app.utils.maintenance import maintenance_request
 from app.utils.system import get_public_ip, get_public_ipv6
 from app.utils.xray_config import apply_config_and_restart
 from app.reb_node import XRayConfig
@@ -25,11 +24,80 @@ from app.reb_node import XRayConfig
 import os
 from pathlib import Path
 import requests
+import platform
+import zipfile
+import io
+import stat
+import shutil
 
 router = APIRouter(tags=["Core"], prefix="/api", responses={401: responses._401})
 
 GITHUB_RELEASES = "https://api.github.com/repos/XTLS/Xray-core/releases"
 GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"
+
+
+def _detect_asset_name() -> str:
+    sys_name = platform.system().lower()
+    arch = platform.machine().lower()
+    if sys_name.startswith("linux"):
+        if arch in ("x86_64", "amd64"):
+            return "Xray-linux-64.zip"
+        if arch in ("aarch64", "arm64"):
+            return "Xray-linux-arm64-v8a.zip"
+        if arch in ("armv7l", "armv7"):
+            return "Xray-linux-arm32-v7a.zip"
+        if arch in ("armv6l",):
+            return "Xray-linux-arm32-v6.zip"
+        if arch in ("riscv64",):
+            return "Xray-linux-riscv64.zip"
+    raise HTTPException(status_code=400, detail="Unsupported platform for Xray update")
+
+
+def _install_xray_zip(zip_bytes: bytes, target_dir: Path) -> Path:
+    """Extract Xray archive into target_dir and return executable path."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        archive.extractall(target_dir)
+
+    candidates = [
+        target_dir / "xray",
+        target_dir / "Xray",
+        target_dir / "xray.exe",
+        target_dir / "Xray.exe",
+    ]
+    exe_path = next((path for path in candidates if path.exists()), None)
+    if exe_path is None:
+        raise HTTPException(status_code=500, detail="xray binary not found in archive")
+
+    try:
+        exe_path.chmod(exe_path.stat().st_mode | stat.S_IEXEC)
+    except Exception:
+        pass
+
+    return exe_path
+
+
+def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
+    """Download geo files into dest and return saved metadata."""
+    dest.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for item in files:
+        name = (item.get("name") or "").strip()
+        url = (item.get("url") or "").strip()
+        if not name or not url:
+            raise HTTPException(status_code=422, detail="Each file must include name and url.")
+        try:
+            r = requests.get(url, timeout=120)
+            r.raise_for_status()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to download {name}: {exc}")
+        try:
+            path = dest / name
+            path.write_bytes(r.content)
+            saved.append({"name": name, "path": str(path)})
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to save {name}: {exc}")
+    return saved
 
 
 @router.websocket("/core/logs")
@@ -189,8 +257,37 @@ def update_core_version(
     tag = payload.get("version")
     if not tag or not isinstance(tag, str):
         raise HTTPException(422, detail="version is required (e.g. v1.8.11)")
-    maintenance_request("POST", "/xray/update-core", json={"version": tag})
-    xray.core.version = xray.core.get_version()
+
+    persist_env = bool(payload.get("persist_env", True))
+
+    asset_name = _detect_asset_name()
+    url = f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{asset_name}"
+    try:
+        resp = requests.get(url, timeout=180)
+        resp.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(502, detail=f"Failed to download Xray release: {exc}")
+
+    base_dir = Path("/var/lib/rebecca/xray-core")
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    if xray.core.started:
+        try:
+            xray.core.stop()
+        except Exception:
+            pass
+
+    exe_path = _install_xray_zip(resp.content, base_dir)
+
+    if persist_env:
+        _update_env_envfile(Path(".env"), "XRAY_EXECUTABLE_PATH", str(exe_path))
+
+    xray.core.executable_path = str(exe_path)
+    try:
+        xray.core.version = xray.core.get_version()
+    except Exception:
+        pass
+
     return {
         "detail": f"Core assets updated to {tag}. Restart Rebecca to apply the new binary.",
         "version": xray.core.version,
@@ -310,12 +407,13 @@ def apply_geo_assets(
     skip_node_ids = set(payload.get("skip_node_ids") or [])
 
     master_assets_dir = _resolve_assets_path_master(persist_env=persist_env)
-    maintenance_request("POST", "/xray/update-geodata", json={"files": files}, timeout=600)
+    saved = _download_geo_files(master_assets_dir, files)
+    xray.core.assets_path = str(master_assets_dir)
 
     startup_config = xray.config.include_db_users()
 
     results = {
-        "master": {"assets_path": str(master_assets_dir), "files": len(files)},
+        "master": {"assets_path": str(master_assets_dir), "files": len(saved)},
         "nodes": {},
     }
     if mode == "default" and apply_to_nodes:

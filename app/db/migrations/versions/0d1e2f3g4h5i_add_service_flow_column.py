@@ -30,15 +30,9 @@ def upgrade() -> None:
     dialect = bind.dialect.name
     inspector = sa.inspect(bind)
 
-    # Ensure services.flow exists (add if missing)
     if not _column_exists(inspector, "services", "flow"):
-        if dialect == "sqlite":
-            with op.batch_alter_table("services", recreate="always") as batch:
-                batch.add_column(sa.Column("flow", sa.String(length=255), nullable=True))
-        else:
-            op.add_column("services", sa.Column("flow", sa.String(length=255), nullable=True))
+        op.add_column("services", sa.Column("flow", sa.String(length=255), nullable=True))
 
-    # Add reseller role support
     if dialect == "postgresql":
         op.execute("ALTER TYPE adminrole ADD VALUE IF NOT EXISTS 'reseller'")
     elif dialect == "mysql":
@@ -47,7 +41,7 @@ def upgrade() -> None:
             "ENUM('standard','reseller','sudo','full_access') "
             "NOT NULL DEFAULT 'standard'"
         )
-    else:  # sqlite and other dialects
+    else:
         with op.batch_alter_table("admins", recreate="always") as batch:
             batch.alter_column(
                 "role",
@@ -65,12 +59,7 @@ def downgrade() -> None:
     dialect = bind.dialect.name
     inspector = sa.inspect(bind)
 
-    # Drop services.flow if present
     if _column_exists(inspector, "services", "flow"):
-        if dialect == "sqlite":
-            with op.batch_alter_table("services", recreate="always") as batch:
-                batch.drop_column("flow")
-        else:
-            op.drop_column("services", "flow")
+        op.drop_column("services", "flow")
 
-    # Can't safely remove enum value in SQLite/MySQL/PostgreSQL without data loss; no-op
+    # Can't safely remove enum value; skip

@@ -22,7 +22,6 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import {
-  ArrowDownTrayIcon,
   ArrowPathIcon,
   ArrowUpTrayIcon,
   ArrowsRightLeftIcon,
@@ -31,7 +30,7 @@ import {
 import { chakra } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
 import { Controller, useForm } from "react-hook-form";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -45,7 +44,6 @@ import {
   updateTelegramSettings,
 } from "service/settings";
 import { fetch as apiFetch } from "service/http";
-import { getAuthToken } from "utils/authStorage";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 
 type EventToggleItem = {
@@ -453,9 +451,6 @@ export const IntegrationSettingsPage = () => {
   );
 
   const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(panelData?.use_nobetci ?? false);
-  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
-  const [isUploadingBackup, setIsUploadingBackup] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (panelData) {
@@ -585,86 +580,12 @@ export const IntegrationSettingsPage = () => {
     mutation.mutate(payload);
   };
 
-  const downloadFilenameFromHeader = (header: string | null) => {
-    if (!header) {
-      return `rebecca-backup-${Date.now()}.zip`;
-    }
-    const parts = header.split(";");
-    for (const part of parts) {
-      const trimmed = part.trim();
-      if (trimmed.toLowerCase().startsWith("filename=")) {
-        return trimmed.split("=", 1)[1].trim().replace(/(^\"|\"$)/g, "") || `rebecca-backup-${Date.now()}.zip`;
-      }
-    }
-    return `rebecca-backup-${Date.now()}.zip`;
-  };
-
-  const handleBackupDownload = async () => {
-    setIsDownloadingBackup(true);
-    try {
-      const token = getAuthToken();
-      const response = await fetch("/api/maintenance/backup/export", {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      const blob = await response.blob();
-      const filename = downloadFilenameFromHeader(response.headers.get("content-disposition"));
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      generateSuccessMessage(t("settings.panel.backupDownloadSuccess"), toast);
-    } catch (error) {
-      generateErrorMessage(error, toast);
-    } finally {
-      setIsDownloadingBackup(false);
-    }
-  };
-
-  const handleBackupUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    setIsUploadingBackup(true);
-    try {
-      const token = getAuthToken();
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/maintenance/backup/import", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      generateSuccessMessage(t("settings.panel.backupUploadSuccess"), toast);
-    } catch (error) {
-      generateErrorMessage(error, toast);
-    } finally {
-      setIsUploadingBackup(false);
-      event.target.value = "";
-    }
-  };
-
   const forumTopics = watch("forum_topics");
   const isTelegramEnabled = watch("use_telegram");
   const telegramDisabledMessage = t(
     "settings.telegram.disabledOverlay",
     "Telegram bot is disabled. Enable it to edit these settings."
   );
-
-  const handleUploadButtonClick = () => {
-    fileInputRef.current?.click();
-  };
 
   if (!getUserIsSuccess) {
     return (
@@ -837,49 +758,6 @@ export const IntegrationSettingsPage = () => {
                       </Button>
                     </HStack>
                   </Stack>
-                </Box>
-                <Box borderWidth="1px" borderRadius="lg" p={4}>
-                  <Flex
-                    justify="space-between"
-                    align={{ base: "flex-start", md: "center" }}
-                    gap={4}
-                    flexDirection={{ base: "column", md: "row" }}
-                  >
-                    <Box>
-                      <Heading size="sm" mb={1}>
-                        {t("settings.panel.backupTitle", "Backup & Restore")}
-                      </Heading>
-                      <Text fontSize="sm" color="gray.500">
-                        {t(
-                          "settings.panel.backupDescription",
-                          "Create or restore backups directly through the maintenance service."
-                        )}
-                      </Text>
-                    </Box>
-                    <Stack spacing={3} direction={{ base: "column", md: "row" }}>
-                      <Button
-                        leftIcon={<ArrowDownTrayIcon width={16} height={16} />}
-                        onClick={handleBackupDownload}
-                        isLoading={isDownloadingBackup}
-                      >
-                        {t("settings.panel.backupDownload", "Download backup")}
-                      </Button>
-                      <Button
-                        leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
-                        onClick={handleUploadButtonClick}
-                        isLoading={isUploadingBackup}
-                      >
-                        {t("settings.panel.backupUpload", "Restore backup")}
-                      </Button>
-                    </Stack>
-                  </Flex>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".zip,.tar.gz"
-                    style={{ display: "none" }}
-                    onChange={handleBackupUpload}
-                  />
                 </Box>
                 <Flex gap={3} justify="flex-end">
                   <Button

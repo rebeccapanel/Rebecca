@@ -8,8 +8,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 
 from app import __version__
@@ -69,17 +68,6 @@ def _try_maintenance_json(path: str) -> dict | None:
         return resp.json()
     except Exception:
         return None
-
-
-def _extract_filename(disposition: str | None, default: str) -> str:
-    if not disposition:
-        return default
-    parts = disposition.split(";")
-    for part in parts:
-        if "filename=" in part:
-            filename = part.split("=", 1)[1].strip().strip('"')
-            return filename or default
-    return default
 
 
 @router.get("/system", response_model=SystemStats)
@@ -256,33 +244,6 @@ def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
     panel_info = _try_maintenance_json("/version/panel")
     node_info = _try_maintenance_json("/version/node")
     return {"panel": panel_info, "node": node_info}
-
-
-@router.get("/maintenance/backup/export", responses={403: responses._403})
-def download_backup(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Stream maintenance backup archive through the API."""
-    resp = maintenance_request("POST", "/backup/export", timeout=1800, stream=True)
-    filename = _extract_filename(
-        resp.headers.get("content-disposition"), f"rebecca-backup-{int(time.time())}.zip"
-    )
-    media_type = resp.headers.get("content-type", "application/zip")
-    return StreamingResponse(
-        resp.iter_content(chunk_size=8192),
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.post("/maintenance/backup/import", responses={403: responses._403})
-async def upload_backup(
-    admin: Admin = Depends(Admin.check_sudo_admin),
-    file: UploadFile = File(...),
-):
-    """Proxy backup import to the maintenance service."""
-    data = await file.read()
-    files = {"file": (file.filename, data, file.content_type or "application/octet-stream")}
-    resp = maintenance_request("POST", "/backup/import", files=files, timeout=1800)
-    return resp.json()
 
 
 @router.post("/maintenance/update", responses={403: responses._403})

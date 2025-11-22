@@ -9,6 +9,8 @@ Create Date: 2025-11-03 12:00:00.000000
 import sqlalchemy as sa
 from alembic import op
 
+from app.db.migrations.safe_ops import row_exists, table_exists
+
 
 # revision identifiers, used by Alembic.
 revision = "74f5f3f0a8c9"
@@ -18,11 +20,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    tables = set(inspector.get_table_names())
-
-    if "master_node_state" not in tables:
+    if not table_exists("master_node_state"):
         op.create_table(
             "master_node_state",
             sa.Column("id", sa.Integer(), primary_key=True),
@@ -52,13 +50,10 @@ def upgrade() -> None:
             ),
         )
 
-    existing_row = bind.execute(
-        sa.text("SELECT id FROM master_node_state WHERE id = 1")
-    ).first()
-
-    if existing_row:
+    if row_exists("master_node_state", {"id": 1}):
         return
 
+    bind = op.get_bind()
     result = bind.execute(
         sa.text(
             """
@@ -86,7 +81,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    if "master_node_state" in set(inspector.get_table_names()):
+    if table_exists("master_node_state"):
         op.drop_table("master_node_state")
