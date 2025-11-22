@@ -123,7 +123,58 @@ if not SKIP_RUNTIME_INIT:
 
     @app.on_event("shutdown")
     def on_shutdown():
-        scheduler.shutdown()
+        if scheduler is None:
+            return
+        logger.info("Shutting down APScheduler gracefully...")
+        try:
+            scheduler.pause()
+        except Exception:
+            pass
+        try:
+            scheduler.remove_all_jobs()
+        except Exception:
+            pass
+        try:
+            scheduler.shutdown(wait=True)
+        except Exception:
+            try:
+                scheduler.shutdown(wait=False)
+            except Exception:
+                pass
+
+    # Additional safeguard - ensure the scheduler stops if interpreter exits
+    # unexpectedly (e.g., during reload/terminate). This helps prevent
+    # "cannot schedule new futures after interpreter shutdown" errors.
+    import atexit
+    import signal
+
+    def _shutdown_scheduler():
+        if scheduler is None:
+            return
+        logger.info("Scheduler shutdown via atexit/signal handler")
+        try:
+            scheduler.remove_all_jobs()
+        except Exception:
+            pass
+        try:
+            scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+
+    atexit.register(_shutdown_scheduler)
+
+    def _signal_shutdown(signum, frame):
+        try:
+            _shutdown_scheduler()
+        finally:
+            signal.signal(signum, signal.SIG_DFL)
+            raise SystemExit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _signal_shutdown)
+        signal.signal(signal.SIGINT, _signal_shutdown)
+    except Exception:
+        pass
 
 
     @app.exception_handler(RequestValidationError)
