@@ -2316,7 +2316,10 @@ def adjust_all_users_expire(
 ) -> int:
     if delta_seconds == 0:
         return 0
-    query = get_user_queryset(db).filter(User.expire.isnot(None))
+    query = get_user_queryset(db).filter(
+        User.status == UserStatus.active,
+        User.expire.isnot(None)
+    )
     if admin:
         query = query.filter(User.admin == admin)
     if service_id is not None:
@@ -2376,6 +2379,64 @@ def adjust_all_users_usage(
         _sync_user_status_from_usage(db, dbuser)
         db.add(dbuser)
         count += 1
+    if count:
+        db.commit()
+    return count
+
+
+def move_users_to_service(
+    db: Session,
+    target_service: Service,
+    admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
+) -> int:
+    """Move users to a new service, honoring optional admin/service filters."""
+    query = get_user_queryset(db)
+    if admin:
+        query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+
+    count = 0
+    for user in query.all():
+        if user.service_id == target_service.id:
+            continue
+        user.service_id = target_service.id
+        db.add(user)
+        count += 1
+
+    if count:
+        db.commit()
+    return count
+
+
+def adjust_all_users_limit(
+    db: Session,
+    delta_bytes: int,
+    admin: Optional[Admin] = None,
+    service_id: Optional[int] = None,
+) -> int:
+    """Increase or decrease data limits for users, optionally scoped by admin/service."""
+    if delta_bytes == 0:
+        return 0
+    query = get_user_queryset(db).filter(
+        User.status == UserStatus.active,
+        User.data_limit.isnot(None),
+        User.data_limit > 0,
+    )
+    if admin:
+        query = query.filter(User.admin == admin)
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+
+    count = 0
+    for dbuser in query.all():
+        new_limit = max((dbuser.data_limit or 0) + delta_bytes, 0)
+        dbuser.data_limit = new_limit
+        _sync_user_status_from_usage(db, dbuser)
+        db.add(dbuser)
+        count += 1
+
     if count:
         db.commit()
     return count

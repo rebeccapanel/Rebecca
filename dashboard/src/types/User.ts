@@ -135,7 +135,8 @@ export type AdvancedUserActionType =
   | "decrease_traffic"
   | "cleanup_status"
   | "activate_users"
-  | "disable_users";
+  | "disable_users"
+  | "change_service";
 
 export type AdvancedUserActionPayload = {
   action: AdvancedUserActionType;
@@ -144,6 +145,7 @@ export type AdvancedUserActionPayload = {
   statuses?: AdvancedUserActionStatus[];
   admin_username?: string | null;
   service_id?: number;
+  target_service_id?: number;
 };
 
 export type AdvancedUserActionResponse = {

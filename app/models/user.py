@@ -59,6 +59,7 @@ class AdvancedUserAction(str, Enum):
     cleanup_status = "cleanup_status"
     activate_users = "activate_users"
     disable_users = "disable_users"
+    change_service = "change_service"
 
 
 class UserStatusModify(str, Enum):
@@ -87,13 +88,15 @@ class BulkUsersActionRequest(BaseModel):
     statuses: Optional[List[UserStatus]] = None
     admin_username: Optional[str] = None
     service_id: Optional[int] = None
+    target_service_id: Optional[int] = None
 
     @model_validator(mode="after")
-    def _validate_action(cls, values):
-        action = values.get("action")
-        days = values.get("days")
-        gigabytes = values.get("gigabytes")
-        statuses = values.get("statuses")
+    def _validate_action(self):
+        action = self.action
+        days = self.days
+        gigabytes = self.gigabytes
+        statuses = self.statuses
+        target_service_id = self.target_service_id
 
         needs_days = {
             AdvancedUserAction.extend_expire,
@@ -119,13 +122,16 @@ class BulkUsersActionRequest(BaseModel):
             invalid = [status for status in resolved_statuses if status not in allowed]
             if invalid:
                 raise ValueError("cleanup_status only accepts expired or limited")
-            values["statuses"] = resolved_statuses
+            self.statuses = resolved_statuses
 
-        service_id = values.get("service_id")
+        service_id = self.service_id
         if service_id is not None and service_id <= 0:
             raise ValueError("service_id must be a positive integer")
+        if action == AdvancedUserAction.change_service:
+            if target_service_id is None or target_service_id <= 0:
+                raise ValueError("target_service_id must be a positive integer for change_service")
 
-        return values
+        return self
 
 
 class NextPlanModel(BaseModel):

@@ -479,16 +479,16 @@ def perform_service_users_action(
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(
+            affected = crud.adjust_all_users_limit(
                 db, delta, admin=target_admin, service_id=service.id
             )
-            detail = "Traffic increased for users"
+            detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(
+            affected = crud.adjust_all_users_limit(
                 db, -delta, admin=target_admin, service_id=service.id
             )
-            detail = "Traffic decreased for users"
+            detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
             affected = crud.delete_users_by_status_age(
                 db,

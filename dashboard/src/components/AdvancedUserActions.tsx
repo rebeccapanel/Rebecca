@@ -63,6 +63,8 @@ const AdvancedUserActions = () => {
   const [isCleaning, setIsCleaning] = useState(false);
   const [ownerSelection, setOwnerSelection] = useState<OwnerSelection>("my_users");
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [targetServiceId, setTargetServiceId] = useState<number | null>(null);
+  const [isChangingService, setIsChangingService] = useState(false);
   const { admins: adminList, fetchAdmins } = useAdminsStore();
   const servicesStore = useServicesStore();
 
@@ -223,6 +225,39 @@ const AdvancedUserActions = () => {
     }
   };
 
+  const handleChangeService = async () => {
+    if (!targetServiceId) {
+      showToast(
+        t(
+          "filters.advancedActions.error.targetServiceRequired",
+          "Select a target service first"
+        ),
+        "warning"
+      );
+      return;
+    }
+    setIsChangingService(true);
+    try {
+      const payload: AdvancedUserActionPayload = {
+        action: "change_service",
+        admin_username: resolveTargetAdminUsername(),
+        service_id: selectedServiceId ?? undefined,
+        target_service_id: targetServiceId,
+      };
+      const result = await performBulkUserAction(payload);
+      showToast(
+        t("filters.advancedActions.success.changeService", {
+          count: result.count ?? 0,
+        }),
+        "success"
+      );
+    } catch (error) {
+      handleError(resolveErrorMessage(error));
+    } finally {
+      setIsChangingService(false);
+    }
+  };
+
   const toggleStatus = (status: AdvancedUserActionStatus) => {
     setSelectedStatuses((prev) =>
       prev.includes(status) ? prev.filter((item) => item !== status) : [...prev, status]
@@ -328,6 +363,53 @@ const AdvancedUserActions = () => {
                 </FormHelperText>
               </FormControl>
 
+              <Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+                <Stack spacing={3}>
+                  <Text fontWeight="semibold">
+                    {t(
+                      "filters.advancedActions.serviceChange.title",
+                      "Change users' service"
+                    )}
+                  </Text>
+                  <Text fontSize="sm" color="gray.500">
+                    {t(
+                      "filters.advancedActions.serviceChange.helper",
+                      "Move the filtered users to another service."
+                    )}
+                  </Text>
+                  <Select
+                    placeholder={t(
+                      "filters.advancedActions.serviceChange.placeholder",
+                      "Select target service"
+                    )}
+                    value={targetServiceId ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setTargetServiceId(value ? Number(value) : null);
+                    }}
+                    size="sm"
+                  >
+                    {servicesStore.services.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    colorScheme="primary"
+                    size="sm"
+                    alignSelf="flex-start"
+                    isLoading={isChangingService}
+                    onClick={handleChangeService}
+                  >
+                    {t(
+                      "filters.advancedActions.serviceChange.button",
+                      "Move to service"
+                    )}
+                  </Button>
+                </Stack>
+              </Box>
+
               <Stack spacing={4}>
                 <Box borderWidth="1px" borderRadius="md" px={4} py={4}>
                   <Stack spacing={2}>
@@ -401,7 +483,7 @@ const AdvancedUserActions = () => {
                     <Text fontSize="sm" color="gray.500">
                       {t(
                         "filters.advancedActions.trafficSection.description",
-                        "Apply a traffic adjustment to all users."
+                        "Apply a data limit adjustment to all users."
                       )}
                     </Text>
                     <FormControl>

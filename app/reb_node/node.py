@@ -80,21 +80,15 @@ def _extract_certificate_identity(pem_data: str) -> str | None:
 
 
 def _select_root_certificate(pem_data: str) -> Optional[bytes]:
-    """Return PEM bytes when certificate is self-signed, otherwise rely on system CAs."""
+    """
+    Return PEM bytes so gRPC trusts the node certificate (self-signed or custom CA).
+    Previously we only returned certs that were strictly self-signed, which caused
+    TLS handshakes to fail when the node used a custom CA. Supplying the presented
+    cert here lets gRPC validate the connection.
+    """
     if not pem_data:
         return None
-    try:
-        certificate = x509.load_pem_x509_certificate(pem_data.encode("utf-8"))
-    except Exception:
-        return None
-
-    try:
-        if certificate.issuer == certificate.subject:
-            return pem_data.encode("utf-8")
-    except Exception:
-        pass
-
-    return None
+    return pem_data.encode("utf-8")
 
 
 class ReSTXRayNode:

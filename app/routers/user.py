@@ -355,6 +355,7 @@ def perform_users_bulk_action(
     detail = "Advanced action applied"
     target_admin: Optional[Admin] = None
     target_service = None
+    destination_service = None
 
     if admin.role in (AdminRole.sudo, AdminRole.full_access):
         if payload.admin_username:
@@ -365,6 +366,10 @@ def perform_users_bulk_action(
             target_service = crud.get_service(db, payload.service_id)
             if not target_service:
                 raise HTTPException(status_code=404, detail="Service not found")
+        if payload.action == AdvancedUserAction.change_service and payload.target_service_id:
+            destination_service = crud.get_service(db, payload.target_service_id)
+            if not destination_service:
+                raise HTTPException(status_code=404, detail="Target service not found")
     else:
         if "admin_username" in payload.model_fields_set:
             if payload.admin_username is None or payload.admin_username != admin.username:
@@ -381,6 +386,14 @@ def perform_users_bulk_action(
                 raise HTTPException(status_code=404, detail="Service not found")
             if target_admin.id not in target_service.admin_ids:
                 raise HTTPException(status_code=403, detail="Service not assigned to admin")
+        if payload.action == AdvancedUserAction.change_service:
+            if payload.target_service_id is None:
+                raise HTTPException(status_code=400, detail="target_service_id is required")
+            destination_service = crud.get_service(db, payload.target_service_id)
+            if not destination_service:
+                raise HTTPException(status_code=404, detail="Target service not found")
+            if target_admin.id not in destination_service.admin_ids:
+                raise HTTPException(status_code=403, detail="Target service not assigned to admin")
 
     try:
         if payload.action == AdvancedUserAction.extend_expire:
@@ -395,12 +408,16 @@ def perform_users_bulk_action(
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(db, delta, admin=target_admin, service_id=payload.service_id)
-            detail = "Traffic increased for users"
+            affected = crud.adjust_all_users_limit(
+                db, delta, admin=target_admin, service_id=payload.service_id
+            )
+            detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_usage(db, -delta, admin=target_admin, service_id=payload.service_id)
-            detail = "Traffic decreased for users"
+            affected = crud.adjust_all_users_limit(
+                db, -delta, admin=target_admin, service_id=payload.service_id
+            )
+            detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
             affected = crud.delete_users_by_status_age(
                 db, payload.statuses, payload.days, admin=target_admin, service_id=payload.service_id
@@ -416,6 +433,16 @@ def perform_users_bulk_action(
                 db, UserStatus.disabled, admin=target_admin, service_id=payload.service_id
             )
             detail = "Users disabled"
+        elif payload.action == AdvancedUserAction.change_service:
+            if not destination_service:
+                raise HTTPException(status_code=400, detail="Target service not provided")
+            affected = crud.move_users_to_service(
+                db,
+                destination_service,
+                admin=target_admin,
+                service_id=payload.service_id,
+            )
+            detail = "Users moved to target service"
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
