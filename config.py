@@ -37,6 +37,7 @@ XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
 XRAY_SUBSCRIPTION_URL_PREFIX = config("XRAY_SUBSCRIPTION_URL_PREFIX", default="").strip("/")
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
+XRAY_JSON = config("XRAY_JSON", default="/var/lib/rebecca/xray_config.json")
 MAINTENANCE_API_BASE_URL = config("MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3000").rstrip("/")
 NODE_MAINTENANCE_API_BASE_URL = config("NODE_MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3100").rstrip("/")
 

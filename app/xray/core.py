@@ -1,7 +1,9 @@
+import logging
 import subprocess
 
 from app.xray.config import XRayConfig
-from app import logger
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class XRayCore:

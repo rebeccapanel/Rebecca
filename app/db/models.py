@@ -200,6 +200,12 @@ class User(Base):
     def service_name(self):
         return self.service.name if self.service else None
 
+    @property
+    def proxy_type(self):
+        if not self.proxies:
+            return None
+        return self.proxies[0].type
+
 
 excluded_inbounds_association = Table(
     "exclude_inbounds_association",

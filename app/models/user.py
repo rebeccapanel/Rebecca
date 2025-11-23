@@ -10,7 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.admin import Admin
 from app.models.proxy import ProxySettings, ProxyTypes
 from app.subscription.share import generate_v2ray_links
-from app.utils.credentials import apply_credentials_to_settings
+from app.utils.credentials import (
+    apply_credentials_to_settings,
+    runtime_proxy_settings,
+    UUID_PROTOCOLS,
+)
+from xray_api.types.account import Account
 from app.utils.jwt import create_subscription_token
 from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
 
@@ -169,6 +174,52 @@ class User(BaseModel):
     auto_delete_in_days: Optional[int] = Field(None, nullable=True)
 
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
+
+    @property
+    def proxy_type(self) -> Optional[ProxyTypes]:
+        if not self.proxies:
+            return None
+        first = next(iter(self.proxies))
+        return first if isinstance(first, ProxyTypes) else ProxyTypes(first)
+
+    def _account_email(self) -> str:
+        identifier = getattr(self, "id", None)
+        if identifier:
+            return f"{identifier}.{self.username}"
+        return self.username
+
+    def get_account(
+        self,
+        proxy_type: Optional[ProxyTypes | str] = None,
+        *,
+        credential_key: Optional[str] = None,
+    ) -> Account:
+        resolved_type = proxy_type or self.proxy_type
+        if resolved_type is None:
+            raise ValueError("Proxy type is missing for account generation")
+        resolved_type = (
+            resolved_type
+            if isinstance(resolved_type, ProxyTypes)
+            else ProxyTypes(resolved_type)
+        )
+
+        settings = self.proxies.get(resolved_type) or self.proxies.get(resolved_type.value)
+        if settings is None:
+            raise ValueError(f"Proxy settings for {resolved_type.value} not provided")
+
+        account_data = {"email": self._account_email()}
+        runtime_key = credential_key or self.credential_key
+        if runtime_key:
+            proxy_data = runtime_proxy_settings(settings, resolved_type, runtime_key)
+        else:
+            proxy_data = settings.dict(no_obj=True)
+        proxy_data.pop("flow", None)
+
+        if resolved_type in UUID_PROTOCOLS and "id" not in proxy_data:
+            raise ValueError("UUID is required for proxy type %s" % resolved_type.value)
+
+        account_data.update(proxy_data)
+        return resolved_type.account_model(**account_data)
 
     @field_validator('data_limit', mode='before')
     def cast_to_int(cls, v):
