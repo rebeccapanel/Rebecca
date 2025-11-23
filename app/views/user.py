@@ -41,22 +41,32 @@ def add_user(new_user: UserCreate,
             status_code=400,
             detail="Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between.")
 
+    # If proxy_type attribute missing, choose the first proxy in the proxies mapping
+    selected_proxy_type = getattr(new_user, 'proxy_type', None)
+    if selected_proxy_type is None:
+        proxies = new_user.proxies
+        if not proxies:
+            raise HTTPException(status_code=400, detail="No proxy configured for the user")
+        selected_proxy_type = next(iter(proxies))
     try:
-        inbound = get_inbound(new_user.proxy_type)
+        inbound = get_inbound(selected_proxy_type)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Proxy type {new_user.proxy_type} not supported")
+        raise HTTPException(status_code=400, detail=f"Proxy type {selected_proxy_type} not supported")
 
     try:
         dbuser = crud.create_user(db, new_user)
     except sqlalchemy.exc.IntegrityError:
         raise HTTPException(status_code=409, detail="User already exists.")
 
-    account = new_user.get_account()
+    # Use the created DB user id in the account email
+    account = UserResponse.from_orm(dbuser).get_account()
 
     try:
         xray.api.add_inbound_user(tag=inbound, user=account)
     except xray.exc.EmailExistsError:
         pass
+    except xray.exc.ConnectionError:
+        logger.warning("Failed to connect to XRay API to add new user %s; operation will be retried by runtime", dbuser.username)
 
     logger.info(f"New user \"{dbuser.username}\" added")
     return dbuser
@@ -107,16 +117,30 @@ def modify_user(username: str,
             dbuser = crud.update_user_status(db, dbuser, UserStatus.limited)
 
     user = UserResponse.from_orm(dbuser)
-    inbound = get_inbound(user.proxy_type)
+    # Determine primary proxy type or default to the first one
+    selected_proxy_type = getattr(user, 'proxy_type', None)
+    if selected_proxy_type is None:
+        proxies = user.proxies
+        if not proxies:
+            raise HTTPException(status_code=400, detail="No proxy configured for the user")
+        selected_proxy_type = next(iter(proxies))
+    inbound = get_inbound(selected_proxy_type)
     account = user.get_account()
 
     try:
         xray.api.remove_inbound_user(tag=inbound, email=username)
     except xray.exc.EmailNotFoundError:
         pass
+    except xray.exc.ConnectionError:
+        logger.warning("Failed to connect to XRay API to remove inbound user %s; operation will be retried by runtime", username)
 
     if user.status == UserStatus.active:
-        xray.api.add_inbound_user(tag=inbound, user=account)
+        try:
+            xray.api.add_inbound_user(tag=inbound, user=account)
+        except xray.exc.EmailExistsError:
+            pass
+        except xray.exc.ConnectionError:
+            logger.warning("Failed to connect to XRay API to add modified user %s; operation will be retried by runtime", username)
 
     logger.info(f"User \"{user.username}\" modified")
     return user
@@ -133,13 +157,22 @@ def remove_user(username: str,
     if not (dbuser := crud.get_user(db, username)):
         raise HTTPException(status_code=404, detail="User not found")
 
-    inbound = get_inbound(dbuser.proxy_type)
+    # dbuser here is the SQLAlchemy model - select primary proxy type
+    proxy_type = None
+    if dbuser.proxies:
+        proxy_type = dbuser.proxies[0].type if isinstance(dbuser.proxies, list) else None
+    if not proxy_type:
+        # fallback to proxy types from app models
+        proxy_type = next(iter(UserResponse.from_orm(dbuser).proxies))
+    inbound = get_inbound(proxy_type)
     crud.remove_user(db, dbuser)
 
     try:
         xray.api.remove_inbound_user(tag=inbound, email=username)
     except xray.exc.EmailNotFoundError:
         pass
+    except xray.exc.ConnectionError:
+        logger.warning("Failed to connect to XRay API to remove inbound user (delete) %s; operation will be retried by runtime", username)
 
     logger.info(f"User \"{username}\" deleted")
     return {}

@@ -14,7 +14,7 @@ import commentjson
 import sqlalchemy as sa
 from alembic import op
 
-from app.utils.xray_defaults import load_legacy_xray_config
+from config import XRAY_JSON
 
 
 # revision identifiers, used by Alembic.
@@ -76,7 +76,7 @@ def downgrade() -> None:
 
 
 def _config_path() -> Path:
-    return Path.cwd() / "xray_config.json"
+    return Path(XRAY_JSON)
 
 
 def _load_initial_payload() -> Dict[str, Any]:
@@ -86,7 +86,44 @@ def _load_initial_payload() -> Dict[str, Any]:
             return commentjson.loads(config_path.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return load_legacy_xray_config()
+    return {
+        "log": {
+            "loglevel": "warning"
+        },
+        "routing": {
+            "rules": [
+                {
+                    "ip": [
+                        "geoip:private"
+                    ],
+                    "outboundTag": "BLOCK",
+                    "type": "field"
+                }
+            ]
+        },
+        "inbounds": [
+            {
+                "tag": "Shadowsocks TCP",
+                "listen": "0.0.0.0",
+                "port": 1080,
+                "protocol": "shadowsocks",
+                "settings": {
+                    "clients": [],
+                    "network": "tcp,udp"
+                }
+            }
+        ],
+        "outbounds": [
+            {
+                "protocol": "freedom",
+                "tag": "DIRECT"
+            },
+            {
+                "protocol": "blackhole",
+                "tag": "BLOCK"
+            }
+        ]
+    }
 
 
 def _is_table_empty(bind) -> bool:

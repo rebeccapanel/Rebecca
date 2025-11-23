@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import psutil
 import requests
 
-from app.utils.ads import refresh_ads
 from config import ADS_CACHE_TTL_SECONDS
 
 
@@ -72,6 +71,8 @@ def record_realtime_bandwidth() -> None:
 
 
 def register_scheduler_jobs(scheduler) -> None:
+    from app.utils.ads import refresh_ads
+
     scheduler.add_job(
         record_realtime_bandwidth,
         "interval",
