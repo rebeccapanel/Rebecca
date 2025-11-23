@@ -12,7 +12,7 @@ Deprecated==1.2.13
 ecdsa==0.18.0
 fastapi==0.86.0
 fastapi-responses==0.2.1
-greenlet==2.0.1
+greenlet==3.2.4
 grpcio==1.44.0
 grpcio-tools==1.44.0
 h11==0.14.0
