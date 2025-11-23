@@ -284,44 +284,120 @@ By default the app will be run on `http://localhost:8000/dashboard`. You can con
 
 > You can set settings below using environment variables or placing them in `.env` file.
 
-| Variable                                 | Description                                                                                                              |
-| ---------------------------------------- |--------------------------------------------------------------------------------------------------------------------------|
-| SUDO_USERNAME                            | Superuser's username                                                                                                     |
-| SUDO_PASSWORD                            | Superuser's password                                                                                                     |
-| SQLALCHEMY_DATABASE_URL                  | Database URL ([SQLAlchemy's docs](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls))                    |
-| UVICORN_HOST                             | Bind application to this host (default: `0.0.0.0`)                                                                       |
-| UVICORN_PORT                             | Bind application to this port (default: `8000`)                                                                          |
-| UVICORN_UDS                              | Bind application to a UNIX domain socket                                                                                 |
-| UVICORN_SSL_CERTFILE                     | SSL certificate file to have application on https                                                                        |
-| UVICORN_SSL_KEYFILE                      | SSL key file to have application on https                                                                                |
-| UVICORN_SSL_CA_TYPE                      | Type of authority SSL certificate. Use `private` for testing self-signed CA (default: `public`)                          |
-| XRAY_EXECUTABLE_PATH                     | Path of Xray binary (default: `/usr/local/bin/xray`)                                                                     |
-| XRAY_ASSETS_PATH                         | Path of Xray assets (default: `/usr/local/share/xray`)                                                                   |
-| XRAY_SUBSCRIPTION_URL_PREFIX             | Prefix of subscription URLs                                                                                              |
-| XRAY_FALLBACKS_INBOUND_TAG               | Tag of the inbound that includes fallbacks, needed in the case you're using fallbacks                                    |
-| XRAY_EXCLUDE_INBOUND_TAGS                | Tags of the inbounds that shouldn't be managed and included in links by application                                      |
-| CUSTOM_TEMPLATES_DIRECTORY               | Customized templates directory (default: `app/templates`)                                                                |
-| CLASH_SUBSCRIPTION_TEMPLATE              | The template that will be used for generating clash configs (default: `clash/default.yml`)                               |
-| SUBSCRIPTION_PAGE_TEMPLATE               | The template used for generating subscription info page (default: `subscription/index.html`)                             |
-| HOME_PAGE_TEMPLATE                       | Decoy page template (default: `home/index.html`)                                                                         |
-| TELEGRAM_API_TOKEN                       | Telegram bot API token  (get token from [@botfather](https://t.me/botfather))                                            |
-| TELEGRAM_ADMIN_ID                        | Numeric Telegram ID of admin (use [@userinfobot](https://t.me/userinfobot) to found your ID)                             |
-| TELEGRAM_PROXY_URL                       | Run Telegram Bot over proxy                                                                                              |
-| JWT_ACCESS_TOKEN_EXPIRE_MINUTES          | Expire time for the Access Tokens in minutes, `0` considered as infinite (default: `1440`)                               |
-| DOCS                                     | Whether API documents should be available on `/docs` and `/redoc` or not (default: `False`)                              |
-| DEBUG                                    | Debug mode for development (default: `False`)                                                                            |
-| WEBHOOK_ADDRESS                          | Webhook address to send notifications to. Webhook notifications will be sent if this value was set.                      |
-| WEBHOOK_SECRET                           | Webhook secret will be sent with each request as `x-webhook-secret` in the header (default: `None`)                      |
-| NUMBER_OF_RECURRENT_NOTIFICATIONS        | How many times to retry if an error detected in sending a notification (default: `3`)                                    |
-| RECURRENT_NOTIFICATIONS_TIMEOUT          | Timeout between each retry if an error detected in sending a notification in seconds (default: `180`)                    |
-| NOTIFY_REACHED_USAGE_PERCENT             | At which percentage of usage to send the warning notification (default: `80`)                                            |
-| NOTIFY_DAYS_LEFT                         | When to send warning notifaction about expiration (default: `3`)                                                         |
-| USERS_AUTODELETE_DAYS                    | Delete expired (and optionally limited users) after this many days (Negative values disable this feature, default: `-1`) |
-| USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Whether to include limited accounts in the auto-delete feature (default: `False`)                                        |
-| USE_CUSTOM_JSON_DEFAULT                  | Enable custom JSON config for ALL supported clients (default: `False`)                                                   |
-| USE_CUSTOM_JSON_FOR_V2RAYNG              | Enable custom JSON config only for V2rayNG (default: `False`)                                                            |
-| USE_CUSTOM_JSON_FOR_STREISAND            | Enable custom JSON config only for Streisand (default: `False`)                                                          |
-| USE_CUSTOM_JSON_FOR_V2RAYN               | Enable custom JSON config only for V2rayN (default: `False`)                                                             |
+### Core server
+
+| Variable               | Description                                                                 |
+|------------------------|-----------------------------------------------------------------------------|
+| `UVICORN_HOST`         | Bind application to this host (default: `0.0.0.0`).                        |
+| `UVICORN_PORT`         | Bind application to this port (default: `8000`).                           |
+| `ALLOWED_ORIGINS`      | Comma-separated list of allowed CORS origins.                              |
+| `UVICORN_UDS`          | Bind application to a UNIX domain socket.                                  |
+| `UVICORN_SSL_CERTFILE` | SSL certificate file path.                                                 |
+| `UVICORN_SSL_KEYFILE`  | SSL key file path.                                                         |
+| `UVICORN_SSL_CA_TYPE`  | Type of SSL CA certificate, `public` or `private` (default: `public`).     |
+| `DASHBOARD_PATH`       | Base path for the dashboard (default: `/dashboard/`).                      |
+
+### Rebecca maintenance service (Rebecca-scripts)
+
+| Variable                     | Description                                                |
+|------------------------------|------------------------------------------------------------|
+| `REBECCA_SCRIPT_HOST`        | Host for the maintenance service API.                     |
+| `REBECCA_SCRIPT_PORT`        | Port for the maintenance service API.                     |
+| `REBECCA_SCRIPT_ALLOWED_HOSTS` | Comma-separated list of allowed hosts.                  |
+| `REBECCA_SCRIPT_BIN`         | Path to `rebecca` script binary.                          |
+| `REBECCA_APP_NAME`           | Application name (default: `rebecca`).                    |
+| `REBECCA_APP_DIR`            | Application directory (default: `/opt/rebecca`).          |
+| `REBECCA_DATA_DIR`           | Data directory (default: `/var/lib/rebecca`).             |
+| `REBECCA_SERVICE_NAME`       | System service name for Rebecca.                          |
+| `REBECCA_NODE_APP_DIR`       | Rebecca-node application directory.                       |
+| `REBECCA_NODE_COMPOSE_FILE`  | Path to Rebecca-node `docker-compose.yml`.                |
+| `REBECCA_NODE_SERVICE_NAME`  | System service name for Rebecca-node.                     |
+
+### Admin & authentication
+
+| Variable                      | Description                                                                                 |
+|-------------------------------|---------------------------------------------------------------------------------------------|
+| `SUDO_USERNAME`               | Initial sudo admin username (recommended to use `rebecca cli` instead).                    |
+| `SUDO_PASSWORD`               | Initial sudo admin password (recommended to use `rebecca cli` instead).                    |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | Access token expiration time in minutes (`0` = infinite, default: `1440`).          |
+| `LOGIN_NOTIFY_WHITE_LIST`     | Comma-separated IP/host whitelist to disable login notifications.                          |
+
+### XRay & subscription
+
+| Variable                     | Description                                                                                  |
+|-----------------------------|----------------------------------------------------------------------------------------------|
+| `XRAY_EXECUTABLE_PATH`      | Path of Xray binary (default: `/usr/local/bin/xray`).                                       |
+| `XRAY_ASSETS_PATH`          | Path of Xray assets / Geo files (default: `/usr/local/share/xray`).                         |
+| `XRAY_SUBSCRIPTION_URL_PREFIX` | Prefix of subscription URLs (e.g. `https://example.com`).                                |
+| `XRAY_SUBSCRIPTION_PATH`    | Subscription path segment (e.g. `sub`).                                                     |
+| `XRAY_EXCLUDE_INBOUND_TAGS` | Space-separated tags of inbounds that should not be managed or included in links.           |
+| `XRAY_FALLBACKS_INBOUND_TAG`| Tag of the inbound that includes fallbacks.                                                 |
+
+### Templates & subscription pages
+
+| Variable                       | Description                                                           |
+|--------------------------------|-----------------------------------------------------------------------|
+| `CUSTOM_TEMPLATES_DIRECTORY`   | Directory for overriding built-in templates.                         |
+| `CLASH_SUBSCRIPTION_TEMPLATE`  | Template used to generate Clash subscription configs.                |
+| `SUBSCRIPTION_PAGE_TEMPLATE`   | Template used to generate the subscription info page.               |
+| `HOME_PAGE_TEMPLATE`           | Decoy / home page template.                                          |
+| `V2RAY_SUBSCRIPTION_TEMPLATE`  | Template for V2Ray subscription JSON.                                |
+| `V2RAY_SETTINGS_TEMPLATE`      | Template for V2Ray client settings.                                  |
+| `SINGBOX_SUBSCRIPTION_TEMPLATE`| Template for Sing-box subscription config.                           |
+| `SINGBOX_SETTINGS_TEMPLATE`    | Template for Sing-box settings.                                      |
+| `MUX_TEMPLATE`                 | Template for mux-related JSON configuration.                         |
+| `SUB_PROFILE_TITLE`            | Title displayed on the subscription page.                            |
+| `SUB_SUPPORT_URL`              | Support URL shown to users.                                          |
+| `SUB_UPDATE_INTERVAL`          | Subscription update interval (in hours, as string).                  |
+| `EXTERNAL_CONFIG`              | External config value imported into V2Ray-format subscriptions.      |
+
+### Custom JSON config
+
+| Variable                      | Description                                                         |
+|-------------------------------|---------------------------------------------------------------------|
+| `USE_CUSTOM_JSON_DEFAULT`     | Enable custom JSON config for all supported clients.               |
+| `USE_CUSTOM_JSON_FOR_V2RAYN`  | Enable custom JSON config only for V2RayN.                         |
+| `USE_CUSTOM_JSON_FOR_V2RAYNG` | Enable custom JSON config only for V2RayNG.                        |
+| `USE_CUSTOM_JSON_FOR_STREISAND` | Enable custom JSON config only for Streisand.                   |
+| `USE_CUSTOM_JSON_FOR_HAPP`    | Enable custom JSON config only for the HApp client.               |
+
+### Database
+
+| Variable                    | Description                                                                 |
+|----------------------------|-----------------------------------------------------------------------------|
+| `SQLALCHEMY_DATABASE_URL`  | Database URL (SQLite, MySQL, MariaDB, etc.).                               |
+| `SQLALCHEMY_POOL_SIZE`     | SQLAlchemy connection pool size.                                           |
+| `SQLIALCHEMY_MAX_OVERFLOW` | Maximum number of overflow connections beyond the pool size.               |
+
+### Status labels & auto-delete
+
+| Variable                                | Description                                                                                          |
+|-----------------------------------------|------------------------------------------------------------------------------------------------------|
+| `ACTIVE_STATUS_TEXT`                    | Display text for active users.                                                                      |
+| `EXPIRED_STATUS_TEXT`                   | Display text for expired users.                                                                     |
+| `LIMITED_STATUS_TEXT`                   | Display text for limited users.                                                                     |
+| `DISABLED_STATUS_TEXT`                  | Display text for disabled users.                                                                    |
+| `ONHOLD_STATUS_TEXT`                    | Display text for on-hold users.                                                                     |
+| `USERS_AUTODELETE_DAYS`                 | Delete expired (and optionally limited) users after this many days (negative values disable it).    |
+| `USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS` | Whether to include limited accounts in auto-delete (`true`/`false`).                           |
+
+### Developer & frontend
+
+| Variable             | Description                                               |
+|----------------------|-----------------------------------------------------------|
+| `DOCS`               | Enable `/docs` and `/redoc` API documentation.           |
+| `DEBUG`              | Enable debug mode.                                       |
+| `VITE_BASE_API`      | Base API URL used by the frontend.                       |
+
+### Background jobs
+
+| Variable                           | Description                                                     |
+|------------------------------------|-----------------------------------------------------------------|
+| `JOB_CORE_HEALTH_CHECK_INTERVAL`   | Interval for core health-check job (seconds).                  |
+| `JOB_RECORD_NODE_USAGES_INTERVAL`  | Interval to record node usage metrics (seconds).               |
+| `JOB_RECORD_USER_USAGES_INTERVAL`  | Interval to record user usage metrics (seconds).               |
+| `JOB_REVIEW_USERS_INTERVAL`        | Interval to review and process users (seconds).                |
+| `JOB_SEND_NOTIFICATIONS_INTERVAL`  | Interval to send queued notifications (seconds).               |
 
 
 # Documentation
@@ -362,12 +438,21 @@ By following these steps, you can ensure that you have a backup of all your Rebe
 
 # Telegram Bot
 
-Rebecca comes with an integrated Telegram bot that can handle server management, user creation and removal, and send notifications. This bot can be easily enabled by following a few simple steps, and it provides a convenient way to interact with Rebecca without having to log in to the server every time.
+Rebecca includes an integrated Telegram bot that can send notifications, manage users, and perform administrative tasks.
+In the latest versions, **Telegram Bot must be configured and enabled directly from the web dashboard** — not from environment variables.
 
-To enable Telegram Bot:
+### 🔧 How to enable Telegram Bot
 
-1. set `TELEGRAM_API_TOKEN` to your bot's API Token
-2. set `TELEGRAM_ADMIN_ID` to your Telegram account's numeric ID, you can get your ID from [@userinfobot](https://t.me/userinfobot)
+To enable and configure the bot:
+
+1. Go to **Master Settings** inside the Rebecca Web Dashboard
+2. Open the **Telegram** tab
+3. Set the following values in the panel UI:
+
+   * **Bot API Token** → provided by [@BotFather](https://t.me/botfather)
+   * **Admin Telegram ID** → get it from [@userinfobot](https://t.me/userinfobot)
+4. Save the settings
+5. The bot will automatically activate without server restart
 
 # Rebecca CLI
 
@@ -385,31 +470,6 @@ For more information, you can read the CLI documentation in `./cli/README.md`.
 
 The Rebecca project introduces the [Rebecca-node](https://github.com/rebeccapanel/Rebecca-node), which enables infrastructure distribution. With Rebecca-node, you can distribute your infrastructure across multiple locations, unlocking benefits such as redundancy, high availability, scalability, and flexibility. Rebecca-node empowers users to connect to different servers, offering them the flexibility to choose and connect to multiple servers instead of being limited to only one server.
 For more detailed information and installation instructions, please refer to the [Rebecca-node repository](https://github.com/rebeccapanel/Rebecca-node).
-
-# Webhook notifications
-
-You can set a webhook address and Rebecca will send the notifications to that address.
-
-the requests will be sent as a post request to the adress provided by `WEBHOOK_ADDRESS` with `WEBHOOK_SECRET` as `x-webhook-secret` in the headers.
-
-Example request sent from Rebecca:
-
-```
-Headers:
-Host: 0.0.0.0:9000
-User-Agent: python-requests/2.28.1
-Accept-Encoding: gzip, deflate
-Accept: */*
-Connection: keep-alive
-x-webhook-secret: something-very-very-secret
-Content-Length: 107
-Content-Type: application/json
-
-
-
-Body:
-{"username": "rebecca_test_user", "action": "user_updated", "enqueued_at": 1680506457.636369, "tries": 0}
-```
 
 Different action typs are: `user_created`, `user_updated`, `user_deleted`, `user_limited`, `user_expired`, `user_disabled`, `user_enabled`
 
