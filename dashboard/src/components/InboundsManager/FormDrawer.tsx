@@ -54,7 +54,12 @@ import {
 } from "utils/inbounds";
 import { RawInbound } from "utils/inbounds";
 import { generateWireguardKeypair } from "utils/wireguard";
-import { getVlessEncAuthBlocks, VlessEncAuthBlock } from "service/xray";
+import { 
+  getVlessEncAuthBlocks, 
+  VlessEncAuthBlock,
+  generateRealityKeypair,
+  generateRealityShortId,
+} from "service/xray";
 
 import { forwardRef } from "react";
 
@@ -264,11 +269,19 @@ export const InboundFormModal: FC<Props> = ({
     await onSubmit(values);
   };
 
-  const handleGenerateRealityKeypair = useCallback(() => {
+  const handleGenerateRealityKeypair = useCallback(async () => {
     try {
-      const { privateKey } = generateWireguardKeypair();
+      const { privateKey, publicKey } = await generateRealityKeypair();
       form.setValue("realityPrivateKey", formatRealityKeyForDisplay(privateKey), {
         shouldDirty: true,
+      });
+      // Public key will be derived automatically via useMemo
+      toast({
+        status: "success",
+        title: t("inbounds.reality.generateKeys", "Generate key pair"),
+        description: "Key pair generated successfully using Xray",
+        duration: 2000,
+        isClosable: true,
       });
     } catch (error) {
       toast({
@@ -279,17 +292,9 @@ export const InboundFormModal: FC<Props> = ({
     }
   }, [form, toast, t]);
 
-  const handleGenerateShortId = useCallback(() => {
+  const handleGenerateShortId = useCallback(async () => {
     try {
-      const cryptoObj = typeof window === "undefined" ? undefined : window.crypto;
-      if (!cryptoObj?.getRandomValues) {
-        throw new Error("Crypto API is not available in this environment.");
-      }
-      const buffer = new Uint8Array(4);
-      cryptoObj.getRandomValues(buffer);
-      const shortId = Array.from(buffer)
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
+      const { shortId } = await generateRealityShortId();
       const currentValue = form.getValues("realityShortIds") || "";
       const entries = currentValue
         .split(/[\s,]+/)
@@ -297,6 +302,13 @@ export const InboundFormModal: FC<Props> = ({
         .filter(Boolean);
       entries.push(shortId);
       form.setValue("realityShortIds", entries.join("\n"), { shouldDirty: true });
+      toast({
+        status: "success",
+        title: t("inbounds.reality.generateShortId", "Generate short ID"),
+        description: "Short ID generated successfully",
+        duration: 2000,
+        isClosable: true,
+      });
     } catch (error) {
       toast({
         status: "error",

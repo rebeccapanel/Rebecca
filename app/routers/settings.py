@@ -67,7 +67,7 @@ def update_telegram_settings(
 
 
 @router.get("/panel", response_model=PanelSettingsResponse, responses={403: responses._403})
-def get_panel_settings(_: Admin = Depends(Admin.check_sudo_admin)):
+def get_panel_settings(_: Admin = Depends(Admin.require_active)):
     """Retrieve general panel settings."""
     settings = PanelSettingsService.get_settings(ensure_record=True)
     return PanelSettingsResponse(use_nobetci=settings.use_nobetci)

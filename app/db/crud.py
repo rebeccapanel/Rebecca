@@ -269,7 +269,16 @@ class ProxyInboundRepository:
             return inbound
         inbound = ProxyInbound(tag=inbound_tag)
         self.db.add(inbound)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            inbound = (
+                self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
+            )
+            if inbound:
+                return inbound
+            raise
         self.add_default_host(inbound)
         self.db.refresh(inbound)
         return inbound

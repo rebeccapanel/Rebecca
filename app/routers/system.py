@@ -1,5 +1,9 @@
+import base64
+import binascii
 import logging
 import os
+import re
+import secrets
 import subprocess
 import time
 from collections import deque
@@ -321,6 +325,42 @@ def generate_vless_encryption_keys(
 
 
 @router.get(
+    "/xray/reality-keypair",
+    responses={403: responses._403},
+)
+def generate_reality_keypair(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate a REALITY key pair using Xray's x25519 command."""
+    try:
+        result = xray.core.get_x25519()
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate key pair")
+        return {
+            "privateKey": result["private_key"],
+            "publicKey": result["public_key"]
+        }
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except Exception as exc:
+        logger.error("Failed to generate REALITY key pair: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to generate key pair: {str(exc)}") from exc
+
+
+@router.get(
+    "/xray/reality-shortid",
+    responses={403: responses._403},
+)
+def generate_reality_shortid(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate a REALITY short ID (8 hex characters)."""
+    short_id_bytes = secrets.token_bytes(4)
+    short_id = short_id_bytes.hex()
+    return {"shortId": short_id}
+
+
+@router.get(
     "/inbounds/{tag}",
     responses={403: responses._403, 404: responses._404},
 )
@@ -522,6 +562,68 @@ def _sanitize_inbound(inbound: dict) -> dict:
     return sanitized
 
 
+def _normalize_reality_private_key(private_key: str) -> str:
+    """
+    Normalize a REALITY private key to the format expected by Xray.
+    Xray expects base64url-encoded keys without padding.
+    """
+    if not private_key:
+        return ""
+    
+    # Remove all whitespace
+    normalized = "".join(private_key.split())
+    
+    # Try base64url first (Xray's preferred format)
+    try:
+        # Add padding for decode if needed
+        padding_needed = (4 - len(normalized) % 4) % 4
+        decoded = base64.urlsafe_b64decode(normalized + "=" * padding_needed)
+        if len(decoded) != 32:
+            raise ValueError("Private key must be 32 bytes")
+        # Re-encode without padding (Xray format)
+        return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("utf-8")
+    except (binascii.Error, ValueError):
+        pass
+    
+    # Try standard base64
+    try:
+        padding = "=" * ((4 - len(normalized) % 4) % 4)
+        decoded = base64.b64decode(normalized + padding)
+        if len(decoded) != 32:
+            raise ValueError("Private key must be 32 bytes")
+        # Convert to base64url without padding
+        return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("utf-8")
+    except (binascii.Error, ValueError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid REALITY private key format: {str(e)}"
+        ) from e
+
+
+def _normalize_reality_short_id(short_id: str) -> str:
+    """
+    Normalize a REALITY short ID to hex format (up to 8 hex characters).
+    """
+    if not short_id:
+        return ""
+    
+    # Remove whitespace and convert to lowercase
+    normalized = "".join(short_id.split()).lower()
+    
+    # Remove any non-hex characters
+    normalized = re.sub(r'[^0-9a-f]', '', normalized)
+    
+    # Truncate to 8 characters max (4 bytes)
+    if len(normalized) > 8:
+        normalized = normalized[:8]
+    
+    # Pad to even length if needed
+    if len(normalized) % 2:
+        normalized = "0" + normalized
+    
+    return normalized
+
+
 def _prepare_inbound_payload(payload: dict, enforce_tag: str | None = None) -> dict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload must be an object")
@@ -549,6 +651,42 @@ def _prepare_inbound_payload(payload: dict, enforce_tag: str | None = None) -> d
     if not isinstance(settings, dict):
         raise HTTPException(status_code=400, detail="'settings' must be an object")
     settings["clients"] = []
+
+    # Normalize REALITY settings if present
+    stream_settings = inbound.get("streamSettings", {})
+    if isinstance(stream_settings, dict):
+        reality_settings = stream_settings.get("realitySettings")
+        if isinstance(reality_settings, dict):
+            # Normalize privateKey
+            if "privateKey" in reality_settings and reality_settings["privateKey"]:
+                try:
+                    reality_settings["privateKey"] = _normalize_reality_private_key(
+                        reality_settings["privateKey"]
+                    )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid REALITY privateKey: {str(e)}"
+                    ) from e
+            
+            # Normalize shortIds
+            if "shortIds" in reality_settings:
+                short_ids = reality_settings["shortIds"]
+                if isinstance(short_ids, str):
+                    # Split by comma, newline, or space
+                    short_ids = re.split(r'[,\s\n]+', short_ids)
+                if isinstance(short_ids, list):
+                    normalized_ids = []
+                    for sid in short_ids:
+                        if isinstance(sid, str) and sid.strip():
+                            normalized = _normalize_reality_short_id(sid)
+                            if normalized:
+                                normalized_ids.append(normalized)
+                    reality_settings["shortIds"] = normalized_ids if normalized_ids else []
+                else:
+                    reality_settings["shortIds"] = []
 
     inbound["tag"] = tag
     inbound["protocol"] = protocol
