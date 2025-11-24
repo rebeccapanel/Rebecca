@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import logging
+import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -34,6 +35,35 @@ def get_tls():
             "key": tls.key,
             "certificate": tls.certificate
         }
+
+
+def _is_valid_uuid(uuid_value) -> bool:
+    """
+    Check if a value is a valid UUID.
+    
+    Args:
+        uuid_value: The value to check (can be UUID object, string, None, etc.)
+    
+    Returns:
+        True if uuid_value is a valid UUID, False otherwise
+    """
+    if uuid_value is None:
+        return False
+    
+    if isinstance(uuid_value, uuid.UUID):
+        return True
+    
+    if isinstance(uuid_value, str):
+        # Check for empty string or "null" string
+        if not uuid_value or uuid_value.lower() == "null":
+            return False
+        try:
+            uuid.UUID(uuid_value)
+            return True
+        except (ValueError, AttributeError):
+            return False
+    
+    return False
 
 
 @threaded_function
@@ -111,7 +141,7 @@ def add_user(dbuser: "DBUser"):
             existing_id = getattr(settings_model, 'id', None)
             account_to_add = None
 
-            if existing_id and proxy_type in UUID_PROTOCOLS:
+            if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
                 account_to_add = proxy_type.account_model(email=email, id=str(existing_id))
             elif user.credential_key and proxy_type in UUID_PROTOCOLS:
                 try:
@@ -191,7 +221,7 @@ def update_user(dbuser: "DBUser"):
             existing_id = getattr(settings_model, 'id', None)
             account_to_add = None
 
-            if existing_id and proxy_type in UUID_PROTOCOLS:
+            if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
                 account_to_add = proxy_type.account_model(email=email, id=str(existing_id))
             elif user.credential_key and proxy_type in UUID_PROTOCOLS:
                 try:

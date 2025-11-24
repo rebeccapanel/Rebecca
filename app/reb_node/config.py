@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import subprocess
+import uuid
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import PosixPath
@@ -102,6 +103,35 @@ def derive_reality_public_key(private_key: str) -> str:
         pass
 
     return _derive_reality_public_key_python(private_key)
+
+
+def _is_valid_uuid(uuid_value) -> bool:
+    """
+    Check if a value is a valid UUID.
+    
+    Args:
+        uuid_value: The value to check (can be UUID object, string, None, etc.)
+    
+    Returns:
+        True if uuid_value is a valid UUID, False otherwise
+    """
+    if uuid_value is None:
+        return False
+    
+    if isinstance(uuid_value, uuid.UUID):
+        return True
+    
+    if isinstance(uuid_value, str):
+        # Check for empty string or "null" string
+        if not uuid_value or uuid_value.lower() == "null":
+            return False
+        try:
+            uuid.UUID(uuid_value)
+            return True
+        except (ValueError, AttributeError):
+            return False
+    
+    return False
 
 
 class XRayConfig(dict):
@@ -579,11 +609,13 @@ class XRayConfig(dict):
                         
                         client_to_add = None
                         
-                        if existing_id and existing_id is not None:
+                        if _is_valid_uuid(existing_id) and proxy_type_enum in UUID_PROTOCOLS:
                             client_to_add = {
                                 "email": email,
                                 **existing_settings
                             }
+                            if client_to_add.get('id'):
+                                client_to_add['id'] = str(client_to_add['id'])
                             # Remove flow if inbound doesn't support it (flow is optional)
                             if client_to_add.get('flow') and inbound:
                                 network = inbound.get('network', 'tcp')
