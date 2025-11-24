@@ -56,7 +56,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
-  - [Why using Rebecca?](#why-using-rebecca)
+  - [Why use Rebecca?](#why-use-rebecca)
     - [Features](#features)
 - [Installation guide](#installation-guide)
 - [Configuration](#configuration)
