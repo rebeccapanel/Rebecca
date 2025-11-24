@@ -74,8 +74,16 @@ jobs:
           
       - name: Install test dependencies
         run: |
-          # Install dev dependencies - try dependency groups first, fallback to direct install
-          pip install -e ".[dev]" || pip install "pytest>=8.3.5" "pytest-asyncio>=0.26.0" "pytest-watch>=4.2.0" "httpx>=0.27.2" "ruff>=0.11.6"
+          # Install test dependencies - try dependency groups first, then fallback to direct install
+          set +e
+          pip install -e ".[dev]" 2>&1
+          INSTALL_STATUS=$?
+          set -e
+          
+          if [ $INSTALL_STATUS -ne 0 ]; then
+            echo "Dependency groups installation failed, installing test dependencies directly..."
+            pip install "pytest>=8.3.5" "pytest-asyncio>=0.26.0" "pytest-watch>=4.2.0" "httpx>=0.27.2" "ruff>=0.11.6"
+          fi
           
       - name: Verify pytest is installed
         run: |

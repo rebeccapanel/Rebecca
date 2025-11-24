@@ -283,6 +283,7 @@ def process_inbounds_and_tags(
                 key=lambda h: (h.get("sort", 0), h.get("id") or 0)
             )
             for position, host in enumerate(sorted_host_list):
+                host_id = host.get("id")
                 host_entries.append(
                     (
                         protocol,

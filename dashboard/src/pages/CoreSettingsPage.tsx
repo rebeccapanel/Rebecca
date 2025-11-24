@@ -332,7 +332,7 @@ export const CoreSettingsPage: FC = () => {
         attrs: rule.attrs ? JSON.stringify(rule.attrs, null, 2) : "",
         ip: rule.ip ?? [],
         domain: rule.domain ?? [],
-        port: rule.port ?? "",
+        port: rule.port ?? [],
         inboundTag: rule.inboundTag ?? [],
         user: rule.user ?? [],
         outboundTag: rule.outboundTag ?? "",
