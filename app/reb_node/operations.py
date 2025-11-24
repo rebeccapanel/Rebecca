@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import logging
 import uuid
@@ -66,11 +66,79 @@ def _is_valid_uuid(uuid_value) -> bool:
     return False
 
 
+def _remove_inbound_user_attempts(api: XRayAPI, inbound_tag: str, email: str):
+    for _ in range(2):
+        try:
+            api.remove_inbound_user(tag=inbound_tag, email=email, timeout=600)
+        except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
+            break
+        except Exception:
+            continue
+
+
+def _build_runtime_accounts(
+    dbuser: "DBUser",
+    user: UserResponse,
+    proxy_type: ProxyTypes,
+    settings_model,
+    inbound: dict,
+) -> List[Account]:
+    email = f"{dbuser.id}.{dbuser.username}"
+    accounts: List[Account] = []
+    seen_ids: set[str] = set()
+
+    existing_id = getattr(settings_model, "id", None)
+    if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
+        parsed_id = str(existing_id)
+        seen_ids.add(parsed_id)
+        accounts.append(proxy_type.account_model(email=email, id=parsed_id))
+
+    if user.credential_key and proxy_type in UUID_PROTOCOLS:
+        try:
+            proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key)
+            if proxy_settings.get("flow") and inbound:
+                network = inbound.get("network", "tcp")
+                tls_type = inbound.get("tls", "none")
+                header_type = inbound.get("header_type", "")
+                flow_supported = (
+                    network in ("tcp", "raw", "kcp")
+                    and tls_type in ("tls", "reality")
+                    and header_type != "http"
+                )
+                if not flow_supported:
+                    proxy_settings.pop("flow", None)
+            generated_id = proxy_settings.get("id")
+            if generated_id and generated_id not in seen_ids:
+                seen_ids.add(generated_id)
+                accounts.append(proxy_type.account_model(email=email, **proxy_settings))
+        except Exception as exc:
+            logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in runtime accounts: {exc}")
+
+    return accounts
+
+
 @threaded_function
-def _add_user_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
+def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
     """
-    Add user to Xray inbound. If user already exists, remove and re-add to ensure UUID is correct.
+    Add user account to Xray inbound. If user already exists, remove and re-add to ensure UUID is correct.
     """
+    try:
+        api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
+    except xray_exceptions.EmailExistsError:
+        try:
+            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
+            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
+        except Exception as e:
+            logger.warning(f"Failed to update existing user {account.email} in {inbound_tag}: {e}")
+    except xray_exceptions.ConnectionError:
+        pass
+    except Exception as e:
+        logger.error(f"Failed to add user {account.email} to {inbound_tag}: {e}")
+
+
+def _add_accounts_to_inbound(api: XRayAPI, inbound_tag: str, accounts: List[Account]):
+    for account in accounts:
+        _add_account_to_inbound(api, inbound_tag, account)
     try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
     except xray_exceptions.EmailExistsError:
@@ -87,35 +155,18 @@ def _add_user_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
 
 @threaded_function
 def _remove_user_from_inbound(api: XRayAPI, inbound_tag: str, email: str):
-    try:
-        api.remove_inbound_user(tag=inbound_tag, email=email, timeout=600)
-    except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
-        pass
+    _remove_inbound_user_attempts(api, inbound_tag, email)
 
 
-@threaded_function
-def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
+def _alter_inbound_user(api: XRayAPI, inbound_tag: str, accounts: List[Account]):
     """
-    Update user in Xray inbound by removing old entry and adding new one.
-    This ensures UUID is correctly synced, especially for credential_key based users.
+    Refresh user accounts in Xray inbound by removing existing entries and re-adding all current accounts.
     """
-    try:
-        api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-    except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
-        pass
-    except Exception as e:
-        logger.warning(f"Unexpected error removing user {account.email} from {inbound_tag}: {e}")
-    
-    try:
-        api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except (xray_exceptions.EmailExistsError, xray_exceptions.ConnectionError):
-        try:
-            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-        except Exception as e:
-            logger.warning(f"Failed to update user {account.email} in {inbound_tag}: {e}")
-    except Exception as e:
-        logger.error(f"Failed to add user {account.email} to {inbound_tag}: {e}")
+    if not accounts:
+        return
+    _remove_user_from_inbound(api, inbound_tag, accounts[0].email)
+    for account in accounts:
+        _add_account_to_inbound(api, inbound_tag, account)
 
 
 def add_user(dbuser: "DBUser"):
@@ -138,38 +189,13 @@ def add_user(dbuser: "DBUser"):
             except KeyError:
                 continue
 
-            existing_id = getattr(settings_model, 'id', None)
-            account_to_add = None
 
-            if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
-                account_to_add = proxy_type.account_model(email=email, id=str(existing_id))
-            elif user.credential_key and proxy_type in UUID_PROTOCOLS:
-                try:
-                    proxy_settings = runtime_proxy_settings(
-                        settings_model, proxy_type, user.credential_key
-                    )
-                    # Remove flow if inbound doesn't support it (flow is optional)
-                    if proxy_settings.get('flow') and inbound:
-                        network = inbound.get('network', 'tcp')
-                        tls_type = inbound.get('tls', 'none')
-                        header_type = inbound.get('header_type', '')
-                        flow_supported = (
-                            network in ('tcp', 'raw', 'kcp')
-                            and tls_type in ('tls', 'reality')
-                            and header_type != 'http'
-                        )
-                        if not flow_supported:
-                            proxy_settings.pop('flow', None)
-                    account_to_add = proxy_type.account_model(email=email, **proxy_settings)
-                except Exception as e:
-                    logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in add_user: {e}")
-                    account_to_add = None
-            
-            if account_to_add:
-                _add_user_to_inbound(state.api, inbound_tag, account_to_add)
+            accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
+            if accounts:
+                _add_accounts_to_inbound(state.api, inbound_tag, accounts)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _add_user_to_inbound(node.api, inbound_tag, account_to_add)
+                        _add_accounts_to_inbound(node.api, inbound_tag, accounts)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
@@ -218,38 +244,12 @@ def update_user(dbuser: "DBUser"):
             except KeyError:
                 continue
 
-            existing_id = getattr(settings_model, 'id', None)
-            account_to_add = None
-
-            if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
-                account_to_add = proxy_type.account_model(email=email, id=str(existing_id))
-            elif user.credential_key and proxy_type in UUID_PROTOCOLS:
-                try:
-                    proxy_settings = runtime_proxy_settings(
-                        settings_model, proxy_type, user.credential_key
-                    )
-                    # Remove flow if inbound doesn't support it (flow is optional)
-                    if proxy_settings.get('flow') and inbound:
-                        network = inbound.get('network', 'tcp')
-                        tls_type = inbound.get('tls', 'none')
-                        header_type = inbound.get('header_type', '')
-                        flow_supported = (
-                            network in ('tcp', 'raw', 'kcp')
-                            and tls_type in ('tls', 'reality')
-                            and header_type != 'http'
-                        )
-                        if not flow_supported:
-                            proxy_settings.pop('flow', None)
-                    account_to_add = proxy_type.account_model(email=email, **proxy_settings)
-                except Exception as e:
-                    logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in update_user: {e}")
-                    account_to_add = None
-            
-            if account_to_add:
-                _alter_inbound_user(state.api, inbound_tag, account_to_add)
+            accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
+            if accounts:
+                _alter_inbound_user(state.api, inbound_tag, accounts)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _alter_inbound_user(node.api, inbound_tag, account_to_add)
+                        _alter_inbound_user(node.api, inbound_tag, accounts)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 

@@ -101,12 +101,9 @@ def serialize_proxy_settings(
 
     if credential_key:
         if proxy_type in UUID_PROTOCOLS:
-            # For new users: don't save UUID (it will be generated at runtime from key)
-            # For existing users: preserve UUID if it exists and preserve_existing_uuid is True
-            if not preserve_existing_uuid:
-                data.pop("id", None)
-            # If preserve_existing_uuid is True and UUID exists, keep it
-            # If preserve_existing_uuid is True but UUID doesn't exist, don't add one
+            derived_id = str(key_to_uuid(credential_key, proxy_type))
+            if not preserve_existing_uuid or not data.get("id"):
+                data["id"] = derived_id
         if proxy_type in PASSWORD_PROTOCOLS:
             data.pop("password", None)
     else:
