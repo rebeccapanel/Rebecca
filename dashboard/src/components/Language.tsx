@@ -13,6 +13,7 @@ import { CheckIcon, LanguageIcon } from "@heroicons/react/24/outline";
 import ReactCountryFlag from "react-country-flag";
 import { FC, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 
 type HeaderProps = {
   actions?: ReactNode;
@@ -69,7 +70,11 @@ export const Language: FC<HeaderProps> = ({ actions }) => {
           >
             <HStack justify="space-between" w="full">
               <HStack spacing={2}>
-                <ReactCountryFlag countryCode={flag} svg style={{ width: "16px", height: "12px" }} />
+                {code === "fa" ? (
+                  <ImperialIranFlag style={{ width: "16px", height: "12px" }} />
+                ) : (
+                  <ReactCountryFlag countryCode={flag} svg style={{ width: "16px", height: "12px" }} />
+                )}
                 <Text>{label}</Text>
               </HStack>
               {i18n.language === code && <CheckIconChakra />}

@@ -52,7 +52,11 @@ const iconProps = {
 const ChartIcon = chakra(ChartBarIcon, iconProps);
 
 const formatNumberValue = (value: number) => numberWithCommas(value) ?? value.toString();
-const normalizeVersion = (value?: string | null) => (value ?? "").trim().replace(/^v/i, "");
+const normalizeVersion = (value?: string | null) => {
+  if (!value) return "";
+  // Remove leading 'v' or 'vv', remove '-alpha', '-beta', '-rc' etc. suffixes, and trim
+  return value.trim().replace(/^v+/i, "").split(/[-_]/)[0].trim();
+};
 
 const HISTORY_INTERVALS = [
   { labelKey: "historyInterval.2m", seconds: 120 },

@@ -292,7 +292,10 @@ export const CoreSettingsPage: FC = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
   const [jsonKey, setJsonKey] = useState(0); // force re-render of JsonEditor
   const [warpOptionValue, setWarpOptionValue] = useState<string>("");
+  const [isWarpSelectOpen, setIsWarpSelectOpen] = useState(false);
   const [warpCustomDomain, setWarpCustomDomain] = useState<string>("");
+  
+  const basicSectionBorder = useColorModeValue("gray.200", "whiteAlpha.300");
 
   const buildOutboundRows = useCallback(
     (outbounds: OutboundJson[]) =>
@@ -1201,54 +1204,61 @@ export const CoreSettingsPage: FC = () => {
         <TabPanels>
           <TabPanel>
             <VStack spacing={4} align="stretch">
-              <SettingsSection title={t("pages.xray.serverIPs", "Server IPs")}>
-                <SettingRow label="IPv4" controlId="server-ipv4">
-                  {(_controlId) => (
-                    <CompactTextWithCopy text={serverIPs?.ipv4 || "Loading..."} />
-                  )}
-                </SettingRow>
-                <SettingRow label="IPv6" controlId="server-ipv6">
-                  {(_controlId) => (
-                    <CompactTextWithCopy text={serverIPs?.ipv6 || "Loading..."} />
-                  )}
-                </SettingRow>
-              </SettingsSection>
-              <SettingsSection title={t("pages.xray.generalConfigs")}>
-              <SettingRow label={t("pages.xray.FreedomStrategy")} controlId="freedom-domain-strategy">
-                {(id) => (
-                    <Select
-                      id={id}
-                      size="sm"
-                      maxW="220px"
-                      value={freedomDomainStrategy}
-                      onChange={(event) => handleFreedomDomainStrategyChange(event.target.value)}
-                      isDisabled={freedomOutboundIndex === -1}
-                    >
-                      <option value="">{t("core.default", "Default")}</option>
-                      {["AsIs", "UseIP", "UseIPv4", "UseIPv6", "UseIPv6v4", "UseIPv4v6"].map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </Select>
-                )}
-              </SettingRow>
-                <SettingRow label={t("pages.xray.RoutingStrategy")} controlId="routing-domain-strategy">
-                  {(id) => (
-                    <Controller
-                      name="config.routing.domainStrategy"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          {["AsIs", "IPIfNonMatch", "IPOnDemand"].map((s) => (
-                            <option key={s} value={s}>{s}</option>
+              <Box
+                borderWidth="1px"
+                borderColor={basicSectionBorder}
+                borderRadius="lg"
+                p={{ base: 3, md: 4 }}
+              >
+                <VStack spacing={4} align="stretch">
+                  <SettingsSection title={t("pages.xray.serverIPs", "Server IPs")}>
+                    <SettingRow label="IPv4" controlId="server-ipv4">
+                      {(_controlId) => (
+                        <CompactTextWithCopy text={serverIPs?.ipv4 || "Loading..."} />
+                      )}
+                    </SettingRow>
+                    <SettingRow label="IPv6" controlId="server-ipv6">
+                      {(_controlId) => (
+                        <CompactTextWithCopy text={serverIPs?.ipv6 || "Loading..."} />
+                      )}
+                    </SettingRow>
+                  </SettingsSection>
+                  <SettingsSection title={t("pages.xray.generalConfigs")}>
+                  <SettingRow label={t("pages.xray.FreedomStrategy")} controlId="freedom-domain-strategy">
+                    {(id) => (
+                        <Select
+                          id={id}
+                          size="sm"
+                          maxW="220px"
+                          value={freedomDomainStrategy}
+                          onChange={(event) => handleFreedomDomainStrategyChange(event.target.value)}
+                          isDisabled={freedomOutboundIndex === -1}
+                        >
+                          <option value="">{t("core.default", "Default")}</option>
+                          {["AsIs", "UseIP", "UseIPv4", "UseIPv6", "UseIPv6v4", "UseIPv4v6"].map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
                           ))}
                         </Select>
+                    )}
+                  </SettingRow>
+                    <SettingRow label={t("pages.xray.RoutingStrategy")} controlId="routing-domain-strategy">
+                      {(id) => (
+                        <Controller
+                          name="config.routing.domainStrategy"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select {...field} id={id} size="sm" maxW="220px">
+                              {["AsIs", "IPIfNonMatch", "IPOnDemand"].map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </Select>
+                          )}
+                        />
                       )}
-                    />
-                  )}
-              </SettingRow>
-            </SettingsSection>
+                  </SettingRow>
+                </SettingsSection>
             <Box
               borderWidth="1px"
               borderColor={warpSectionBorder}
@@ -1289,26 +1299,30 @@ export const CoreSettingsPage: FC = () => {
                   ))}
                 </Wrap>
                 <HStack spacing={3} flexWrap="wrap">
-                  <Select
-                    placeholder={t("core.select")}
-                    size="sm"
-                    maxW="240px"
-                    value={warpOptionValue}
-                    onChange={(event) => {
-                      const { value } = event.target;
-                      if (value) {
-                        handleWarpDomainAdd(value);
-                      }
-                      setWarpOptionValue("");
-                    }}
-                    isDisabled={availableWarpOptions.length === 0}
-                  >
-                    {availableWarpOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
+                  {!isWarpSelectOpen && (
+                    <Select
+                      placeholder={t("core.select", "Select...")}
+                      size="sm"
+                      maxW="240px"
+                      value={warpOptionValue}
+                      onChange={(event) => {
+                        const { value } = event.target;
+                        if (value) {
+                          handleWarpDomainAdd(value);
+                        }
+                        setWarpOptionValue("");
+                      }}
+                      onFocus={() => setIsWarpSelectOpen(true)}
+                      onBlur={() => setIsWarpSelectOpen(false)}
+                      isDisabled={availableWarpOptions.length === 0}
+                    >
+                      {availableWarpOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <HStack spacing={2} maxW="320px" flex="1">
                     <Input
                       size="sm"
@@ -1331,148 +1345,150 @@ export const CoreSettingsPage: FC = () => {
                 </HStack>
               </VStack>
             </Box>
-            <SettingsSection title={t("pages.xray.statistics")}>
-                <SettingRow label={t("pages.xray.statsInboundUplink")} controlId="stats-inbound-uplink">
-                  {(id) => (
-                    <Controller
-                      name="config.policy.system.statsInboundUplink"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Switch
-                          id={id}
-                          isChecked={!!field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
+                  <SettingsSection title={t("pages.xray.statistics")}>
+                    <SettingRow label={t("pages.xray.statsInboundUplink")} controlId="stats-inbound-uplink">
+                      {(id) => (
+                        <Controller
+                          name="config.policy.system.statsInboundUplink"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Switch
+                              id={id}
+                              isChecked={!!field.value}
+                              onChange={(e) => field.onChange(e.target.checked)}
+                            />
+                          )}
                         />
                       )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.statsInboundDownlink")} controlId="stats-inbound-downlink">
-                  {(id) => (
-                    <Controller
-                      name="config.policy.system.statsInboundDownlink"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Switch
-                          id={id}
-                          isChecked={!!field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.statsInboundDownlink")} controlId="stats-inbound-downlink">
+                      {(id) => (
+                        <Controller
+                          name="config.policy.system.statsInboundDownlink"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Switch
+                              id={id}
+                              isChecked={!!field.value}
+                              onChange={(e) => field.onChange(e.target.checked)}
+                            />
+                          )}
                         />
                       )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.statsOutboundUplink")} controlId="stats-outbound-uplink">
-                  {(id) => (
-                    <Controller
-                      name="config.policy.system.statsOutboundUplink"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Switch
-                          id={id}
-                          isChecked={!!field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.statsOutboundUplink")} controlId="stats-outbound-uplink">
+                      {(id) => (
+                        <Controller
+                          name="config.policy.system.statsOutboundUplink"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Switch
+                              id={id}
+                              isChecked={!!field.value}
+                              onChange={(e) => field.onChange(e.target.checked)}
+                            />
+                          )}
                         />
                       )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.statsOutboundDownlink")} controlId="stats-outbound-downlink">
-                  {(id) => (
-                    <Controller
-                      name="config.policy.system.statsOutboundDownlink"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Switch
-                          id={id}
-                          isChecked={!!field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.statsOutboundDownlink")} controlId="stats-outbound-downlink">
+                      {(id) => (
+                        <Controller
+                          name="config.policy.system.statsOutboundDownlink"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Switch
+                              id={id}
+                              isChecked={!!field.value}
+                              onChange={(e) => field.onChange(e.target.checked)}
+                            />
+                          )}
                         />
                       )}
-                    />
-                  )}
-                </SettingRow>
-              </SettingsSection>
-              <SettingsSection title={t("pages.xray.logConfigs")}>
-                <SettingRow label={t("pages.xray.logLevel")} controlId="log-level">
-                  {(id) => (
-                    <Controller
-                      name="config.log.loglevel"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          {["none", "debug", "info", "warning", "error"].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </Select>
-                      )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.accessLog")} controlId="access-log">
-                  {(id) => (
-                    <Controller
-                      name="config.log.access"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          <option value="">Empty</option>
-                          {["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </Select>
-                      )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.errorLog")} controlId="error-log">
-                  {(id) => (
-                    <Controller
-                      name="config.log.error"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          <option value="">Empty</option>
-                          {["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </Select>
-                      )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.maskAddress")} controlId="mask-address">
-                  {(id) => (
-                    <Controller
-                      name="config.log.maskAddress"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Select {...field} id={id} size="sm" maxW="220px">
-                          <option value="">Empty</option>
-                          {["quarter", "half", "full"].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </Select>
-                      )}
-                    />
-                  )}
-                </SettingRow>
-                <SettingRow label={t("pages.xray.dnsLog")} controlId="dns-log">
-                  {(id) => (
-                    <Controller
-                      name="config.log.dnsLog"
-                      control={form.control}
-                      render={({ field }) => (
-                        <Switch
-                          id={id}
-                          isChecked={!!field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
+                    </SettingRow>
+                  </SettingsSection>
+                  <SettingsSection title={t("pages.xray.logConfigs")}>
+                    <SettingRow label={t("pages.xray.logLevel")} controlId="log-level">
+                      {(id) => (
+                        <Controller
+                          name="config.log.loglevel"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select {...field} id={id} size="sm" maxW="220px">
+                              {["none", "debug", "info", "warning", "error"].map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </Select>
+                          )}
                         />
                       )}
-                    />
-                  )}
-                </SettingRow>
-              </SettingsSection>
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.accessLog")} controlId="access-log">
+                      {(id) => (
+                        <Controller
+                          name="config.log.access"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select {...field} id={id} size="sm" maxW="220px">
+                              <option value="">Empty</option>
+                              {["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </Select>
+                          )}
+                        />
+                      )}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.errorLog")} controlId="error-log">
+                      {(id) => (
+                        <Controller
+                          name="config.log.error"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select {...field} id={id} size="sm" maxW="220px">
+                              <option value="">Empty</option>
+                              {["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </Select>
+                          )}
+                        />
+                      )}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.maskAddress")} controlId="mask-address">
+                      {(id) => (
+                        <Controller
+                          name="config.log.maskAddress"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Select {...field} id={id} size="sm" maxW="220px">
+                              <option value="">Empty</option>
+                              {["quarter", "half", "full"].map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </Select>
+                          )}
+                        />
+                      )}
+                    </SettingRow>
+                    <SettingRow label={t("pages.xray.dnsLog")} controlId="dns-log">
+                      {(id) => (
+                        <Controller
+                          name="config.log.dnsLog"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Switch
+                              id={id}
+                              isChecked={!!field.value}
+                              onChange={(e) => field.onChange(e.target.checked)}
+                            />
+                          )}
+                        />
+                      )}
+                    </SettingRow>
+                  </SettingsSection>
+                </VStack>
+              </Box>
             </VStack>
           </TabPanel>
           <TabPanel>
@@ -1781,64 +1797,69 @@ export const CoreSettingsPage: FC = () => {
                         const newConfig = { ...form.getValues("config") };
                         if (e.target.checked) {
                           newConfig.dns = { servers: [], queryStrategy: "UseIP", tag: "dns_inbound" };
+                          setDnsServers([]);
+                          setFakeDns([]);
                         } else {
                           delete newConfig.dns;
                           delete newConfig.fakedns;
+                          setDnsServers([]);
+                          setFakeDns([]);
                         }
                         form.setValue("config", newConfig, { shouldDirty: true });
-                        setDnsServers([]);
-                        setFakeDns([]);
+                        field.onChange(newConfig.dns);
                       }}
                     />
                   )}
                 />
               </FormControl>
-              {dnsServers.length > 0 && (
+              {form.watch("config.dns") && (
                 <>
                   <Button leftIcon={<AddIconStyled />} {...compactActionButtonProps} onClick={addDnsServer}>
                     {t("pages.xray.dns.add")}
                   </Button>
-                  <TableCard>
-                    <TableGrid minW="720px">
-                      <Thead>
-                        <Tr>
-                          <Th>#</Th>
-                          <Th>{t("pages.xray.outbound.address")}</Th>
-                          <Th>{t("pages.xray.dns.domains")}</Th>
-                          <Th>{t("pages.xray.dns.expectIPs")}</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        {dnsServers.map((dns, index) => (
-                          <Tr key={index}>
-                            <Td>
-                              <HStack>
-                                <Text>{index + 1}</Text>
-                                <IconButton
-                                  aria-label="edit"
-                                  icon={<EditIconStyled />}
-                                  size="xs"
-                                  variant="ghost"
-                                  onClick={() => editDnsServer(index)}
-                                />
-                                <IconButton
-                                  aria-label="delete"
-                                  icon={<DeleteIconStyled />}
-                                  size="xs"
-                                  variant="ghost"
-                                  colorScheme="red"
-                                  onClick={() => deleteDnsServer(index)}
-                                />
-                              </HStack>
-                            </Td>
-                            <Td>{typeof dns === "object" ? dns.address : dns}</Td>
-                            <Td>{typeof dns === "object" ? formatList(dns.domains) : ""}</Td>
-                            <Td>{typeof dns === "object" ? formatList(dns.expectIPs) : ""}</Td>
+                  {dnsServers.length > 0 && (
+                    <TableCard>
+                      <TableGrid minW="720px">
+                        <Thead>
+                          <Tr>
+                            <Th>#</Th>
+                            <Th>{t("pages.xray.outbound.address")}</Th>
+                            <Th>{t("pages.xray.dns.domains")}</Th>
+                            <Th>{t("pages.xray.dns.expectIPs")}</Th>
                           </Tr>
-                        ))}
-                      </Tbody>
-                    </TableGrid>
-                  </TableCard>
+                        </Thead>
+                        <Tbody>
+                          {dnsServers.map((dns, index) => (
+                            <Tr key={index}>
+                              <Td>
+                                <HStack>
+                                  <Text>{index + 1}</Text>
+                                  <IconButton
+                                    aria-label="edit"
+                                    icon={<EditIconStyled />}
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() => editDnsServer(index)}
+                                  />
+                                  <IconButton
+                                    aria-label="delete"
+                                    icon={<DeleteIconStyled />}
+                                    size="xs"
+                                    variant="ghost"
+                                    colorScheme="red"
+                                    onClick={() => deleteDnsServer(index)}
+                                  />
+                                </HStack>
+                              </Td>
+                              <Td>{typeof dns === "object" ? dns.address : dns}</Td>
+                              <Td>{typeof dns === "object" ? formatList(dns.domains) : ""}</Td>
+                              <Td>{typeof dns === "object" ? formatList(dns.expectIPs) : ""}</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </TableGrid>
+                    </TableCard>
+                  )}
                 </>
               )}
               {fakeDns.length > 0 && (

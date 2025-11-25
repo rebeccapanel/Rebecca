@@ -55,7 +55,11 @@ import { CoreVersionDialog } from "../components/CoreVersionDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import type { Status as UserStatus } from "types/User";
 
-const normalizeVersion = (value?: string | null) => (value ?? "").trim().replace(/^v/i, "");
+const normalizeVersion = (value?: string | null) => {
+  if (!value) return "";
+  // Remove leading 'v' or 'vv', remove '-alpha', '-beta', '-rc' etc. suffixes, and trim
+  return value.trim().replace(/^v+/i, "").split(/[-_]/)[0].trim();
+};
 
 dayjs.extend(utc);
 
@@ -1087,13 +1091,17 @@ export const NodesPage: FC = () => {
                       {t("nodes.dataLimitValidation", "Data limit must be a non-negative number")}
                     </Text>
                   )}
-                  <Stack direction={{ base: "column", sm: "row" }} spacing={2}>
+                  <Stack direction={{ base: "column", sm: "row" }} spacing={2} flexWrap="wrap">
                     <Button
                       size="sm"
                       variant="outline"
                       colorScheme="primary"
                       onClick={() => setVersionDialogTarget({ type: "master" })}
                       isLoading={updatingMasterCore}
+                      flex={{ base: "1", sm: "0 1 auto" }}
+                      minW={{ base: "full", sm: "auto" }}
+                      whiteSpace="normal"
+                      wordBreak="break-word"
                     >
                       {t("nodes.coreVersionDialog.updateMasterButton")}
                     </Button>
@@ -1102,6 +1110,10 @@ export const NodesPage: FC = () => {
                       variant="outline"
                       onClick={() => setGeoDialogTarget({ type: "master" })}
                       isLoading={updatingMasterGeo}
+                      flex={{ base: "1", sm: "0 1 auto" }}
+                      minW={{ base: "full", sm: "auto" }}
+                      whiteSpace="normal"
+                      wordBreak="break-word"
                     >
                       {t("nodes.geoDialog.updateMasterButton")}
                     </Button>
@@ -1111,6 +1123,10 @@ export const NodesPage: FC = () => {
                       colorScheme="red"
                       onClick={handleResetMasterUsageRequest}
                       isLoading={isResettingMasterUsage}
+                      flex={{ base: "1", sm: "0 1 auto" }}
+                      minW={{ base: "full", sm: "auto" }}
+                      whiteSpace="normal"
+                      wordBreak="break-word"
                     >
                       {t("nodes.resetUsage", "Reset usage")}
                     </Button>

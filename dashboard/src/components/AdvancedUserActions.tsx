@@ -20,6 +20,7 @@ import {
   Select,
   Stack,
   Text,
+  useBreakpointValue,
   useDisclosure,
   useToast,
   VStack,
@@ -285,13 +286,20 @@ const AdvancedUserActions = () => {
     return null;
   }
 
+  const isMobile = useBreakpointValue({ base: true, sm: false }) ?? false;
+
   return (
     <>
       <Button
         leftIcon={<SparklesIcon className="w-4 h-4" />}
         onClick={onOpen}
-        size="sm"
+        size={isMobile ? "sm" : "md"}
         variant="outline"
+        h={isMobile ? "36px" : undefined}
+        minW={isMobile ? "auto" : "8.5rem"}
+        fontSize={isMobile ? "xs" : "sm"}
+        fontWeight="semibold"
+        whiteSpace="nowrap"
       >
         {t("filters.advancedActions.button", "Advanced actions")}
       </Button>

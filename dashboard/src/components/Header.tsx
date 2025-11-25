@@ -41,6 +41,7 @@ import { AdvertisementCard } from "./AdvertisementCard";
 import { pickLocalizedAd } from "utils/ads";
 import ReactCountryFlag from "react-country-flag";
 import { AdminSection, UserPermissionToggle } from "types/Admin";
+import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 
 type HeaderProps = {
   actions?: ReactNode;
@@ -226,11 +227,15 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                         >
                           <HStack justify="space-between" w="full">
                             <HStack spacing={2}>
-                              <ReactCountryFlag
-                                countryCode={flag}
-                                svg
-                                style={{ width: "16px", height: "12px" }}
-                              />
+                              {code === "fa" ? (
+                                <ImperialIranFlag style={{ width: "16px", height: "12px" }} />
+                              ) : (
+                                <ReactCountryFlag
+                                  countryCode={flag}
+                                  svg
+                                  style={{ width: "16px", height: "12px" }}
+                                />
+                              )}
                               <Text>{label}</Text>
                             </HStack>
                             {isActiveLang && <CheckIcon width={16} />}

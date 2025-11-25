@@ -40,6 +40,7 @@ import { useAppleEmoji } from "hooks/useAppleEmoji";
 import { useTranslation } from "react-i18next";
 import ReactCountryFlag from "react-country-flag";
 import ThemeSelector from "./ThemeSelector";
+import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 
 const iconProps = {
   baseStyle: {
@@ -168,11 +169,15 @@ export function AppLayout() {
                                 >
                                   <HStack justify="space-between" w="full">
                                     <HStack spacing={2}>
-                                      <ReactCountryFlag
-                                        countryCode={flag}
-                                        svg
-                                        style={{ width: "16px", height: "12px" }}
-                                      />
+                                      {code === "fa" ? (
+                                        <ImperialIranFlag style={{ width: "16px", height: "12px" }} />
+                                      ) : (
+                                        <ReactCountryFlag
+                                          countryCode={flag}
+                                          svg
+                                          style={{ width: "16px", height: "12px" }}
+                                        />
+                                      )}
                                       <Text>{label}</Text>
                                     </HStack>
                                     {isActiveLang && <CheckIcon width={16} />}

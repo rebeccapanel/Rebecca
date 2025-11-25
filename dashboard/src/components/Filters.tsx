@@ -26,6 +26,7 @@ import {
   TagCloseButton,
   TagLabel,
   Text,
+  VStack,
   Wrap,
   useBreakpointValue,
 } from "@chakra-ui/react";
@@ -313,50 +314,51 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       {...props}
     >
       <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>
-        <HStack spacing={2} align="center" w="full">
-          <InputGroup flex="1">
-            <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
-            <Input
-              placeholder={
-                target === "users"
-                  ? t("search")
-                  : t("admins.searchPlaceholder", "Search admins...")
-              }
-              value={search}
-              borderColor="light-border"
-              w="full"
-              onChange={onChange}
-            />
+        <VStack spacing={2} align="stretch" w="full">
+          <HStack spacing={2} align="center" w="full" flexWrap="wrap">
+            <InputGroup flex={{ base: "1 1 100%", sm: "1 1 auto" }} minW={{ base: "100%", sm: "200px" }}>
+              <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
+              <Input
+                placeholder={
+                  target === "users"
+                    ? t("search")
+                    : t("admins.searchPlaceholder", "Search admins...")
+                }
+                value={search}
+                borderColor="light-border"
+                w="full"
+                onChange={onChange}
+              />
 
-            <InputRightElement>
-              {loading && <Spinner size="xs" />}
-              {filters.search && filters.search.length > 0 && (
-                <IconButton
-                  onClick={clear}
-                  aria-label="clear"
-                  size="xs"
-                  variant="ghost"
-                >
-                  <ClearIcon />
-                </IconButton>
-              )}
-            </InputRightElement>
-          </InputGroup>
-          {showAdvancedFilters && (
-            <Popover placement="bottom-start">
-              <PopoverTrigger>
-                <Button
-                  leftIcon={<FilterIcon />}
-                  size={isMobile ? "sm" : "md"}
-                  variant="outline"
-                  borderRadius="full"
-                  minW={isMobile ? "auto" : "8rem"}
-                  h={isMobile ? "36px" : undefined}
-                  fontSize={isMobile ? "xs" : "sm"}
-                >
-                  {t("filters.advancedButton", "Filters")}
-                </Button>
-              </PopoverTrigger>
+              <InputRightElement>
+                {loading && <Spinner size="xs" />}
+                {filters.search && filters.search.length > 0 && (
+                  <IconButton
+                    onClick={clear}
+                    aria-label="clear"
+                    size="xs"
+                    variant="ghost"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                )}
+              </InputRightElement>
+            </InputGroup>
+            {showAdvancedFilters && (
+              <Popover placement="bottom-start">
+                <PopoverTrigger>
+                  <Button
+                    leftIcon={<FilterIcon />}
+                    size={isMobile ? "sm" : "md"}
+                    variant="outline"
+                    minW={isMobile ? "auto" : "8rem"}
+                    h={isMobile ? "36px" : undefined}
+                    fontSize={isMobile ? "xs" : "sm"}
+                    flex={{ base: "1 1 auto", sm: "0 1 auto" }}
+                  >
+                    {t("filters.advancedButton", "Filters")}
+                  </Button>
+                </PopoverTrigger>
               <PopoverContent borderColor="light-border" minW="250px">
                 <PopoverArrow />
                 <PopoverCloseButton />
@@ -434,23 +436,27 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
               </PopoverContent>
             </Popover>
           )}
-          <IconButton
-            aria-label="refresh"
-            disabled={loading}
-            onClick={handleRefresh}
-            size={isMobile ? "sm" : "md"}
-            variant={isMobile ? "ghost" : "outline"}
-            borderRadius="full"
-            minW={isMobile ? "36px" : "40px"}
-            h={isMobile ? "36px" : undefined}
-          >
-            <ReloadIcon
-              className={classNames({
-                "animate-spin": loading,
-              })}
-            />
-          </IconButton>
-        </HStack>
+            <Button
+              aria-label="refresh"
+              isDisabled={loading}
+              onClick={handleRefresh}
+              size={isMobile ? "sm" : "md"}
+              variant="outline"
+              leftIcon={
+                <ReloadIcon
+                  className={classNames({
+                    "animate-spin": loading,
+                  })}
+                />
+              }
+              minW={isMobile ? "auto" : "8rem"}
+              h={isMobile ? "36px" : undefined}
+              fontSize={isMobile ? "xs" : "sm"}
+              flex={{ base: "1 1 auto", sm: "0 1 auto" }}
+            >
+              {t("refresh", "Refresh")}
+            </Button>
+          </HStack>
         {showAdvancedFilters &&
           (activeFilters.length > 0 || Boolean(serviceId) || Boolean(ownerFilter)) && (
           <Wrap mt={2} spacing={2}>
@@ -524,13 +530,14 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
             )}
           </Wrap>
         )}
+        </VStack>
       </GridItem>
       <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
         <Stack
-          direction={{ base: "row", sm: "row" }}
+          direction={{ base: "column", sm: "row" }}
           spacing={{ base: 2, sm: 3 }}
           justifyContent={{ base: "flex-start", md: "flex-end" }}
-          alignItems="center"
+          alignItems={{ base: "stretch", sm: "center" }}
           w="full"
           flexWrap="wrap"
         >
@@ -541,14 +548,13 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
               size={isMobile ? "sm" : "md"}
               onClick={handleCreate}
               isDisabled={target === "admins" && !canManageAdmins}
-              px={isMobile ? 3 : 5}
               leftIcon={isMobile ? undefined : <PlusIconStyled />}
-              w="auto"
               h={isMobile ? "36px" : undefined}
               minW={isMobile ? "auto" : "8.5rem"}
-              fontSize={isMobile ? "sm" : "md"}
+              fontSize={isMobile ? "xs" : "sm"}
               fontWeight="semibold"
               whiteSpace="nowrap"
+              w={{ base: "full", sm: "auto" }}
             >
               {target === "users"
                 ? t("createUser")
