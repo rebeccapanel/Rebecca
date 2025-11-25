@@ -1485,27 +1485,27 @@ export const CoreSettingsPage: FC = () => {
                   <Thead>
                     <Tr>
                       <Th rowSpan={2} w="80px">
-                        {t("common.index", { defaultValue: "#" })}
+                        {t("common.index")}
                       </Th>
-                      <Th colSpan={2}>{t("pages.xray.rules.sourceGroup", { defaultValue: "Source" })}</Th>
-                      <Th colSpan={3}>{t("pages.xray.rules.networkGroup", { defaultValue: "Network" })}</Th>
-                      <Th colSpan={3}>{t("pages.xray.rules.destinationGroup", { defaultValue: "Destination" })}</Th>
-                      <Th colSpan={2}>{t("pages.xray.rules.inboundGroup", { defaultValue: "Inbound" })}</Th>
+                      <Th colSpan={2}>{t("pages.xray.rules.sourceGroup")}</Th>
+                      <Th colSpan={3}>{t("pages.xray.rules.networkGroup")}</Th>
+                      <Th colSpan={3}>{t("pages.xray.rules.destinationGroup")}</Th>
+                      <Th colSpan={2}>{t("pages.xray.rules.inboundGroup")}</Th>
                       <Th rowSpan={2}>{t("pages.xray.rules.outbound")}</Th>
-                      <Th rowSpan={2}>{t("pages.xray.rules.balancer", { defaultValue: "Balancer" })}</Th>
-                      <Th rowSpan={2}>{t("actions", { defaultValue: "Actions" })}</Th>
+                      <Th rowSpan={2}>{t("pages.xray.rules.balancer")}</Th>
+                      <Th rowSpan={2}>{t("actions")}</Th>
                     </Tr>
                     <Tr>
-                      <Th>{t("IP", { defaultValue: "IP" })}</Th>
-                      <Th>{t("port", { defaultValue: "Port" })}</Th>
-                      <Th>{t("network", { defaultValue: "Network" })}</Th>
-                      <Th>{t("pages.xray.rules.protocol", { defaultValue: "Protocol" })}</Th>
-                      <Th>{t("pages.xray.rules.attrs", { defaultValue: "Attrs" })}</Th>
-                      <Th>{t("IP", { defaultValue: "IP" })}</Th>
-                      <Th>{t("pages.xray.rules.domain", { defaultValue: "Domain" })}</Th>
-                      <Th>{t("port", { defaultValue: "Port" })}</Th>
-                      <Th>{t("pages.xray.rules.inboundTag", { defaultValue: "Inbound Tag" })}</Th>
-                      <Th>{t("pages.xray.rules.user", { defaultValue: "Client" })}</Th>
+                      <Th>{t("IP")}</Th>
+                      <Th>{t("port")}</Th>
+                      <Th>{t("network")}</Th>
+                      <Th>{t("pages.xray.rules.protocol")}</Th>
+                      <Th>{t("pages.xray.rules.attrs")}</Th>
+                      <Th>{t("IP")}</Th>
+                      <Th>{t("pages.xray.rules.domain")}</Th>
+                      <Th>{t("port")}</Th>
+                      <Th>{t("pages.xray.rules.inboundTag")}</Th>
+                      <Th>{t("pages.xray.rules.user")}</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
@@ -1513,7 +1513,7 @@ export const CoreSettingsPage: FC = () => {
                       <Tr>
                         <Td colSpan={14}>
                           <Text textAlign="center" color="gray.500">
-                            {t("pages.xray.rules.empty", { defaultValue: "No routing rules defined yet." })}
+                            {t("pages.xray.rules.empty")}
                           </Text>
                         </Td>
                       </Tr>

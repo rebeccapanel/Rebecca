@@ -320,8 +320,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
   const tcpType = watch("tcpType");
 
   const muxEnabled = watch("muxEnabled");
-  const requiredMessage = t("validation.required", { defaultValue: "Required" });
-  const invalidPortMessage = t("validation.invalidPort", { defaultValue: "Invalid port" });
+  const requiredMessage = t("validation.required");
+  const invalidPortMessage = t("validation.invalidPort");
   const typedProtocol = (protocol as ProtocolValue) || Protocols.VLESS;
   const requiresEndpoint = !([Protocols.Freedom, Protocols.Blackhole, Protocols.DNS, Protocols.Wireguard] as ProtocolValue[]).includes(
     typedProtocol

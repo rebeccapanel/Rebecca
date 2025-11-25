@@ -1,4 +1,6 @@
 import {
+  Alert,
+  AlertIcon,
   Box,
   Button,
   Flex,
@@ -70,6 +72,8 @@ type MaintenanceInfo = {
   panel?: { image?: string; tag?: string } | null;
   node?: { image?: string; tag?: string } | null;
 };
+
+type MaintenanceAction = "update" | "restart";
 
 const flattenEventToggleValues = (source: Record<string, unknown>): Record<string, boolean> => {
   const result: Record<string, boolean> = {};
@@ -450,6 +454,18 @@ export const IntegrationSettingsPage = () => {
     { refetchOnWindowFocus: false, enabled: canManageIntegrations }
   );
 
+  const [activeMaintenanceAction, setActiveMaintenanceAction] = useState<MaintenanceAction | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!activeMaintenanceAction) {
+      return;
+    }
+    const timer = window.setTimeout(() => setActiveMaintenanceAction(null), 15000);
+    return () => window.clearTimeout(timer);
+  }, [activeMaintenanceAction]);
+
   const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(panelData?.use_nobetci ?? false);
 
   useEffect(() => {
@@ -458,33 +474,63 @@ export const IntegrationSettingsPage = () => {
     }
   }, [panelData]);
 
+  const triggerMaintenanceAction = async (
+    path: "/maintenance/update" | "/maintenance/restart"
+  ): Promise<{ wentOffline: boolean }> => {
+    try {
+      await apiFetch(path, { method: "POST", timeout: 3000 });
+      return { wentOffline: false };
+    } catch (error: any) {
+      const isLikelyPanelOffline = !error?.response;
+      if (isLikelyPanelOffline) {
+        return { wentOffline: true };
+      }
+      throw error;
+    }
+  };
+
+  const handleMaintenanceSuccess = (
+    action: MaintenanceAction,
+    result: { wentOffline: boolean }
+  ) => {
+    setActiveMaintenanceAction(action);
+    generateSuccessMessage(
+      t(action === "update" ? "settings.panel.updateTriggered" : "settings.panel.restartTriggered"),
+      toast
+    );
+    if (result.wentOffline) {
+      toast({
+        title: t("settings.panel.maintenanceOfflineNotice"),
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+    window.setTimeout(() => maintenanceInfoQuery.refetch(), 6000);
+  };
+
   const updateMutation = useMutation(
-    () => apiFetch("/maintenance/update", { method: "POST" }),
+    () => triggerMaintenanceAction("/maintenance/update"),
     {
-      onSuccess: () => {
-        generateSuccessMessage(
-          t("settings.panel.updateTriggered", "Panel update started"),
-          toast
-        );
-        maintenanceInfoQuery.refetch();
-      },
+      retry: false,
+      onMutate: () => setActiveMaintenanceAction("update"),
+      onSuccess: (result) => handleMaintenanceSuccess("update", result),
       onError: (error) => {
+        setActiveMaintenanceAction(null);
         generateErrorMessage(error, toast);
       },
     }
   );
 
   const restartMutation = useMutation(
-    () => apiFetch("/maintenance/restart", { method: "POST" }),
+    () => triggerMaintenanceAction("/maintenance/restart"),
     {
-      onSuccess: () => {
-        generateSuccessMessage(
-          t("settings.panel.restartTriggered", "Panel restart started"),
-          toast
-        );
-        maintenanceInfoQuery.refetch();
-      },
+      retry: false,
+      onMutate: () => setActiveMaintenanceAction("restart"),
+      onSuccess: (result) => handleMaintenanceSuccess("restart", result),
       onError: (error) => {
+        setActiveMaintenanceAction(null);
         generateErrorMessage(error, toast);
       },
     }
@@ -531,7 +577,7 @@ export const IntegrationSettingsPage = () => {
     },
     onError: () => {
       toast({
-        title: t("errors.generic", "Something went wrong"),
+        title: t("errors.generic"),
         status: "error",
       });
     },
@@ -542,14 +588,14 @@ export const IntegrationSettingsPage = () => {
       setPanelUseNobetci(updated.use_nobetci);
       queryClient.setQueryData("panel-settings", updated);
       toast({
-        title: t("settings.panel.saved", "Panel settings saved"),
+        title: t("settings.panel.saved"),
         status: "success",
         duration: 3000,
       });
     },
     onError: () => {
       toast({
-        title: t("errors.generic", "Something went wrong"),
+        title: t("errors.generic"),
         status: "error",
       });
     },
@@ -582,10 +628,7 @@ export const IntegrationSettingsPage = () => {
 
   const forumTopics = watch("forum_topics");
   const isTelegramEnabled = watch("use_telegram");
-  const telegramDisabledMessage = t(
-    "settings.telegram.disabledOverlay",
-    "Telegram bot is disabled. Enable it to edit these settings."
-  );
+  const telegramDisabledMessage = t("settings.telegram.disabledOverlay");
 
   if (!getUserIsSuccess) {
     return (
@@ -598,12 +641,9 @@ export const IntegrationSettingsPage = () => {
   if (!canManageIntegrations) {
     return (
       <VStack spacing={4} align="stretch">
-        <Heading size="lg">{t("header.integrationSettings", "Integration settings")}</Heading>
+        <Heading size="lg">{t("header.integrationSettings")}</Heading>
         <Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-          {t(
-            "integrations.noPermission",
-            "You do not have permission to manage integration settings."
-          )}
+            {t("integrations.noPermission")}
         </Text>
       </VStack>
     );
@@ -611,14 +651,14 @@ export const IntegrationSettingsPage = () => {
 
   return (
     <Box px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
-      <Heading size="lg" mb={4}>
-        {t("settings.integrations", "Master Settings")}
+        <Heading size="lg" mb={4}>
+        {t("settings.integrations")}
       </Heading>
       <Tabs colorScheme="primary">
         <TabList>
-          <Tab>{t("settings.panel.tabTitle", "Panel")}</Tab>
-          <Tab>{t("settings.telegram", "Telegram")}</Tab>
-          <Tab isDisabled>{t("settings.tabs.comingSoon", "Coming Soon")}</Tab>
+          <Tab>{t("settings.panel.tabTitle")}</Tab>
+          <Tab>{t("settings.telegram")}</Tab>
+          <Tab isDisabled>{t("settings.tabs.comingSoon")}</Tab>
         </TabList>
         <TabPanels>
           <TabPanel px={{ base: 0, md: 2 }}>
@@ -629,10 +669,7 @@ export const IntegrationSettingsPage = () => {
             ) : (
               <Stack spacing={6} align="stretch">
                 <Text fontSize="sm" color="gray.500">
-                  {t(
-                    "settings.panel.description",
-                    "Control dashboard-specific behaviors that affect all admins."
-                  )}
+                  {t("settings.panel.description")}
                 </Text>
                 <Box borderWidth="1px" borderRadius="lg" p={4}>
                   <Flex
@@ -643,13 +680,10 @@ export const IntegrationSettingsPage = () => {
                   >
                     <Box>
                       <Heading size="sm" mb={1}>
-                        {t("settings.panel.useNobetciTitle", "Enable Nobetci integration")}
+                        {t("settings.panel.useNobetciTitle")}
                       </Heading>
                       <Text fontSize="sm" color="gray.500">
-                        {t(
-                          "settings.panel.useNobetciDescription",
-                          "Show Nobetci options when creating or editing nodes."
-                        )}
+                        {t("settings.panel.useNobetciDescription")}
                       </Text>
                     </Box>
                     <Switch
@@ -668,13 +702,10 @@ export const IntegrationSettingsPage = () => {
                   >
                     <Box>
                       <Heading size="sm" mb={1}>
-                        {t("settings.panel.maintenanceTitle", "Maintenance status")}
+                        {t("settings.panel.maintenanceTitle")}
                       </Heading>
                       <Text fontSize="sm" color="gray.500">
-                        {t(
-                          "settings.panel.maintenanceDescription",
-                          "Inspect which container images are currently used by the panel and node."
-                        )}
+                        {t("settings.panel.maintenanceDescription")}
                       </Text>
                     </Box>
                     <Button
@@ -684,7 +715,7 @@ export const IntegrationSettingsPage = () => {
                       onClick={() => maintenanceInfoQuery.refetch()}
                       isLoading={maintenanceInfoQuery.isFetching}
                     >
-                      {t("actions.refresh", "Refresh")}
+                      {t("actions.refresh")}
                     </Button>
                   </Flex>
                   <Stack spacing={2} mt={4}>
@@ -695,9 +726,7 @@ export const IntegrationSettingsPage = () => {
                     ) : (
                       <>
                         <Box>
-                          <Text fontWeight="semibold">
-                            {t("settings.panel.panelVersion", "Panel image")}
-                          </Text>
+                          <Text fontWeight="semibold">{t("settings.panel.panelVersion")}</Text>
                           <Text fontSize="sm" color="gray.500">
                             {maintenanceInfoQuery.data?.panel?.image
                               ? `${maintenanceInfoQuery.data.panel.image}${
@@ -705,13 +734,11 @@ export const IntegrationSettingsPage = () => {
                                     ? ` (${maintenanceInfoQuery.data.panel.tag})`
                                     : ""
                                 }`
-                              : t("settings.panel.versionUnknown", "Unknown")}
+                              : t("settings.panel.versionUnknown")}
                           </Text>
                         </Box>
                         <Box>
-                          <Text fontWeight="semibold">
-                            {t("settings.panel.nodeVersion", "Node image")}
-                          </Text>
+                          <Text fontWeight="semibold">{t("settings.panel.nodeVersion")}</Text>
                           <Text fontSize="sm" color="gray.500">
                             {maintenanceInfoQuery.data?.node
                               ? maintenanceInfoQuery.data.node.image
@@ -720,11 +747,8 @@ export const IntegrationSettingsPage = () => {
                                       ? ` (${maintenanceInfoQuery.data.node.tag})`
                                       : ""
                                   }`
-                                : t("settings.panel.versionUnknown", "Unknown")
-                              : t(
-                                  "settings.panel.nodeVersionUnavailable",
-                                  "Node deployment not detected"
-                                )}
+                                : t("settings.panel.versionUnknown")
+                              : t("settings.panel.nodeVersionUnavailable")}
                           </Text>
                         </Box>
                       </>
@@ -732,11 +756,18 @@ export const IntegrationSettingsPage = () => {
                   </Stack>
                   <Stack spacing={2} mt={4}>
                     <Text fontSize="sm" color="gray.500">
-                      {t(
-                        "settings.panel.maintenanceActionsDescription",
-                        "Use the maintenance service to pull the latest images and restart the containers from the panel."
-                      )}
+                      {t("settings.panel.maintenanceActionsDescription")}
                     </Text>
+                    {activeMaintenanceAction && (
+                      <Alert status="info" variant="subtle" borderRadius="md">
+                        <AlertIcon />
+                        <Text fontSize="sm">
+                          {activeMaintenanceAction === "update"
+                            ? t("settings.panel.updateInProgressHint")
+                            : t("settings.panel.restartInProgressHint")}
+                        </Text>
+                      </Alert>
+                    )}
                     <HStack spacing={3} flexWrap="wrap">
                       <Button
                         size="sm"
@@ -745,7 +776,7 @@ export const IntegrationSettingsPage = () => {
                         onClick={() => updateMutation.mutate()}
                         isLoading={updateMutation.isLoading}
                       >
-                        {t("settings.panel.updateAction", "Update panel")}
+                        {t("settings.panel.updateAction")}
                       </Button>
                       <Button
                         size="sm"
@@ -754,7 +785,7 @@ export const IntegrationSettingsPage = () => {
                         onClick={() => restartMutation.mutate()}
                         isLoading={restartMutation.isLoading}
                       >
-                        {t("settings.panel.restartAction", "Restart panel")}
+                        {t("settings.panel.restartAction")}
                       </Button>
                     </HStack>
                   </Stack>
@@ -766,7 +797,7 @@ export const IntegrationSettingsPage = () => {
                     onClick={() => refetchPanelSettings()}
                     isDisabled={panelMutation.isLoading}
                   >
-                    {t("actions.refresh", "Refresh")}
+                    {t("actions.refresh")}
                   </Button>
                   <Button
                     colorScheme="primary"
@@ -779,7 +810,7 @@ export const IntegrationSettingsPage = () => {
                       panelUseNobetci === panelData.use_nobetci
                     }
                   >
-                    {t("settings.save", "Save Settings")}
+                    {t("settings.save")}
                   </Button>
                 </Flex>
               </Stack>
@@ -794,10 +825,7 @@ export const IntegrationSettingsPage = () => {
               <form onSubmit={handleSubmit(onSubmit)}>
                 <VStack align="stretch" spacing={6}>
                   <Text fontSize="sm" color="gray.500">
-                    {t(
-                      "settings.telegram.description",
-                      "Manage Telegram bot integration settings and notification preferences."
-                    )}
+                    {t("settings.telegram.description")}
                   </Text>
                   <Flex
                     justify="space-between"
@@ -807,13 +835,10 @@ export const IntegrationSettingsPage = () => {
                   >
                     <Box>
                       <Heading size="sm" mb={1}>
-                        {t("settings.telegram.enableBot", "Enable Telegram bot")}
+                        {t("settings.telegram.enableBot")}
                       </Heading>
                       <Text fontSize="sm" color="gray.500">
-                        {t(
-                          "settings.telegram.enableBotDescription",
-                          "Turn the bot on or off without clearing the API token."
-                        )}
+                        {t("settings.telegram.enableBotDescription")}
                       </Text>
                     </Box>
                     <Controller
@@ -831,30 +856,30 @@ export const IntegrationSettingsPage = () => {
                     <Box borderWidth="1px" borderRadius="lg" p={4}>
                       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
                         <FormControl>
-                          <FormLabel>{t("settings.telegram.apiToken", "Bot API Token")}</FormLabel>
+                          <FormLabel>{t("settings.telegram.apiToken")}</FormLabel>
                           <Input placeholder="123456:ABC" {...register("api_token")} />
                         </FormControl>
                         <FormControl>
-                          <FormLabel>{t("settings.telegram.proxyUrl", "Proxy URL")}</FormLabel>
+                          <FormLabel>{t("settings.telegram.proxyUrl")}</FormLabel>
                           <Input placeholder="socks5://user:pass@host:port" {...register("proxy_url")} />
                         </FormControl>
                         <FormControl>
-                          <FormLabel>{t("settings.telegram.adminChatIds", "Admin Chat IDs")}</FormLabel>
+                          <FormLabel>{t("settings.telegram.adminChatIds")}</FormLabel>
                           <Input placeholder="12345, 67890" {...register("admin_chat_ids")} />
                           <FormHelperText>
-                            {t("settings.telegram.adminChatIdsHint", "Comma-separated numeric IDs.")}
+                            {t("settings.telegram.adminChatIdsHint")}
                           </FormHelperText>
                         </FormControl>
                         <FormControl>
-                          <FormLabel>{t("settings.telegram.logsChatId", "Logs Chat ID")}</FormLabel>
+                          <FormLabel>{t("settings.telegram.logsChatId")}</FormLabel>
                           <Input placeholder="-100123456789" {...register("logs_chat_id")} />
                           <FormHelperText>
-                            {t("settings.telegram.logsChatIdHint", "Use the numeric id of the target group or channel.")}
+                            {t("settings.telegram.logsChatIdHint")}
                           </FormHelperText>
                         </FormControl>
                         <FormControl display="flex" alignItems="center">
                           <FormLabel htmlFor="logs_chat_is_forum" mb="0">
-                            {t("settings.telegram.logsChatIsForum", "Logs chat is a forum")}
+                            {t("settings.telegram.logsChatIsForum")}
                           </FormLabel>
                           <Controller
                             control={control}
@@ -865,7 +890,7 @@ export const IntegrationSettingsPage = () => {
                           />
                         </FormControl>
                         <FormControl>
-                          <FormLabel>{t("settings.telegram.defaultVlessFlow", "Default VLESS Flow")}</FormLabel>
+                          <FormLabel>{t("settings.telegram.defaultVlessFlow")}</FormLabel>
                           <Input placeholder="xtls-rprx-vision" {...register("default_vless_flow")} />
                         </FormControl>
                       </SimpleGrid>
@@ -875,25 +900,25 @@ export const IntegrationSettingsPage = () => {
                   <DisabledCard disabled={!isTelegramEnabled} message={telegramDisabledMessage}>
                     <Box>
                       <Heading size="sm" mb={4}>
-                        {t("settings.telegram.forumTopics", "Forum Topics")}
+                        {t("settings.telegram.forumTopics")}
                       </Heading>
                       {forumTopics && Object.keys(forumTopics).length > 0 ? (
                         <Stack spacing={4}>
                           {Object.entries(forumTopics).map(([key]) => (
                             <Box key={key} borderWidth="1px" borderRadius="lg" p={4}>
                               <Text fontWeight="medium" mb={3}>
-                                {t("settings.telegram.topicKey", "Topic")}: {key}
+                                {t("settings.telegram.topicKey")}: {key}
                               </Text>
                               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                                 <FormControl>
-                                  <FormLabel>{t("settings.telegram.topicTitle", "Topic Title")}</FormLabel>
+                                  <FormLabel>{t("settings.telegram.topicTitle")}</FormLabel>
                                   <Input {...register(`forum_topics.${key}.title` as const)} />
                                 </FormControl>
                                 <FormControl>
-                                  <FormLabel>{t("settings.telegram.topicId", "Topic ID")}</FormLabel>
+                                  <FormLabel>{t("settings.telegram.topicId")}</FormLabel>
                                   <Input type="number" {...register(`forum_topics.${key}.topic_id` as const)} />
                                   <FormHelperText>
-                                    {t("settings.telegram.topicIdHint", "Leave empty to let the bot (re)create it.")}
+                                    {t("settings.telegram.topicIdHint")}
                                   </FormHelperText>
                                 </FormControl>
                               </SimpleGrid>
@@ -902,7 +927,7 @@ export const IntegrationSettingsPage = () => {
                         </Stack>
                       ) : (
                         <Text color="gray.500">
-                          {t("settings.telegram.emptyTopics", "No topics available.")}
+                          {t("settings.telegram.emptyTopics")}
                         </Text>
                       )}
                     </Box>
@@ -911,19 +936,16 @@ export const IntegrationSettingsPage = () => {
                   <DisabledCard disabled={!isTelegramEnabled} message={telegramDisabledMessage}>
                     <Box>
                       <Heading size="sm" mb={2}>
-                        {t("settings.telegram.notificationsTitle", "Notifications")}
+                        {t("settings.telegram.notificationsTitle")}
                       </Heading>
                       <Text fontSize="sm" color="gray.500" mb={4}>
-                        {t(
-                          "settings.telegram.notificationsDescription",
-                          "Choose which events should trigger Telegram notifications."
-                        )}
+                        {t("settings.telegram.notificationsDescription")}
                       </Text>
                       <Stack spacing={4}>
                         {EVENT_TOGGLE_GROUPS.map((group) => (
                           <Box key={group.key} borderWidth="1px" borderRadius="lg" p={4}>
                             <Text fontWeight="semibold" mb={3}>
-                              {t(group.titleKey, group.defaultTitle)}
+                              {t(group.titleKey)}
                             </Text>
                             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                               {group.events.map((event) => (
@@ -936,10 +958,10 @@ export const IntegrationSettingsPage = () => {
                                 >
                                   <Box flex="1">
                                     <Text fontWeight="medium">
-                                      {t(event.labelKey, event.defaultLabel)}
+                                      {t(event.labelKey)}
                                     </Text>
                                     <Text fontSize="sm" color="gray.500">
-                                      {t(event.hintKey, event.defaultHint)}
+                                      {t(event.hintKey)}
                                     </Text>
                                   </Box>
                                   <Controller
@@ -968,7 +990,7 @@ export const IntegrationSettingsPage = () => {
                       onClick={() => refetch()}
                       isDisabled={mutation.isLoading}
                     >
-                      {t("actions.refresh", "Refresh")}
+                      {t("actions.refresh")}
                     </Button>
                     <Button
                       colorScheme="primary"
@@ -977,7 +999,7 @@ export const IntegrationSettingsPage = () => {
                       isLoading={mutation.isLoading}
                       isDisabled={!isDirty && !mutation.isLoading}
                     >
-                      {t("settings.save", "Save Settings")}
+                      {t("settings.save")}
                     </Button>
                   </Flex>
                 </VStack>
@@ -985,7 +1007,7 @@ export const IntegrationSettingsPage = () => {
             )}
           </TabPanel>
           <TabPanel>
-            <Text color="gray.500">{t("settings.tabs.comingSoon", "Coming Soon")}</Text>
+            <Text color="gray.500">{t("settings.tabs.comingSoon")}</Text>
           </TabPanel>
         </TabPanels>
       </Tabs>

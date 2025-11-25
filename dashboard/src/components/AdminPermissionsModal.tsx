@@ -70,7 +70,6 @@ export const AdminPermissionsModal = ({ isOpen, onClose, admin }: AdminPermissio
       <ModalContent>
         <ModalHeader>
           {t("admins.permissions.modalTitle", {
-            defaultValue: "Edit permissions for {{username}}",
             username: admin?.username ?? "",
           })}
         </ModalHeader>

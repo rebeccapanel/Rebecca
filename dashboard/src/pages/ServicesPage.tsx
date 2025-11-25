@@ -1149,8 +1149,6 @@ const ServicesPage: FC = () => {
               <VStack align="stretch" spacing={4}>
                 <Text>
                   {t("services.deleteDialogDescription", {
-                    defaultValue:
-                      "Deleting the service \"{{name}}\" cannot be undone. Choose how linked resources should be handled.",
                     name: servicePendingDelete.name,
                   })}
                 </Text>
@@ -1170,8 +1168,6 @@ const ServicesPage: FC = () => {
                   <VStack align="stretch" spacing={3}>
                     <Text fontWeight="semibold">
                       {t("services.userDeletePrompt", {
-                        defaultValue:
-                          "This service has {{count}} linked users. Choose how to handle them.",
                         count: servicePendingDelete.user_count,
                       })}
                     </Text>

@@ -145,7 +145,6 @@ export const InboundsManager: FC = () => {
 
   const handleDelete = async (inbound: RawInbound) => {
     const confirmMessage = t("inbounds.confirmDelete", {
-      defaultValue: "Delete inbound {{tag}}?",
       tag: inbound.tag,
     });
     if (!window.confirm(confirmMessage)) {

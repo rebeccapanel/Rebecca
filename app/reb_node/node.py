@@ -218,6 +218,12 @@ class ReSTXRayNode:
 
         res = self.make_request("/connect", timeout=60)
         self._session_id = res['session_id']
+        
+        # Get node version after connecting
+        version_res = self.make_request("/", timeout=60)
+        node_version = version_res.get('node_version')
+        if node_version:
+            self.node_version = node_version
 
     def disconnect(self):
         self.make_request("/disconnect", timeout=60)

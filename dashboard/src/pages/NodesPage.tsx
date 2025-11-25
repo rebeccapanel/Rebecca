@@ -812,8 +812,7 @@ export const NodesPage: FC = () => {
           {latestNodeVersion ? (
             <Tag size="sm" colorScheme="blue">
               {t("nodes.latestNodeVersionTag", {
-                version: latestNodeVersion,
-                defaultValue: "Latest node: v{{version}}",
+                version: normalizeVersion(latestNodeVersion),
               })}
             </Tag>
           ) : null}

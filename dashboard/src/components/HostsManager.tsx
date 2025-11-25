@@ -1651,9 +1651,7 @@ export const HostsManager: FC = () => {
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={t("hostsPage.searchPlaceholder", {
-                defaultValue: "Search hosts...",
-              })}
+              placeholder={t("hostsPage.searchPlaceholder")}
               size="sm"
               w="100%"
             />

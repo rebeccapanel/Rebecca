@@ -386,11 +386,9 @@ const SystemOverviewCard: FC<{
                   {isPanelUpdateAvailable
                     ? t("system.updateAvailable", {
                         version: latestPanelVersion,
-                        defaultValue: "Update available: v{{version}}",
                       })
                     : t("system.latestRelease", {
                         version: latestPanelVersion,
-                        defaultValue: "Latest release: v{{version}}",
                       })}
                 </Tag>
               </WrapItem>
