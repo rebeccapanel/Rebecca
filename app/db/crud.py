@@ -3238,7 +3238,8 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.utcnow()
     if modified_admin.telegram_id is not None:
-        dbadmin.telegram_id = modified_admin.telegram_id
+        # Treat falsy/zero as a request to clear the telegram id.
+        dbadmin.telegram_id = modified_admin.telegram_id or None
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit

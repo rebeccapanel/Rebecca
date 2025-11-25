@@ -542,7 +542,20 @@ class AdminModify(BaseModel):
             return pwd_context.hash(self.password)
 
 class AdminPartialModify(AdminModify):
-    __annotations__ = {k: Optional[v] for k, v in AdminModify.__annotations__.items()}
+    password: Optional[str] = Field(
+        None, min_length=6, description="New password (optional, minimum 6 characters)"
+    )
+    role: Optional[AdminRole] = Field(None, description="Access level for the admin account")
+    permissions: Optional[AdminPermissions] = Field(
+        default=None, description="Fine-grained permission overrides for this admin"
+    )
+    telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    data_limit: Optional[int] = Field(
+        None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400
+    )
+    users_limit: Optional[int] = Field(
+        None, description="Maximum number of users (null = unlimited)", example=100
+    )
 
 
 class AdminInDB(Admin):

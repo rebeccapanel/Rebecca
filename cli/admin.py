@@ -19,11 +19,13 @@ app = typer.Typer(no_args_is_help=True)
 
 
 def validate_telegram_id(value: Union[int, str]) -> Union[int, None]:
-    if not value:
+    if value in (None, "", 0, "0"):
         return 0
-    if not isinstance(value, int) and not value.isdigit():
-        raise typer.BadParameter("Telegram ID must be an integer.")
-    if int(value) < 0:
+    if not isinstance(value, int):
+        if not str(value).isdigit():
+            raise typer.BadParameter("Telegram ID must be an integer.")
+        value = int(value)
+    if value < 0:
         raise typer.BadParameter("Telegram ID must be a positive integer.")
     return value
 
