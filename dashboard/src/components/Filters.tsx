@@ -301,22 +301,23 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
       id="filters"
       templateColumns={{
         lg: "repeat(3, 1fr)",
-        md: "repeat(4, 1fr)",
-        base: "repeat(1, 1fr)",
+        md: "repeat(2, 1fr)",
+        base: "1fr",
       }}
       mx="0"
       rowGap={4}
       gap={{
         lg: 4,
-        base: 0,
+        md: 4,
+        base: 4,
       }}
       py={4}
       {...props}
     >
-      <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>
+      <GridItem colSpan={{ base: 1, md: 1, lg: 1 }} order={{ base: 2, md: 1 }}>
         <VStack spacing={2} align="stretch" w="full">
           <HStack spacing={2} align="center" w="full" flexWrap="wrap">
-            <InputGroup flex={{ base: "1 1 100%", sm: "1 1 auto" }} minW={{ base: "100%", sm: "200px" }}>
+            <InputGroup flex={{ base: "1 1 100%", sm: "1 1 auto" }} minW={{ base: "100%", sm: "200px" }} maxW={{ base: "100%", sm: "none" }}>
               <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
               <Input
                 placeholder={
@@ -532,7 +533,7 @@ export const Filters: FC<FilterProps> = ({ for: target = "users", ...props }) =>
         )}
         </VStack>
       </GridItem>
-      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} order={{ base: 1, md: 2 }}>
+      <GridItem colSpan={{ base: 1, md: 1, lg: 2 }} order={{ base: 1, md: 2 }}>
         <Stack
           direction={{ base: "column", sm: "row" }}
           spacing={{ base: 2, sm: 3 }}

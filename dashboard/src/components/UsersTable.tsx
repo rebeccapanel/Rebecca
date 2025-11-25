@@ -271,10 +271,11 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   };
 
   return (
-    <Box position="relative">
+    <Box position="relative" w="full">
       <Box
         id="users-table"
-        overflowX={{ base: "unset", md: "unset" }}
+        overflowX={{ base: "auto", md: "auto" }}
+        w="full"
         filter={isAdminDisabled ? "blur(4px)" : undefined}
         pointerEvents={isAdminDisabled ? "none" : undefined}
         aria-hidden={isAdminDisabled ? true : undefined}
@@ -581,11 +582,13 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           </Tbody>
         </Table>
       </Accordion>
-      <Table
-        orientation="vertical"
-        display={{ base: "none", md: "table" }}
-        {...props}
-      >
+      <Box overflowX="auto" w="full" display={{ base: "none", md: "block" }}>
+        <Table
+          orientation="vertical"
+          display={{ base: "none", md: "table" }}
+          minW={{ base: "100%", md: "800px" }}
+          {...props}
+        >
         <Thead position="relative" zIndex="docked">
           <Tr>
             <Th
@@ -757,6 +760,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
           )}
         </Tbody>
       </Table>
+      </Box>
       </Box>
       {isAdminDisabled && (
         <Flex

@@ -7,8 +7,8 @@ import {
 } from "@chakra-ui/react";
 import { FC, ReactNode } from "react";
 
-export type ChartBoxProps = BoxProps & {
-  title?: string;
+export type ChartBoxProps = Omit<BoxProps, "title"> & {
+  title?: ReactNode;
   children: ReactNode;
   headerActions?: ReactNode;
 };

@@ -108,7 +108,6 @@ const buildDailyUsageOptions = (colorMode: string, categories: string[]): ApexOp
   };
 };
 
-// Helper function to convert RangeState to DateRangeValue
 const rangeStateToDateRangeValue = (range: RangeState): DateRangeValue => ({
   start: range.start,
   end: range.end,
@@ -117,17 +116,17 @@ const rangeStateToDateRangeValue = (range: RangeState): DateRangeValue => ({
   unit: range.unit,
 });
 
-// Helper function to convert DateRangeValue to RangeState
 const dateRangeValueToRangeState = (value: DateRangeValue): RangeState => {
   if (value.presetKey && value.presetKey !== "custom") {
     // It's a preset, use normalizeCustomRange to get proper RangeState
     return normalizeCustomRange(value.start, value.end);
   }
+  const unit: "day" | "hour" = value.unit === "hour" ? "hour" : "day";
   return {
     key: "custom",
     start: value.start,
     end: value.end,
-    unit: value.unit || "day",
+    unit,
   };
 };
 
@@ -699,7 +698,7 @@ const NodesUsageAnalytics: FC = () => {
       key: p.key,
       label: p.label,
       amount: p.amount,
-      unit: p.unit === "hour" ? "hour" : p.unit === "day" ? "day" : "day",
+      unit: (p.unit === "hour" ? "hour" : p.unit === "day" ? "day" : "day") as "hour" | "day" | "week" | "month",
     })),
     [presets]
   );

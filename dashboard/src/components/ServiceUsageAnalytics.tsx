@@ -123,11 +123,12 @@ const dateRangeValueToRangeState = (value: DateRangeValue): RangeState => {
   if (value.presetKey && value.presetKey !== "custom") {
     return normalizeCustomRange(value.start, value.end);
   }
+  const unit: "day" | "hour" = value.unit === "hour" ? "hour" : "day";
   return {
     key: "custom",
     start: value.start,
     end: value.end,
-    unit: value.unit || "day",
+    unit,
   };
 };
 
@@ -310,7 +311,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({ services
       key: p.key,
       label: p.label,
       amount: p.amount,
-      unit: p.unit === "hour" ? "hour" : "day",
+      unit: (p.unit === "hour" ? "hour" : "day") as "hour" | "day" | "week" | "month",
     })),
     []
   );

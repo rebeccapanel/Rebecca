@@ -331,7 +331,7 @@ useEffect(() => {
       key: p.key,
       label: p.label,
       amount: p.amount,
-      unit: p.unit === "hour" ? "hour" : "day",
+      unit: (p.unit === "hour" ? "hour" : "day") as "hour" | "day" | "week" | "month",
     })),
     []
   );
