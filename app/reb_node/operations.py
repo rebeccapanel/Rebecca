@@ -85,34 +85,52 @@ def _build_runtime_accounts(
 ) -> List[Account]:
     email = f"{dbuser.id}.{dbuser.username}"
     accounts: List[Account] = []
-    seen_ids: set[str] = set()
+    try:
+        proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key)
+    except Exception as exc:
+        logger.warning(
+            "Failed to build runtime credentials for user %s (%s) and proxy %s: %s",
+            dbuser.id,
+            dbuser.username,
+            proxy_type,
+            exc,
+        )
+        return accounts
 
-    existing_id = getattr(settings_model, "id", None)
-    if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
-        parsed_id = str(existing_id)
-        seen_ids.add(parsed_id)
-        accounts.append(proxy_type.account_model(email=email, id=parsed_id))
+    if proxy_settings.get("flow") and inbound:
+        network = inbound.get("network", "tcp")
+        tls_type = inbound.get("tls", "none")
+        header_type = inbound.get("header_type", "")
+        flow_supported = (
+            network in ("tcp", "raw", "kcp")
+            and tls_type in ("tls", "reality")
+            and header_type != "http"
+        )
+        if not flow_supported:
+            proxy_settings.pop("flow", None)
 
-    if user.credential_key and proxy_type in UUID_PROTOCOLS:
-        try:
-            proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key)
-            if proxy_settings.get("flow") and inbound:
-                network = inbound.get("network", "tcp")
-                tls_type = inbound.get("tls", "none")
-                header_type = inbound.get("header_type", "")
-                flow_supported = (
-                    network in ("tcp", "raw", "kcp")
-                    and tls_type in ("tls", "reality")
-                    and header_type != "http"
-                )
-                if not flow_supported:
-                    proxy_settings.pop("flow", None)
-            generated_id = proxy_settings.get("id")
-            if generated_id and generated_id not in seen_ids:
-                seen_ids.add(generated_id)
-                accounts.append(proxy_type.account_model(email=email, **proxy_settings))
-        except Exception as exc:
-            logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in runtime accounts: {exc}")
+    if proxy_type in UUID_PROTOCOLS:
+        uuid_value = proxy_settings.get("id")
+        if not _is_valid_uuid(uuid_value):
+            logger.warning(
+                "User %s (%s) has invalid UUID for %s - skipping account injection",
+                dbuser.id,
+                dbuser.username,
+                proxy_type,
+            )
+            return accounts
+        proxy_settings["id"] = str(uuid_value)
+
+    try:
+        accounts.append(proxy_type.account_model(email=email, **proxy_settings))
+    except Exception as exc:
+        logger.warning(
+            "Failed to create account model for user %s (%s) and proxy %s: %s",
+            dbuser.id,
+            dbuser.username,
+            proxy_type,
+            exc,
+        )
 
     return accounts
 
@@ -139,18 +157,6 @@ def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
 def _add_accounts_to_inbound(api: XRayAPI, inbound_tag: str, accounts: List[Account]):
     for account in accounts:
         _add_account_to_inbound(api, inbound_tag, account)
-    try:
-        api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except xray_exceptions.EmailExistsError:
-        try:
-            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-        except Exception as e:
-            logger.warning(f"Failed to update existing user {account.email} in {inbound_tag}: {e}")
-    except xray_exceptions.ConnectionError:
-        pass
-    except Exception as e:
-        logger.error(f"Failed to add user {account.email} to {inbound_tag}: {e}")
 
 
 @threaded_function

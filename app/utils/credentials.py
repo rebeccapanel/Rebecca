@@ -176,27 +176,38 @@ def runtime_proxy_settings(
 
     current_id = data.get("id")
     sanitized_id = _sanitize_uuid(current_id)
-
+    normalized_key: Optional[str] = None
     if credential_key:
-        normalized = normalize_key(credential_key)
-        if proxy_type in UUID_PROTOCOLS:
-            data["id"] = str(key_to_uuid(normalized, proxy_type))
-        if proxy_type == ProxyTypes.Trojan:
-            data["password"] = key_to_password(normalized, proxy_type.value)
-        if proxy_type == ProxyTypes.Shadowsocks:
-            data["password"] = key_to_password(normalized, proxy_type.value)
-            data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
-    else:
-        if proxy_type in UUID_PROTOCOLS:
-            if sanitized_id:
-                data["id"] = sanitized_id
-            else:
-                raise ValueError(f"UUID is required for proxy type {proxy_type}")
-        if proxy_type == ProxyTypes.Trojan:
+        normalized_key = normalize_key(credential_key)
+
+    # UUID/password priority:
+    #   1) Persisted value from proxies table (sanitized)
+    #   2) Derived from credential_key
+    #   3) Auto-generated (where allowed)
+    if proxy_type in UUID_PROTOCOLS:
+        if sanitized_id:
+            data["id"] = sanitized_id
+        elif normalized_key:
+            data["id"] = str(key_to_uuid(normalized_key, proxy_type))
+        else:
+            raise ValueError(f"UUID is required for proxy type {proxy_type}")
+
+    if proxy_type == ProxyTypes.Trojan:
+        if data.get("password"):
+            pass  # keep stored password
+        elif normalized_key:
+            data["password"] = key_to_password(normalized_key, proxy_type.value)
+        else:
             data.setdefault("password", random_password())
-        if proxy_type == ProxyTypes.Shadowsocks:
+
+    if proxy_type == ProxyTypes.Shadowsocks:
+        if data.get("password"):
+            pass  # keep stored password
+        elif normalized_key:
+            data["password"] = key_to_password(normalized_key, proxy_type.value)
+        else:
             data.setdefault("password", random_password())
-            data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
+        data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
 
     return data
 

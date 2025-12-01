@@ -609,19 +609,19 @@ class XRayConfig(dict):
                             logger.warning(f"Invalid proxy_type {proxy_type}: {e}")
                             continue
 
-                        existing_id = settings.get('id')
-                        existing_settings = settings.copy()
-                        
                         client_to_add = None
-                        
-                        if _is_valid_uuid(existing_id) and proxy_type_enum in UUID_PROTOCOLS:
-                            client_to_add = {
-                                "email": email,
-                                **existing_settings
-                            }
-                            if client_to_add.get('id'):
+
+                        try:
+                            settings_obj = ProxySettings.from_dict(proxy_type_enum, settings.copy())
+                            runtime_settings = runtime_proxy_settings(
+                                settings_obj, proxy_type_enum, credential_key
+                            )
+
+                            client_to_add = {"email": email, **runtime_settings}
+
+                            if client_to_add.get('id') is not None:
                                 client_to_add['id'] = str(client_to_add['id'])
-                            # Remove flow if inbound doesn't support it (flow is optional)
+
                             if client_to_add.get('flow') and inbound:
                                 network = inbound.get('network', 'tcp')
                                 tls_type = inbound.get('tls', 'none')
@@ -633,56 +633,10 @@ class XRayConfig(dict):
                                 )
                                 if not flow_supported:
                                     del client_to_add['flow']
-                        elif credential_key and proxy_type_enum in UUID_PROTOCOLS:
-                            try:
-                                settings_obj = ProxySettings.from_dict(proxy_type_enum, existing_settings)
-                                runtime_settings = runtime_proxy_settings(
-                                    settings_obj, proxy_type_enum, credential_key
-                                )
-                                
-                                client_to_add = {
-                                    "email": email,
-                                    **existing_settings.copy()
-                                }
-                                
-                                # Remove null/invalid UUID from existing settings
-                                if 'id' in client_to_add and not _is_valid_uuid(client_to_add.get('id')):
-                                    del client_to_add['id']
-                                
-                                uuid_value = runtime_settings.get('id')
-                                if uuid_value:
-                                    if isinstance(uuid_value, str):
-                                        client_to_add['id'] = uuid_value
-                                    else:
-                                        client_to_add['id'] = str(uuid_value)
-                                elif 'id' not in client_to_add:
-                                    # If no UUID was generated and no UUID exists, skip this user
-                                    logger = logging.getLogger("uvicorn.error")
-                                    logger.warning(f"Failed to generate UUID from key for user {user_id} in include_db_users")
-                                    client_to_add = None
-                                
-                                for key, value in runtime_settings.items():
-                                    if key != 'id':
-                                        client_to_add[key] = value
-                                
-                                # Remove flow if inbound doesn't support it (flow is optional)
-                                # Flow should only be used with TCP/raw/kcp + TLS/Reality (without HTTP header)
-                                if client_to_add.get('flow') and inbound:
-                                    network = inbound.get('network', 'tcp')
-                                    tls_type = inbound.get('tls', 'none')
-                                    header_type = inbound.get('header_type', '')
-                                    flow_supported = (
-                                        network in ('tcp', 'raw', 'kcp')
-                                        and tls_type in ('tls', 'reality')
-                                        and header_type != 'http'
-                                    )
-                                    if not flow_supported:
-                                        # Remove flow if inbound doesn't support it - user can still connect without flow
-                                        del client_to_add['flow']
-                            except Exception as e:
-                                logger = logging.getLogger("uvicorn.error")
-                                logger.warning(f"Failed to generate UUID from key for user {user_id}: {e}")
-                                client_to_add = None
+                        except Exception as e:
+                            logger = logging.getLogger("uvicorn.error")
+                            logger.warning(f"Failed to resolve credentials for user {user_id}: {e}")
+                            client_to_add = None
                         
                         if client_to_add:
                             # Flow is optional - users with flow can connect if inbound supports it,
@@ -691,7 +645,11 @@ class XRayConfig(dict):
                         else:
                             # If no client was added, this is an error case
                             logger = logging.getLogger("uvicorn.error")
-                            logger.warning(f"User {user_id} has no UUID and no credential_key for {proxy_type} - skipping")
+                            logger.warning(
+                                "User %s has no credentials (UUID/password) and no credential_key for %s - skipping",
+                                user_id,
+                                proxy_type,
+                            )
 
         if DEBUG:
             with open('generated_config-debug.json', 'w') as f:

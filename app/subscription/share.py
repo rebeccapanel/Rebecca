@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, List, Literal, Union
 from jdatetime import date as jd
 
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings
 from app.models.proxy import ProxyTypes
 
 from . import *
@@ -423,15 +423,10 @@ def process_inbounds_and_tags(
             proxy_type = ProxyTypes(protocol)
         else:
             proxy_type = protocol
-        
-        existing_id = getattr(settings, 'id', None) if hasattr(settings, 'id') else None
-        
-        if existing_id and proxy_type in UUID_PROTOCOLS:
-            runtime_settings = settings.model_dump()
-        else:
-            runtime_settings = runtime_proxy_settings(
-                settings, proxy_type, credential_key
-            )
+
+        runtime_settings = runtime_proxy_settings(
+            settings, proxy_type, credential_key
+        )
 
         runtime_settings.pop("flow", None)
         
