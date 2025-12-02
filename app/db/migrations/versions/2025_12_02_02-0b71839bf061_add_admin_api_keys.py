@@ -26,11 +26,7 @@ def upgrade() -> None:
         sa.Column("last_used_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(["admin_id"], ["admins.id"]),
     )
-    op.create_index(op.f("ix_admin_api_keys_admin_id"), "admin_api_keys", ["admin_id"], unique=False)
-    op.create_index(op.f("ix_admin_api_keys_key_hash"), "admin_api_keys", ["key_hash"], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_admin_api_keys_key_hash"), table_name="admin_api_keys")
-    op.drop_index(op.f("ix_admin_api_keys_admin_id"), table_name="admin_api_keys")
     op.drop_table("admin_api_keys")
