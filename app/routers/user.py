@@ -102,7 +102,9 @@ def add_user(
         if not db_admin:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
 
-        allowed_inbounds = crud.get_service_allowed_inbounds(service)
+        from app.services.data_access import get_service_allowed_inbounds_cached
+
+        allowed_inbounds = get_service_allowed_inbounds_cached(db, service)
         if not allowed_inbounds or not any(allowed_inbounds.values()):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

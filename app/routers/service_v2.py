@@ -50,7 +50,9 @@ def _refresh_service_users_background(service_id: int):
         service = crud.get_service(db, service_id)
         if not service:
             return
-        allowed = crud.get_service_allowed_inbounds(service)
+        from app.services.data_access import get_service_allowed_inbounds_cached
+
+        allowed = get_service_allowed_inbounds_cached(db, service)
         users_to_update = crud.refresh_service_users(db, service, allowed)
         db.commit()
         for dbuser in users_to_update:

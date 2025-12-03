@@ -2144,11 +2144,6 @@ def update_user(
             # Clear per-user exclusions when detached from service
             for proxy in dbuser.proxies:
                 proxy.excluded_inbounds = []
-            db.execute(
-                delete(excluded_inbounds_association).where(
-                    excluded_inbounds_association.c.proxy_id.in_([p.id for p in dbuser.proxies if p.id])
-                )
-            )
         else:
             # Prevent assigning broken services (no allowed inbounds/hosts)
             allowed = _service_allowed_inbounds(service)

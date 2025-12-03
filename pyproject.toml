@@ -42,6 +42,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "pyyaml==6.0.2",
     "qrcode==7.4.2",
+    "redis>=5.0,<6.0",
     "requests==2.32.3",
     "rich==13.7.1",
     "sqlalchemy==2.0.36",

@@ -105,18 +105,6 @@ def _build_runtime_accounts(
         )
         return accounts
 
-    if proxy_settings.get("flow") and inbound:
-        network = inbound.get("network", "tcp")
-        tls_type = inbound.get("tls", "none")
-        header_type = inbound.get("header_type", "")
-        flow_supported = (
-            network in ("tcp", "raw", "kcp")
-            and tls_type in ("tls", "reality")
-            and header_type != "http"
-        )
-        if not flow_supported:
-            proxy_settings.pop("flow", None)
-
     if proxy_type in UUID_PROTOCOLS:
         uuid_value = proxy_settings.get("id")
         if not _is_valid_uuid(uuid_value):

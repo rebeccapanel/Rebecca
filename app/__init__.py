@@ -92,6 +92,8 @@ if not SKIP_RUNTIME_INIT:
 
 
 if not SKIP_RUNTIME_INIT:
+    from app.cache.redis_client import init_redis
+
     @app.on_event("startup")
     def on_startup():
         paths = [f"{r.path}/" for r in app.routes]
@@ -100,6 +102,7 @@ if not SKIP_RUNTIME_INIT:
             raise ValueError(
                 f"you can't use /{XRAY_SUBSCRIPTION_PATH}/ as subscription path it reserved for {app.title}"
             )
+        init_redis()
         scheduler.start()
 
 

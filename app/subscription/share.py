@@ -255,9 +255,11 @@ def process_inbounds_and_tags(
         reverse=False,
 ) -> Union[List, str]:
     from app.runtime import xray
+    from app.services.data_access import get_service_host_map_cached
+    from app.services.data_access import get_service_host_map_cached
     service_id = extra_data.get("service_id")
 
-    host_map = xray.get_service_host_map(service_id)
+    host_map = get_service_host_map_cached(service_id)
     inbound_index = {
         tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
     }

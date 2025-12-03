@@ -32,7 +32,8 @@ from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config_and_restart
 from app.utils.maintenance import maintenance_request
-from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
+from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, REDIS_ENABLED
+from app.cache.redis_client import get_redis
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 logger = logging.getLogger(__name__)
@@ -367,11 +368,24 @@ def generate_reality_keypair(
             "privateKey": priv_b64,
             "publicKey": pub_b64
         }
-    except FileNotFoundError as exc:
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
         raise HTTPException(status_code=500, detail="Xray binary not found") from exc
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover - defensive
         logger.error("Failed to generate REALITY key pair: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to generate key pair: {str(exc)}") from exc
+
+
+@router.get("/system/redis-status")
+def redis_status(admin: Admin = Depends(Admin.check_sudo_admin)):
+    enabled = bool(REDIS_ENABLED)
+    connected = False
+    client = get_redis() if enabled else None
+    if client:
+        try:
+            connected = bool(client.ping())
+        except Exception:
+            connected = False
+    return {"enabled": enabled, "connected": connected}
 
 
 @router.get(
@@ -482,7 +496,9 @@ def delete_inbound(
 
     users_to_refresh: Dict[int, object] = {}
     for service in affected_services:
-        allowed = crud.get_service_allowed_inbounds(service)
+        from app.services.data_access import get_service_allowed_inbounds_cached
+
+        allowed = get_service_allowed_inbounds_cached(db, service)
         refreshed = crud.refresh_service_users(db, service, allowed)
         for user in refreshed:
             if user.id is not None:
