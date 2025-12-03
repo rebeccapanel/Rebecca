@@ -9,6 +9,11 @@ from datetime import datetime, timezone, timedelta
 from app.utils.jwt import get_subscription_payload
 from sqlalchemy import func
 from app.utils.credentials import normalize_key
+from app.redis.adapter import (
+    validate_subscription_by_token,
+    validate_subscription_by_key as validate_sub_by_key_adapter,
+    validate_subscription_by_key_only as validate_sub_by_key_only_adapter,
+)
 
 
 def validate_admin(db: Session, username: str, password: str) -> Optional[AdminValidationResult]:
@@ -71,18 +76,8 @@ def get_validated_sub(
         token: str,
         db: Session = Depends(get_db)
 ) -> UserResponse:
-    sub = get_subscription_payload(token)
-    if not sub:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    dbuser = crud.get_user(db, sub['username'])
-    if not dbuser or dbuser.created_at > sub['created_at']:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    if dbuser.sub_revoked_at and dbuser.sub_revoked_at > sub['created_at']:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    return dbuser
+    """Validate subscription by token using Redis adapter."""
+    return validate_subscription_by_token(token, db)
 
 
 def get_validated_sub_by_key(
@@ -90,26 +85,8 @@ def get_validated_sub_by_key(
         credential_key: str = Path(..., pattern="^[0-9a-fA-F-]{32,36}$"),
         db: Session = Depends(get_db),
 ) -> UserResponse:
-    try:
-        normalized_key = normalize_key(credential_key)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid credential key")
-
-    dbuser = crud.get_user(db, username)
-    if not dbuser:
-        dbuser = (
-            db.query(User)
-            .filter(func.lower(User.username) == username.lower())
-            .filter(User.credential_key.isnot(None))
-            .first()
-        )
-    if not dbuser or not dbuser.credential_key:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    if normalize_key(dbuser.credential_key) != normalized_key:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    return dbuser
+    """Validate subscription by username and credential key using Redis adapter."""
+    return validate_sub_by_key_adapter(username, credential_key, db)
 
 
 def get_validated_sub_by_key_only(
@@ -118,23 +95,9 @@ def get_validated_sub_by_key_only(
 ) -> UserResponse:
     """
     Validate subscription by credential_key only (no username provided).
-    Finds the user whose credential_key matches.
+    Uses Redis adapter to decide between Redis and database.
     """
-    try:
-        normalized_key = normalize_key(credential_key)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid credential key")
-
-    dbuser = (
-        db.query(User)
-        .filter(User.credential_key.isnot(None))
-        .filter(func.replace(func.lower(User.credential_key), "-", "") == normalized_key)
-        .first()
-    )
-    if not dbuser:
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    return dbuser
+    return validate_sub_by_key_only_adapter(credential_key, db)
 
 
 def get_validated_user(

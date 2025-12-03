@@ -15,7 +15,7 @@ from app import runtime
 from app.db import GetDB, crud
 from app.utils.system import register_scheduler_jobs
 
-__version__ = "0.0.23"
+__version__ = "0.0.24"
 
 IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
 if IS_RUNNING_ALEMBIC:
@@ -92,7 +92,9 @@ if not SKIP_RUNTIME_INIT:
 
 
 if not SKIP_RUNTIME_INIT:
-    from app.cache.redis_client import init_redis
+    from app.redis import init_redis, get_redis
+    from app.redis.subscription import warmup_subscription_cache
+    from app.utils.system import start_redis_if_configured
 
     @app.on_event("startup")
     def on_startup():
@@ -102,7 +104,25 @@ if not SKIP_RUNTIME_INIT:
             raise ValueError(
                 f"you can't use /{XRAY_SUBSCRIPTION_PATH}/ as subscription path it reserved for {app.title}"
             )
+        
+        # Start Redis if configured to do so
+        start_redis_if_configured()
+        
+        # Initialize Redis connection
         init_redis()
+        
+        # Warm up subscription cache if Redis is available
+        redis_client = get_redis()
+        if redis_client:
+            logger.info("Redis is available, warming up subscription cache...")
+            try:
+                total, cached = warmup_subscription_cache()
+                logger.info(f"Subscription cache warmup completed: {cached}/{total} users cached")
+            except Exception as e:
+                logger.warning(f"Failed to warmup subscription cache: {e}", exc_info=True)
+        else:
+            logger.info("Redis is not available, subscription validation will use database only")
+        
         scheduler.start()
 
 

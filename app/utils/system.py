@@ -188,3 +188,72 @@ def readable_size(size_bytes):
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return f'{s} {size_name[i]}'
+
+
+def start_redis_if_configured() -> None:
+    """
+    Start Redis server if configured to do so.
+    Checks REDIS_AUTO_START environment variable and attempts to start Redis.
+    """
+    import logging
+    import subprocess
+    import shutil
+    import time
+    
+    logger = logging.getLogger("uvicorn.error")
+    
+    try:
+        from config import REDIS_ENABLED, REDIS_AUTO_START, REDIS_HOST, REDIS_PORT
+        
+        if not REDIS_ENABLED:
+            return
+        
+        # Check if auto-start is enabled
+        if not REDIS_AUTO_START:
+            return
+        
+        # Check if Redis is already running
+        if check_port(REDIS_PORT):
+            logger.info(f"Redis is already running on {REDIS_HOST}:{REDIS_PORT}")
+            return
+        
+        # Try to find redis-server executable
+        redis_server = shutil.which("redis-server")
+        if not redis_server:
+            logger.warning("redis-server not found in PATH, skipping auto-start. Install Redis or set REDIS_AUTO_START=false")
+            return
+        
+        logger.info("Starting Redis server...")
+        try:
+            # Start Redis in background
+            # Use --daemonize yes for background execution
+            process = subprocess.Popen(
+                [redis_server, "--daemonize", "yes"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = process.communicate(timeout=5)
+            
+            if process.returncode == 0:
+                # Wait a moment for Redis to start
+                time.sleep(1)
+                
+                # Verify it's running
+                if check_port(REDIS_PORT):
+                    logger.info(f"Redis server started successfully on {REDIS_HOST}:{REDIS_PORT}")
+                else:
+                    logger.warning("Redis server process started but port is not accessible")
+            else:
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                logger.warning(f"Failed to start Redis server: {error_msg}")
+        except subprocess.TimeoutExpired:
+            process.kill()
+            logger.warning("Redis server start command timed out")
+        except Exception as e:
+            logger.warning(f"Failed to start Redis server: {e}")
+            
+    except ImportError:
+        # Config not available, skip
+        pass
+    except Exception as e:
+        logger.warning(f"Error checking Redis auto-start configuration: {e}")

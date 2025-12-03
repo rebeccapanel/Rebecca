@@ -151,8 +151,13 @@ def get_nodes(db: Session, status: Optional[Union[NodeStatus, list]] = None,
     """Retrieves nodes based on optional status and enabled filters."""
     query = db.query(Node)
 
-    if status: query = query.filter(Node.status.in_(status) if isinstance(status, list) else Node.status == status)
-    if enabled: query = query.filter(Node.status.notin_([NodeStatus.disabled, NodeStatus.limited]))
+    if status:
+        if isinstance(status, list):
+            query = query.filter(Node.status.in_(status))
+        else:
+            query = query.filter(Node.status == status)
+    if enabled:
+        query = query.filter(Node.status.notin_([NodeStatus.disabled, NodeStatus.limited]))
 
     return query.all()
 

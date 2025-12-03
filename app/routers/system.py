@@ -33,7 +33,7 @@ from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config_and_restart
 from app.utils.maintenance import maintenance_request
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, REDIS_ENABLED
-from app.cache.redis_client import get_redis
+from app.redis import get_redis
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 logger = logging.getLogger(__name__)

@@ -1,3 +1,7 @@
+"""
+Redis client initialization and management.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -59,5 +63,6 @@ def init_redis() -> None:
 
 
 def get_redis() -> Optional[Redis]:
+    """Get the global Redis client instance."""
     return redis_client
 

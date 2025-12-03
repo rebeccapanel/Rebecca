@@ -80,8 +80,8 @@ from config import (
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
 from .system import _default_admin_subscription_settings
-from .system import _default_admin_subscription_settings
 from .common import MASTER_NODE_NAME
+from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users
 
 _USER_STATUS_ENUM_ENSURED = False
 
@@ -172,7 +172,8 @@ def _restore_admin_users_and_nodes(db: Session, dbadmin: Admin) -> None:
         startup_config = xray.config.include_db_users()
         xray.core.restart(startup_config)
         for node_id, node in list(xray.nodes.items()):
-            if node.connected: xray.operations.restart_node(node_id, startup_config)
+            if node.connected:
+                xray.operations.restart_node(node_id, startup_config)
     except ImportError:
         return
 
@@ -287,7 +288,8 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
-            if active_count > new_limit: raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
+            if active_count > new_limit:
+                raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
         dbadmin.users_limit = new_limit
 
     if data_limit_modified:
@@ -310,7 +312,8 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
-    if modified_admin.telegram_id is not None: dbadmin.telegram_id = modified_admin.telegram_id or None
+    if modified_admin.telegram_id is not None:
+        dbadmin.telegram_id = modified_admin.telegram_id or None
     # Subscription fields and support_telegram_id not available in AdminModify/AdminPartialModify models
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
@@ -320,7 +323,8 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         new_limit = modified_admin.users_limit
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
-            if active_count > new_limit: raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
+            if active_count > new_limit:
+                raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
         dbadmin.users_limit = new_limit
 
     if data_limit_modified:

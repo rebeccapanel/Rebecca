@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from app.cache.redis_client import get_redis  # reserved for future caching
+from app.redis import get_redis  # reserved for future caching
 from app.db import crud
 from app.reb_node import state as xray_state
 
