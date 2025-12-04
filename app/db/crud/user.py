@@ -395,7 +395,7 @@ def _filter_users_in_memory(
                         try:
                             proxy_settings = json.loads(proxy.settings)
                             proxy_id = proxy_settings.get("id") if isinstance(proxy_settings, dict) else None
-                        except:
+                        except Exception:
                             proxy_id = None
                     else:
                         proxy_id = None
@@ -856,7 +856,8 @@ def update_user(db: Session, dbuser: User, modify: UserModify, *, service: Optio
     if "flow" in modify.model_fields_set:
         dbuser.flow = modify.flow
 
-    if modify.status is not None: dbuser.status = modify.status
+    if modify.status is not None:
+        dbuser.status = modify.status
     if "data_limit" in modify.model_fields_set:
         dbuser.data_limit = (modify.data_limit or None)
         if dbuser.status not in (UserStatus.expired, UserStatus.disabled):
@@ -865,11 +866,16 @@ def update_user(db: Session, dbuser: User, modify: UserModify, *, service: Optio
         dbuser.expire = (modify.expire or None)
         if dbuser.status in (UserStatus.active, UserStatus.expired):
             dbuser.status = UserStatus.active if (not dbuser.expire or dbuser.expire > datetime.now(timezone.utc).timestamp()) else UserStatus.expired
-    if modify.note is not None: dbuser.note = modify.note or None
-    if modify.data_limit_reset_strategy is not None: dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
-    if "ip_limit" in modify.model_fields_set: dbuser.ip_limit = modify.ip_limit
-    if modify.on_hold_timeout is not None: dbuser.on_hold_timeout = modify.on_hold_timeout
-    if modify.on_hold_expire_duration is not None: dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
+    if modify.note is not None:
+        dbuser.note = modify.note or None
+    if modify.data_limit_reset_strategy is not None:
+        dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
+    if "ip_limit" in modify.model_fields_set:
+        dbuser.ip_limit = modify.ip_limit
+    if modify.on_hold_timeout is not None:
+        dbuser.on_hold_timeout = modify.on_hold_timeout
+    if modify.on_hold_expire_duration is not None:
+        dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
 
     if modify.next_plan is not None:
         dbuser.next_plan = NextPlan(
@@ -915,7 +921,8 @@ def update_user(db: Session, dbuser: User, modify: UserModify, *, service: Optio
 def reset_user_by_next(db: Session, dbuser: User) -> User:
     """Resets the data usage of a user based on next user."""
 
-    if dbuser.next_plan is None: return
+    if dbuser.next_plan is None:
+        return
     db.add(UserUsageResetLogs(user=dbuser, used_traffic_at_reset=dbuser.used_traffic))
     dbuser.node_usages.clear()
     if _status_to_str(dbuser.status) != UserStatus.active.value:
@@ -1357,6 +1364,8 @@ def get_user_template(db: Session, user_template_id: int) -> UserTemplate:
 def get_user_templates(db: Session, offset: Union[int, None] = None, limit: Union[int, None] = None) -> List[UserTemplate]:
     """Retrieves a list of user templates with optional pagination."""
     query = db.query(UserTemplate)
-    if offset: query = query.offset(offset)
-    if limit: query = query.limit(limit)
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
     return query.all()

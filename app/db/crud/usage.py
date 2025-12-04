@@ -81,7 +81,8 @@ def _get_usage_data(db: Session, entity_type: Literal["user", "admin", "node", "
     
     # Try to get from Redis cache first
     from app.redis.cache import get_user_usages_from_cache
-    from app.redis.client import get_redis, REDIS_ENABLED
+    from app.redis.client import get_redis
+    from config import REDIS_ENABLED
     
     redis_client = get_redis() if REDIS_ENABLED else None
     use_redis_cache = redis_client is not None

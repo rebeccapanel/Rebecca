@@ -140,7 +140,7 @@ def _deserialize_user(user_dict: Dict[str, Any], db: Optional[Any] = None) -> Op
         return None
     
     try:
-        from app.db.models import Admin as AdminModel, Service as ServiceModel, NextPlan as NextPlanModel, Proxy as ProxyModel, Inbound as InboundModel, Proxy as Proxy, Inbound as Inbound
+        from app.db.models import Admin as AdminModel, Service as ServiceModel, NextPlan as NextPlanModel, Proxy as ProxyModel, ProxyInbound as InboundModel
         user = User()
         user.id = user_dict.get('id')
         user.username = user_dict.get('username')
