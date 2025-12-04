@@ -126,18 +126,17 @@ def sync_usage_updates_to_db():
                     if admin_id:
                         admin_service_usage[(admin_id, service_id)] += value
             
-            # Update admin usage
+            # Update admin usage - fetch and update individually to avoid primary key issues
             if admin_usage:
-                admin_data = [{"b_admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
-                admin_update_stmt = (
-                    update(Admin)
-                    .where(Admin.id == bindparam("b_admin_id"))
-                    .values(
-                        users_usage=Admin.users_usage + bindparam("value"),
-                        lifetime_usage=Admin.lifetime_usage + bindparam("value"),
-                    )
-                )
-                db.execute(admin_update_stmt, admin_data, execution_options={"synchronize_session": None})
+                admin_ids = list(admin_usage.keys())
+                current_admins = db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
+                admin_dict = {a.id: a for a in current_admins}
+                
+                for admin_id, value in admin_usage.items():
+                    admin = admin_dict.get(admin_id)
+                    if admin:
+                        admin.users_usage = (admin.users_usage or 0) + value
+                        admin.lifetime_usage = (admin.lifetime_usage or 0) + value
             
             # Update service usage (if needed)
             # TODO: Add service usage updates if service usage tracking is needed
@@ -195,16 +194,16 @@ def _sync_admin_usage_updates(redis_client):
         
         if admin_updates:
             with GetDB() as db:
-                admin_data = [{"b_admin_id": admin_id, "value": value} for admin_id, value in admin_updates.items()]
-                admin_update_stmt = (
-                    update(Admin)
-                    .where(Admin.id == bindparam("b_admin_id"))
-                    .values(
-                        users_usage=Admin.users_usage + bindparam("value"),
-                        lifetime_usage=Admin.lifetime_usage + bindparam("value"),
-                    )
-                )
-                db.execute(admin_update_stmt, admin_data, execution_options={"synchronize_session": None})
+                admin_ids = list(admin_updates.keys())
+                current_admins = db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
+                admin_dict = {a.id: a for a in current_admins}
+                
+                for admin_id, value in admin_updates.items():
+                    admin = admin_dict.get(admin_id)
+                    if admin:
+                        admin.users_usage = (admin.users_usage or 0) + value
+                        admin.lifetime_usage = (admin.lifetime_usage or 0) + value
+                
                 db.commit()
                 logger.info(f"Synced {len(admin_updates)} admin usage updates from Redis to database")
                 return True
@@ -236,15 +235,15 @@ def _sync_service_usage_updates(redis_client):
         
         if service_updates:
             with GetDB() as db:
-                service_data = [{"b_service_id": service_id, "value": value} for service_id, value in service_updates.items()]
-                service_update_stmt = (
-                    update(Service)
-                    .where(Service.id == bindparam("b_service_id"))
-                    .values(
-                        users_usage=Service.users_usage + bindparam("value"),
-                    )
-                )
-                db.execute(service_update_stmt, service_data, execution_options={"synchronize_session": None})
+                service_ids = list(service_updates.keys())
+                current_services = db.query(Service).filter(Service.id.in_(service_ids)).all()
+                service_dict = {s.id: s for s in current_services}
+                
+                for service_id, value in service_updates.items():
+                    service = service_dict.get(service_id)
+                    if service:
+                        service.users_usage = (service.users_usage or 0) + value
+                
                 db.commit()
                 logger.info(f"Synced {len(service_updates)} service usage updates from Redis to database")
                 return True

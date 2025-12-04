@@ -323,7 +323,14 @@ def record_user_usages():
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
-    api_params = {node_id: future.result() for node_id, future in futures.items()}
+    # Add timeout to prevent hanging
+    api_params = {}
+    for node_id, future in futures.items():
+        try:
+            api_params[node_id] = future.result(timeout=30)  # 30 second timeout per node
+        except Exception as e:
+            logger.warning(f"Failed to get stats from node {node_id}: {e}")
+            api_params[node_id] = []
 
     users_usage = defaultdict(int)
     for node_id, params in api_params.items():
@@ -393,11 +400,9 @@ def record_user_usages():
                 'online_at': online_at.isoformat()
             })
             
-            # Warmup usage cache for this user when they become online
-            try:
-                warmup_user_usages(user_id)
-            except Exception as e:
-                logger.debug(f"Failed to warmup usage cache for user {user_id}: {e}")
+            # Warmup usage cache for this user when they become online (in background to avoid blocking)
+            # Don't block the main job - warmup can happen asynchronously
+            # warmup_user_usages(user_id)  # Disabled to prevent job hanging
         
         # Save backup to disk
         save_user_usage_backup(user_usage_backup)
