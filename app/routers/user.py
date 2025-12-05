@@ -252,12 +252,13 @@ def modify_user(
         next_plan=modified_user.next_plan.model_dump() if modified_user.next_plan else None,
     )
 
-    for proxy_type in modified_user.proxies:
-        if not xray.config.inbounds_by_protocol.get(proxy_type):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Protocol {proxy_type} is disabled on your server",
-            )
+    if modified_user.service_id is not None:
+        for proxy_type in modified_user.proxies:
+            if not xray.config.inbounds_by_protocol.get(proxy_type):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Protocol {proxy_type} is disabled on your server",
+                )
 
     if (
         "service_id" in modified_user.model_fields_set

@@ -905,9 +905,8 @@ def cache_service(service: Any) -> bool:
             'flow': getattr(service, "flow", None),
             'used_traffic': getattr(service, "used_traffic", None),
             'lifetime_used_traffic': getattr(service, "lifetime_used_traffic", None),
-            'inbounds': getattr(service, "inbounds", None),
-            'created_at': service.created_at.isoformat() if service.created_at else None,
-            'updated_at': service.updated_at.isoformat() if service.updated_at else None,
+            'created_at': service.created_at.isoformat() if hasattr(service, "created_at") and service.created_at else None,
+            'updated_at': service.updated_at.isoformat() if hasattr(service, "updated_at") and service.updated_at else None,
         }
         service_json = json.dumps(service_dict)
         redis_client.setex(f"{REDIS_KEY_PREFIX_SERVICE}{service.id}", SERVICE_CACHE_TTL, service_json)
@@ -948,7 +947,6 @@ def cache_services_list(services: List[Any]) -> bool:
                 'flow': getattr(service, "flow", None),
                 'used_traffic': getattr(service, "used_traffic", None),
                 'lifetime_used_traffic': getattr(service, "lifetime_used_traffic", None),
-                'inbounds': getattr(service, "inbounds", None),
             }
             services_list.append(service_dict)
         

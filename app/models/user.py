@@ -353,35 +353,138 @@ class UserCreate(User):
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
         from app.runtime import xray
-        proxies = values.data.get("proxies", [])
+        from app.services.data_access import get_service_host_map_cached
+        from app.db import GetDB
+        from app.models.proxy import ProxyTypes
+        proxies = values.data.get("proxies", {})
+        service_id = values.data.get("service_id")
+
+        if service_id is None:
+            enabled_inbounds_by_protocol = {}
+            with GetDB() as db:
+                host_map = get_service_host_map_cached(None, force_refresh=False)
+                enabled_inbound_tags = set()
+                for tag, hosts in host_map.items():
+                    if hosts and any(not h.get("is_disabled", False) for h in hosts):
+                        enabled_inbound_tags.add(tag)
+                
+                for protocol, inbounds_list in xray.config.inbounds_by_protocol.items():
+                    enabled_tags = [
+                        i["tag"]
+                        for i in inbounds_list
+                        if i["tag"] in enabled_inbound_tags
+                    ]
+                    if enabled_tags:
+                        enabled_inbounds_by_protocol[protocol] = enabled_tags
+
+            for protocol, enabled_tags in enabled_inbounds_by_protocol.items():
+                try:
+                    protocol_enum = ProxyTypes(protocol)
+                except ValueError:
+                    continue
+                
+                protocol_key = protocol_enum.value if hasattr(protocol_enum, 'value') else str(protocol_enum)
+                
+                if protocol_key not in proxies:
+                    proxies[protocol_key] = {}
+                
+                if protocol_enum not in inbounds or not inbounds.get(protocol_enum):
+                    inbounds[protocol_enum] = enabled_tags
 
         # delete inbounds that are for protocols not activated
-        for proxy_type in inbounds.copy():
-            if proxy_type not in proxies:
+        for proxy_type in list(inbounds.keys()):
+            proxy_type_str = proxy_type.value if hasattr(proxy_type, 'value') else str(proxy_type)
+            if proxy_type_str not in proxies and proxy_type not in proxies:
                 del inbounds[proxy_type]
 
         # check by proxies to ensure that every protocol has inbounds set
-        for proxy_type in proxies:
-            tags = inbounds.get(proxy_type)
+        for proxy_type_key, proxy_settings in proxies.items():
+            if isinstance(proxy_type_key, str):
+                try:
+                    proxy_type = ProxyTypes(proxy_type_key)
+                except ValueError:
+                    continue
+            else:
+                proxy_type = proxy_type_key
+            
+            tags = inbounds.get(proxy_type) or inbounds.get(proxy_type_key)
 
             if tags:
+                # Validate that all specified tags exist
                 for tag in tags:
                     if tag not in xray.config.inbounds_by_tag:
                         raise ValueError(f"Inbound {tag} doesn't exist")
+                    # For no-service mode, also check if tag has enabled hosts
+                    if service_id is None:
+                        with GetDB() as db:
+                            host_map = get_service_host_map_cached(None, force_refresh=False)
+                            tag_hosts = host_map.get(tag, [])
+                            if not tag_hosts or all(h.get("is_disabled", False) for h in tag_hosts):
+                                raise ValueError(f"Inbound {tag} has no enabled hosts")
 
             # elif isinstance(tags, list) and not tags:
             #     raise ValueError(f"{proxy_type} inbounds cannot be empty")
 
             else:
-                inbounds[proxy_type] = [
-                    i["tag"]
-                    for i in xray.config.inbounds_by_protocol.get(proxy_type, [])
-                ]
+                if service_id is None:
+                    with GetDB() as db:
+                        host_map = get_service_host_map_cached(None, force_refresh=False)
+                        enabled_inbound_tags = set()
+                        for tag, hosts in host_map.items():
+                            if hosts and any(not h.get("is_disabled", False) for h in hosts):
+                                enabled_inbound_tags.add(tag)
+                        
+                        protocol_str = proxy_type.value if hasattr(proxy_type, 'value') else str(proxy_type)
+                        protocol_inbounds = xray.config.inbounds_by_protocol.get(protocol_str, [])
+                        enabled_tags = [
+                            i["tag"]
+                            for i in protocol_inbounds
+                            if i["tag"] in enabled_inbound_tags
+                        ]
+                        inbounds[proxy_type] = enabled_tags
+                else:
+                    protocol_str = proxy_type.value if hasattr(proxy_type, 'value') else str(proxy_type)
+                    inbounds[proxy_type] = [
+                        i["tag"]
+                        for i in xray.config.inbounds_by_protocol.get(protocol_str, [])
+                    ]
 
         return inbounds
 
     @model_validator(mode="after")
     def ensure_proxies(self):
+        if not hasattr(self, 'service_id') or self.service_id is None:
+            from app.services.data_access import get_service_host_map_cached
+            from app.db import GetDB
+            from app.runtime import xray
+            
+            with GetDB() as db:
+                host_map = get_service_host_map_cached(None, force_refresh=False)
+                enabled_inbound_tags = set()
+                for tag, hosts in host_map.items():
+                    if hosts and any(not h.get("is_disabled", False) for h in hosts):
+                        enabled_inbound_tags.add(tag)
+                
+                for protocol, inbounds_list in xray.config.inbounds_by_protocol.items():
+                    enabled_tags = [
+                        i["tag"]
+                        for i in inbounds_list
+                        if i["tag"] in enabled_inbound_tags
+                    ]
+                    if enabled_tags:
+                        protocol_enum = None
+                        try:
+                            protocol_enum = ProxyTypes(protocol)
+                        except ValueError:
+                            continue
+                        
+                        if protocol_enum not in self.proxies:
+                            settings_model = protocol_enum.settings_model()
+                            self.proxies[protocol_enum] = settings_model
+                        
+                        if protocol_enum not in self.inbounds or not self.inbounds.get(protocol_enum):
+                            self.inbounds[protocol_enum] = enabled_tags
+        
         if not self.proxies:
             raise ValueError("Each user needs at least one proxy")
         return self

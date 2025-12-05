@@ -325,6 +325,24 @@ const formatUser = (user: User): FormType => {
 };
 
 const getDefaultValues = (): FormType => {
+  // Get available protocols from inbounds
+  const { inbounds } = useDashboard.getState();
+  const availableProtocols: Record<string, any> = {};
+  
+  // Only include protocols that have inbounds available
+  const protocolDefaults: Record<string, any> = {
+    vless: { id: "" },
+    vmess: { id: "" },
+    trojan: { password: "" },
+    shadowsocks: { password: "", method: "chacha20-ietf-poly1305" },
+  };
+  
+  // Filter to only include protocols that have inbounds
+  for (const [protocol, protocolInbounds] of inbounds.entries()) {
+    if (protocolInbounds && protocolInbounds.length > 0) {
+      availableProtocols[protocol] = protocolDefaults[protocol] || {};
+    }
+  }
 
   return {
 
@@ -352,17 +370,7 @@ const getDefaultValues = (): FormType => {
 
     inbounds: {},
 
-    proxies: {
-
-      vless: { id: "" },
-
-      vmess: { id: "" },
-
-      trojan: { password: "" },
-
-      shadowsocks: { password: "", method: "chacha20-ietf-poly1305" },
-
-    },
+    proxies: availableProtocols,
 
     service_id: null,
 
@@ -1163,9 +1171,37 @@ export const UserDialog: FC<UserDialogProps> = () => {
       }
 
       // If service_id is 0 (no service), include proxies and inbounds
+      // Filter out protocols that are disabled on the server
       if (effectiveServiceId === null || effectiveServiceId === 0) {
-        serviceBody.proxies = proxies;
-        serviceBody.inbounds = inbounds;
+        const { inbounds: availableInbounds } = useDashboard.getState();
+        const enabledProtocols = new Set(availableInbounds.keys());
+        
+        // Filter proxies to only include enabled protocols
+        const filteredProxies: Record<string, any> = {};
+        if (proxies) {
+          for (const [protocol, settings] of Object.entries(proxies)) {
+            if (enabledProtocols.has(protocol as any)) {
+              filteredProxies[protocol] = settings;
+            }
+          }
+        }
+        
+        // Filter inbounds to only include enabled protocols
+        const filteredInbounds: Record<string, string[]> = {};
+        if (inbounds) {
+          for (const [protocol, tags] of Object.entries(inbounds)) {
+            if (enabledProtocols.has(protocol as any)) {
+              filteredInbounds[protocol] = tags;
+            }
+          }
+        }
+        
+        if (Object.keys(filteredProxies).length > 0) {
+          serviceBody.proxies = filteredProxies;
+        }
+        if (Object.keys(filteredInbounds).length > 0) {
+          serviceBody.inbounds = filteredInbounds;
+        }
       }
 
       createUserWithService(serviceBody)
@@ -1285,17 +1321,36 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 
     if (!editingUser?.service_id) {
-
-      if (proxies && Object.keys(proxies).length > 0) {
-
-        body.proxies = proxies;
-
+      // Filter out protocols that are disabled on the server
+      const { inbounds: availableInbounds } = useDashboard.getState();
+      const enabledProtocols = new Set(availableInbounds.keys());
+      
+      // Filter proxies to only include enabled protocols
+      const filteredProxies: Record<string, any> = {};
+      if (proxies) {
+        for (const [protocol, settings] of Object.entries(proxies)) {
+          if (enabledProtocols.has(protocol as any)) {
+            filteredProxies[protocol] = settings;
+          }
+        }
+      }
+      
+      // Filter inbounds to only include enabled protocols
+      const filteredInbounds: Record<string, string[]> = {};
+      if (inbounds) {
+        for (const [protocol, tags] of Object.entries(inbounds)) {
+          if (enabledProtocols.has(protocol as any)) {
+            filteredInbounds[protocol] = tags;
+          }
+        }
       }
 
-      if (inbounds && Object.keys(inbounds).length > 0) {
+      if (Object.keys(filteredProxies).length > 0) {
+        body.proxies = filteredProxies;
+      }
 
-        body.inbounds = inbounds;
-
+      if (Object.keys(filteredInbounds).length > 0) {
+        body.inbounds = filteredInbounds;
       }
 
     }

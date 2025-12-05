@@ -55,6 +55,7 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
     """
     Attempt to send a Telegram message and retry once when hitting the rate limit.
     """
+    global _last_telegram_error
     attempts = 2
     for attempt in range(attempts):
         try:
@@ -77,7 +78,6 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
             error_description = getattr(exc, "description", error_msg)
             
             # Store last error for dashboard display
-            global _last_telegram_error
             _last_telegram_error = {
                 "error": error_msg,
                 "error_code": error_code,
@@ -98,7 +98,6 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
             error_msg = str(e)
             
             # Store last error for dashboard display
-            global _last_telegram_error
             _last_telegram_error = {
                 "error": error_msg,
                 "error_code": None,
@@ -161,16 +160,23 @@ def _dispatch(
         return
 
     delivered = False
+    last_error = None  # Track the last error during dispatch
 
     def _send_to(target_chat_id: int, kwargs: dict, target_desc: str) -> None:
-        nonlocal delivered
+        nonlocal delivered, last_error
         send_kwargs = dict(kwargs)
 
         def _call() -> None:
             bot_instance.send_message(target_chat_id, text, **send_kwargs)
 
+        global _last_telegram_error
+        error_before = _last_telegram_error
+        
         if _send_with_retry(_call, category=category, target_desc=target_desc):
             delivered = True
+        else:
+            if _last_telegram_error != error_before:
+                last_error = _last_telegram_error
 
     if settings.logs_chat_id:
         kwargs = {"parse_mode": parse_mode}
@@ -205,6 +211,10 @@ def _dispatch(
             kwargs,
             f"user chat {chat_id}",
         )
+
+    if last_error:
+        global _last_telegram_error
+        _last_telegram_error = last_error
 
     if not delivered:
         logger.warning(

@@ -201,24 +201,14 @@ def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
     Add user account to Xray inbound. If user already exists, remove and re-add to ensure UUID is correct.
     """
     try:
+        api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
+    except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
+        pass
+    except Exception:
+        pass  # Ignore other errors when removing
+    
+    try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except xray_exceptions.EmailExistsError:
-        try:
-            # Try to remove existing user first
-            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-            # Then add the updated user
-            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-        except xray_exceptions.EmailNotFoundError:
-            # User doesn't exist in Xray, just add it
-            try:
-                api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-            except Exception as e:
-                logger.error(f"Failed to add user {account.email} to {inbound_tag} after EmailNotFoundError: {e}")
-        except xray_exceptions.ConnectionError:
-            pass
-        except Exception as e:
-            # Log as debug instead of warning since this is expected when user doesn't exist in Xray
-            logger.debug(f"Failed to update existing user {account.email} in {inbound_tag}: {e}")
     except xray_exceptions.ConnectionError:
         pass
     except Exception as e:
@@ -304,6 +294,18 @@ def update_user(dbuser: "DBUser"):
     email = f"{dbuser.id}.{dbuser.username}"
     active_inbounds = []
     
+    if user.inbounds:
+        for proxy_type, inbound_tags in user.inbounds.items():
+            for inbound_tag in inbound_tags:
+                if inbound_tag not in active_inbounds:
+                    active_inbounds.append(inbound_tag)
+    
+    for inbound_tag in state.config.inbounds_by_tag:
+        _remove_user_from_inbound(state.api, inbound_tag, email)
+        for node in list(state.nodes.values()):
+            if node.connected and node.started:
+                _remove_user_from_inbound(node.api, inbound_tag, email)
+    
     if not user.inbounds:
         logger.warning(
             f"User {dbuser.id} ({dbuser.username}) has no inbounds. "
@@ -314,7 +316,6 @@ def update_user(dbuser: "DBUser"):
     
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
-            active_inbounds.append(inbound_tag)
             inbound = state.config.inbounds_by_tag.get(inbound_tag)
             if not inbound:
                 from app.db import GetDB, crud
@@ -331,21 +332,12 @@ def update_user(dbuser: "DBUser"):
 
             accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
             if accounts:
-                _alter_inbound_user(state.api, inbound_tag, accounts)
+                _add_accounts_to_inbound(state.api, inbound_tag, accounts)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _alter_inbound_user(node.api, inbound_tag, accounts)
+                        _add_accounts_to_inbound(node.api, inbound_tag, accounts)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
-
-    for inbound_tag in state.config.inbounds_by_tag:
-        if inbound_tag in active_inbounds:
-            continue
-        # remove disabled inbounds
-        _remove_user_from_inbound(state.api, inbound_tag, email)
-        for node in list(state.nodes.values()):
-            if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
 
 
 def remove_node(node_id: int):
