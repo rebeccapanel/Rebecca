@@ -7,7 +7,7 @@ and removes them after successful sync to database.
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -22,6 +22,9 @@ BACKUP_FILES = {
     'user_snapshots': BACKUP_DIR / "pending_user_snapshots.json",
     'node_snapshots': BACKUP_DIR / "pending_node_snapshots.json",
 }
+
+def _naive_utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def ensure_backup_dir():
@@ -245,7 +248,7 @@ def restore_all_backups_to_redis():
         if admin_updates:
             for admin_id, value in admin_updates.items():
                 admin_key = f"{REDIS_KEY_PREFIX_ADMIN_USAGE_PENDING}{admin_id}"
-                admin_data = {'admin_id': admin_id, 'value': value, 'timestamp': datetime.utcnow().isoformat()}
+                admin_data = {'admin_id': admin_id, 'value': value, 'timestamp': _naive_utcnow().isoformat()}
                 redis_client.lpush(admin_key, json.dumps(admin_data))
                 redis_client.expire(admin_key, 3600)
             restored_count += len(admin_updates)
@@ -256,7 +259,7 @@ def restore_all_backups_to_redis():
         if service_updates:
             for service_id, value in service_updates.items():
                 service_key = f"{REDIS_KEY_PREFIX_SERVICE_USAGE_PENDING}{service_id}"
-                service_data = {'service_id': service_id, 'value': value, 'timestamp': datetime.utcnow().isoformat()}
+                service_data = {'service_id': service_id, 'value': value, 'timestamp': _naive_utcnow().isoformat()}
                 redis_client.lpush(service_key, json.dumps(service_data))
                 redis_client.expire(service_key, 3600)
             restored_count += len(service_updates)

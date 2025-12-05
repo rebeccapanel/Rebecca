@@ -49,7 +49,7 @@ class Node(BaseModel):
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit for the node in bytes (null = unlimited)",
-        example=107374182400,
+        json_schema_extra={"example": 107374182400},
     )
     use_nobetci: bool = False
     nobetci_port: Optional[int] = Field(
@@ -84,16 +84,16 @@ class NodeCreate(Node):
 
 
 class NodeModify(Node):
-    name: Optional[str] = Field(None, nullable=True)
-    address: Optional[str] = Field(None, nullable=True)
-    port: Optional[int] = Field(None, nullable=True)
-    api_port: Optional[int] = Field(None, nullable=True)
-    status: Optional[NodeStatus] = Field(None, nullable=True)
-    usage_coefficient: Optional[float] = Field(None, nullable=True)
-    geo_mode: Optional[GeoMode] = Field(None, nullable=True)
-    data_limit: Optional[int] = Field(None, nullable=True)
-    use_nobetci: Optional[bool] = Field(None, nullable=True)
-    nobetci_port: Optional[int] = Field(None, nullable=True)
+    name: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    address: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    api_port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    status: Optional[NodeStatus] = Field(default=None, json_schema_extra={"nullable": True})
+    usage_coefficient: Optional[float] = Field(default=None, json_schema_extra={"nullable": True})
+    geo_mode: Optional[GeoMode] = Field(default=None, json_schema_extra={"nullable": True})
+    data_limit: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    use_nobetci: Optional[bool] = Field(default=None, json_schema_extra={"nullable": True})
+    nobetci_port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -152,6 +152,6 @@ class MasterNodeUpdate(BaseModel):
         None,
         description="Maximum data limit for the master node in bytes (null = unlimited)",
         ge=0,
-        example=107374182400,
+        json_schema_extra={"example": 107374182400},
     )
     model_config = ConfigDict(extra="forbid")

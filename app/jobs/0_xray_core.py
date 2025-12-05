@@ -37,7 +37,6 @@ def core_health_check():
             xray.operations.connect_node(node_id, config)
 
 
-@app.on_event("startup")
 def start_core():
     if not xray.core.available:
         logger.warning("XRay core is not available. Skipping XRay core startup.")
@@ -89,7 +88,6 @@ def start_core():
     )
 
 
-@app.on_event("shutdown")
 def app_shutdown():
     logger.info("Stopping main Xray core")
     xray.core.stop()
@@ -100,3 +98,8 @@ def app_shutdown():
             node.disconnect()
         except Exception:
             pass
+
+
+if app is not None:
+    app.add_event_handler("startup", start_core)
+    app.add_event_handler("shutdown", app_shutdown)

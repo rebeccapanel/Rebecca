@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
@@ -130,7 +130,7 @@ class PanelSettingsService:
                     except Exception:
                         # If column is missing in legacy schema, ignore silently
                         pass
-            record.updated_at = datetime.utcnow()
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
             db.refresh(record)

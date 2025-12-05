@@ -1,10 +1,20 @@
 # os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 
+import warnings
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from unittest.mock import patch, MagicMock
+
+# Silence upstream lark deprecation noise during tests
+warnings.filterwarnings(
+    "ignore",
+    message=r"module 'sre_(parse|constants)' is deprecated",
+    category=DeprecationWarning,
+    module=r"lark\.utils",
+)
 
 # Patch xray before any imports
 mock_xray = MagicMock()

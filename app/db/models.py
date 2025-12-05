@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import (
     JSON,
@@ -33,6 +33,11 @@ from app.models.proxy import (
 from app.models.user import UserDataLimitResetStrategy, UserStatus
 
 
+def utcnow():
+    """Return naive UTC time using the non-deprecated API."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class Admin(Base):
     __tablename__ = "admins"
 
@@ -47,7 +52,7 @@ class Admin(Base):
         lazy="selectin",
     )
     services = association_proxy("service_links", "service")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     role = Column(Enum(AdminRole), nullable=False, default=AdminRole.standard)
     permissions = Column(JSON, nullable=True, default=dict)
     password_reset_at = Column(DateTime, nullable=True)
@@ -74,7 +79,7 @@ class AdminUsageLogs(Base):
     admin_id = Column(Integer, ForeignKey("admins.id"))
     admin = relationship("Admin", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
-    reset_at = Column(DateTime, default=datetime.utcnow)
+    reset_at = Column(DateTime, default=utcnow)
 
 
 class AdminApiKey(Base):
@@ -83,7 +88,7 @@ class AdminApiKey(Base):
     id = Column(Integer, primary_key=True)
     admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
     key_hash = Column(String(128), nullable=False, unique=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=True)
     last_used_at = Column(DateTime, nullable=True)
 
@@ -103,9 +108,9 @@ class TelegramSettings(Base):
     default_vless_flow = Column(String(255), nullable=True)
     forum_topics = Column(JSON, nullable=False, default=dict)
     event_toggles = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
 
 
@@ -120,8 +125,8 @@ class PanelSettings(Base):
         default="key",
         server_default=text("'key'"),
     )
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class User(Base):
@@ -148,7 +153,7 @@ class User(Base):
     sub_revoked_at = Column(DateTime, nullable=True, default=None)
     sub_updated_at = Column(DateTime, nullable=True, default=None)
     sub_last_user_agent = Column(String(512), nullable=True, default=None)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     note = Column(String(500), nullable=True, default=None)
     online_at = Column(DateTime, nullable=True, default=None)
     on_hold_expire_duration = Column(BigInteger, nullable=True, default=None)
@@ -161,7 +166,7 @@ class User(Base):
     auto_delete_in_days = Column(Integer, nullable=True, default=None)
 
     edit_at = Column(DateTime, nullable=True, default=None)
-    last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
+    last_status_change = Column(DateTime, default=utcnow, nullable=True)
 
     service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     service = relationship("Service", back_populates="users")
@@ -283,7 +288,7 @@ class UserUsageResetLogs(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
-    reset_at = Column(DateTime, default=datetime.utcnow)
+    reset_at = Column(DateTime, default=utcnow)
 
 
 class Proxy(Base):
@@ -367,12 +372,12 @@ class AdminServiceLink(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     admin = relationship("Admin", back_populates="service_links")
@@ -385,7 +390,7 @@ class ServiceHostLink(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     host_id = Column(Integer, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True)
     sort = Column(Integer, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
 
     service = relationship("Service", back_populates="host_links")
     host = relationship("ProxyHost", back_populates="service_links")
@@ -400,12 +405,12 @@ class Service(Base):
     flow = Column(String(255), nullable=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     admin_links = relationship(
@@ -449,8 +454,8 @@ class XrayConfig(Base):
 
     id = Column(Integer, primary_key=True)
     data = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class WarpAccount(Base):
@@ -462,9 +467,9 @@ class WarpAccount(Base):
     license_key = Column(String(64), nullable=True)
     private_key = Column(String(128), nullable=False)
     public_key = Column(String(128), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utcnow, onupdate=utcnow
     )
 
 
@@ -508,9 +513,9 @@ class Node(Base):
     api_port = Column(Integer, unique=False, nullable=False)
     xray_version = Column(String(32), nullable=True)
     status = Column(Enum(NodeStatus), nullable=False, default=NodeStatus.connecting)
-    last_status_change = Column(DateTime, default=datetime.utcnow)
+    last_status_change = Column(DateTime, default=utcnow)
     message = Column(String(1024), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     uplink = Column(BigInteger, default=0)
     downlink = Column(BigInteger, default=0)
     user_usages = relationship("NodeUserUsage", back_populates="node", cascade="all, delete-orphan")
@@ -531,7 +536,7 @@ class MasterNodeState(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     status = Column(Enum(NodeStatus), nullable=False, default=NodeStatus.connected)
     message = Column(String(1024), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class NodeUserUsage(Base):

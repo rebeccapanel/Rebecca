@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlalchemy.orm import Session
@@ -317,7 +317,7 @@ class TelegramSettingsService:
                         key: topic.to_dict() for key, topic in topics.items()
                     }
                     record.event_toggles = toggles
-                    record.updated_at = datetime.utcnow()
+                    record.updated_at = datetime.now(UTC).replace(tzinfo=None)
                     db.add(record)
                     db.commit()
                     db.refresh(record)
@@ -411,7 +411,7 @@ class TelegramSettingsService:
                 merged_source = {**cls.DEFAULT_EVENT_TOGGLES, **existing_processed, **incoming_processed}
                 record.event_toggles = merged_source
 
-            record.updated_at = datetime.utcnow()
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
             db.refresh(record)
@@ -482,7 +482,7 @@ class TelegramSettingsService:
             record.forum_topics = {
                 key: value.to_dict() for key, value in topics.items()
             }
-            record.updated_at = datetime.utcnow()
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
             db.refresh(record)

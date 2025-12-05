@@ -78,10 +78,12 @@ def send_notifications():
 
 
 if WEBHOOK_ADDRESS:
-    @app.on_event("shutdown")
     def app_shutdown():
         logger.info("Sending pending notifications before shutdown...")
         send_notifications()
+
+    if app is not None:
+        app.add_event_handler("shutdown", app_shutdown)
 
     logger.info("Send webhook job started")
     scheduler.add_job(

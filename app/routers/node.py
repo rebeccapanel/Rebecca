@@ -346,7 +346,7 @@ def get_node_usage_daily(
 @router.post("/node/{node_id}/xray/update", responses={403: responses._403, 404: responses._404})
 def update_node_core(
     node_id: int,
-    payload: dict = Body(..., example={"version": "v1.8.11"}),
+    payload: dict = Body(..., examples={"default": {"version": "v1.8.11"}}),
     dbnode: NodeResponse = Depends(get_node),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -372,12 +372,19 @@ def update_node_core(
 @router.post("/node/{node_id}/geo/update", responses={403: responses._403, 404: responses._404})
 def update_node_geo(
     node_id: int,
-    payload: dict = Body(..., example={
-        "files": [{"name": "geosite.dat", "url": "https://.../geosite.dat"},
-                  {"name": "geoip.dat", "url": "https://.../geoip.dat"}],
-        "template_index_url": "https://.../index.json",
-        "template_name": "standard"
-    }),
+    payload: dict = Body(
+        ...,
+        examples={
+            "default": {
+                "files": [
+                    {"name": "geosite.dat", "url": "https://.../geosite.dat"},
+                    {"name": "geoip.dat", "url": "https://.../geoip.dat"},
+                ],
+                "template_index_url": "https://.../index.json",
+                "template_name": "standard",
+            }
+        },
+    ),
     dbnode: NodeResponse = Depends(get_node),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):

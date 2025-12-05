@@ -1,6 +1,6 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, UTC
 from operator import attrgetter
 from typing import Dict, Optional, Tuple, Union
 
@@ -34,6 +34,10 @@ from xray_api import exc as xray_exc
 from app.db import crud
 
 
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def safe_execute(db: Session, stmt, params=None):
     if db.bind.name == 'mysql':
         if isinstance(stmt, Insert):
@@ -63,7 +67,7 @@ def record_user_stats(params: list, node_id: Union[int, None],
     if not params:
         return
 
-    created_at = datetime.fromisoformat(datetime.utcnow().strftime('%Y-%m-%dT%H:00:00'))
+    created_at = datetime.fromisoformat(utcnow_naive().strftime('%Y-%m-%dT%H:00:00'))
 
     # Try to write to Redis first (only if Redis is enabled)
     from app.redis.cache import cache_user_usage_snapshot
@@ -136,7 +140,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     limited_triggered = False
     limit_cleared = False
 
-    created_at = datetime.fromisoformat(datetime.utcnow().strftime('%Y-%m-%dT%H:00:00'))
+    created_at = datetime.fromisoformat(utcnow_naive().strftime('%Y-%m-%dT%H:00:00'))
 
     status_change_payload = None
 
@@ -177,7 +181,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                             dbnode.status = NodeStatus.limited
                             dbnode.message = "Data limit reached"
                             dbnode.xray_version = None
-                            dbnode.last_status_change = datetime.utcnow()
+                            dbnode.last_status_change = utcnow_naive()
                             limited_triggered = True
                             status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
                     else:
@@ -186,7 +190,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                             dbnode.status = NodeStatus.connecting
                             dbnode.message = None
                             dbnode.xray_version = None
-                            dbnode.last_status_change = datetime.utcnow()
+                            dbnode.last_status_change = utcnow_naive()
                             limit_cleared = True
                             status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
 
@@ -204,12 +208,12 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                     if master_record.status != NodeStatus.limited:
                         master_record.status = NodeStatus.limited
                         master_record.message = "Data limit reached"
-                        master_record.updated_at = datetime.utcnow()
+                        master_record.updated_at = utcnow_naive()
                 else:
                     if master_record.status == NodeStatus.limited:
                         master_record.status = NodeStatus.connected
                         master_record.message = None
-                        master_record.updated_at = datetime.utcnow()
+                        master_record.updated_at = utcnow_naive()
 
                 db.commit()
     else:
@@ -245,7 +249,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                             dbnode.status = NodeStatus.limited
                             dbnode.message = "Data limit reached"
                             dbnode.xray_version = None
-                            dbnode.last_status_change = datetime.utcnow()
+                            dbnode.last_status_change = utcnow_naive()
                             limited_triggered = True
                             status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
                     else:
@@ -254,7 +258,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                             dbnode.status = NodeStatus.connecting
                             dbnode.message = None
                             dbnode.xray_version = None
-                            dbnode.last_status_change = datetime.utcnow()
+                            dbnode.last_status_change = utcnow_naive()
                             limit_cleared = True
                             status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
 
@@ -271,12 +275,12 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                     if master_record.status != NodeStatus.limited:
                         master_record.status = NodeStatus.limited
                         master_record.message = "Data limit reached"
-                        master_record.updated_at = datetime.utcnow()
+                        master_record.updated_at = utcnow_naive()
                 else:
                     if master_record.status == NodeStatus.limited:
                         master_record.status = NodeStatus.connected
                         master_record.message = None
-                        master_record.updated_at = datetime.utcnow()
+                        master_record.updated_at = utcnow_naive()
 
                 db.commit()
         if status_change_payload:
@@ -380,7 +384,7 @@ def record_user_usages():
     
     redis_client = get_redis()
     if redis_client:
-        online_at = datetime.utcnow()
+        online_at = utcnow_naive()
         
         # Prepare user usage updates for backup
         user_usage_backup = []
@@ -415,7 +419,7 @@ def record_user_usages():
                 where(User.id == bindparam('uid')). \
                 values(
                     used_traffic=User.used_traffic + bindparam('value'),
-                    online_at=datetime.utcnow()
+                    online_at=utcnow_naive()
             )
 
             safe_execute(db, stmt, users_usage)

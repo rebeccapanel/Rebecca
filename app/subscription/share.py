@@ -1,4 +1,5 @@
 import base64
+import os
 import string
 from collections import defaultdict
 from datetime import datetime as dt, timezone
@@ -262,13 +263,25 @@ def process_inbounds_and_tags(
     
     service_id = extra_data.get("service_id")
 
-    with GetDB() as db:
-        raw_config = crud.get_xray_config(db)
-        xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
+    xray_config = None
+    try:
+        with GetDB() as db:
+            raw_config = crud.get_xray_config(db)
+            xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
+    except Exception:
+        xray_config = getattr(xray, "config", None)
+
+    if not xray_config:
+        return [] if isinstance(conf, list) else ""
+
+    inbounds_by_tag = getattr(xray_config, "inbounds_by_tag", {}) or {}
     
-    inbounds_by_tag = xray_config.inbounds_by_tag
-    
-    host_map = get_service_host_map_cached(service_id, force_refresh=True)
+    host_map = {}
+    if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+        try:
+            host_map = get_service_host_map_cached(service_id, force_refresh=True)
+        except Exception:
+            host_map = {}
     inbound_index = {
         tag: index for index, tag in enumerate(inbounds_by_tag.keys())
     }

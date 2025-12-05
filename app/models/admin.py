@@ -327,8 +327,16 @@ class Admin(BaseModel):
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit for admin in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users admin can create (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit for admin in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users admin can create (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
     active_users: Optional[int] = None
     online_users: Optional[int] = None
     limited_users: Optional[int] = None
@@ -497,12 +505,12 @@ class Admin(BaseModel):
             except Exception:
                 api_key = None
             if api_key:
-                if api_key.expires_at and api_key.expires_at < datetime.utcnow():
+                if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
                     return
                 dbadmin = crud.get_admin_by_id(db, api_key.admin_id)
                 if not dbadmin or dbadmin.status != AdminStatus.active:
                     return
-                api_key.last_used_at = datetime.utcnow()
+                api_key.last_used_at = datetime.now(timezone.utc)
                 try:
                     db.add(api_key)
                     db.commit()
@@ -593,8 +601,16 @@ class Admin(BaseModel):
 class AdminCreate(Admin):
     password: str = Field(..., min_length=6, description="Admin password (minimum 6 characters)")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
 
     @property
     def hashed_password(self):
@@ -607,8 +623,16 @@ class AdminModify(BaseModel):
         default=None, description="Fine-grained permission overrides for this admin"
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
 
     @property
     def hashed_password(self):
@@ -625,10 +649,14 @@ class AdminPartialModify(AdminModify):
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     data_limit: Optional[int] = Field(
-        None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
     )
     users_limit: Optional[int] = Field(
-        None, description="Maximum number of users (null = unlimited)", example=100
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
     )
 
 

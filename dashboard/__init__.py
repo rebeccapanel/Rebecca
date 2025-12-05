@@ -51,9 +51,12 @@ def run_build():
     )
 
 
-@app.on_event("startup")
 def startup():
     if DEBUG:
         run_dev()
     else:
         run_build()
+
+
+if app is not None:
+    app.add_event_handler("startup", startup)

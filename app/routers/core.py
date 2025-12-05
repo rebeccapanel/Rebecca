@@ -297,7 +297,7 @@ def list_xray_releases(limit: int = 10, admin: Admin = Depends(Admin.check_sudo_
 
 @router.post("/core/xray/update", responses={403: responses._403})
 def update_core_version(
-    payload: dict = Body(..., example={"version": "v1.8.11", "persist_env": True}),
+    payload: dict = Body(..., examples={"default": {"version": "v1.8.11", "persist_env": True}}),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Update Xray core binary via maintenance service."""
@@ -408,15 +408,17 @@ def list_geo_templates(index_url: str = "", admin: Admin = Depends(Admin.check_s
 def apply_geo_assets(
     payload: dict = Body(
         ...,
-        example={
-            "mode": "default",
-            "files": [
-                {"name": "geosite.dat", "url": "https://.../geosite.dat"},
-                {"name": "geoip.dat", "url": "https://.../geoip.dat"},
-            ],
-            "persist_env": True,
-            "apply_to_nodes": True,
-            "skip_node_ids": [],
+        examples={
+            "default": {
+                "mode": "default",
+                "files": [
+                    {"name": "geosite.dat", "url": "https://.../geosite.dat"},
+                    {"name": "geoip.dat", "url": "https://.../geoip.dat"},
+                ],
+                "persist_env": True,
+                "apply_to_nodes": True,
+                "skip_node_ids": [],
+            }
         },
     ),
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -478,14 +480,16 @@ def apply_geo_assets(
 def update_geo_assets(
     payload: dict = Body(
         ...,
-        example={
-            "mode": "template",
-            "templateIndexUrl": GEO_TEMPLATES_INDEX_DEFAULT,
-            "templateName": "standard",
-            "files": [],
-            "persistEnv": True,
-            "applyToNodes": False,
-            "skipNodeIds": [],
+        examples={
+            "default": {
+                "mode": "template",
+                "templateIndexUrl": GEO_TEMPLATES_INDEX_DEFAULT,
+                "templateName": "standard",
+                "files": [],
+                "persistEnv": True,
+                "applyToNodes": False,
+                "skipNodeIds": [],
+            }
         },
     ),
     admin: Admin = Depends(Admin.check_sudo_admin),

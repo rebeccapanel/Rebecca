@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +12,10 @@ from app.models.admin import AdminInDB, AdminRole
 
 
 router = APIRouter(prefix="/api", tags=["MyAccount"])
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class MyAccountUsagePoint(BaseModel):
@@ -90,7 +94,7 @@ def get_myaccount(
 
     # Default to the last 7 days when no range is provided to keep responses fast
     if not start and not end:
-        end_dt = datetime.utcnow()
+        end_dt = utcnow_naive()
         start_dt = end_dt - timedelta(days=7)
     else:
         start_dt, end_dt = validate_dates(start, end)
@@ -133,7 +137,7 @@ def get_myaccount(
 
 def _get_expires_at(lifetime: str) -> Optional[datetime]:
     code = (lifetime or "").lower()
-    now = datetime.utcnow()
+    now = utcnow_naive()
     if code == "1m":
         return now + timedelta(days=30)
     if code == "3m":
@@ -264,7 +268,7 @@ def get_myaccount_nodes(
         raise HTTPException(status_code=404, detail="Admin not found")
 
     if not start and not end:
-        end_dt = datetime.utcnow()
+        end_dt = utcnow_naive()
         start_dt = end_dt - timedelta(days=7)
     else:
         start_dt, end_dt = validate_dates(start, end)

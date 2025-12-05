@@ -20,6 +20,7 @@ from app.utils.system import register_scheduler_jobs
 
 __version__ = "0.0.26"
 
+IS_RUNNING_TESTS = "PYTEST_CURRENT_TEST" in os.environ
 IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
 if IS_RUNNING_ALEMBIC:
     os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
@@ -99,8 +100,9 @@ if not SKIP_RUNTIME_INIT:
     from app.redis.subscription import warmup_subscription_cache
     from app.utils.system import start_redis_if_configured
 
-    @app.on_event("startup")
     def on_startup():
+        if IS_RUNNING_TESTS:
+            return
         paths = [f"{r.path}/" for r in app.routes]
         paths.append("/api/")
         if f"/{XRAY_SUBSCRIPTION_PATH}/" in paths:
@@ -166,11 +168,14 @@ if not SKIP_RUNTIME_INIT:
         else:
             logger.info("Redis is not available, validation will use database only")
 
-
-    @app.on_event("shutdown")
     def on_shutdown():
-        scheduler.shutdown()
+        if IS_RUNNING_TESTS:
+            return
+        if scheduler:
+            scheduler.shutdown()
 
+    app.add_event_handler("startup", on_startup)
+    app.add_event_handler("shutdown", on_shutdown)
 
     @app.exception_handler(RequestValidationError)
     def validation_exception_handler(request: Request, exc: RequestValidationError):
