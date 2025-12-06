@@ -28,11 +28,13 @@ from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModi
 from app.models.user import (
     UserStatus,
 )
+
 # Imported inside functions to avoid circular import
 # from .usage import _get_usage_data, _get_usage_timeseries
 # from .user import get_user_queryset, _apply_service_filter
 # MasterSettingsService not available in current project structure
 from .proxy import get_or_create_inbound, _fetch_hosts_by_ids
+
 MASTER_NODE_NAME = "Master"
 
 _USER_STATUS_ENUM_ENSURED = False
@@ -48,9 +50,7 @@ class ServiceRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def assign_hosts(
-        self, service: Service, assignments: Iterable[ServiceHostAssignment]
-    ) -> None:
+    def assign_hosts(self, service: Service, assignments: Iterable[ServiceHostAssignment]) -> None:
         assignments = list(assignments)
         desired_ids = [assignment.host_id for assignment in assignments]
         host_map = _fetch_hosts_by_ids(self.db, desired_ids)
@@ -93,10 +93,7 @@ class ServiceRepository:
             return
 
         admins = (
-            self.db.query(Admin)
-            .filter(Admin.id.in_(desired_id_set))
-            .filter(Admin.status != AdminStatus.deleted)
-            .all()
+            self.db.query(Admin).filter(Admin.id.in_(desired_id_set)).filter(Admin.status != AdminStatus.deleted).all()
         )
         if len(admins) != len(desired_id_set):
             raise ValueError("One or more admins could not be found")
@@ -180,9 +177,7 @@ class ServiceRepository:
                 settings_model = proxy_type.settings_model()
                 if hasattr(settings_model, "flow"):
                     settings_model.flow = XTLSFlows.NONE
-                serialized = serialize_proxy_settings(
-                    settings_model, proxy_type, dbuser.credential_key
-                )
+                serialized = serialize_proxy_settings(settings_model, proxy_type, dbuser.credential_key)
                 proxy = Proxy(type=proxy_type.value, settings=serialized)
                 dbuser.proxies.append(proxy)
             else:
@@ -200,19 +195,16 @@ class ServiceRepository:
                         preserve_existing_uuid=True,
                     )
 
-            available_tags = {
-                inbound["tag"]
-                for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])
-            }
+            available_tags = {inbound["tag"] for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])}
             excluded_tags = sorted(available_tags - set(allowed_tags))
-            proxy.excluded_inbounds = [
-                get_or_create_inbound(self.db, tag) for tag in excluded_tags
-            ]
+            proxy.excluded_inbounds = [get_or_create_inbound(self.db, tag) for tag in excluded_tags]
 
         dbuser.service = service
         dbuser.edit_at = datetime.now(timezone.utc)
 
-    def refresh_users(self, service: Service, allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None) -> List[User]:
+    def refresh_users(
+        self, service: Service, allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None
+    ) -> List[User]:
         if allowed_inbounds is None:
             allowed_inbounds = self.compute_allowed_inbounds(service)
         updated_users: List[User] = []
@@ -269,9 +261,7 @@ class ServiceRepository:
             host_counts = {
                 service_id: int(count or 0)
                 for service_id, count in (
-                    self.db.query(
-                        ServiceHostLink.service_id, func.count(ServiceHostLink.host_id)
-                    )
+                    self.db.query(ServiceHostLink.service_id, func.count(ServiceHostLink.host_id))
                     .filter(ServiceHostLink.service_id.in_(service_ids))
                     .group_by(ServiceHostLink.service_id)
                     .all()
@@ -310,18 +300,20 @@ class ServiceRepository:
 
         self.db.commit()
         self.db.refresh(service)
-        
+
         # Update Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
+
                 cache_service(service)
                 invalidate_service_cache()  # Invalidate services list
                 invalidate_service_host_map_cache()  # Invalidate host maps
             except Exception:
                 pass  # Don't fail if Redis is unavailable
-        
+
         return service
 
     def update(
@@ -357,12 +349,14 @@ class ServiceRepository:
 
         self.db.commit()
         self.db.refresh(service)
-        
+
         # Update Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
+
                 cache_service(service)
                 invalidate_service_cache()  # Invalidate services list
                 invalidate_service_host_map_cache()  # Invalidate host maps
@@ -406,18 +400,20 @@ class ServiceRepository:
         service_id = service.id
         self.db.delete(service)
         self.db.commit()
-        
+
         # Update Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import invalidate_service_cache, invalidate_service_host_map_cache
+
                 invalidate_service_cache(service_id=service_id)
                 invalidate_service_cache()  # Invalidate services list
                 invalidate_service_host_map_cache()  # Invalidate host maps
             except Exception:
                 pass  # Don't fail if Redis is unavailable
-        
+
         return deleted_users, transferred_users
 
     def reset_usage(self, service: Service) -> Service:
@@ -440,6 +436,7 @@ class ServiceRepository:
         granularity: str = "day",
     ) -> List[Dict[str, Union[datetime, int]]]:
         from .usage import _get_usage_data
+
         return _get_usage_data(
             db=self.db,
             entity_type="service",
@@ -447,7 +444,7 @@ class ServiceRepository:
             start=start,
             end=end,
             granularity=granularity,
-            format="timeseries"
+            format="timeseries",
         )
 
     def admin_usage_timeseries(
@@ -471,12 +468,13 @@ class ServiceRepository:
             query = query.filter(User.admin_id.is_(None))
         else:
             query = query.filter(User.admin_id == admin_id)
-        
+
         start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
         end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
         tzinfo = start_aware.tzinfo or timezone.utc
-        
+
         from .usage import _get_usage_timeseries
+
         return _get_usage_timeseries(query, start_aware, end_aware, tzinfo, granularity, {}, False)
 
     def admin_usage(
@@ -530,6 +528,7 @@ class ServiceRepository:
             reverse=True,
         )
 
+
 def _apply_service_to_user(
     db: Session,
     dbuser: User,
@@ -537,6 +536,7 @@ def _apply_service_to_user(
     allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
 ) -> None:
     ServiceRepository(db).apply_service_to_user(dbuser, service, allowed_inbounds)
+
 
 def count_users(
     db: Session,
@@ -546,6 +546,7 @@ def count_users(
 ) -> int:
     """Return a lightweight count of users respecting admin/service filters."""
     from .user import get_user_queryset, _apply_service_filter
+
     query = get_user_queryset(db, eager_load=False)
     if admin:
         query = query.filter(User.admin == admin)
@@ -556,6 +557,7 @@ def count_users(
     )
     return query.count()
 
+
 def count_online_users(db: Session, hours: int = 24, admin: Admin | None = None):
     twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=hours)
     query = db.query(func.count(User.id)).filter(
@@ -565,4 +567,3 @@ def count_online_users(db: Session, hours: int = 24, admin: Admin | None = None)
     if admin and admin.id is not None:
         query = query.filter(User.admin_id == admin.id)
     return query.scalar() or 0
-

@@ -14,6 +14,7 @@ from app.db.models import (
     NodeUserUsage,
 )
 from app.models.node import NodeCreate, NodeModify, NodeStatus
+
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
 
@@ -35,9 +36,11 @@ def get_node(db: Session, name: Optional[str] = None, node_id: Optional[int] = N
         return query.filter(Node.name == name).first()
     return None
 
+
 def get_node_by_id(db: Session, node_id: int) -> Optional[Node]:
     """Wrapper for backward compatibility."""
     return get_node(db, node_id=node_id)
+
 
 def _ensure_master_state(db: Session, *, for_update: bool = False) -> MasterNodeState:
     """Retrieve or create the singleton master node state entry."""
@@ -55,10 +58,12 @@ def _ensure_master_state(db: Session, *, for_update: bool = False) -> MasterNode
     db.refresh(state)
     return state
 
+
 def get_master_node_state(db: Session) -> MasterNodeState:
     master_state = _ensure_master_state(db, for_update=False)
     db.refresh(master_state)
     return master_state
+
 
 def set_master_data_limit(db: Session, data_limit: Optional[int]) -> MasterNodeState:
     master_state = _ensure_master_state(db, for_update=True)
@@ -82,8 +87,10 @@ def set_master_data_limit(db: Session, data_limit: Optional[int]) -> MasterNodeS
     db.refresh(master_state)
     return master_state
 
-def get_nodes(db: Session, status: Optional[Union[NodeStatus, list]] = None,
-              enabled: bool = None, include_master: bool = False) -> List[Node]:
+
+def get_nodes(
+    db: Session, status: Optional[Union[NodeStatus, list]] = None, enabled: bool = None, include_master: bool = False
+) -> List[Node]:
     """Retrieves nodes based on optional status and enabled filters."""
     query = db.query(Node)
 
@@ -97,18 +104,25 @@ def get_nodes(db: Session, status: Optional[Union[NodeStatus, list]] = None,
 
     return query.all()
 
+
 def create_node(db: Session, node: NodeCreate) -> Node:
     """Creates a new node in the database."""
     from app.utils.crypto import generate_certificate, generate_unique_cn
-    
-    dbnode = Node(name=node.name, address=node.address, port=node.port, api_port=node.api_port,
-                  usage_coefficient=node.usage_coefficient if getattr(node, "usage_coefficient", None) else 1,
-                  data_limit=node.data_limit if getattr(node, "data_limit", None) is not None else None,
-                  geo_mode=node.geo_mode, use_nobetci=bool(getattr(node, "use_nobetci", False)),
-                  nobetci_port=getattr(node, "nobetci_port", None) or None)
+
+    dbnode = Node(
+        name=node.name,
+        address=node.address,
+        port=node.port,
+        api_port=node.api_port,
+        usage_coefficient=node.usage_coefficient if getattr(node, "usage_coefficient", None) else 1,
+        data_limit=node.data_limit if getattr(node, "data_limit", None) is not None else None,
+        geo_mode=node.geo_mode,
+        use_nobetci=bool(getattr(node, "use_nobetci", False)),
+        nobetci_port=getattr(node, "nobetci_port", None) or None,
+    )
     db.add(dbnode)
     db.flush()
-    
+
     # Use provided certificate when available (from fresh node-settings), otherwise generate a unique one
     provided_cert = getattr(node, "certificate", None)
     provided_key = getattr(node, "certificate_key", None)
@@ -120,7 +134,7 @@ def create_node(db: Session, node: NodeCreate) -> Node:
         cert_data = generate_certificate(cn=unique_cn)
         dbnode.certificate = cert_data["cert"]
         dbnode.certificate_key = cert_data["key"]
-    
+
     db.commit()
     db.refresh(dbnode)
     return dbnode
@@ -140,6 +154,7 @@ def regenerate_node_certificate(db: Session, dbnode: Node) -> Node:
     db.refresh(dbnode)
     return dbnode
 
+
 def remove_node(db: Session, dbnode: Node) -> Node:
     """Removes a node from the database."""
     db.query(NodeUsage).filter(NodeUsage.node_id == dbnode.id).delete(synchronize_session=False)
@@ -147,6 +162,7 @@ def remove_node(db: Session, dbnode: Node) -> Node:
     db.delete(dbnode)
     db.commit()
     return dbnode
+
 
 def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
     """Updates an existing node with new information."""
@@ -189,10 +205,15 @@ def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
     db.refresh(dbnode)
     return dbnode
 
+
 def update_node_status(db: Session, dbnode: Node, status: NodeStatus, message: str = None, version: str = None) -> Node:
     """Updates the status of a node."""
-    dbnode.status, dbnode.message, dbnode.xray_version, dbnode.last_status_change = status, message, version, datetime.now(timezone.utc)
+    dbnode.status, dbnode.message, dbnode.xray_version, dbnode.last_status_change = (
+        status,
+        message,
+        version,
+        datetime.now(timezone.utc),
+    )
     db.commit()
     db.refresh(dbnode)
     return dbnode
-

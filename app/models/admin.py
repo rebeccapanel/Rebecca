@@ -295,13 +295,16 @@ USER_PERMISSION_MESSAGES: Dict[UserPermission, str] = {
     UserPermission.allow_custom_key: "set custom credential key",
 }
 
+
 def _resolve_role(value: Optional[AdminRole]) -> AdminRole:
     if value:
         return value
     return AdminRole.standard
 
 
-def _build_permissions(role: AdminRole, raw_permissions: Optional[Dict[str, Any] | AdminPermissions]) -> AdminPermissions:
+def _build_permissions(
+    role: AdminRole, raw_permissions: Optional[Dict[str, Any] | AdminPermissions]
+) -> AdminPermissions:
     # Full-access should always get the baked-in defaults and ignore any overrides
     if role == AdminRole.full_access:
         return ROLE_DEFAULT_PERMISSIONS[role]
@@ -322,9 +325,7 @@ class Admin(BaseModel):
     role: AdminRole = AdminRole.standard
     permissions: AdminPermissions = Field(default_factory=AdminPermissions)
     status: AdminStatus = AdminStatus.active
-    disabled_reason: Optional[str] = Field(
-        None, description="Reason provided by sudo admin when account is disabled"
-    )
+    disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(
@@ -477,16 +478,15 @@ class Admin(BaseModel):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage other admins.",
             )
-        if (
-            target.role in (AdminRole.sudo, AdminRole.full_access)
-            and not perms.allows(AdminManagementPermission.manage_sudo)
+        if target.role in (AdminRole.sudo, AdminRole.full_access) and not perms.allows(
+            AdminManagementPermission.manage_sudo
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage sudo admins.",
             )
 
-    @field_validator("users_usage",  mode='before')
+    @field_validator("users_usage", mode="before")
     def cast_to_int(cls, v):
         if v is None:  # Allow None values
             return v
@@ -525,14 +525,14 @@ class Admin(BaseModel):
         except ValueError:
             payload_role = AdminRole.standard
 
-        if payload['username'] in SUDOERS:
+        if payload["username"] in SUDOERS:
             return cls(
-                username=payload['username'],
+                username=payload["username"],
                 role=payload_role,
                 permissions=ROLE_DEFAULT_PERMISSIONS[payload_role],
             )
 
-        dbadmin = crud.get_admin(db, payload['username'])
+        dbadmin = crud.get_admin(db, payload["username"])
         if not dbadmin:
             return
 
@@ -548,9 +548,7 @@ class Admin(BaseModel):
         return cls.model_validate(dbadmin)
 
     @classmethod
-    def get_current(cls,
-                    db: Session = Depends(get_db),
-                    token: str = Depends(oauth2_scheme)):
+    def get_current(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_admin(token, db)
         if not admin:
             raise HTTPException(
@@ -561,9 +559,7 @@ class Admin(BaseModel):
         return admin
 
     @classmethod
-    def check_sudo_admin(cls,
-                         db: Session = Depends(get_db),
-                         token: str = Depends(oauth2_scheme)):
+    def check_sudo_admin(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_admin(token, db)
         if not admin:
             raise HTTPException(
@@ -572,16 +568,11 @@ class Admin(BaseModel):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         if admin.role not in (AdminRole.sudo, AdminRole.full_access):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You're not allowed"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
         return admin
 
     @classmethod
-    def require_active(cls,
-                       db: Session = Depends(get_db),
-                       token: str = Depends(oauth2_scheme)):
+    def require_active(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_current(db=db, token=token)
         if admin.role in (AdminRole.sudo, AdminRole.full_access):
             return admin
@@ -616,6 +607,7 @@ class AdminCreate(Admin):
     def hashed_password(self):
         return pwd_context.hash(self.password)
 
+
 class AdminModify(BaseModel):
     password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
     role: Optional[AdminRole] = Field(None, description="Access level for the admin account")
@@ -639,10 +631,9 @@ class AdminModify(BaseModel):
         if self.password:
             return pwd_context.hash(self.password)
 
+
 class AdminPartialModify(AdminModify):
-    password: Optional[str] = Field(
-        None, min_length=6, description="New password (optional, minimum 6 characters)"
-    )
+    password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
     role: Optional[AdminRole] = Field(None, description="Access level for the admin account")
     permissions: Optional[AdminPermissions] = Field(
         default=None, description="Fine-grained permission overrides for this admin"

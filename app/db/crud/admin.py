@@ -24,6 +24,7 @@ from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_
 from app.models.user import (
     UserStatus,
 )
+
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
 from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users
@@ -57,18 +58,13 @@ def get_admin(db: Session, username: Optional[str] = None, admin_id: Optional[in
         return query.filter(func.lower(Admin.username) == normalized).first()
     return None
 
+
 def list_admin_api_keys(db: Session, admin: Admin) -> List[AdminApiKey]:
     """Return API keys owned by the given admin."""
-    return (
-        db.query(AdminApiKey)
-        .filter(AdminApiKey.admin_id == admin.id)
-        .order_by(AdminApiKey.created_at.desc())
-        .all()
-    )
+    return db.query(AdminApiKey).filter(AdminApiKey.admin_id == admin.id).order_by(AdminApiKey.created_at.desc()).all()
 
-def create_admin_api_key(
-    db: Session, admin: Admin, expires_at: Optional[datetime] = None
-) -> tuple[AdminApiKey, str]:
+
+def create_admin_api_key(db: Session, admin: Admin, expires_at: Optional[datetime] = None) -> tuple[AdminApiKey, str]:
     """Create a new API key for the admin and return (record, plaintext key)."""
     token = "rk_" + secrets.token_urlsafe(32)
     key_hash = sha256(token.encode()).hexdigest()
@@ -78,29 +74,26 @@ def create_admin_api_key(
     db.refresh(record)
     return record, token
 
+
 def delete_admin_api_key(db: Session, admin: Admin, key_id: int) -> bool:
     """Delete an API key by id if it belongs to the admin."""
-    record = (
-        db.query(AdminApiKey)
-        .filter(AdminApiKey.id == key_id, AdminApiKey.admin_id == admin.id)
-        .first()
-    )
+    record = db.query(AdminApiKey).filter(AdminApiKey.id == key_id, AdminApiKey.admin_id == admin.id).first()
     if not record:
         return False
     db.delete(record)
     db.commit()
     return True
 
+
 def get_admin_api_key_by_token(db: Session, token: str) -> Optional[AdminApiKey]:
     """Look up an API key record by its plaintext token."""
     key_hash = sha256(token.encode()).hexdigest()
     return db.query(AdminApiKey).filter(AdminApiKey.key_hash == key_hash).first()
 
+
 def _admin_disabled_due_to_data_limit(dbadmin: Admin) -> bool:
-    return (
-        dbadmin.status == AdminStatus.disabled
-        and dbadmin.disabled_reason == ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
-    )
+    return dbadmin.status == AdminStatus.disabled and dbadmin.disabled_reason == ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
+
 
 def _admin_usage_within_limit(dbadmin: Admin) -> bool:
     limit = dbadmin.data_limit
@@ -109,11 +102,13 @@ def _admin_usage_within_limit(dbadmin: Admin) -> bool:
     usage = dbadmin.users_usage or 0
     return usage < limit
 
+
 def _restore_admin_users_and_nodes(db: Session, dbadmin: Admin) -> None:
     """Bring back an admin's users and reload nodes after the admin is re-enabled."""
     activate_all_disabled_users(db=db, admin=dbadmin)
     try:
         from app.runtime import xray
+
         startup_config = xray.config.include_db_users()
         xray.core.restart(startup_config)
         for node_id, node in list(xray.nodes.items()):
@@ -121,6 +116,7 @@ def _restore_admin_users_and_nodes(db: Session, dbadmin: Admin) -> None:
                 xray.operations.restart_node(node_id, startup_config)
     except ImportError:
         return
+
 
 def _maybe_enable_admin_after_data_limit(db: Session, dbadmin: Admin) -> bool:
     if not _admin_disabled_due_to_data_limit(dbadmin):
@@ -133,6 +129,7 @@ def _maybe_enable_admin_after_data_limit(db: Session, dbadmin: Admin) -> bool:
     dbadmin.disabled_reason = None
     return True
 
+
 def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
     """Ensure admin state reflects assigned data limit; disable admin and their users when usage exceeds limit."""
     limit = dbadmin.data_limit
@@ -141,10 +138,7 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
     if not limit or usage < limit:
         return False
 
-    if (
-        dbadmin.status == AdminStatus.disabled
-        and dbadmin.disabled_reason != ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY
-    ):
+    if dbadmin.status == AdminStatus.disabled and dbadmin.disabled_reason != ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY:
         return False
 
     active_users = (
@@ -168,13 +162,12 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
         if xray:
             for user_row in active_users:
                 try:
-                    xray.operations.remove_user(
-                        dbuser=SimpleNamespace(id=user_row.id, username=user_row.username)
-                    )
+                    xray.operations.remove_user(dbuser=SimpleNamespace(id=user_row.id, username=user_row.username))
                 except Exception:
                     continue
 
     return True
+
 
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
     """Creates a new admin in the database."""
@@ -193,7 +186,11 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         )
 
     role = admin.role or AdminRole.standard
-    permissions_payload = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump() if role == AdminRole.full_access else (admin.permissions.model_dump() if admin.permissions else None)
+    permissions_payload = (
+        ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+        if role == AdminRole.full_access
+        else (admin.permissions.model_dump() if admin.permissions else None)
+    )
 
     dbadmin = Admin(
         username=admin.username,
@@ -209,6 +206,7 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
+
 
 def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Admin:
     """Updates an admin's details."""
@@ -245,6 +243,7 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     db.refresh(dbadmin)
     return dbadmin
 
+
 def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminPartialModify) -> Admin:
     """Partially updates an admin's details."""
     target_role = modified_admin.role or dbadmin.role
@@ -280,6 +279,7 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     db.refresh(dbadmin)
     return dbadmin
 
+
 def disable_admin(db: Session, dbadmin: Admin, reason: str) -> Admin:
     """Disable an admin account and store the provided reason."""
     dbadmin.status, dbadmin.disabled_reason = AdminStatus.disabled, reason
@@ -287,12 +287,14 @@ def disable_admin(db: Session, dbadmin: Admin, reason: str) -> Admin:
     db.refresh(dbadmin)
     return dbadmin
 
+
 def enable_admin(db: Session, dbadmin: Admin) -> Admin:
     """Re-activate a previously disabled admin account."""
     dbadmin.status, dbadmin.disabled_reason = AdminStatus.active, None
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
+
 
 def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     """Soft delete an admin, their users, and remove from services."""
@@ -304,6 +306,7 @@ def remove_admin(db: Session, dbadmin: Admin) -> Admin:
         dbuser.status = UserStatus.deleted
         try:
             from app.reb_node import operations as core_operations
+
             core_operations.remove_user(dbuser=dbuser)
         except Exception:
             pass
@@ -313,31 +316,34 @@ def remove_admin(db: Session, dbadmin: Admin) -> Admin:
     db.refresh(dbadmin)
     return dbadmin
 
+
 def get_admin_by_id(db: Session, id: int) -> Optional[Admin]:
     """Wrapper for backward compatibility."""
     return get_admin(db, admin_id=id)
 
+
 def get_admin_by_telegram_id(db: Session, telegram_id: int) -> Admin:
     """Retrieves an admin by their Telegram ID."""
-    return (
-        db.query(Admin)
-        .filter(Admin.telegram_id == telegram_id)
-        .filter(Admin.status != AdminStatus.deleted)
-        .first()
-    )
+    return db.query(Admin).filter(Admin.telegram_id == telegram_id).filter(Admin.status != AdminStatus.deleted).first()
 
-def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] = None,
-               username: Optional[str] = None, sort: Optional[str] = None) -> Dict:
+
+def get_admins(
+    db: Session,
+    offset: Optional[int] = None,
+    limit: Optional[int] = None,
+    username: Optional[str] = None,
+    sort: Optional[str] = None,
+) -> Dict:
     """Retrieves a list of admins with optional filters and pagination."""
     query = db.query(Admin).filter(Admin.status != AdminStatus.deleted)
     if username:
-        query = query.filter(Admin.username.ilike(f'%{username}%'))
+        query = query.filter(Admin.username.ilike(f"%{username}%"))
 
     # Get total count before pagination
     total = query.count()
 
     if sort:
-        descending = sort.startswith('-')
+        descending = sort.startswith("-")
         sort_key = sort[1:] if descending else sort
         sortable_columns = {
             "username": Admin.username,
@@ -383,7 +389,13 @@ def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] =
         .all()
     )
 
-    status_map = {UserStatus.active: "active", UserStatus.limited: "limited", UserStatus.expired: "expired", UserStatus.on_hold: "on_hold", UserStatus.disabled: "disabled"}
+    status_map = {
+        UserStatus.active: "active",
+        UserStatus.limited: "limited",
+        UserStatus.expired: "expired",
+        UserStatus.on_hold: "on_hold",
+        UserStatus.disabled: "disabled",
+    }
     for admin_id, status, count in status_counts:
         if admin_id in counts_by_admin and status in status_map:
             counts_by_admin[admin_id][status_map[status]] = count or 0
@@ -428,11 +440,7 @@ def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] =
         .group_by(User.admin_id)
         .all()
     )
-    data_limit_map = {
-        row.admin_id: row.data_limit_allocated
-        for row in data_limit_rows
-        if row.admin_id is not None
-    }
+    data_limit_map = {row.admin_id: row.data_limit_allocated for row in data_limit_rows if row.admin_id is not None}
 
     unlimited_usage_rows = (
         db.query(
@@ -458,9 +466,7 @@ def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] =
         .all()
     )
     unlimited_usage_map = {
-        row.admin_id: row.unlimited_users_usage
-        for row in unlimited_usage_rows
-        if row.admin_id is not None
+        row.admin_id: row.unlimited_users_usage for row in unlimited_usage_rows if row.admin_id is not None
     }
 
     reset_rows = (
@@ -476,11 +482,7 @@ def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] =
         .group_by(User.admin_id)
         .all()
     )
-    reset_map = {
-        row.admin_id: row.reset_bytes
-        for row in reset_rows
-        if row.admin_id is not None
-    }
+    reset_map = {row.admin_id: row.reset_bytes for row in reset_rows if row.admin_id is not None}
 
     for admin in admins:
         admin_id = getattr(admin, "id", None)
@@ -500,4 +502,3 @@ def get_admins(db: Session, offset: Optional[int] = None, limit: Optional[int] =
         setattr(admin, "reset_bytes", reset_map.get(admin_id, 0))
 
     return {"admins": admins, "total": total}
-

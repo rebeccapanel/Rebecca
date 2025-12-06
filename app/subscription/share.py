@@ -55,13 +55,11 @@ def is_credential_key(value: str) -> bool:
 def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:
     format_variables = setup_format_variables(extra_data)
     conf = V2rayShareLink()
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_clash_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
+    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
 ) -> str:
     if is_meta is True:
         conf = ClashMetaConfiguration()
@@ -69,49 +67,45 @@ def generate_clash_subscription(
         conf = ClashConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
-def generate_singbox_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool
-) -> str:
+def generate_singbox_subscription(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> str:
     conf = SingBoxConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_outline_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool,
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
 ) -> str:
     conf = OutlineConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_v2ray_json_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool,
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
 ) -> str:
     conf = V2rayJsonConfig()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_subscription(
-        user: "UserResponse",
-        config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
-        as_base64: bool,
-        reverse: bool,
+    user: "UserResponse",
+    config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
+    as_base64: bool,
+    reverse: bool,
 ) -> str:
     kwargs = {
         "proxies": user.proxies,
@@ -241,26 +235,26 @@ def setup_format_variables(extra_data: dict) -> dict:
 
 
 def process_inbounds_and_tags(
-        inbounds: dict,
-        proxies: dict,
-        format_variables: dict,
-        extra_data: dict,
-        conf: Union[
-            V2rayShareLink,
-            V2rayJsonConfig,
-            SingBoxConfiguration,
-            ClashConfiguration,
-            ClashMetaConfiguration,
-            OutlineConfiguration
-        ],
-        reverse=False,
+    inbounds: dict,
+    proxies: dict,
+    format_variables: dict,
+    extra_data: dict,
+    conf: Union[
+        V2rayShareLink,
+        V2rayJsonConfig,
+        SingBoxConfiguration,
+        ClashConfiguration,
+        ClashMetaConfiguration,
+        OutlineConfiguration,
+    ],
+    reverse=False,
 ) -> Union[List, str]:
     from app.runtime import xray
     from app.services.data_access import get_service_host_map_cached
     from app.db import GetDB
     from app.db import crud
     from app.reb_node.config import XRayConfig
-    
+
     service_id = extra_data.get("service_id")
 
     xray_config = None
@@ -275,22 +269,18 @@ def process_inbounds_and_tags(
         return [] if isinstance(conf, list) else ""
 
     inbounds_by_tag = getattr(xray_config, "inbounds_by_tag", {}) or {}
-    
+
     host_map = {}
     if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
         try:
             host_map = get_service_host_map_cached(service_id, force_refresh=True)
         except Exception:
             host_map = {}
-    inbound_index = {
-        tag: index for index, tag in enumerate(inbounds_by_tag.keys())
-    }
+    inbound_index = {tag: index for index, tag in enumerate(inbounds_by_tag.keys())}
 
     service_host_orders = (extra_data or {}).get("service_host_orders") or {}
     if service_host_orders:
-        service_host_orders = {
-            int(k): v for k, v in service_host_orders.items()
-        }
+        service_host_orders = {int(k): v for k, v in service_host_orders.items()}
 
     host_entries = []
     for protocol, tags in inbounds.items():
@@ -306,10 +296,7 @@ def process_inbounds_and_tags(
             # Get host list for this tag from host_map
             host_list = host_map.get(tag, []) if host_map else []
 
-            sorted_host_list = sorted(
-                host_list,
-                key=lambda h: (h.get("sort", 0), h.get("id") or 0)
-            )
+            sorted_host_list = sorted(host_list, key=lambda h: (h.get("sort", 0), h.get("id") or 0))
             for position, host in enumerate(sorted_host_list):
                 if host.get("is_disabled"):
                     continue
@@ -329,9 +316,9 @@ def process_inbounds_and_tags(
 
     host_entries.sort(
         key=lambda entry: (
-            service_host_orders.get(
-                entry[7], entry[4].get("sort", 0)
-            ) if entry[7] is not None else entry[4].get("sort", 0),
+            service_host_orders.get(entry[7], entry[4].get("sort", 0))
+            if entry[7] is not None
+            else entry[4].get("sort", 0),
             entry[5],
             entry[6],
         )
@@ -408,9 +395,9 @@ def process_inbounds_and_tags(
         )
 
         credential_key = extra_data.get("credential_key")
-        if not credential_key and hasattr(settings, 'credential_key'):
-            credential_key = getattr(settings, 'credential_key', None)
-        
+        if not credential_key and hasattr(settings, "credential_key"):
+            credential_key = getattr(settings, "credential_key", None)
+
         if isinstance(protocol, str):
             proxy_type = ProxyTypes(protocol)
         else:
@@ -418,15 +405,13 @@ def process_inbounds_and_tags(
 
         user_flow = extra_data.get("flow")
         if user_flow:
-            runtime_settings = runtime_proxy_settings(
-                settings, proxy_type, credential_key, flow=user_flow
-            )
+            runtime_settings = runtime_proxy_settings(settings, proxy_type, credential_key, flow=user_flow)
         else:
             # Call without flow to mirror server-side account generation when flow is absent
             runtime_settings = runtime_proxy_settings(settings, proxy_type, credential_key)
         if not user_flow:
             runtime_settings.pop("flow", None)
-        
+
         conf.add(
             remark=host["remark"].format_map(format_variables),
             address=address.format_map(format_variables),

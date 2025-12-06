@@ -62,6 +62,7 @@ def refresh_ads(force: bool = False) -> AdsResponse:
         # Normalize empty strings to None before validation
         ads_data = response.json()
         if isinstance(ads_data, dict):
+
             def normalize_urls(obj):
                 if isinstance(obj, dict):
                     for key in ["image_url", "link"]:
@@ -74,6 +75,7 @@ def refresh_ads(force: bool = False) -> AdsResponse:
                 elif isinstance(obj, list):
                     for item in obj:
                         normalize_urls(item)
+
             normalize_urls(ads_data)
 
         payload = AdsResponse.model_validate(ads_data)
@@ -86,9 +88,7 @@ def refresh_ads(force: bool = False) -> AdsResponse:
     except Exception as exc:  # pragma: no cover - external dependencies
         _ads_state.last_attempt = _now()
         _ads_state.last_error = str(exc)
-        logger.debug(
-            "Unable to load advertisements from %s: %s", ADS_SOURCE_URL, exc
-        )
+        logger.debug("Unable to load advertisements from %s: %s", ADS_SOURCE_URL, exc)
 
     return _ads_state.payload
 

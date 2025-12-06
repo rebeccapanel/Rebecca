@@ -76,7 +76,7 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
             error_msg = str(exc)
             error_code = getattr(exc, "error_code", None)
             error_description = getattr(exc, "description", error_msg)
-            
+
             # Store last error for dashboard display
             _last_telegram_error = {
                 "error": error_msg,
@@ -86,7 +86,7 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
                 "target": target_desc,
                 "timestamp": time.time(),
             }
-            
+
             logger.error(
                 "Failed to send Telegram notification to %s for category '%s': %s",
                 target_desc,
@@ -96,7 +96,7 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
             return False
         except Exception as e:  # pragma: no cover - defensive logging
             error_msg = str(e)
-            
+
             # Store last error for dashboard display
             _last_telegram_error = {
                 "error": error_msg,
@@ -106,7 +106,7 @@ def _send_with_retry(send_callable: Callable[[], None], *, category: str, target
                 "target": target_desc,
                 "timestamp": time.time(),
             }
-            
+
             logger.exception(
                 "Unexpected error while sending Telegram notification to %s for category '%s'",
                 target_desc,
@@ -171,7 +171,7 @@ def _dispatch(
 
         global _last_telegram_error
         error_before = _last_telegram_error
-        
+
         if _send_with_retry(_call, category=category, target_desc=target_desc):
             delivered = True
         else:
@@ -181,9 +181,7 @@ def _dispatch(
     if settings.logs_chat_id:
         kwargs = {"parse_mode": parse_mode}
         if settings.logs_chat_is_forum:
-            thread_id = ensure_forum_topic(
-                category, bot_instance=bot_instance, settings=settings
-            )
+            thread_id = ensure_forum_topic(category, bot_instance=bot_instance, settings=settings)
             if thread_id:
                 kwargs["message_thread_id"] = thread_id
         _send_to(
@@ -277,9 +275,7 @@ def report_new_user(
         by=escape_html(by),
     )
 
-    keyboard = BotKeyboard.user_menu(
-        {"username": username, "id": user_id, "status": "active"}, with_back=False
-    )
+    keyboard = BotKeyboard.user_menu({"username": username, "id": user_id, "status": "active"}, with_back=False)
     chat_id = admin.telegram_id if admin and getattr(admin, "telegram_id", None) else None
 
     report(
@@ -322,9 +318,7 @@ def report_user_modification(
         by=escape_html(by),
     )
 
-    keyboard = BotKeyboard.user_menu(
-        {"username": username, "status": "active"}, with_back=False
-    )
+    keyboard = BotKeyboard.user_menu({"username": username, "status": "active"}, with_back=False)
     chat_id = admin.telegram_id if admin and getattr(admin, "telegram_id", None) else None
 
     report(
@@ -619,17 +613,25 @@ def report_admin_updated(
                 if getattr(admin, "role", None) is not None
                 else None
             ),
-            _to_yes_no(
-                getattr(previous, "role", None) in ("sudo", "full_access")
-                if previous
-                else None
-            )
+            _to_yes_no(getattr(previous, "role", None) in ("sudo", "full_access") if previous else None)
             if previous
             else None,
         ),
-        ("Users Limit", _format_users_limit(getattr(admin, "users_limit", None)), _format_users_limit(getattr(previous, "users_limit", None)) if previous else None),
-        ("Data Limit", _format_data_limit(getattr(admin, "data_limit", None)), _format_data_limit(getattr(previous, "data_limit", None)) if previous else None),
-        ("Telegram ID", _to_text(getattr(admin, "telegram_id", None)), _to_text(getattr(previous, "telegram_id", None)) if previous else None),
+        (
+            "Users Limit",
+            _format_users_limit(getattr(admin, "users_limit", None)),
+            _format_users_limit(getattr(previous, "users_limit", None)) if previous else None,
+        ),
+        (
+            "Data Limit",
+            _format_data_limit(getattr(admin, "data_limit", None)),
+            _format_data_limit(getattr(previous, "data_limit", None)) if previous else None,
+        ),
+        (
+            "Telegram ID",
+            _to_text(getattr(admin, "telegram_id", None)),
+            _to_text(getattr(previous, "telegram_id", None)) if previous else None,
+        ),
         ("Status", _to_text(_status_value(admin)), _to_text(_status_value(previous)) if previous else None),
     ]
 
@@ -701,9 +703,7 @@ def report_admin_limit_reached(
         title = "📉 <b>#AdminDataLimit</b>"
     else:
         formatted_limit = _format_users_limit(limit_value if limit_value is None else int(limit_value))
-        formatted_current = (
-            str(current_value) if current_value is not None else formatted_limit
-        )
+        formatted_current = str(current_value) if current_value is not None else formatted_limit
         title = "👥 <b>#AdminUsersLimit</b>"
 
     text = """\
@@ -718,4 +718,3 @@ def report_admin_limit_reached(
         current=formatted_current,
     )
     report(text=text, category=CATEGORY_ADMINS)
-

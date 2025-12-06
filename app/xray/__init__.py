@@ -46,40 +46,27 @@ INBOUND_PORTS = {}
 INBOUND_TAGS = {}
 INBOUND_STREAMS = {}
 
-if config.get('inbounds'):
-    INBOUND_PORTS = {inbound['protocol']: inbound['port'] for inbound in config['inbounds'] if inbound.get('protocol')}
-    INBOUND_TAGS = {inbound['protocol']: inbound['tag'] for inbound in config['inbounds'] if inbound.get('protocol')}
-    INBOUND_STREAMS = {inbound['protocol']: (
-                       {
-                           "net": inbound['streamSettings'].get('network', 'tcp'),
-                           "tls": inbound['streamSettings'].get('security') in ('tls', 'xtls'),
-                           "sni": (
-                               inbound['streamSettings'].get('tlsSettings') or
-                               inbound['streamSettings'].get('xtlsSettings') or
-                               {}
-                           ).get('serverName', ''),
-                           "path": inbound['streamSettings'].get(
-                               f"{inbound['streamSettings'].get('network', 'tcp')}Settings", {}
-                           ).get('path', '')
-                       }
-                       if inbound.get('streamSettings') else
-                       {
-                           "net": "tcp",
-                           "tls": False,
-                           "sni": "",
-                           "path": ""
-                       }
-                       ) for inbound in config['inbounds'] if inbound.get('protocol')}
+if config.get("inbounds"):
+    INBOUND_PORTS = {inbound["protocol"]: inbound["port"] for inbound in config["inbounds"] if inbound.get("protocol")}
+    INBOUND_TAGS = {inbound["protocol"]: inbound["tag"] for inbound in config["inbounds"] if inbound.get("protocol")}
+    INBOUND_STREAMS = {
+        inbound["protocol"]: (
+            {
+                "net": inbound["streamSettings"].get("network", "tcp"),
+                "tls": inbound["streamSettings"].get("security") in ("tls", "xtls"),
+                "sni": (
+                    inbound["streamSettings"].get("tlsSettings") or inbound["streamSettings"].get("xtlsSettings") or {}
+                ).get("serverName", ""),
+                "path": inbound["streamSettings"]
+                .get(f"{inbound['streamSettings'].get('network', 'tcp')}Settings", {})
+                .get("path", ""),
+            }
+            if inbound.get("streamSettings")
+            else {"net": "tcp", "tls": False, "sni": "", "path": ""}
+        )
+        for inbound in config["inbounds"]
+        if inbound.get("protocol")
+    }
 
 
-__all__ = [
-    "config",
-    "core",
-    "api",
-    "exceptions",
-    "exc",
-    "types",
-    "INBOUND_PORTS",
-    "INBOUND_TAGS",
-    "INBOUND_STREAMS"
-]
+__all__ = ["config", "core", "api", "exceptions", "exc", "types", "INBOUND_PORTS", "INBOUND_TAGS", "INBOUND_STREAMS"]

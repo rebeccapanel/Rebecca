@@ -44,7 +44,7 @@ def is_redis_available() -> bool:
     redis_client = get_redis()
     if not redis_client:
         return False
-    
+
     try:
         redis_client.ping()
         return True
@@ -56,14 +56,14 @@ def validate_subscription_by_token(token: str, db: Session) -> UserResponse:
     """
     Validate subscription by token.
     Uses Redis if available, otherwise falls back to database.
-    
+
     Args:
         token: Subscription token
         db: Database session
-        
+
     Returns:
         UserResponse object
-        
+
     Raises:
         HTTPException: If validation fails
     """
@@ -71,8 +71,8 @@ def validate_subscription_by_token(token: str, db: Session) -> UserResponse:
     if not sub:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    username = sub['username']
-    
+    username = sub["username"]
+
     # Try Redis first if available
     if is_redis_available():
         try:
@@ -84,16 +84,16 @@ def validate_subscription_by_token(token: str, db: Session) -> UserResponse:
             raise
         except Exception as e:
             logger.debug(f"Redis check failed, falling back to database: {e}")
-    
+
     # Query database for validation and full data
     dbuser = crud.get_user(db, username)
-    
+
     # Normalize timestamps to UTC-aware before comparing so we never mix aware/naive
     token_created_at = _to_utc_aware(sub.get("created_at"))
     if token_created_at is None:
         raise HTTPException(status_code=404, detail="Not Found")
     db_created_at = _to_utc_aware(dbuser.created_at) if dbuser else None
-    
+
     if not dbuser or db_created_at is None or db_created_at > token_created_at:
         raise HTTPException(status_code=404, detail="Not Found")
 
@@ -101,7 +101,7 @@ def validate_subscription_by_token(token: str, db: Session) -> UserResponse:
         revoked_at = _to_utc_aware(dbuser.sub_revoked_at)
         if revoked_at > token_created_at:
             raise HTTPException(status_code=404, detail="Not Found")
-    
+
     # Cache the user for future requests
     if is_redis_available():
         try:
@@ -123,15 +123,15 @@ def validate_subscription_by_key(
     """
     Validate subscription by username and credential key.
     Uses Redis if available, otherwise falls back to database.
-    
+
     Args:
         username: User's username
         credential_key: User's credential key
         db: Database session
-        
+
     Returns:
         UserResponse object
-        
+
     Raises:
         HTTPException: If validation fails
     """
@@ -147,7 +147,7 @@ def validate_subscription_by_key(
             if username_exists is False:
                 # Username not in cache and Redis is available
                 raise HTTPException(status_code=404, detail="Not Found")
-            
+
             # Check if credential key maps to this username
             cached_username = get_username_by_key(credential_key)
             if cached_username and cached_username.lower() != username.lower():
@@ -157,7 +157,7 @@ def validate_subscription_by_key(
             raise
         except Exception as e:
             logger.debug(f"Redis check failed, falling back to database: {e}")
-    
+
     # Query database for validation and full data
     dbuser = crud.get_user(db, username)
     if not dbuser:
@@ -172,7 +172,7 @@ def validate_subscription_by_key(
 
     if normalize_key(dbuser.credential_key) != normalized_key:
         raise HTTPException(status_code=404, detail="Not Found")
-    
+
     # Cache the user for future requests
     if is_redis_available():
         try:
@@ -193,14 +193,14 @@ def validate_subscription_by_key_only(
     """
     Validate subscription by credential key only (no username provided).
     Uses Redis if available, otherwise falls back to database.
-    
+
     Args:
         credential_key: User's credential key
         db: Database session
-        
+
     Returns:
         UserResponse object
-        
+
     Raises:
         HTTPException: If validation fails
     """
@@ -233,7 +233,7 @@ def validate_subscription_by_key_only(
                         pass  # Invalid key format, continue to DB query
         except Exception as e:
             logger.debug(f"Redis lookup failed, falling back to database: {e}")
-    
+
     # Redis cache miss or unavailable, query database
     dbuser = (
         db.query(User)
@@ -243,7 +243,7 @@ def validate_subscription_by_key_only(
     )
     if not dbuser:
         raise HTTPException(status_code=404, detail="Not Found")
-    
+
     # Cache the user for future requests
     if is_redis_available():
         try:
@@ -255,4 +255,3 @@ def validate_subscription_by_key_only(
             pass  # Fail silently, caching is optional
 
     return dbuser
-

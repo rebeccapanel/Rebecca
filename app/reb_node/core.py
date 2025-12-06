@@ -183,31 +183,31 @@ class XRayCore:
         """Get the last error log from Xray that caused it to stop."""
         if not self._logs_buffer:
             return None
-        
+
         # Search backwards through logs for error patterns
         error_patterns = [
-            r'error',
-            r'failed',
-            r'exception',
-            r'fatal',
-            r'panic',
-            r'critical',
-            r'core.*stopped',
-            r'core.*exit',
-            r'rejected',
-            r'bad request',
-            r'400',
-            r'handshake.*fail',
-            r'invalid',
+            r"error",
+            r"failed",
+            r"exception",
+            r"fatal",
+            r"panic",
+            r"critical",
+            r"core.*stopped",
+            r"core.*exit",
+            r"rejected",
+            r"bad request",
+            r"400",
+            r"handshake.*fail",
+            r"invalid",
         ]
-        
+
         # Check logs in reverse order (most recent first)
         for log in reversed(list(self._logs_buffer)):
             log_lower = log.lower()
             for pattern in error_patterns:
                 if re.search(pattern, log_lower, re.IGNORECASE):
                     return log
-        
+
         return None
 
     @property

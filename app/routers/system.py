@@ -39,9 +39,7 @@ from app.redis.client import get_redis
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 logger = logging.getLogger(__name__)
 
-_EXCLUDED_TAGS = {
-    tag for tag in XRAY_EXCLUDE_INBOUND_TAGS if isinstance(tag, str) and tag.strip()
-}
+_EXCLUDED_TAGS = {tag for tag in XRAY_EXCLUDE_INBOUND_TAGS if isinstance(tag, str) and tag.strip()}
 if XRAY_FALLBACKS_INBOUND_TAG:
     _EXCLUDED_TAGS.add(XRAY_FALLBACKS_INBOUND_TAG)
 
@@ -77,9 +75,7 @@ def _try_maintenance_json(path: str) -> dict | None:
 
 
 @router.get("/system", response_model=SystemStats)
-def get_system_stats(
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.get_current)
-):
+def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin.get_current)):
     """Fetch system stats including CPU and user metrics."""
     cpu = cpu_usage()
     system = crud.get_system_usage(db) or SystemModel(uplink=0, downlink=0)
@@ -87,21 +83,11 @@ def get_system_stats(
 
     scoped_admin = None if admin.role in (AdminRole.sudo, AdminRole.full_access) else dbadmin
     total_user = crud.get_users_count(db, admin=scoped_admin)
-    users_active = crud.get_users_count(
-        db, status=UserStatus.active, admin=scoped_admin
-    )
-    users_disabled = crud.get_users_count(
-        db, status=UserStatus.disabled, admin=scoped_admin
-    )
-    users_on_hold = crud.get_users_count(
-        db, status=UserStatus.on_hold, admin=scoped_admin
-    )
-    users_expired = crud.get_users_count(
-        db, status=UserStatus.expired, admin=scoped_admin
-    )
-    users_limited = crud.get_users_count(
-        db, status=UserStatus.limited, admin=scoped_admin
-    )
+    users_active = crud.get_users_count(db, status=UserStatus.active, admin=scoped_admin)
+    users_disabled = crud.get_users_count(db, status=UserStatus.disabled, admin=scoped_admin)
+    users_on_hold = crud.get_users_count(db, status=UserStatus.on_hold, admin=scoped_admin)
+    users_expired = crud.get_users_count(db, status=UserStatus.expired, admin=scoped_admin)
+    users_limited = crud.get_users_count(db, status=UserStatus.limited, admin=scoped_admin)
     online_users = crud.count_online_users(db, 24, scoped_admin)
     realtime_bandwidth_stats = realtime_bandwidth()
     now = time.time()
@@ -138,7 +124,7 @@ def get_system_stats(
                     xray_uptime_seconds = max(0, int(now - xray_process.create_time()))
             except (psutil.NoSuchProcess, AttributeError):
                 xray_uptime_seconds = 0
-        
+
         # Get last error if Xray is not running (stopped/crashed)
         if not xray_running:
             try:
@@ -217,16 +203,16 @@ def get_system_stats(
         redis_hits = 0
         redis_misses = 0
         redis_hit_rate = 0.0
-        
+
         if redis_client:
             try:
                 redis_client.ping()
                 redis_connected = True
-                
+
                 # Get Redis INFO
                 info = redis_client.info()
                 stats_info = redis_client.info("stats")
-                
+
                 # Memory stats
                 redis_memory_used = int(info.get("used_memory", 0))
                 redis_memory_total = int(info.get("maxmemory", 0))
@@ -235,13 +221,13 @@ def get_system_stats(
                     redis_memory_percent = 0.0  # No limit set, so percentage is not meaningful
                 else:
                     redis_memory_percent = (redis_memory_used / redis_memory_total) * 100.0
-                
+
                 # Uptime
                 redis_uptime_seconds = int(info.get("uptime_in_seconds", 0))
-                
+
                 # Version
                 redis_version = info.get("redis_version")
-                
+
                 try:
                     redis_keys_count = redis_client.dbsize()
                 except Exception:
@@ -258,17 +244,18 @@ def get_system_stats(
                             pass
                     else:
                         redis_keys_count = 0
-                
+
                 # Count cached subscription keys
                 try:
                     from app.redis.subscription import REDIS_KEY_PREFIX_USERNAME
+
                     pattern = f"{REDIS_KEY_PREFIX_USERNAME}*"
                     redis_keys_cached = len(redis_client.keys(pattern))
                 except Exception:
                     redis_keys_cached = 0
-                
+
                 redis_commands_processed = int(stats_info.get("total_commands_processed", 0))
-                
+
                 # Cache hits/misses (from keyspace stats)
                 redis_hits = int(stats_info.get("keyspace_hits", 0))
                 redis_misses = int(stats_info.get("keyspace_misses", 0))
@@ -277,11 +264,11 @@ def get_system_stats(
                     redis_hit_rate = (redis_hits / total_requests) * 100.0
                 else:
                     redis_hit_rate = 0.0
-                    
+
             except Exception as e:
                 logger.debug(f"Failed to get Redis stats: {e}")
                 redis_connected = False
-        
+
         redis_stats = RedisStats(
             enabled=True,
             connected=redis_connected,
@@ -308,6 +295,7 @@ def get_system_stats(
     if admin.role in (AdminRole.sudo, AdminRole.full_access):
         try:
             from app.telegram.handlers.report import get_last_telegram_error
+
             telegram_error = get_last_telegram_error()
             if telegram_error:
                 error_code = telegram_error.get("error_code")
@@ -400,12 +388,13 @@ def restart_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin
 @router.post("/maintenance/soft-reload", responses={403: responses._403})
 def soft_reload_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Soft reload the panel without restarting Xray core or nodes.
-    
+
     This reloads configuration from database and invalidates caches,
     but keeps all connections active. Use this when you want to refresh
     the panel state without interrupting active connections.
     """
     from app.utils.xray_config import soft_reload_panel
+
     soft_reload_panel()
     return {"status": "ok", "message": "Panel soft reloaded successfully"}
 
@@ -500,10 +489,7 @@ def generate_reality_keypair(
         priv_b64 = base64.urlsafe_b64encode(priv_bytes).rstrip(b"=").decode("utf-8")
         pub_b64 = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode("utf-8")
 
-        return {
-            "privateKey": priv_b64,
-            "publicKey": pub_b64
-        }
+        return {"privateKey": priv_b64, "publicKey": pub_b64}
     except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
         raise HTTPException(status_code=500, detail="Xray binary not found") from exc
     except Exception as exc:  # pragma: no cover - defensive
@@ -575,24 +561,26 @@ def create_inbound(
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is created
     xray.hosts.update()
-    
+
     # Update Redis cache
     from config import REDIS_ENABLED
+
     if REDIS_ENABLED:
         try:
             from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
             from app.reb_node.config import XRayConfig
+
             raw_config = crud.get_xray_config(db)
             xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
             inbounds_dict = {
-                'inbounds_by_tag': {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                'inbounds_by_protocol': {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
+                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
+                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
             }
             cache_inbounds(inbounds_dict)
             invalidate_service_host_map_cache()
         except Exception:
             pass  # Don't fail if Redis is unavailable
-    
+
     return _sanitize_inbound(inbound)
 
 
@@ -618,24 +606,26 @@ def update_inbound(
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is updated
     xray.hosts.update()
-    
+
     # Update Redis cache
     from config import REDIS_ENABLED
+
     if REDIS_ENABLED:
         try:
             from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
             from app.reb_node.config import XRayConfig
+
             raw_config = crud.get_xray_config(db)
             xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
             inbounds_dict = {
-                'inbounds_by_tag': {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                'inbounds_by_protocol': {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
+                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
+                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
             }
             cache_inbounds(inbounds_dict)
             invalidate_service_host_map_cache()
         except Exception:
             pass  # Don't fail if Redis is unavailable
-    
+
     return _sanitize_inbound(inbound)
 
 
@@ -678,18 +668,20 @@ def delete_inbound(
 
     db.commit()
     xray.hosts.update()
-    
+
     # Update Redis cache
     from config import REDIS_ENABLED
+
     if REDIS_ENABLED:
         try:
             from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
             from app.reb_node.config import XRayConfig
+
             raw_config = crud.get_xray_config(db)
             xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
             inbounds_dict = {
-                'inbounds_by_tag': {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                'inbounds_by_protocol': {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
+                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
+                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
             }
             cache_inbounds(inbounds_dict)
             invalidate_service_host_map_cache()
@@ -702,20 +694,14 @@ def delete_inbound(
     return {"detail": "Inbound removed"}
 
 
-@router.get(
-    "/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403}
-)
-def get_hosts(
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
-):
+@router.get("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
+def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
     """Get a list of proxy hosts grouped by inbound tag."""
     hosts = {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
     return hosts
 
 
-@router.put(
-    "/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403}
-)
+@router.put("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
 def modify_hosts(
     modified_hosts: Dict[str, List[ProxyHost]],
     bg: BackgroundTasks,
@@ -725,9 +711,7 @@ def modify_hosts(
     """Modify proxy hosts and update the configuration."""
     for inbound_tag in modified_hosts:
         if inbound_tag not in xray.config.inbounds_by_tag:
-            raise HTTPException(
-                status_code=400, detail=f"Inbound {inbound_tag} doesn't exist"
-            )
+            raise HTTPException(status_code=400, detail=f"Inbound {inbound_tag} doesn't exist")
 
     # Collect all host IDs that are present in the payload to prevent deletion
     # when moving hosts between inbounds.
@@ -767,11 +751,7 @@ def _is_manageable_inbound(inbound: dict) -> bool:
 
 
 def _managed_inbounds(config: dict) -> List[dict]:
-    return [
-        inbound
-        for inbound in config.get("inbounds", [])
-        if _is_manageable_inbound(inbound)
-    ]
+    return [inbound for inbound in config.get("inbounds", []) if _is_manageable_inbound(inbound)]
 
 
 def _get_inbound_by_tag(config: dict, tag: str) -> dict | None:
@@ -805,14 +785,14 @@ def _normalize_reality_private_key(private_key: str) -> str:
     """
     if not private_key:
         return ""
-    
+
     # Remove all whitespace
     normalized = "".join(private_key.split())
 
     if re.fullmatch(r"[0-9a-fA-F]{64}", normalized):
         decoded = bytes.fromhex(normalized)
         return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("utf-8")
-    
+
     # Try base64url first (Xray's preferred format)
     try:
         # Add padding for decode if needed
@@ -824,7 +804,7 @@ def _normalize_reality_private_key(private_key: str) -> str:
         return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("utf-8")
     except (binascii.Error, ValueError):
         pass
-    
+
     # Try standard base64
     try:
         padding = "=" * ((4 - len(normalized) % 4) % 4)
@@ -834,10 +814,7 @@ def _normalize_reality_private_key(private_key: str) -> str:
         # Convert to base64url without padding
         return base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("utf-8")
     except (binascii.Error, ValueError) as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid REALITY private key format: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=400, detail=f"Invalid REALITY private key format: {str(e)}") from e
 
 
 def _normalize_reality_short_id(short_id: str) -> str:
@@ -847,10 +824,10 @@ def _normalize_reality_short_id(short_id: str) -> str:
     """
     if not short_id:
         return ""
-    
+
     # Only remove whitespace, preserve everything else as entered
     normalized = "".join(short_id.split())
-    
+
     return normalized
 
 
@@ -890,23 +867,18 @@ def _prepare_inbound_payload(payload: dict, enforce_tag: str | None = None) -> d
             # Normalize privateKey
             if "privateKey" in reality_settings and reality_settings["privateKey"]:
                 try:
-                    reality_settings["privateKey"] = _normalize_reality_private_key(
-                        reality_settings["privateKey"]
-                    )
+                    reality_settings["privateKey"] = _normalize_reality_private_key(reality_settings["privateKey"])
                 except HTTPException:
                     raise
                 except Exception as e:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid REALITY privateKey: {str(e)}"
-                    ) from e
-            
+                    raise HTTPException(status_code=400, detail=f"Invalid REALITY privateKey: {str(e)}") from e
+
             # Normalize shortIds
             if "shortIds" in reality_settings:
                 short_ids = reality_settings["shortIds"]
                 if isinstance(short_ids, str):
                     # Split by comma, newline, or space
-                    short_ids = re.split(r'[,\s\n]+', short_ids)
+                    short_ids = re.split(r"[,\s\n]+", short_ids)
                 if isinstance(short_ids, list):
                     normalized_ids = []
                     for sid in short_ids:
@@ -996,11 +968,7 @@ def _parse_vlessenc_json(raw_output: str) -> List[dict[str, str]]:
         if not isinstance(entry, dict):
             return None
 
-        label = (
-            entry.get("label")
-            or entry.get("Authentication")
-            or entry.get("authentication")
-        )
+        label = entry.get("label") or entry.get("Authentication") or entry.get("authentication")
         if not label:
             return None
 

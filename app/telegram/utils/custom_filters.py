@@ -7,7 +7,7 @@ from app.telegram import get_bot
 
 
 class IsAdminFilter(AdvancedCustomFilter):
-    key = 'is_admin'
+    key = "is_admin"
 
     def check(self, message, text):
         """
@@ -28,11 +28,9 @@ def cb_query_startswith(text: str):
     return lambda query: query.data.startswith(text)
 
 
-
 def setup() -> None:
     bot_instance = get_bot()
     if not bot_instance:
         logger.info("Telegram bot not available; skipping admin filter registration")
         return
     bot_instance.add_custom_filter(IsAdminFilter())
-

@@ -17,4 +17,3 @@ from app.redis.cache import (
 )
 
 __all__ = ["init_redis", "get_redis", "warmup_users_cache"]
-

@@ -23,6 +23,7 @@ def _get_uuid_masks() -> Dict[ProxyTypes, bytes]:
     Note: Not using lru_cache here because masks might change after migration.
     """
     from app.db import GetDB, get_uuid_masks
+
     with GetDB() as db:
         masks = get_uuid_masks(db)
         return {
@@ -88,7 +89,7 @@ def serialize_proxy_settings(
 ) -> dict:
     """
     Serialize proxy settings for storage in the database.
-    
+
     Args:
         settings: Proxy settings object
         proxy_type: Type of proxy protocol
@@ -97,7 +98,7 @@ def serialize_proxy_settings(
                                 This is used for existing users with UUIDs. For new users, set to False.
         allow_auto_generate: If False, don't auto-generate UUID/password when credential_key is None.
                              This is used in update_user to prevent auto-generating credentials.
-    
+
     Returns:
         Serialized proxy settings dictionary
     """
@@ -279,10 +280,10 @@ def ensure_user_credential_key(user: "UserCreate") -> str:
     """
     Ensure a user payload has a normalized credential key and that static UUID/password
     values are stripped before persisting proxies.
-    
+
     Args:
         user: UserCreate object to process
-        
+
     Returns:
         The normalized credential key
     """

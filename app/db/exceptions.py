@@ -5,10 +5,7 @@ class UsersLimitReachedError(Exception):
         self.limit = limit
         self.current_active = current_active
         if limit is not None and current_active is not None:
-            message = (
-                "Cannot set users limit below active users "
-                f"(active: {current_active}, limit: {limit})."
-            )
+            message = f"Cannot set users limit below active users (active: {current_active}, limit: {limit})."
         elif limit is None:
             message = "Active user limit has been reached."
         else:

@@ -11,6 +11,7 @@ try:  # pragma: no cover - defensive for mixed deployments
     from app.services.panel_settings import PanelSettingsService
     from app.models.settings import SubscriptionLinkType
 except Exception:  # pragma: no cover - fallback definitions
+
     class SubscriptionLinkType(str, Enum):
         username_key = "username-key"
         key = "key"
@@ -21,6 +22,7 @@ except Exception:  # pragma: no cover - fallback definitions
         def get_settings(ensure_record: bool = True):
             class _Dummy:
                 default_subscription_type = SubscriptionLinkType.key.value
+
             return _Dummy()
 
 

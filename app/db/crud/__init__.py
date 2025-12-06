@@ -21,4 +21,3 @@ from .common import (
 
 # Export internal functions that are used across modules
 from .node import _ensure_master_state
-

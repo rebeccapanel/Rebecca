@@ -39,9 +39,9 @@ def utcnow_naive() -> datetime:
 
 
 def safe_execute(db: Session, stmt, params=None):
-    if db.bind.name == 'mysql':
+    if db.bind.name == "mysql":
         if isinstance(stmt, Insert):
-            stmt = stmt.prefix_with('IGNORE')
+            stmt = stmt.prefix_with("IGNORE")
 
         tries = 0
         done = False
@@ -62,72 +62,72 @@ def safe_execute(db: Session, stmt, params=None):
         db.commit()
 
 
-def record_user_stats(params: list, node_id: Union[int, None],
-                      consumption_factor: int = 1):
+def record_user_stats(params: list, node_id: Union[int, None], consumption_factor: int = 1):
     if not params:
         return
 
-    created_at = datetime.fromisoformat(utcnow_naive().strftime('%Y-%m-%dT%H:00:00'))
+    created_at = datetime.fromisoformat(utcnow_naive().strftime("%Y-%m-%dT%H:00:00"))
 
     # Try to write to Redis first (only if Redis is enabled)
     from app.redis.cache import cache_user_usage_snapshot
     from app.redis.client import get_redis
     from app.redis.pending_backup import save_usage_snapshots_backup
     from config import REDIS_ENABLED
-    
+
     redis_client = get_redis() if REDIS_ENABLED else None
     if redis_client:
         # Prepare snapshots for backup
         user_snapshots = []
         for p in params:
-            uid = int(p['uid'])
+            uid = int(p["uid"])
             # Ensure value is a valid integer
-            raw_value = p.get('value', 0)
+            raw_value = p.get("value", 0)
             try:
                 value = int(float(raw_value)) * consumption_factor
             except (ValueError, TypeError):
                 logger.warning(f"Invalid usage value for user {uid}: {raw_value}")
                 continue
             cache_user_usage_snapshot(uid, node_id, created_at, value)
-            user_snapshots.append({
-                'user_id': uid,
-                'node_id': node_id,
-                'created_at': created_at.isoformat(),
-                'used_traffic': value
-            })
-        
+            user_snapshots.append(
+                {"user_id": uid, "node_id": node_id, "created_at": created_at.isoformat(), "used_traffic": value}
+            )
+
         # Save backup to disk
         save_usage_snapshots_backup(user_snapshots, [])
     else:
         # Fallback to direct DB write if Redis is not available
         with GetDB() as db:
             # make user usage row if doesn't exist
-            select_stmt = select(NodeUserUsage.user_id) \
-                .where(and_(NodeUserUsage.node_id == node_id, NodeUserUsage.created_at == created_at))
+            select_stmt = select(NodeUserUsage.user_id).where(
+                and_(NodeUserUsage.node_id == node_id, NodeUserUsage.created_at == created_at)
+            )
             existings = [r[0] for r in db.execute(select_stmt).fetchall()]
             uids_to_insert = set()
 
             for p in params:
-                uid = int(p['uid'])
+                uid = int(p["uid"])
                 if uid in existings:
                     continue
                 uids_to_insert.add(uid)
 
             if uids_to_insert:
                 stmt = insert(NodeUserUsage).values(
-                    user_id=bindparam('uid'),
-                    created_at=created_at,
-                    node_id=node_id,
-                    used_traffic=0
+                    user_id=bindparam("uid"), created_at=created_at, node_id=node_id, used_traffic=0
                 )
-                safe_execute(db, stmt, [{'uid': uid} for uid in uids_to_insert])
+                safe_execute(db, stmt, [{"uid": uid} for uid in uids_to_insert])
 
             # record
-            stmt = update(NodeUserUsage) \
-                .values(used_traffic=NodeUserUsage.used_traffic + bindparam('value') * consumption_factor) \
-                .where(and_(NodeUserUsage.user_id == bindparam('uid'),
-                            NodeUserUsage.node_id == node_id,
-                            NodeUserUsage.created_at == created_at))
+            stmt = (
+                update(NodeUserUsage)
+                .values(used_traffic=NodeUserUsage.used_traffic + bindparam("value") * consumption_factor)
+                .where(
+                    and_(
+                        NodeUserUsage.user_id == bindparam("uid"),
+                        NodeUserUsage.node_id == node_id,
+                        NodeUserUsage.created_at == created_at,
+                    )
+                )
+            )
             safe_execute(db, stmt, params)
 
 
@@ -140,7 +140,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     limited_triggered = False
     limit_cleared = False
 
-    created_at = datetime.fromisoformat(utcnow_naive().strftime('%Y-%m-%dT%H:00:00'))
+    created_at = datetime.fromisoformat(utcnow_naive().strftime("%Y-%m-%dT%H:00:00"))
 
     status_change_payload = None
 
@@ -149,21 +149,18 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     from app.redis.client import get_redis
     from app.redis.pending_backup import save_usage_snapshots_backup
     from config import REDIS_ENABLED
-    
+
     redis_client = get_redis() if REDIS_ENABLED else None
     if redis_client:
         # Write to Redis
         cache_node_usage_snapshot(node_id, created_at, total_up, total_down)
-        
+
         # Save backup to disk
-        node_snapshots = [{
-            'node_id': node_id,
-            'created_at': created_at.isoformat(),
-            'uplink': total_up,
-            'downlink': total_down
-        }]
+        node_snapshots = [
+            {"node_id": node_id, "created_at": created_at.isoformat(), "uplink": total_up, "downlink": total_down}
+        ]
         save_usage_snapshots_backup([], node_snapshots)
-        
+
         # Still need to update node status in DB (this is critical for node management)
         if node_id is not None and (total_up or total_down):
             with GetDB() as db:
@@ -220,17 +217,20 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
         # Fallback to direct DB write if Redis is not available
         with GetDB() as db:
             # make node usage row if doesn't exist
-            select_stmt = select(NodeUsage.node_id). \
-                where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
+            select_stmt = select(NodeUsage.node_id).where(
+                and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at)
+            )
             notfound = db.execute(select_stmt).first() is None
             if notfound:
                 stmt = insert(NodeUsage).values(created_at=created_at, node_id=node_id, uplink=0, downlink=0)
                 safe_execute(db, stmt)
 
             # record
-            stmt = update(NodeUsage). \
-                values(uplink=NodeUsage.uplink + bindparam('up'), downlink=NodeUsage.downlink + bindparam('down')). \
-                where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
+            stmt = (
+                update(NodeUsage)
+                .values(uplink=NodeUsage.uplink + bindparam("up"), downlink=NodeUsage.downlink + bindparam("down"))
+                .where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
+            )
 
             safe_execute(db, stmt, params)
 
@@ -299,8 +299,8 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
 def get_users_stats(api: XRayAPI):
     try:
         params = defaultdict(int)
-        for stat in filter(attrgetter('value'), api.get_users_stats(reset=True, timeout=600)):
-            params[stat.name.split('.', 1)[0]] += stat.value
+        for stat in filter(attrgetter("value"), api.get_users_stats(reset=True, timeout=600)):
+            params[stat.name.split(".", 1)[0]] += stat.value
         params = list({"uid": uid, "value": value} for uid, value in params.items())
         return params
     except xray_exc.XrayError:
@@ -309,8 +309,10 @@ def get_users_stats(api: XRayAPI):
 
 def get_outbounds_stats(api: XRayAPI):
     try:
-        params = [{"up": stat.value, "down": 0} if stat.link == "uplink" else {"up": 0, "down": stat.value}
-                  for stat in filter(attrgetter('value'), api.get_outbounds_stats(reset=True, timeout=200))]
+        params = [
+            {"up": stat.value, "down": 0} if stat.link == "uplink" else {"up": 0, "down": stat.value}
+            for stat in filter(attrgetter("value"), api.get_outbounds_stats(reset=True, timeout=200))
+        ]
         return params
     except xray_exc.XrayError:
         return []
@@ -340,21 +342,15 @@ def record_user_usages():
     for node_id, params in api_params.items():
         coefficient = usage_coefficient.get(node_id, 1)  # get the usage coefficient for the node
         for param in params:
-            users_usage[param['uid']] += int(param['value'] * coefficient)  # apply the usage coefficient
-    users_usage = [
-        {"uid": uid, "value": value} for uid, value in users_usage.items()
-    ]
+            users_usage[param["uid"]] += int(param["value"] * coefficient)  # apply the usage coefficient
+    users_usage = [{"uid": uid, "value": value} for uid, value in users_usage.items()]
     if not users_usage:
         return
 
     user_ids = [int(entry["uid"]) for entry in users_usage]
 
     with GetDB() as db:
-        mapping_rows = (
-            db.query(User.id, User.admin_id, User.service_id)
-            .filter(User.id.in_(user_ids))
-            .all()
-        )
+        mapping_rows = db.query(User.id, User.admin_id, User.service_id).filter(User.id.in_(user_ids)).all()
 
     user_to_admin_service: Dict[int, Tuple[Optional[int], Optional[int]]] = {
         row[0]: (row[1], row[2]) for row in mapping_rows
@@ -364,9 +360,7 @@ def record_user_usages():
     service_usage = defaultdict(int)
     admin_service_usage = defaultdict(int)
     for user_usage in users_usage:
-        admin_id, service_id = user_to_admin_service.get(
-            int(user_usage["uid"]), (None, None)
-        )
+        admin_id, service_id = user_to_admin_service.get(int(user_usage["uid"]), (None, None))
         value = user_usage["value"]
         if admin_id:
             admin_usage[admin_id] += value
@@ -377,61 +371,54 @@ def record_user_usages():
 
     # record users usage
     admin_limit_events = []
-    
+
     from app.redis.cache import cache_user_usage_update, warmup_user_usages
     from app.redis.client import get_redis
     from app.redis.pending_backup import save_user_usage_backup, save_admin_usage_backup, save_service_usage_backup
-    
+
     redis_client = get_redis()
     if redis_client:
         online_at = utcnow_naive()
-        
+
         # Prepare user usage updates for backup
         user_usage_backup = []
         for usage in users_usage:
-            user_id = int(usage['uid'])
+            user_id = int(usage["uid"])
             # Ensure value is a valid integer
-            raw_value = usage.get('value', 0)
+            raw_value = usage.get("value", 0)
             try:
                 value = int(float(raw_value))
             except (ValueError, TypeError):
                 logger.warning(f"Invalid usage value for user {user_id}: {raw_value}")
                 continue
             cache_user_usage_update(user_id, value, online_at)
-            user_usage_backup.append({
-                'user_id': user_id,
-                'used_traffic_delta': value,
-                'online_at': online_at.isoformat()
-            })
-            
+            user_usage_backup.append(
+                {"user_id": user_id, "used_traffic_delta": value, "online_at": online_at.isoformat()}
+            )
+
             # Warmup usage cache for this user when they become online (in background to avoid blocking)
             # Don't block the main job - warmup can happen asynchronously
             # warmup_user_usages(user_id)  # Disabled to prevent job hanging
-        
+
         # Save backup to disk
         save_user_usage_backup(user_usage_backup)
         save_admin_usage_backup(admin_usage)
         save_service_usage_backup(service_usage)
-        
+
     else:
         with GetDB() as db:
-            stmt = update(User). \
-                where(User.id == bindparam('uid')). \
-                values(
-                    used_traffic=User.used_traffic + bindparam('value'),
-                    online_at=utcnow_naive()
+            stmt = (
+                update(User)
+                .where(User.id == bindparam("uid"))
+                .values(used_traffic=User.used_traffic + bindparam("value"), online_at=utcnow_naive())
             )
 
             safe_execute(db, stmt, users_usage)
-            
+
             admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
             increments = {entry["admin_id"]: entry["value"] for entry in admin_data}
-            admin_rows = (
-                db.query(Admin)
-                .filter(Admin.id.in_(increments.keys()))
-                .all()
-            )
+            admin_rows = db.query(Admin).filter(Admin.id.in_(increments.keys())).all()
             for admin_row in admin_rows:
                 limit = admin_row.data_limit
                 if limit:
@@ -458,10 +445,7 @@ def record_user_usages():
             safe_execute(
                 db,
                 admin_update_stmt,
-                [
-                    {"b_admin_id": entry["admin_id"], "value": entry["value"]}
-                    for entry in admin_data
-                ],
+                [{"b_admin_id": entry["admin_id"], "value": entry["value"]} for entry in admin_data],
             )
 
         if service_usage:
@@ -474,10 +458,7 @@ def record_user_usages():
                     updated_at=func.now(),
                 )
             )
-            service_params = [
-                {"b_service_id": sid, "value": value}
-                for sid, value in service_usage.items()
-            ]
+            service_params = [{"b_service_id": sid, "value": value} for sid, value in service_usage.items()]
             safe_execute(db, service_update_stmt, service_params)
 
         if admin_service_usage:
@@ -505,11 +486,7 @@ def record_user_usages():
             ]
             safe_execute(db, admin_service_update_stmt, admin_service_params)
 
-        admin_ids_to_disable = {
-            event["admin_id"]
-            for event in admin_limit_events
-            if event.get("admin_id") is not None
-        }
+        admin_ids_to_disable = {event["admin_id"] for event in admin_limit_events if event.get("admin_id") is not None}
         for admin_id in admin_ids_to_disable:
             dbadmin = db.query(Admin).filter(Admin.id == admin_id).first()
             if not dbadmin:
@@ -540,17 +517,14 @@ def record_node_usages():
     total_down = 0
     for node_id, params in api_params.items():
         for param in params:
-            total_up += param['up']
-            total_down += param['down']
+            total_up += param["up"]
+            total_down += param["down"]
     if not (total_up or total_down):
         return
 
     # record nodes usage
     with GetDB() as db:
-        stmt = update(System).values(
-            uplink=System.uplink + total_up,
-            downlink=System.downlink + total_down
-        )
+        stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
         safe_execute(db, stmt)
 
     if DISABLE_RECORDING_NODE_USAGE:
@@ -560,13 +534,9 @@ def record_node_usages():
         record_node_stats(params, node_id)
 
 
-scheduler.add_job(record_user_usages, 'interval',
-                  seconds=JOB_RECORD_USER_USAGES_INTERVAL,
-                  coalesce=True, max_instances=1)
-scheduler.add_job(record_node_usages, 'interval',
-                  seconds=JOB_RECORD_NODE_USAGES_INTERVAL,
-                  coalesce=True, max_instances=1)
-
-
-
-
+scheduler.add_job(
+    record_user_usages, "interval", seconds=JOB_RECORD_USER_USAGES_INTERVAL, coalesce=True, max_instances=1
+)
+scheduler.add_job(
+    record_node_usages, "interval", seconds=JOB_RECORD_NODE_USAGES_INTERVAL, coalesce=True, max_instances=1
+)

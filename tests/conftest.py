@@ -8,13 +8,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from unittest.mock import patch, MagicMock
 
-# Silence upstream lark deprecation noise during tests
-warnings.filterwarnings(
-    "ignore",
-    message=r"module 'sre_(parse|constants)' is deprecated",
-    category=DeprecationWarning,
-    module=r"lark\.utils",
-)
 
 # Patch xray before any imports
 mock_xray = MagicMock()

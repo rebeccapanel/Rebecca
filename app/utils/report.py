@@ -28,18 +28,14 @@ def _call_telegram(method_name: str, *args, **kwargs) -> bool:
     module = runtime.telegram
     if module is None:
         if method_name not in _telegram_warning_cache:
-            runtime.logger.warning(
-                "Telegram module is not initialized; skipping '%s'", method_name
-            )
+            runtime.logger.warning("Telegram module is not initialized; skipping '%s'", method_name)
             _telegram_warning_cache.add(method_name)
         return False
 
     handler = getattr(module, method_name, None)
     if handler is None:
         if method_name not in _telegram_warning_cache:
-            runtime.logger.warning(
-                "Telegram module does not expose '%s'", method_name
-            )
+            runtime.logger.warning("Telegram module does not expose '%s'", method_name)
             _telegram_warning_cache.add(method_name)
         return False
 
@@ -71,7 +67,8 @@ _NODE_STATUS_EVENT_MAP = {
 
 
 def status_change(
-        username: str, status: UserStatus, user: UserResponse, user_admin: Admin = None, by: Admin = None) -> None:
+    username: str, status: UserStatus, user: UserResponse, user_admin: Admin = None, by: Admin = None
+) -> None:
     enabled = _event_enabled("user.status_change")
     if enabled:
         _call_telegram("report_status_change", username, status, user_admin)
@@ -155,8 +152,9 @@ def user_subscription_revoked(user: UserResponse, by: Admin, user_admin: Admin =
             by=by.username,
             admin=user_admin,
         )
-    notify(UserSubscriptionRevoked(username=user.username,
-           action=Notification.Type.subscription_revoked, by=by, user=user))
+    notify(
+        UserSubscriptionRevoked(username=user.username, action=Notification.Type.subscription_revoked, by=by, user=user)
+    )
 
 
 def login(username: str, password: str, client_ip: str, success: bool) -> None:
@@ -169,8 +167,6 @@ def login(username: str, password: str, client_ip: str, success: bool) -> None:
             client_ip=client_ip,
             status="? Success" if success else "? Failed",
         )
-
-
 
 
 def node_created(node, by: Admin) -> None:

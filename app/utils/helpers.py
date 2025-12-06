@@ -37,9 +37,7 @@ def inbound_requires_xtls_flow(inbound: Mapping[str, Any]) -> bool:
     )
 
 
-def resolve_xtls_flow(
-    inbound: Mapping[str, Any], flow_value: Optional[Union[XTLSFlows, str]]
-) -> Optional[XTLSFlows]:
+def resolve_xtls_flow(inbound: Mapping[str, Any], flow_value: Optional[Union[XTLSFlows, str]]) -> Optional[XTLSFlows]:
     if flow_value:
         try:
             resolved = flow_value if isinstance(flow_value, XTLSFlows) else XTLSFlows(flow_value)

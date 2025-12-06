@@ -41,9 +41,7 @@ def ensure_users_credential_key_column() -> None:
     try:
         with engine.begin() as connection:
             logger.info("Adding missing 'credential_key' column to 'users' table")
-            connection.execute(
-                text("ALTER TABLE users ADD COLUMN credential_key VARCHAR(64)")
-            )
+            connection.execute(text("ALTER TABLE users ADD COLUMN credential_key VARCHAR(64)"))
     except SQLAlchemyError as exc:
         # If the column was created concurrently or database disallows ALTER, log and continue.
         logger.error("Failed to add 'credential_key' column automatically: %s", exc)

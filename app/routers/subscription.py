@@ -111,9 +111,7 @@ def _serve_subscription_response(
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
-        "subscription-userinfo": "; ".join(
-            f"{key}={val}" for key, val in get_subscription_user_info(user).items()
-        ),
+        "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
 
     if re.match(r"^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)", user_agent):
@@ -160,9 +158,7 @@ def _subscription_with_client_type(request: Request, dbuser: UserResponse, clien
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
-        "subscription-userinfo": "; ".join(
-            f"{key}={val}" for key, val in get_subscription_user_info(user).items()
-        ),
+        "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
     config = client_config.get(client_type)
     conf = generate_subscription(
@@ -189,9 +185,7 @@ def _build_usage_payload(
         raise HTTPException(status_code=400, detail="Invalid date range or format") from exc
 
     try:
-        timeline_daily = crud.get_user_usage_timeseries(
-            db, dbuser, start_dt, end_dt, granularity="day"
-        )
+        timeline_daily = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="day")
         daily_usages = [
             {
                 "date": entry["timestamp"].date().isoformat(),
@@ -202,9 +196,7 @@ def _build_usage_payload(
 
         hourly_usages: List[Dict[str, Union[str, int]]] = []
         if start_dt.date() == end_dt.date():
-            timeline_hourly = crud.get_user_usage_timeseries(
-                db, dbuser, start_dt, end_dt, granularity="hour"
-            )
+            timeline_hourly = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="hour")
             hourly_usages = [
                 {
                     "timestamp": entry["timestamp"].isoformat(),

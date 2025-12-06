@@ -110,9 +110,7 @@ class WarpService:
 
     def get_remote_config(self) -> dict:
         account = self._require_account()
-        return self._request(
-            "GET", f"/reg/{account.device_id}", token=account.access_token
-        )
+        return self._request("GET", f"/reg/{account.device_id}", token=account.access_token)
 
     def serialize_account(self, account: WarpAccount) -> dict:
         return {

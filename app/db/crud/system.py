@@ -23,6 +23,7 @@ from config import (
     XRAY_SUBSCRIPTION_PATH,
     XRAY_SUBSCRIPTION_URL_PREFIX,
 )
+
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
 
@@ -37,7 +38,9 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 def _default_admin_subscription_settings(db: Session) -> dict:
     # MasterSettingsService not available, using config directly
-    links = [XRAY_SUBSCRIPTION_URL_PREFIX] if XRAY_SUBSCRIPTION_URL_PREFIX or XRAY_SUBSCRIPTION_URL_PREFIX == "" else [""]
+    links = (
+        [XRAY_SUBSCRIPTION_URL_PREFIX] if XRAY_SUBSCRIPTION_URL_PREFIX or XRAY_SUBSCRIPTION_URL_PREFIX == "" else [""]
+    )
     return {
         "subscription_links": links,
         "subscription_path": XRAY_SUBSCRIPTION_PATH,
@@ -45,6 +48,7 @@ def _default_admin_subscription_settings(db: Session) -> dict:
         "subscription_support_url": SUB_SUPPORT_URL,
         "subscription_title": SUB_PROFILE_TITLE,
     }
+
 
 def _is_record_changed_error(exc: OperationalError) -> bool:
     orig = getattr(exc, "orig", None)
@@ -55,6 +59,7 @@ def _is_record_changed_error(exc: OperationalError) -> bool:
     except (AttributeError, IndexError):
         return False
     return err_code == _RECORD_CHANGED_ERRNO
+
 
 def _get_or_create_xray_config(db: Session) -> XrayConfig:
     if not _xray_config_table_exists(db):
@@ -68,12 +73,14 @@ def _get_or_create_xray_config(db: Session) -> XrayConfig:
         db.refresh(config)
     return config
 
+
 def get_xray_config(db: Session) -> Dict[str, Any]:
     if not _xray_config_table_exists(db):
         return apply_log_paths(load_legacy_xray_config())
 
     config = _get_or_create_xray_config(db)
     return apply_log_paths(config.data or {})
+
 
 def save_xray_config(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
     normalized_payload = apply_log_paths(payload or {})
@@ -84,6 +91,7 @@ def save_xray_config(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
     db.refresh(config)
     return deepcopy(config.data or {})
 
+
 def _xray_config_table_exists(db: Session) -> bool:
     bind = db.get_bind()
     if bind is None:
@@ -93,6 +101,7 @@ def _xray_config_table_exists(db: Session) -> bool:
         return inspector.has_table("xray_config")
     except Exception:
         return False
+
 
 def _ensure_user_deleted_status(db: Session) -> bool:
     """
@@ -149,6 +158,7 @@ def _ensure_user_deleted_status(db: Session) -> bool:
     _USER_STATUS_ENUM_ENSURED = True
     return True
 
+
 def get_system_usage(db: Session) -> System:
     """
     Retrieves system usage information.
@@ -161,11 +171,13 @@ def get_system_usage(db: Session) -> System:
     """
     return db.query(System).first()
 
+
 def _get_or_create_jwt_record(db: Session) -> JWT:
     """Helper to get or create JWT record."""
     jwt_record = db.query(JWT).first()
     if jwt_record is None:
         import os
+
         jwt_record = JWT(
             subscription_secret_key=os.urandom(32).hex(),
             admin_secret_key=os.urandom(32).hex(),
@@ -176,6 +188,7 @@ def _get_or_create_jwt_record(db: Session) -> JWT:
         db.commit()
         db.refresh(jwt_record)
     return jwt_record
+
 
 def get_jwt_secret_key(db: Session) -> str:
     """
@@ -189,25 +202,29 @@ def get_jwt_secret_key(db: Session) -> str:
         str: Admin JWT secret key.
     """
     jwt_record = _get_or_create_jwt_record(db)
-    if hasattr(jwt_record, 'admin_secret_key') and jwt_record.admin_secret_key:
+    if hasattr(jwt_record, "admin_secret_key") and jwt_record.admin_secret_key:
         return jwt_record.admin_secret_key
-    elif hasattr(jwt_record, 'secret_key') and jwt_record.secret_key:
+    elif hasattr(jwt_record, "secret_key") and jwt_record.secret_key:
         return jwt_record.secret_key
     else:
         import os
-        if not hasattr(jwt_record, 'admin_secret_key'):
+
+        if not hasattr(jwt_record, "admin_secret_key"):
             jwt_record.admin_secret_key = os.urandom(32).hex()
             db.commit()
             db.refresh(jwt_record)
         return jwt_record.admin_secret_key
 
+
 def get_subscription_secret_key(db: Session) -> str:
     """Retrieves the secret key for subscription tokens."""
     return _get_or_create_jwt_record(db).subscription_secret_key
 
+
 def get_admin_secret_key(db: Session) -> str:
     """Retrieves the secret key for admin authentication tokens."""
     return _get_or_create_jwt_record(db).admin_secret_key
+
 
 def get_uuid_masks(db: Session) -> dict:
     """
@@ -276,6 +293,7 @@ def get_uuid_masks(db: Session) -> dict:
 
     return {"vmess_mask": vm, "vless_mask": vl}
 
+
 def get_tls_certificate(db: Session) -> TLS:
     """
     Retrieves the TLS certificate.
@@ -287,4 +305,3 @@ def get_tls_certificate(db: Session) -> TLS:
         TLS: TLS certificate information.
     """
     return db.query(TLS).first()
-

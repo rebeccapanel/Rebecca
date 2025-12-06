@@ -14,7 +14,7 @@ if CUSTOM_TEMPLATES_DIRECTORY:
 
 env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_directories))
 env.filters.update(CUSTOM_FILTERS)
-env.globals['now'] = lambda: datetime.now(UTC).replace(tzinfo=None)
+env.globals["now"] = lambda: datetime.now(UTC).replace(tzinfo=None)
 
 
 def render_template(template: str, context: Union[dict, None] = None) -> str:

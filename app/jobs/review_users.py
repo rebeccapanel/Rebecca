@@ -17,9 +17,7 @@ from app.utils import report
 from config import JOB_REVIEW_USERS_BATCH_SIZE, JOB_REVIEW_USERS_INTERVAL
 
 
-def _batch_users_by_status(
-    db: Session, status: UserStatus, after_id: Optional[int] = None
-) -> List[User]:
+def _batch_users_by_status(db: Session, status: UserStatus, after_id: Optional[int] = None) -> List[User]:
     """
     Fetch a stable, ordered batch of users so pagination keeps moving even
     when user statuses change mid-iteration.
@@ -46,9 +44,7 @@ def review():
     with GetDB() as db:
         last_id: Optional[int] = None
         while True:
-            active_batch = _batch_users_by_status(
-                db, UserStatus.active, after_id=last_id
-            )
+            active_batch = _batch_users_by_status(db, UserStatus.active, after_id=last_id)
             if not active_batch:
                 break
 
@@ -58,7 +54,6 @@ def review():
 
                 if (limited or expired) and user.next_plan is not None:
                     if user.next_plan is not None:
-
                         if user.next_plan.fire_on_either:
                             reset_user_by_next_report(db, user)
                             continue
@@ -84,27 +79,27 @@ def review():
 
                 try:
                     update_user_status(db, user, status)
-                    logger.info(f"User \"{user.username}\" status changed to {status}")
+                    logger.info(f'User "{user.username}" status changed to {status}')
                     try:
-                        report.status_change(username=user.username, status=status,
-                                             user=UserResponse.model_validate(user), user_admin=user.admin)
+                        report.status_change(
+                            username=user.username,
+                            status=status,
+                            user=UserResponse.model_validate(user),
+                            user_admin=user.admin,
+                        )
                     except Exception as report_error:
                         logger.warning(
                             f"Failed to send status change report for user {user.id} ({user.username}): {report_error}"
                         )
                 except Exception as e:
-                    logger.error(
-                        f"Failed to update status for user {user.id} ({user.username}) to {status}: {e}"
-                    )
+                    logger.error(f"Failed to update status for user {user.id} ({user.username}) to {status}: {e}")
                     db.rollback()
 
             last_id = active_batch[-1].id
 
         last_id = None
         while True:
-            on_hold_batch = _batch_users_by_status(
-                db, UserStatus.on_hold, after_id=last_id
-            )
+            on_hold_batch = _batch_users_by_status(db, UserStatus.on_hold, after_id=last_id)
             if not on_hold_batch:
                 break
 
@@ -138,18 +133,21 @@ def review():
                             f"Status will still be updated to {status}."
                         )
 
-                report.status_change(username=user.username, status=status,
-                                     user=UserResponse.model_validate(user), user_admin=user.admin)
+                report.status_change(
+                    username=user.username, status=status, user=UserResponse.model_validate(user), user_admin=user.admin
+                )
 
-                logger.info(f"User \"{user.username}\" status changed to {status}")
+                logger.info(f'User "{user.username}" status changed to {status}')
 
             last_id = on_hold_batch[-1].id
 
 
-scheduler.add_job(review, 'interval',
-                  seconds=JOB_REVIEW_USERS_INTERVAL,
-                  coalesce=True,
-                  max_instances=3,
-                  misfire_grace_time=JOB_REVIEW_USERS_INTERVAL,
-                  replace_existing=True)
-
+scheduler.add_job(
+    review,
+    "interval",
+    seconds=JOB_REVIEW_USERS_INTERVAL,
+    coalesce=True,
+    max_instances=3,
+    misfire_grace_time=JOB_REVIEW_USERS_INTERVAL,
+    replace_existing=True,
+)

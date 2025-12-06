@@ -13,14 +13,17 @@ def _add_user_accounts_to_api(dbuser):
         for inbound_tag in inbound_tags:
             # proxy_type could be Enum or string key
             try:
-                settings_model = user.proxies.get(proxy_type) or user.proxies.get(getattr(proxy_type, 'value', proxy_type))
+                settings_model = user.proxies.get(proxy_type) or user.proxies.get(
+                    getattr(proxy_type, "value", proxy_type)
+                )
             except Exception:
                 continue
 
             # build account similar to other operations
-            existing_id = getattr(settings_model, 'id', None)
+            existing_id = getattr(settings_model, "id", None)
             # ensure proxy_type is an enum
             from app.models.proxy import ProxyTypes as _ProxyTypes
+
             resolved_proxy_type = proxy_type if isinstance(proxy_type, _ProxyTypes) else _ProxyTypes(proxy_type)
             account_to_add = None
 
@@ -31,7 +34,7 @@ def _add_user_accounts_to_api(dbuser):
                     proxy_settings = runtime_proxy_settings(
                         settings_model, resolved_proxy_type, user.credential_key, flow=getattr(dbuser, "flow", None)
                     )
-                    proxy_settings.pop('flow', None)
+                    proxy_settings.pop("flow", None)
                     account_to_add = resolved_proxy_type.account_model(email=email, **proxy_settings)
                 except Exception:
                     account_to_add = None
@@ -42,13 +45,18 @@ def _add_user_accounts_to_api(dbuser):
                 except xray.exc.EmailExistsError:
                     pass
                 except xray.exc.ConnectionError as e:
-                    logger.warning("Could not add user %s to inbound %s - xray API connection error: %s", email, inbound_tag, e.details)
+                    logger.warning(
+                        "Could not add user %s to inbound %s - xray API connection error: %s",
+                        email,
+                        inbound_tag,
+                        e.details,
+                    )
                     # don't raise to avoid breaking import time execution
                     continue
 
 
 if sqlalchemy.inspect(engine).has_table(User.__tablename__):
-    if not getattr(xray, 'core', None) or not getattr(xray.core, 'started', False):
+    if not getattr(xray, "core", None) or not getattr(xray.core, "started", False):
         # Core not started yet, users will be loaded via config generation during startup
         pass
     else:
@@ -58,5 +66,7 @@ if sqlalchemy.inspect(engine).has_table(User.__tablename__):
                     _add_user_accounts_to_api(dbuser)
                 except xray.exc.ConnectionError:
                     # If nodes or XRay core are not reachable at startup, just warn and continue
-                    logger.warning("Xray API not available at startup. Add user to inbounds will be retried by runtime processes when available.")
+                    logger.warning(
+                        "Xray API not available at startup. Add user to inbounds will be retried by runtime processes when available."
+                    )
                     break

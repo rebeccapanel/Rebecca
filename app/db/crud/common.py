@@ -11,6 +11,7 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 MASTER_NODE_NAME = "Master"
 _USER_STATUS_ENUM_ENSURED = False
 
+
 def _is_record_changed_error(exc) -> bool:
     """Check if error is a record changed error."""
     orig = getattr(exc, "orig", None)
@@ -21,6 +22,7 @@ def _is_record_changed_error(exc) -> bool:
     except (AttributeError, IndexError):
         return False
     return err_code == _RECORD_CHANGED_ERRNO
+
 
 def _ensure_user_deleted_status(db) -> bool:
     """Ensure the underlying user status enum (if any) supports the 'deleted' value."""
@@ -61,5 +63,3 @@ def _ensure_user_deleted_status(db) -> bool:
         return False
     _USER_STATUS_ENUM_ENSURED = True
     return True
-
-

@@ -10,6 +10,7 @@ class SubscriptionLinkType(str, Enum):
     key = "key"
     token = "token"
 
+
 class TelegramTopicSettings(BaseModel):
     title: str = Field(..., description="Display title for the forum topic")
     topic_id: Optional[int] = Field(

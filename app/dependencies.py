@@ -48,8 +48,9 @@ def validate_dates(start: Optional[Union[str, datetime]], end: Optional[Union[st
     """Validate if start and end dates are correct and if end is after start."""
     try:
         if start:
-            start_date = start if isinstance(start, datetime) else datetime.fromisoformat(
-                start).astimezone(timezone.utc)
+            start_date = (
+                start if isinstance(start, datetime) else datetime.fromisoformat(start).astimezone(timezone.utc)
+            )
         else:
             start_date = datetime.now(timezone.utc) - timedelta(days=30)
         if end:
@@ -72,26 +73,23 @@ def get_user_template(template_id: int, db: Session = Depends(get_db)):
     return dbuser_template
 
 
-def get_validated_sub(
-        token: str,
-        db: Session = Depends(get_db)
-) -> UserResponse:
+def get_validated_sub(token: str, db: Session = Depends(get_db)) -> UserResponse:
     """Validate subscription by token using Redis adapter."""
     return validate_subscription_by_token(token, db)
 
 
 def get_validated_sub_by_key(
-        username: str,
-        credential_key: str = Path(..., pattern="^[0-9a-fA-F-]{32,36}$"),
-        db: Session = Depends(get_db),
+    username: str,
+    credential_key: str = Path(..., pattern="^[0-9a-fA-F-]{32,36}$"),
+    db: Session = Depends(get_db),
 ) -> UserResponse:
     """Validate subscription by username and credential key using Redis adapter."""
     return validate_sub_by_key_adapter(username, credential_key, db)
 
 
 def get_validated_sub_by_key_only(
-        credential_key: str,
-        db: Session = Depends(get_db),
+    credential_key: str,
+    db: Session = Depends(get_db),
 ) -> UserResponse:
     """
     Validate subscription by credential_key only (no username provided).
@@ -101,9 +99,7 @@ def get_validated_sub_by_key_only(
 
 
 def get_validated_user(
-        username: str,
-        admin: Admin = Depends(Admin.get_current),
-        db: Session = Depends(get_db)
+    username: str, admin: Admin = Depends(Admin.get_current), db: Session = Depends(get_db)
 ) -> UserResponse:
     dbuser = crud.get_user(db, username)
     if not dbuser:
@@ -118,8 +114,9 @@ def get_validated_user(
     return dbuser
 
 
-def get_expired_users_list(db: Session, admin: Admin, expired_after: Optional[datetime] = None,
-                           expired_before: Optional[datetime] = None):
+def get_expired_users_list(
+    db: Session, admin: Admin, expired_after: Optional[datetime] = None, expired_before: Optional[datetime] = None
+):
     expired_before = expired_before or datetime.now(timezone.utc)
     expired_after = expired_after or datetime.min.replace(tzinfo=timezone.utc)
 
@@ -127,19 +124,16 @@ def get_expired_users_list(db: Session, admin: Admin, expired_after: Optional[da
     dbusers = crud.get_users(
         db=db,
         status=[UserStatus.expired, UserStatus.limited],
-        admin=dbadmin if admin.role not in (AdminRole.sudo, AdminRole.full_access) else None
+        admin=dbadmin if admin.role not in (AdminRole.sudo, AdminRole.full_access) else None,
     )
 
-    return [
-        u for u in dbusers
-        if u.expire and expired_after.timestamp() <= u.expire <= expired_before.timestamp()
-    ]
+    return [u for u in dbusers if u.expire and expired_after.timestamp() <= u.expire <= expired_before.timestamp()]
 
 
 def get_service_for_admin(
-        service_id: int,
-        admin: Admin = Depends(Admin.get_current),
-        db: Session = Depends(get_db),
+    service_id: int,
+    admin: Admin = Depends(Admin.get_current),
+    db: Session = Depends(get_db),
 ):
     service = crud.get_service(db, service_id)
     if not service:

@@ -6,7 +6,7 @@ from app.models.admin import Admin, AdminRole
 from app.utils import report
 from config import USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS
 
-SYSTEM_ADMIN = Admin(username='system', role=AdminRole.full_access, telegram_id=None)
+SYSTEM_ADMIN = Admin(username="system", role=AdminRole.full_access, telegram_id=None)
 
 
 def remove_expired_users():
@@ -14,11 +14,10 @@ def remove_expired_users():
         deleted_users = crud.autodelete_expired_users(db, USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS)
 
         for user in deleted_users:
-            report.user_deleted(user.username, SYSTEM_ADMIN,
-                                user_admin=Admin.model_validate(user.admin) if user.admin else None
-                                )
+            report.user_deleted(
+                user.username, SYSTEM_ADMIN, user_admin=Admin.model_validate(user.admin) if user.admin else None
+            )
             logger.log(logging.INFO, "Expired user %s deleted." % user.username)
 
 
-scheduler.add_job(remove_expired_users, 'interval', coalesce=True, hours=6, max_instances=1)
-
+scheduler.add_job(remove_expired_users, "interval", coalesce=True, hours=6, max_instances=1)

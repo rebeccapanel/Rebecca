@@ -33,9 +33,7 @@ from app.utils.crypto import (
 )
 from uuid import uuid4
 
-router = APIRouter(
-    tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403}
-)
+router = APIRouter(tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403})
 
 _PENDING_CERTS: dict[str, dict[str, str]] = {}
 
@@ -57,9 +55,7 @@ MASTER_NODE_NAME = "Master"
 
 def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeResponse:
     """Convert DB node rows to API responses enriched with runtime metadata."""
-    node_response = (
-        dbnode if isinstance(dbnode, NodeResponse) else NodeResponse.model_validate(dbnode)
-    )
+    node_response = dbnode if isinstance(dbnode, NodeResponse) else NodeResponse.model_validate(dbnode)
     runtime_node = xray.nodes.get(node_response.id)
     if runtime_node:
         node_response.node_service_version = getattr(runtime_node, "node_version", None)
@@ -86,9 +82,7 @@ def _augment_node_cert_fields(
             try:
                 public_key = extract_public_key_from_certificate(cert_value)
             except Exception as exc:
-                logger.warning(
-                    "Failed to extract public key for node %s: %s", node_response.id, exc
-                )
+                logger.warning("Failed to extract public key for node %s: %s", node_response.id, exc)
 
     updated = node_response.model_copy(
         update={
@@ -154,9 +148,7 @@ def reset_master_node_usage(
 
 
 @router.get("/node/settings", response_model=NodeSettings)
-def get_node_settings(
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
-):
+def get_node_settings(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
     """Retrieve the current node settings, including the shared TLS certificate (legacy)."""
     tls = crud.get_tls_certificate(db)
     return NodeSettings(
@@ -198,9 +190,7 @@ def add_node(
         dbnode = crud.create_node(db, new_node)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409, detail=f'Node "{new_node.name}" already exists'
-        )
+        raise HTTPException(status_code=409, detail=f'Node "{new_node.name}" already exists')
 
     bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
     bg.add_task(add_host_if_needed, new_node, db)
@@ -260,9 +250,7 @@ def regenerate_node_certificate(
 
 @router.websocket("/node/{node_id}/logs")
 async def node_logs(node_id: int, websocket: WebSocket):
-    token = websocket.query_params.get("token") or websocket.headers.get(
-        "Authorization", ""
-    ).removeprefix("Bearer ")
+    token = websocket.query_params.get("token") or websocket.headers.get("Authorization", "").removeprefix("Bearer ")
     with GetDB() as db:
         admin = Admin.get_admin(token, db)
     if not admin:
@@ -284,9 +272,7 @@ async def node_logs(node_id: int, websocket: WebSocket):
         except ValueError:
             return await websocket.close(reason="Invalid interval value", code=4400)
         if interval > 10:
-            return await websocket.close(
-                reason="Interval must be more than 0 and at most 10 seconds", code=4400
-            )
+            return await websocket.close(reason="Interval must be more than 0 and at most 10 seconds", code=4400)
 
     await websocket.accept()
 
@@ -328,9 +314,7 @@ async def node_logs(node_id: int, websocket: WebSocket):
 
 
 @router.get("/nodes", response_model=List[NodeResponse])
-def get_nodes(
-    db: Session = Depends(get_db), _: Admin = Depends(Admin.check_sudo_admin)
-):
+def get_nodes(db: Session = Depends(get_db), _: Admin = Depends(Admin.check_sudo_admin)):
     """Retrieve a list of all nodes. Accessible only to sudo admins."""
     nodes = crud.get_nodes(db)
     default_cert = crud.get_tls_certificate(db).certificate
@@ -428,7 +412,7 @@ def get_node_usage_daily(
     end: str = "",
     granularity: str = "day",
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin)
+    _: Admin = Depends(Admin.check_sudo_admin),
 ):
     """
     Get usage for a specific node, regardless of admin.
@@ -442,13 +426,9 @@ def get_node_usage_daily(
     dbnode = db.query(DBNode).filter(DBNode.id == node_id).first()
     if not dbnode:
         raise HTTPException(status_code=404, detail="Node not found")
-    
+
     usages = crud.get_node_usage_by_day(db, node_id, start, end, granularity)
-    return {
-        "node_id": node_id,
-        "node_name": dbnode.name,
-        "usages": usages
-    }
+    return {"node_id": node_id, "node_name": dbnode.name, "usages": usages}
 
 
 @router.post("/node/{node_id}/xray/update", responses={403: responses._403, 404: responses._404})
@@ -503,9 +483,7 @@ def update_node_geo(
     files = payload.get("files") or []
     mode = (payload.get("mode") or "").strip().lower()
     template_index_url = (
-        payload.get("template_index_url")
-        or payload.get("templateIndexUrl")
-        or GEO_TEMPLATES_INDEX_DEFAULT
+        payload.get("template_index_url") or payload.get("templateIndexUrl") or GEO_TEMPLATES_INDEX_DEFAULT
     ).strip()
     template_name = (payload.get("template_name") or payload.get("templateName") or "").strip()
 
@@ -591,8 +569,3 @@ def update_node_service(
         f"Unable to update Rebecca-node service for {dbnode.name}",
     )
     return {"detail": f"Update requested for node {dbnode.name}"}
-
-
-
-
-

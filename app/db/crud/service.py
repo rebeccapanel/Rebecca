@@ -16,8 +16,10 @@ from app.db.models import (
     User,
 )
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
+
 # MasterSettingsService not available in current project structure
 from .other import ServiceRepository
+
 # Imported inside functions to avoid circular import
 # from .usage import _get_usage_data, _get_usage_timeseries
 MASTER_NODE_NAME = "Master"
@@ -31,24 +33,25 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 # ============================================================================
 
 
-def _service_repo(db: Session) -> 'ServiceRepository':
+def _service_repo(db: Session) -> "ServiceRepository":
     return ServiceRepository(db)
 
-def _assign_service_hosts(
-    db: Session, service: Service, assignments: Iterable[ServiceHostAssignment]
-) -> None:
+
+def _assign_service_hosts(db: Session, service: Service, assignments: Iterable[ServiceHostAssignment]) -> None:
     _service_repo(db).assign_hosts(service, assignments)
 
-def _assign_service_admins(
-    db: Session, service: Service, admin_ids: Iterable[int]
-) -> None:
+
+def _assign_service_admins(db: Session, service: Service, admin_ids: Iterable[int]) -> None:
     _service_repo(db).assign_admins(service, admin_ids)
+
 
 def _service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
     return ServiceRepository.compute_allowed_inbounds(service)
 
+
 def _ensure_admin_service_link(db: Session, admin: Optional[Admin], service: Service) -> None:
     _service_repo(db).ensure_admin_service_link(admin, service)
+
 
 def refresh_service_users_by_id(db: Session, service_id: int) -> List[User]:
     """
@@ -64,6 +67,7 @@ def refresh_service_users_by_id(db: Session, service_id: int) -> List[User]:
         db.commit()
     return refreshed
 
+
 def refresh_service_users(
     db: Session,
     service: Service,
@@ -71,11 +75,14 @@ def refresh_service_users(
 ) -> List[User]:
     return _service_repo(db).refresh_users(service, allowed_inbounds)
 
+
 def get_service_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
     return _service_allowed_inbounds(service)
 
+
 def get_service(db: Session, service_id: int) -> Optional[Service]:
     return _service_repo(db).get(service_id)
+
 
 def list_services(
     db: Session,
@@ -86,8 +93,10 @@ def list_services(
 ) -> Dict[str, Union[List[Service], int]]:
     return _service_repo(db).list(name=name, admin=admin, offset=offset, limit=limit)
 
+
 def create_service(db: Session, payload: ServiceCreate) -> Service:
     return _service_repo(db).create(payload)
+
 
 def update_service(
     db: Session,
@@ -95,6 +104,7 @@ def update_service(
     modification: ServiceModify,
 ) -> Tuple[Service, Optional[Dict[ProxyTypes, Set[str]]], Optional[Dict[ProxyTypes, Set[str]]]]:
     return _service_repo(db).update(service, modification)
+
 
 def remove_service(
     db: Session,
@@ -111,8 +121,10 @@ def remove_service(
         unlink_admins=unlink_admins,
     )
 
+
 def reset_service_usage(db: Session, service: Service) -> Service:
     return _service_repo(db).reset_usage(service)
+
 
 def get_service_usage_timeseries(
     db: Session,
@@ -122,6 +134,7 @@ def get_service_usage_timeseries(
     granularity: str = "day",
 ) -> List[Dict[str, Union[datetime, int]]]:
     from .usage import _get_usage_data
+
     return _get_usage_data(
         db=db,
         entity_type="service",
@@ -129,8 +142,9 @@ def get_service_usage_timeseries(
         start=start,
         end=end,
         granularity=granularity,
-        format="timeseries"
+        format="timeseries",
     )
+
 
 def get_service_admin_usage_timeseries(
     db: Session,
@@ -141,22 +155,24 @@ def get_service_admin_usage_timeseries(
     granularity: str = "day",
 ) -> List[Dict[str, Union[datetime, int]]]:
     # Note: admin_id filter needs special handling
-    query = db.query(NodeUserUsage).join(User, User.id == NodeUserUsage.user_id).filter(
-        User.service_id == service.id,
-        NodeUserUsage.created_at >= start,
-        NodeUserUsage.created_at <= end
+    query = (
+        db.query(NodeUserUsage)
+        .join(User, User.id == NodeUserUsage.user_id)
+        .filter(User.service_id == service.id, NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end)
     )
     if admin_id is None:
         query = query.filter(User.admin_id.is_(None))
     else:
         query = query.filter(User.admin_id == admin_id)
-    
+
     start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
     end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
     tzinfo = start_aware.tzinfo or timezone.utc
-    
+
     from .usage import _get_usage_timeseries
+
     return _get_usage_timeseries(query, start_aware, end_aware, tzinfo, granularity, {}, False)
+
 
 def get_service_admin_usage(
     db: Session,
@@ -190,4 +206,3 @@ def get_service_admin_usage(
         }
         for row in usage_rows
     ]
-

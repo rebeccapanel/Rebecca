@@ -34,6 +34,7 @@ try:
     config = XRayConfig(raw_config, api_port=api_port)
 except Exception as e:
     import logging
+
     logger = logging.getLogger("uvicorn.error")
     logger.warning(f"Failed to load Xray config from database: {e}")
     config = XRayConfig({}, api_port=api_port)
@@ -64,9 +65,7 @@ def _host_to_dict(host: "ProxyHost", service_ids: Optional[Sequence[int]] = None
         "fingerprint": host.fingerprint.value,
         # None means the tls is not specified by host itself and
         # complies with its inbound's settings.
-        "tls": None
-        if host.security == ProxyHostSecurity.inbound_default
-        else host.security.value,
+        "tls": None if host.security == ProxyHostSecurity.inbound_default else host.security.value,
         "allowinsecure": host.allowinsecure,
         "mux_enable": host.mux_enable,
         "fragment_setting": host.fragment_setting,
@@ -96,11 +95,7 @@ def rebuild_service_hosts_cache() -> None:
         with GetDB() as db:
             hosts = (
                 db.query(db_models.ProxyHost)
-                .options(
-                    joinedload(db_models.ProxyHost.service_links).joinedload(
-                        db_models.ServiceHostLink.service
-                    )
-                )
+                .options(joinedload(db_models.ProxyHost.service_links).joinedload(db_models.ServiceHostLink.service))
                 .filter(db_models.ProxyHost.inbound_tag.in_(inbound_tags))
                 .all()
             )
@@ -126,9 +121,7 @@ def rebuild_service_hosts_cache() -> None:
                     continue
 
                 service_ids = [
-                    link.service_id
-                    for link in getattr(host, "service_links", [])
-                    if link.service_id is not None
+                    link.service_id for link in getattr(host, "service_links", []) if link.service_id is not None
                 ]
                 host_dict = _host_to_dict(host, service_ids)
                 host_dicts.append(host_dict)
@@ -137,9 +130,7 @@ def rebuild_service_hosts_cache() -> None:
                 target_service_ids = (service_ids or []) + [None]
 
                 for service_id in target_service_ids:
-                    host_map = cache.setdefault(
-                        service_id, {k: [] for k in base_map}
-                    )
+                    host_map = cache.setdefault(service_id, {k: [] for k in base_map})
                     host_map.setdefault(host.inbound_tag, []).append(host_dict)
             db.commit()
 
@@ -151,16 +142,19 @@ def rebuild_service_hosts_cache() -> None:
         service_hosts_cache.clear()
         service_hosts_cache.update(cache)
         service_hosts_cache_ts = time.time()
-        
+
         # Update Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import cache_service_host_map
+
                 for service_id, host_map in cache.items():
                     cache_service_host_map(service_id, host_map)
             except Exception as e:
                 import logging
+
                 logger = logging.getLogger("uvicorn.error")
                 logger.warning(f"Failed to update Redis cache for service hosts: {e}")
 
@@ -168,7 +162,7 @@ def rebuild_service_hosts_cache() -> None:
 def get_service_host_map(service_id: Optional[int], force_rebuild: bool = False) -> Dict[str, list]:
     """
     Return host map for the given service_id with TTL-based refresh.
-    
+
     Args:
         service_id: Service ID to get host map for
         force_rebuild: If True, force rebuild cache even if TTL hasn't expired
@@ -206,12 +200,14 @@ def invalidate_service_hosts_cache() -> None:
     with _hosts_cache_lock:
         service_hosts_cache.clear()
         service_hosts_cache_ts = None
-        
+
         # Invalidate Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import invalidate_service_host_map_cache
+
                 invalidate_service_host_map_cache()
             except Exception:
                 pass  # Don't fail if Redis is unavailable

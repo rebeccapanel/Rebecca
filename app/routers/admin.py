@@ -51,7 +51,11 @@ def get_client_ip(request: Request) -> str:
 def validate_dates(start: str, end: str) -> tuple[datetime, datetime]:
     """Validate and parse start and end dates."""
     try:
-        start_date = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else (datetime.now(timezone.utc) - timedelta(days=30))
+        start_date = (
+            datetime.fromisoformat(start.replace("Z", "+00:00"))
+            if start
+            else (datetime.now(timezone.utc) - timedelta(days=30))
+        )
         end_date = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else datetime.now(timezone.utc)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use ISO 8601 (e.g., 2025-09-24T00:00:00)")
@@ -103,10 +107,7 @@ def create_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only full access admins (or the Rebecca CLI) can create another full access admin.",
         )
-    if not (
-        admin.has_full_access
-        or admin.permissions.admin_management.allows(AdminManagementPermission.edit)
-    ):
+    if not (admin.has_full_access or admin.permissions.admin_management.allows(AdminManagementPermission.edit)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You're not allowed to manage other admins.",
@@ -311,7 +312,8 @@ def disable_all_active_users(
 @router.post("/admin/{username}/users/activate", responses={403: responses._403, 404: responses._404})
 def activate_all_disabled_users(
     dbadmin: Admin = Depends(get_admin_by_username),
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Activate all disabled users under a specific admin"""
     try:
@@ -336,7 +338,7 @@ def activate_all_disabled_users(
 def reset_admin_usage(
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.check_sudo_admin)
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Resets usage of admin."""
     if dbadmin.username != current_admin.username:
@@ -352,14 +354,10 @@ def reset_admin_usage(
     response_model=int,
     responses={403: responses._403},
 )
-def get_admin_usage(
-    dbadmin: Admin = Depends(get_admin_by_username),
-    current_admin: Admin = Depends(Admin.get_current)
-):
+def get_admin_usage(dbadmin: Admin = Depends(get_admin_by_username), current_admin: Admin = Depends(Admin.get_current)):
     """Retrieve the usage of given admin."""
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -372,14 +370,13 @@ def get_admin_usage_daily(
     start: str = "",
     end: str = "",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Get admin usage per day (aggregated over all nodes and users).
     """
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -397,15 +394,14 @@ def get_admin_usage_chart(
     node_id: Optional[int] = None,
     granularity: str = "day",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Get admin usage timeseries for a specific node (or all nodes if node_id is not provided).
     Returns usage data grouped by date (daily by default, hourly if requested).
     """
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -440,16 +436,13 @@ def get_admin_usage_by_nodes(
     start: str = "",
     end: str = "",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Retrieve usage statistics for a specific admin across all nodes within a date range.
     Returns uplink and downlink traffic grouped by node.
     """
-    if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == username
-    ):
+    if not (current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == username):
         raise HTTPException(status_code=403, detail="Access denied")
 
     dbadmin = db.query(DBAdmin).filter(DBAdmin.username == username).first()
@@ -460,9 +453,3 @@ def get_admin_usage_by_nodes(
     usages = crud.get_admin_usage_by_nodes(db, dbadmin, start, end)
 
     return {"usages": usages}
-
-
-
-
-
-

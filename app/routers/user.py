@@ -64,8 +64,18 @@ def _ensure_custom_key_permission(admin: Admin, has_key: bool) -> None:
     )
 
 
-@router.post("/user", response_model=UserResponse, status_code=status.HTTP_201_CREATED, responses={400: responses._400, 409: responses._409})
-@router.post("/v2/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, responses={400: responses._400, 409: responses._409})
+@router.post(
+    "/user",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: responses._400, 409: responses._409},
+)
+@router.post(
+    "/v2/users",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: responses._400, 409: responses._409},
+)
 def add_user(
     payload: Union[UserCreate, dict],
     bg: BackgroundTasks,
@@ -74,7 +84,7 @@ def add_user(
 ):
     """
     Add a new user (service mode if service_id provided, otherwise no-service legacy mode).
-    
+
     Compatible with Marzban API: accepts UserCreate directly when no service_id is provided.
     """
 
@@ -120,10 +130,7 @@ def add_user(
             )
 
         proxies_payload = {proxy_type.value: {} for proxy_type in allowed_inbounds.keys()}
-        inbounds_payload = {
-            proxy_type.value: sorted(list(tags))
-            for proxy_type, tags in allowed_inbounds.items()
-        }
+        inbounds_payload = {proxy_type.value: sorted(list(tags)) for proxy_type, tags in allowed_inbounds.items()}
 
         user_payload = service_payload.model_dump(exclude={"service_id"}, exclude_none=True)
         user_payload["proxies"] = proxies_payload
@@ -169,13 +176,13 @@ def add_user(
                 status_code=400,
                 detail="Each user needs at least one proxy when creating without a service",
             )
-        
+
         # Accept UserCreate directly for Marzban compatibility
         if isinstance(payload, UserCreate):
             new_user = payload
         else:
             new_user = UserCreate.model_validate(payload_dict)
-        
+
         admin.ensure_user_constraints(
             status_value=new_user.status.value if new_user.status else None,
             data_limit=new_user.data_limit,
@@ -191,9 +198,7 @@ def add_user(
         # for each protocol if not specified
 
         ensure_user_credential_key(new_user)
-        dbuser = crud.create_user(
-            db, new_user, admin=crud.get_admin(db, admin.username)
-        )
+        dbuser = crud.create_user(db, new_user, admin=crud.get_admin(db, admin.username))
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
@@ -218,8 +223,16 @@ def get_user(dbuser: UserResponse = Depends(get_validated_user)):
     return dbuser
 
 
-@router.put("/user/{username}", response_model=UserResponse, responses={400: responses._400, 403: responses._403, 404: responses._404})
-@router.put("/v2/users/{username}", response_model=UserResponse, responses={400: responses._400, 403: responses._403, 404: responses._404})
+@router.put(
+    "/user/{username}",
+    response_model=UserResponse,
+    responses={400: responses._400, 403: responses._403, 404: responses._404},
+)
+@router.put(
+    "/v2/users/{username}",
+    response_model=UserResponse,
+    responses={400: responses._400, 403: responses._403, 404: responses._404},
+)
 def modify_user(
     modified_user: UserModify,
     bg: BackgroundTasks,
@@ -282,9 +295,15 @@ def modify_user(
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
-    elif old_status in [UserStatus.active, UserStatus.on_hold] and user.status not in [UserStatus.active, UserStatus.on_hold]:
+    elif old_status in [UserStatus.active, UserStatus.on_hold] and user.status not in [
+        UserStatus.active,
+        UserStatus.on_hold,
+    ]:
         bg.add_task(xray.operations.remove_user, dbuser=dbuser)
-    elif old_status not in [UserStatus.active, UserStatus.on_hold] and user.status in [UserStatus.active, UserStatus.on_hold]:
+    elif old_status not in [UserStatus.active, UserStatus.on_hold] and user.status in [
+        UserStatus.active,
+        UserStatus.on_hold,
+    ]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
     bg.add_task(report.user_updated, user=user, user_admin=dbuser.admin, by=admin)
@@ -300,9 +319,7 @@ def modify_user(
             user_admin=dbuser.admin,
             by=admin,
         )
-        logger.info(
-            f'User "{dbuser.username}" status changed from {old_status} to {user.status}'
-        )
+        logger.info(f'User "{dbuser.username}" status changed from {old_status} to {user.status}')
 
     return user
 
@@ -319,15 +336,15 @@ def remove_user(
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
-    bg.add_task(
-        report.user_deleted, username=dbuser.username, user_admin=Admin.model_validate(dbuser.admin), by=admin
-    )
+    bg.add_task(report.user_deleted, username=dbuser.username, user_admin=Admin.model_validate(dbuser.admin), by=admin)
 
     logger.info(f'User "{dbuser.username}" deleted')
     return {"detail": "User successfully deleted"}
 
 
-@router.post("/user/{username}/reset", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
+@router.post(
+    "/user/{username}/reset", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
+)
 def reset_user_data_usage(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -346,15 +363,15 @@ def reset_user_data_usage(
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
     user = UserResponse.model_validate(dbuser)
-    bg.add_task(
-        report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin
-    )
+    bg.add_task(report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset')
     return dbuser
 
 
-@router.post("/user/{username}/revoke_sub", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
+@router.post(
+    "/user/{username}/revoke_sub", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
+)
 def revoke_user_subscription(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -368,16 +385,16 @@ def revoke_user_subscription(
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
     user = UserResponse.model_validate(dbuser)
-    bg.add_task(
-        report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin
-    )
+    bg.add_task(report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}" subscription revoked')
 
     return user
 
 
-@router.get("/users", response_model=UsersResponse, responses={400: responses._400, 403: responses._403, 404: responses._404})
+@router.get(
+    "/users", response_model=UsersResponse, responses={400: responses._400, 403: responses._403, 404: responses._404}
+)
 def get_users(
     offset: int = None,
     limit: int = None,
@@ -403,16 +420,14 @@ def get_users(
             try:
                 sort.append(crud.UsersSortingOptions[opt])
             except KeyError:
-                raise HTTPException(
-                    status_code=400, detail=f'"{opt}" is not a valid sort option'
-                )
+                raise HTTPException(status_code=400, detail=f'"{opt}" is not a valid sort option')
 
     # Determine admin filtering based on role
     owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else None
     dbadmin = None
     users_limit = None
     active_total = None
-    
+
     if admin.role not in (AdminRole.sudo, AdminRole.full_access):
         dbadmin = crud.get_admin(db, admin.username)
         if not dbadmin:
@@ -425,6 +440,7 @@ def get_users(
         )
 
     from app.models.user import _skip_expensive_computations
+
     token = _skip_expensive_computations.set(True)
     try:
         users, count = crud.get_users(
@@ -441,150 +457,18 @@ def get_users(
             admins=owners,
             return_with_count=True,
         )
-        
-        user_responses = []
-        link_templates = {}  # Link templates for frontend to generate links
-        try:
-            # Get preferred subscription type once
-            from app.services.panel_settings import PanelSettingsService
-            preferred = PanelSettingsService.get_settings(ensure_record=True).default_subscription_type
-        except Exception:
-            preferred = None
 
-        template_user = None
-        for user in users:
-            if user.status == UserStatus.active:
-                template_user = user
-                break
-        
-        # Generate link templates from first active user (if exists)
-        if template_user:
-            try:
-                resp_template = UserResponse.model_validate(template_user)
-                from app.subscription.share import generate_v2ray_links
-                template_links = generate_v2ray_links(
-                    resp_template.proxies, resp_template.excluded_inbounds, extra_data=resp_template.model_dump(), reverse=False,
-                )
-                
-                import re
-                from urllib.parse import quote, unquote
-                
-                for link in template_links[:5]:  # Take first 5 links as templates (different inbounds)
-                    protocol_match = re.match(r'^(\w+)://', link)
-                    if protocol_match:
-                        protocol = protocol_match.group(1)
-                        
-                        if protocol in ['vless', 'vmess']:
-                            uuid_pattern = r'([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
-                            template = re.sub(
-                                uuid_pattern,
-                                '{UUID}',
-                                link,
-                                flags=re.IGNORECASE
-                            )
-                        elif protocol == 'trojan':
-                            template = re.sub(
-                                r'^trojan://([^@]+)@',
-                                'trojan://{PASSWORD}@',
-                                link
-                            )
-                        elif protocol == 'ss':
-                            template = re.sub(
-                                r'^ss://([^@]+)@',
-                                'ss://{PASSWORD_B64}@',
-                                link
-                            )
-                        else:
-                            template = link
-                        
-                        if protocol not in link_templates:
-                            link_templates[protocol] = []
-                        # Avoid duplicates
-                        if template not in link_templates[protocol]:
-                            link_templates[protocol].append(template)
-            except Exception as e:
-                logger.debug(f"Failed to generate link templates: {e}")
+        user_responses = []
+        link_templates = {}  # Intentionally empty to keep list responses fast
 
         for user in users:
             resp = UserResponse.model_validate(user)
-            
-            # Generate subscription links
-            links = build_subscription_links(resp, preferred=preferred)
-            resp.subscription_url = links.get("primary") or resp.subscription_url
-            resp.subscription_urls = {k: v for k, v in links.items() if k != "primary"}
-            
-            resp.link_data = []
-            if resp.status == UserStatus.active and resp.proxies and link_templates:
-                try:
-                    from app.subscription.share import generate_v2ray_links
-                    from app.utils.credentials import UUID_PROTOCOLS, PASSWORD_PROTOCOLS, runtime_proxy_settings
-                    import re
-                    
-                    user_links = generate_v2ray_links(
-                        resp.proxies, resp.excluded_inbounds, extra_data=resp.model_dump(), reverse=False,
-                    )
-                    
-                    for protocol, templates in link_templates.items():
-                        for template in templates:
-                            # Find matching link for this template
-                            for link in user_links:
-                                protocol_match = re.match(r'^(\w+)://', link)
-                                if not protocol_match or protocol_match.group(1) != protocol:
-                                    continue
-                                
-                                # Try to match template with link by replacing placeholders
-                                test_link = template
-                                matched = False
-                                
-                                if protocol in ['vless', 'vmess']:
-                                    uuid_match = re.search(
-                                        r'([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})',
-                                        link,
-                                        re.IGNORECASE
-                                    )
-                                    if uuid_match:
-                                        test_link = template.replace('{UUID}', uuid_match.group(1))
-                                        # Check if template matches link (ignoring remark which may differ)
-                                        if test_link.split('#')[0] == link.split('#')[0]:
-                                            resp.link_data.append({
-                                                'uuid': uuid_match.group(1),
-                                                'protocol': protocol
-                                            })
-                                            matched = True
-                                            break
-                                elif protocol == 'trojan':
-                                    password_match = re.search(r'^trojan://([^@]+)@', link)
-                                    if password_match:
-                                        from urllib.parse import unquote, quote
-                                        password = unquote(password_match.group(1))
-                                        test_link = template.replace('{PASSWORD}', quote(password, safe=''))
-                                        if test_link.split('#')[0] == link.split('#')[0]:
-                                            resp.link_data.append({
-                                                'password': password,
-                                                'protocol': protocol
-                                            })
-                                            matched = True
-                                            break
-                                elif protocol == 'ss':
-                                    password_match = re.search(r'^ss://([^@]+)@', link)
-                                    if password_match:
-                                        test_link = template.replace('{PASSWORD_B64}', password_match.group(1))
-                                        if test_link.split('#')[0] == link.split('#')[0]:
-                                            resp.link_data.append({
-                                                'password_b64': password_match.group(1),
-                                                'protocol': protocol
-                                            })
-                                            matched = True
-                                            break
-                                
-                                if matched:
-                                    break
-                except Exception as e:
-                    logger.debug(f"Failed to generate link data for user {resp.username}: {e}")
-            
+            # Skip heavy subscription/link generation on bulk list to reduce latency
             resp.links = []
+            resp.subscription_url = ""
+            resp.subscription_urls = {}
+            resp.link_data = []
             resp.credentials = {}
-            
             user_responses.append(resp)
     finally:
         _skip_expensive_computations.reset(token)
@@ -775,7 +659,9 @@ def perform_users_bulk_action(
     return {"detail": detail, "count": affected}
 
 
-@router.get("/user/{username}/usage", response_model=UserUsagesResponse, responses={403: responses._403, 404: responses._404})
+@router.get(
+    "/user/{username}/usage", response_model=UserUsagesResponse, responses={403: responses._403, 404: responses._404}
+)
 def get_user_usage(
     dbuser: UserResponse = Depends(get_validated_user),
     start: str = "",
@@ -790,7 +676,9 @@ def get_user_usage(
     return {"usages": usages, "username": dbuser.username}
 
 
-@router.post("/user/{username}/active-next", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
+@router.post(
+    "/user/{username}/active-next", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
+)
 def active_next_plan(
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -806,7 +694,7 @@ def active_next_plan(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
-    if (dbuser is None or dbuser.next_plan is None):
+    if dbuser is None or dbuser.next_plan is None:
         raise HTTPException(
             status_code=404,
             detail="User doesn't have next plan",
@@ -817,7 +705,9 @@ def active_next_plan(
 
     user = UserResponse.model_validate(dbuser)
     bg.add_task(
-        report.user_data_reset_by_next, user=user, user_admin=dbuser.admin,
+        report.user_data_reset_by_next,
+        user=user,
+        user_admin=dbuser.admin,
     )
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset by next plan')
@@ -883,13 +773,12 @@ def delete_expired_users(
     expired_after, expired_before = validate_dates(expired_after, expired_before)
 
     from app.dependencies import get_expired_users_list
+
     expired_users = get_expired_users_list(db, admin, expired_after, expired_before)
     removed_users = [u.username for u in expired_users]
 
     if not removed_users:
-        raise HTTPException(
-            status_code=404, detail="No expired users found in the specified date range"
-        )
+        raise HTTPException(status_code=404, detail="No expired users found in the specified date range")
 
     admin.ensure_user_permission(UserPermission.delete)
     crud.remove_users(db, expired_users)
@@ -899,14 +788,8 @@ def delete_expired_users(
         bg.add_task(
             report.user_deleted,
             username=removed_user,
-            user_admin=next(
-                (u.admin for u in expired_users if u.username == removed_user), None
-            ),
+            user_admin=next((u.admin for u in expired_users if u.username == removed_user), None),
             by=admin,
         )
 
     return removed_users
-
-
-
-

@@ -130,9 +130,7 @@ def _service_to_detail(db: Session, service: Service) -> ServiceDetail:
         )
 
     user_count = (
-        db.query(func.count(User.id)).filter(User.service_id == service.id).scalar()
-        if service.id is not None
-        else 0
+        db.query(func.count(User.id)).filter(User.service_id == service.id).scalar() if service.id is not None else 0
     )
 
     detail = ServiceDetail(
@@ -195,16 +193,18 @@ def create_service(
     if not service:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Service not available")
     xray.hosts.update()
-    
+
     # Update Redis cache
     from config import REDIS_ENABLED
+
     if REDIS_ENABLED:
         try:
             from app.redis.cache import invalidate_service_host_map_cache
+
             invalidate_service_host_map_cache()
         except Exception:
             pass  # Don't fail if Redis is unavailable
-    
+
     return _service_to_detail(db, service)
 
 
@@ -241,10 +241,7 @@ def modify_service(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     allowed_changed = (
-        hosts_modified
-        and allowed_before is not None
-        and allowed_after is not None
-        and allowed_before != allowed_after
+        hosts_modified and allowed_before is not None and allowed_after is not None and allowed_before != allowed_after
     )
 
     if hosts_modified and allowed_changed and service.id is not None:
@@ -253,16 +250,18 @@ def modify_service(
     db.refresh(service)
     if hosts_modified:
         xray.hosts.update()
-        
+
         # Update Redis cache
         from config import REDIS_ENABLED
+
         if REDIS_ENABLED:
             try:
                 from app.redis.cache import invalidate_service_host_map_cache
+
                 invalidate_service_host_map_cache()
             except Exception:
                 pass  # Don't fail if Redis is unavailable
-    
+
     return _service_to_detail(db, service)
 
 
@@ -303,12 +302,14 @@ def delete_service(
     for dbuser in transferred_users:
         core_operations.update_user(dbuser=dbuser)
     xray.hosts.update()
-    
+
     # Update Redis cache
     from config import REDIS_ENABLED
+
     if REDIS_ENABLED:
         try:
             from app.redis.cache import invalidate_service_host_map_cache
+
             invalidate_service_host_map_cache()
         except Exception:
             pass  # Don't fail if Redis is unavailable
@@ -348,10 +349,7 @@ def get_service_usage_timeseries(
         granularity_value = "day"
 
     rows = crud.get_service_usage_timeseries(db, service, start_dt, end_dt, granularity_value)
-    points = [
-        ServiceUsagePoint(timestamp=row["timestamp"], used_traffic=int(row["used_traffic"] or 0))
-        for row in rows
-    ]
+    points = [ServiceUsagePoint(timestamp=row["timestamp"], used_traffic=int(row["used_traffic"] or 0)) for row in rows]
 
     return ServiceUsageTimeseries(
         service_id=service.id,
@@ -439,8 +437,7 @@ def get_service_admin_usage_timeseries(
         db, service, target_admin_id, start_dt, end_dt, granularity_value
     )
     points = [
-        ServiceUsagePoint(timestamp=row["timestamp"], used_traffic=int(row["used_traffic"] or 0))
-        for row in usage_rows
+        ServiceUsagePoint(timestamp=row["timestamp"], used_traffic=int(row["used_traffic"] or 0)) for row in usage_rows
     ]
 
     return ServiceAdminTimeseries(
@@ -530,9 +527,7 @@ def perform_service_users_action(
     detail = "Advanced action applied"
     try:
         if payload.action == AdvancedUserAction.extend_expire:
-            affected = crud.adjust_all_users_expire(
-                db, payload.days * 86400, admin=target_admin, service_id=service.id
-            )
+            affected = crud.adjust_all_users_expire(db, payload.days * 86400, admin=target_admin, service_id=service.id)
             detail = "Expiration dates extended"
         elif payload.action == AdvancedUserAction.reduce_expire:
             affected = crud.adjust_all_users_expire(
@@ -541,15 +536,11 @@ def perform_service_users_action(
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_limit(
-                db, delta, admin=target_admin, service_id=service.id
-            )
+            affected = crud.adjust_all_users_limit(db, delta, admin=target_admin, service_id=service.id)
             detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_limit(
-                db, -delta, admin=target_admin, service_id=service.id
-            )
+            affected = crud.adjust_all_users_limit(db, -delta, admin=target_admin, service_id=service.id)
             detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
             affected = crud.delete_users_by_status_age(
@@ -561,14 +552,10 @@ def perform_service_users_action(
             )
             detail = "Users removed by status age"
         elif payload.action == AdvancedUserAction.activate_users:
-            affected = crud.bulk_update_user_status(
-                db, UserStatus.active, admin=target_admin, service_id=service.id
-            )
+            affected = crud.bulk_update_user_status(db, UserStatus.active, admin=target_admin, service_id=service.id)
             detail = "Users activated"
         elif payload.action == AdvancedUserAction.disable_users:
-            affected = crud.bulk_update_user_status(
-                db, UserStatus.disabled, admin=target_admin, service_id=service.id
-            )
+            affected = crud.bulk_update_user_status(db, UserStatus.disabled, admin=target_admin, service_id=service.id)
             detail = "Users disabled"
         else:
             raise HTTPException(status_code=400, detail="Unsupported action")

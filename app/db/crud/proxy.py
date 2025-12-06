@@ -25,6 +25,7 @@ from app.utils.credentials import (
     UUID_PROTOCOLS,
 )
 from app.models.proxy import ProxyHost as ProxyHostModify, ProxySettings
+
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
 
@@ -48,6 +49,7 @@ def _extract_key_from_proxies(proxies: Dict[ProxyTypes, ProxySettings]) -> Optio
             candidate = derived
     return candidate
 
+
 def _apply_key_to_existing_proxies(dbuser: User, credential_key: str) -> None:
     normalized = normalize_key(credential_key)
     for proxy in dbuser.proxies:
@@ -58,7 +60,10 @@ def _apply_key_to_existing_proxies(dbuser: User, credential_key: str) -> None:
         # Preserve existing UUID if it exists in the database
         existing_uuid = proxy.settings.get("id") if isinstance(proxy.settings, dict) else None
         preserve_uuid = bool(existing_uuid and proxy_type in UUID_PROTOCOLS)
-        proxy.settings = serialize_proxy_settings(settings_obj, proxy_type, normalized, preserve_existing_uuid=preserve_uuid)
+        proxy.settings = serialize_proxy_settings(
+            settings_obj, proxy_type, normalized, preserve_existing_uuid=preserve_uuid
+        )
+
 
 def _apply_proxy_host_payload(
     db_host: ProxyHost,
@@ -91,9 +96,10 @@ def _apply_proxy_host_payload(
     db_host.use_sni_as_host = host_data.use_sni_as_host
     return db_host
 
+
 class ProxyInboundRepository:
     """Repository-like helper that encapsulates all host/inbound operations."""
-    
+
     def __init__(self, db: Session):
         self.db = db
 
@@ -122,9 +128,7 @@ class ProxyInboundRepository:
         return inbound.hosts
 
     def get_or_create(self, inbound_tag: str) -> ProxyInbound:
-        inbound = (
-            self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
-        )
+        inbound = self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
         if inbound:
             return inbound
         inbound = ProxyInbound(tag=inbound_tag)
@@ -133,9 +137,7 @@ class ProxyInboundRepository:
             self.db.commit()
         except IntegrityError:
             self.db.rollback()
-            inbound = (
-                self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
-            )
+            inbound = self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
             if inbound:
                 return inbound
             raise
@@ -144,9 +146,7 @@ class ProxyInboundRepository:
         return inbound
 
     def delete(self, inbound_tag: str) -> bool:
-        inbound = (
-            self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
-        )
+        inbound = self.db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
         if inbound is None:
             return False
 
@@ -154,14 +154,10 @@ class ProxyInboundRepository:
             raise ValueError("Inbound has hosts assigned. Remove hosts before deleting.")
 
         self.db.execute(
-            delete(excluded_inbounds_association).where(
-                excluded_inbounds_association.c.inbound_tag == inbound_tag
-            )
+            delete(excluded_inbounds_association).where(excluded_inbounds_association.c.inbound_tag == inbound_tag)
         )
         self.db.execute(
-            delete(template_inbounds_association).where(
-                template_inbounds_association.c.inbound_tag == inbound_tag
-            )
+            delete(template_inbounds_association).where(template_inbounds_association.c.inbound_tag == inbound_tag)
         )
 
         self.db.delete(inbound)
@@ -188,9 +184,7 @@ class ProxyInboundRepository:
             kept_ids = set()
 
         inbound = self.get_or_create(inbound_tag)
-        existing_by_id: Dict[int, ProxyHost] = {
-            host.id: host for host in inbound.hosts if host.id is not None
-        }
+        existing_by_id: Dict[int, ProxyHost] = {host.id: host for host in inbound.hosts if host.id is not None}
 
         affected_services: Dict[int, Service] = {}
         new_hosts: List[ProxyHost] = []
@@ -215,7 +209,7 @@ class ProxyInboundRepository:
 
         # Remove hosts that no longer exist
         removed_hosts = list(existing_by_id.values())
-        
+
         hosts_to_delete = []
         for h in removed_hosts:
             if h.id not in kept_ids:
@@ -274,17 +268,22 @@ class ProxyInboundRepository:
         self.db.flush()
         return list(affected_services.values())
 
+
 def add_default_host(db: Session, inbound: ProxyInbound):
     ProxyInboundRepository(db).add_default_host(inbound)
+
 
 def get_or_create_inbound(db: Session, inbound_tag: str) -> ProxyInbound:
     return ProxyInboundRepository(db).get_or_create(inbound_tag)
 
+
 def get_hosts(db: Session, inbound_tag: str) -> List[ProxyHost]:
     return ProxyInboundRepository(db).list_hosts(inbound_tag)
 
+
 def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[ProxyHost]:
     return ProxyInboundRepository(db).add_host(inbound_tag, host)
+
 
 def update_hosts(
     db: Session,
@@ -299,6 +298,7 @@ def update_hosts(
     users_to_refresh: Dict[int, User] = {}
     if affected_services:
         from .other import ServiceRepository
+
         repo = ServiceRepository(db)
         for service in affected_services:
             allowed = repo.get_allowed_inbounds(service)
@@ -310,24 +310,25 @@ def update_hosts(
     db.commit()
     return hosts, list(users_to_refresh.values())
 
+
 def delete_inbound(db: Session, inbound_tag: str) -> bool:
     return ProxyInboundRepository(db).delete(inbound_tag)
+
 
 def disable_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
     return ProxyInboundRepository(db).disable_hosts(inbound_tag)
 
+
 def remove_hosts_for_inbound(db: Session, inbound_tag: str) -> List[Service]:
     return ProxyInboundRepository(db).remove_all_hosts(inbound_tag)
+
 
 def _fetch_hosts_by_ids(db: Session, host_ids: Iterable[int]) -> Dict[int, ProxyHost]:
     if not host_ids:
         return {}
-    hosts = (
-        db.query(ProxyHost)
-        .filter(ProxyHost.id.in_(set(host_ids)))
-        .all()
-    )
+    hosts = db.query(ProxyHost).filter(ProxyHost.id.in_(set(host_ids))).all()
     return {host.id: host for host in hosts}
+
 
 def _detach_hosts_from_services(db: Session, hosts: Iterable[ProxyHost]) -> Dict[int, Service]:
     affected: Dict[int, Service] = {}
@@ -337,4 +338,3 @@ def _detach_hosts_from_services(db: Session, hosts: Iterable[ProxyHost]) -> Dict
                 affected[link.service.id] = link.service
             db.delete(link)
     return affected
-

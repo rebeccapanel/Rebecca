@@ -15,6 +15,7 @@ from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 def get_admin_secret_key():
     """Get admin secret key for authentication tokens."""
     from app.db import GetDB, get_admin_secret_key as get_admin_key
+
     with GetDB() as db:
         return get_admin_key(db)
 
@@ -23,6 +24,7 @@ def get_admin_secret_key():
 def get_subscription_secret_key():
     """Get subscription secret key for subscription tokens."""
     from app.db import GetDB, get_subscription_secret_key as get_sub_key
+
     with GetDB() as db:
         return get_sub_key(db)
 
@@ -58,7 +60,7 @@ def get_admin_payload(token: str) -> Union[dict, None]:
         elif role_value not in ("standard", "sudo", "full_access"):
             return
         try:
-            created_at = datetime.fromtimestamp(payload['iat'], timezone.utc)
+            created_at = datetime.fromtimestamp(payload["iat"], timezone.utc)
         except KeyError:
             created_at = None
 
@@ -68,14 +70,11 @@ def get_admin_payload(token: str) -> Union[dict, None]:
 
 
 def create_subscription_token(username: str) -> str:
-    data = username + ',' + str(ceil(time.time()))
-    data_b64_str = b64encode(data.encode('utf-8'), altchars=b'-_').decode('utf-8').rstrip('=')
+    data = username + "," + str(ceil(time.time()))
+    data_b64_str = b64encode(data.encode("utf-8"), altchars=b"-_").decode("utf-8").rstrip("=")
     data_b64_sign = b64encode(
-        sha256(
-            (data_b64_str+get_subscription_secret_key()).encode('utf-8')
-        ).digest(),
-        altchars=b'-_'
-    ).decode('utf-8')[:10]
+        sha256((data_b64_str + get_subscription_secret_key()).encode("utf-8")).digest(), altchars=b"-_"
+    ).decode("utf-8")[:10]
     data_final = data_b64_str + data_b64_sign
     return data_final
 
@@ -88,7 +87,7 @@ def get_subscription_payload(token: str) -> Union[dict, None]:
         if token.startswith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."):
             payload = jwt.decode(token, get_subscription_secret_key(), algorithms=["HS256"])
             if payload.get("access") == "subscription":
-                return {"username": payload['sub'], "created_at": datetime.fromtimestamp(payload['iat'], timezone.utc)}
+                return {"username": payload["sub"], "created_at": datetime.fromtimestamp(payload["iat"], timezone.utc)}
             else:
                 return
         else:
@@ -96,16 +95,19 @@ def get_subscription_payload(token: str) -> Union[dict, None]:
             u_signature = token[-10:]
             try:
                 u_token_dec = b64decode(
-                    (u_token.encode('utf-8') + b'=' * (-len(u_token.encode('utf-8')) % 4)),
-                    altchars=b'-_', validate=True)
-                u_token_dec_str = u_token_dec.decode('utf-8')
+                    (u_token.encode("utf-8") + b"=" * (-len(u_token.encode("utf-8")) % 4)),
+                    altchars=b"-_",
+                    validate=True,
+                )
+                u_token_dec_str = u_token_dec.decode("utf-8")
             except Exception:
                 return
-            u_token_resign = b64encode(sha256((u_token+get_subscription_secret_key()).encode('utf-8')
-                                              ).digest(), altchars=b'-_').decode('utf-8')[:10]
+            u_token_resign = b64encode(
+                sha256((u_token + get_subscription_secret_key()).encode("utf-8")).digest(), altchars=b"-_"
+            ).decode("utf-8")[:10]
             if u_signature == u_token_resign:
-                u_username = u_token_dec_str.split(',')[0]
-                u_created_at = int(u_token_dec_str.split(',')[1])
+                u_username = u_token_dec_str.split(",")[0]
+                u_created_at = int(u_token_dec_str.split(",")[1])
                 return {"username": u_username, "created_at": datetime.fromtimestamp(u_created_at, timezone.utc)}
             else:
                 return

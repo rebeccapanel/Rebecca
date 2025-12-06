@@ -224,6 +224,7 @@ def get_server_ips(admin: Admin = Depends(Admin.get_current)):
 def restart_core(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Restart the core and all connected nodes."""
     from app.utils.xray_config import restart_xray_and_invalidate_cache
+
     restart_xray_and_invalidate_cache()
     startup_config = xray.config.include_db_users()
 
@@ -429,9 +430,7 @@ def apply_geo_assets(
     files = payload.get("files") or []
 
     template_index_url = (
-        payload.get("template_index_url")
-        or payload.get("templateIndexUrl")
-        or GEO_TEMPLATES_INDEX_DEFAULT
+        payload.get("template_index_url") or payload.get("templateIndexUrl") or GEO_TEMPLATES_INDEX_DEFAULT
     ).strip()
     template_name = (payload.get("template_name") or payload.get("templateName") or "").strip()
     if not files and (mode == "template" or template_name):

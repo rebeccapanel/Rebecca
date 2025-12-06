@@ -25,7 +25,7 @@ def get_xray_config_cached(db: Session, force_refresh: bool = False) -> dict:
     """
     Return the current Xray config.
     Uses Redis cache if available, otherwise falls back to database.
-    
+
     Args:
         db: Database session
         force_refresh: If True, force refresh from DB even if cache exists
@@ -35,13 +35,14 @@ def get_xray_config_cached(db: Session, force_refresh: bool = False) -> dict:
         if cached_inbounds:
             # Reconstruct xray config from cached inbounds
             from app.reb_node.config import XRayConfig
+
             raw_config = crud.get_xray_config(db)
             xray_config = XRayConfig(raw_config, api_port=xray_state.config.api_port)
             # Update inbounds from cache
-            xray_config.inbounds_by_tag = cached_inbounds.get('inbounds_by_tag', {})
-            xray_config.inbounds_by_protocol = cached_inbounds.get('inbounds_by_protocol', {})
+            xray_config.inbounds_by_tag = cached_inbounds.get("inbounds_by_tag", {})
+            xray_config.inbounds_by_protocol = cached_inbounds.get("inbounds_by_protocol", {})
             return raw_config
-    
+
     return crud.get_xray_config(db)
 
 
@@ -59,7 +60,7 @@ def get_service_host_map_cached(service_id: Optional[int], force_refresh: bool =
     """
     Return host map for a given service_id.
     Uses Redis cache if available, otherwise falls back to in-memory cache.
-    
+
     Args:
         service_id: Service ID to get host map for
         force_refresh: If True, force refresh from DB even if cache exists
@@ -68,16 +69,16 @@ def get_service_host_map_cached(service_id: Optional[int], force_refresh: bool =
         cached_host_map = get_cached_service_host_map(service_id)
         if cached_host_map is not None:
             return cached_host_map
-    
+
     # Fallback to in-memory cache (which will rebuild if needed)
     # Force rebuild if force_refresh is True
     host_map = xray_state.get_service_host_map(service_id, force_rebuild=force_refresh)
-    
+
     # Cache in Redis for next time (async, don't block)
     if REDIS_ENABLED:
         try:
             cache_service_host_map(service_id, host_map)
         except Exception:
             pass  # Don't fail if caching fails
-    
+
     return host_map
