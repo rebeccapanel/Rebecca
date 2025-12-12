@@ -67,63 +67,116 @@ def sync_usage_updates_to_db() -> None:
         if not user_updates:
             return
 
-        with GetDB() as db:
-            users_usage = []
-            for user_id, update_info in user_updates.items():
-                if update_info["used_traffic_delta"] > 0:
-                    users_usage.append({"uid": user_id, "value": update_info["used_traffic_delta"]})
+        BATCH_SIZE = 20
+        user_ids_list = list(user_updates.keys())
 
-            if not users_usage:
-                return
+        user_ids_list.sort()
 
-            user_ids = [u["uid"] for u in users_usage]
-            current_users = db.query(User).filter(User.id.in_(user_ids)).all()
-            user_dict = {u.id: u for u in current_users}
+        total_synced = 0
+        for batch_start in range(0, len(user_ids_list), BATCH_SIZE):
+            batch_user_ids = user_ids_list[batch_start : batch_start + BATCH_SIZE]
+            batch_updates = {uid: user_updates[uid] for uid in batch_user_ids}
 
-            for usage in users_usage:
-                user_id = usage["uid"]
-                user = user_dict.get(user_id)
-                if user:
-                    user.used_traffic = (user.used_traffic or 0) + usage["value"]
-                    user.online_at = user_updates[user_id]["online_at"] or datetime.now(timezone.utc)
+            max_retries = 3
+            retry_count = 0
+            success = False
 
-            db.commit()
+            while retry_count < max_retries and not success:
+                try:
+                    with GetDB() as db:
+                        users_usage = []
+                        for user_id, update_info in batch_updates.items():
+                            if update_info["used_traffic_delta"] > 0:
+                                users_usage.append({"uid": user_id, "value": update_info["used_traffic_delta"]})
 
-            mapping_rows = db.query(User.id, User.admin_id, User.service_id).filter(User.id.in_(user_ids)).all()
-            user_to_admin_service: Dict[int, Tuple[Optional[int], Optional[int]]] = {
-                row[0]: (row[1], row[2]) for row in mapping_rows
-            }
+                        if not users_usage:
+                            success = True
+                            continue
 
-            admin_usage = defaultdict(int)
-            service_usage = defaultdict(int)
-            admin_service_usage = defaultdict(int)
+                        current_users = (
+                            db.query(User).with_for_update().filter(User.id.in_(batch_user_ids)).order_by(User.id).all()
+                        )
+                        user_dict = {u.id: u for u in current_users}
 
-            for usage in users_usage:
-                user_id = usage["uid"]
-                value = usage["value"]
-                admin_id, service_id = user_to_admin_service.get(user_id, (None, None))
-                if admin_id:
-                    admin_usage[admin_id] += value
-                if service_id:
-                    service_usage[service_id] += value
-                    if admin_id:
-                        admin_service_usage[(admin_id, service_id)] += value
+                        for usage in users_usage:
+                            user_id = usage["uid"]
+                            user = user_dict.get(user_id)
+                            if user:
+                                user.used_traffic = (user.used_traffic or 0) + usage["value"]
+                                user.online_at = batch_updates[user_id]["online_at"] or datetime.now(timezone.utc)
 
-            if admin_usage:
-                admin_ids = list(admin_usage.keys())
-                current_admins = db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
-                admin_dict = {a.id: a for a in current_admins}
+                        mapping_rows = (
+                            db.query(User.id, User.admin_id, User.service_id).filter(User.id.in_(batch_user_ids)).all()
+                        )
+                        user_to_admin_service: Dict[int, Tuple[Optional[int], Optional[int]]] = {
+                            row[0]: (row[1], row[2]) for row in mapping_rows
+                        }
 
-                for admin_id, value in admin_usage.items():
-                    admin = admin_dict.get(admin_id)
-                    if admin:
-                        admin.users_usage = (admin.users_usage or 0) + value
-                        admin.lifetime_usage = (admin.lifetime_usage or 0) + value
+                        admin_usage = defaultdict(int)
+                        service_usage = defaultdict(int)
+                        admin_service_usage = defaultdict(int)
 
-            # TODO: add service usage persistence when/if required
+                        for usage in users_usage:
+                            user_id = usage["uid"]
+                            value = usage["value"]
+                            admin_id, service_id = user_to_admin_service.get(user_id, (None, None))
+                            if admin_id:
+                                admin_usage[admin_id] += value
+                            if service_id:
+                                service_usage[service_id] += value
+                                if admin_id:
+                                    admin_service_usage[(admin_id, service_id)] += value
 
-            db.commit()
-            logger.info(f"Synced {len(users_usage)} user usage updates from Redis to database")
+                        if admin_usage:
+                            admin_ids = list(admin_usage.keys())
+                            current_admins = db.query(Admin).filter(Admin.id.in_(admin_ids)).order_by(Admin.id).all()
+                            admin_dict = {a.id: a for a in current_admins}
+
+                            for admin_id, value in admin_usage.items():
+                                admin = admin_dict.get(admin_id)
+                                if admin:
+                                    admin.users_usage = (admin.users_usage or 0) + value
+                                    admin.lifetime_usage = (admin.lifetime_usage or 0) + value
+
+                        # TODO: add service usage persistence when/if required
+
+                        db.commit()
+                        total_synced += len(users_usage)
+                        success = True
+
+                except Exception as e:
+                    from sqlalchemy.exc import OperationalError
+                    from pymysql.err import OperationalError as PyMySQLOperationalError
+
+                    is_deadlock = False
+                    if isinstance(e, OperationalError):
+                        orig_error = e.orig if hasattr(e, "orig") else None
+                        if orig_error:
+                            error_code = (
+                                getattr(orig_error, "args", [None])[0]
+                                if hasattr(orig_error, "args") and orig_error.args
+                                else None
+                            )
+                            if error_code == 1213:
+                                is_deadlock = True
+                    elif isinstance(e, PyMySQLOperationalError):
+                        if e.args[0] == 1213:
+                            is_deadlock = True
+
+                    if is_deadlock and retry_count < max_retries - 1:
+                        retry_count += 1
+                        import time
+
+                        time.sleep(0.1 * retry_count)
+                        logger.warning(
+                            f"Deadlock detected in sync_usage_updates_to_db, retrying ({retry_count}/{max_retries})..."
+                        )
+                        continue
+                    else:
+                        raise
+
+        if total_synced > 0:
+            logger.info(f"Synced {total_synced} user usage updates from Redis to database")
 
             from app.redis.pending_backup import clear_user_usage_backup
 

@@ -150,6 +150,42 @@ def add_user(
 
         try:
             new_user = UserCreate.model_validate(user_payload)
+            if new_user.data_limit is not None:
+                max_limit = admin.permissions.users.max_data_limit_per_user
+                if max_limit is not None:
+                    if new_user.data_limit == 0 and not admin.permissions.users.allows(
+                        UserPermission.allow_unlimited_data
+                    ):
+                        max_gb = max_limit / (1024**3)
+                        raise HTTPException(
+                            status_code=400, detail=f"Unlimited data is not allowed. Maximum allowed: {max_gb:.2f} GB"
+                        )
+                    if new_user.data_limit > 0 and new_user.data_limit > max_limit:
+                        original_gb = new_user.data_limit / (1024**3)
+                        max_gb = max_limit / (1024**3)
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                        )
+            if new_user.next_plan and new_user.next_plan.data_limit is not None:
+                max_limit = admin.permissions.users.max_data_limit_per_user
+                if max_limit is not None:
+                    if new_user.next_plan.data_limit == 0 and not admin.permissions.users.allows(
+                        UserPermission.allow_unlimited_data
+                    ):
+                        max_gb = max_limit / (1024**3)
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Unlimited data is not allowed for next plan. Maximum allowed: {max_gb:.2f} GB",
+                        )
+                    if new_user.next_plan.data_limit > 0 and new_user.next_plan.data_limit > max_limit:
+                        original_gb = new_user.next_plan.data_limit / (1024**3)
+                        max_gb = max_limit / (1024**3)
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Next plan data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                        )
+
             admin.ensure_user_constraints(
                 status_value=new_user.status.value if new_user.status else None,
                 data_limit=new_user.data_limit,
@@ -194,6 +230,40 @@ def add_user(
             new_user = payload
         else:
             new_user = UserCreate.model_validate(payload_dict)
+
+        if new_user.data_limit is not None:
+            max_limit = admin.permissions.users.max_data_limit_per_user
+            if max_limit is not None:
+                if new_user.data_limit == 0 and not admin.permissions.users.allows(UserPermission.allow_unlimited_data):
+                    max_gb = max_limit / (1024**3)
+                    raise HTTPException(
+                        status_code=400, detail=f"Unlimited data is not allowed. Maximum allowed: {max_gb:.2f} GB"
+                    )
+                if new_user.data_limit > 0 and new_user.data_limit > max_limit:
+                    original_gb = new_user.data_limit / (1024**3)
+                    max_gb = max_limit / (1024**3)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                    )
+        if new_user.next_plan and new_user.next_plan.data_limit is not None:
+            max_limit = admin.permissions.users.max_data_limit_per_user
+            if max_limit is not None:
+                if new_user.next_plan.data_limit == 0 and not admin.permissions.users.allows(
+                    UserPermission.allow_unlimited_data
+                ):
+                    max_gb = max_limit / (1024**3)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unlimited data is not allowed for next plan. Maximum allowed: {max_gb:.2f} GB",
+                    )
+                if new_user.next_plan.data_limit > 0 and new_user.next_plan.data_limit > max_limit:
+                    original_gb = new_user.next_plan.data_limit / (1024**3)
+                    max_gb = max_limit / (1024**3)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Next plan data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB",
+                    )
 
         admin.ensure_user_constraints(
             status_value=new_user.status.value if new_user.status else None,
@@ -274,6 +344,42 @@ def modify_user(
 
     Note: Fields set to `null` or omitted will not be modified.
     """
+
+    if "data_limit" in modified_user.model_fields_set and modified_user.data_limit is not None:
+        max_limit = admin.permissions.users.max_data_limit_per_user
+        if max_limit is not None:
+            if modified_user.data_limit == 0 and not admin.permissions.users.allows(
+                UserPermission.allow_unlimited_data
+            ):
+                max_gb = max_limit / (1024**3)
+                raise HTTPException(
+                    status_code=400, detail=f"Unlimited data is not allowed. Maximum allowed: {max_gb:.2f} GB"
+                )
+                if modified_user.data_limit > 0 and modified_user.data_limit > max_limit:
+                    original_gb = modified_user.data_limit / (1024**3)
+                    max_gb = max_limit / (1024**3)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                    )
+    if modified_user.next_plan and modified_user.next_plan.data_limit is not None:
+        max_limit = admin.permissions.users.max_data_limit_per_user
+        if max_limit is not None:
+            if modified_user.next_plan.data_limit == 0 and not admin.permissions.users.allows(
+                UserPermission.allow_unlimited_data
+            ):
+                max_gb = max_limit / (1024**3)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unlimited data is not allowed for next plan. Maximum allowed: {max_gb:.2f} GB",
+                )
+            if modified_user.next_plan.data_limit > 0 and modified_user.next_plan.data_limit > max_limit:
+                original_gb = modified_user.next_plan.data_limit / (1024**3)
+                max_gb = max_limit / (1024**3)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Next plan data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                )
 
     admin.ensure_user_constraints(
         status_value=modified_user.status.value if modified_user.status else None,

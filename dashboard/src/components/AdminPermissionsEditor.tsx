@@ -150,6 +150,13 @@ export const AdminPermissionsEditor = ({
 			...value,
 			[section]: updatedSection,
 		};
+		
+		// If allow_unlimited_data is enabled, clear max_data_limit_per_user
+		if (section === "users" && key === UserPermissionToggle.AllowUnlimitedData && next) {
+			updated.users.max_data_limit_per_user = null;
+			onMaxDataLimitChange?.("");
+		}
+		
 		onChange(updated);
 	};
 
@@ -203,10 +210,10 @@ export const AdminPermissionsEditor = ({
 				</FormLabel>
 				<Tooltip
 					label={t(
-						"admins.permissions.enableUnlimitedFirst",
-						"Enable unlimited data first to set this value.",
+						"admins.permissions.disableUnlimitedFirst",
+						"Disable unlimited data to set a maximum limit.",
 					)}
-					isDisabled={Boolean(value.users.allow_unlimited_data)}
+					isDisabled={!value.users.allow_unlimited_data}
 					hasArrow
 					openDelay={200}
 					placement="top"
@@ -223,7 +230,7 @@ export const AdminPermissionsEditor = ({
 						)}
 						value={maxDataLimitValue}
 						onChange={handleMaxDataLimitChange}
-						isDisabled={!value.users.allow_unlimited_data || isReadOnly}
+						isDisabled={value.users.allow_unlimited_data || isReadOnly}
 					/>
 				</Tooltip>
 				{maxDataLimitError ? (
@@ -232,12 +239,12 @@ export const AdminPermissionsEditor = ({
 					<FormHelperText>
 						{value.users.allow_unlimited_data
 							? t(
-									"admins.permissions.maxDataDescription",
-									"Applies when this admin creates or edits users.",
+									"admins.permissions.unlimitedEnabledHint",
+									"Disable unlimited data to set a maximum limit.",
 								)
 							: t(
-									"admins.permissions.limitDisabledHint",
-									"Unlimited data must be allowed before setting a cap.",
+									"admins.permissions.maxDataDescription",
+									"Applies when this admin creates or edits users.",
 								)}
 					</FormHelperText>
 				)}

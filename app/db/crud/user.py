@@ -705,7 +705,7 @@ def _ensure_active_user_capacity(
     )
     remaining_slots = (admin.users_limit or 0) - active_count
     if remaining_slots < required_slots:
-        raise UsersLimitReachedError(limit=admin.users_limit)
+        raise UsersLimitReachedError(limit=admin.users_limit, current_active=active_count)
 
 
 def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Optional[Service] = None) -> User:
@@ -726,7 +726,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
 
     status_value = _status_to_str(user.status) or UserStatus.active.value
     resolved_status = UserStatus(status_value)
-    if resolved_status == UserStatus.active and admin:
+    if admin:
         _ensure_active_user_capacity(db, admin, required_slots=1)
 
     excluded_inbounds_tags = user.excluded_inbounds

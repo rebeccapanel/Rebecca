@@ -402,6 +402,27 @@ class Admin(BaseModel):
             detail=f"You're not allowed to {readable}.",
         )
 
+    def normalize_data_limit(self, data_limit: Optional[int]) -> Optional[int]:
+        if self.has_full_access:
+            return data_limit
+
+        perms = self.permissions.users
+
+        if data_limit is None:
+            return None
+
+        if data_limit == 0:
+            if not perms.allows(UserPermission.allow_unlimited_data):
+                if perms.max_data_limit_per_user is not None:
+                    return perms.max_data_limit_per_user
+                return None
+            return 0
+
+        if perms.max_data_limit_per_user is not None and data_limit > perms.max_data_limit_per_user:
+            return perms.max_data_limit_per_user
+
+        return data_limit
+
     def ensure_user_constraints(
         self,
         *,
@@ -418,21 +439,6 @@ class Admin(BaseModel):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to create or move users to on-hold.",
             )
-        if data_limit is not None:
-            if data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Unlimited data users are not allowed for your role.",
-                )
-            if (
-                perms.max_data_limit_per_user is not None
-                and data_limit > 0
-                and data_limit > perms.max_data_limit_per_user
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Requested data limit exceeds the configured maximum for this admin.",
-                )
         if expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -443,12 +449,6 @@ class Admin(BaseModel):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You are not allowed to configure next plans.",
-                )
-            next_data_limit = next_plan.get("data_limit")
-            if next_data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Next plan with unlimited data is not allowed for your role.",
                 )
             next_expire = next_plan.get("expire")
             if next_expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):

@@ -171,6 +171,12 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
 
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
     """Creates a new admin in the database."""
+    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
+    if admin.permissions and admin.permissions.users:
+        if admin.permissions.users.allow_unlimited_data and admin.permissions.users.max_data_limit_per_user is not None:
+            raise ValueError(
+                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+            )
     normalized_username = admin.username.lower()
     existing_admin = (
         db.query(Admin)
@@ -191,6 +197,16 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         if role == AdminRole.full_access
         else (admin.permissions.model_dump() if admin.permissions else None)
     )
+
+    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
+    if permissions_payload and permissions_payload.get("users"):
+        if (
+            permissions_payload["users"].get("allow_unlimited_data")
+            and permissions_payload["users"].get("max_data_limit_per_user") is not None
+        ):
+            raise ValueError(
+                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+            )
 
     dbadmin = Admin(
         username=admin.username,
@@ -216,6 +232,14 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
+        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
+        if (
+            modified_admin.permissions.users.allow_unlimited_data
+            and modified_admin.permissions.users.max_data_limit_per_user is not None
+        ):
+            raise ValueError(
+                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+            )
         dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
@@ -232,7 +256,7 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
             if active_count > new_limit:
-                raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
+                raise UsersLimitReachedError(limit=new_limit, current_active=active_count, is_admin_modification=True)
         dbadmin.users_limit = new_limit
 
     if data_limit_modified:
@@ -252,6 +276,14 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
+        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
+        if (
+            modified_admin.permissions.users.allow_unlimited_data
+            and modified_admin.permissions.users.max_data_limit_per_user is not None
+        ):
+            raise ValueError(
+                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+            )
         dbadmin.permissions = modified_admin.permissions.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
@@ -268,7 +300,7 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         if new_limit is not None and new_limit > 0:
             active_count = _get_active_users_count(db, dbadmin)
             if active_count > new_limit:
-                raise UsersLimitReachedError(limit=new_limit, current_active=active_count)
+                raise UsersLimitReachedError(limit=new_limit, current_active=active_count, is_admin_modification=True)
         dbadmin.users_limit = new_limit
 
     if data_limit_modified:
