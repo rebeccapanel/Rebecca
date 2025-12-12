@@ -158,7 +158,7 @@ def _filter_users_raw(
             # Standard admin: only show users belonging to this admin
             if u.get("admin_id") != dbadmin.id:
                 return False
-        elif owner_set:
+        elif owner_set is not None and len(owner_set) > 0:
             # For sudo/full_access admins, filter by owner usernames if specified
             admin_username = (u.get("admin_username") or "").lower()
             if admin_username not in owner_set:

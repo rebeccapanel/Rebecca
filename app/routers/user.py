@@ -598,7 +598,11 @@ def get_users(
             except KeyError:
                 raise HTTPException(status_code=400, detail=f'"{opt}" is not a valid sort option')
 
-    owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username]
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        owners = owner if owner and len(owner) > 0 else None
+    else:
+        owners = [admin.username]
+
     dbadmin = None
     users_limit = None
     active_total = None
