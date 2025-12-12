@@ -104,7 +104,7 @@ class SectionPermissionSettings(BaseModel):
     usage: bool = False
     admins: bool = False
     services: bool = False
-    hosts: bool = False
+    hosts: bool = True
     nodes: bool = False
     integrations: bool = False
     xray: bool = False

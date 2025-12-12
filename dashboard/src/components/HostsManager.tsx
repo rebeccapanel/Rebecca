@@ -1237,7 +1237,8 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
-	const [includeDisabled, setIncludeDisabled] = useState(false);
+	// Show disabled hosts by default so the list isn't empty when everything is disabled.
+	const [includeDisabled, setIncludeDisabled] = useState(true);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
@@ -1321,20 +1322,20 @@ export const HostsManager: FC = () => {
 
 	const activeHosts = useMemo(
 		() =>
-			hostItemsRef.current
+			_hostItemsState
 				.filter((host) => !host.data.is_disabled)
 				.sort(
 					(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
 				),
-		[],
+		[_hostItemsState],
 	);
 
 	const allHosts = useMemo(
 		() =>
-			[...hostItemsRef.current].sort(
+			[..._hostItemsState].sort(
 				(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
 			),
-		[],
+		[_hostItemsState],
 	);
 
 	const baseFilteredHosts = useMemo(

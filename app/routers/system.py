@@ -703,9 +703,18 @@ def delete_inbound(
     return {"detail": "Inbound removed"}
 
 
+def _ensure_hosts_permission(admin: Admin) -> None:
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        return
+    if getattr(admin.permissions.sections, "hosts", False):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
+
+
 @router.get("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
-def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
+def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.require_active)):
     """Get a list of proxy hosts grouped by inbound tag."""
+    _ensure_hosts_permission(admin)
     from app.services.data_access import get_inbounds_by_tag_cached
     
     inbound_map = get_inbounds_by_tag_cached(db)
@@ -731,9 +740,10 @@ def modify_hosts(
     modified_hosts: Dict[str, List[ProxyHost]],
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Modify proxy hosts and update the configuration."""
+    _ensure_hosts_permission(admin)
     for inbound_tag in modified_hosts:
         if inbound_tag not in xray.config.inbounds_by_tag:
             raise HTTPException(status_code=400, detail=f"Inbound {inbound_tag} doesn't exist")
