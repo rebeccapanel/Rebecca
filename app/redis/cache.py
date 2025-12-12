@@ -131,9 +131,7 @@ def _serialize_user(user: User) -> Dict[str, Any]:
         "admin_id": user.admin_id,
         "admin_username": user.admin.username if getattr(user, "admin", None) else None,
         "service_id": user.service_id,
-        "service_name": (
-            user.service.name if getattr(user, "service", None) else None
-        ),
+        "service_name": (user.service.name if getattr(user, "service", None) else None),
     }
 
     # Add proxies

@@ -10,8 +10,8 @@ from types import SimpleNamespace
 from typing import List, Optional, Union
 
 
-from app.db import crud, Session
-from app.db.models import User
+from app.db import crud, Session, GetDB
+from app.db.models import User, Admin
 from app.models.user import UserListItem, UserResponse, UserStatus, UsersResponse, UserCreate, UserModify
 from app.redis.repositories import user_cache
 from app.redis.cache import get_user_pending_usage_state
@@ -153,6 +153,7 @@ def _filter_users_raw(
             status_candidates = {s.value if hasattr(s, "value") else s for s in status_candidates}
 
     def _match(u: dict) -> bool:
+        # Early returns for fast filters first
         if dbadmin:
             # Standard admin: only show users belonging to this admin
             if u.get("admin_id") != dbadmin.id:
@@ -162,71 +163,85 @@ def _filter_users_raw(
             admin_username = (u.get("admin_username") or "").lower()
             if admin_username not in owner_set:
                 return False
+
         if username_set:
             if (u.get("username") or "").lower() not in username_set:
                 return False
+
         if status_target is not None:
             if u.get("status") != status_target:
                 return False
+
         if service_id is not None and u.get("service_id") != service_id:
             return False
+
         if search_lower:
-            hay = " ".join(filter(None, [u.get("username", ""), u.get("note", "")])).lower()
-            if search_lower not in hay:
+            username = (u.get("username") or "").lower()
+            note = (u.get("note") or "").lower()
+            if search_lower not in username and (not note or search_lower not in note):
                 return False
 
         if normalized_filters:
-            online_at = None
-            if online_threshold or offline_threshold:
-                online_at_raw = u.get("online_at")
-                try:
-                    online_at = (
-                        datetime.fromisoformat(online_at_raw.replace("Z", "+00:00"))
-                        if isinstance(online_at_raw, str)
-                        else online_at_raw
-                    )
-                except Exception:
-                    online_at = None
+            # Fast status checks first
+            user_status = u.get("status")
+            if status_candidates and user_status not in status_candidates:
+                return False
 
-            if online_threshold is not None:
-                if not online_at or online_at < online_threshold:
-                    return False
-
-            if offline_threshold is not None:
-                if online_at and online_at >= offline_threshold:
-                    return False
-
-            if "finished" in normalized_filters and u.get("status") not in (
+            if "finished" in normalized_filters and user_status not in (
                 UserStatus.limited.value if hasattr(UserStatus, "limited") else UserStatus.limited,
                 UserStatus.expired.value if hasattr(UserStatus, "expired") else UserStatus.expired,
             ):
                 return False
 
-            if "limit" in normalized_filters and not (u.get("data_limit") and u.get("data_limit") > 0):
+            # Fast data_limit checks
+            data_limit = u.get("data_limit")
+            if "limit" in normalized_filters and not (data_limit and data_limit > 0):
+                return False
+            if "unlimited" in normalized_filters and (data_limit and data_limit > 0):
                 return False
 
-            if "unlimited" in normalized_filters and (u.get("data_limit") and u.get("data_limit") > 0):
-                return False
+            # Only parse datetime if needed (expensive operation)
+            if online_threshold is not None or offline_threshold is not None:
+                online_at = None
+                online_at_raw = u.get("online_at")
+                if online_at_raw:
+                    try:
+                        if isinstance(online_at_raw, str):
+                            # Optimize: avoid replace if not needed
+                            if "Z" in online_at_raw:
+                                online_at_raw = online_at_raw.replace("Z", "+00:00")
+                            online_at = datetime.fromisoformat(online_at_raw)
+                        else:
+                            online_at = online_at_raw
+                    except Exception:
+                        online_at = None
+
+                if online_threshold is not None:
+                    if not online_at or online_at < online_threshold:
+                        return False
+
+                if offline_threshold is not None:
+                    if online_at and online_at >= offline_threshold:
+                        return False
 
             if update_threshold is not None:
                 sub_updated_at = u.get("sub_updated_at")
-                try:
-                    sub_dt = (
-                        datetime.fromisoformat(sub_updated_at.replace("Z", "+00:00"))
-                        if isinstance(sub_updated_at, str)
-                        else sub_updated_at
-                    )
-                except Exception:
-                    sub_dt = None
-                if sub_dt and sub_dt >= update_threshold:
-                    return False
+                if sub_updated_at:
+                    try:
+                        if isinstance(sub_updated_at, str):
+                            if "Z" in sub_updated_at:
+                                sub_updated_at = sub_updated_at.replace("Z", "+00:00")
+                            sub_dt = datetime.fromisoformat(sub_updated_at)
+                        else:
+                            sub_dt = sub_updated_at
+                        if sub_dt and sub_dt >= update_threshold:
+                            return False
+                    except Exception:
+                        pass
 
             if "sub_never_updated" in normalized_filters and u.get("sub_updated_at"):
                 return False
 
-            if status_candidates:
-                if u.get("status") not in status_candidates:
-                    return False
         return True
 
     return [u for u in users if _match(u)]
@@ -266,6 +281,17 @@ def get_users_list(
     users_limit: Optional[int],
     active_total: Optional[int],
 ) -> UsersResponse:
+    db_closed = False
+
+    def _release_db_connection():
+        nonlocal db_closed
+        if not db_closed:
+            try:
+                db.close()
+            except Exception:
+                pass
+            db_closed = True
+
     # Redis-first path - always use Redis when available
     from app.redis.client import get_redis
     from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
@@ -306,6 +332,9 @@ def get_users_list(
                     raise RuntimeError("User cache empty and warmup failed")
 
             if all_users:
+                # We won't need the request-scoped DB connection anymore on the Redis path;
+                # release it early so long-running filters don't hold a pool slot.
+                _release_db_connection()
                 filter_start = time.perf_counter()
                 logger.debug(
                     f"Filtering {len(all_users)} users with filters: dbadmin={dbadmin.id if dbadmin else None}, owners={owners}, status={status}, service_id={service_id}, advanced_filters={advanced_filters}"
@@ -362,32 +391,41 @@ def get_users_list(
         )
 
     # DB fallback path (only when Redis is disabled or unavailable)
-    users, count = crud.get_users(
-        db=db,
-        offset=offset,
-        limit=limit,
-        search=search,
-        usernames=username,
-        status=status,
-        sort=sort,
-        advanced_filters=advanced_filters,
-        service_id=service_id,
-        admin=dbadmin,
-        admins=owners,
-        return_with_count=True,
-    )
-    for user in users:
-        _apply_pending_usage_to_model(user)
-    items = [_map_user_to_list_item(u) for u in users]
-    if active_total is None and dbadmin:
-        active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)
-    return UsersResponse(
-        users=items,
-        link_templates={},
-        total=count,
-        active_total=active_total,
-        users_limit=users_limit,
-    )
+    _release_db_connection()
+    with GetDB() as db_fallback:
+        dbadmin_in_use = dbadmin
+        if dbadmin and getattr(dbadmin, "id", None) is not None:
+            try:
+                dbadmin_in_use = db_fallback.query(Admin).get(dbadmin.id)
+            except Exception:
+                dbadmin_in_use = dbadmin
+
+        users, count = crud.get_users(
+            db=db_fallback,
+            offset=offset,
+            limit=limit,
+            search=search,
+            usernames=username,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            admin=dbadmin_in_use,
+            admins=owners,
+            return_with_count=True,
+        )
+        for user in users:
+            _apply_pending_usage_to_model(user)
+        items = [_map_user_to_list_item(u) for u in users]
+        if active_total is None and dbadmin_in_use:
+            active_total = crud.get_users_count(db_fallback, status=UserStatus.active, admin=dbadmin_in_use)
+        return UsersResponse(
+            users=items,
+            link_templates={},
+            total=count,
+            active_total=active_total,
+            users_limit=users_limit,
+        )
 
 
 def get_user_detail(username: str, db: Session) -> Optional[UserResponse]:

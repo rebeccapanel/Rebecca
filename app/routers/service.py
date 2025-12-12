@@ -171,8 +171,7 @@ def get_services(
     )
     user_counts = data.get("user_counts", {})
     services = [
-        _service_to_summary(service, db, user_count=int(user_counts.get(service.id, 0)))
-        for service in data["services"]
+        _service_to_summary(service, db, user_count=int(user_counts.get(service.id, 0))) for service in data["services"]
     ]
     return ServiceListResponse(services=services, total=data["total"])
 
@@ -209,6 +208,7 @@ def create_service(
             rebuild_service_hosts_cache()
             # Re-cache all service host maps
             from app.reb_node import state as xray_state
+
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
                 if host_map:
@@ -280,6 +280,7 @@ def modify_service(
                 rebuild_service_hosts_cache()
                 # Re-cache all service host maps
                 from app.reb_node import state as xray_state
+
                 for service_id in xray_state.service_hosts_cache.keys():
                     host_map = xray_state.service_hosts_cache.get(service_id)
                     if host_map:
@@ -343,6 +344,7 @@ def delete_service(
             rebuild_service_hosts_cache()
             # Re-cache all service host maps
             from app.reb_node import state as xray_state
+
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
                 if host_map:

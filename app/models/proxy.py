@@ -176,7 +176,7 @@ class ProxyHost(BaseModel):
     random_user_agent: Union[bool, None] = None
     use_sni_as_host: Union[bool, None] = None
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-    
+
     @field_validator("is_disabled", mode="before")
     @classmethod
     def normalize_is_disabled(cls, v):

@@ -259,7 +259,7 @@ def process_inbounds_and_tags(
 
     from app.services.data_access import get_inbounds_by_tag_cached
     from config import REDIS_ENABLED
-    
+
     inbounds_by_tag = {}
     if REDIS_ENABLED:
         try:
@@ -267,7 +267,7 @@ def process_inbounds_and_tags(
                 inbounds_by_tag = get_inbounds_by_tag_cached(db)
         except Exception:
             pass
-    
+
     if not inbounds_by_tag:
         xray_config = None
         try:

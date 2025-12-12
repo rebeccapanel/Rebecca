@@ -12,7 +12,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func
 
 from app import __version__
@@ -688,7 +688,7 @@ def delete_inbound(
             from app.reb_node.state import rebuild_service_hosts_cache
             from app.redis.cache import cache_service_host_map
             from app.reb_node import state as xray_state
-            
+
             rebuild_service_hosts_cache()
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
@@ -716,11 +716,11 @@ def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.requir
     """Get a list of proxy hosts grouped by inbound tag."""
     _ensure_hosts_permission(admin)
     from app.services.data_access import get_inbounds_by_tag_cached
-    
+
     inbound_map = get_inbounds_by_tag_cached(db)
     if not inbound_map:
         inbound_map = xray.config.inbounds_by_tag
-    
+
     hosts_dict = {}
     for tag in inbound_map:
         try:
@@ -728,10 +728,11 @@ def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.requir
             hosts_dict[tag] = [ProxyHost.model_validate(host) for host in db_hosts]
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to get hosts for tag {tag}: {e}", exc_info=True)
             hosts_dict[tag] = []
-    
+
     return hosts_dict
 
 
@@ -777,12 +778,13 @@ def modify_hosts(
             invalidate_inbounds_cache()
             rebuild_service_hosts_cache()
             from app.reb_node import state as xray_state
+
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
                 if host_map:
                     cache_service_host_map(service_id, host_map)
         except Exception:
-            pass 
+            pass
 
     for user in users_to_refresh.values():
         bg.add_task(xray.operations.update_user, dbuser=user)
