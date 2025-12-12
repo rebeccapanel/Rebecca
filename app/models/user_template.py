@@ -6,10 +6,8 @@ from app.models.proxy import ProxyTypes
 
 
 class UserTemplate(BaseModel):
-    name: Optional[str] = Field(None, nullable=True)
-    data_limit: Optional[int] = Field(
-        ge=0, default=None, description="data_limit can be 0 or greater"
-    )
+    name: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    data_limit: Optional[int] = Field(ge=0, default=None, description="data_limit can be 0 or greater")
     expire_duration: Optional[int] = Field(
         ge=0, default=None, description="expire_duration can be 0 or greater in seconds"
     )
@@ -20,29 +18,33 @@ class UserTemplate(BaseModel):
 
 
 class UserTemplateCreate(UserTemplate):
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "name": "my template 1",
-            "username_prefix": None,
-            "username_suffix": None,
-            "inbounds": {"vmess": ["VMESS_INBOUND"], "vless": ["VLESS_INBOUND"]},
-            "data_limit": 0,
-            "expire_duration": 0,
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "my template 1",
+                "username_prefix": None,
+                "username_suffix": None,
+                "inbounds": {"vmess": ["VMESS_INBOUND"], "vless": ["VLESS_INBOUND"]},
+                "data_limit": 0,
+                "expire_duration": 0,
+            }
         }
-    })
+    )
 
 
 class UserTemplateModify(UserTemplate):
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "name": "my template 1",
-            "username_prefix": None,
-            "username_suffix": None,
-            "inbounds": {"vmess": ["VMESS_INBOUND"], "vless": ["VLESS_INBOUND"]},
-            "data_limit": 0,
-            "expire_duration": 0,
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "my template 1",
+                "username_prefix": None,
+                "username_suffix": None,
+                "inbounds": {"vmess": ["VMESS_INBOUND"], "vless": ["VLESS_INBOUND"]},
+                "data_limit": 0,
+                "expire_duration": 0,
+            }
         }
-    })
+    )
 
 
 class UserTemplateResponse(UserTemplate):
@@ -52,6 +54,7 @@ class UserTemplateResponse(UserTemplate):
     @classmethod
     def validate_inbounds(cls, v):
         from app.runtime import xray
+
         final = {}
         inbound_tags = [i.tag for i in v]
         for protocol, inbounds in xray.config.inbounds_by_protocol.items():
@@ -62,4 +65,5 @@ class UserTemplateResponse(UserTemplate):
                     else:
                         final[protocol] = [inbound["tag"]]
         return final
+
     model_config = ConfigDict(from_attributes=True)

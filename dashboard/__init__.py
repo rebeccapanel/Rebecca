@@ -36,24 +36,26 @@ def run_dev():
 
 
 def run_build():
-    if not build_dir.is_dir():
-        build()
+    if build_dir.is_dir() and (build_dir / 'index.html').exists():
+        app.mount(
+            DASHBOARD_PATH,
+            StaticFiles(directory=build_dir, html=True),
+            name="dashboard"
+        )
+        if statics_dir.is_dir():
+            app.mount(
+                '/statics/',
+                StaticFiles(directory=statics_dir, html=True),
+                name="statics"
+            )
 
-    app.mount(
-        DASHBOARD_PATH,
-        StaticFiles(directory=build_dir, html=True),
-        name="dashboard"
-    )
-    app.mount(
-        '/statics/',
-        StaticFiles(directory=statics_dir, html=True),
-        name="statics"
-    )
 
-
-@app.on_event("startup")
 def startup():
     if DEBUG:
         run_dev()
     else:
         run_build()
+
+
+if app is not None:
+    app.add_event_handler("startup", startup)

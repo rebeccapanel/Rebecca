@@ -1,0 +1,241 @@
+name: Telegram Notify on CI / PR / Release
+
+on:
+  # Trigger when Build-dev or Build workflows complete (dev or release)
+  workflow_run:
+    workflows:
+      - Build-dev
+      - Build
+    types:
+      - completed
+
+  # Still send notifications for PR events
+  pull_request_target:
+    types: [opened, closed]
+
+  # Also send notifications for Release events
+  release:
+    types:
+      - published
+      - prereleased
+
+jobs:
+  notify-telegram:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Telegram Notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TARGETS: ${{ vars.TELEGRAM_TARGETS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Helper for HTML escaping (Telegram-safe)
+          html_escape() {
+            echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'"'"'/\&#39;/g'
+          }
+
+          LOG_BUFFER=""
+          log() {
+            LOG_BUFFER+="$1"$'\n'
+          }
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # ===================== CI SUMMARY AFTER BUILD =====================
+            WF_NAME="${{ github.event.workflow_run.name }}"
+            BRANCH_RAW="${{ github.event.workflow_run.head_branch }}"
+            BRANCH=$(html_escape "$BRANCH_RAW")
+            ACTOR=$(html_escape "${{ github.event.workflow_run.actor.login }}")
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            SHORT_SHA="${SHA:0:7}"
+            RUN_URL="${{ github.event.workflow_run.html_url }}"
+            ESC_RUN_URL=$(html_escape "$RUN_URL")
+
+            WF_CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+            case "$WF_CONCLUSION" in
+              success) ICON="✅"; LABEL="success";;
+              failure) ICON="❌"; LABEL="failed";;
+              cancelled) ICON="⏹"; LABEL="cancelled";;
+              *) ICON="⏳"; LABEL="$WF_CONCLUSION";;
+            esac
+
+            # Different text for dev vs release build
+            if [[ "$WF_NAME" == "Build-dev" ]]; then
+              HEADER="$ICON <b>dev build pipeline completed</b>"
+              CONTEXT_LINE="🌿 Branch: <code>$BRANCH</code>"
+              PIPELINE_KIND="dev build"
+            else
+              # For release builds, head_branch is usually the tag (e.g. v1.2.3)
+              TAG_ESC=$(html_escape "$BRANCH_RAW")
+              HEADER="$ICON <b>release build pipeline completed</b>"
+              CONTEXT_LINE="🏷 Tag: <code>$TAG_ESC</code>"
+              PIPELINE_KIND="release build"
+            fi
+
+            SHORT_SHA_ESC=$(html_escape "$SHORT_SHA")
+
+            MESSAGE="$HEADER%0A%0A$CONTEXT_LINE%0A👤 Triggered by: $ACTOR%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open $PIPELINE_KIND run</a>"
+
+            # --- Fetch status of all relevant workflows for this commit ---
+            RUNS_JSON=$(curl -s \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$SHA&per_page=20")
+
+            BASE64_ROWS=$(echo "$RUNS_JSON" | jq -r '
+              .workflow_runs
+              | map(select(
+                  .name == "Build-dev" or
+                  .name == "Build" or
+                  .name == "Test Database Migrations" or
+                  .name == "Code Format Checker" or
+                  .name == "API CodeQL" or
+                  .name == "PR Build"
+                ))
+              | sort_by(.name)
+              | .[] | @base64
+            ')
+
+            WORKFLOW_LINES=""
+
+            while IFS= read -r row; do
+              [[ -z "$row" ]] && continue
+              _jq() { echo "$row" | base64 --decode | jq -r "$1"; }
+
+              NAME=$(_jq '.name')
+              URL=$(_jq '.html_url')
+              CONCLUSION=$(_jq '.conclusion // "in_progress"')
+
+              ESC_NAME=$(html_escape "$NAME")
+              ESC_URL=$(html_escape "$URL")
+
+              case "$CONCLUSION" in
+                success) STATUS_ICON="✅"; STATUS_TEXT="success";;
+                failure) STATUS_ICON="❌"; STATUS_TEXT="failed";;
+                cancelled) STATUS_ICON="⏹"; STATUS_TEXT="cancelled";;
+                in_progress) STATUS_ICON="⏳"; STATUS_TEXT="in progress";;
+                *) STATUS_ICON="❔"; STATUS_TEXT="$CONCLUSION";;
+              esac
+
+              WORKFLOW_LINES+="$STATUS_ICON <a href=\"$ESC_URL\">$ESC_NAME</a>: <code>$STATUS_TEXT</code>"$'\n'
+            done <<< "$BASE64_ROWS"
+
+            if [[ -n "$WORKFLOW_LINES" ]]; then
+              WF_BLOCK=$(printf "%s" "$WORKFLOW_LINES" | sed 's/$/%0A/g')
+              MESSAGE="$MESSAGE%0A%0A<b>Workflows for this commit:</b>%0A$WF_BLOCK"
+            fi
+
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            # ===================== RELEASE EVENT =====================
+            ACTOR=$(html_escape "${{ github.actor }}")
+            REL_TAG=$(html_escape "${{ github.event.release.tag_name }}")
+            REL_NAME_RAW="${{ github.event.release.name }}"
+            REL_NAME=$(html_escape "$REL_NAME_RAW")
+            REL_URL="${{ github.event.release.html_url }}"
+            ACTION="${{ github.event.action }}"
+
+            if [[ -z "$REL_NAME_RAW" ]]; then
+              DISPLAY_NAME="$REL_TAG"
+            else
+              DISPLAY_NAME="$REL_NAME"
+            fi
+
+            if [[ "$ACTION" == "published" || "$ACTION" == "prereleased" ]]; then
+              EVENT_STATUS="🎉 <b>New Release created</b>"
+            else
+              EVENT_STATUS="ℹ️ <b>Release event: $ACTION</b>"
+            fi
+
+            MESSAGE="$EVENT_STATUS%0A%0A📦 Name: $DISPLAY_NAME%0A🏷 Tag: <code>$REL_TAG</code>%0A👤 By: $ACTOR%0A🔗 <a href=\"$REL_URL\">View release page</a>"
+
+          else
+            # ===================== PULL REQUEST EVENT =====================
+            ACTOR=$(html_escape "${{ github.actor }}")
+            PR_TITLE=$(html_escape "${{ github.event.pull_request.title }}")
+            PR_URL="${{ github.event.pull_request.html_url }}"
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+
+            if [[ "${{ github.event.action }}" == "opened" ]]; then
+              PR_STATUS="📝 <b>Pull Request opened</b>"
+            elif [[ "${{ github.event.action }}" == "closed" && "${{ github.event.pull_request.merged }}" == "true" ]]; then
+              PR_STATUS="🎉 <b>Pull Request merged</b>"
+            else
+              PR_STATUS="🛑 <b>Pull Request closed (not merged)</b>"
+            fi
+
+            COMMITS_RAW=$(curl -s \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/commits" \
+              | jq -r '.[] | "- " + (.commit.message | gsub("\n"; " ") | gsub("\r"; " ") | gsub("\""; "\\\"")) + " (" + (.sha | .[0:7]) + ")"' \
+              | head -n 10)
+
+            ESCAPED_COMMITS=""
+            while IFS= read -r line; do
+              if [[ -n "$line" ]]; then
+                if [[ "$line" =~ \(([a-f0-9]{7})\)$ ]]; then
+                  HASH="${BASH_REMATCH[1]}"
+                  PREFIX="${line% (*}"
+                  ESC_PREFIX=$(html_escape "$PREFIX")
+                  ESC_HASH=$(html_escape "$HASH")
+                  ESCAPED_COMMITS+="$ESC_PREFIX (<code>$ESC_HASH</code>)"$'\n'
+                else
+                  ESCAPED_COMMITS+=$(html_escape "$line")$'\n'
+                fi
+              fi
+            done <<< "$COMMITS_RAW"
+
+            COMMITS_BLOCK=$(printf "%s" "$ESCAPED_COMMITS" | sed 's/$/%0A/g')
+
+            MESSAGE="$PR_STATUS%0A%0A👤 Author: $ACTOR%0A🧾 Title: $PR_TITLE%0A🔗 <a href=\"$PR_URL\">Open Pull Request</a>%0A%0A<b>Related commits:</b>%0A$COMMITS_BLOCK"
+          fi
+
+          # Debug info (printed only on failure)
+          DECODED_MESSAGE=$(echo "$MESSAGE" | sed 's/%0A/\n/g')
+          log "=== Debug: GitHub context ==="
+          log "Event: ${{ github.event_name }}"
+          log "Action: ${{ github.event.action }}"
+          log "Actor: ${{ github.actor }}"
+          log "Repository: ${{ github.repository }}"
+          log "Ref: ${{ github.ref_name }}"
+          log ""
+          log "=== Debug: Telegram payload (decoded) ==="
+          log "$DECODED_MESSAGE"
+          log ""
+
+          IFS=',' read -ra TARGETS <<< "$TELEGRAM_TARGETS"
+          log "Telegram targets: $TELEGRAM_TARGETS"
+
+          SEND_FAILED=false
+
+          for TARGET in "${TARGETS[@]}"; do
+            if [[ "$TARGET" == *"^"* ]]; then
+              CHAT_ID=$(echo "$TARGET" | cut -d'^' -f1)
+              TOPIC_ID=$(echo "$TARGET" | cut -d'^' -f2)
+            else
+              CHAT_ID="$TARGET"
+              TOPIC_ID=""
+            fi
+
+            RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              ${TOPIC_ID:+-d "message_thread_id=$TOPIC_ID"} \
+              -d "parse_mode=HTML" \
+              -d "text=$MESSAGE")
+
+            if echo "$RESPONSE" | grep -q '"ok":true'; then
+              echo "✅ Telegram notification sent to $CHAT_ID"
+            else
+              SEND_FAILED=true
+              ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description // "unknown"' 2>/dev/null)
+              log "❌ Failed to send to $CHAT_ID: $ERROR_DESC"
+              log "Raw response: $RESPONSE"
+            fi
+          done
+
+          if [[ "$SEND_FAILED" == "true" ]]; then
+            echo "❌ Workflow failed. Debug log below:"
+            echo "$LOG_BUFFER"
+            exit 1
+          else
+            echo "✅ All Telegram notifications delivered successfully."
+          fi

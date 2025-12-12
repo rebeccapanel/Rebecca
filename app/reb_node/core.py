@@ -51,6 +51,8 @@ class XRayCore:
         self._on_start_funcs = []
         self._on_stop_funcs = []
         self._env = {"XRAY_LOCATION_ASSET": assets_path}
+        self.access_log_path: Optional[Path] = None
+        self.error_log_path: Optional[Path] = None
 
         atexit.register(lambda: self.stop() if self.started else None)
 
@@ -183,31 +185,31 @@ class XRayCore:
         """Get the last error log from Xray that caused it to stop."""
         if not self._logs_buffer:
             return None
-        
+
         # Search backwards through logs for error patterns
         error_patterns = [
-            r'error',
-            r'failed',
-            r'exception',
-            r'fatal',
-            r'panic',
-            r'critical',
-            r'core.*stopped',
-            r'core.*exit',
-            r'rejected',
-            r'bad request',
-            r'400',
-            r'handshake.*fail',
-            r'invalid',
+            r"error",
+            r"failed",
+            r"exception",
+            r"fatal",
+            r"panic",
+            r"critical",
+            r"core.*stopped",
+            r"core.*exit",
+            r"rejected",
+            r"bad request",
+            r"400",
+            r"handshake.*fail",
+            r"invalid",
         ]
-        
+
         # Check logs in reverse order (most recent first)
         for log in reversed(list(self._logs_buffer)):
             log_lower = log.lower()
             for pattern in error_patterns:
                 if re.search(pattern, log_lower, re.IGNORECASE):
                     return log
-        
+
         return None
 
     @property
@@ -250,6 +252,10 @@ class XRayCore:
         log_config.setdefault("access", "")
         log_config.setdefault("error", "")
 
+        # Track resolved log paths for downstream consumers (insights, etc.)
+        self.access_log_path = None
+        self.error_log_path = None
+
         for key, filename in (("access", "access.log"), ("error", "error.log")):
             resolved = _resolve_log_path(log_config.get(key), filename, base_log_dir)
             log_config[key] = resolved
@@ -258,6 +264,10 @@ class XRayCore:
                     Path(resolved).expanduser().parent.mkdir(parents=True, exist_ok=True)
                 except Exception:
                     pass
+                if key == "access":
+                    self.access_log_path = Path(resolved).expanduser()
+                elif key == "error":
+                    self.error_log_path = Path(resolved).expanduser()
 
         config["log"] = log_config
 

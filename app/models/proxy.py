@@ -16,10 +16,11 @@ from xray_api.types.account import (
     XTLSFlows,
 )
 
-FRAGMENT_PATTERN = re.compile(r'^((\d{1,4}-\d{1,4})|(\d{1,4})),((\d{1,3}-\d{1,3})|(\d{1,3})),(tlshello|\d|\d\-\d)$')
+FRAGMENT_PATTERN = re.compile(r"^((\d{1,4}-\d{1,4})|(\d{1,4})),((\d{1,3}-\d{1,3})|(\d{1,3})),(tlshello|\d|\d\-\d)$")
 
 NOISE_PATTERN = re.compile(
-    r'^(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?(&(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?)*$')
+    r"^(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?(&(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?)*$"
+)
 
 
 class ProxyTypes(str, Enum):
@@ -77,8 +78,8 @@ class ProxySettings(BaseModel, use_enum_values=True):
 
     def dict(self, *, no_obj=False, **kwargs):
         if no_obj:
-            return json.loads(self.json())
-        return super().dict(**kwargs)
+            return json.loads(self.model_dump_json())
+        return super().model_dump(**kwargs)
 
 
 class VMessSettings(ProxySettings):
@@ -159,22 +160,30 @@ class ProxyHost(BaseModel):
     id: Optional[int] = None
     remark: str
     address: str
-    port: Optional[int] = Field(None, nullable=True)
-    sort: Optional[int] = Field(None, nullable=True)
-    sni: Optional[str] = Field(None, nullable=True)
-    host: Optional[str] = Field(None, nullable=True)
-    path: Optional[str] = Field(None, nullable=True)
+    port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    sort: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    sni: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    host: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    path: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     security: ProxyHostSecurity = ProxyHostSecurity.inbound_default
     alpn: ProxyHostALPN = ProxyHostALPN.none
     fingerprint: ProxyHostFingerprint = ProxyHostFingerprint.none
     allowinsecure: Union[bool, None] = None
-    is_disabled: Union[bool, None] = None
+    is_disabled: bool = Field(default=False)
     mux_enable: Union[bool, None] = None
-    fragment_setting: Optional[str] = Field(None, nullable=True)
-    noise_setting: Optional[str] = Field(None, nullable=True)
+    fragment_setting: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    noise_setting: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     random_user_agent: Union[bool, None] = None
     use_sni_as_host: Union[bool, None] = None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    
+    @field_validator("is_disabled", mode="before")
+    @classmethod
+    def normalize_is_disabled(cls, v):
+        """Normalize is_disabled to always be a boolean, never None."""
+        if v is None:
+            return False
+        return bool(v)
 
     @field_validator("remark", mode="after")
     def validate_remark(cls, v):
@@ -198,9 +207,7 @@ class ProxyHost(BaseModel):
     @classmethod
     def validate_fragment(cls, v):
         if v and not FRAGMENT_PATTERN.match(v):
-            raise ValueError(
-                "Fragment setting must be like this: length,interval,packet (10-100,100-200,tlshello)."
-            )
+            raise ValueError("Fragment setting must be like this: length,interval,packet (10-100,100-200,tlshello).")
         return v
 
     @field_validator("noise_setting", check_fields=False)
@@ -208,13 +215,9 @@ class ProxyHost(BaseModel):
     def validate_noise(cls, v):
         if v:
             if not NOISE_PATTERN.match(v):
-                raise ValueError(
-                    "Noise setting must be like this: packet,delay (rand:10-20,100-200)."
-                )
+                raise ValueError("Noise setting must be like this: packet,delay (rand:10-20,100-200).")
             if len(v) > 2000:
-                raise ValueError(
-                    "Noise can't be longer that 2000 character"
-                )
+                raise ValueError("Noise can't be longer that 2000 character")
         return v
 
 

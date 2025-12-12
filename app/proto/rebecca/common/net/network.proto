@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package rebecca.common.net;
+
+enum Network {
+  Unknown = 0;
+  RawTCP = 1 [deprecated = true];
+  TCP = 2;
+  UDP = 3;
+}
+
+message NetworkList {
+  repeated Network network = 1;
+}
+
+

@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, Optional, Union
+from datetime import datetime, timezone
 from collections.abc import Mapping
 
 from fastapi import Depends, HTTPException, status
@@ -13,6 +14,18 @@ from config import SUDOERS
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/token")  # Admin view url
+
+
+def _to_utc_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalize datetimes so comparisons never mix aware/naive objects.
+    We treat naive values as UTC (the DB stores naive UTC timestamps).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 class AdminStatus(str, Enum):
@@ -38,6 +51,8 @@ class UserPermission(str, Enum):
     allow_unlimited_expire = "allow_unlimited_expire"
     allow_next_plan = "allow_next_plan"
     advanced_actions = "advanced_actions"
+    set_flow = "set_flow"
+    allow_custom_key = "allow_custom_key"
 
 
 class AdminManagementPermission(str, Enum):
@@ -66,6 +81,8 @@ class UserPermissionSettings(BaseModel):
     allow_unlimited_expire: bool = False
     allow_next_plan: bool = False
     advanced_actions: bool = True
+    set_flow: bool = False
+    allow_custom_key: bool = False
     max_data_limit_per_user: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +118,13 @@ class AdminPermissions(BaseModel):
     users: UserPermissionSettings = Field(default_factory=UserPermissionSettings)
     admin_management: AdminManagementPermissions = Field(default_factory=AdminManagementPermissions)
     sections: SectionPermissionSettings = Field(default_factory=SectionPermissionSettings)
+    self_permissions: Dict[str, bool] = Field(
+        default_factory=lambda: {
+            "self_myaccount": True,
+            "self_change_password": True,
+            "self_api_keys": True,
+        }
+    )
     model_config = ConfigDict(from_attributes=True)
 
     def merge(self, other: Dict[str, Any] | "AdminPermissions") -> "AdminPermissions":
@@ -130,6 +154,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             allow_unlimited_expire=True,
             allow_next_plan=True,
             advanced_actions=True,
+            set_flow=False,
+            allow_custom_key=False,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
@@ -146,6 +172,11 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             integrations=False,
             xray=False,
         ),
+        self_permissions={
+            "self_myaccount": True,
+            "self_change_password": True,
+            "self_api_keys": True,
+        },
     ),
     AdminRole.reseller: AdminPermissions(
         users=UserPermissionSettings(
@@ -157,6 +188,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             allow_unlimited_data=True,
             allow_unlimited_expire=True,
             allow_next_plan=True,
+            set_flow=False,
+            allow_custom_key=False,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
@@ -173,6 +206,11 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             integrations=False,
             xray=False,
         ),
+        self_permissions={
+            "self_myaccount": True,
+            "self_change_password": True,
+            "self_api_keys": True,
+        },
     ),
     AdminRole.sudo: AdminPermissions(
         users=UserPermissionSettings(
@@ -184,6 +222,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             allow_unlimited_data=True,
             allow_unlimited_expire=True,
             allow_next_plan=True,
+            set_flow=True,
+            allow_custom_key=True,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
@@ -200,6 +240,11 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             integrations=True,
             xray=True,
         ),
+        self_permissions={
+            "self_myaccount": True,
+            "self_change_password": True,
+            "self_api_keys": True,
+        },
     ),
     AdminRole.full_access: AdminPermissions(
         users=UserPermissionSettings(
@@ -211,6 +256,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             allow_unlimited_data=True,
             allow_unlimited_expire=True,
             allow_next_plan=True,
+            set_flow=True,
+            allow_custom_key=True,
             max_data_limit_per_user=None,
         ),
         admin_management=AdminManagementPermissions(
@@ -227,6 +274,11 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
             integrations=True,
             xray=True,
         ),
+        self_permissions={
+            "self_myaccount": True,
+            "self_change_password": True,
+            "self_api_keys": True,
+        },
     ),
 }
 
@@ -239,7 +291,10 @@ USER_PERMISSION_MESSAGES: Dict[UserPermission, str] = {
     UserPermission.allow_unlimited_data: "create unlimited data users",
     UserPermission.allow_unlimited_expire: "create unlimited duration users",
     UserPermission.allow_next_plan: "use next plan features",
+    UserPermission.set_flow: "set user flow",
+    UserPermission.allow_custom_key: "set custom credential key",
 }
+
 
 def _resolve_role(value: Optional[AdminRole]) -> AdminRole:
     if value:
@@ -247,7 +302,9 @@ def _resolve_role(value: Optional[AdminRole]) -> AdminRole:
     return AdminRole.standard
 
 
-def _build_permissions(role: AdminRole, raw_permissions: Optional[Dict[str, Any] | AdminPermissions]) -> AdminPermissions:
+def _build_permissions(
+    role: AdminRole, raw_permissions: Optional[Dict[str, Any] | AdminPermissions]
+) -> AdminPermissions:
     # Full-access should always get the baked-in defaults and ignore any overrides
     if role == AdminRole.full_access:
         return ROLE_DEFAULT_PERMISSIONS[role]
@@ -268,13 +325,19 @@ class Admin(BaseModel):
     role: AdminRole = AdminRole.standard
     permissions: AdminPermissions = Field(default_factory=AdminPermissions)
     status: AdminStatus = AdminStatus.active
-    disabled_reason: Optional[str] = Field(
-        None, description="Reason provided by sudo admin when account is disabled"
-    )
+    disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit for admin in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users admin can create (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit for admin in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users admin can create (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
     active_users: Optional[int] = None
     online_users: Optional[int] = None
     limited_users: Optional[int] = None
@@ -339,6 +402,27 @@ class Admin(BaseModel):
             detail=f"You're not allowed to {readable}.",
         )
 
+    def normalize_data_limit(self, data_limit: Optional[int]) -> Optional[int]:
+        if self.has_full_access:
+            return data_limit
+
+        perms = self.permissions.users
+
+        if data_limit is None:
+            return None
+
+        if data_limit == 0:
+            if not perms.allows(UserPermission.allow_unlimited_data):
+                if perms.max_data_limit_per_user is not None:
+                    return perms.max_data_limit_per_user
+                return None
+            return 0
+
+        if perms.max_data_limit_per_user is not None and data_limit > perms.max_data_limit_per_user:
+            return perms.max_data_limit_per_user
+
+        return data_limit
+
     def ensure_user_constraints(
         self,
         *,
@@ -355,21 +439,6 @@ class Admin(BaseModel):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to create or move users to on-hold.",
             )
-        if data_limit is not None:
-            if data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Unlimited data users are not allowed for your role.",
-                )
-            if (
-                perms.max_data_limit_per_user is not None
-                and data_limit > 0
-                and data_limit > perms.max_data_limit_per_user
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Requested data limit exceeds the configured maximum for this admin.",
-                )
         if expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -380,12 +449,6 @@ class Admin(BaseModel):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You are not allowed to configure next plans.",
-                )
-            next_data_limit = next_plan.get("data_limit")
-            if next_data_limit == 0 and not perms.allows(UserPermission.allow_unlimited_data):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Next plan with unlimited data is not allowed for your role.",
                 )
             next_expire = next_plan.get("expire")
             if next_expire == 0 and not perms.allows(UserPermission.allow_unlimited_expire):
@@ -415,16 +478,15 @@ class Admin(BaseModel):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage other admins.",
             )
-        if (
-            target.role in (AdminRole.sudo, AdminRole.full_access)
-            and not perms.allows(AdminManagementPermission.manage_sudo)
+        if target.role in (AdminRole.sudo, AdminRole.full_access) and not perms.allows(
+            AdminManagementPermission.manage_sudo
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You're not allowed to manage sudo admins.",
             )
 
-    @field_validator("users_usage",  mode='before')
+    @field_validator("users_usage", mode="before")
     def cast_to_int(cls, v):
         if v is None:  # Allow None values
             return v
@@ -438,6 +500,23 @@ class Admin(BaseModel):
     def get_admin(cls, token: str, db: Session):
         payload = get_admin_payload(token)
         if not payload:
+            try:
+                api_key = crud.get_admin_api_key_by_token(db, token)
+            except Exception:
+                api_key = None
+            if api_key:
+                if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+                    return
+                dbadmin = crud.get_admin_by_id(db, api_key.admin_id)
+                if not dbadmin or dbadmin.status != AdminStatus.active:
+                    return
+                api_key.last_used_at = datetime.now(timezone.utc)
+                try:
+                    db.add(api_key)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                return cls.model_validate(dbadmin)
             return
 
         role_name = payload.get("role")
@@ -446,29 +525,30 @@ class Admin(BaseModel):
         except ValueError:
             payload_role = AdminRole.standard
 
-        if payload['username'] in SUDOERS:
+        if payload["username"] in SUDOERS:
             return cls(
-                username=payload['username'],
+                username=payload["username"],
                 role=payload_role,
                 permissions=ROLE_DEFAULT_PERMISSIONS[payload_role],
             )
 
-        dbadmin = crud.get_admin(db, payload['username'])
+        dbadmin = crud.get_admin(db, payload["username"])
         if not dbadmin:
             return
 
         if dbadmin.password_reset_at:
             if not payload.get("created_at"):
                 return
-            if dbadmin.password_reset_at > payload.get("created_at"):
+            # Normalize both datetimes to UTC-aware for comparison
+            password_reset_at_utc = _to_utc_aware(dbadmin.password_reset_at)
+            created_at_utc = _to_utc_aware(payload.get("created_at"))
+            if password_reset_at_utc and created_at_utc and password_reset_at_utc > created_at_utc:
                 return
 
         return cls.model_validate(dbadmin)
 
     @classmethod
-    def get_current(cls,
-                    db: Session = Depends(get_db),
-                    token: str = Depends(oauth2_scheme)):
+    def get_current(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_admin(token, db)
         if not admin:
             raise HTTPException(
@@ -479,9 +559,7 @@ class Admin(BaseModel):
         return admin
 
     @classmethod
-    def check_sudo_admin(cls,
-                         db: Session = Depends(get_db),
-                         token: str = Depends(oauth2_scheme)):
+    def check_sudo_admin(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_admin(token, db)
         if not admin:
             raise HTTPException(
@@ -490,16 +568,11 @@ class Admin(BaseModel):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         if admin.role not in (AdminRole.sudo, AdminRole.full_access):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You're not allowed"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
         return admin
 
     @classmethod
-    def require_active(cls,
-                       db: Session = Depends(get_db),
-                       token: str = Depends(oauth2_scheme)):
+    def require_active(cls, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
         admin = cls.get_current(db=db, token=token)
         if admin.role in (AdminRole.sudo, AdminRole.full_access):
             return admin
@@ -519,12 +592,21 @@ class Admin(BaseModel):
 class AdminCreate(Admin):
     password: str = Field(..., min_length=6, description="Admin password (minimum 6 characters)")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
 
     @property
     def hashed_password(self):
         return pwd_context.hash(self.password)
+
 
 class AdminModify(BaseModel):
     password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
@@ -533,16 +615,40 @@ class AdminModify(BaseModel):
         default=None, description="Fine-grained permission overrides for this admin"
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
-    data_limit: Optional[int] = Field(None, description="Maximum data limit in bytes (null = unlimited)", example=107374182400)
-    users_limit: Optional[int] = Field(None, description="Maximum number of users (null = unlimited)", example=100)
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
 
     @property
     def hashed_password(self):
         if self.password:
             return pwd_context.hash(self.password)
 
+
 class AdminPartialModify(AdminModify):
-    __annotations__ = {k: Optional[v] for k, v in AdminModify.__annotations__.items()}
+    password: Optional[str] = Field(None, min_length=6, description="New password (optional, minimum 6 characters)")
+    role: Optional[AdminRole] = Field(None, description="Access level for the admin account")
+    permissions: Optional[AdminPermissions] = Field(
+        default=None, description="Fine-grained permission overrides for this admin"
+    )
+    telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    data_limit: Optional[int] = Field(
+        None,
+        description="Maximum data limit in bytes (null = unlimited)",
+        json_schema_extra={"example": 107374182400},
+    )
+    users_limit: Optional[int] = Field(
+        None,
+        description="Maximum number of users (null = unlimited)",
+        json_schema_extra={"example": 100},
+    )
 
 
 class AdminInDB(Admin):

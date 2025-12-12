@@ -10,31 +10,31 @@ import { RevokeSubscriptionModal } from "components/RevokeSubscriptionModal";
 import { UserDialog } from "components/UserDialog";
 import { UsersTable } from "components/UsersTable";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
-import { FC, useEffect } from "react";
+import { type FC, useEffect } from "react";
 import { Statistics } from "../components/Statistics";
 
 export const Dashboard: FC = () => {
-  useEffect(() => {
-    useDashboard.getState().refetchUsers();
-    fetchInbounds();
-  }, []);
-  return (
-    <VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
-      <Box w="full">
-        <Header />
-        <Statistics mt="4" />
-        <Filters />
-        <UsersTable />
-        <UserDialog />
-        <DeleteUserModal />
-        <QRCodeDialog />
-        <ResetUserUsageModal />
-        <RevokeSubscriptionModal />
-        <ResetAllUsageModal />
-        <CoreSettingsModal />
-      </Box>
-    </VStack>
-  );
+	useEffect(() => {
+		useDashboard.getState().refetchUsers();
+		fetchInbounds();
+	}, []);
+	return (
+		<VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
+			<Box w="full">
+				<Header />
+				<Statistics mt="4" />
+				<Filters />
+				<UsersTable />
+				<UserDialog />
+				<DeleteUserModal />
+				<QRCodeDialog />
+				<ResetUserUsageModal />
+				<RevokeSubscriptionModal />
+				<ResetAllUsageModal />
+				<CoreSettingsModal />
+			</Box>
+		</VStack>
+	);
 };
 
 export default Dashboard;

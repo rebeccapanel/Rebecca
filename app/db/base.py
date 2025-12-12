@@ -16,7 +16,8 @@ else:
         pool_size=SQLALCHEMY_POOL_SIZE,
         max_overflow=SQLALCHEMY_MAX_OVERFLOW,
         pool_recycle=3600,
-        pool_timeout=10,
+        pool_timeout=30,
+        pool_pre_ping=True,
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

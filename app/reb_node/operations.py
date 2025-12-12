@@ -5,9 +5,11 @@ import logging
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.reb_node import state
 from app.db import GetDB, crud
+from app.db.models import User, Service, Proxy
 from app.models.node import NodeResponse, NodeStatus
 from app.models.user import UserResponse
 from app.utils import report
@@ -27,32 +29,37 @@ if TYPE_CHECKING:
 
 
 @lru_cache(maxsize=None)
-def get_tls():
+def get_tls(node_id: int = None):
     from app.db import GetDB, get_tls_certificate
+
     with GetDB() as db:
+        # Check if node has its own certificate
+        if node_id:
+            dbnode = crud.get_node_by_id(db, node_id)
+            if dbnode and dbnode.certificate and dbnode.certificate_key:
+                return {"key": dbnode.certificate_key, "certificate": dbnode.certificate}
+
+        # Fall back to default TLS certificate
         tls = get_tls_certificate(db)
-        return {
-            "key": tls.key,
-            "certificate": tls.certificate
-        }
+        return {"key": tls.key, "certificate": tls.certificate}
 
 
 def _is_valid_uuid(uuid_value) -> bool:
     """
     Check if a value is a valid UUID.
-    
+
     Args:
         uuid_value: The value to check (can be UUID object, string, None, etc.)
-    
+
     Returns:
         True if uuid_value is a valid UUID, False otherwise
     """
     if uuid_value is None:
         return False
-    
+
     if isinstance(uuid_value, uuid.UUID):
         return True
-    
+
     if isinstance(uuid_value, str):
         # Check for empty string or "null" string
         if not uuid_value or uuid_value.lower() == "null":
@@ -62,7 +69,7 @@ def _is_valid_uuid(uuid_value) -> bool:
             return True
         except (ValueError, AttributeError):
             return False
-    
+
     return False
 
 
@@ -85,36 +92,109 @@ def _build_runtime_accounts(
 ) -> List[Account]:
     email = f"{dbuser.id}.{dbuser.username}"
     accounts: List[Account] = []
-    seen_ids: set[str] = set()
-
-    existing_id = getattr(settings_model, "id", None)
-    if _is_valid_uuid(existing_id) and proxy_type in UUID_PROTOCOLS:
-        parsed_id = str(existing_id)
-        seen_ids.add(parsed_id)
-        accounts.append(proxy_type.account_model(email=email, id=parsed_id))
-
-    if user.credential_key and proxy_type in UUID_PROTOCOLS:
-        try:
+    try:
+        user_flow = getattr(dbuser, "flow", None)
+        if user_flow:
+            proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key, flow=user_flow)
+        else:
             proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key)
-            if proxy_settings.get("flow") and inbound:
-                network = inbound.get("network", "tcp")
-                tls_type = inbound.get("tls", "none")
-                header_type = inbound.get("header_type", "")
-                flow_supported = (
-                    network in ("tcp", "raw", "kcp")
-                    and tls_type in ("tls", "reality")
-                    and header_type != "http"
-                )
-                if not flow_supported:
-                    proxy_settings.pop("flow", None)
-            generated_id = proxy_settings.get("id")
-            if generated_id and generated_id not in seen_ids:
-                seen_ids.add(generated_id)
-                accounts.append(proxy_type.account_model(email=email, **proxy_settings))
-        except Exception as exc:
-            logger.warning(f"Failed to generate UUID from key for user {dbuser.id} in runtime accounts: {exc}")
+    except Exception as exc:
+        logger.warning(
+            "Failed to build runtime credentials for user %s (%s) and proxy %s: %s",
+            dbuser.id,
+            dbuser.username,
+            proxy_type,
+            exc,
+        )
+        return accounts
+
+    if proxy_type in UUID_PROTOCOLS:
+        uuid_value = proxy_settings.get("id")
+        if not _is_valid_uuid(uuid_value):
+            logger.warning(
+                "User %s (%s) has invalid UUID for %s - skipping account injection",
+                dbuser.id,
+                dbuser.username,
+                proxy_type,
+            )
+            return accounts
+        proxy_settings["id"] = str(uuid_value)
+
+    try:
+        accounts.append(proxy_type.account_model(email=email, **proxy_settings))
+    except Exception as exc:
+        logger.warning(
+            "Failed to create account model for user %s (%s) and proxy %s: %s",
+            dbuser.id,
+            dbuser.username,
+            proxy_type,
+            exc,
+        )
 
     return accounts
+
+
+def _prepare_user_for_runtime(dbuser: "DBUser") -> "DBUser":
+    """
+    Ensure proxies/excluded_inbounds are loaded and attached before touching Xray.
+    Background tasks may run after the original DB session is closed, so we
+    reload the user if needed.
+    """
+    if dbuser is None:
+        return dbuser
+
+    user_id = getattr(dbuser, "id", None)
+    try:
+        # Try to access all relationships to ensure they're loaded
+        _ = getattr(dbuser, "service", None)
+        if dbuser.service:
+            _ = list(dbuser.service.host_links)  # Ensure host_links are loaded
+        _ = list(getattr(dbuser, "usage_logs", []))  # Ensure usage_logs are loaded
+        _ = getattr(dbuser, "next_plan", None)  # Ensure next_plan is loaded
+        for proxy in getattr(dbuser, "proxies", []) or []:
+            _ = list(proxy.excluded_inbounds)
+        return dbuser
+    except Exception:
+        pass
+
+    if user_id is None:
+        return dbuser
+
+    try:
+        with GetDB() as db:
+            from app.db.models import NextPlan
+            from app.db.crud.user import _next_plan_table_exists
+
+            query = db.query(User).filter(User.id == user_id)
+            # Eager load all relationships needed for UserResponse
+            options = [
+                joinedload(User.service).joinedload(Service.host_links),  # Load service and its host_links
+                joinedload(User.admin),
+                selectinload(User.proxies).selectinload(Proxy.excluded_inbounds),
+                selectinload(User.usage_logs),  # For lifetime_used_traffic property
+            ]
+            # Add next_plan if table exists
+            if _next_plan_table_exists(db):
+                options.append(joinedload(User.next_plan))
+            query = query.options(*options)
+            fresh = query.first()
+            if fresh:
+                try:
+                    # Ensure all relationships are loaded
+                    _ = getattr(fresh, "service", None)
+                    if fresh.service:
+                        _ = list(fresh.service.host_links)  # Ensure host_links are loaded
+                    _ = list(fresh.usage_logs)  # Ensure usage_logs are loaded for lifetime_used_traffic
+                    _ = getattr(fresh, "next_plan", None)  # Ensure next_plan is loaded
+                    for proxy in getattr(fresh, "proxies", []) or []:
+                        _ = list(proxy.excluded_inbounds)
+                except Exception:
+                    pass
+                return fresh
+    except Exception as exc:
+        logger.warning("Failed to reload user %s for Xray sync: %s", user_id, exc)
+
+    return dbuser
 
 
 @threaded_function
@@ -123,13 +203,14 @@ def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
     Add user account to Xray inbound. If user already exists, remove and re-add to ensure UUID is correct.
     """
     try:
+        api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
+    except (xray_exceptions.EmailNotFoundError, xray_exceptions.ConnectionError):
+        pass
+    except Exception:
+        pass  # Ignore other errors when removing
+
+    try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except xray_exceptions.EmailExistsError:
-        try:
-            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-        except Exception as e:
-            logger.warning(f"Failed to update existing user {account.email} in {inbound_tag}: {e}")
     except xray_exceptions.ConnectionError:
         pass
     except Exception as e:
@@ -139,18 +220,6 @@ def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
 def _add_accounts_to_inbound(api: XRayAPI, inbound_tag: str, accounts: List[Account]):
     for account in accounts:
         _add_account_to_inbound(api, inbound_tag, account)
-    try:
-        api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except xray_exceptions.EmailExistsError:
-        try:
-            api.remove_inbound_user(tag=inbound_tag, email=account.email, timeout=600)
-            api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-        except Exception as e:
-            logger.warning(f"Failed to update existing user {account.email} in {inbound_tag}: {e}")
-    except xray_exceptions.ConnectionError:
-        pass
-    except Exception as e:
-        logger.error(f"Failed to add user {account.email} to {inbound_tag}: {e}")
 
 
 @threaded_function
@@ -170,6 +239,9 @@ def _alter_inbound_user(api: XRayAPI, inbound_tag: str, accounts: List[Account])
 
 
 def add_user(dbuser: "DBUser"):
+    dbuser = _prepare_user_for_runtime(dbuser)
+    if not dbuser:
+        return
     user = UserResponse.model_validate(dbuser)
 
     for proxy_type, inbound_tags in user.inbounds.items():
@@ -178,6 +250,7 @@ def add_user(dbuser: "DBUser"):
             if not inbound:
                 from app.db import GetDB, crud
                 from app.reb_node.config import XRayConfig
+
                 with GetDB() as db:
                     raw_config = crud.get_xray_config(db)
                 state.config = XRayConfig(raw_config, api_port=state.config.api_port)
@@ -187,7 +260,6 @@ def add_user(dbuser: "DBUser"):
                 settings_model = user.proxies[proxy_type]
             except KeyError:
                 continue
-
 
             accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
             if accounts:
@@ -200,6 +272,9 @@ def add_user(dbuser: "DBUser"):
 
 
 def remove_user(dbuser: "DBUser"):
+    dbuser = _prepare_user_for_runtime(dbuser)
+    if not dbuser:
+        return
     email = f"{dbuser.id}.{dbuser.username}"
 
     for inbound_tag in state.config.inbounds_by_tag:
@@ -210,14 +285,29 @@ def remove_user(dbuser: "DBUser"):
 
 
 def update_user(dbuser: "DBUser"):
+    dbuser = _prepare_user_for_runtime(dbuser)
+    if not dbuser:
+        return
     if dbuser.proxies:
         for proxy in dbuser.proxies:
             _ = list(proxy.excluded_inbounds)
-    
+
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
     active_inbounds = []
-    
+
+    if user.inbounds:
+        for proxy_type, inbound_tags in user.inbounds.items():
+            for inbound_tag in inbound_tags:
+                if inbound_tag not in active_inbounds:
+                    active_inbounds.append(inbound_tag)
+
+    for inbound_tag in state.config.inbounds_by_tag:
+        _remove_user_from_inbound(state.api, inbound_tag, email)
+        for node in list(state.nodes.values()):
+            if node.connected and node.started:
+                _remove_user_from_inbound(node.api, inbound_tag, email)
+
     if not user.inbounds:
         logger.warning(
             f"User {dbuser.id} ({dbuser.username}) has no inbounds. "
@@ -225,14 +315,14 @@ def update_user(dbuser: "DBUser"):
             f"Excluded inbounds: {[(p.type, [e.tag for e in p.excluded_inbounds]) for p in dbuser.proxies]}"
         )
         return
-    
+
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
-            active_inbounds.append(inbound_tag)
             inbound = state.config.inbounds_by_tag.get(inbound_tag)
             if not inbound:
                 from app.db import GetDB, crud
                 from app.reb_node.config import XRayConfig
+
                 with GetDB() as db:
                     raw_config = crud.get_xray_config(db)
                 state.config = XRayConfig(raw_config, api_port=state.config.api_port)
@@ -245,21 +335,12 @@ def update_user(dbuser: "DBUser"):
 
             accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
             if accounts:
-                _alter_inbound_user(state.api, inbound_tag, accounts)
+                _add_accounts_to_inbound(state.api, inbound_tag, accounts)
                 for node in list(state.nodes.values()):
                     if node.connected and node.started:
-                        _alter_inbound_user(node.api, inbound_tag, accounts)
+                        _add_accounts_to_inbound(node.api, inbound_tag, accounts)
             else:
                 logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
-
-    for inbound_tag in state.config.inbounds_by_tag:
-        if inbound_tag in active_inbounds:
-            continue
-        # remove disabled inbounds
-        _remove_user_from_inbound(state.api, inbound_tag, email)
-        for node in list(state.nodes.values()):
-            if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
 
 
 def remove_node(node_id: int):
@@ -278,13 +359,15 @@ def remove_node(node_id: int):
 def add_node(dbnode: "DBNode"):
     remove_node(dbnode.id)
 
-    tls = get_tls()
-    state.nodes[dbnode.id] = XRayNode(address=dbnode.address,
-                                     port=dbnode.port,
-                                     api_port=dbnode.api_port,
-                                     ssl_key=tls['key'],
-                                     ssl_cert=tls['certificate'],
-                                     usage_coefficient=dbnode.usage_coefficient)
+    tls = get_tls(node_id=dbnode.id)
+    state.nodes[dbnode.id] = XRayNode(
+        address=dbnode.address,
+        port=dbnode.port,
+        api_port=dbnode.api_port,
+        ssl_key=tls["key"],
+        ssl_cert=tls["certificate"],
+        usage_coefficient=dbnode.usage_coefficient,
+    )
 
     return state.nodes[dbnode.id]
 
@@ -338,7 +421,7 @@ def connect_node(node_id, config=None):
         _connecting_nodes[node_id] = True
 
         _change_node_status(node_id, NodeStatus.connecting)
-        logger.info(f"Connecting to \"{dbnode.name}\" node")
+        logger.info(f'Connecting to "{dbnode.name}" node')
 
         if config is None:
             config = state.config.include_db_users()
@@ -346,11 +429,11 @@ def connect_node(node_id, config=None):
         node.start(config)
         version = node.get_version()
         _change_node_status(node_id, NodeStatus.connected, version=version)
-        logger.info(f"Connected to \"{dbnode.name}\" node, xray run on v{version}")
+        logger.info(f'Connected to "{dbnode.name}" node, xray run on v{version}')
 
     except Exception as e:
         _change_node_status(node_id, NodeStatus.error, message=str(e))
-        logger.info(f"Unable to connect to \"{dbnode.name}\" node")
+        logger.info(f'Unable to connect to "{dbnode.name}" node')
 
     finally:
         try:
@@ -380,13 +463,13 @@ def restart_node(node_id, config=None):
         return connect_node(node_id, config)
 
     try:
-        logger.info(f"Restarting Xray core of \"{dbnode.name}\" node")
+        logger.info(f'Restarting Xray core of "{dbnode.name}" node')
 
         if config is None:
             config = state.config.include_db_users()
 
         node.restart(config)
-        logger.info(f"Xray core of \"{dbnode.name}\" node restarted")
+        logger.info(f'Xray core of "{dbnode.name}" node restarted')
 
         try:
             version = node.get_version()
@@ -416,6 +499,3 @@ __all__ = [
     "connect_node",
     "restart_node",
 ]
-
-
-

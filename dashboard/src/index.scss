@@ -1,14 +1,86 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
-@import url("https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v35.0.1/dist/font-face.css");
+
+/* Arad Font - Persian/Arabic Font */
+/* Using local font files from public/fonts directory */
+@font-face {
+  font-family: 'Arad';
+  src: url('/fonts/Arad-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Arad';
+  src: url('/fonts/Arad-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
-  --rb-font-stack: "Vazirmatn", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --rb-font-stack: "Arad", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 }
 
 /* Prevent accidental horizontal scrolling on small screens */
 html, body, #root {
   overflow-x: hidden;
   font-family: var(--rb-font-stack);
+}
+
+/* Full RTL Support for Persian/Farsi Language */
+/* When dir="rtl" is set, the entire layout becomes right-to-left */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Fix Bidirectional Text Rendering Issue for Persian/English mixed content */
+[dir="rtl"] * {
+  unicode-bidi: embed;
+}
+
+/* RTL Table Text Alignment - Only align text right, keep column order */
+/* Force table to remain LTR to preserve column order unless it opts out with .rb-rtl-table */
+[dir="rtl"] table:not(.rb-rtl-table) {
+  direction: ltr !important;
+}
+
+[dir="rtl"] table:not(.rb-rtl-table) th,
+[dir="rtl"] table:not(.rb-rtl-table) td {
+  text-align: right !important;
+}
+
+/* Actions column should remain on the right side in RTL */
+[dir="rtl"] table:not(.rb-rtl-table) th[data-actions="true"],
+[dir="rtl"] table:not(.rb-rtl-table) td[data-actions="true"] {
+  text-align: right !important;
+}
+
+/* Center-aligned columns should remain centered */
+[dir="rtl"] table:not(.rb-rtl-table) th[data-center="true"],
+[dir="rtl"] table:not(.rb-rtl-table) td[data-center="true"] {
+  text-align: center !important;
+}
+
+/* Opt-in RTL text alignment without flipping column order */
+[dir="rtl"] table.rb-rtl-table {
+  direction: ltr !important;
+}
+
+[dir="rtl"] table.rb-rtl-table th,
+[dir="rtl"] table.rb-rtl-table td {
+  text-align: right !important;
+}
+
+[dir="rtl"] table.rb-rtl-table th[data-actions="true"],
+[dir="rtl"] table.rb-rtl-table td[data-actions="true"] {
+  text-align: right !important;
+}
+
+[dir="rtl"] table.rb-rtl-table th[data-center="true"],
+[dir="rtl"] table.rb-rtl-table td[data-center="true"] {
+  text-align: center !important;
 }
 
 .bg-blue-animate {
@@ -59,6 +131,7 @@ table thead {
     border-bottom-right-radius: 8px;
   }
 }
+
 
 .slick-prev {
   left: -40px;
@@ -680,12 +753,12 @@ table thead {
   }
 }
 
-img.apple-emoji {
+img.twemoji-emoji {
   display: inline-block;
-  height: 1em;
-  width: auto;
-  margin: 0 0.15em 0 0;
-  vertical-align: text-bottom;
+  height: 1.2em;
+  width: 1.2em;
+  margin: 0 0.1em 0 0.1em;
+  vertical-align: -0.1em;
 }
 
 @keyframes green-pulse-animation {

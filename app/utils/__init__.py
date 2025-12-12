@@ -11,14 +11,14 @@ from config import XRAY_HOSTS
 
 
 @dataclass
-class MemoryStat():
+class MemoryStat:
     total: int
     used: int
     free: int
 
 
 def mem_usage() -> MemoryStat:
-    total, used, free = map(int, os.popen('free -t -b').readlines()[-1].split()[1:])
+    total, used, free = map(int, os.popen("free -t -b").readlines()[-1].split()[1:])
     return MemoryStat(total=total, used=used, free=free)
 
 
@@ -29,7 +29,7 @@ def random_password() -> str:
 def check_port(port: int) -> bool:
     s = socket.socket()
     try:
-        s.connect(('127.0.0.1', port))
+        s.connect(("127.0.0.1", port))
         return True
     except socket.error:
         return False
@@ -37,150 +37,170 @@ def check_port(port: int) -> bool:
         s.close()
 
 
-def vmess_link(remark: str,
-               address: str,
-               id: str | UUID,
-               host='',
-               net='tcp',
-               path='',
-               sni='',
-               tls=False,
-               type=''):
+def vmess_link(remark: str, address: str, id: str | UUID, host="", net="tcp", path="", sni="", tls=False, type=""):
     from app.runtime import xray
-    INBOUND_PORTS = {inbound['protocol']: inbound['port'] for inbound in xray.config.get('inbounds', []) if inbound.get('protocol')} if xray and xray.config else {}
-    return "vmess://" + base64.b64encode(json.dumps({
-        'add': address,
-        'aid': '0',
-        'host': host,
-        'id': str(id),
-        'net': net,
-        'path': urlparse.quote(path),
-        'port': INBOUND_PORTS['vmess'],
-        'ps': remark,
-        'scy': 'auto',
-        'sni': sni,
-        'tls': 'tls' if tls else '',
-        'type': type,
-        'v': '2'
-    }, sort_keys=True).encode('utf-8')).decode()
+
+    INBOUND_PORTS = (
+        {inbound["protocol"]: inbound["port"] for inbound in xray.config.get("inbounds", []) if inbound.get("protocol")}
+        if xray and xray.config
+        else {}
+    )
+    return (
+        "vmess://"
+        + base64.b64encode(
+            json.dumps(
+                {
+                    "add": address,
+                    "aid": "0",
+                    "host": host,
+                    "id": str(id),
+                    "net": net,
+                    "path": urlparse.quote(path),
+                    "port": INBOUND_PORTS["vmess"],
+                    "ps": remark,
+                    "scy": "auto",
+                    "sni": sni,
+                    "tls": "tls" if tls else "",
+                    "type": type,
+                    "v": "2",
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).decode()
+    )
 
 
-def vless_link(remark: str,
-               address: str,
-               id: str | UUID,
-               net='ws',
-               path='',
-               tls=False,
-               host='',
-               sni=''):
+def vless_link(remark: str, address: str, id: str | UUID, net="ws", path="", tls=False, host="", sni=""):
     from app.runtime import xray
-    INBOUND_PORTS = {inbound['protocol']: inbound['port'] for inbound in xray.config.get('inbounds', []) if inbound.get('protocol')} if xray and xray.config else {}
-    return "vless://" + \
-        f"{id}@{address}:{INBOUND_PORTS['vless']}?" + \
-        urlparse.urlencode({
-           "security": "tls" if tls else "none",
-            "type": net,
-            "path": urlparse.quote(path),
-            "host": host,
-            "encryption": "none",
-            "sni": sni
-        }) + f"#{( urlparse.quote(remark))}"
+
+    INBOUND_PORTS = (
+        {inbound["protocol"]: inbound["port"] for inbound in xray.config.get("inbounds", []) if inbound.get("protocol")}
+        if xray and xray.config
+        else {}
+    )
+    return (
+        "vless://"
+        + f"{id}@{address}:{INBOUND_PORTS['vless']}?"
+        + urlparse.urlencode(
+            {
+                "security": "tls" if tls else "none",
+                "type": net,
+                "path": urlparse.quote(path),
+                "host": host,
+                "encryption": "none",
+                "sni": sni,
+            }
+        )
+        + f"#{(urlparse.quote(remark))}"
+    )
 
 
-def trojan_link(remark: str,
-                address: str,
-                password: str,
-                net='tcp',
-                path='',
-                tls=False,
-                host='',
-                sni=''):
+def trojan_link(remark: str, address: str, password: str, net="tcp", path="", tls=False, host="", sni=""):
     from app.runtime import xray
-    INBOUND_PORTS = {inbound['protocol']: inbound['port'] for inbound in xray.config.get('inbounds', []) if inbound.get('protocol')} if xray and xray.config else {}
-    return "trojan://" + \
-        f"{urlparse.quote(password, safe=':')}@{address}:{INBOUND_PORTS['trojan']}?" + \
-        urlparse.urlencode({
-            "security": "tls" if tls else "none",
-            "type": net,
-            "path": urlparse.quote(path),
-            "host": host,
-            "sni": sni
-        }) + f"#{urlparse.quote(remark)}"
+
+    INBOUND_PORTS = (
+        {inbound["protocol"]: inbound["port"] for inbound in xray.config.get("inbounds", []) if inbound.get("protocol")}
+        if xray and xray.config
+        else {}
+    )
+    return (
+        "trojan://"
+        + f"{urlparse.quote(password, safe=':')}@{address}:{INBOUND_PORTS['trojan']}?"
+        + urlparse.urlencode(
+            {"security": "tls" if tls else "none", "type": net, "path": urlparse.quote(path), "host": host, "sni": sni}
+        )
+        + f"#{urlparse.quote(remark)}"
+    )
 
 
-def shadowsocks_link(remark: str,
-                     address: str,
-                     password: str,
-                     security='chacha20-ietf-poly1305'):
+def shadowsocks_link(remark: str, address: str, password: str, security="chacha20-ietf-poly1305"):
     from app.runtime import xray
-    INBOUND_PORTS = {inbound['protocol']: inbound['port'] for inbound in xray.config.get('inbounds', []) if inbound.get('protocol')} if xray and xray.config else {}
-    return "ss://" + \
-        base64.b64encode(f'{security}:{password}'.encode()).decode() + \
-        f"@{address}:{INBOUND_PORTS['shadowsocks']}#{urlparse.quote(remark)}"
+
+    INBOUND_PORTS = (
+        {inbound["protocol"]: inbound["port"] for inbound in xray.config.get("inbounds", []) if inbound.get("protocol")}
+        if xray and xray.config
+        else {}
+    )
+    return (
+        "ss://"
+        + base64.b64encode(f"{security}:{password}".encode()).decode()
+        + f"@{address}:{INBOUND_PORTS['shadowsocks']}#{urlparse.quote(remark)}"
+    )
 
 
 def get_share_link(remark: str, host: str, protocol: str, settings: dict):
     from app.runtime import xray
+
     # Build INBOUND_STREAMS from xray config
     INBOUND_STREAMS = {}
-    if xray and xray.config and xray.config.get('inbounds'):
-        for inbound in xray.config['inbounds']:
-            if inbound.get('protocol'):
-                INBOUND_STREAMS[inbound['protocol']] = {
-                    "net": inbound['streamSettings'].get('network', 'tcp') if inbound.get('streamSettings') else 'tcp',
-                    "tls": inbound['streamSettings'].get('security') in ('tls', 'xtls') if inbound.get('streamSettings') else False,
+    if xray and xray.config and xray.config.get("inbounds"):
+        for inbound in xray.config["inbounds"]:
+            if inbound.get("protocol"):
+                INBOUND_STREAMS[inbound["protocol"]] = {
+                    "net": inbound["streamSettings"].get("network", "tcp") if inbound.get("streamSettings") else "tcp",
+                    "tls": inbound["streamSettings"].get("security") in ("tls", "xtls")
+                    if inbound.get("streamSettings")
+                    else False,
                     "sni": (
-                        (inbound['streamSettings'].get('tlsSettings') or
-                         inbound['streamSettings'].get('xtlsSettings') or
-                         {}).get('serverName', '')
-                        if inbound.get('streamSettings') else ''
+                        (
+                            inbound["streamSettings"].get("tlsSettings")
+                            or inbound["streamSettings"].get("xtlsSettings")
+                            or {}
+                        ).get("serverName", "")
+                        if inbound.get("streamSettings")
+                        else ""
                     ),
                     "path": (
-                        inbound['streamSettings'].get(
-                            f"{inbound['streamSettings'].get('network', 'tcp')}Settings", {}
-                        ).get('path', '')
-                        if inbound.get('streamSettings') else ''
-                    )
+                        inbound["streamSettings"]
+                        .get(f"{inbound['streamSettings'].get('network', 'tcp')}Settings", {})
+                        .get("path", "")
+                        if inbound.get("streamSettings")
+                        else ""
+                    ),
                 }
 
-    if protocol == 'vmess':
-        return vmess_link(remark=remark,
-                          address=host,
-                          id=settings['id'],
-                          net=INBOUND_STREAMS[protocol]['net'],
-                          tls=INBOUND_STREAMS[protocol]['tls'],
-                          sni=INBOUND_STREAMS[protocol]['sni'],
-                          host=INBOUND_STREAMS[protocol]['sni'],
-                          path=INBOUND_STREAMS[protocol]['path'])
+    if protocol == "vmess":
+        return vmess_link(
+            remark=remark,
+            address=host,
+            id=settings["id"],
+            net=INBOUND_STREAMS[protocol]["net"],
+            tls=INBOUND_STREAMS[protocol]["tls"],
+            sni=INBOUND_STREAMS[protocol]["sni"],
+            host=INBOUND_STREAMS[protocol]["sni"],
+            path=INBOUND_STREAMS[protocol]["path"],
+        )
 
-    if protocol == 'vless':
-        return vless_link(remark=remark,
-                          address=host,
-                          id=settings['id'],
-                          net=INBOUND_STREAMS[protocol]['net'],
-                          tls=INBOUND_STREAMS[protocol]['tls'],
-                          sni=INBOUND_STREAMS[protocol]['sni'],
-                          host=INBOUND_STREAMS[protocol]['sni'],
-                          path=INBOUND_STREAMS[protocol]['path'])
+    if protocol == "vless":
+        return vless_link(
+            remark=remark,
+            address=host,
+            id=settings["id"],
+            net=INBOUND_STREAMS[protocol]["net"],
+            tls=INBOUND_STREAMS[protocol]["tls"],
+            sni=INBOUND_STREAMS[protocol]["sni"],
+            host=INBOUND_STREAMS[protocol]["sni"],
+            path=INBOUND_STREAMS[protocol]["path"],
+        )
 
-    if protocol == 'trojan':
-        return trojan_link(remark=remark,
-                           address=host,
-                           password=settings['password'],
-                           net=INBOUND_STREAMS[protocol]['net'],
-                           tls=INBOUND_STREAMS[protocol]['tls'],
-                           sni=INBOUND_STREAMS[protocol]['sni'],
-                           host=INBOUND_STREAMS[protocol]['sni'],
-                           path=INBOUND_STREAMS[protocol]['path'])
+    if protocol == "trojan":
+        return trojan_link(
+            remark=remark,
+            address=host,
+            password=settings["password"],
+            net=INBOUND_STREAMS[protocol]["net"],
+            tls=INBOUND_STREAMS[protocol]["tls"],
+            sni=INBOUND_STREAMS[protocol]["sni"],
+            host=INBOUND_STREAMS[protocol]["sni"],
+            path=INBOUND_STREAMS[protocol]["path"],
+        )
 
-    if protocol == 'shadowsocks':
-        return shadowsocks_link(remark=remark,
-                                address=host,
-                                password=settings['password'])
+    if protocol == "shadowsocks":
+        return shadowsocks_link(remark=remark, address=host, password=settings["password"])
 
 
 def get_share_links(protocol: str, settings: str):
     links = []
     for host in XRAY_HOSTS:
-        links.append(get_share_link(host['remark'], host['hostname'], protocol, settings))
+        links.append(get_share_link(host["remark"], host["hostname"], protocol, settings))
     return links

@@ -70,6 +70,8 @@ class ServiceBase(BaseModel):
     lifetime_used_traffic: int = 0
     host_count: int = 0
     user_count: int = 0
+    has_hosts: bool = True
+    broken: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -129,12 +131,12 @@ class ServiceAdminTimeseries(BaseModel):
 
 
 class ServiceDeletePayload(BaseModel):
-    mode: Literal["delete_users", "transfer_users"] = "delete_users"
+    mode: Literal["delete_users", "transfer_users"] = "transfer_users"
     target_service_id: Optional[int] = None
     unlink_admins: bool = False
 
     @model_validator(mode="after")
     def validate_target(self):
-        if self.mode == "transfer_users" and self.target_service_id is None:
-            raise ValueError("target_service_id is required when transferring users")
+        if self.target_service_id is not None and self.target_service_id < 1:
+            raise ValueError("target_service_id must be a positive integer when provided")
         return self

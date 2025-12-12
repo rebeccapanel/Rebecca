@@ -1,14 +1,15 @@
 import base64
+import os
 import string
 from collections import defaultdict
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 from datetime import timedelta
 from typing import TYPE_CHECKING, List, Literal, Union
 
 from jdatetime import date as jd
 
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings
 from app.models.proxy import ProxyTypes
 
 from . import *
@@ -54,13 +55,11 @@ def is_credential_key(value: str) -> bool:
 def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:
     format_variables = setup_format_variables(extra_data)
     conf = V2rayShareLink()
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_clash_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
+    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
 ) -> str:
     if is_meta is True:
         conf = ClashMetaConfiguration()
@@ -68,49 +67,45 @@ def generate_clash_subscription(
         conf = ClashConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
-def generate_singbox_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool
-) -> str:
+def generate_singbox_subscription(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> str:
     conf = SingBoxConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_outline_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool,
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
 ) -> str:
     conf = OutlineConfiguration()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_v2ray_json_subscription(
-        proxies: dict, inbounds: dict, extra_data: dict, reverse: bool,
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
 ) -> str:
     conf = V2rayJsonConfig()
 
     format_variables = setup_format_variables(extra_data)
-    return process_inbounds_and_tags(
-        inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse
-    )
+    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
 def generate_subscription(
-        user: "UserResponse",
-        config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
-        as_base64: bool,
-        reverse: bool,
+    user: "UserResponse",
+    config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
+    as_base64: bool,
+    reverse: bool,
 ) -> str:
     kwargs = {
         "proxies": user.proxies,
@@ -169,19 +164,19 @@ def setup_format_variables(extra_data: dict) -> dict:
     user_status = extra_data.get("status")
     expire_timestamp = extra_data.get("expire")
     on_hold_expire_duration = extra_data.get("on_hold_expire_duration")
-    now = dt.utcnow()
+    now = dt.now(timezone.utc)
     now_ts = now.timestamp()
 
     if user_status != UserStatus.on_hold:
         if expire_timestamp is not None and expire_timestamp >= 0:
-            seconds_left = expire_timestamp - int(dt.utcnow().timestamp())
-            expire_datetime = dt.fromtimestamp(expire_timestamp)
+            seconds_left = expire_timestamp - int(dt.now(timezone.utc).timestamp())
+            expire_datetime = dt.fromtimestamp(expire_timestamp, timezone.utc)
             expire_date = expire_datetime.date()
             jalali_expire_date = jd.fromgregorian(
                 year=expire_date.year, month=expire_date.month, day=expire_date.day
             ).strftime("%Y-%m-%d")
             if now_ts < expire_timestamp:
-                days_left = (expire_datetime - dt.utcnow()).days + 1
+                days_left = (expire_datetime - dt.now(timezone.utc)).days + 1
                 time_left = format_time_left(seconds_left)
             else:
                 days_left = "0"
@@ -240,71 +235,64 @@ def setup_format_variables(extra_data: dict) -> dict:
 
 
 def process_inbounds_and_tags(
-        inbounds: dict,
-        proxies: dict,
-        format_variables: dict,
-        extra_data: dict,
-        conf: Union[
-            V2rayShareLink,
-            V2rayJsonConfig,
-            SingBoxConfiguration,
-            ClashConfiguration,
-            ClashMetaConfiguration,
-            OutlineConfiguration
-        ],
-        reverse=False,
+    inbounds: dict,
+    proxies: dict,
+    format_variables: dict,
+    extra_data: dict,
+    conf: Union[
+        V2rayShareLink,
+        V2rayJsonConfig,
+        SingBoxConfiguration,
+        ClashConfiguration,
+        ClashMetaConfiguration,
+        OutlineConfiguration,
+    ],
+    reverse=False,
 ) -> Union[List, str]:
     from app.runtime import xray
+    from app.services.data_access import get_service_host_map_cached
+    from app.db import GetDB
+    from app.db import crud
+    from app.reb_node.config import XRayConfig
+
     service_id = extra_data.get("service_id")
 
-    def _select_host_map(service_id_value):
-        """
-        Get host map for a specific service_id from cache.
-        If service_id is None (no service), returns hosts not assigned to any service.
-        Always ensures cache is populated before returning.
-        """
-        if not hasattr(xray, "service_hosts_cache"):
-            xray.service_hosts_cache = {}
-        
-        if not xray.service_hosts_cache:
-            xray.hosts.update()
-        
-        host_map = xray.service_hosts_cache.get(service_id_value)
-        
-        if service_id_value is None:
-            xray.hosts.update()
-            
-            all_hosts = xray.hosts
-            host_map = {}
-            for tag in xray.config.inbounds_by_tag.keys():
-                host_map[tag] = all_hosts.get(tag, [])
-            
-            xray.service_hosts_cache[None] = host_map
-        else:
-            if not host_map:
-                xray.hosts.update()
-                host_map = xray.service_hosts_cache.get(service_id_value)
-        
-        if not host_map:
-            host_map = {}
-        
-        all_tags = set(xray.config.inbounds_by_tag.keys())
-        for tag in all_tags:
-            if tag not in host_map:
-                host_map[tag] = []
-        
-        return host_map
+    from app.services.data_access import get_inbounds_by_tag_cached
+    from config import REDIS_ENABLED
+    
+    inbounds_by_tag = {}
+    if REDIS_ENABLED:
+        try:
+            with GetDB() as db:
+                inbounds_by_tag = get_inbounds_by_tag_cached(db)
+        except Exception:
+            pass
+    
+    if not inbounds_by_tag:
+        xray_config = None
+        try:
+            with GetDB() as db:
+                raw_config = crud.get_xray_config(db)
+                xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
+        except Exception:
+            xray_config = getattr(xray, "config", None)
 
-    host_map = _select_host_map(service_id)
-    inbound_index = {
-        tag: index for index, tag in enumerate(xray.config.inbounds_by_tag.keys())
-    }
+        if not xray_config:
+            return [] if isinstance(conf, list) else ""
+
+        inbounds_by_tag = getattr(xray_config, "inbounds_by_tag", {}) or {}
+
+    host_map = {}
+    if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+        try:
+            host_map = get_service_host_map_cached(service_id, force_refresh=True)
+        except Exception:
+            host_map = {}
+    inbound_index = {tag: index for index, tag in enumerate(inbounds_by_tag.keys())}
 
     service_host_orders = (extra_data or {}).get("service_host_orders") or {}
     if service_host_orders:
-        service_host_orders = {
-            int(k): v for k, v in service_host_orders.items()
-        }
+        service_host_orders = {int(k): v for k, v in service_host_orders.items()}
 
     host_entries = []
     for protocol, tags in inbounds.items():
@@ -313,19 +301,17 @@ def process_inbounds_and_tags(
             continue
 
         for tag in tags:
-            inbound = xray.config.inbounds_by_tag.get(tag)
+            inbound = inbounds_by_tag.get(tag)
             if not inbound:
                 continue
 
             # Get host list for this tag from host_map
             host_list = host_map.get(tag, []) if host_map else []
-            
-            
-            sorted_host_list = sorted(
-                host_list,
-                key=lambda h: (h.get("sort", 0), h.get("id") or 0)
-            )
+
+            sorted_host_list = sorted(host_list, key=lambda h: (h.get("sort", 0), h.get("id") or 0))
             for position, host in enumerate(sorted_host_list):
+                if host.get("is_disabled"):
+                    continue
                 host_id = host.get("id")
                 host_entries.append(
                     (
@@ -342,15 +328,17 @@ def process_inbounds_and_tags(
 
     host_entries.sort(
         key=lambda entry: (
-            service_host_orders.get(
-                entry[7], entry[4].get("sort", 0)
-            ) if entry[7] is not None else entry[4].get("sort", 0),
+            service_host_orders.get(entry[7], entry[4].get("sort", 0))
+            if entry[7] is not None
+            else entry[4].get("sort", 0),
             entry[5],
             entry[6],
         )
     )
 
     for protocol, tag, settings, inbound, host, _, _, _ in host_entries:
+        if host.get("is_disabled"):
+            continue
         format_variables.update({"PROTOCOL": protocol.name})
         format_variables.update({"TRANSPORT": inbound["network"]})
         host_inbound = inbound.copy()
@@ -366,9 +354,11 @@ def process_inbounds_and_tags(
                 salt = username[:8].ljust(8, "0")
                 sni = sni.replace("*", salt)
 
+        # Get shortId from inbound sids if available
+        sid = ""
         if sids := inbound.get("sids"):
             # Use first SID to ensure consistent configs
-            inbound["sid"] = sids[0]
+            sid = sids[0]
 
         req_host = ""
         req_host_list = host["host"] or inbound["host"]
@@ -412,29 +402,28 @@ def process_inbounds_and_tags(
                 "fragment_setting": host["fragment_setting"],
                 "noise_setting": host["noise_setting"],
                 "random_user_agent": host["random_user_agent"],
+                "sid": sid,  # Include shortId in host_inbound so it's passed to user configs
             }
         )
 
         credential_key = extra_data.get("credential_key")
-        if not credential_key and hasattr(settings, 'credential_key'):
-            credential_key = getattr(settings, 'credential_key', None)
-        
+        if not credential_key and hasattr(settings, "credential_key"):
+            credential_key = getattr(settings, "credential_key", None)
+
         if isinstance(protocol, str):
             proxy_type = ProxyTypes(protocol)
         else:
             proxy_type = protocol
-        
-        existing_id = getattr(settings, 'id', None) if hasattr(settings, 'id') else None
-        
-        if existing_id and proxy_type in UUID_PROTOCOLS:
-            runtime_settings = settings.model_dump()
-        else:
-            runtime_settings = runtime_proxy_settings(
-                settings, proxy_type, credential_key
-            )
 
-        runtime_settings.pop("flow", None)
-        
+        user_flow = extra_data.get("flow")
+        if user_flow:
+            runtime_settings = runtime_proxy_settings(settings, proxy_type, credential_key, flow=user_flow)
+        else:
+            # Call without flow to mirror server-side account generation when flow is absent
+            runtime_settings = runtime_proxy_settings(settings, proxy_type, credential_key)
+        if not user_flow:
+            runtime_settings.pop("flow", None)
+
         conf.add(
             remark=host["remark"].format_map(format_variables),
             address=address.format_map(format_variables),

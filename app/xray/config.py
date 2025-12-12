@@ -3,10 +3,7 @@ from pathlib import PosixPath
 
 
 class XRayConfig(dict):
-    def __init__(self,
-                 config: dict | str | PosixPath = {},
-                 api_host: str = "127.0.0.1",
-                 api_port: int = 8080):
+    def __init__(self, config: dict | str | PosixPath = {}, api_host: str = "127.0.0.1", api_port: int = 8080):
         if isinstance(config, str):
             try:
                 # considering string as json
@@ -14,7 +11,7 @@ class XRayConfig(dict):
             except json.JSONDecodeError:
                 # considering string as file path
                 try:
-                    with open(config, 'r') as file:
+                    with open(config, "r") as file:
                         content = file.read().strip()
                         if not content:
                             # Empty file, use empty dict
@@ -27,7 +24,7 @@ class XRayConfig(dict):
 
         if isinstance(config, PosixPath):
             try:
-                with open(config, 'r') as file:
+                with open(config, "r") as file:
                     content = file.read().strip()
                     if not content:
                         # Empty file, use empty dict
@@ -48,37 +45,23 @@ class XRayConfig(dict):
         if self.get_inbound("API_INBOUND"):
             return
 
-        self["api"] = {
-            "services": [
-                "HandlerService",
-                "StatsService",
-                "LoggerService"
-            ],
-            "tag": "API"
-        }
+        self["api"] = {"services": ["HandlerService", "StatsService", "LoggerService"], "tag": "API"}
         self["stats"] = {}
         self["policy"] = {
-            "levels": {
-                "0": {
-                    "statsUserUplink": True,
-                    "statsUserDownlink": True
-                }
-            },
+            "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True}},
             "system": {
                 "statsInboundDownlink": False,
                 "statsInboundUplink": False,
                 "statsOutboundDownlink": True,
-                "statsOutboundUplink": True
-            }
+                "statsOutboundUplink": True,
+            },
         }
         inbound = {
             "listen": self.api_host,
             "port": self.api_port,
             "protocol": "dokodemo-door",
-            "settings": {
-                "address": self.api_host
-            },
-            "tag": "API_INBOUND"
+            "settings": {"address": self.api_host},
+            "tag": "API_INBOUND",
         }
         try:
             self["inbounds"].insert(0, inbound)
@@ -86,13 +69,7 @@ class XRayConfig(dict):
             self["inbounds"] = []
             self["inbounds"].insert(0, inbound)
 
-        rule = {
-            "inboundTag": [
-                "API_INBOUND"
-            ],
-            "outboundTag": "API",
-            "type": "field"
-        }
+        rule = {"inboundTag": ["API_INBOUND"], "outboundTag": "API", "type": "field"}
         try:
             self["routing"]["rules"].insert(0, rule)
         except KeyError:
@@ -100,13 +77,13 @@ class XRayConfig(dict):
             self["routing"]["rules"].insert(0, rule)
 
     def get_inbound(self, tag) -> dict:
-        for inbound in self['inbounds']:
-            if inbound['tag'] == tag:
+        for inbound in self["inbounds"]:
+            if inbound["tag"] == tag:
                 return inbound
 
     def get_outbound(self, tag) -> dict:
-        for outbound in self['outbounds']:
-            if outbound['tag'] == tag:
+        for outbound in self["outbounds"]:
+            if outbound["tag"] == tag:
                 outbound
 
     def to_json(self, **json_kwargs):

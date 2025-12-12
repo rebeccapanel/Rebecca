@@ -1,0 +1,25 @@
+{
+	"root": true,
+	"$schema": "https://biomejs.dev/schemas/2.3.8/schema.json",
+	"files": {
+		"includes": [
+			"src/**",
+			"!**/node_modules",
+			"!**/build",
+			"!**/dist",
+			"!**/stats.html"
+		]
+	},
+	"formatter": {
+		"indentWidth": 2
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"useExhaustiveDependencies": "warn"
+			}
+		}
+	}
+}

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package rebecca.common.net;
+
+message PortRange {
+  uint32 From = 1;
+  uint32 To = 2;
+}
+
+message PortList {
+  repeated PortRange range = 1;
+}
+
+

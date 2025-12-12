@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +25,7 @@ from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
 from config import LOGIN_NOTIFY_WHITE_LIST
+from app.services import metrics_service
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
 
@@ -51,8 +52,12 @@ def get_client_ip(request: Request) -> str:
 def validate_dates(start: str, end: str) -> tuple[datetime, datetime]:
     """Validate and parse start and end dates."""
     try:
-        start_date = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else (datetime.utcnow() - timedelta(days=30))
-        end_date = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else datetime.utcnow()
+        start_date = (
+            datetime.fromisoformat(start.replace("Z", "+00:00"))
+            if start
+            else (datetime.now(timezone.utc) - timedelta(days=30))
+        )
+        end_date = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else datetime.now(timezone.utc)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use ISO 8601 (e.g., 2025-09-24T00:00:00)")
 
@@ -103,10 +108,7 @@ def create_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only full access admins (or the Rebecca CLI) can create another full access admin.",
         )
-    if not (
-        admin.has_full_access
-        or admin.permissions.admin_management.allows(AdminManagementPermission.edit)
-    ):
+    if not (admin.has_full_access or admin.permissions.admin_management.allows(AdminManagementPermission.edit)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You're not allowed to manage other admins.",
@@ -210,7 +212,6 @@ def get_admins(
 )
 def disable_admin_account(
     payload: AdminDisablePayload,
-    bg: BackgroundTasks,
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(Admin.check_sudo_admin),
@@ -228,17 +229,17 @@ def disable_admin_account(
         raise HTTPException(status_code=400, detail="Reason is required")
     reason = reason[:512]
 
-    users_query = db.query(DBUser).filter(DBUser.status.in_((UserStatus.active, UserStatus.on_hold)))
-    if dbadmin:
-        users_query = users_query.filter(DBUser.admin_id == dbadmin.id)
-    users_snapshot = [SimpleNamespace(id=user.id, username=user.username) for user in users_query.all()]
-
-    crud.disable_all_active_users(db=db, admin=dbadmin)
-    for user in users_snapshot:
-        bg.add_task(xray.operations.remove_user, dbuser=user)
-
     previous_state = Admin.model_validate(dbadmin)
+    crud.disable_all_active_users(db=db, admin=dbadmin)
     updated_admin = crud.disable_admin(db, dbadmin, reason)
+
+    # Restart xray with updated config to remove disabled users
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
+
     admin_schema = Admin.model_validate(updated_admin)
     report.admin_updated(admin_schema, current_admin, previous=previous_state)
     return admin_schema
@@ -288,22 +289,19 @@ def enable_admin_account(
 
 @router.post("/admin/{username}/users/disable", responses={403: responses._403, 404: responses._404})
 def disable_all_active_users(
-    bg: BackgroundTasks,
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Disable all active users under a specific admin"""
-    users_query = db.query(DBUser).filter(DBUser.status.in_((UserStatus.active, UserStatus.on_hold)))
-    if dbadmin:
-        users_query = users_query.filter(DBUser.admin_id == dbadmin.id)
-
-    users_snapshot = [SimpleNamespace(id=user.id, username=user.username) for user in users_query.all()]
-
     crud.disable_all_active_users(db=db, admin=dbadmin)
 
-    for user in users_snapshot:
-        bg.add_task(xray.operations.remove_user, dbuser=user)
+    # Restart xray with updated config to remove disabled users
+    startup_config = xray.config.include_db_users()
+    xray.core.restart(startup_config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, startup_config)
 
     return {"detail": "Users successfully disabled"}
 
@@ -311,7 +309,8 @@ def disable_all_active_users(
 @router.post("/admin/{username}/users/activate", responses={403: responses._403, 404: responses._404})
 def activate_all_disabled_users(
     dbadmin: Admin = Depends(get_admin_by_username),
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Activate all disabled users under a specific admin"""
     try:
@@ -336,7 +335,7 @@ def activate_all_disabled_users(
 def reset_admin_usage(
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.check_sudo_admin)
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Resets usage of admin."""
     if dbadmin.username != current_admin.username:
@@ -352,18 +351,14 @@ def reset_admin_usage(
     response_model=int,
     responses={403: responses._403},
 )
-def get_admin_usage(
-    dbadmin: Admin = Depends(get_admin_by_username),
-    current_admin: Admin = Depends(Admin.get_current)
-):
+def get_admin_usage(dbadmin: Admin = Depends(get_admin_by_username), current_admin: Admin = Depends(Admin.get_current)):
     """Retrieve the usage of given admin."""
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return dbadmin.users_usage
+    return metrics_service.get_admin_total_usage(dbadmin)
 
 
 @router.get("/admin/{username}/usage/daily", responses={403: responses._403, 404: responses._404})
@@ -372,19 +367,18 @@ def get_admin_usage_daily(
     start: str = "",
     end: str = "",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Get admin usage per day (aggregated over all nodes and users).
     """
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     start, end = validate_dates(start, end)
-    usages = crud.get_admin_daily_usages(db, dbadmin, start, end)
+    usages = metrics_service.get_admin_daily_usage(db, dbadmin, start, end)
 
     return {"username": dbadmin.username, "usages": usages}
 
@@ -397,15 +391,14 @@ def get_admin_usage_chart(
     node_id: Optional[int] = None,
     granularity: str = "day",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Get admin usage timeseries for a specific node (or all nodes if node_id is not provided).
     Returns usage data grouped by date (daily by default, hourly if requested).
     """
     if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == dbadmin.username
+        current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == dbadmin.username
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -414,7 +407,7 @@ def get_admin_usage_chart(
     if granularity_value not in {"day", "hour"}:
         raise HTTPException(status_code=400, detail="Invalid granularity. Use 'day' or 'hour'.")
 
-    usages = crud.get_admin_usages_by_day(db, dbadmin, start, end, node_id, granularity_value)
+    usages = metrics_service.get_admin_usage_chart(db, dbadmin, start, end, node_id, granularity_value)
 
     if node_id is not None:
         if node_id == 0:
@@ -440,16 +433,13 @@ def get_admin_usage_by_nodes(
     start: str = "",
     end: str = "",
     db: Session = Depends(get_db),
-    current_admin: Admin = Depends(Admin.get_current)
+    current_admin: Admin = Depends(Admin.get_current),
 ):
     """
     Retrieve usage statistics for a specific admin across all nodes within a date range.
     Returns uplink and downlink traffic grouped by node.
     """
-    if not (
-        current_admin.role in (AdminRole.sudo, AdminRole.full_access)
-        or current_admin.username == username
-    ):
+    if not (current_admin.role in (AdminRole.sudo, AdminRole.full_access) or current_admin.username == username):
         raise HTTPException(status_code=403, detail="Access denied")
 
     dbadmin = db.query(DBAdmin).filter(DBAdmin.username == username).first()
@@ -457,12 +447,6 @@ def get_admin_usage_by_nodes(
         raise HTTPException(status_code=404, detail="Admin not found")
 
     start, end = validate_dates(start, end)
-    usages = crud.get_admin_usage_by_nodes(db, dbadmin, start, end)
+    usages = metrics_service.get_admin_usage_by_nodes(db, dbadmin, start, end)
 
     return {"usages": usages}
-
-
-
-
-
-

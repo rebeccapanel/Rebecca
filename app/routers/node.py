@@ -26,11 +26,16 @@ from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
 from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT
-from fastapi import HTTPException
-
-router = APIRouter(
-    tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403}
+from app.utils.crypto import (
+    generate_certificate,
+    generate_unique_cn,
+    extract_public_key_from_certificate,
 )
+from uuid import uuid4
+
+router = APIRouter(tags=["Node"], prefix="/api", responses={401: responses._401, 403: responses._403})
+
+_PENDING_CERTS: dict[str, dict[str, str]] = {}
 
 
 def add_host_if_needed(new_node: NodeCreate, db: Session):
@@ -50,13 +55,44 @@ MASTER_NODE_NAME = "Master"
 
 def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeResponse:
     """Convert DB node rows to API responses enriched with runtime metadata."""
-    node_response = (
-        dbnode if isinstance(dbnode, NodeResponse) else NodeResponse.model_validate(dbnode)
-    )
+    node_response = dbnode if isinstance(dbnode, NodeResponse) else NodeResponse.model_validate(dbnode)
     runtime_node = xray.nodes.get(node_response.id)
     if runtime_node:
         node_response.node_service_version = getattr(runtime_node, "node_version", None)
     return node_response
+
+
+def _augment_node_cert_fields(
+    node_response: NodeResponse, dbnode: Union[DBNode, NodeResponse], default_cert: str | None
+) -> NodeResponse:
+    cert_value = getattr(dbnode, "certificate", None)
+    normalized_default = default_cert.strip() if isinstance(default_cert, str) else None
+    normalized_cert = cert_value.strip() if isinstance(cert_value, str) else None
+
+    has_custom_cert = False
+    uses_default_cert = True
+    public_key = None
+
+    if normalized_cert:
+        if normalized_default and normalized_cert == normalized_default:
+            uses_default_cert = True
+        else:
+            has_custom_cert = True
+            uses_default_cert = False
+            try:
+                public_key = extract_public_key_from_certificate(cert_value)
+            except Exception as exc:
+                logger.warning("Failed to extract public key for node %s: %s", node_response.id, exc)
+
+    updated = node_response.model_copy(
+        update={
+            "has_custom_certificate": has_custom_cert,
+            "uses_default_certificate": uses_default_cert,
+            "certificate_public_key": public_key,
+            "node_certificate": cert_value if has_custom_cert else None,
+        }
+    )
+    return updated
 
 
 def _build_master_response(master: DBMasterNodeState) -> MasterNodeResponse:
@@ -112,12 +148,34 @@ def reset_master_node_usage(
 
 
 @router.get("/node/settings", response_model=NodeSettings)
-def get_node_settings(
-    db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)
-):
-    """Retrieve the current node settings, including TLS certificate."""
+def get_node_settings(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Retrieve the current node settings, including the shared TLS certificate (legacy)."""
     tls = crud.get_tls_certificate(db)
-    return NodeSettings(certificate=tls.certificate)
+    return NodeSettings(
+        certificate=tls.certificate,
+        node_certificate=None,
+        node_certificate_key=None,
+    )
+
+
+@router.post("/node/certificate/new")
+def issue_node_certificate(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+) -> dict:
+    """
+    Generate a brand new certificate/key pair for a node creation flow.
+    """
+    unique_cn = generate_unique_cn()
+    cert_pair = generate_certificate(cn=unique_cn)
+    token = uuid4().hex
+    _PENDING_CERTS[token] = {
+        "certificate": cert_pair.get("cert"),
+        "certificate_key": cert_pair.get("key"),
+    }
+    return {
+        "certificate": cert_pair.get("cert"),
+        "certificate_token": token,
+    }
 
 
 @router.post("/node", response_model=NodeResponse, responses={409: responses._409})
@@ -132,9 +190,7 @@ def add_node(
         dbnode = crud.create_node(db, new_node)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409, detail=f'Node "{new_node.name}" already exists'
-        )
+        raise HTTPException(status_code=409, detail=f'Node "{new_node.name}" already exists')
 
     bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
     bg.add_task(add_host_if_needed, new_node, db)
@@ -142,7 +198,13 @@ def add_node(
     report.node_created(dbnode, admin)
 
     logger.info(f'New node "{dbnode.name}" added')
-    return _serialize_node_response(dbnode)
+    default_cert = crud.get_tls_certificate(db).certificate
+    resp = _augment_node_cert_fields(_serialize_node_response(dbnode), dbnode, default_cert)
+    return resp.model_copy(
+        update={
+            "node_certificate": dbnode.certificate,
+        }
+    )
 
 
 @router.get("/node/{node_id}", response_model=NodeResponse)
@@ -151,14 +213,44 @@ def get_node(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Retrieve details of a specific node by its ID."""
-    return _serialize_node_response(dbnode)
+    with GetDB() as db:
+        default_cert = crud.get_tls_certificate(db).certificate
+    return _augment_node_cert_fields(_serialize_node_response(dbnode), dbnode, default_cert)
+
+
+@router.post("/node/{node_id}/certificate/regenerate", response_model=NodeResponse)
+def regenerate_node_certificate(
+    node_id: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Regenerate a unique certificate for an existing node and return it."""
+    dbnode = crud.get_node_by_id(db, node_id)
+    if not dbnode:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    updated = crud.regenerate_node_certificate(db, dbnode)
+
+    # Clear cached TLS so new cert is used immediately
+    try:
+        from app.reb_node.operations import get_tls
+
+        get_tls.cache_clear()
+    except Exception:
+        pass
+
+    default_cert = crud.get_tls_certificate(db).certificate
+    resp = _augment_node_cert_fields(_serialize_node_response(updated), updated, default_cert)
+    return resp.model_copy(
+        update={
+            "node_certificate": updated.certificate,
+        }
+    )
 
 
 @router.websocket("/node/{node_id}/logs")
 async def node_logs(node_id: int, websocket: WebSocket):
-    token = websocket.query_params.get("token") or websocket.headers.get(
-        "Authorization", ""
-    ).removeprefix("Bearer ")
+    token = websocket.query_params.get("token") or websocket.headers.get("Authorization", "").removeprefix("Bearer ")
     with GetDB() as db:
         admin = Admin.get_admin(token, db)
     if not admin:
@@ -180,9 +272,7 @@ async def node_logs(node_id: int, websocket: WebSocket):
         except ValueError:
             return await websocket.close(reason="Invalid interval value", code=4400)
         if interval > 10:
-            return await websocket.close(
-                reason="Interval must be more than 0 and at most 10 seconds", code=4400
-            )
+            return await websocket.close(reason="Interval must be more than 0 and at most 10 seconds", code=4400)
 
     await websocket.accept()
 
@@ -224,12 +314,11 @@ async def node_logs(node_id: int, websocket: WebSocket):
 
 
 @router.get("/nodes", response_model=List[NodeResponse])
-def get_nodes(
-    db: Session = Depends(get_db), _: Admin = Depends(Admin.check_sudo_admin)
-):
+def get_nodes(db: Session = Depends(get_db), _: Admin = Depends(Admin.check_sudo_admin)):
     """Retrieve a list of all nodes. Accessible only to sudo admins."""
     nodes = crud.get_nodes(db)
-    return [_serialize_node_response(node) for node in nodes]
+    default_cert = crud.get_tls_certificate(db).certificate
+    return [_augment_node_cert_fields(_serialize_node_response(node), node, default_cert) for node in nodes]
 
 
 @router.put("/node/{node_id}", response_model=NodeResponse)
@@ -253,7 +342,8 @@ def modify_node(
         bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
 
     logger.info(f'Node "{dbnode.name}" modified')
-    return _serialize_node_response(updated_node_resp)
+    default_cert = crud.get_tls_certificate(db).certificate
+    return _augment_node_cert_fields(_serialize_node_response(updated_node_resp), updated_node_resp, default_cert)
 
 
 @router.post("/node/{node_id}/usage/reset", response_model=NodeResponse)
@@ -268,7 +358,8 @@ def reset_node_usage(
     bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
     report.node_usage_reset(updated_node, admin)
     logger.info(f'Node "{dbnode.name}" usage reset')
-    return _serialize_node_response(updated_node)
+    default_cert = crud.get_tls_certificate(db).certificate
+    return _augment_node_cert_fields(_serialize_node_response(updated_node), updated_node, default_cert)
 
 
 @router.post("/node/{node_id}/reconnect")
@@ -321,7 +412,7 @@ def get_node_usage_daily(
     end: str = "",
     granularity: str = "day",
     db: Session = Depends(get_db),
-    _: Admin = Depends(Admin.check_sudo_admin)
+    _: Admin = Depends(Admin.check_sudo_admin),
 ):
     """
     Get usage for a specific node, regardless of admin.
@@ -335,19 +426,15 @@ def get_node_usage_daily(
     dbnode = db.query(DBNode).filter(DBNode.id == node_id).first()
     if not dbnode:
         raise HTTPException(status_code=404, detail="Node not found")
-    
+
     usages = crud.get_node_usage_by_day(db, node_id, start, end, granularity)
-    return {
-        "node_id": node_id,
-        "node_name": dbnode.name,
-        "usages": usages
-    }
+    return {"node_id": node_id, "node_name": dbnode.name, "usages": usages}
 
 
 @router.post("/node/{node_id}/xray/update", responses={403: responses._403, 404: responses._404})
 def update_node_core(
     node_id: int,
-    payload: dict = Body(..., example={"version": "v1.8.11"}),
+    payload: dict = Body(..., examples={"default": {"version": "v1.8.11"}}),
     dbnode: NodeResponse = Depends(get_node),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -373,12 +460,19 @@ def update_node_core(
 @router.post("/node/{node_id}/geo/update", responses={403: responses._403, 404: responses._404})
 def update_node_geo(
     node_id: int,
-    payload: dict = Body(..., example={
-        "files": [{"name": "geosite.dat", "url": "https://.../geosite.dat"},
-                  {"name": "geoip.dat", "url": "https://.../geoip.dat"}],
-        "template_index_url": "https://.../index.json",
-        "template_name": "standard"
-    }),
+    payload: dict = Body(
+        ...,
+        examples={
+            "default": {
+                "files": [
+                    {"name": "geosite.dat", "url": "https://.../geosite.dat"},
+                    {"name": "geoip.dat", "url": "https://.../geoip.dat"},
+                ],
+                "template_index_url": "https://.../index.json",
+                "template_name": "standard",
+            }
+        },
+    ),
     dbnode: NodeResponse = Depends(get_node),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -389,9 +483,7 @@ def update_node_geo(
     files = payload.get("files") or []
     mode = (payload.get("mode") or "").strip().lower()
     template_index_url = (
-        payload.get("template_index_url")
-        or payload.get("templateIndexUrl")
-        or GEO_TEMPLATES_INDEX_DEFAULT
+        payload.get("template_index_url") or payload.get("templateIndexUrl") or GEO_TEMPLATES_INDEX_DEFAULT
     ).strip()
     template_name = (payload.get("template_name") or payload.get("templateName") or "").strip()
 
@@ -477,8 +569,3 @@ def update_node_service(
         f"Unable to update Rebecca-node service for {dbnode.name}",
     )
     return {"detail": f"Update requested for node {dbnode.name}"}
-
-
-
-
-

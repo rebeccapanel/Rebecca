@@ -19,11 +19,13 @@ app = typer.Typer(no_args_is_help=True)
 
 
 def validate_telegram_id(value: Union[int, str]) -> Union[int, None]:
-    if not value:
+    if value in (None, "", 0, "0"):
         return 0
-    if not isinstance(value, int) and not value.isdigit():
-        raise typer.BadParameter("Telegram ID must be an integer.")
-    if int(value) < 0:
+    if not isinstance(value, int):
+        if not str(value).isdigit():
+            raise typer.BadParameter("Telegram ID must be an integer.")
+        value = int(value)
+    if value < 0:
         raise typer.BadParameter("Telegram ID must be a positive integer.")
     return value
 
@@ -32,7 +34,46 @@ def parse_role(value: str) -> AdminRole:
     try:
         return AdminRole(value.lower())
     except ValueError as exc:
-        raise typer.BadParameter("Role must be one of: standard, sudo, full_access.") from exc
+        raise typer.BadParameter("Role must be one of: standard, reseller, sudo, full_access.") from exc
+
+
+def prompt_role_selection(current_role: Optional[AdminRole] = None) -> AdminRole:
+    """Prompt user to select a role from a numbered list."""
+    roles = [AdminRole.standard, AdminRole.reseller, AdminRole.sudo, AdminRole.full_access]
+    roles_map = {str(i + 1): role for i, role in enumerate(roles)}
+    
+    Console().print("\nAvailable roles:")
+    for i, role in enumerate(roles, 1):
+        current_marker = " (current)" if current_role == role else ""
+        Console().print(f"  {i}) {role.value}{current_marker}")
+    Console().print()
+    
+    while True:
+        if current_role:
+            default_value = str(list(roles_map.values()).index(current_role) + 1)
+        else:
+            default_value = "1"
+        
+        choice = typer.prompt(
+            "Select role",
+            default=default_value,
+            show_default=True,
+        ).strip()
+        
+        if not choice and current_role:
+            return current_role
+        
+        if not choice:
+            choice = default_value
+        
+        if choice in roles_map:
+            return roles_map[choice]
+        
+        try:
+            return parse_role(choice)
+        except typer.BadParameter:
+            Console().print(f"[red]Invalid choice: {choice}. Please enter a number (1-4) or role name.[/red]")
+            continue
 
 
 def calculate_admin_usage(admin_id: int) -> str:
@@ -108,11 +149,11 @@ def delete_admin(
 @app.command(name="create")
 def create_admin(
     username: str = typer.Option(..., *utils.FLAGS["username"], show_default=False, prompt=True),
-    role: str = typer.Option(
-        AdminRole.standard.value,
+    role: Optional[str] = typer.Option(
+        None,
         *utils.FLAGS["role"],
-        prompt=True,
-        help="Admin role (standard, sudo, full_access)",
+        help="Admin role (1=standard, 2=reseller, 3=sudo, 4=full_access). If not provided, will prompt interactively.",
+        prompt=False,
     ),
     password: str = typer.Option(..., prompt=True, confirmation_prompt=True,
                                  hide_input=True, hidden=True, envvar=utils.PASSWORD_ENVIRON_NAME),
@@ -124,6 +165,11 @@ def create_admin(
 
     Password can also be set using the `REBECCA_ADMIN_PASSWORD` environment variable for non-interactive usages.
     """
+    if role is None:
+        selected_role = prompt_role_selection()
+    else:
+        selected_role = parse_role(role)
+    
     with GetDB() as db:
         try:
             crud.create_admin(
@@ -131,7 +177,7 @@ def create_admin(
                 AdminCreate(
                     username=username,
                     password=password,
-                    role=parse_role(role),
+                    role=selected_role,
                     telegram_id=telegram_id,
                 ),
             )
@@ -153,11 +199,9 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
             Panel(f'Editing "{username}". Just press "Enter" to leave each field unchanged.')
         )
 
-        new_role_value = typer.prompt(
-            "Role (standard/sudo/full_access)",
-            default=admin.role.value,
-            show_default=True,
-        ).strip() or admin.role.value
+        new_role = prompt_role_selection(current_role=admin.role)
+        role_to_set = new_role if new_role != admin.role else None
+        
         new_password: Union[str, None] = typer.prompt(
             "New password",
             default="",
@@ -171,7 +215,7 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
         telegram_id = validate_telegram_id(telegram_id)
 
         return AdminPartialModify(
-            role=parse_role(new_role_value),
+            role=role_to_set,
             password=new_password,
             telegram_id=telegram_id,
         )
@@ -188,25 +232,29 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
 @app.command(name="change-role")
 def change_role(
     username: str = typer.Option(..., *utils.FLAGS["username"], prompt=True, show_default=False),
-    role: str = typer.Option(
-        AdminRole.full_access.value,
+    role: Optional[str] = typer.Option(
+        None,
         *utils.FLAGS["role"],
-        help="Target role (standard, sudo, full_access)",
-        show_default=True,
+        help="Target role (1=standard, 2=reseller, 3=sudo, 4=full_access). If not provided, will prompt interactively.",
     ),
     yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_all"], help="Skips confirmations"),
 ):
     """
     Changes an admin's role (e.g. promote a sudo admin to full access).
     """
-    target_role = parse_role(role)
     with GetDB() as db:
         admin: Union[Admin, None] = crud.get_admin(db, username=username)
         if not admin:
             utils.error(f"There's no admin with username \"{username}\"!")
 
+        if role is None:
+            target_role = prompt_role_selection(current_role=admin.role)
+        else:
+            target_role = parse_role(role)
+
         if admin.role == target_role:
             utils.success(f'Admin "{username}" is already {target_role.value}.')
+            return
 
         if not yes_to_all and not typer.confirm(
             f'Change "{username}" role from {admin.role.value} to {target_role.value}?', default=False

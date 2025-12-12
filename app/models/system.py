@@ -36,6 +36,22 @@ class AdminOverviewStats(BaseModel):
     top_admin_usage: int = 0
 
 
+class RedisStats(BaseModel):
+    enabled: bool
+    connected: bool
+    memory_used: int = 0
+    memory_total: int = 0
+    memory_percent: float = 0.0
+    uptime_seconds: int = 0
+    version: Optional[str] = None
+    keys_count: int = 0
+    keys_cached: int = 0
+    commands_processed: int = 0
+    hits: int = 0
+    misses: int = 0
+    hit_rate: float = 0.0
+
+
 class SystemStats(BaseModel):
     version: str
     cpu_cores: int
@@ -73,3 +89,5 @@ class SystemStats(BaseModel):
     personal_usage: PersonalUsageStats
     admin_overview: AdminOverviewStats
     last_xray_error: Optional[str] = None
+    last_telegram_error: Optional[str] = None
+    redis_stats: Optional[RedisStats] = None

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package rebecca.common.serial;
+
+message TypedMessage {
+  string type = 1;
+  bytes value = 2;
+}
+
+

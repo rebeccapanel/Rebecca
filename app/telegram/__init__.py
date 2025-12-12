@@ -74,9 +74,7 @@ def ensure_forum_topic(
             return topic.topic_id
 
         topic_title = (
-            topic.title
-            if topic
-            else TelegramSettingsService.DEFAULT_TOPIC_TITLES.get(topic_key, topic_key.title())
+            topic.title if topic else TelegramSettingsService.DEFAULT_TOPIC_TITLES.get(topic_key, topic_key.title())
         )
 
         try:
@@ -176,6 +174,8 @@ def reload_bot() -> None:
 
     _prepare_handlers()
     _start_polling(bot_instance)
+
+
 def start_bot() -> None:
     ensure_polling()
 
@@ -233,6 +233,3 @@ __all__ = [
     "report_admin_limit_reached",
     "setup",
 ]
-
-
-

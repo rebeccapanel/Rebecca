@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import (
     JSON,
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Text,
     String,
     Table,
     UniqueConstraint,
@@ -33,6 +34,11 @@ from app.models.proxy import (
 from app.models.user import UserDataLimitResetStrategy, UserStatus
 
 
+def utcnow():
+    """Return naive UTC time using the non-deprecated API."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class Admin(Base):
     __tablename__ = "admins"
 
@@ -47,7 +53,7 @@ class Admin(Base):
         lazy="selectin",
     )
     services = association_proxy("service_links", "service")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     role = Column(Enum(AdminRole), nullable=False, default=AdminRole.standard)
     permissions = Column(JSON, nullable=True, default=dict)
     password_reset_at = Column(DateTime, nullable=True)
@@ -59,6 +65,12 @@ class Admin(Base):
     status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
     disabled_reason = Column(String(512), nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
+    api_keys = relationship(
+        "AdminApiKey",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class AdminUsageLogs(Base):
@@ -68,7 +80,20 @@ class AdminUsageLogs(Base):
     admin_id = Column(Integer, ForeignKey("admins.id"))
     admin = relationship("Admin", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
-    reset_at = Column(DateTime, default=datetime.utcnow)
+    reset_at = Column(DateTime, default=utcnow)
+
+
+class AdminApiKey(Base):
+    __tablename__ = "admin_api_keys"
+
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
+    key_hash = Column(String(128), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+
+    admin = relationship("Admin", back_populates="api_keys")
 
 
 class TelegramSettings(Base):
@@ -84,10 +109,8 @@ class TelegramSettings(Base):
     default_vless_flow = Column(String(255), nullable=True)
     forum_topics = Column(JSON, nullable=False, default=dict)
     event_toggles = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class PanelSettings(Base):
@@ -95,16 +118,24 @@ class PanelSettings(Base):
 
     id = Column(Integer, primary_key=True)
     use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    default_subscription_type = Column(
+        String(32),
+        nullable=False,
+        default="key",
+        server_default=text("'key'"),
+    )
+    access_insights_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(34, collation='NOCASE'), index=True)
+    username = Column(String(34, collation="NOCASE"), index=True)
     credential_key = Column(String(64), nullable=True)
+    flow = Column(String(128), nullable=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
     used_traffic = Column(BigInteger, default=0)
@@ -122,7 +153,7 @@ class User(Base):
     sub_revoked_at = Column(DateTime, nullable=True, default=None)
     sub_updated_at = Column(DateTime, nullable=True, default=None)
     sub_last_user_agent = Column(String(512), nullable=True, default=None)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     note = Column(String(500), nullable=True, default=None)
     online_at = Column(DateTime, nullable=True, default=None)
     on_hold_expire_duration = Column(BigInteger, nullable=True, default=None)
@@ -135,17 +166,12 @@ class User(Base):
     auto_delete_in_days = Column(Integer, nullable=True, default=None)
 
     edit_at = Column(DateTime, nullable=True, default=None)
-    last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
+    last_status_change = Column(DateTime, default=utcnow, nullable=True)
 
     service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     service = relationship("Service", back_populates="users")
 
-    next_plan = relationship(
-        "NextPlan",
-        uselist=False,
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
+    next_plan = relationship("NextPlan", uselist=False, back_populates="user", cascade="all, delete-orphan")
 
     @hybrid_property
     def reseted_usage(self) -> int:
@@ -154,17 +180,14 @@ class User(Base):
     @reseted_usage.expression
     def reseted_usage(cls):
         return (
-            select(func.sum(UserUsageResetLogs.used_traffic_at_reset)).
-            where(UserUsageResetLogs.user_id == cls.id).
-            label('reseted_usage')
+            select(func.sum(UserUsageResetLogs.used_traffic_at_reset))
+            .where(UserUsageResetLogs.user_id == cls.id)
+            .label("reseted_usage")
         )
 
     @property
     def lifetime_used_traffic(self) -> int:
-        return int(
-            sum([log.used_traffic_at_reset for log in self.usage_logs])
-            + self.used_traffic
-        )
+        return int(sum([log.used_traffic_at_reset for log in self.usage_logs]) + self.used_traffic)
 
     @property
     def last_traffic_reset_time(self):
@@ -180,6 +203,7 @@ class User(Base):
     @property
     def inbounds(self):
         from app.runtime import xray  # lazy import to avoid circular dependency
+
         _ = {}
         for proxy in self.proxies:
             _[proxy.type] = []
@@ -223,14 +247,14 @@ template_inbounds_association = Table(
 
 
 class NextPlan(Base):
-    __tablename__ = 'next_plans'
+    __tablename__ = "next_plans"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     data_limit = Column(BigInteger, nullable=False)
     expire = Column(Integer, nullable=True)
-    add_remaining_traffic = Column(Boolean, nullable=False, default=False, server_default='0')
-    fire_on_either = Column(Boolean, nullable=False, default=True, server_default='0')
+    add_remaining_traffic = Column(Boolean, nullable=False, default=False, server_default="0")
+    fire_on_either = Column(Boolean, nullable=False, default=True, server_default="0")
 
     user = relationship("User", back_populates="next_plan")
 
@@ -245,9 +269,7 @@ class UserTemplate(Base):
     username_prefix = Column(String(20), nullable=True)
     username_suffix = Column(String(20), nullable=True)
 
-    inbounds = relationship(
-        "ProxyInbound", secondary=template_inbounds_association
-    )
+    inbounds = relationship("ProxyInbound", secondary=template_inbounds_association)
 
 
 class UserUsageResetLogs(Base):
@@ -257,7 +279,7 @@ class UserUsageResetLogs(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     user = relationship("User", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
-    reset_at = Column(DateTime, default=datetime.utcnow)
+    reset_at = Column(DateTime, default=utcnow)
 
 
 class Proxy(Base):
@@ -268,9 +290,7 @@ class Proxy(Base):
     user = relationship("User", back_populates="proxies")
     type = Column(Enum(ProxyTypes), nullable=False)
     settings = Column(JSON, nullable=False)
-    excluded_inbounds = relationship(
-        "ProxyInbound", secondary=excluded_inbounds_association
-    )
+    excluded_inbounds = relationship("ProxyInbound", secondary=excluded_inbounds_association)
 
 
 class ProxyInbound(Base):
@@ -278,9 +298,7 @@ class ProxyInbound(Base):
 
     id = Column(Integer, primary_key=True)
     tag = Column(String(256), unique=True, nullable=False, index=True)
-    hosts = relationship(
-        "ProxyHost", back_populates="inbound", cascade="all, delete-orphan"
-    )
+    hosts = relationship("ProxyHost", back_populates="inbound", cascade="all, delete-orphan")
 
 
 class ProxyHost(Base):
@@ -293,7 +311,7 @@ class ProxyHost(Base):
     remark = Column(String(256), unique=False, nullable=False)
     address = Column(String(256), unique=False, nullable=False)
     port = Column(Integer, nullable=True)
-    sort = Column(Integer, nullable=False, default=0, server_default='0')
+    sort = Column(Integer, nullable=False, default=0, server_default="0")
     path = Column(String(256), unique=False, nullable=True)
     sni = Column(String(1000), unique=False, nullable=True)
     host = Column(String(1000), unique=False, nullable=True)
@@ -307,25 +325,25 @@ class ProxyHost(Base):
         Enum(ProxyHostALPN),
         unique=False,
         nullable=False,
-        default=ProxyHostSecurity.none,
-        server_default=ProxyHostSecurity.none.name
+        default=ProxyHostALPN.none,
+        server_default=ProxyHostALPN.none.name,
     )
     fingerprint = Column(
         Enum(ProxyHostFingerprint),
         unique=False,
         nullable=False,
-        default=ProxyHostSecurity.none,
-        server_default=ProxyHostSecurity.none.name
+        default=ProxyHostFingerprint.none,
+        server_default=ProxyHostFingerprint.none.name,
     )
 
     inbound_tag = Column(String(256), ForeignKey("inbounds.tag"), nullable=False)
     inbound = relationship("ProxyInbound", back_populates="hosts")
     allowinsecure = Column(Boolean, nullable=True)
     is_disabled = Column(Boolean, nullable=True, default=False)
-    mux_enable = Column(Boolean, nullable=False, default=False, server_default='0')
+    mux_enable = Column(Boolean, nullable=False, default=False, server_default="0")
     fragment_setting = Column(String(100), nullable=True)
     noise_setting = Column(String(2000), nullable=True)
-    random_user_agent = Column(Boolean, nullable=False, default=False, server_default='0')
+    random_user_agent = Column(Boolean, nullable=False, default=False, server_default="0")
     use_sni_as_host = Column(Boolean, nullable=False, default=False, server_default="0")
     service_links = relationship(
         "ServiceHostLink",
@@ -341,12 +359,12 @@ class AdminServiceLink(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     admin = relationship("Admin", back_populates="service_links")
@@ -359,7 +377,7 @@ class ServiceHostLink(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     host_id = Column(Integer, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True)
     sort = Column(Integer, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
 
     service = relationship("Service", back_populates="host_links")
     host = relationship("ProxyHost", back_populates="service_links")
@@ -374,12 +392,12 @@ class Service(Base):
     flow = Column(String(255), nullable=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     admin_links = relationship(
@@ -423,8 +441,8 @@ class XrayConfig(Base):
 
     id = Column(Integer, primary_key=True)
     data = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class WarpAccount(Base):
@@ -436,10 +454,8 @@ class WarpAccount(Base):
     license_key = Column(String(64), nullable=True)
     private_key = Column(String(128), nullable=False)
     public_key = Column(String(128), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class JWT(Base):
@@ -449,19 +465,11 @@ class JWT(Base):
     # Legacy field - kept for backward compatibility during migration
     secret_key = Column(String(64), nullable=True)
     # Separate keys for subscription and admin authentication
-    subscription_secret_key = Column(
-        String(64), nullable=False, default=lambda: os.urandom(32).hex()
-    )
-    admin_secret_key = Column(
-        String(64), nullable=False, default=lambda: os.urandom(32).hex()
-    )
+    subscription_secret_key = Column(String(64), nullable=False, default=lambda: os.urandom(32).hex())
+    admin_secret_key = Column(String(64), nullable=False, default=lambda: os.urandom(32).hex())
     # UUID masks for VMess and VLESS protocols
-    vmess_mask = Column(
-        String(32), nullable=False, default=lambda: os.urandom(16).hex()
-    )
-    vless_mask = Column(
-        String(32), nullable=False, default=lambda: os.urandom(16).hex()
-    )
+    vmess_mask = Column(String(32), nullable=False, default=lambda: os.urandom(16).hex())
+    vless_mask = Column(String(32), nullable=False, default=lambda: os.urandom(16).hex())
 
 
 class TLS(Base):
@@ -476,15 +484,15 @@ class Node(Base):
     __tablename__ = "nodes"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(256, collation='NOCASE'), unique=True)
+    name = Column(String(256, collation="NOCASE"), unique=True)
     address = Column(String(256), unique=False, nullable=False)
     port = Column(Integer, unique=False, nullable=False)
     api_port = Column(Integer, unique=False, nullable=False)
     xray_version = Column(String(32), nullable=True)
     status = Column(Enum(NodeStatus), nullable=False, default=NodeStatus.connecting)
-    last_status_change = Column(DateTime, default=datetime.utcnow)
+    last_status_change = Column(DateTime, default=utcnow)
     message = Column(String(1024), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     uplink = Column(BigInteger, default=0)
     downlink = Column(BigInteger, default=0)
     user_usages = relationship("NodeUserUsage", back_populates="node", cascade="all, delete-orphan")
@@ -494,6 +502,8 @@ class Node(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     nobetci_port = Column(Integer, nullable=True, default=None)
+    certificate = Column(Text, nullable=True)  # Node-specific certificate (PEM format)
+    certificate_key = Column(Text, nullable=True)  # Node-specific certificate key (PEM format)
 
 
 class MasterNodeState(Base):
@@ -505,14 +515,12 @@ class MasterNodeState(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     status = Column(Enum(NodeStatus), nullable=False, default=NodeStatus.connected)
     message = Column(String(1024), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class NodeUserUsage(Base):
     __tablename__ = "node_user_usages"
-    __table_args__ = (
-        UniqueConstraint('created_at', 'user_id', 'node_id'),
-    )
+    __table_args__ = (UniqueConstraint("created_at", "user_id", "node_id"),)
 
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, unique=False, nullable=False)  # one hour per record
@@ -525,9 +533,7 @@ class NodeUserUsage(Base):
 
 class NodeUsage(Base):
     __tablename__ = "node_usages"
-    __table_args__ = (
-        UniqueConstraint('created_at', 'node_id'),
-    )
+    __table_args__ = (UniqueConstraint("created_at", "node_id"),)
 
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, unique=False, nullable=False)  # one hour per record

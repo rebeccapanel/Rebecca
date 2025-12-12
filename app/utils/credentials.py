@@ -23,6 +23,7 @@ def _get_uuid_masks() -> Dict[ProxyTypes, bytes]:
     Note: Not using lru_cache here because masks might change after migration.
     """
     from app.db import GetDB, get_uuid_masks
+
     with GetDB() as db:
         masks = get_uuid_masks(db)
         return {
@@ -88,7 +89,7 @@ def serialize_proxy_settings(
 ) -> dict:
     """
     Serialize proxy settings for storage in the database.
-    
+
     Args:
         settings: Proxy settings object
         proxy_type: Type of proxy protocol
@@ -97,11 +98,13 @@ def serialize_proxy_settings(
                                 This is used for existing users with UUIDs. For new users, set to False.
         allow_auto_generate: If False, don't auto-generate UUID/password when credential_key is None.
                              This is used in update_user to prevent auto-generating credentials.
-    
+
     Returns:
         Serialized proxy settings dictionary
     """
     data = settings.dict(no_obj=True)
+    # flow should live on the user, not per-proxy
+    data.pop("flow", None)
 
     if credential_key:
         if proxy_type in UUID_PROTOCOLS:
@@ -123,28 +126,43 @@ def serialize_proxy_settings(
 
 
 def apply_credentials_to_settings(
-    settings: ProxySettings,
-    proxy_type: ProxyTypes,
+    settings: ProxySettings | dict,
+    proxy_type: ProxyTypes | str,
     credential_key: Optional[str],
-) -> None:
+) -> ProxySettings:
+    """
+    Ensure settings carry credentials derived from credential_key.
+    Accepts proxy_type as enum or string and settings as ProxySettings or dict.
+    Returns a ProxySettings instance (also mutated in place when possible).
+    """
+    try:
+        resolved_type = proxy_type if isinstance(proxy_type, ProxyTypes) else ProxyTypes(str(proxy_type))
+    except Exception:
+        return settings if isinstance(settings, ProxySettings) else settings  # type: ignore[return-value]
+
+    settings_obj = settings if isinstance(settings, ProxySettings) else ProxySettings.from_dict(resolved_type, settings)
+
     if not credential_key:
-        return
+        return settings_obj
 
     normalized = normalize_key(credential_key)
-    if proxy_type in UUID_PROTOCOLS:
-        setattr(settings, "id", key_to_uuid(normalized, proxy_type))
-    if proxy_type == ProxyTypes.Trojan:
-        setattr(settings, "password", key_to_password(normalized, proxy_type.value))
-    if proxy_type == ProxyTypes.Shadowsocks:
-        setattr(settings, "password", key_to_password(normalized, proxy_type.value))
-        if getattr(settings, "method", None) is None:
-            settings.method = ShadowsocksMethods.CHACHA20_POLY1305
+    if resolved_type in UUID_PROTOCOLS:
+        setattr(settings_obj, "id", key_to_uuid(normalized, resolved_type))
+    if resolved_type == ProxyTypes.Trojan:
+        setattr(settings_obj, "password", key_to_password(normalized, resolved_type.value))
+    if resolved_type == ProxyTypes.Shadowsocks:
+        setattr(settings_obj, "password", key_to_password(normalized, resolved_type.value))
+        if getattr(settings_obj, "method", None) is None:
+            settings_obj.method = ShadowsocksMethods.CHACHA20_POLY1305
+
+    return settings_obj
 
 
 def runtime_proxy_settings(
     settings: ProxySettings,
     proxy_type: ProxyTypes,
     credential_key: Optional[str],
+    flow: Optional[str] = None,
 ) -> dict:
     def _sanitize_uuid(value: Any) -> Optional[str]:
         if value is None:
@@ -174,29 +192,46 @@ def runtime_proxy_settings(
     else:
         data = {}
 
-    current_id = data.get("id")
-    sanitized_id = _sanitize_uuid(current_id)
+    # Remove persisted flow; flow is now user-scoped
+    data.pop("flow", None)
 
+    current_id = data.get("id") or data.get("uuid")
+    sanitized_id = _sanitize_uuid(current_id)
+    normalized_key: Optional[str] = None
     if credential_key:
-        normalized = normalize_key(credential_key)
-        if proxy_type in UUID_PROTOCOLS:
-            data["id"] = str(key_to_uuid(normalized, proxy_type))
-        if proxy_type == ProxyTypes.Trojan:
-            data["password"] = key_to_password(normalized, proxy_type.value)
-        if proxy_type == ProxyTypes.Shadowsocks:
-            data["password"] = key_to_password(normalized, proxy_type.value)
-            data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
-    else:
-        if proxy_type in UUID_PROTOCOLS:
-            if sanitized_id:
-                data["id"] = sanitized_id
-            else:
-                raise ValueError(f"UUID is required for proxy type {proxy_type}")
-        if proxy_type == ProxyTypes.Trojan:
+        normalized_key = normalize_key(credential_key)
+
+    # UUID/password priority:
+    #   1) Persisted value from proxies table (sanitized)
+    #   2) Derived from credential_key
+    #   3) Auto-generated (where allowed)
+    if proxy_type in UUID_PROTOCOLS:
+        if sanitized_id:
+            data["id"] = sanitized_id
+        elif normalized_key:
+            data["id"] = str(key_to_uuid(normalized_key, proxy_type))
+        else:
+            raise ValueError(f"UUID is required for proxy type {proxy_type}")
+
+    if proxy_type == ProxyTypes.Trojan:
+        if data.get("password"):
+            pass  # keep stored password
+        elif normalized_key:
+            data["password"] = key_to_password(normalized_key, proxy_type.value)
+        else:
             data.setdefault("password", random_password())
-        if proxy_type == ProxyTypes.Shadowsocks:
+
+    if proxy_type == ProxyTypes.Shadowsocks:
+        if data.get("password"):
+            pass  # keep stored password
+        elif normalized_key:
+            data["password"] = key_to_password(normalized_key, proxy_type.value)
+        else:
             data.setdefault("password", random_password())
-            data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
+        data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
+
+    if flow:
+        data["flow"] = flow
 
     return data
 
@@ -245,10 +280,10 @@ def ensure_user_credential_key(user: "UserCreate") -> str:
     """
     Ensure a user payload has a normalized credential key and that static UUID/password
     values are stripped before persisting proxies.
-    
+
     Args:
         user: UserCreate object to process
-        
+
     Returns:
         The normalized credential key
     """

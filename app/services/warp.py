@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import socket
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional, Tuple
 
 import requests
@@ -12,6 +12,10 @@ from app.db.models import WarpAccount
 API_BASE = "https://api.cloudflareclient.com/v0a2158"
 CLIENT_VERSION = "a-7.21-0721"
 REQUEST_TIMEOUT = 30
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class WarpServiceError(RuntimeError):
@@ -35,7 +39,7 @@ class WarpService:
 
         payload = {
             "key": public_key,
-            "tos": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "tos": utcnow_naive().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "type": "PC",
             "model": "rebeca-panel",
             "name": socket.gethostname() or "rebeca-panel",
@@ -57,8 +61,8 @@ class WarpService:
                 license_key=license_key,
                 private_key=private_key,
                 public_key=public_key,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=utcnow_naive(),
+                updated_at=utcnow_naive(),
             )
             self.db.add(account)
         else:
@@ -67,7 +71,7 @@ class WarpService:
             account.license_key = license_key
             account.private_key = private_key
             account.public_key = public_key
-            account.updated_at = datetime.utcnow()
+            account.updated_at = utcnow_naive()
 
         self.db.commit()
         self.db.refresh(account)
@@ -98,7 +102,7 @@ class WarpService:
             raise WarpServiceError("Failed to update WARP license")
 
         account.license_key = license_key
-        account.updated_at = datetime.utcnow()
+        account.updated_at = utcnow_naive()
         self.db.add(account)
         self.db.commit()
         self.db.refresh(account)
@@ -106,9 +110,7 @@ class WarpService:
 
     def get_remote_config(self) -> dict:
         account = self._require_account()
-        return self._request(
-            "GET", f"/reg/{account.device_id}", token=account.access_token
-        )
+        return self._request("GET", f"/reg/{account.device_id}", token=account.access_token)
 
     def serialize_account(self, account: WarpAccount) -> dict:
         return {

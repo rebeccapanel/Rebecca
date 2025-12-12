@@ -6,3 +6,12 @@ services:
     network_mode: host
     volumes:
       - /var/lib/rebecca:/var/lib/rebecca
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - /var/lib/rebecca/redis:/data
+    ports:
+      - "6379:6379"

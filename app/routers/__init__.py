@@ -1,17 +1,17 @@
 from fastapi import APIRouter
 from . import (
     ads,
-    admin, 
-    core, 
-    node, 
-    subscription, 
-    system, 
-    user_template, 
+    admin,
+    core,
+    node,
+    subscription,
+    system,
+    user_template,
     user,
     home,
-    service_v2,
-    user_v2,
+    service,
     settings,
+    myaccount,
 )
 
 api_router = APIRouter()
@@ -26,14 +26,12 @@ routers = [
     user_template.router,
     user.router,
     home.router,
-    service_v2.router,
-    user_v2.router,
+    service.router,
     settings.router,
+    myaccount.router,
 ]
 
 for router in routers:
     api_router.include_router(router)
 
 __all__ = ["api_router"]
-
-

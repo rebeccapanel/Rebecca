@@ -12,6 +12,9 @@ from .state import (
     XRayConfig,
     XRayCore,
     XRayNode,
+    get_service_host_map,
+    rebuild_service_hosts_cache,
+    invalidate_service_hosts_cache,
 )
 
 __all__ = [
@@ -24,6 +27,9 @@ __all__ = [
     "exceptions",
     "exc",
     "service_hosts_cache",
+    "get_service_host_map",
+    "rebuild_service_hosts_cache",
+    "invalidate_service_hosts_cache",
     "types",
     "XRayConfig",
     "XRayCore",

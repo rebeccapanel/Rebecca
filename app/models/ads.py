@@ -17,6 +17,17 @@ class Advertisement(BaseModel):
     cta: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_urls(cls, values: Any) -> Any:
+        """Normalize empty strings to None for URL fields."""
+        if isinstance(values, dict):
+            if "image_url" in values and values["image_url"] == "":
+                values["image_url"] = None
+            if "link" in values and values["link"] == "":
+                values["link"] = None
+        return values
+
 
 class PlacementAds(BaseModel):
     header: List[Advertisement] = Field(default_factory=list)

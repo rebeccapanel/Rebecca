@@ -15,6 +15,7 @@ from app.dependencies import (
 from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription, is_credential_key
 from app.templates import render_template
+from app.utils.proxy_uuid import ensure_user_proxy_uuids
 from config import (
     SUB_PROFILE_TITLE,
     SUB_SUPPORT_URL,
@@ -88,6 +89,7 @@ def _serve_subscription_response(
     dbuser: UserResponse,
     user_agent: str,
 ):
+    ensure_user_proxy_uuids(db, dbuser)
     user: UserResponse = UserResponse.model_validate(dbuser)
 
     accept_header = request.headers.get("Accept", "")
@@ -111,9 +113,7 @@ def _serve_subscription_response(
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
-        "subscription-userinfo": "; ".join(
-            f"{key}={val}" for key, val in get_subscription_user_info(user).items()
-        ),
+        "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
 
     if re.match(r"^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)", user_agent):
@@ -152,7 +152,8 @@ def _serve_subscription_response(
     return Response(content=conf, media_type="text/plain", headers=response_headers)
 
 
-def _subscription_with_client_type(request: Request, dbuser: UserResponse, client_type: str):
+def _subscription_with_client_type(request: Request, dbuser: UserResponse, client_type: str, db: Session):
+    ensure_user_proxy_uuids(db, dbuser)
     user: UserResponse = UserResponse.model_validate(dbuser)
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
@@ -160,9 +161,7 @@ def _subscription_with_client_type(request: Request, dbuser: UserResponse, clien
         "support-url": SUB_SUPPORT_URL,
         "profile-title": encode_title(SUB_PROFILE_TITLE),
         "profile-update-interval": SUB_UPDATE_INTERVAL,
-        "subscription-userinfo": "; ".join(
-            f"{key}={val}" for key, val in get_subscription_user_info(user).items()
-        ),
+        "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
     config = client_config.get(client_type)
     conf = generate_subscription(
@@ -189,9 +188,7 @@ def _build_usage_payload(
         raise HTTPException(status_code=400, detail="Invalid date range or format") from exc
 
     try:
-        timeline_daily = crud.get_user_usage_timeseries(
-            db, dbuser, start_dt, end_dt, granularity="day"
-        )
+        timeline_daily = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="day")
         daily_usages = [
             {
                 "date": entry["timestamp"].date().isoformat(),
@@ -202,9 +199,7 @@ def _build_usage_payload(
 
         hourly_usages: List[Dict[str, Union[str, int]]] = []
         if start_dt.date() == end_dt.date():
-            timeline_hourly = crud.get_user_usage_timeseries(
-                db, dbuser, start_dt, end_dt, granularity="hour"
-            )
+            timeline_hourly = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="hour")
             hourly_usages = [
                 {
                     "timestamp": entry["timestamp"].isoformat(),
@@ -315,6 +310,7 @@ def user_subscription_info_by_key(
 
 @router.get("/{username}/{credential_key}/usage")
 def user_get_usage_by_key(
+    username: str,
     credential_key: str = Path(...),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     start: str = "",
@@ -338,9 +334,10 @@ def user_subscription_with_client_type_by_key(
     credential_key: str = Path(...),
     client_type: str = Path(...),
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
+    db: Session = Depends(get_db),
 ):
     _validate_client_type(client_type)
-    return _subscription_with_client_type(request, dbuser, client_type)
+    return _subscription_with_client_type(request, dbuser, client_type, db)
 
 
 @router.get("/{identifier}/{client_type}")
@@ -352,4 +349,4 @@ def user_subscription_with_client_type(
 ):
     dbuser = _get_user_by_identifier(identifier, db)
     _validate_client_type(client_type)
-    return _subscription_with_client_type(request, dbuser, client_type)
+    return _subscription_with_client_type(request, dbuser, client_type, db)

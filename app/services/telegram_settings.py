@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
 from app.db.models import TelegramSettings as TelegramSettingsModel
+
 
 @dataclass
 class TelegramTopic:
@@ -31,8 +32,14 @@ class TelegramSettingsData:
     use_telegram: bool = True
     record_id: Optional[int] = None
 
-    def to_dict(self) -> Dict[str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]]:
-        payload: Dict[str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]] = {
+    def to_dict(
+        self,
+    ) -> Dict[
+        str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]
+    ]:
+        payload: Dict[
+            str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]
+        ] = {
             "id": self.record_id,
             "api_token": self.api_token,
             "use_telegram": self.use_telegram,
@@ -122,8 +129,9 @@ class TelegramSettingsService:
         if value is None:
             return []
         if isinstance(value, str):
-            if value.startswith('[') and value.endswith(']'):
+            if value.startswith("[") and value.endswith("]"):
                 import json
+
                 try:
                     value = json.loads(value)
                 except (json.JSONDecodeError, TypeError):
@@ -155,6 +163,7 @@ class TelegramSettingsService:
 
         if isinstance(raw_topics, str):
             import json
+
             try:
                 raw_topics = json.loads(raw_topics)
             except (json.JSONDecodeError, TypeError):
@@ -187,9 +196,7 @@ class TelegramSettingsService:
                 title = payload.get("title") or extra_key.title()
                 topic_id_value = payload.get("topic_id")
                 try:
-                    topic_id = (
-                        None if topic_id_value in (None, "", 0) else int(topic_id_value)
-                    )
+                    topic_id = None if topic_id_value in (None, "", 0) else int(topic_id_value)
                 except (TypeError, ValueError):
                     topic_id = None
                     mutated = True
@@ -198,14 +205,13 @@ class TelegramSettingsService:
         return topics, mutated
 
     @classmethod
-    def _prepare_event_toggles(
-        cls, raw_toggles: Optional[Union[Dict[str, Any], str]]
-    ) -> Tuple[Dict[str, bool], bool]:
+    def _prepare_event_toggles(cls, raw_toggles: Optional[Union[Dict[str, Any], str]]) -> Tuple[Dict[str, bool], bool]:
         toggles: Dict[str, bool] = {}
         mutated = False
 
         if isinstance(raw_toggles, str):
             import json
+
             try:
                 raw_toggles = json.loads(raw_toggles)
             except (json.JSONDecodeError, TypeError):
@@ -239,37 +245,25 @@ class TelegramSettingsService:
         return toggles, mutated
 
     @classmethod
-    def _merge_with_env(
-        cls, record: Optional[TelegramSettingsModel]
-    ) -> TelegramSettingsData:
+    def _merge_with_env(cls, record: Optional[TelegramSettingsModel]) -> TelegramSettingsData:
         api_token = (record.api_token if record and record.api_token else None) or cls.ENV_FALLBACKS["api_token"]
         proxy_url = (record.proxy_url if record and record.proxy_url else None) or cls.ENV_FALLBACKS["proxy_url"]
-        logs_chat_id = cls._coerce_int(
-            record.logs_chat_id if record else cls.ENV_FALLBACKS["logs_chat_id"]
-        )
+        logs_chat_id = cls._coerce_int(record.logs_chat_id if record else cls.ENV_FALLBACKS["logs_chat_id"])
         admin_chat_ids = (
             cls._coerce_admin_ids(record.admin_chat_ids)
             if record and record.admin_chat_ids
             else cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"])
         )
         default_vless_flow = (
-            record.default_vless_flow if record and record.default_vless_flow else cls.ENV_FALLBACKS["default_vless_flow"]
+            record.default_vless_flow
+            if record and record.default_vless_flow
+            else cls.ENV_FALLBACKS["default_vless_flow"]
         )
-        logs_chat_is_forum = (
-            cls._coerce_bool(record.logs_chat_is_forum) if record else False
-        )
-        topics_dict, _ = cls._prepare_forum_topics(
-            record.forum_topics if record else None
-        )
-        event_toggles, _ = cls._prepare_event_toggles(
-            record.event_toggles if record and record.event_toggles else None
-        )
+        logs_chat_is_forum = cls._coerce_bool(record.logs_chat_is_forum) if record else False
+        topics_dict, _ = cls._prepare_forum_topics(record.forum_topics if record else None)
+        event_toggles, _ = cls._prepare_event_toggles(record.event_toggles if record and record.event_toggles else None)
 
-        use_telegram = (
-            cls._coerce_bool(record.use_telegram)
-            if record and record.use_telegram is not None
-            else True
-        )
+        use_telegram = cls._coerce_bool(record.use_telegram) if record and record.use_telegram is not None else True
 
         return TelegramSettingsData(
             api_token=api_token or None,
@@ -296,8 +290,7 @@ class TelegramSettingsService:
             if record is None and ensure_record:
                 record = TelegramSettingsModel(
                     forum_topics={
-                        key: {"title": title, "topic_id": None}
-                        for key, title in cls.DEFAULT_TOPIC_TITLES.items()
+                        key: {"title": title, "topic_id": None} for key, title in cls.DEFAULT_TOPIC_TITLES.items()
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
                     admin_chat_ids=cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"]),
@@ -309,15 +302,11 @@ class TelegramSettingsService:
 
             if record:
                 topics, mutated_topics = cls._prepare_forum_topics(record.forum_topics)
-                toggles, mutated_toggles = cls._prepare_event_toggles(
-                    record.event_toggles
-                )
+                toggles, mutated_toggles = cls._prepare_event_toggles(record.event_toggles)
                 if mutated_topics or mutated_toggles or record.event_toggles is None:
-                    record.forum_topics = {
-                        key: topic.to_dict() for key, topic in topics.items()
-                    }
+                    record.forum_topics = {key: topic.to_dict() for key, topic in topics.items()}
                     record.event_toggles = toggles
-                    record.updated_at = datetime.utcnow()
+                    record.updated_at = datetime.now(UTC).replace(tzinfo=None)
                     db.add(record)
                     db.commit()
                     db.refresh(record)
@@ -343,8 +332,7 @@ class TelegramSettingsService:
             if record is None:
                 record = TelegramSettingsModel(
                     forum_topics={
-                        key: {"title": title, "topic_id": None}
-                        for key, title in cls.DEFAULT_TOPIC_TITLES.items()
+                        key: {"title": title, "topic_id": None} for key, title in cls.DEFAULT_TOPIC_TITLES.items()
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
                     admin_chat_ids=cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"]),
@@ -397,9 +385,7 @@ class TelegramSettingsService:
                 topics, _ = cls._prepare_forum_topics(
                     payload.get("forum_topics")  # type: ignore[arg-type]
                 )
-                record.forum_topics = {
-                    key: topic.to_dict() for key, topic in topics.items()
-                }
+                record.forum_topics = {key: topic.to_dict() for key, topic in topics.items()}
 
             if "event_toggles" in payload:
                 incoming_raw = payload.get("event_toggles")
@@ -411,7 +397,7 @@ class TelegramSettingsService:
                 merged_source = {**cls.DEFAULT_EVENT_TOGGLES, **existing_processed, **incoming_processed}
                 record.event_toggles = merged_source
 
-            record.updated_at = datetime.utcnow()
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
             db.refresh(record)
@@ -459,8 +445,7 @@ class TelegramSettingsService:
             if record is None:
                 record = TelegramSettingsModel(
                     forum_topics={
-                        key: {"title": title, "topic_id": None}
-                        for key, title in cls.DEFAULT_TOPIC_TITLES.items()
+                        key: {"title": title, "topic_id": None} for key, title in cls.DEFAULT_TOPIC_TITLES.items()
                     },
                     event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
                     use_telegram=True,
@@ -479,10 +464,8 @@ class TelegramSettingsService:
                 topic.topic_id = topic_id
             topics[topic_key] = topic
 
-            record.forum_topics = {
-                key: value.to_dict() for key, value in topics.items()
-            }
-            record.updated_at = datetime.utcnow()
+            record.forum_topics = {key: value.to_dict() for key, value in topics.items()}
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
             db.refresh(record)

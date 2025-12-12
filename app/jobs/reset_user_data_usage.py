@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.runtime import logger, scheduler, xray
 from app.db import crud, GetDB, get_users
@@ -13,19 +13,18 @@ reset_strategy_to_days = {
 
 
 def reset_user_data_usage():
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     with GetDB() as db:
-        for user in get_users(db,
-                              status=[
-                                  UserStatus.active,
-                                  UserStatus.limited
-                              ],
-                              reset_strategy=[
-                                  UserDataLimitResetStrategy.day.value,
-                                  UserDataLimitResetStrategy.week.value,
-                                  UserDataLimitResetStrategy.month.value,
-                                  UserDataLimitResetStrategy.year.value,
-                              ]):
+        for user in get_users(
+            db,
+            status=[UserStatus.active, UserStatus.limited],
+            reset_strategy=[
+                UserDataLimitResetStrategy.day.value,
+                UserDataLimitResetStrategy.week.value,
+                UserDataLimitResetStrategy.month.value,
+                UserDataLimitResetStrategy.year.value,
+            ],
+        ):
             last_reset_time = user.last_traffic_reset_time
             num_days_to_reset = reset_strategy_to_days[user.data_limit_reset_strategy]
 
@@ -37,8 +36,7 @@ def reset_user_data_usage():
             if user.status == UserStatus.limited:
                 xray.operations.add_user(user)
 
-            logger.info(f"User data usage reset for User \"{user.username}\"")
+            logger.info(f'User data usage reset for User "{user.username}"')
 
 
-scheduler.add_job(reset_user_data_usage, 'interval', coalesce=True, hours=1)
-
+scheduler.add_job(reset_user_data_usage, "interval", coalesce=True, hours=1)
