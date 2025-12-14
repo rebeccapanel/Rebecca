@@ -80,6 +80,7 @@ import { OutboundModal } from "../components/OutboundModal";
 import { type RoutingRule, RuleModal } from "../components/RuleModal";
 import { WarpModal } from "../components/WarpModal";
 import { SizeFormatter } from "../utils/outbound";
+import { computeOutboundIds } from "../utils/outboundId";
 import XrayLogsPage from "./XrayLogsPage";
 
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 3.5, h: 3.5 } });
@@ -285,7 +286,6 @@ export const CoreSettingsPage: FC = () => {
 	const {
 		fetchCoreSettings,
 		updateConfig,
-		isLoading,
 		config,
 		isPostLoading,
 		restartCore,
@@ -358,6 +358,7 @@ export const CoreSettingsPage: FC = () => {
 	const [dnsServers, setDnsServers] = useState<any[]>([]);
 	const [fakeDns, setFakeDns] = useState<any[]>([]);
 	const [outboundsTraffic, setOutboundsTraffic] = useState<any[]>([]);
+	const [outboundIds, setOutboundIds] = useState<string[]>([]);
 	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
 	const [editingOutboundIndex, setEditingOutboundIndex] = useState<
 		number | null
@@ -579,12 +580,25 @@ export const CoreSettingsPage: FC = () => {
 	};
 
 	const _resetOutboundTraffic = async (index: number) => {
-		const tag = index >= 0 ? outboundData[index].tag : "-alltags-";
+		const payload: Record<string, string | undefined> = {};
+		if (index < 0) {
+			payload.outbound_id = "-all-";
+			payload.tag = "-alltags-";
+		} else {
+			const outboundId = outboundIds[index];
+			if (outboundId) {
+				payload.outbound_id = outboundId;
+			}
+			payload.tag = outboundData[index]?.tag;
+		}
+		const cleanedPayload = Object.fromEntries(
+			Object.entries(payload).filter(([, value]) => value !== undefined),
+		);
 		const response = await apiFetch<{ success: boolean }>(
 			"/panel/xray/resetOutboundsTraffic",
 			{
 				method: "POST",
-				body: { tag },
+				body: cleanedPayload,
 			},
 		);
 		if (response?.success) {
@@ -785,8 +799,11 @@ export const CoreSettingsPage: FC = () => {
 		}
 	};
 
-	const findOutboundTraffic = (outbound: any) => {
-		const traffic = outboundsTraffic.find((t) => t.tag === outbound.tag);
+	const findOutboundTraffic = (outbound: any, index: number) => {
+		const outboundId = outboundIds[index];
+		const traffic = outboundId
+			? outboundsTraffic.find((t) => t.outbound_id === outboundId)
+			: outboundsTraffic.find((t) => t.tag === outbound.tag);
 		return traffic
 			? `${SizeFormatter.sizeFormat(traffic.up)} / ${SizeFormatter.sizeFormat(traffic.down)}`
 			: `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`;
@@ -799,6 +816,26 @@ export const CoreSettingsPage: FC = () => {
 				: [],
 		[watchedConfig],
 	);
+
+	useEffect(() => {
+		let cancelled = false;
+		const resolveIds = async () => {
+			try {
+				const ids = await computeOutboundIds(canonicalOutbounds);
+				if (!cancelled) {
+					setOutboundIds(ids);
+				}
+			} catch {
+				if (!cancelled) {
+					setOutboundIds(Array(canonicalOutbounds.length).fill(""));
+				}
+			}
+		};
+		resolveIds();
+		return () => {
+			cancelled = true;
+		};
+	}, [canonicalOutbounds]);
 
 	const canonicalRoutingRules = useMemo<RoutingRule[]>(
 		() =>
@@ -1006,7 +1043,8 @@ export const CoreSettingsPage: FC = () => {
 		setWarpCustomDomain("");
 	};
 
-	const handleOutboundSave = (outbound: OutboundJson) => {
+	const handleOutboundSave = (outboundJson: unknown) => {
+		const outbound = outboundJson as OutboundJson;
 		const outbounds = getOutbounds();
 		if (
 			editingOutboundIndex !== null &&
@@ -1923,7 +1961,7 @@ export const CoreSettingsPage: FC = () => {
 												</Td>
 												<Td>
 													<Tag colorScheme="green">
-														{findOutboundTraffic(outbound)}
+														{findOutboundTraffic(outbound, index)}
 													</Tag>
 												</Td>
 											</Tr>

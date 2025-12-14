@@ -332,7 +332,11 @@ const mapHostsToState = (hosts: HostsSchema): HostState[] => {
 					original: cloneHostData(normalized),
 				});
 			} catch (error) {
-				console.error(`Failed to normalize host at index ${index} for tag ${tag}:`, error, host);
+				console.error(
+					`Failed to normalize host at index ${index} for tag ${tag}:`,
+					error,
+					host,
+				);
 			}
 		});
 	});

@@ -28,11 +28,18 @@ def get_users_stats(api: XRayAPI):
 
 def get_outbounds_stats(api: XRayAPI):
     try:
-        params = [
-            {"up": stat.value, "down": 0} if stat.link == "uplink" else {"up": 0, "down": stat.value}
-            for stat in filter(attrgetter("value"), api.get_outbounds_stats(reset=True, timeout=200))
-        ]
-        return params
+        stats_by_tag = defaultdict(lambda: {"up": 0, "down": 0, "tag": ""})
+        for stat in filter(attrgetter("value"), api.get_outbounds_stats(reset=True, timeout=200)):
+            # Parse tag from stat name: "outbound>>>{tag}>>>uplink" or "outbound>>>{tag}>>>downlink"
+            parts = stat.name.split(">>>")
+            if len(parts) >= 3 and parts[0] == "outbound":
+                tag = parts[1]
+                stats_by_tag[tag]["tag"] = tag
+                if stat.link == "uplink":
+                    stats_by_tag[tag]["up"] += stat.value
+                elif stat.link == "downlink":
+                    stats_by_tag[tag]["down"] += stat.value
+        return list(stats_by_tag.values())
     except xray_exc.XrayError:
         return []
 

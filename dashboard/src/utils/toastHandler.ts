@@ -1,29 +1,42 @@
 import type { CreateToastFnReturn } from "@chakra-ui/react";
-import type { UseFormReturn } from "react-hook-form";
+import type { FieldValues, UseFormReturn } from "react-hook-form";
 
 export const generateErrorMessage = (
-	e: any,
+	e: unknown,
 	toast: CreateToastFnReturn,
-	form?: UseFormReturn<any>,
+	form?: UseFormReturn<FieldValues | any>,
 ) => {
-	if (e.response?._data) {
-		if (typeof e.response._data.detail === "string")
+	if (e && typeof e === "object" && "response" in e) {
+		const response = (e as { response?: { _data?: unknown } }).response;
+		const detail = response?._data as
+			| string
+			| { detail?: string }
+			| { [key: string]: string };
+		if (typeof detail === "string") {
 			return toast({
-				title: e.response._data.detail,
+				title: detail,
 				status: "error",
 				isClosable: true,
 				position: "top",
 				duration: 3000,
 			});
-		if (typeof e.response._data.detail === "object")
-			if (form) {
-				Object.keys(e.response._data.detail).forEach((errorKey) => {
+		}
+		if (
+			response?._data &&
+			typeof (detail as { detail?: unknown })?.detail === "object" &&
+			form
+		) {
+			const validationDetail = (detail as { detail?: Record<string, string> })
+				.detail;
+			if (validationDetail) {
+				Object.keys(validationDetail).forEach((errorKey) => {
 					form.setError(errorKey, {
-						message: e.response._data.detail[errorKey],
+						message: validationDetail[errorKey],
 					});
 				});
-				return;
 			}
+			return;
+		}
 	}
 	return toast({
 		title: "Something went wrong!",

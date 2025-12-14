@@ -4,8 +4,8 @@ import {
 	Badge,
 	Box,
 	HStack,
-	IconButton,
 	Icon,
+	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
@@ -42,8 +42,8 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { FiGlobe } from "react-icons/fi";
 import type { IconType } from "react-icons";
+import { FiGlobe } from "react-icons/fi";
 import {
 	SiApple,
 	SiBinance,
@@ -626,4 +626,3 @@ const AccessInsightsPage: FC = () => {
 };
 
 export default AccessInsightsPage;
-

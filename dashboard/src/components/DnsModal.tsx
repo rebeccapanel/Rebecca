@@ -99,7 +99,7 @@ export const DnsModal: FC<DnsModalProps> = ({
 		};
 
 		const currentDnsServers: DnsConfig[] =
-			form.getValues("config.dns.servers") || [];
+			(form.getValues("config.dns.servers") as DnsConfig[] | undefined) || [];
 		if (dnsIndex !== null && dnsIndex !== undefined) {
 			currentDnsServers[dnsIndex] = newDns;
 		} else {

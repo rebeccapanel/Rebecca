@@ -9,6 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.runtime import xray
 from app.services import access_insights
 from app.db import Session, get_db, crud, GetDB
+from app.db.models import OutboundTraffic
 from app.models.admin import Admin, AdminRole
 from app.models.core import CoreStats, ServerIPs
 from app.models.warp import (
@@ -21,6 +22,7 @@ from app.models.warp import (
 from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
 from app.utils.system import get_public_ip, get_public_ipv6
+from app.utils.outbound import extract_outbound_metadata, generate_outbound_id
 from app.utils.xray_config import apply_config_and_restart
 from app.reb_node import XRayConfig
 
@@ -770,3 +772,119 @@ def delete_warp_account(admin: Admin = Depends(Admin.check_sudo_admin), db: Sess
     service = _warp_service(db)
     service.delete()
     return {"account": None}
+
+
+def _sync_outbound_records(db: Session) -> None:
+    """
+    Ensure we have OutboundTraffic rows for every outbound in the current Xray config.
+    This lets us persist traffic per outbound ID (config-based) instead of mutable tags.
+    """
+    try:
+        outbounds_config = (xray.config or {}).get("outbounds", [])
+    except Exception:
+        outbounds_config = []
+    if not outbounds_config:
+        return
+
+    existing_rows = db.query(OutboundTraffic).all()
+    existing_by_id = {row.outbound_id: row for row in existing_rows}
+    existing_by_tag = {row.tag: row for row in existing_rows if row.tag}
+    updated = False
+
+    for outbound in outbounds_config:
+        if not isinstance(outbound, dict):
+            continue
+
+        outbound_id = generate_outbound_id(outbound)
+        metadata = extract_outbound_metadata(outbound)
+        record = existing_by_id.get(outbound_id) or (metadata.get("tag") and existing_by_tag.get(metadata["tag"]))
+
+        if record:
+            if record.outbound_id != outbound_id:
+                record.outbound_id = outbound_id
+                existing_by_id[outbound_id] = record
+                updated = True
+            if metadata.get("tag") is not None and record.tag != metadata["tag"]:
+                old_tag = record.tag
+                record.tag = metadata["tag"]
+                if old_tag:
+                    existing_by_tag.pop(old_tag, None)
+                if record.tag:
+                    existing_by_tag[record.tag] = record
+                updated = True
+            if metadata.get("protocol") is not None and record.protocol != metadata["protocol"]:
+                record.protocol = metadata["protocol"]
+                updated = True
+            if metadata.get("address") is not None and record.address != metadata["address"]:
+                record.address = metadata["address"]
+                updated = True
+            if metadata.get("port") is not None and record.port != metadata["port"]:
+                record.port = metadata["port"]
+                updated = True
+        else:
+            record = OutboundTraffic(
+                outbound_id=outbound_id,
+                tag=metadata.get("tag"),
+                protocol=metadata.get("protocol"),
+                address=metadata.get("address"),
+                port=metadata.get("port"),
+                uplink=0,
+                downlink=0,
+            )
+            db.add(record)
+            existing_by_id[outbound_id] = record
+            if record.tag:
+                existing_by_tag[record.tag] = record
+            updated = True
+
+    if updated:
+        db.commit()
+
+
+@router.get("/panel/xray/getOutboundsTraffic", responses={403: responses._403})
+def get_outbounds_traffic(admin: Admin = Depends(Admin.check_sudo_admin), db: Session = Depends(get_db)):
+    """Get outbound traffic statistics from database."""
+    _sync_outbound_records(db)
+    outbounds = db.query(OutboundTraffic).all()
+    # Return as array for frontend compatibility
+    result = []
+    for outbound in outbounds:
+        result.append(
+            {
+                "tag": outbound.tag,
+                "protocol": outbound.protocol,
+                "address": outbound.address,
+                "port": outbound.port,
+                "up": outbound.uplink,
+                "down": outbound.downlink,
+                "outbound_id": outbound.outbound_id,
+            }
+        )
+    return {"success": True, "obj": result}
+
+
+@router.post("/panel/xray/resetOutboundsTraffic", responses={403: responses._403})
+def reset_outbounds_traffic(
+    payload: dict = Body(...),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    """Reset outbound traffic statistics."""
+    outbound_id = payload.get("outbound_id")
+    tag = payload.get("tag")
+
+    if outbound_id == "-all-" or tag == "-alltags-":
+        # Reset all outbounds
+        db.query(OutboundTraffic).update({"uplink": 0, "downlink": 0})
+    elif outbound_id:
+        # Reset specific outbound by outbound_id
+        db.query(OutboundTraffic).filter(OutboundTraffic.outbound_id == outbound_id).update(
+            {"uplink": 0, "downlink": 0}
+        )
+    elif tag:
+        # Fallback: reset by tag for backward compatibility
+        db.query(OutboundTraffic).filter(OutboundTraffic.tag == tag).update({"uplink": 0, "downlink": 0})
+    else:
+        raise HTTPException(status_code=400, detail="outbound_id or tag is required")
+    db.commit()
+    return {"success": True}

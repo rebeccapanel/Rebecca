@@ -74,7 +74,8 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 		};
 
 		const currentBalancers: BalancerConfig[] =
-			form.getValues("config.routing.balancers") || [];
+			(form.getValues("config.routing.balancers") as BalancerConfig[] | undefined) ||
+			[];
 		if (balancerIndex !== undefined) {
 			currentBalancers[balancerIndex] = newBalancer;
 		} else {

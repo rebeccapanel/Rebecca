@@ -94,7 +94,7 @@ type PresetDefinition = {
 };
 
 type ThemeSelectorProps = {
-	/** when true, render a minimal menu (only built-in themes) — used on the login screen */
+	/** when true, render a minimal menu (only built-in themes) - used on the login screen */
 	minimal?: boolean;
 	/** Optional container ref to keep the Dropdown portal constrained */
 	portalContainer?: MutableRefObject<HTMLElement | null>;
@@ -102,6 +102,10 @@ type ThemeSelectorProps = {
 	trigger?: "icon" | "menu" | "menuItem";
 	/** Optional custom label when using the menu trigger */
 	triggerLabel?: string;
+	/** Notify parent when any modal opens (so parent menus/popovers can stay mounted) */
+	onModalOpen?: () => void;
+	/** Notify parent when all ThemeSelector modals are closed */
+	onModalClose?: () => void;
 };
 
 const PRIMARY_VARS = [
@@ -136,6 +140,11 @@ const BUILTIN_THEMES: ThemeDefinition[] = [
 		accent: DEFAULT_DARK_MODE.primary,
 		colorModeTarget: "dark",
 		className: "rb-theme-dark",
+	},
+	{
+		key: "pure-dark",
+		accent: "#1a8ce0",
+		className: "rb-theme-pure-dark",
 	},
 	{ key: "ultra-dark", accent: "#319795", className: "rb-theme-ultra-dark" },
 	{ key: "moontone", accent: "#3b82f6", className: "rb-theme-moontone" },
@@ -443,6 +452,8 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	portalContainer,
 	trigger = "icon",
 	triggerLabel,
+	onModalOpen,
+	onModalClose,
 }) => {
 	const { t, i18n } = useTranslation();
 	const toast = useToast();
@@ -457,6 +468,23 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	const primaryText = useColorModeValue("gray.800", "gray.100");
 	const secondaryText = useColorModeValue("gray.600", "gray.300");
 	const overlayBg = useColorModeValue("blackAlpha.400", "blackAlpha.700");
+	const popperModifiers = useMemo(
+		() => [
+			{ name: "preventOverflow", options: { boundary: "viewport", padding: 8 } },
+			{ name: "shift", options: { padding: 8 } },
+			{
+				name: "flip",
+				options: {
+					fallbackPlacements: ["bottom-start", "bottom", "bottom-end", "top", "top-start", "top-end"],
+				},
+			},
+			{
+				name: "offset",
+				options: { offset: [0, 8] },
+			},
+		],
+		[],
+	);
 	const menuGroupStyles = useMemo(
 		() => ({
 			".chakra-menu__group__title": {
@@ -547,6 +575,15 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 		useState<CustomDraft>(createDefaultDraft);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [importPayload, setImportPayload] = useState<string>("");
+
+	useEffect(() => {
+		const anyModalOpen = createModal.isOpen || importModal.isOpen;
+		if (anyModalOpen) {
+			onModalOpen?.();
+		} else {
+			onModalClose?.();
+		}
+	}, [createModal.isOpen, importModal.isOpen, onModalClose, onModalOpen]);
 
 	useEffect(() => {
 		try {
@@ -963,8 +1000,8 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 
 	const menuList = (
 		<MenuList
-			minW={{ base: "82vw", sm: "240px" }}
-			maxW="320px"
+			minW={{ base: "calc(100vw - 24px)", sm: "260px" }}
+			maxW="min(420px, calc(100vw - 16px))"
 			zIndex={9999}
 			bg={popoverBg}
 			color={primaryText}
@@ -988,14 +1025,14 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 				{BUILTIN_THEMES.map((theme) => {
 					const selected = active === theme.key;
 					return (
-					<MenuItem
-						key={theme.key}
-						onClick={() => handleSelectBuiltIn(theme)}
-						bg="transparent"
-						_hover={{ bg: popoverHoverBg }}
-						_active={{ bg: popoverHoverBg }}
-						_focus={{ bg: popoverHoverBg }}
-					>
+						<MenuItem
+							key={theme.key}
+							onClick={() => handleSelectBuiltIn(theme)}
+							bg="transparent"
+							_hover={{ bg: popoverHoverBg }}
+							_active={{ bg: popoverHoverBg }}
+							_focus={{ bg: popoverHoverBg }}
+						>
 							<HStack justify="space-between" w="full">
 								<HStack>
 									<Box
@@ -1099,11 +1136,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 								);
 							})
 						) : (
-							<MenuItem 
-								isDisabled
-								bg="transparent"
-								opacity={0.5}
-							>
+							<MenuItem isDisabled bg="transparent" opacity={0.5}>
 								{t("theme.noCustom")}
 							</MenuItem>
 						)}
@@ -1169,13 +1202,17 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 		return (
 			<>
 				<Menu
-					placement={isRTL ? "left-start" : "right-start"}
+					placement="auto-start"
 					strategy="fixed"
+					isLazy
+					autoSelect={false}
+					gutter={6}
+					computePositionOnMount
+					modifiers={popperModifiers}
 					isOpen={themeMenu.isOpen}
 					onOpen={themeMenu.onOpen}
 					onClose={themeMenu.onClose}
 					closeOnSelect={false}
-					isLazy
 				>
 					<MenuButton
 						as={MenuItem}
@@ -1426,7 +1463,15 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 
 	return (
 		<>
-			<Menu placement="bottom-end">
+			<Menu
+				placement="auto-start"
+				strategy="fixed"
+				isLazy
+				autoSelect={false}
+				gutter={6}
+				computePositionOnMount
+				modifiers={popperModifiers}
+			>
 				{triggerContent}
 				{portalContainer ? (
 					<Portal containerRef={portalContainer}>{menuList}</Portal>

@@ -541,3 +541,19 @@ class NodeUsage(Base):
     node = relationship("Node", back_populates="usages")
     uplink = Column(BigInteger, default=0)
     downlink = Column(BigInteger, default=0)
+
+
+class OutboundTraffic(Base):
+    __tablename__ = "outbound_traffic"
+    __table_args__ = (UniqueConstraint("outbound_id"),)
+
+    id = Column(Integer, primary_key=True)
+    outbound_id = Column(String(256), unique=True, nullable=False, index=True)  # Unique ID for outbound (not tag)
+    tag = Column(String(256), nullable=True, index=True)  # Outbound tag for reference
+    protocol = Column(String(64), nullable=True)  # Protocol type (vmess, vless, etc.)
+    address = Column(String(256), nullable=True)  # Server address
+    port = Column(Integer, nullable=True)  # Server port
+    uplink = Column(BigInteger, default=0)  # Total upload traffic
+    downlink = Column(BigInteger, default=0)  # Total download traffic
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)

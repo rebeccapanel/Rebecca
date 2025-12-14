@@ -17,7 +17,6 @@ import {
 	Text,
 	type UseRadioProps,
 	useBreakpointValue,
-	useColorMode,
 	useDisclosure,
 	useOutsideClick,
 	useRadio,
@@ -104,7 +103,6 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 	showPresets = true,
 }) => {
 	const { t, i18n } = useTranslation();
-	const { colorMode } = useColorMode();
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const customRef = useRef(null);
 	useOutsideClick({ ref: customRef, handler: onClose });

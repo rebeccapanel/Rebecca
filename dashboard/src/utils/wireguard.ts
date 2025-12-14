@@ -7,7 +7,6 @@
  * A direct TypeScript translation of the Wireguard key utilities used in the legacy dashboard.
  * This keeps compatibility with the existing backend expectations for WARP registration.
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: legacy static utility kept for compatibility
 export class Wireguard {
 	static gf(init?: number[]) {
 		const r = new Float64Array(16);

@@ -117,7 +117,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	const [description, setDescription] = useState(
 		initialService?.description ?? "",
 	);
-	const [flow, setFlow] = useState(initialService?.flow ?? "");
 	const [selectedAdmins, setSelectedAdmins] = useState<number[]>(
 		initialService?.admin_ids ?? [],
 	);
@@ -133,7 +132,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 		if (isOpen) {
 			setName(initialService?.name ?? "");
 			setDescription(initialService?.description ?? "");
-			setFlow(initialService?.flow ?? "");
 			setSelectedAdmins(initialService?.admin_ids ?? []);
 			setSelectedHosts(initialService?.hosts.map((host) => host.id) ?? []);
 			setAdminSearch("");
@@ -252,7 +250,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			{
 				name: name.trim(),
 				description: description?.trim() || null,
-				flow: flow?.trim() ? flow.trim() : null,
 				admin_ids: selectedAdmins,
 				hosts: assignments,
 			},
@@ -287,22 +284,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 								maxLength={256}
 							/>
 						</HStack>
-						<FormControl maxW={{ base: "100%", md: "320px" }}>
-							<FormLabel>{t("services.fields.flow", "Flow")}</FormLabel>
-							<Select
-								value={flow}
-								onChange={(event) => setFlow(event.target.value)}
-								placeholder={t("services.flow.placeholder", "No flow")}
-							>
-								<option value="xtls-rprx-vision">xtls-rprx-vision</option>
-							</Select>
-							<FormHelperText>
-								{t(
-									"services.flow.helper",
-									"Applies to supported protocols (e.g. VLESS/Trojan)",
-								)}
-							</FormHelperText>
-						</FormControl>
 						<Box>
 							<Text fontWeight="medium" mb={2}>
 								{t("services.fields.admins", "Admins")}
@@ -1182,11 +1163,6 @@ const ServicesPage: FC = () => {
 										{selectedService.description}
 									</Text>
 								)}
-								{selectedService.flow && (
-									<Text fontSize="sm" color="gray.500">
-										{t("services.currentFlow", "Flow")}: {selectedService.flow}
-									</Text>
-								)}
 							</Box>
 							<Badge colorScheme="primary">
 								{t("services.usersCount", "{{count}} users", {
@@ -1377,7 +1353,9 @@ const ServicesPage: FC = () => {
 															: (targetServiceId?.toString() ??
 																NO_SERVICE_OPTION_VALUE)
 													}
-													onChange={(event) => {
+													onChange={(
+														event: React.ChangeEvent<HTMLSelectElement>,
+													) => {
 														const value = event.target.value;
 														if (!value || value === NO_SERVICE_OPTION_VALUE) {
 															setTargetServiceId(null);

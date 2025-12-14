@@ -150,13 +150,17 @@ export const AdminPermissionsEditor = ({
 			...value,
 			[section]: updatedSection,
 		};
-		
+
 		// If allow_unlimited_data is enabled, clear max_data_limit_per_user
-		if (section === "users" && key === UserPermissionToggle.AllowUnlimitedData && next) {
+		if (
+			section === "users" &&
+			key === UserPermissionToggle.AllowUnlimitedData &&
+			next
+		) {
 			updated.users.max_data_limit_per_user = null;
 			onMaxDataLimitChange?.("");
 		}
-		
+
 		onChange(updated);
 	};
 

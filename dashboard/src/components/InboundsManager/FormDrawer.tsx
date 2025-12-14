@@ -513,7 +513,7 @@ export const InboundFormModal: FC<Props> = ({
 
 	const handleGenerateRealityKeypair = useCallback(async () => {
 		try {
-			const { privateKey, publicKey } = await generateRealityKeypair();
+			const { privateKey } = await generateRealityKeypair();
 			form.setValue(
 				"realityPrivateKey",
 				formatRealityKeyForDisplay(privateKey),

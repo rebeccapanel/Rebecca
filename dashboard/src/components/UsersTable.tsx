@@ -42,10 +42,16 @@ import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
 import classNames from "classnames";
 import { resetStrategy, statusColors } from "constants/UserSettings";
-import { useDashboard } from "contexts/DashboardContext";
+import { type FilterType, useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import { t } from "i18next";
-import { type FC, Fragment, useEffect, useState } from "react";
+import {
+	type ChangeEvent,
+	type FC,
+	Fragment,
+	useEffect,
+	useState,
+} from "react";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
@@ -105,7 +111,7 @@ const getResetStrategy = (strategy: string): string => {
 	return entry?.title ?? "No";
 };
 const UsageSliderCompact: FC<UsageSliderProps> = (props) => {
-	const { used, total, dataLimitResetStrategy, totalUsedTraffic } = props;
+	const { used, total } = props;
 	const isUnlimited = total === 0 || total === null;
 	return (
 		<HStack
@@ -278,9 +284,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			sort: newSort,
 		});
 	};
-	const handleStatusFilter = (e: any) => {
+	const handleStatusFilter = (e: ChangeEvent<HTMLSelectElement>) => {
+		const nextStatus = (e.target.value.length > 0
+			? e.target.value
+			: undefined) as FilterType["status"];
 		onFilterChange({
-			status: e.target.value.length > 0 ? e.target.value : undefined,
+			status: nextStatus,
 		});
 	};
 
@@ -346,7 +355,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 											border={0}
 											h="auto"
 											w="auto"
-											icon={<></>}
+											icon={<span />}
 											_focusVisible={{
 												border: "0 !important",
 											}}
@@ -708,7 +717,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 											border={0}
 											h="auto"
 											w="auto"
-											icon={<></>}
+											icon={<span />}
 											_focusVisible={{
 												border: "0 !important",
 											}}

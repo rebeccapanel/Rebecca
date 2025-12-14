@@ -186,12 +186,21 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		if (!isAddMode && node && isOpen) {
 			fetchNodesUsage({
 				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
-			}).then((data: any) => {
-				const usage = data.usages[node.id];
-				if (usage) {
-					setNodeUsage({ uplink: usage.uplink, downlink: usage.downlink });
-				}
-			});
+			}).then(
+				(data: {
+					usages?: Record<string, { uplink?: number; downlink?: number }>;
+				}) => {
+					const usage = data.usages?.[node.id];
+					if (usage) {
+						setNodeUsage({
+							uplink: usage.uplink ?? 0,
+							downlink: usage.downlink ?? 0,
+						});
+					} else {
+						setNodeUsage(null);
+					}
+				},
+			);
 		} else {
 			setNodeUsage(null);
 		}

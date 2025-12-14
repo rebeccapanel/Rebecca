@@ -961,6 +961,18 @@ export class Outbound extends CommonClass {
 			);
 		}
 
+		if (json?.tls === "reality") {
+			stream.security = "reality";
+			stream.reality = new RealityStreamSettings(
+				json?.pbk ?? json?.fp ?? "",
+				json?.fp ?? "",
+				json?.sni ?? "",
+				json?.sid ?? "",
+				json?.spx ?? "",
+				json?.pqv ?? "",
+			);
+		}
+
 		const port = Number(json?.port ?? 0);
 		if (Number.isNaN(port)) return null;
 

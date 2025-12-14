@@ -150,6 +150,23 @@ export const theme = extendTheme({
 				"--surface-light": "#ffffff",
 				"--surface-dark": "#0f2a18",
 			},
+
+			".rb-theme-pure-dark": {
+				"--primary-50": "#e5f2ff",
+				"--primary-100": "#b8deff",
+				"--primary-200": "#8bcaff",
+				"--primary-300": "#5eb6ff",
+				"--primary-400": "#31a2ff",
+				"--primary-500": "#1a8ce0",
+				"--primary-600": "#126fb3",
+				"--primary-700": "#0a5286",
+				"--primary-800": "#03355a",
+				"--primary-900": "#001a2f",
+				"--bg-light": "#0c1018",
+				"--bg-dark": "#05070c",
+				"--surface-light": "#111827",
+				"--surface-dark": "#0a0f1a",
+			},
 		},
 	},
 	components: {

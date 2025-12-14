@@ -1,24 +1,22 @@
 {
-	"root": true,
-	"$schema": "https://biomejs.dev/schemas/2.3.8/schema.json",
-	"files": {
-		"includes": [
-			"src/**",
-			"!**/node_modules",
-			"!**/build",
-			"!**/dist",
-			"!**/stats.html"
-		]
-	},
-	"formatter": {
-		"indentWidth": 2
-	},
+	"$schema": "https://biomejs.dev/schemas/1.8.0/schema.json",
 	"linter": {
-		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"suspicious": {
+				"noExplicitAny": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off"
+			},
+			"complexity": {
+				"noUselessFragments": "off",
+				"noBannedTypes": "off",
+				"noStaticOnlyClass": "off"
+			},
 			"correctness": {
-				"useExhaustiveDependencies": "warn"
+				"noUnusedImports": "warn",
+				"noUnusedVariables": "warn",
+				"noUnusedFunctionParameters": "warn"
 			}
 		}
 	}

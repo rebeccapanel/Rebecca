@@ -348,7 +348,7 @@ export const MyAccountPage: React.FC = () => {
 		};
 	});
 
-	const { data, isLoading, isFetching, refetch } = useQuery<MyAccountResponse>(
+	const { data, isLoading, isFetching } = useQuery<MyAccountResponse>(
 		["myaccount", range.start, range.end],
 		() =>
 			getMyAccount({
@@ -367,7 +367,7 @@ export const MyAccountPage: React.FC = () => {
 	const selfPermissions = isFullAccess
 		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
 		: baseSelfPermissions;
-	const { data: nodesData, isFetching: isFetchingNodes } = useQuery(
+	const { data: nodesData } = useQuery(
 		["myaccount-nodes", username, range.start, range.end],
 		() =>
 			username

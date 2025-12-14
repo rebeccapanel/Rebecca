@@ -24,7 +24,7 @@ import {
 import logoUrl from "assets/logo.svg";
 import useAds from "hooks/useAds";
 import useGetUser from "hooks/useGetUser";
-import { type ElementType, type FC, useEffect, useMemo, useState } from "react";
+import { type ElementType, type FC, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
@@ -87,16 +87,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const sidebarAd = shouldShowAds
 		? pickLocalizedAd(adsData, "sidebar", currentLanguage)
 		: undefined;
-	const roleLabel = useMemo(() => {
-		switch (userData.role) {
-			case AdminRole.FullAccess:
-				return t("admins.roles.fullAccess", "Full access");
-			case AdminRole.Sudo:
-				return t("admins.roles.sudo", "Sudo");
-			default:
-				return t("admins.roles.standard", "Standard");
-		}
-	}, [t, userData.role]);
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
 	const baseSelf = userData.permissions?.self_permissions || {

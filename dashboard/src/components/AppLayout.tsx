@@ -15,30 +15,29 @@ import {
 	MenuList,
 	Portal,
 	Text,
-	VStack,
 	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
+	VStack,
 } from "@chakra-ui/react";
 import {
 	ArrowLeftOnRectangleIcon,
 	Bars3Icon,
 	CheckIcon,
 	LanguageIcon,
-	SwatchIcon,
 	UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
 import useGetUser from "hooks/useGetUser";
 import {
+	type MouseEvent as ReactMouseEvent,
 	useMemo,
 	useRef,
 	useState,
-	type MouseEvent as ReactMouseEvent,
 } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { AdminRole } from "types/Admin";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
@@ -55,7 +54,6 @@ const iconProps = {
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
-const SwatchIconChakra = chakra(SwatchIcon, iconProps);
 const UserIcon = chakra(UserCircleIcon, iconProps);
 
 export function AppLayout() {
@@ -63,19 +61,21 @@ export function AppLayout() {
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	const sidebarDrawer = useDisclosure();
 	const languageMenu = useDisclosure();
+	const userMenu = useDisclosure();
 	const { t, i18n } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const navigate = useNavigate();
 	useAppleEmoji();
 	const isRTL = i18n.language === "fa";
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
-	
+	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+
 	const menuBg = useColorModeValue("white", "gray.800");
 	const menuBorder = useColorModeValue("gray.200", "gray.700");
 	const menuHover = useColorModeValue("gray.100", "gray.700");
 	const textColor = useColorModeValue("gray.800", "gray.100");
 	const secondaryTextColor = useColorModeValue("gray.600", "gray.400");
-	
+
 	const roleLabel = useMemo(() => {
 		switch (userData.role) {
 			case AdminRole.FullAccess:
@@ -100,13 +100,30 @@ export function AppLayout() {
 		i18n.changeLanguage(lang);
 	};
 
+	const closeUserMenu = () => {
+		userMenu.onClose();
+		languageMenu.onClose();
+	};
+
+	const handleUserMenuClose = () => {
+		if (isThemeModalOpen) return;
+		closeUserMenu();
+	};
+
+	const handleThemeModalOpen = () => setIsThemeModalOpen(true);
+	const handleThemeModalClose = () => setIsThemeModalOpen(false);
+
 	return (
-		<Flex
-			minH="100vh"
-			maxH="100vh"
-			overflow="hidden"
-			direction={isRTL ? "row-reverse" : "row"}
-		>
+		<>
+			<Box display="none" aria-hidden="true">
+				<ThemeSelector minimal trigger="icon" />
+			</Box>
+			<Flex
+				minH="100vh"
+				maxH="100vh"
+				overflow="hidden"
+				direction={isRTL ? "row-reverse" : "row"}
+			>
 			{/* persistent sidebar on md+; drawer on mobile */}
 			{!isMobile ? (
 				<AppSidebar
@@ -154,14 +171,16 @@ export function AppLayout() {
 					/>
 					<HStack spacing={2} alignItems="center" flexShrink={0}>
 						<GitHubStars />
-						
+
 						{/* User Menu */}
 						{getUserIsSuccess && userData.username && (
 							<Menu
 								placement="bottom-end"
 								isLazy
 								closeOnSelect={false}
-								onClose={languageMenu.onClose}
+								isOpen={userMenu.isOpen}
+								onOpen={userMenu.onOpen}
+								onClose={handleUserMenuClose}
 							>
 								<MenuButton
 									as={Button}
@@ -171,6 +190,13 @@ export function AppLayout() {
 									aria-label="user menu"
 									fontSize="sm"
 									fontWeight="medium"
+									onClick={() => {
+										if (userMenu.isOpen) {
+											handleUserMenuClose();
+										} else {
+											userMenu.onOpen();
+										}
+									}}
 								>
 									<Text
 										display={{ base: "none", sm: "inline" }}
@@ -200,7 +226,12 @@ export function AppLayout() {
 									}}
 								>
 									{/* User Info */}
-									<Box px={3} py={2} borderBottom="1px" borderColor={menuBorder}>
+									<Box
+										px={3}
+										py={2}
+										borderBottom="1px"
+										borderColor={menuBorder}
+									>
 										<VStack align="flex-start" spacing={1}>
 											<HStack spacing={2}>
 												<UserIcon />
@@ -213,7 +244,7 @@ export function AppLayout() {
 											</Text>
 										</VStack>
 									</Box>
-									
+
 									{/* Language Selector */}
 									<Menu
 										placement={isRTL ? "left-start" : "right-start"}
@@ -295,14 +326,16 @@ export function AppLayout() {
 											</MenuList>
 										</Portal>
 									</Menu>
-									
+
 									{/* Theme Selector */}
 									<ThemeSelector
 										trigger="menuItem"
 										triggerLabel={t("header.theme", "Theme")}
 										portalContainer={userMenuContentRef}
+										onModalOpen={handleThemeModalOpen}
+										onModalClose={handleThemeModalClose}
 									/>
-									
+
 									{/* Logout */}
 									<MenuItem
 										icon={<LogoutIcon />}
@@ -348,5 +381,6 @@ export function AppLayout() {
 				</Drawer>
 			)}
 		</Flex>
-	);
+	</>
+);
 }

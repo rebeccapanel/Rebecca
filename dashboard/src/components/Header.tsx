@@ -31,7 +31,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
-import { type FC, type ReactNode, useRef } from "react";
+import { type FC, type ReactNode, useRef, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -60,7 +60,7 @@ const MoreIcon = chakra(EllipsisVerticalIcon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
-	const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
+	const { userData } = useGetUser();
 	const { t, i18n } = useTranslation();
 	const actionsContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -79,6 +79,12 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 
 	const { onResetAllUsage, onEditingNodes } = useDashboard();
 	const actionsMenu = useDisclosure();
+	const [lockActionsMenu, setLockActionsMenu] = useState(false);
+	const closeActionsMenu = () => {
+		if (!lockActionsMenu) {
+			actionsMenu.onClose();
+		}
+	};
 
 	const languageItems = [
 		{ code: "en", label: "English", flag: "US" },
@@ -89,6 +95,19 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 
 	const changeLanguage = (lang: string) => {
 		i18n.changeLanguage(lang);
+	};
+
+	const handleActionsMenuClose = () => {
+		if (lockActionsMenu) return;
+		actionsMenu.onClose();
+	};
+
+	const handleThemeModalOpen = () => {
+		setLockActionsMenu(true);
+	};
+
+	const handleThemeModalClose = () => {
+		setLockActionsMenu(false);
 	};
 
 	return (
@@ -121,9 +140,9 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 						icon={<SettingsIcon />}
 						position="relative"
 					/>
-					<MenuList 
-						minW="170px" 
-						zIndex={99999} 
+					<MenuList
+						minW="170px"
+						zIndex={99999}
 						className="menuList"
 						sx={{
 							".chakra-menu__menuitem": {
@@ -204,7 +223,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 				<Popover
 					isOpen={actionsMenu.isOpen}
 					onOpen={actionsMenu.onOpen}
-					onClose={actionsMenu.onClose}
+					onClose={handleActionsMenuClose}
 					placement="bottom-end"
 				>
 					<PopoverTrigger>
@@ -213,11 +232,13 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 							variant="outline"
 							icon={<MoreIcon />}
 							aria-label="more options"
-							onClick={() =>
-								actionsMenu.isOpen
-									? actionsMenu.onClose()
-									: actionsMenu.onOpen()
-							}
+							onClick={() => {
+								if (actionsMenu.isOpen) {
+									closeActionsMenu();
+								} else {
+									actionsMenu.onOpen();
+								}
+							}}
 						/>
 					</PopoverTrigger>
 					<Portal>
@@ -246,7 +267,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 															key={code}
 															onClick={() => {
 																changeLanguage(code);
-																actionsMenu.onClose();
+																closeActionsMenu();
 															}}
 															bg="transparent"
 														>
@@ -278,6 +299,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										trigger="menu"
 										triggerLabel={t("header.theme", "Theme")}
 										portalContainer={actionsContentRef}
+										onModalOpen={handleThemeModalOpen}
+										onModalClose={handleThemeModalClose}
 									/>
 									<Divider />
 									<Button
@@ -286,7 +309,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										justifyContent="flex-start"
 										as={Link}
 										to="/login"
-										onClick={actionsMenu.onClose}
+										onClick={closeActionsMenu}
 									>
 										{t("header.logout")}
 									</Button>

@@ -4,6 +4,7 @@ from app.runtime import scheduler
 
 from .node_usage import record_node_stats, record_node_usages
 from .user_usage import record_user_stats, record_user_usages
+from .outbound_traffic import record_outbound_traffic
 
 
 """Public interface for usage jobs: exports record functions and registers scheduler tasks."""
@@ -26,6 +27,13 @@ def register_usage_jobs():
         record_node_usages,
         "interval",
         seconds=JOB_RECORD_NODE_USAGES_INTERVAL,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        record_outbound_traffic,
+        "interval",
+        seconds=JOB_RECORD_NODE_USAGES_INTERVAL,  # Use same interval as node usages
         coalesce=True,
         max_instances=1,
     )

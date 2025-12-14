@@ -40,4 +40,3 @@ export type AccessInsightsResponse = {
 	lookback_lines: number;
 	unmatched?: AccessInsightUnmatched[];
 };
-

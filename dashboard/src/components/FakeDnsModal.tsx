@@ -57,7 +57,7 @@ export const FakeDnsModal: FC<FakeDnsModalProps> = ({
 		};
 
 		const currentFakeDns: FakeDnsConfig[] =
-			form.getValues("config.fakedns") || [];
+			(form.getValues("config.fakedns") as FakeDnsConfig[] | undefined) || [];
 		if (fakeDnsIndex !== undefined) {
 			currentFakeDns[fakeDnsIndex] = newFakeDns;
 		} else {

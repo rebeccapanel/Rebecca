@@ -8,7 +8,7 @@ import "./styles.css";
 
 export type JSONEditorProps = {
 	onChange: (value: string) => void;
-	json: any;
+	json: unknown;
 	mode?: JSONEditorMode;
 };
 

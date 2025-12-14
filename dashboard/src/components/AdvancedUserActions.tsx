@@ -115,8 +115,13 @@ const AdvancedUserActions = () => {
 		});
 	};
 
-	const resolveErrorMessage = (error?: any, fallback?: string) =>
-		error?.data?.detail || error?.message || fallback;
+	const resolveErrorMessage = (error?: unknown, fallback?: string) => {
+		if (error && typeof error === "object") {
+			const maybe = error as { data?: { detail?: string }; message?: string };
+			return maybe.data?.detail || maybe.message || fallback;
+		}
+		return fallback;
+	};
 
 	const handleError = (message?: string) => {
 		showToast(

@@ -807,18 +807,27 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const submit = (values: FormType) => {
 		// Check user limit before submitting (even if status is not active)
 		// This prevents creating users that would exceed the limit
-		if (usersLimit !== null && usersLimit !== undefined && usersLimit > 0 && activeUsersCount !== null) {
+		if (
+			usersLimit !== null &&
+			usersLimit !== undefined &&
+			usersLimit > 0 &&
+			activeUsersCount !== null
+		) {
 			if (activeUsersCount >= usersLimit) {
-				const errorMessage = t("userDialog.usersLimitReached", "User limit reached. You have {{active}} active users out of {{limit}} allowed.", {
-					active: activeUsersCount,
-					limit: usersLimit
-				});
+				const errorMessage = t(
+					"userDialog.usersLimitReached",
+					"User limit reached. You have {{active}} active users out of {{limit}} allowed.",
+					{
+						active: activeUsersCount,
+						limit: usersLimit,
+					},
+				);
 				setError(errorMessage);
 				setLoading(false);
 				return;
 			}
 		}
-		
+
 		if (limitReached) {
 			return;
 		}
@@ -864,17 +873,24 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		} = values;
 
 		// Validate data_limit based on admin permissions (don't auto-normalize, show error instead)
-		const maxDataLimitPerUser = userData?.permissions?.users?.max_data_limit_per_user;
-		const allowUnlimitedData = hasElevatedRole || Boolean(userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData]);
-		
+		const maxDataLimitPerUser =
+			userData?.permissions?.users?.max_data_limit_per_user;
+		const allowUnlimitedData =
+			hasElevatedRole ||
+			Boolean(
+				userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData],
+			);
+
 		// data_limit from schema is already in bytes
 		const dataLimitBytes = data_limit || 0;
-		
+
 		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
 			// If unlimited (0) is requested but not allowed, show error
 			if (dataLimitBytes === 0 && !allowUnlimitedData) {
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
-				const errorMessage = t("userDialog.unlimitedNotAllowed", { max: maxGb });
+				const errorMessage = t("userDialog.unlimitedNotAllowed", {
+					max: maxGb,
+				});
 				setError(errorMessage);
 				setLoading(false);
 				form.setError("data_limit", {
@@ -889,7 +905,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 				const errorMessage = t("userDialog.dataLimitExceedsMax", {
 					original: originalGb,
-					max: maxGb
+					max: maxGb,
 				});
 				setError(errorMessage);
 				setLoading(false);
@@ -906,14 +922,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
 				? Number((Number(next_plan_data_limit) * 1073741824).toFixed(5))
 				: 0;
-		
-		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined && normalizedNextPlanDataLimit > 0) {
+
+		if (
+			maxDataLimitPerUser !== null &&
+			maxDataLimitPerUser !== undefined &&
+			normalizedNextPlanDataLimit > 0
+		) {
 			if (normalizedNextPlanDataLimit > maxDataLimitPerUser) {
-				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(2);
+				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(
+					2,
+				);
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 				const errorMessage = t("userDialog.nextPlanDataLimitExceedsMax", {
 					original: originalGb,
-					max: maxGb
+					max: maxGb,
 				});
 				setError(errorMessage);
 				setLoading(false);
@@ -925,10 +947,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			}
 		}
 		// If unlimited (0) is requested but not allowed, show error
-		if (normalizedNextPlanDataLimit === 0 && next_plan_enabled && !allowUnlimitedData && maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
+		if (
+			normalizedNextPlanDataLimit === 0 &&
+			next_plan_enabled &&
+			!allowUnlimitedData &&
+			maxDataLimitPerUser !== null &&
+			maxDataLimitPerUser !== undefined
+		) {
 			const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 			const errorMessage = t("userDialog.nextPlanUnlimitedNotAllowed", {
-				max: maxGb
+				max: maxGb,
 			});
 			setError(errorMessage);
 			setLoading(false);
@@ -1851,7 +1879,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		}
 																		form.setValue(
 																			"next_plan_data_limit",
-																			rawValue,
+																			Number(rawValue),
 																			{ shouldDirty: true },
 																		);
 																	}}

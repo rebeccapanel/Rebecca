@@ -1061,6 +1061,7 @@
 	"theme.customTitle": "Create a custom theme",
 	"theme.customUpdate": "Update theme",
 	"theme.dark": "Dark",
+	"theme.pure-dark": "Pure Dark",
 	"theme.darkBackground": "Background (dark mode)",
 	"theme.darkPrimary": "Primary (dark mode)",
 	"theme.darkPrimaryHint": "Used for buttons and highlights in dark mode.",

@@ -21,7 +21,7 @@ import {
 import { useAdminsStore } from "contexts/AdminsContext";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { type FC, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type FC, useEffect, useMemo, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
@@ -155,7 +155,7 @@ const AdminsUsage: FC = () => {
 	const { colorMode } = useColorMode();
 	const { admins: pagedAdmins } = useAdminsStore();
 
-	const [admins, setAdmins] = useState<any[]>([]);
+	const [admins, setAdmins] = useState<Admin[]>([]);
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
 	const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
 		null,
@@ -423,7 +423,7 @@ const AdminsUsage: FC = () => {
 
 	const chartConfig = useMemo(
 		() => ({
-			options: buildDailyUsageOptions(colorMode, categories) as any,
+			options: buildDailyUsageOptions(colorMode, categories),
 			series,
 		}),
 		[colorMode, categories, series],
@@ -465,7 +465,7 @@ const AdminsUsage: FC = () => {
 					>
 						<Select
 							value={selectedServiceId ?? ""}
-							onChange={(event) => {
+							onChange={(event: ChangeEvent<HTMLSelectElement>) => {
 								const value = Number(event.target.value);
 								setSelectedServiceId(Number.isNaN(value) ? null : value);
 							}}
@@ -621,12 +621,14 @@ const AdminsUsage: FC = () => {
 						/>
 						<Select
 							value={selectedAdmin ?? ""}
-							onChange={(e) => setSelectedAdmin(e.target.value || null)}
+							onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+								setSelectedAdmin(e.target.value || null)
+							}
 							w={{ base: "full", sm: "auto", md: "220px" }}
 							minW={{ md: "200px" }}
 							isDisabled={!filteredAdmins.length}
 						>
-							{filteredAdmins.map((a: any) => (
+							{filteredAdmins.map((a) => (
 								<option key={a.username} value={a.username}>
 									{a.username}
 								</option>

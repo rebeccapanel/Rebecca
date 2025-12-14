@@ -109,8 +109,8 @@ interface OutboundModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	mode: "create" | "edit";
-	initialOutbound?: any | null;
-	onSubmitOutbound: (outboundJson: any) => Promise<void> | void;
+	initialOutbound?: Record<string, unknown> | null;
+	onSubmitOutbound: (outboundJson: unknown) => Promise<void> | void;
 }
 
 const defaultValues: OutboundFormValues = {
@@ -160,7 +160,7 @@ const defaultValues: OutboundFormValues = {
 };
 
 const buildOutboundJson = (values: OutboundFormValues) => {
-	const settings: any = {};
+	const settings: Record<string, unknown> = {};
 	const baseAddress = values.address || undefined;
 	const basePort = Number(values.port) || undefined;
 
@@ -271,10 +271,10 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 
 	const streamSettings = new StreamSettings();
 	streamSettings.network = values.network;
-	streamSettings.security = values.tlsEnabled
-		? "tls"
-		: values.realityEnabled
-			? "reality"
+	streamSettings.security = values.realityEnabled
+		? "reality"
+		: values.tlsEnabled
+			? "tls"
 			: "none";
 
 	if (values.network === "tcp") {
