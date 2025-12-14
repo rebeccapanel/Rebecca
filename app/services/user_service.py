@@ -331,7 +331,7 @@ def get_users_list(
                     # Fall through to DB fallback only if warmup fails
                     raise RuntimeError("User cache empty and warmup failed")
 
-            if all_users:
+            if all_users and len(all_users) > 0:
                 # We won't need the request-scoped DB connection anymore on the Redis path;
                 # release it early so long-running filters don't hold a pool slot.
                 _release_db_connection()
@@ -350,6 +350,16 @@ def get_users_list(
                     advanced_filters=advanced_filters,
                 )
                 logger.debug(f"After filtering: {len(filtered)} users remain")
+                
+                if len(filtered) == 0 and dbadmin:
+                    admin_user_count = sum(1 for u in all_users if u.get("admin_id") == dbadmin.id)
+                    if admin_user_count == 0:
+                        logger.warning(
+                            f"Cache returned {len(all_users)} users but none belong to admin {dbadmin.username}, "
+                            "falling back to DB to verify"
+                        )
+                        raise RuntimeError("Cache may be corrupted - no users found for admin")
+                
                 _sort_users_raw(filtered, sort)
                 total = len(filtered)
                 if offset:
@@ -377,6 +387,10 @@ def get_users_list(
                     active_total=active_total,
                     users_limit=users_limit,
                 )
+            elif all_users is not None and len(all_users) == 0:
+                # Cache exists but is empty - this could mean no users in DB or cache issue
+                logger.warning("Cache returned empty list, falling back to DB to verify")
+                raise RuntimeError("Cache returned empty list")
         except Exception as exc:
             logger.error(f"Users list Redis path failed: {exc}", exc_info=True)
             # Only fallback to DB if Redis is not available or cache is truly broken
