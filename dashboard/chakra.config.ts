@@ -192,22 +192,29 @@ export const theme = extendTheme({
 			}),
 		},
 		Menu: {
-			baseStyle: (props: StyleFunctionProps) => ({
-				list: {
-					bg: mode("surface.light", "surface.dark")(props),
-					borderWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
-					boxShadow: mode("lg", "dark-lg")(props),
-				},
-				item: {
-					_hover: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+			baseStyle: (props: StyleFunctionProps) => {
+				const hoverBg = mode("blackAlpha.50", "whiteAlpha.100")(props);
+				return {
+					list: {
+						bg: mode("surface.light", "surface.dark")(props),
+						borderWidth: "1px",
+						borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+						boxShadow: mode("lg", "dark-lg")(props),
 					},
-					_focus: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+					item: {
+						bg: "transparent !important",
+						_hover: {
+							bg: `${hoverBg} !important`,
+						},
+						_focus: {
+							bg: `${hoverBg} !important`,
+						},
+						_active: {
+							bg: `${hoverBg} !important`,
+						},
 					},
-				},
-			}),
+				};
+			},
 		},
 		Popover: {
 			baseStyle: (props: StyleFunctionProps) => ({

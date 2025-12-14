@@ -47,4 +47,3 @@ def register_cache_refresh_job(scheduler_instance):
             misfire_grace_time=3600,  # 1 hour grace time
         )
         logger.info("Registered periodic users cache refresh job (every 4 hours)")
-

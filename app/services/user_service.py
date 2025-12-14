@@ -350,7 +350,7 @@ def get_users_list(
                     advanced_filters=advanced_filters,
                 )
                 logger.debug(f"After filtering: {len(filtered)} users remain")
-                
+
                 if len(filtered) == 0 and dbadmin:
                     admin_user_count = sum(1 for u in all_users if u.get("admin_id") == dbadmin.id)
                     if admin_user_count == 0:
@@ -359,7 +359,7 @@ def get_users_list(
                             "falling back to DB to verify"
                         )
                         raise RuntimeError("Cache may be corrupted - no users found for admin")
-                
+
                 _sort_users_raw(filtered, sort)
                 total = len(filtered)
                 if offset:

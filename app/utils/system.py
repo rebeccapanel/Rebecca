@@ -95,13 +95,15 @@ def register_scheduler_jobs(scheduler) -> None:
         coalesce=True,
         max_instances=1,
     )
-    
+
     # Register periodic users cache refresh job
     try:
         from app.jobs.refresh_users_cache import register_cache_refresh_job
+
         register_cache_refresh_job(scheduler)
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to register users cache refresh job: {e}", exc_info=True)
 

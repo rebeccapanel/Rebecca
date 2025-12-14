@@ -66,13 +66,27 @@ export const Language: FC<HeaderProps> = ({ actions }) => {
 				bg={menuBg}
 				borderColor={borderColor}
 				color={textColor}
+				sx={{
+					".chakra-menu__menuitem": {
+						bg: "transparent !important",
+						"&:hover": {
+							bg: `${hoverBg} !important`,
+						},
+						"&:active, &:focus": {
+							bg: `${hoverBg} !important`,
+						},
+					},
+				}}
 			>
 				{items.map(({ code, label, flag }) => (
 					<MenuItem
 						key={code}
 						fontSize="sm"
 						onClick={() => changeLanguage(code)}
+						bg="transparent"
 						_hover={{ bg: hoverBg }}
+						_active={{ bg: hoverBg }}
+						_focus={{ bg: hoverBg }}
 					>
 						<HStack justify="space-between" w="full">
 							<HStack spacing={2}>

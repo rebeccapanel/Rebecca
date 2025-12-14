@@ -764,27 +764,30 @@ def modify_hosts(
             if user.id is not None:
                 users_to_refresh[user.id] = user
 
-    xray.hosts.update()
+    # Schedule slower side-effects in background to reduce response latency
+    bg.add_task(xray.hosts.update)
 
     from config import REDIS_ENABLED
 
     if REDIS_ENABLED:
-        try:
-            from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
 
-            invalidate_service_host_map_cache()
-            invalidate_inbounds_cache()
-            rebuild_service_hosts_cache()
-            from app.reb_node import state as xray_state
+        def _refresh_redis_caches():
+            try:
+                from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
+                from app.reb_node.state import rebuild_service_hosts_cache
+                from app.redis.cache import cache_service_host_map
+                from app.reb_node import state as xray_state
 
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass
+                invalidate_service_host_map_cache()
+                invalidate_inbounds_cache()
+                rebuild_service_hosts_cache()
+                for service_id, host_map in xray_state.service_hosts_cache.items():
+                    if host_map:
+                        cache_service_host_map(service_id, host_map)
+            except Exception:
+                pass
+
+        bg.add_task(_refresh_redis_caches)
 
     for user in users_to_refresh.values():
         bg.add_task(xray.operations.update_user, dbuser=user)

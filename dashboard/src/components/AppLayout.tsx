@@ -2,7 +2,6 @@ import {
 	Box,
 	Button,
 	chakra,
-	Divider,
 	Drawer,
 	DrawerBody,
 	DrawerContent,
@@ -14,29 +13,33 @@ import {
 	MenuButton,
 	MenuItem,
 	MenuList,
-	Popover,
-	PopoverArrow,
-	PopoverBody,
-	PopoverContent,
-	PopoverTrigger,
 	Portal,
-	Stack,
 	Text,
+	VStack,
 	useBreakpointValue,
+	useColorModeValue,
 	useDisclosure,
 } from "@chakra-ui/react";
 import {
 	ArrowLeftOnRectangleIcon,
 	Bars3Icon,
 	CheckIcon,
-	EllipsisVerticalIcon,
 	LanguageIcon,
+	SwatchIcon,
+	UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
-import { useRef, useState } from "react";
+import useGetUser from "hooks/useGetUser";
+import {
+	useMemo,
+	useRef,
+	useState,
+	type MouseEvent as ReactMouseEvent,
+} from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
-import { Link, Outlet } from "react-router-dom";
+import { Link, Outlet, useNavigate } from "react-router-dom";
+import { AdminRole } from "types/Admin";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
 import { GitHubStars } from "./GitHubStars";
@@ -51,18 +54,40 @@ const iconProps = {
 
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
-const MoreIcon = chakra(EllipsisVerticalIcon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
+const SwatchIconChakra = chakra(SwatchIcon, iconProps);
+const UserIcon = chakra(UserCircleIcon, iconProps);
 
 export function AppLayout() {
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	const sidebarDrawer = useDisclosure();
-	const actionsMenu = useDisclosure();
-	const actionsContentRef = useRef<HTMLDivElement | null>(null);
+	const languageMenu = useDisclosure();
 	const { t, i18n } = useTranslation();
+	const { userData, getUserIsSuccess } = useGetUser();
+	const navigate = useNavigate();
 	useAppleEmoji();
 	const isRTL = i18n.language === "fa";
+	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
+	
+	const menuBg = useColorModeValue("white", "gray.800");
+	const menuBorder = useColorModeValue("gray.200", "gray.700");
+	const menuHover = useColorModeValue("gray.100", "gray.700");
+	const textColor = useColorModeValue("gray.800", "gray.100");
+	const secondaryTextColor = useColorModeValue("gray.600", "gray.400");
+	
+	const roleLabel = useMemo(() => {
+		switch (userData.role) {
+			case AdminRole.FullAccess:
+				return t("admins.roles.fullAccess", "Full access");
+			case AdminRole.Sudo:
+				return t("admins.roles.sudo", "Sudo");
+			case AdminRole.Reseller:
+				return t("admins.roles.reseller", "Reseller");
+			default:
+				return t("admins.roles.standard", "Standard");
+		}
+	}, [t, userData.role]);
 
 	const languageItems = [
 		{ code: "en", label: "English", flag: "US" },
@@ -112,8 +137,9 @@ export function AppLayout() {
 					px="6"
 					justifyContent="space-between"
 					flexShrink={0}
-					position="relative"
-					overflow="hidden"
+					position="sticky"
+					top={0}
+					zIndex={100}
 				>
 					<IconButton
 						size="sm"
@@ -128,112 +154,172 @@ export function AppLayout() {
 					/>
 					<HStack spacing={2} alignItems="center" flexShrink={0}>
 						<GitHubStars />
-						<Popover
-							isOpen={actionsMenu.isOpen}
-							onOpen={actionsMenu.onOpen}
-							onClose={actionsMenu.onClose}
-							placement="bottom-end"
-						>
-							<PopoverTrigger>
-								<IconButton
+						
+						{/* User Menu */}
+						{getUserIsSuccess && userData.username && (
+							<Menu
+								placement="bottom-end"
+								isLazy
+								closeOnSelect={false}
+								onClose={languageMenu.onClose}
+							>
+								<MenuButton
+									as={Button}
 									size="sm"
-									variant="outline"
-									icon={<MoreIcon />}
-									aria-label="quick actions"
-									onClick={() =>
-										actionsMenu.isOpen
-											? actionsMenu.onClose()
-											: actionsMenu.onOpen()
-									}
-								/>
-							</PopoverTrigger>
-							<Portal>
-								<PopoverContent
-									ref={actionsContentRef}
-									w={"full"}
-									maxW={{ base: "calc(100vw - 2rem)", sm: "56" }}
-									mx={{ base: 4, sm: 0 }}
+									variant="ghost"
+									leftIcon={<UserIcon />}
+									aria-label="user menu"
+									fontSize="sm"
+									fontWeight="medium"
 								>
-									<PopoverArrow />
-									<PopoverBody>
-										<Stack spacing={2}>
-											<Menu placement="left-start" isLazy>
-												<MenuButton
-													as={Button}
-													justifyContent="space-between"
-													rightIcon={<LanguageIconStyled />}
-													variant="ghost"
-												>
-													{t("header.language", "Language")}
-												</MenuButton>
-												<Portal containerRef={actionsContentRef}>
-													<MenuList
-														minW={{ base: "100%", sm: "200px" }}
-														maxW={{ base: "100%", sm: "240px" }}
-														maxH="60vh"
-														overflowY="auto"
-													>
-														{languageItems.map(({ code, label, flag }) => {
-															const isActiveLang = i18n.language === code;
-															return (
-																<MenuItem
-																	key={code}
-																	onClick={() => {
-																		changeLanguage(code);
-																		actionsMenu.onClose();
-																	}}
-																>
-																	<HStack justify="space-between" w="full">
-																		<HStack spacing={2}>
-																			{code === "fa" ? (
-																				<ImperialIranFlag
-																					style={{
-																						width: "16px",
-																						height: "12px",
-																					}}
-																				/>
-																			) : (
-																				<ReactCountryFlag
-																					countryCode={flag}
-																					svg
-																					style={{
-																						width: "16px",
-																						height: "12px",
-																					}}
-																				/>
-																			)}
-																			<Text>{label}</Text>
-																		</HStack>
-																		{isActiveLang && <CheckIcon width={16} />}
-																	</HStack>
-																</MenuItem>
-															);
-														})}
-													</MenuList>
-												</Portal>
-											</Menu>
-											<Divider />
-											<ThemeSelector
-												trigger="menu"
-												triggerLabel={t("header.theme", "Theme")}
-												portalContainer={actionsContentRef}
-											/>
-											<Divider />
-											<Button
-												colorScheme="red"
-												leftIcon={<LogoutIcon />}
-												justifyContent="flex-start"
-												as={Link}
-												to="/login"
-												onClick={actionsMenu.onClose}
+									<Text
+										display={{ base: "none", sm: "inline" }}
+										maxW={{ base: "100px", sm: "150px" }}
+										isTruncated
+									>
+										{userData.username}
+									</Text>
+								</MenuButton>
+								<MenuList
+									ref={userMenuContentRef}
+									minW="220px"
+									bg={menuBg}
+									borderColor={menuBorder}
+									color={textColor}
+									zIndex={9999}
+									sx={{
+										".chakra-menu__menuitem": {
+											bg: "transparent !important",
+											"&:hover": {
+												bg: `${menuHover} !important`,
+											},
+											"&:active, &:focus": {
+												bg: `${menuHover} !important`,
+											},
+										},
+									}}
+								>
+									{/* User Info */}
+									<Box px={3} py={2} borderBottom="1px" borderColor={menuBorder}>
+										<VStack align="flex-start" spacing={1}>
+											<HStack spacing={2}>
+												<UserIcon />
+												<Text fontWeight="medium" fontSize="sm">
+													{userData.username}
+												</Text>
+											</HStack>
+											<Text fontSize="xs" color={secondaryTextColor}>
+												{roleLabel}
+											</Text>
+										</VStack>
+									</Box>
+									
+									{/* Language Selector */}
+									<Menu
+										placement={isRTL ? "left-start" : "right-start"}
+										strategy="fixed"
+										isOpen={languageMenu.isOpen}
+										onOpen={languageMenu.onOpen}
+										onClose={languageMenu.onClose}
+										closeOnSelect={false}
+										isLazy
+									>
+										<MenuButton
+											as={MenuItem}
+											icon={<LanguageIconStyled />}
+											onClick={(e: ReactMouseEvent) => {
+												e.stopPropagation();
+												languageMenu.isOpen
+													? languageMenu.onClose()
+													: languageMenu.onOpen();
+											}}
+										>
+											<HStack justify="space-between" w="full">
+												<Text>{t("header.language", "Language")}</Text>
+												<Text fontSize="xs" color={secondaryTextColor}>
+													{languageItems.find(
+														(item) => item.code === i18n.language,
+													)?.label || "English"}
+												</Text>
+											</HStack>
+										</MenuButton>
+										<Portal containerRef={userMenuContentRef}>
+											<MenuList
+												minW="160px"
+												bg={menuBg}
+												borderColor={menuBorder}
+												color={textColor}
+												zIndex={9999}
+												sx={{
+													".chakra-menu__menuitem": {
+														bg: "transparent !important",
+														"&:hover": {
+															bg: `${menuHover} !important`,
+														},
+														"&:active, &:focus": {
+															bg: `${menuHover} !important`,
+														},
+													},
+												}}
 											>
-												{t("header.logout", "Log out")}
-											</Button>
-										</Stack>
-									</PopoverBody>
-								</PopoverContent>
-							</Portal>
-						</Popover>
+												{languageItems.map(({ code, label, flag }) => {
+													const isActiveLang = i18n.language === code;
+													return (
+														<MenuItem
+															key={code}
+															onClick={() => {
+																changeLanguage(code);
+																languageMenu.onClose();
+															}}
+														>
+															<HStack justify="space-between" w="full">
+																<HStack spacing={2}>
+																	{code === "fa" ? (
+																		<ImperialIranFlag
+																			style={{ width: "16px", height: "12px" }}
+																		/>
+																	) : (
+																		<ReactCountryFlag
+																			countryCode={flag}
+																			svg
+																			style={{ width: "16px", height: "12px" }}
+																		/>
+																	)}
+																	<Text>{label}</Text>
+																</HStack>
+																{isActiveLang && <CheckIcon width={16} />}
+															</HStack>
+														</MenuItem>
+													);
+												})}
+											</MenuList>
+										</Portal>
+									</Menu>
+									
+									{/* Theme Selector */}
+									<ThemeSelector
+										trigger="menuItem"
+										triggerLabel={t("header.theme", "Theme")}
+										portalContainer={userMenuContentRef}
+									/>
+									
+									{/* Logout */}
+									<MenuItem
+										icon={<LogoutIcon />}
+										color="red.500"
+										bg="transparent"
+										_hover={{ bg: menuHover }}
+										_active={{ bg: menuHover }}
+										_focus={{ bg: menuHover }}
+										onClick={() => {
+											navigate("/login");
+										}}
+									>
+										{t("header.logout", "Log out")}
+									</MenuItem>
+								</MenuList>
+							</Menu>
+						)}
 					</HStack>
 				</Box>
 				<Box as="main" flex="1" p="6" overflow="auto" minH="0">

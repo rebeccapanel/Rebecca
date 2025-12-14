@@ -121,7 +121,30 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 						icon={<SettingsIcon />}
 						position="relative"
 					/>
-					<MenuList minW="170px" zIndex={99999} className="menuList">
+					<MenuList 
+						minW="170px" 
+						zIndex={99999} 
+						className="menuList"
+						sx={{
+							".chakra-menu__menuitem": {
+								bg: "transparent !important",
+								"&:hover": {
+									bg: "var(--chakra-colors-blackAlpha-50) !important",
+								},
+								"&:active, &:focus": {
+									bg: "var(--chakra-colors-blackAlpha-50) !important",
+								},
+								"[data-theme='dark'] &": {
+									"&:hover": {
+										bg: "var(--chakra-colors-whiteAlpha-100) !important",
+									},
+									"&:active, &:focus": {
+										bg: "var(--chakra-colors-whiteAlpha-100) !important",
+									},
+								},
+							},
+						}}
+					>
 						{hasSettingsActions && (
 							<>
 								{canAccessHosts && (
@@ -131,6 +154,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										icon={<HostsIcon />}
 										as={Link}
 										to="/hosts"
+										bg="transparent"
 									>
 										{t("header.hostSettings")}
 									</MenuItem>
@@ -141,6 +165,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										fontSize="sm"
 										icon={<NodesIcon />}
 										onClick={onEditingNodes.bind(null, true)}
+										bg="transparent"
 									>
 										{t("header.nodeSettings")}
 									</MenuItem>
@@ -151,6 +176,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										fontSize="sm"
 										icon={<ResetUsageIcon />}
 										onClick={onResetAllUsage.bind(null, true)}
+										bg="transparent"
 									>
 										{t("resetAllUsage")}
 									</MenuItem>
@@ -222,6 +248,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 																changeLanguage(code);
 																actionsMenu.onClose();
 															}}
+															bg="transparent"
 														>
 															<HStack justify="space-between" w="full">
 																<HStack spacing={2}>
