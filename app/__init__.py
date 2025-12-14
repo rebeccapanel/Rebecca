@@ -55,8 +55,8 @@ else:
     )
 
     scheduler = BackgroundScheduler({"apscheduler.job_defaults.max_instances": 20}, timezone="UTC")
-    register_scheduler_jobs(scheduler)
     runtime.scheduler = scheduler
+    register_scheduler_jobs(scheduler)
 
     runtime.app = app
     from app.db.schema import ensure_core_schema
