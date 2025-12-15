@@ -117,10 +117,12 @@ type AdminUsageSliderProps = {
 	used: number;
 	total: number | null;
 	lifetimeUsage: number | null;
+	isRTL?: boolean;
 } & SliderProps;
 
 const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
-	const { used, total, lifetimeUsage, ...restOfProps } = props;
+	const { used, total, lifetimeUsage, isRTL = false, ...restOfProps } = props;
+	const { t } = useTranslation();
 	const isUnlimited = total === 0 || total === null;
 	const isReached = !isUnlimited && (used / total) * 100 >= 100;
 	return (
@@ -136,7 +138,7 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
 				</SliderTrack>
 			</Slider>
 			<HStack
-				justifyContent="space-between"
+				justifyContent={isRTL ? "flex-end" : "space-between"}
 				fontSize="xs"
 				fontWeight="medium"
 				color="gray.600"
@@ -144,20 +146,32 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
 					color: "gray.400",
 				}}
 				flexWrap="wrap"
+				gap={3}
+				dir={isRTL ? "rtl" : "ltr"}
+				textAlign={isRTL ? "end" : "start"}
+				w="full"
 			>
 				<Text>
-					{formatBytes(used, 2)} /{" "}
+					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+						{formatBytes(used, 2)}
+					</chakra.span>{" "}
+					/{" "}
 					{isUnlimited ? (
 						<Text as="span" fontFamily="system-ui">
 							∞
 						</Text>
 					) : (
-						formatBytes(total, 2)
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{formatBytes(total, 2)}
+						</chakra.span>
 					)}
 				</Text>
 				{lifetimeUsage !== null && lifetimeUsage !== undefined && (
 					<Text color="blue.500" _dark={{ color: "blue.300" }}>
-						lifetime: {formatBytes(lifetimeUsage, 2)}
+						{t("admins.details.lifetime", "Lifetime usage")}:{" "}
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{formatBytes(lifetimeUsage, 2)}
+						</chakra.span>
 					</Text>
 				)}
 			</HStack>
@@ -166,10 +180,11 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
 };
 
 export const AdminsTable = () => {
-	const { t, i18n } = useTranslation();
+	const { t } = useTranslation();
 	const toast = useToast();
 	const { userData } = useGetUser();
-	const isRTL = i18n.language === "fa";
+	// Keep admin table LTR even in RTL locales to preserve column order
+	const isRTL = false;
 	const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
 	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
 	const tableBg = useColorModeValue("white", "gray.900");
@@ -404,27 +419,32 @@ export const AdminsTable = () => {
 		);
 	};
 
-	const columns = useMemo(
-		() => [
+	const columns = useMemo(() => {
+		const base = [
 			{ key: "id", label: "ID" },
 			{ key: "username", label: t("username") },
 			{ key: "status", label: t("status") },
 			{ key: "users_count", label: t("users") },
 			{ key: "data", label: `${t("dataUsage")} / ${t("dataLimit")}` },
 			{ key: "actions", label: "" },
-		],
-		[t],
-	);
+		] as const;
+		return isRTL ? [...base].reverse() : base;
+	}, [isRTL, t]);
+
+	const tableDir: "ltr" | "rtl" = isRTL ? "rtl" : "ltr";
 	const rtlTableProps = isRTL
 		? {
 				className: "rb-rtl-table",
-				dir: "ltr" as const,
+				dir: tableDir,
 				sx: {
-					"& th": { textAlign: "right" },
-					"& td": { textAlign: "right" },
+					"& th": { textAlign: "start" },
+					"& td": { textAlign: "start" },
+					"& th[data-col='id'], & td[data-col='id']": {
+						textAlign: "center",
+					},
 				},
 			}
-		: {};
+		: { dir: tableDir };
 
 	if (loading && !admins.length) {
 		return (
@@ -492,17 +512,18 @@ export const AdminsTable = () => {
 									}
 									textAlign={
 										col.key === "actions"
-											? "right"
+											? isRTL
+												? "start"
+												: "end"
 											: col.key === "id"
 												? "center"
-												: isRTL
-													? "right"
-													: "left"
+												: "start"
 									}
 									display={{
 										base: col.key === "id" ? "none" : "table-cell",
 										md: "table-cell",
 									}}
+									data-col={col.key}
 									px={col.key === "id" ? 2 : undefined}
 									pr={col.key === "id" ? 1 : undefined}
 									pl={col.key === "id" ? 2 : undefined}
@@ -587,23 +608,14 @@ export const AdminsTable = () => {
 								!hasLimitDisabledReason;
 							const showDeleteAction = canChangeStatus;
 
-							return (
-								<Tr
-									key={admin.username}
-									className={
-										index === admins.length - 1 ? "last-row" : undefined
-									}
-									onClick={() => openAdminDetails(admin)}
-									cursor="pointer"
-									bg={isSelected ? rowSelectedBg : undefined}
-									_hover={{ bg: rowHoverBg }}
-									transition="background-color 0.15s ease-in-out"
-								>
+							const cells: Record<string, JSX.Element> = {
+								id: (
 									<Td
 										display={{ base: "none", md: "table-cell" }}
 										px={2}
 										pr={1}
 										pl={2}
+										data-col="id"
 										width={idColumnWidth}
 										minW={idColumnWidth}
 										maxW={idColumnMaxWidth}
@@ -621,7 +633,9 @@ export const AdminsTable = () => {
 											{admin.id}
 										</Text>
 									</Td>
-									<Td px={2} textAlign={isRTL ? "right" : "left"}>
+								),
+								username: (
+									<Td px={2} textAlign="start" data-col="username">
 										<Tooltip
 											label={
 												admin.role === AdminRole.FullAccess
@@ -666,17 +680,18 @@ export const AdminsTable = () => {
 																: "gray.200",
 												}}
 												display="inline-block"
+												minW={0}
+												maxW="full"
+												isTruncated
 											>
 												{admin.username}
 											</Text>
 										</Tooltip>
 									</Td>
-									<Td textAlign={isRTL ? "right" : "left"}>
-										<Stack
-											spacing={1}
-											align={isRTL ? "flex-end" : "flex-start"}
-											maxW="full"
-										>
+								),
+								status: (
+									<Td textAlign="start">
+										<Stack spacing={1} align="flex-start" maxW="full">
 											<AdminStatusBadge status={admin.status} />
 											{admin.status === AdminStatus.Disabled &&
 												disabledReasonLabel && (
@@ -686,11 +701,10 @@ export const AdminsTable = () => {
 												)}
 										</Stack>
 									</Td>
-									<Td textAlign={isRTL ? "right" : "left"}>
-										<Stack
-											spacing={0}
-											align={isRTL ? "flex-end" : "flex-start"}
-										>
+								),
+								users_count: (
+									<Td textAlign="start">
+										<Stack spacing={0} align="flex-start">
 											<Text fontSize="xs" fontWeight="semibold">
 												{activeLabel}
 											</Text>
@@ -708,13 +722,18 @@ export const AdminsTable = () => {
 												)}
 										</Stack>
 									</Td>
-									<Td textAlign={isRTL ? "right" : "left"}>
+								),
+								data: (
+									<Td textAlign="start">
 										<AdminUsageSlider
+											isRTL={isRTL}
 											used={admin.users_usage ?? 0}
 											total={admin.data_limit ?? null}
 											lifetimeUsage={admin.lifetime_usage ?? null}
 										/>
 									</Td>
+								),
+								actions: (
 									<Td textAlign={isRTL ? "left" : "right"}>
 										<Menu>
 											<MenuButton
@@ -816,6 +835,22 @@ export const AdminsTable = () => {
 											</MenuList>
 										</Menu>
 									</Td>
+								),
+							};
+
+							return (
+								<Tr
+									key={admin.username}
+									className={
+										index === admins.length - 1 ? "last-row" : undefined
+									}
+									onClick={() => openAdminDetails(admin)}
+									cursor="pointer"
+									bg={isSelected ? rowSelectedBg : undefined}
+									_hover={{ bg: rowHoverBg }}
+									transition="background-color 0.15s ease-in-out"
+								>
+									{columns.map((col) => cells[col.key])}
 								</Tr>
 							);
 						})}

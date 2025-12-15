@@ -100,11 +100,13 @@
 	"admins.resetUsageSuccess": "Usage reset",
 	"admins.roleLabel": "Admin role",
 	"admins.roles.fullAccess": "Full access",
+	"admins.roles.fullAccessDescription": "Complete control, including other sudo admins.",
 	"admins.roles.reseller": "Reseller",
 	"admins.roles.resellerDescription": "Can create and manage their own admins.",
 	"admins.roles.standard": "Standard",
 	"admins.roles.standardDescription": "Can manage own users; only user-related permissions are available.",
 	"admins.roles.sudo": "Sudo",
+	"admins.roles.sudoDescription": "Extended access to settings and other admins.",
 	"admins.searchPlaceholder": "Search admins...",
 	"admins.sections.admins": "Admins",
 	"admins.sections.hosts": "Hosts",
@@ -1327,5 +1329,23 @@
 	"usersTable.sortByExpire": "Sort by expire",
 	"onlineStatus.online": "Online",
 	"onlineStatus.notConnected": "Not Connected Yet",
-	"onlineStatus.ago": "ago"
+	"onlineStatus.notConnectedYet": "Not Connected Yet",
+	"onlineStatus.ago": "ago",
+	"time": {
+		"years_one": "{{count}} year",
+		"years_other": "{{count}} years",
+		"months_one": "{{count}} month",
+		"months_other": "{{count}} months",
+		"days_one": "{{count}} day",
+		"days_other": "{{count}} days",
+		"hours_one": "{{count}} hour",
+		"hours_other": "{{count}} hours",
+		"minutes_one": "{{count}} min",
+		"minutes_other": "{{count}} mins"
+	},
+	"timeUnit": {
+		"days": "days",
+		"hours": "hours",
+		"minutes": "mins"
+	}
 }

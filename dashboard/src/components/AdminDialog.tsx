@@ -1,4 +1,5 @@
 import {
+	Box,
 	Button,
 	FormControl,
 	FormErrorMessage,
@@ -252,7 +253,16 @@ type AdminFormValues = {
 };
 
 export const AdminDialog: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
+
+	const basePad = "0.75rem";
+	const endPadding = isRTL
+		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
+		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
+	const endAdornmentProps = isRTL
+		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
+		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
 	const toast = useToast();
@@ -604,14 +614,20 @@ export const AdminDialog: FC = () => {
 			)}
 			<FormControl isInvalid={!!errors.username}>
 				<FormLabel>{t("username")}</FormLabel>
-				<InputGroup>
+				<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 					<Input
 						placeholder={t("admins.usernamePlaceholder", "Admin username")}
 						{...register("username")}
 						isDisabled={mode === "edit"}
+						{...(mode === "create" ? endPadding : {})}
 					/>
 					{mode === "create" && (
-						<InputRightElement>
+						<InputRightElement
+							insetInlineEnd={endAdornmentProps.insetInlineEnd}
+							insetInlineStart={endAdornmentProps.insetInlineStart}
+							right={endAdornmentProps.right}
+							left={endAdornmentProps.left}
+						>
 							<IconButton
 								aria-label={t("admins.generateUsername", "Random")}
 								size="sm"
@@ -629,13 +645,19 @@ export const AdminDialog: FC = () => {
 			<FormControl isInvalid={!!errors.password}>
 				<FormLabel>{t("password")}</FormLabel>
 				<HStack spacing={2}>
-					<InputGroup>
+					<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 						<Input
 							placeholder={t("admins.passwordPlaceholder", "Password")}
 							type={showPassword ? "text" : "password"}
 							{...register("password")}
+							{...endPadding}
 						/>
-						<InputRightElement>
+						<InputRightElement
+							insetInlineEnd={endAdornmentProps.insetInlineEnd}
+							insetInlineStart={endAdornmentProps.insetInlineStart}
+							right={endAdornmentProps.right}
+							left={endAdornmentProps.left}
+						>
 							<IconButton
 								aria-label={
 									showPassword
@@ -803,12 +825,20 @@ export const AdminDialog: FC = () => {
 			<Modal isOpen={isOpen} onClose={closeAdminDialog} size="lg">
 				<ModalOverlay />
 				<ModalContent>
-					<ModalHeader>
+				<ModalHeader
+					display="flex"
+					alignItems="center"
+					justifyContent="space-between"
+					gap={3}
+					dir={isRTL ? "rtl" : "ltr"}
+				>
+					<Box as="span" textAlign="start">
 						{mode === "create"
 							? t("admins.addAdminTitle", "Add admin")
 							: t("admins.editAdminTitle", "Edit admin")}
-					</ModalHeader>
-					<ModalCloseButton />
+					</Box>
+					<ModalCloseButton position="static" />
+				</ModalHeader>
 					<ModalBody>
 						{mode === "create" ? (
 							<Tabs colorScheme="primary" isFitted variant="enclosed">

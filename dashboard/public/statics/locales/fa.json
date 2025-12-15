@@ -99,11 +99,13 @@
 	"admins.resetUsageSuccess": "مصرف ریست شد",
 	"admins.roleLabel": "نقش مدیر",
 	"admins.roles.fullAccess": "دسترسی کامل",
+	"admins.roles.fullAccessDescription": "کنترل کامل، شامل سایر ادمین‌های سودو.",
 	"admins.roles.reseller": "ریسلر",
 	"admins.roles.resellerDescription": "می‌تواند ادمین‌های خودش را بسازد و آن‌ها را مدیریت کند.",
 	"admins.roles.standard": "معمولی",
 	"admins.roles.standardDescription": "می‌تواند فقط کاربران خود را مدیریت کند و فقط دسترسی‌های مربوط به کاربران را دارد.",
 	"admins.roles.sudo": "سودو",
+	"admins.roles.sudoDescription": "دسترسی گسترده به تنظیمات و سایر ادمین‌ها.",
 	"admins.searchPlaceholder": "جستجوی مدیران...",
 	"admins.sections.admins": "مدیران",
 	"admins.sections.hosts": "هاست‌ها",
@@ -197,7 +199,7 @@
 	"errorOccurred": "خطایی رخ داد",
 	"errors.generic": "مشکلی پیش آمد",
 	"expired": "{{time}} پیش به پایان رسیده",
-	"expires": "پایان در {{time}}",
+	"expires": "{{time}} تا پایان",
 	"filters.advancedActions.button": "عملیات پیشرفته",
 	"filters.advancedActions.cleanupSection.button": "حذف کاربران انتخاب‌شده",
 	"filters.advancedActions.cleanupSection.daysLabel": "روز از زمان تغییر وضعیت",
@@ -1334,5 +1336,22 @@
 	"usersTable.sortByExpire": "مرتب‌سازی بر اساس انقضا",
 	"onlineStatus.online": "آنلاین",
 	"onlineStatus.notConnectedYet": "هنوز متصل نشده",
-	"onlineStatus.ago": "قبل"
+	"onlineStatus.ago": "قبل",
+	"time": {
+		"years_one": "{{count}} سال",
+		"years_other": "{{count}} سال",
+		"months_one": "{{count}} ماه",
+		"months_other": "{{count}} ماه",
+		"days_one": "{{count}} روز",
+		"days_other": "{{count}} روز",
+		"hours_one": "{{count}} ساعت",
+		"hours_other": "{{count}} ساعت",
+		"minutes_one": "{{count}} دقیقه",
+		"minutes_other": "{{count}} دقیقه"
+	},
+	"timeUnit": {
+		"days": "روز",
+		"hours": "ساعت",
+		"minutes": "دقیقه"
+	}
 }

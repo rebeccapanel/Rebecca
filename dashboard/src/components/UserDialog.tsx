@@ -518,7 +518,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const toast = useToast();
 
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
+	const basePad = "0.75rem";
+	const endPadding = isRTL
+		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
+		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
+	const endAdornmentProps = isRTL
+		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
+		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
 
 	const { colorMode } = useColorMode();
 
@@ -1306,8 +1314,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
 
 			<FormProvider {...form}>
-				<ModalContent mx="3" position="relative" overflow="hidden">
-					<ModalCloseButton mt={3} disabled={loading} />
+				<ModalContent mx="3" position="relative" overflow="hidden" dir={isRTL ? "rtl" : "ltr"}>
+					<ModalCloseButton
+						mt={3}
+						disabled={loading}
+						insetInlineEnd={4}
+						insetInlineStart="auto"
+						top={4}
+						position="absolute"
+						zIndex={2}
+						_rtl={{
+							insetInlineEnd: "auto",
+							insetInlineStart: 4,
+						}}
+					/>
 
 					<Box
 						pointerEvents={limitReached ? "none" : "auto"}
@@ -1315,8 +1335,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 						transition="filter 0.2s ease"
 					>
 						<form onSubmit={form.handleSubmit(submit)}>
-							<ModalHeader pt={6}>
-								<HStack gap={2}>
+							<ModalHeader
+								pt={6}
+								pe={12}
+								position="relative"
+								display="flex"
+								alignItems="center"
+								justifyContent="flex-start"
+								gap={2}
+							>
+								<Box flexShrink={0}>
 									<Icon color="primary">
 										{isEditing ? (
 											<EditUserIcon color="white" />
@@ -1324,13 +1352,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 											<AddUserIcon color="white" />
 										)}
 									</Icon>
+								</Box>
 
-									<Text fontWeight="semibold" fontSize="lg">
-										{isEditing
-											? t("userDialog.editUserTitle")
-											: t("createNewUser")}
-									</Text>
-								</HStack>
+								<Text fontWeight="semibold" fontSize="lg">
+									{isEditing ? t("userDialog.editUserTitle") : t("createNewUser")}
+								</Text>
 							</ModalHeader>
 
 							<ModalBody>
@@ -1377,16 +1403,23 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														<FormLabel>{t("username")}</FormLabel>
 														<HStack align="flex-end">
 															<Box flex="1" minW="0">
-																<InputGroup size="sm">
+																<InputGroup size="sm" dir={isRTL ? "rtl" : "ltr"}>
 																	<ChakraInput
 																		type="text"
 																		borderRadius="6px"
 																		placeholder={t("username")}
 																		isDisabled={disabled || isEditing}
+																		{...(!isEditing ? endPadding : {})}
 																		{...form.register("username")}
 																	/>
 																	{!isEditing && (
-																		<InputRightElement width="auto" pr={1}>
+																		<InputRightElement
+																			width="auto"
+																			insetInlineEnd={endAdornmentProps.insetInlineEnd}
+																			insetInlineStart={endAdornmentProps.insetInlineStart}
+																			right={endAdornmentProps.right}
+																			left={endAdornmentProps.left}
+																		>
 																			<IconButton
 																				aria-label={t(
 																					"userDialog.generateUsername",

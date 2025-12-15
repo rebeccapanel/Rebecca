@@ -179,7 +179,8 @@ const ChangePasswordModal: React.FC<{
 	onClose: () => void;
 	onSubmit: (current: string, next: string) => Promise<void>;
 }> = ({ isOpen, onClose, onSubmit }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
 	const toast = useToast();
 	const [showCurrent, setShowCurrent] = useState(false);
 	const [showNew, setShowNew] = useState(false);
@@ -242,14 +243,19 @@ const ChangePasswordModal: React.FC<{
 				<ModalBody>
 					<VStack spacing={4} align="stretch">
 						<Box maxW="420px">
-							<InputGroup>
+							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 								<Input
 									placeholder={t("myaccount.currentPassword")}
 									type={showCurrent ? "text" : "password"}
 									value={currentPassword}
 									onChange={(e) => setCurrentPassword(e.target.value)}
+									paddingInlineEnd="2.75rem"
 								/>
-								<InputRightElement>
+								<InputRightElement
+									insetInlineEnd="0.5rem"
+									right="auto"
+									left="auto"
+								>
 									<IconButton
 										aria-label={
 											showCurrent
@@ -272,14 +278,19 @@ const ChangePasswordModal: React.FC<{
 						</Box>
 						<Box maxW="420px">
 							<HStack spacing={2}>
-								<InputGroup>
+								<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 									<Input
 										placeholder={t("myaccount.newPassword")}
 										type={showNew ? "text" : "password"}
 										value={newPassword}
 										onChange={(e) => setNewPassword(e.target.value)}
+										paddingInlineEnd="2.75rem"
 									/>
-									<InputRightElement>
+									<InputRightElement
+										insetInlineEnd="0.5rem"
+										right="auto"
+										left="auto"
+									>
 										<IconButton
 											aria-label={
 												showNew
@@ -329,7 +340,8 @@ const ChangePasswordModal: React.FC<{
 };
 
 export const MyAccountPage: React.FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
 	const toast = useToast();
 	const modal = useDisclosure();
 	const apiKeyModal = useDisclosure();
@@ -874,14 +886,19 @@ export const MyAccountPage: React.FC = () => {
 							<Text color="gray.600" _dark={{ color: "gray.300" }}>
 								{t("myaccount.deleteApiKeyPrompt")}
 							</Text>
-							<InputGroup>
+							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 								<Input
 									placeholder={t("myaccount.currentPassword")}
 									type={showDeletePassword ? "text" : "password"}
 									value={deletePassword}
 									onChange={(e) => setDeletePassword(e.target.value)}
+									paddingInlineEnd="2.75rem"
 								/>
-								<InputRightElement>
+								<InputRightElement
+									insetInlineEnd="0.5rem"
+									right="auto"
+									left="auto"
+								>
 									<IconButton
 										aria-label={
 											showDeletePassword

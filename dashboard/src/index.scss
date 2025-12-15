@@ -63,6 +63,12 @@ html, body, #root {
   text-align: center !important;
 }
 
+/* Keep username column left-aligned (next to ID) in RTL */
+[dir="rtl"] table:not(.rb-rtl-table) th[data-col="username"],
+[dir="rtl"] table:not(.rb-rtl-table) td[data-col="username"] {
+  text-align: left !important;
+}
+
 /* Opt-in RTL text alignment without flipping column order */
 [dir="rtl"] table.rb-rtl-table {
   direction: ltr !important;

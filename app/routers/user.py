@@ -27,6 +27,8 @@ from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
+from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
+from app.redis.client import get_redis
 
 # region Helpers
 
@@ -615,21 +617,40 @@ def get_users(
 
     from app.services import user_service
 
-    response = user_service.get_users_list(
-        db,
-        offset=offset,
-        limit=limit,
-        username=username,
-        search=search,
-        status=status,
-        sort=sort,
-        advanced_filters=advanced_filters,
-        service_id=service_id,
-        dbadmin=dbadmin,
-        owners=owners,
-        users_limit=users_limit,
-        active_total=active_total,
-    )
+    use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
+    if use_db_only:
+        logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
+        response = user_service.get_users_list_db_only(
+            db,
+            offset=offset,
+            limit=limit,
+            username=username,
+            search=search,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            dbadmin=dbadmin,
+            owners=owners,
+            users_limit=users_limit,
+            active_total=active_total,
+        )
+    else:
+        response = user_service.get_users_list(
+            db,
+            offset=offset,
+            limit=limit,
+            username=username,
+            search=search,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            dbadmin=dbadmin,
+            owners=owners,
+            users_limit=users_limit,
+            active_total=active_total,
+        )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return response
 

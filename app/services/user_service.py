@@ -442,6 +442,57 @@ def get_users_list(
         )
 
 
+def get_users_list_db_only(
+    db: Session,
+    *,
+    offset: Optional[int],
+    limit: Optional[int],
+    username: Optional[List[str]],
+    search: Optional[str],
+    status: Optional[UserStatus],
+    sort,
+    advanced_filters,
+    service_id: Optional[int],
+    dbadmin,
+    owners: Optional[List[str]],
+    users_limit: Optional[int],
+    active_total: Optional[int],
+) -> UsersResponse:
+    """
+    Fast-path DB-only users list for when Redis is unavailable/disabled.
+    Mirrors the DB fallback of get_users_list but skips any Redis probing/warmup.
+    """
+    users, count = crud.get_users(
+        db=db,
+        offset=offset,
+        limit=limit,
+        search=search,
+        usernames=username,
+        status=status,
+        sort=sort,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        admin=dbadmin,
+        admins=owners,
+        return_with_count=True,
+    )
+
+    for user in users:
+        _apply_pending_usage_to_model(user)
+    items = [_map_user_to_list_item(u) for u in users]
+
+    if active_total is None and dbadmin:
+        active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)
+
+    return UsersResponse(
+        users=items,
+        link_templates={},
+        total=count,
+        active_total=active_total,
+        users_limit=users_limit,
+    )
+
+
 def get_user_detail(username: str, db: Session) -> Optional[UserResponse]:
     cached = get_user_from_cache(username=username, db=db)
     if cached:

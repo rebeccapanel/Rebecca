@@ -123,6 +123,7 @@ export function AppLayout() {
 				maxH="100vh"
 				overflow="hidden"
 				direction={isRTL ? "row-reverse" : "row"}
+				dir={isRTL ? "rtl" : "ltr"}
 			>
 			{/* persistent sidebar on md+; drawer on mobile */}
 			{!isMobile ? (
@@ -207,6 +208,7 @@ export function AppLayout() {
 									</Text>
 								</MenuButton>
 								<MenuList
+									dir={isRTL ? "rtl" : "ltr"}
 									ref={userMenuContentRef}
 									minW="220px"
 									bg={menuBg}
@@ -276,6 +278,7 @@ export function AppLayout() {
 										</MenuButton>
 										<Portal containerRef={userMenuContentRef}>
 											<MenuList
+												dir={isRTL ? "rtl" : "ltr"}
 												minW="160px"
 												bg={menuBg}
 												borderColor={menuBorder}

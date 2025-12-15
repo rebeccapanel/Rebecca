@@ -3,7 +3,7 @@ import time
 import json
 import contextlib
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
 from starlette.websockets import WebSocketDisconnect
 
 from app.runtime import xray
@@ -402,18 +402,22 @@ def get_server_ips(admin: Admin = Depends(Admin.get_current)):
 
 
 @router.post("/core/restart", responses={403: responses._403})
-def restart_core(admin: Admin = Depends(Admin.check_sudo_admin)):
+def restart_core(bg: BackgroundTasks, admin: Admin = Depends(Admin.check_sudo_admin)):
     """Restart the core and all connected nodes."""
     from app.utils.xray_config import restart_xray_and_invalidate_cache
 
-    restart_xray_and_invalidate_cache()
-    startup_config = xray.config.include_db_users()
+    def _restart():
+        # Perform heavy restart work in background so API returns quickly
+        restart_xray_and_invalidate_cache()
+        startup_config = xray.config.include_db_users()
 
-    for node_id, node in list(xray.nodes.items()):
-        if node.connected:
-            xray.operations.restart_node(node_id, startup_config)
+        for node_id, node in list(xray.nodes.items()):
+            if node.connected:
+                xray.operations.restart_node(node_id, startup_config)
 
-    return {}
+    bg.add_task(_restart)
+
+    return {"detail": "Core restart queued"}
 
 
 @router.get("/core/config", responses={403: responses._403})

@@ -64,7 +64,15 @@ export const Login: FC = () => {
 	const [loading, setLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const navigate = useNavigate();
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
+	const basePad = "0.75rem";
+	const endPadding = isRTL
+		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
+		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
+	const endAdornmentProps = isRTL
+		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
+		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
 	const { colorMode } = useColorMode();
 	// slightly off-white in light mode so the card is visible against a plain white page
 	// const cardBg = useColorModeValue("gray.50", "gray.700");
@@ -142,14 +150,20 @@ export const Login: FC = () => {
 									/>
 								</FormControl>
 								<FormControl isInvalid={!!errors.password}>
-									<InputGroup>
+									<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 										<CInput
 											w="full"
 											type={showPassword ? "text" : "password"}
 											placeholder={t("password")}
 											{...register("password")}
+											{...endPadding}
 										/>
-										<InputRightElement>
+										<InputRightElement
+											insetInlineEnd={endAdornmentProps.insetInlineEnd}
+											insetInlineStart={endAdornmentProps.insetInlineStart}
+											right={endAdornmentProps.right}
+											left={endAdornmentProps.left}
+										>
 											<IconButton
 												aria-label={
 													showPassword

@@ -104,6 +104,7 @@ type UsageSliderProps = {
 	total: number | null;
 	dataLimitResetStrategy: string | null;
 	totalUsedTraffic: number;
+	isRTL?: boolean;
 } & SliderProps;
 
 const getResetStrategy = (strategy: string): string => {
@@ -123,15 +124,17 @@ const UsageSliderCompact: FC<UsageSliderProps> = (props) => {
 				color: "gray.400",
 			}}
 		>
-			<Text>
-				{formatBytes(used)} /{" "}
-				{isUnlimited ? (
-					<Text as="span" fontFamily="system-ui">
-						∞
-					</Text>
-				) : (
-					formatBytes(total)
-				)}
+			<Text whiteSpace="nowrap">
+				<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+					{formatBytes(used)} /{" "}
+					{isUnlimited ? (
+						<Text as="span" fontFamily="system-ui">
+							∞
+						</Text>
+					) : (
+						formatBytes(total)
+					)}
+				</chakra.span>
 			</Text>
 		</HStack>
 	);
@@ -142,6 +145,7 @@ const UsageSlider: FC<UsageSliderProps> = (props) => {
 		total,
 		dataLimitResetStrategy,
 		totalUsedTraffic,
+		isRTL = false,
 		...restOfProps
 	} = props;
 	const isUnlimited = total === 0 || total === null;
@@ -158,36 +162,46 @@ const UsageSlider: FC<UsageSliderProps> = (props) => {
 					<SliderFilledTrack borderRadius="full" />
 				</SliderTrack>
 			</Slider>
-			<HStack
-				justifyContent="space-between"
+			<Flex
+				justify="space-between"
+				align="center"
 				fontSize="xs"
 				fontWeight="medium"
 				color="gray.600"
+				gap={3}
+				flexWrap="wrap"
+				dir={isRTL ? "rtl" : "ltr"}
+				w="full"
 				_dark={{
 					color: "gray.400",
 				}}
 			>
-				<Text>
-					{t("usersTable.total")}: {formatBytes(totalUsedTraffic)}
+				<Text whiteSpace="nowrap">
+					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+						{formatBytes(used)} /{" "}
+						{isUnlimited ? (
+							<Text as="span" fontFamily="system-ui">
+								∞
+							</Text>
+						) : (
+							formatBytes(total)
+						)}
+					</chakra.span>{" "}
+					{!isUnlimited &&
+						dataLimitResetStrategy &&
+						dataLimitResetStrategy !== "no_reset" &&
+						t(
+							"userDialog.resetStrategy" +
+								getResetStrategy(dataLimitResetStrategy),
+						)}
 				</Text>
-				<Text>
-					{formatBytes(used)} /{" "}
-					{isUnlimited ? (
-						<Text as="span" fontFamily="system-ui">
-							∞
-						</Text>
-					) : (
-						formatBytes(total) +
-						(dataLimitResetStrategy && dataLimitResetStrategy !== "no_reset"
-							? " " +
-								t(
-									"userDialog.resetStrategy" +
-										getResetStrategy(dataLimitResetStrategy),
-								)
-							: "")
-					)}
-				</Text>
-			</HStack>
+				<Flex align="center" gap={1} whiteSpace="nowrap">
+					<Text>{t("usersTable.total")}:</Text>
+					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+						{formatBytes(totalUsedTraffic)}
+					</chakra.span>
+				</Flex>
+			</Flex>
 		</>
 	);
 };
@@ -215,15 +229,16 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	} = useDashboard();
 
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const [selectedRow, setSelectedRow] = useState<ExpandedIndex | undefined>(
 		undefined,
 	);
 	const { className, sx, ...restProps } = props;
 	const rtlTableBaseSx: SystemStyleObject | undefined = isRTL
 		? {
-				"& th": { textAlign: "right" },
-				"& td": { textAlign: "right" },
+				"& th": { textAlign: "start" },
+				"& td": { textAlign: "start" },
+				tableLayout: "fixed",
 			}
 		: undefined;
 	const normalizedSx: SystemStyleObject | undefined = Array.isArray(sx)
@@ -235,7 +250,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const tableClassName = isRTL
 		? classNames(className, "rb-rtl-table")
 		: className;
-	const tableDir = isRTL ? "ltr" : undefined;
+	const tableDir = isRTL ? "rtl" : "ltr";
 	const tableProps = {
 		...restProps,
 		className: tableClassName,
@@ -303,6 +318,15 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 				id="users-table"
 				overflowX={{ base: "auto", md: "auto" }}
 				w="full"
+				className="users-table-container"
+				sx={{
+					containerType: "inline-size",
+					"@container (max-width: 1100px)": {
+						".col-service": {
+							display: "none",
+						},
+					},
+				}}
 				filter={isAdminDisabled ? "blur(4px)" : undefined}
 				pointerEvents={isAdminDisabled ? "none" : undefined}
 				aria-hidden={isAdminDisabled ? true : undefined}
@@ -452,6 +476,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 																}
 																used={user.used_traffic}
 																total={user.data_limit}
+																isRTL={isRTL}
 																colorScheme={
 																	statusColors[user.status].bandWidthColor
 																}
@@ -513,6 +538,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 																					}
 																					used={user.used_traffic}
 																					total={user.data_limit}
+																					isRTL={isRTL}
 																					colorScheme={
 																						statusColors[user.status]
 																							.bandWidthColor
@@ -627,137 +653,139 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 						orientation="vertical"
 						display={{ base: "none", md: "table" }}
 						minW={{ base: "100%", md: "800px" }}
+						tableLayout="fixed"
 						{...tableProps}
 					>
 						<Thead position="relative" zIndex="docked">
-							<Tr>
-								<Th
-									minW="140px"
-									cursor={"pointer"}
-									onClick={handleSort.bind(null, "username")}
-									textAlign={isRTL ? "right" : "left"}
-								>
-									<HStack
-										direction={isRTL ? "row-reverse" : "row"}
-										justify={isRTL ? "flex-end" : "flex-start"}
-									>
-										<span>{t("username")}</span>
-										<Sort sort={filters.sort} column="username" />
-									</HStack>
-								</Th>
-								<Th
-									width="400px"
-									minW="150px"
-									cursor={"pointer"}
-									textAlign={isRTL ? "right" : "left"}
-								>
-									<HStack
-										position="relative"
-										gap={"5px"}
-										direction={isRTL ? "row-reverse" : "row"}
-									>
-										{isRTL ? (
-											<>
-												<Text
-													_dark={{
-														bg: "gray.750",
-													}}
-													_light={{
-														bg: "#F9FAFB",
-													}}
-													userSelect="none"
-													pointerEvents="none"
-													zIndex={1}
-												>
-													{t("usersTable.status")}
-													{filters.status ? `: ${filters.status}` : ""}
-												</Text>
-												<Text>/</Text>
-												<HStack onClick={handleSort.bind(null, "expire")}>
-													<Text>
-														{t("usersTable.sortByExpire", "Sort by expire")}
-													</Text>
-												</HStack>
-												<Sort sort={filters.sort} column="expire" />
-											</>
-										) : (
-											<>
-												<Text
-													_dark={{
-														bg: "gray.750",
-													}}
-													_light={{
-														bg: "#F9FAFB",
-													}}
-													userSelect="none"
-													pointerEvents="none"
-													zIndex={1}
-												>
-													{t("usersTable.status")}
-													{filters.status ? `: ${filters.status}` : ""}
-												</Text>
-												<Text>/</Text>
-												<Sort sort={filters.sort} column="expire" />
-												<HStack onClick={handleSort.bind(null, "expire")}>
-													<Text>
-														{t("usersTable.sortByExpire", "Sort by expire")}
-													</Text>
-												</HStack>
-											</>
-										)}
-										<Select
-											fontSize="xs"
-											fontWeight="extrabold"
-											textTransform="uppercase"
-											cursor="pointer"
-											position={"absolute"}
-											p={0}
-											left={isRTL ? undefined : "-40px"}
-											right={isRTL ? "-40px" : undefined}
-											border={0}
-											h="auto"
-											w="auto"
-											icon={<span />}
-											_focusVisible={{
-												border: "0 !important",
-											}}
-											value={filters.sort}
-											onChange={handleStatusFilter}
+							{(() => {
+								const headerCells: Record<string, JSX.Element> = {
+									username: (
+										<Th
+											minW="220px"
+											cursor={"pointer"}
+											onClick={handleSort.bind(null, "username")}
+											textAlign="start"
+											whiteSpace="nowrap"
 										>
-											<option></option>
-											<option>active</option>
-											<option>on_hold</option>
-											<option>disabled</option>
-											<option>limited</option>
-											<option>expired</option>
-										</Select>
-									</HStack>
-								</Th>
-								<Th minW="150px" textAlign={isRTL ? "right" : "left"}>
-									<span>{t("usersTable.service", "Service")}</span>
-								</Th>
-								<Th
-									width="350px"
-									minW="230px"
-									cursor={"pointer"}
-									onClick={handleSort.bind(null, "used_traffic")}
-									textAlign={isRTL ? "right" : "left"}
-								>
-									<HStack
-										direction={isRTL ? "row-reverse" : "row"}
-										justify={isRTL ? "flex-end" : "flex-start"}
-									>
-										<span>{t("usersTable.dataUsage")}</span>
-										<Sort sort={filters.sort} column="used_traffic" />
-									</HStack>
-								</Th>
-								<Th
-									width="200px"
-									minW="180px"
-									data-actions="true"
-									textAlign={isRTL ? "left" : "right"}
-								/>
-							</Tr>
+											<HStack
+												direction={isRTL ? "row-reverse" : "row"}
+												justify={isRTL ? "flex-end" : "flex-start"}
+											>
+												<span>{t("username")}</span>
+												<Sort sort={filters.sort} column="username" />
+											</HStack>
+										</Th>
+									),
+									status: (
+										<Th
+											width="400px"
+											minW="150px"
+											cursor={"pointer"}
+											textAlign="start"
+											px={4}
+										>
+											<HStack
+												gap={3}
+												align="center"
+												justify={isRTL ? "flex-end" : "space-between"}
+												flexWrap="wrap"
+												dir={isRTL ? "rtl" : "ltr"}
+											>
+												<HStack
+													spacing={2}
+													align="center"
+													flex="1"
+													onClick={handleSort.bind(null, "expire")}
+													cursor="pointer"
+													flexWrap="wrap"
+													dir={isRTL ? "rtl" : "ltr"}
+												>
+													<Text>
+														{t("usersTable.status")}
+														{filters.status ? `: ${filters.status}` : ""}
+													</Text>
+													<Text>/</Text>
+													<Text>{t("usersTable.sortByExpire", "Sort by expire")}</Text>
+													<Sort sort={filters.sort} column="expire" />
+												</HStack>
+												<Select
+													fontSize="xs"
+													fontWeight="extrabold"
+													textTransform="uppercase"
+													cursor="pointer"
+													p={1}
+													border={0}
+													h="auto"
+													w="auto"
+													icon={<span />}
+													_focusVisible={{
+														border: "0 !important",
+													}}
+													value={filters.status ?? ""}
+													onChange={handleStatusFilter}
+												>
+													<option></option>
+													<option>active</option>
+													<option>on_hold</option>
+													<option>disabled</option>
+													<option>limited</option>
+													<option>expired</option>
+												</Select>
+											</HStack>
+										</Th>
+									),
+									service: (
+										<Th
+											minW="120px"
+											maxW="180px"
+											textAlign="start"
+											display={{ base: "none", lg: "table-cell" }}
+											whiteSpace="nowrap"
+											overflow="hidden"
+											textOverflow="ellipsis"
+											className="col-service"
+										>
+											<span>{t("usersTable.service", "Service")}</span>
+										</Th>
+									),
+									usage: (
+										<Th
+											width="350px"
+											minW="230px"
+											cursor={"pointer"}
+											onClick={handleSort.bind(null, "used_traffic")}
+											textAlign="start"
+											px={4}
+										>
+											<HStack
+												direction={isRTL ? "row-reverse" : "row"}
+												justify={isRTL ? "flex-end" : "flex-start"}
+											>
+												<span>{t("usersTable.dataUsage")}</span>
+												<Sort sort={filters.sort} column="used_traffic" />
+											</HStack>
+										</Th>
+									),
+									actions: (
+										<Th
+											width="200px"
+											minW="180px"
+											data-actions="true"
+											textAlign="end"
+										/>
+									),
+								};
+
+								const order: Array<keyof typeof headerCells> = isRTL
+									? ["actions", "usage", "service", "status", "username"]
+									: ["username", "status", "service", "usage", "actions"];
+
+								return (
+									<Tr>
+										{order.map((key) => headerCells[key])}
+									</Tr>
+								);
+							})()}
 						</Thead>
 						<Tbody>
 							{useTable &&
@@ -765,26 +793,167 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									? Array.from(
 											{ length: rowsToRender },
 											(_, idx) => `skeleton-desktop-${idx}`,
-										).map((skeletonKey) => (
-											<Tr key={skeletonKey}>
-												<Td minW="140px">
-													<SkeletonText noOfLines={1} width="40%" />
-												</Td>
-												<Td width="400px" minW="150px">
-													<Skeleton height="16px" width="120px" />
-												</Td>
-												<Td minW="150px">
-													<SkeletonText noOfLines={1} width="60%" />
-												</Td>
-												<Td width="350px" minW="230px">
-													<Skeleton height="16px" width="200px" />
-												</Td>
-												<Td width="200px" minW="180px">
-													<Skeleton height="16px" width="64px" />
-												</Td>
-											</Tr>
-										))
+										).map((skeletonKey) => {
+											const cells = {
+												username: (
+													<Td minW="220px" textAlign="start">
+														<SkeletonText noOfLines={1} width="40%" />
+													</Td>
+												),
+												status: (
+													<Td width="400px" minW="150px" textAlign="start">
+														<Skeleton height="16px" width="120px" />
+													</Td>
+												),
+												service: (
+													<Td
+														minW="120px"
+														maxW="180px"
+														textAlign="start"
+														display={{ base: "none", lg: "table-cell" }}
+														className="col-service"
+													>
+														<SkeletonText noOfLines={1} width="60%" />
+													</Td>
+												),
+												usage: (
+													<Td width="350px" minW="230px" textAlign="start">
+														<Skeleton height="16px" width="200px" />
+													</Td>
+												),
+												actions: (
+													<Td width="200px" minW="180px" textAlign="end">
+														<Skeleton height="16px" width="64px" />
+													</Td>
+												),
+											};
+											const order: Array<keyof typeof cells> = isRTL
+												? ["actions", "usage", "service", "status", "username"]
+												: ["username", "status", "service", "usage", "actions"];
+											return <Tr key={skeletonKey}>{order.map((key) => cells[key])}</Tr>;
+										})
 									: users?.map((user, i) => {
+											const cells = {
+												username: (
+													<Td minW="220px" textAlign="start">
+														<Box
+															display="grid"
+															gridTemplateColumns={{
+																base: "1fr",
+																md: "minmax(0,1fr) auto",
+															}}
+															gridTemplateRows={{ base: "auto auto", md: "auto" }}
+															alignItems="center"
+															gap={2}
+															dir={isRTL ? "rtl" : "ltr"}
+														>
+															<HStack
+																className="flex-status"
+																spacing={2}
+																justify="flex-start"
+																minW={0}
+															>
+																<OnlineBadge lastOnline={user.online_at ?? null} />
+																<Text
+																	as="span"
+																	dir="ltr"
+																	sx={{ unicodeBidi: "isolate" }}
+																	noOfLines={1}
+																	minW={0}
+																	overflow="hidden"
+																	textOverflow="ellipsis"
+																	whiteSpace="nowrap"
+																>
+																	{user.username}
+																</Text>
+															</HStack>
+															<Box
+																gridRow={{ base: 2, md: "auto" }}
+																justifySelf={isRTL ? "start" : "end"}
+																textAlign={isRTL ? "start" : "end"}
+																whiteSpace="nowrap"
+															>
+																<OnlineStatus lastOnline={user.online_at ?? null} />
+															</Box>
+														</Box>
+													</Td>
+												),
+												status: (
+													<Td
+														width="400px"
+														minW="150px"
+														textAlign="start"
+													>
+														<StatusBadge
+															expiryDate={user.expire}
+															status={user.status}
+														/>
+													</Td>
+												),
+												service: (
+													<Td
+														minW="120px"
+														maxW="180px"
+														textAlign="start"
+														display={{ base: "none", lg: "table-cell" }}
+														minWidth={0}
+														className="col-service"
+													>
+														<Text
+															fontSize="sm"
+															color={
+																user.service_name ? "gray.700" : "gray.500"
+															}
+															_dark={{
+																color: user.service_name
+																	? "gray.200"
+																	: "gray.500",
+															}}
+															noOfLines={1}
+															minWidth={0}
+															whiteSpace="nowrap"
+															overflow="hidden"
+															textOverflow="ellipsis"
+														>
+															{user.service_name ??
+																t("usersTable.defaultService", "Default")}
+														</Text>
+													</Td>
+												),
+												usage: (
+													<Td
+														width="350px"
+														minW="230px"
+														textAlign="start"
+													>
+														<UsageSlider
+															totalUsedTraffic={user.lifetime_used_traffic}
+															dataLimitResetStrategy={
+																user.data_limit_reset_strategy
+															}
+															used={user.used_traffic}
+															total={user.data_limit}
+															isRTL={isRTL}
+															colorScheme={
+																statusColors[user.status].bandWidthColor
+															}
+														/>
+													</Td>
+												),
+												actions: (
+													<Td
+														width="200px"
+														minW="180px"
+														data-actions="true"
+														textAlign="end"
+													>
+														<ActionButtons user={user} />
+													</Td>
+												),
+											};
+											const order: Array<keyof typeof cells> = isRTL
+												? ["actions", "usage", "service", "status", "username"]
+												: ["username", "status", "service", "usage", "actions"];
 											return (
 												<Tr
 													key={user.username}
@@ -798,69 +967,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 													}}
 													cursor={canCreateUsers ? "pointer" : "default"}
 												>
-													<Td minW="140px" textAlign={isRTL ? "right" : "left"}>
-														<div className="flex-status">
-															<OnlineBadge
-																lastOnline={user.online_at ?? null}
-															/>
-															{user.username}
-															<OnlineStatus
-																lastOnline={user.online_at ?? null}
-															/>
-														</div>
-													</Td>
-													<Td
-														width="400px"
-														minW="150px"
-														textAlign={isRTL ? "right" : "left"}
-													>
-														<StatusBadge
-															expiryDate={user.expire}
-															status={user.status}
-														/>
-													</Td>
-													<Td minW="150px" textAlign={isRTL ? "right" : "left"}>
-														<Text
-															fontSize="sm"
-															color={
-																user.service_name ? "gray.700" : "gray.500"
-															}
-															_dark={{
-																color: user.service_name
-																	? "gray.200"
-																	: "gray.500",
-															}}
-															isTruncated
-														>
-															{user.service_name ??
-																t("usersTable.defaultService", "Default")}
-														</Text>
-													</Td>
-													<Td
-														width="350px"
-														minW="230px"
-														textAlign={isRTL ? "right" : "left"}
-													>
-														<UsageSlider
-															totalUsedTraffic={user.lifetime_used_traffic}
-															dataLimitResetStrategy={
-																user.data_limit_reset_strategy
-															}
-															used={user.used_traffic}
-															total={user.data_limit}
-															colorScheme={
-																statusColors[user.status].bandWidthColor
-															}
-														/>
-													</Td>
-													<Td
-														width="200px"
-														minW="180px"
-														data-actions="true"
-														textAlign={isRTL ? "left" : "right"}
-													>
-														<ActionButtons user={user} />
-													</Td>
+													{order.map((key) => cells[key])}
 												</Tr>
 											);
 										}))}
