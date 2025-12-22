@@ -22,6 +22,8 @@ def register_usage_jobs():
         seconds=JOB_RECORD_USER_USAGES_INTERVAL,
         coalesce=True,
         max_instances=1,
+        id="record_user_usages",
+        replace_existing=True,
     )
     scheduler.add_job(
         record_node_usages,
@@ -29,6 +31,8 @@ def register_usage_jobs():
         seconds=JOB_RECORD_NODE_USAGES_INTERVAL,
         coalesce=True,
         max_instances=1,
+        id="record_node_usages",
+        replace_existing=True,
     )
     scheduler.add_job(
         record_outbound_traffic,
@@ -36,6 +40,8 @@ def register_usage_jobs():
         seconds=JOB_RECORD_NODE_USAGES_INTERVAL,  # Use same interval as node usages
         coalesce=True,
         max_instances=1,
+        id="record_outbound_traffic",
+        replace_existing=True,
     )
 
 

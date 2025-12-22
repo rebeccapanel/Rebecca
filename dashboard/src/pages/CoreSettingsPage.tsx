@@ -837,6 +837,17 @@ export const CoreSettingsPage: FC = () => {
 		};
 	}, [canonicalOutbounds]);
 
+	useEffect(() => {
+		let active = true;
+		if (!canManageXraySettings) return;
+		fetchOutboundsTraffic().catch(() => {
+			if (active) setOutboundsTraffic([]);
+		});
+		return () => {
+			active = false;
+		};
+	}, [canManageXraySettings]);
+
 	const canonicalRoutingRules = useMemo<RoutingRule[]>(
 		() =>
 			Array.isArray(watchedConfig?.routing?.rules)

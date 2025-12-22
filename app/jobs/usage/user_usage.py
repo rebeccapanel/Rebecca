@@ -1,14 +1,17 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple, Union
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import and_, bindparam, func, insert, select, update
+from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
 from app.models.admin import Admin as AdminSchema
+from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
 from app.utils import report
 from config import DISABLE_RECORDING_NODE_USAGE
@@ -77,6 +80,91 @@ def _collect_admin_service_usage(users_usage, mapping: Dict[int, Tuple[Optional[
                 admin_service_usage[(admin_id, service_id)] += value
 
     return admin_usage, service_usage, admin_service_usage
+
+
+# endregion
+
+# region Limit/expire enforcement helpers
+
+
+def _reset_user_to_next_plan(db, user: User) -> bool:
+    """Apply next plan and notify; return True if applied successfully."""
+    try:
+        crud.reset_user_by_next(db, user)
+        xray.operations.update_user(user)
+        report.user_data_reset_by_next(user=UserResponse.model_validate(user), user_admin=user.admin)
+        return True
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.warning(f"Failed to apply next plan for user {getattr(user, 'id', '?')}: {exc}")
+        return False
+
+
+def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
+    """
+    Ensure users crossing their data/time limits are moved to limited/expired immediately.
+    Also handles fire_on_either next_plan resets so we don't rely solely on the review job.
+    """
+    if not user_ids:
+        return []
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    users = (
+        db.query(User)
+        .options(selectinload(User.admin), selectinload(User.next_plan))
+        .filter(User.id.in_(user_ids))
+        .all()
+    )
+
+    changed: List[User] = []
+    for user in users:
+        limited = bool(user.data_limit and (user.used_traffic or 0) >= user.data_limit)
+        expired = bool(user.expire and user.expire <= now_ts)
+
+        if (limited or expired) and user.next_plan:
+            should_fire_next = bool(user.next_plan.fire_on_either or (limited and expired))
+            if should_fire_next and _reset_user_to_next_plan(db, user):
+                continue
+
+        target_status: Optional[UserStatus] = None
+        if limited:
+            target_status = UserStatus.limited
+        elif expired:
+            target_status = UserStatus.expired
+
+        if target_status and user.status != target_status:
+            user.status = target_status
+            user.last_status_change = datetime.now(timezone.utc)
+            changed.append(user)
+
+    if changed:
+        db.commit()
+
+        for user in changed:
+            try:
+                xray.operations.remove_user(user)
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
+
+            try:
+                report.status_change(
+                    username=user.username,
+                    status=user.status,
+                    user=UserResponse.model_validate(user),
+                    user_admin=user.admin,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
+
+            # Keep Redis caches in sync (best-effort)
+            try:
+                from app.redis.cache import cache_user, invalidate_user_cache
+
+                invalidate_user_cache(username=user.username, user_id=user.id)
+                cache_user(user, mark_for_sync=True)
+            except Exception:
+                pass
+
+    return changed
 
 
 # endregion
@@ -267,6 +355,9 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
             dbadmin = db.query(Admin).filter(Admin.id == admin_id).first()
             if dbadmin:
                 crud.enforce_admin_data_limit(db, dbadmin)
+
+        # Enforce per-user limits/expiry immediately using the freshly updated usage.
+        _enforce_user_limits_and_expiry(db, [int(usage["uid"]) for usage in users_usage if usage.get("uid")])
 
     return admin_limit_events
 

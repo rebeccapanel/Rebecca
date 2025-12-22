@@ -7,6 +7,9 @@ import {
 	AlertDialogOverlay,
 	Box,
 	Button,
+	Card,
+	CardBody,
+	CardHeader,
 	chakra,
 	HStack,
 	IconButton,
@@ -15,13 +18,11 @@ import {
 	MenuDivider,
 	MenuItem,
 	MenuList,
-	Slider,
-	SliderFilledTrack,
-	type SliderProps,
-	SliderTrack,
-	Spinner,
+	SimpleGrid,
+	Skeleton,
 	Stack,
 	Table,
+	type TableProps,
 	Tbody,
 	Td,
 	Text,
@@ -46,6 +47,7 @@ import {
 	XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
+import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useMemo, useRef, useState } from "react";
@@ -53,10 +55,7 @@ import { useTranslation } from "react-i18next";
 import type { Admin } from "types/Admin";
 import { AdminManagementPermission, AdminRole, AdminStatus } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
-import {
-	generateErrorMessage,
-	generateSuccessMessage,
-} from "utils/toastHandler";
+import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import AdminPermissionsModal from "./AdminPermissionsModal";
 
 const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
@@ -118,33 +117,46 @@ type AdminUsageSliderProps = {
 	total: number | null;
 	lifetimeUsage: number | null;
 	isRTL?: boolean;
-} & SliderProps;
+};
 
-const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
-	const { used, total, lifetimeUsage, isRTL = false, ...restOfProps } = props;
+const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
+	used,
+	total,
+	lifetimeUsage,
+	isRTL = false,
+}) => {
 	const { t } = useTranslation();
 	const isUnlimited = total === 0 || total === null;
-	const isReached = !isUnlimited && (used / total) * 100 >= 100;
+	const percentage = isUnlimited ? 0 : Math.min((used / (total || 1)) * 100, 100);
+	const reached = !isUnlimited && percentage >= 100;
+
 	return (
-		<Stack spacing={2} width="100%">
-			<Slider
-				orientation="horizontal"
-				value={isUnlimited ? 100 : Math.min((used / total) * 100, 100)}
-				colorScheme={isReached ? "red" : "primary"}
-				{...restOfProps}
+		<Stack spacing={1} width="100%">
+			<Box
+				as="div"
+				height="6px"
+				borderRadius="full"
+				bg="gray.100"
+				_dark={{ bg: "gray.700" }}
+				overflow="hidden"
+				position="relative"
 			>
-				<SliderTrack h="6px" borderRadius="full">
-					<SliderFilledTrack borderRadius="full" />
-				</SliderTrack>
-			</Slider>
+				<Box
+					position="absolute"
+					insetY={0}
+					{...(isRTL ? { right: 0 } : { left: 0 })}
+					width={isUnlimited ? "100%" : `${percentage}%`}
+					bg={reached ? "red.400" : "primary.500"}
+					transition="width 0.2s ease"
+				/>
+			</Box>
 			<HStack
-				justifyContent={isRTL ? "flex-end" : "space-between"}
+				justify="space-between"
+				align="center"
 				fontSize="xs"
 				fontWeight="medium"
 				color="gray.600"
-				_dark={{
-					color: "gray.400",
-				}}
+				_dark={{ color: "gray.400" }}
 				flexWrap="wrap"
 				gap={3}
 				dir={isRTL ? "rtl" : "ltr"}
@@ -155,20 +167,20 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 						{formatBytes(used, 2)}
 					</chakra.span>{" "}
-					/{" "}
+					/ {" "}
 					{isUnlimited ? (
 						<Text as="span" fontFamily="system-ui">
 							∞
 						</Text>
 					) : (
 						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{formatBytes(total, 2)}
+							{formatBytes(total ?? 0, 2)}
 						</chakra.span>
 					)}
 				</Text>
 				{lifetimeUsage !== null && lifetimeUsage !== undefined && (
 					<Text color="blue.500" _dark={{ color: "blue.300" }}>
-						{t("admins.details.lifetime", "Lifetime usage")}:{" "}
+						{t("admins.details.lifetime", "Lifetime usage")}: {" "}
 						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 							{formatBytes(lifetimeUsage, 2)}
 						</chakra.span>
@@ -179,22 +191,82 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = (props) => {
 	);
 };
 
-export const AdminsTable = () => {
-	const { t } = useTranslation();
+const formatCount = (value: number | null | undefined, locale: string) =>
+	new Intl.NumberFormat(locale || "en").format(value ?? 0);
+
+type SummaryStatProps = {
+	label: string;
+	value: string | number;
+	helper?: string;
+	accentColor?: string;
+};
+
+const SummaryStat: FC<SummaryStatProps> = ({
+	label,
+	value,
+	helper,
+	accentColor = "primary.500",
+}) => (
+	<Box
+		borderWidth="1px"
+		borderColor="light-border"
+		borderRadius="xl"
+		p={4}
+		bg="surface.light"
+		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+	>
+		<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
+			{label}
+		</Text>
+		<Text
+			mt={1}
+			fontWeight="bold"
+			fontSize="2xl"
+			color={accentColor}
+			dir="ltr"
+			sx={{ unicodeBidi: "isolate" }}
+		>
+			{value}
+		</Text>
+		{helper ? (
+			<Text mt={1} fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
+				{helper}
+			</Text>
+		) : null}
+	</Box>
+);
+
+const RoleChip: FC<{ label: string; value: number; color: string }> = ({
+	label,
+	value,
+	color,
+}) => (
+	<HStack
+		spacing={2}
+		borderWidth="1px"
+		borderColor="light-border"
+		borderRadius="full"
+		px={3}
+		py={2}
+		bg="surface.light"
+		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+	>
+		<Text fontSize="sm" color={color} fontWeight="semibold">
+			{label}
+		</Text>
+		<Text fontSize="sm" fontWeight="bold" color={color} dir="ltr">
+			{value}
+		</Text>
+	</HStack>
+);
+export const AdminsTable: FC<TableProps> = (props) => {
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const locale = i18n.language || "en";
 	const toast = useToast();
 	const { userData } = useGetUser();
-	// Keep admin table LTR even in RTL locales to preserve column order
-	const isRTL = false;
 	const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
 	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
-	const tableBg = useColorModeValue("white", "gray.900");
-	const tableBorderColor = useColorModeValue("gray.100", "whiteAlpha.200");
-	const tableHeaderBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const _tableHeaderBorderColor = useColorModeValue(
-		"gray.100",
-		"whiteAlpha.200",
-	);
-	const tableHeaderTextColor = useColorModeValue("gray.600", "gray.300");
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
 	const {
@@ -239,17 +311,7 @@ export const AdminsTable = () => {
 	const [adminForPermissions, setAdminForPermissions] = useState<Admin | null>(
 		null,
 	);
-	const maxIdDigits = useMemo(() => {
-		if (!admins.length) return 0;
-		return admins.reduce(
-			(max, admin) => Math.max(max, String(admin.id ?? "").length),
-			0,
-		);
-	}, [admins]);
-	const idColumnWidth = maxIdDigits
-		? `calc(${maxIdDigits}ch + 5px)`
-		: undefined;
-	const idColumnMaxWidth = "120px";
+
 	const currentAdminUsername = userData.username;
 	const hasFullAccess = userData.role === AdminRole.FullAccess;
 	const adminManagement = userData.permissions?.admin_management;
@@ -276,13 +338,7 @@ export const AdminsTable = () => {
 	};
 
 	const handleSort = (
-		column:
-			| "username"
-			| "users_count"
-			| "data"
-			| "data_usage"
-			| "data_limit"
-			| "id",
+		column: "username" | "users_count" | "data" | "data_usage" | "data_limit",
 	) => {
 		if (column === "data_usage" || column === "data_limit") {
 			const newSort = filters.sort === column ? `-${column}` : column;
@@ -392,7 +448,6 @@ export const AdminsTable = () => {
 			setActionState(null);
 		}
 	};
-
 	const SortIndicator = ({ column }: { column: string }) => {
 		let isActive = false;
 		let isDescending = false;
@@ -410,7 +465,7 @@ export const AdminsTable = () => {
 				style={{
 					width: "1rem",
 					height: "1rem",
-					opacity: isActive ? 1 : 0,
+					opacity: isActive ? 1 : 0.35,
 					transform:
 						isActive && !isDescending ? "rotate(180deg)" : "rotate(0deg)",
 					transition: "transform 0.2s",
@@ -419,546 +474,704 @@ export const AdminsTable = () => {
 		);
 	};
 
-	const columns = useMemo(() => {
-		const base = [
-			{ key: "id", label: "ID" },
-			{ key: "username", label: t("username") },
-			{ key: "status", label: t("status") },
-			{ key: "users_count", label: t("users") },
-			{ key: "data", label: `${t("dataUsage")} / ${t("dataLimit")}` },
-			{ key: "actions", label: "" },
-		] as const;
-		return isRTL ? [...base].reverse() : base;
-	}, [isRTL, t]);
+	const baseColumns: Array<
+		"username" | "status" | "users_count" | "data" | "actions"
+	> = ["username", "status", "users_count", "data", "actions"];
+	const columnsToRender = isRTL ? baseColumns.slice().reverse() : baseColumns;
+	const cellAlign = isRTL ? "right" : "left";
+	const actionsAlign = isRTL ? "left" : "right";
+	const isFiltered = admins.length !== total;
 
-	const tableDir: "ltr" | "rtl" = isRTL ? "rtl" : "ltr";
-	const rtlTableProps = isRTL
-		? {
-				className: "rb-rtl-table",
-				dir: tableDir,
-				sx: {
-					"& th": { textAlign: "start" },
-					"& td": { textAlign: "start" },
-					"& th[data-col='id'], & td[data-col='id']": {
-						textAlign: "center",
-					},
-				},
-			}
-		: { dir: tableDir };
+	const { className, sx, ...restProps } = props;
+	const normalizedSx = Array.isArray(sx)
+		? Object.assign({}, ...sx)
+		: (sx as Record<string, unknown> | undefined);
+	const baseTableSx: Record<string, unknown> = {
+		width: "100%",
+		borderCollapse: "collapse",
+		borderSpacing: 0,
+		"& th, & td": {
+			paddingInlineStart: "14px",
+			paddingInlineEnd: "14px",
+			paddingTop: "12px",
+			paddingBottom: "12px",
+			verticalAlign: "middle",
+		},
+	};
+	const tableClassName = isRTL
+		? classNames(className, "rb-rtl-table")
+		: className;
+	const tableProps = {
+		...restProps,
+		className: tableClassName,
+		sx: { ...baseTableSx, ...(normalizedSx || {}) },
+	};
+
+	const summaryItems = useMemo(() => {
+		const active = admins.filter((a) => a.status === AdminStatus.Active).length;
+		const disabled = admins.filter((a) => a.status === AdminStatus.Disabled).length;
+		const fullAccessCount = admins.filter((a) => a.role === AdminRole.FullAccess).length;
+		const sudoCount = admins.filter((a) => a.role === AdminRole.Sudo).length;
+		const resellerCount = admins.filter((a) => a.role === AdminRole.Reseller).length;
+		const standardCount = admins.filter((a) => a.role === AdminRole.Standard).length;
+		const usageTotal = admins.reduce(
+			(sum, a) => sum + (a.users_usage ?? 0) + (a.reset_bytes ?? 0),
+			0,
+		);
+		const items: SummaryStatProps[] = [
+			{
+				label: t("admins.total", "Total admins"),
+				value: formatCount(total, locale),
+				accentColor: "primary.500",
+			},
+			{
+				label: t("status.active"),
+				value: formatCount(active, locale),
+				accentColor: "green.400",
+			},
+			{
+				label: t("status.disabled"),
+				value: formatCount(disabled, locale),
+				accentColor: "red.400",
+			},
+			{
+				label: t("admins.rolesBreakdown", "Admins by role"),
+				value: `${t("admins.roles.fullAccess", "Full access")}: ${fullAccessCount} • ${t("admins.roles.sudo", "Sudo")}: ${sudoCount} • ${t("admins.roles.reseller", "Reseller")}: ${resellerCount} • ${t("admins.roles.standard", "Standard")}: ${standardCount}`,
+				accentColor: "blue.400",
+			},
+			{
+				label: t("UsersUsage", "Users Usage"),
+				value: formatBytes(usageTotal),
+				accentColor: "primary.500",
+			},
+		];
+		return items;
+	}, [admins, locale, t, total]);
+
+	const summaryColumns = Math.min(Math.max(summaryItems.length, 1), 5);
 
 	if (loading && !admins.length) {
 		return (
-			<Box
-				display="flex"
-				justifyContent="center"
-				alignItems="center"
-				height="200px"
-			>
-				<Spinner />
+			<Box display="flex" justifyContent="center" alignItems="center" h="200px">
+				<Skeleton height="24px" width="180px" />
 			</Box>
 		);
 	}
-
-	if (!total) {
-		return (
-			<Box
-				display="flex"
-				justifyContent="center"
-				alignItems="center"
-				height="200px"
-			>
-				<Text>{t("admins.noAdmins")}</Text>
-			</Box>
-		);
-	}
-
 	return (
 		<>
-			<Box
-				borderWidth="1px"
-				borderRadius="md"
-				overflowX="auto"
-				bg={tableBg}
-				borderColor={tableBorderColor}
+			<SimpleGrid
+				columns={{
+					base: 1,
+					sm: Math.min(summaryColumns, 2),
+					md: Math.min(summaryColumns, 3),
+					xl: summaryColumns,
+				}}
+				gap={3}
 			>
-				<Table
-					variant="simple"
-					size="sm"
-					minW={{ base: "100%", md: "800px" }}
-					{...rtlTableProps}
+				{summaryItems.map((item, idx) => (
+					<SummaryStat key={`${item.label}-${idx}`} {...item} />
+				))}
+			</SimpleGrid>
+			<SimpleGrid columns={{ base: 1 }} gap={3}>
+				<Card
+					borderWidth="1px"
+					borderColor="light-border"
+					bg="surface.light"
+					_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
 				>
-					<Thead bg={tableHeaderBg} color={tableHeaderTextColor}>
-						<Tr>
-							{columns.map((col) => (
-								<Th
-									key={col.key}
-									onClick={() =>
-										col.key === "username" ||
-										col.key === "users_count" ||
-										col.key === "data" ||
-										col.key === "id"
-											? handleSort(
-													col.key as "username" | "users_count" | "data" | "id",
-												)
-											: undefined
-									}
-									cursor={
-										col.key === "username" ||
-										col.key === "users_count" ||
-										col.key === "data" ||
-										col.key === "id"
-											? "pointer"
-											: "default"
-									}
-									textAlign={
-										col.key === "actions"
-											? isRTL
-												? "start"
-												: "end"
-											: col.key === "id"
-												? "center"
-												: "start"
-									}
-									display={{
-										base: col.key === "id" ? "none" : "table-cell",
-										md: "table-cell",
-									}}
-									data-col={col.key}
-									px={col.key === "id" ? 2 : undefined}
-									pr={col.key === "id" ? 1 : undefined}
-									pl={col.key === "id" ? 2 : undefined}
-									width={col.key === "id" ? idColumnWidth : undefined}
-									minW={col.key === "id" ? idColumnWidth : undefined}
-									maxW={col.key === "id" ? idColumnMaxWidth : undefined}
-									whiteSpace={col.key === "id" ? "nowrap" : undefined}
-								>
-									{col.key === "id" ? (
-										<Text textAlign="center" w="full">
-											{col.label}
-										</Text>
-									) : (
-										<HStack
-											direction={isRTL ? "row-reverse" : "row"}
-											justify={
-												col.key === "actions"
-													? isRTL
-														? "flex-start"
-														: "flex-end"
-													: isRTL
-														? "flex-end"
-														: "flex-start"
-											}
-										>
-											<Text>{col.label}</Text>
-											{col.key === "data" ? (
-												<Menu>
-													<MenuButton
-														as={IconButton}
-														size="xs"
-														variant="ghost"
-														icon={<SortIndicator column="data" />}
-													/>
-													<MenuList>
-														<MenuItem onClick={() => handleSort("data_usage")}>
-															{t("admins.sortByUsage")}
-														</MenuItem>
-														<MenuItem onClick={() => handleSort("data_limit")}>
-															{t("admins.sortByLimit")}
-														</MenuItem>
-													</MenuList>
-												</Menu>
-											) : col.key === "username" ||
-												col.key === "users_count" ? (
-												<SortIndicator
-													column={col.key as "username" | "users_count"}
-												/>
-											) : null}
-										</HStack>
-									)}
-								</Th>
-							))}
-						</Tr>
-					</Thead>
-					<Tbody>
-						{admins.map((admin, index) => {
-							const isSelected = adminInDetails?.username === admin.username;
-							const usersLimitLabel =
-								admin.users_limit && admin.users_limit > 0
-									? String(admin.users_limit)
-									: "∞";
-							const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
-							const canManageThisAdmin = canManageAdminAccount(admin);
-							const canChangeStatus =
-								canManageThisAdmin && admin.username !== currentAdminUsername;
-							const showDisableAction =
-								canChangeStatus && admin.status !== AdminStatus.Disabled;
-							const hasLimitDisabledReason =
-								admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
-							const disabledReasonLabel = admin.disabled_reason
-								? hasLimitDisabledReason
-									? t(
-											"admins.disabledReason.dataLimitExceeded",
-											"Your data limit has been reached",
-										)
-									: admin.disabled_reason
-								: null;
-							const showEnableAction =
-								canChangeStatus &&
-								admin.status === AdminStatus.Disabled &&
-								!hasLimitDisabledReason;
-							const showDeleteAction = canChangeStatus;
-
-							const cells: Record<string, JSX.Element> = {
-								id: (
-									<Td
-										display={{ base: "none", md: "table-cell" }}
-										px={2}
-										pr={1}
-										pl={2}
-										data-col="id"
-										width={idColumnWidth}
-										minW={idColumnWidth}
-										maxW={idColumnMaxWidth}
-										whiteSpace="nowrap"
-										overflow="hidden"
-										textOverflow="ellipsis"
-										textAlign="center"
-									>
-										<Text
-											fontWeight="medium"
-											color="gray.700"
-											_dark={{ color: "gray.300" }}
-											fontSize="sm"
-										>
-											{admin.id}
-										</Text>
-									</Td>
-								),
-								username: (
-									<Td px={2} textAlign="start" data-col="username">
-										<Tooltip
-											label={
-												admin.role === AdminRole.FullAccess
-													? t("admins.roles.fullAccess", "Full access")
-													: admin.role === AdminRole.Sudo
-														? t("admins.roles.sudo", "Sudo")
-														: t("admins.roles.standard", "Standard")
-											}
-											placement="top"
-										>
-											<Text
-												fontWeight="medium"
-												px={2}
-												py={1}
-												borderRadius="md"
-												bg={
-													admin.role === AdminRole.FullAccess
-														? "yellow.100"
-														: admin.role === AdminRole.Sudo
-															? "purple.100"
-															: "gray.100"
-												}
-												color={
-													admin.role === AdminRole.FullAccess
-														? "yellow.800"
-														: admin.role === AdminRole.Sudo
-															? "purple.800"
-															: "gray.800"
-												}
-												_dark={{
-													bg:
-														admin.role === AdminRole.FullAccess
-															? "yellow.900"
-															: admin.role === AdminRole.Sudo
-																? "purple.900"
-																: "gray.700",
-													color:
-														admin.role === AdminRole.FullAccess
-															? "yellow.200"
-															: admin.role === AdminRole.Sudo
-																? "purple.200"
-																: "gray.200",
-												}}
-												display="inline-block"
-												minW={0}
-												maxW="full"
-												isTruncated
-											>
-												{admin.username}
-											</Text>
-										</Tooltip>
-									</Td>
-								),
-								status: (
-									<Td textAlign="start">
-										<Stack spacing={1} align="flex-start" maxW="full">
-											<AdminStatusBadge status={admin.status} />
-											{admin.status === AdminStatus.Disabled &&
-												disabledReasonLabel && (
-													<Text fontSize="xs" color="red.400" mt={1}>
-														{disabledReasonLabel}
-													</Text>
-												)}
-										</Stack>
-									</Td>
-								),
-								users_count: (
-									<Td textAlign="start">
-										<Stack spacing={0} align="flex-start">
-											<Text fontSize="xs" fontWeight="semibold">
-												{activeLabel}
-											</Text>
-											{admin.online_users !== null &&
-												admin.online_users !== undefined && (
-													<Text
-														fontSize="xs"
-														color="green.600"
-														_dark={{ color: "green.400" }}
-														mt={1}
-													>
-														{t("admins.details.onlineLabel", "Online")}:{" "}
-														{admin.online_users}
-													</Text>
-												)}
-										</Stack>
-									</Td>
-								),
-								data: (
-									<Td textAlign="start">
-										<AdminUsageSlider
-											isRTL={isRTL}
-											used={admin.users_usage ?? 0}
-											total={admin.data_limit ?? null}
-											lifetimeUsage={admin.lifetime_usage ?? null}
-										/>
-									</Td>
-								),
-								actions: (
-									<Td textAlign={isRTL ? "left" : "right"}>
-										<Menu>
-											<MenuButton
-												as={IconButton}
-												icon={<EllipsisVerticalIcon width={20} />}
-												variant="ghost"
-												isDisabled={!canManageThisAdmin && !canChangeStatus}
-												onClick={(event) => event.stopPropagation()}
-											/>
-											<MenuList onClick={(event) => event.stopPropagation()}>
-												{canManageThisAdmin && (
-													<>
-														<MenuItem
-															icon={<PencilIcon width={20} />}
-															onClick={(event) => {
-																event.stopPropagation();
-																openAdminDialog(admin);
-															}}
-														>
-															{t("edit")}
-														</MenuItem>
-														<MenuItem
-															icon={<AdjustmentsHorizontalIcon width={20} />}
-															onClick={(event) => {
-																event.stopPropagation();
-																handleOpenPermissionsModal(admin);
-															}}
-														>
-															{t(
-																"admins.editPermissionsButton",
-																"Edit permissions",
-															)}
-														</MenuItem>
-														<MenuItem
-															icon={<ArrowPathIcon width={20} />}
-															onClick={(event) => {
-																event.stopPropagation();
-																runResetUsage(admin);
-															}}
-															isDisabled={
-																actionState?.username === admin.username &&
-																actionState?.type === "reset"
-															}
-														>
-															{t("admins.resetUsage")}
-														</MenuItem>
-													</>
-												)}
-												{(showDisableAction ||
-													showEnableAction ||
-													showDeleteAction) &&
-													canManageThisAdmin && <MenuDivider />}
-												{showDisableAction && (
-													<MenuItem
-														icon={<NoSymbolIcon width={20} />}
-														onClick={(event) => {
-															event.stopPropagation();
-															startDisableAdmin(admin);
-														}}
-														isDisabled={
-															actionState?.username === admin.username &&
-															actionState?.type === "disableAdmin"
-														}
-													>
-														{t("admins.disableAdmin", "Disable admin")}
-													</MenuItem>
-												)}
-												{showEnableAction && (
-													<MenuItem
-														icon={<PlayIcon width={20} />}
-														onClick={(event) => {
-															event.stopPropagation();
-															handleEnableAdmin(admin);
-														}}
-														isDisabled={
-															actionState?.username === admin.username &&
-															actionState?.type === "enableAdmin"
-														}
-													>
-														{t("admins.enableAdmin", "Enable admin")}
-													</MenuItem>
-												)}
-												{showDeleteAction &&
-													(showDisableAction || showEnableAction) && (
-														<MenuDivider />
-													)}
-												{showDeleteAction && (
-													<MenuItem
-														color="red.500"
-														icon={<TrashIcon width={20} />}
-														onClick={(event) => {
-															event.stopPropagation();
-															startDeleteDialog(admin);
-														}}
-													>
-														{t("delete")}
-													</MenuItem>
-												)}
-											</MenuList>
-										</Menu>
-									</Td>
-								),
-							};
-
-							return (
-								<Tr
-									key={admin.username}
-									className={
-										index === admins.length - 1 ? "last-row" : undefined
-									}
-									onClick={() => openAdminDetails(admin)}
-									cursor="pointer"
-									bg={isSelected ? rowSelectedBg : undefined}
-									_hover={{ bg: rowHoverBg }}
-									transition="background-color 0.15s ease-in-out"
-								>
-									{columns.map((col) => cells[col.key])}
-								</Tr>
-							);
-						})}
-					</Tbody>
-				</Table>
-			</Box>
-			<AlertDialog
-				isOpen={isDeleteDialogOpen}
-				leastDestructiveRef={deleteCancelRef}
-				onClose={closeDeleteDialog}
-			>
-				<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
-					<AlertDialogContent
-						bg={dialogBg}
-						borderWidth="1px"
-						borderColor={dialogBorderColor}
+					<CardHeader
+						borderBottomWidth="1px"
+						borderColor="light-border"
+						_dark={{ borderColor: "whiteAlpha.200" }}
+						pb={3}
 					>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("admins.confirmDeleteTitle", "Delete admin")}
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							{t(
-								"admins.confirmDeleteMessage",
-								"Are you sure you want to delete {{username}}?",
-								{
-									username: adminToDelete?.username ?? "",
-								},
-							)}
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<Button
-								ref={deleteCancelRef}
-								onClick={closeDeleteDialog}
-								variant="ghost"
-								colorScheme="primary"
-							>
-								{t("cancel")}
-							</Button>
-							<Button colorScheme="red" onClick={handleDeleteAdmin} ml={3}>
-								{t("delete")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
-			<AlertDialog
-				isOpen={isDisableDialogOpen}
-				leastDestructiveRef={disableCancelRef}
-				onClose={closeDisableDialogAndReset}
-			>
-				<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
-					<AlertDialogContent
-						bg={dialogBg}
-						borderWidth="1px"
-						borderColor={dialogBorderColor}
+						<Text fontWeight="semibold">
+							{t("admins.rolesBreakdown", "Admins by role")}
+						</Text>
+					</CardHeader>
+					<CardBody>
+						<Stack
+							spacing={3}
+							direction={{ base: "column", md: "row" }}
+							flexWrap="wrap"
+						>
+							<RoleChip
+								label={t("admins.roles.fullAccess", "Full access")}
+								value={admins.filter((a) => a.role === AdminRole.FullAccess).length}
+								color="yellow.500"
+							/>
+							<RoleChip
+								label={t("admins.roles.sudo", "Sudo")}
+								value={admins.filter((a) => a.role === AdminRole.Sudo).length}
+								color="purple.400"
+							/>
+							<RoleChip
+								label={t("admins.roles.reseller", "Reseller")}
+								value={admins.filter((a) => a.role === AdminRole.Reseller).length}
+								color="blue.400"
+							/>
+							<RoleChip
+								label={t("admins.roles.standard", "Standard")}
+								value={admins.filter((a) => a.role === AdminRole.Standard).length}
+								color="gray.500"
+							/>
+						</Stack>
+					</CardBody>
+				</Card>
+			</SimpleGrid>
+			<Box position="relative">
+				<Card
+					borderWidth="1px"
+					borderColor="light-border"
+					bg="surface.light"
+					_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+				>
+					<CardHeader
+						borderBottomWidth="1px"
+						borderColor="light-border"
+						_dark={{ borderColor: "whiteAlpha.200" }}
+						pb={3}
 					>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("admins.disableAdminTitle", "Disable admin")}
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							<Text mb={3}>
+						<HStack justify="space-between" align="center" flexWrap="wrap">
+							<Stack spacing={0}>
+								<Text fontWeight="semibold">{t("admins.manageTab", "Admins")}</Text>
+								<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+									{t("admins.totalLabel", "Total")}: {" "}
+									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+										{formatCount(total, locale)}
+									</chakra.span>
+									{isFiltered ? ` · ${t("usersPage.filtered")}` : ""}
+								</Text>
+							</Stack>
+							<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 								{t(
-									"admins.disableAdminMessage",
-									"All users owned by {{username}} will be disabled. Provide a reason for this action.",
-									{
-										username: adminToDisable?.username ?? "",
-									},
+									"admins.pageDescription",
+									"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
 								)}
 							</Text>
-							<Textarea
-								value={disableReason}
-								onChange={(event) => setDisableReason(event.target.value)}
-								placeholder={t(
-									"admins.disableAdminReasonPlaceholder",
-									"Reason for disabling",
-								)}
-							/>
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<Button
-								ref={disableCancelRef}
-								onClick={closeDisableDialogAndReset}
-								variant="ghost"
-								colorScheme="primary"
-							>
-								{t("cancel")}
-							</Button>
-							<Button
-								colorScheme="red"
-								onClick={confirmDisableAdmin}
-								ml={3}
-								isDisabled={disableReason.trim().length < 3}
-								isLoading={
-									actionState?.type === "disableAdmin" &&
-									actionState?.username === adminToDisable?.username
-								}
-							>
-								{t("admins.disableAdminConfirm", "Disable admin")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
-			<AdminPermissionsModal
-				isOpen={isPermissionsModalOpen}
-				onClose={handleClosePermissionsModal}
-				admin={adminForPermissions}
-			/>
+						</HStack>
+					</CardHeader>
+					<CardBody
+						px={{ base: 3, md: 4 }}
+						py={{ base: 3, md: 4 }}
+					>
+						<Box w="full">
+							<Box w="full" borderWidth="1px" borderRadius="xl" overflow="hidden">
+								<Table
+									variant="simple"
+									dir={isRTL ? "rtl" : "ltr"}
+									width="100%"
+									w="full"
+									{...tableProps}
+								>
+									<Thead>
+										<Tr>
+											{columnsToRender.map((col) => {
+												if (col === "username") {
+													return (
+														<Th
+															key="username"
+															minW="200px"
+															cursor="pointer"
+															onClick={() => handleSort("username")}
+															textAlign={cellAlign}
+														>
+															<HStack
+																spacing={2}
+																align="center"
+																justify="flex-start"
+																flexDirection={isRTL ? "row-reverse" : "row"}
+															>
+																<Text>{t("username")}</Text>
+																<SortIndicator column="username" />
+															</HStack>
+														</Th>
+													);
+												}
+												if (col === "status") {
+													return (
+														<Th key="status" minW="160px" textAlign={cellAlign}>
+															<Text>{t("status")}</Text>
+														</Th>
+													);
+												}
+												if (col === "users_count") {
+													return (
+														<Th
+															key="users_count"
+															minW="140px"
+															cursor="pointer"
+															onClick={() => handleSort("users_count")}
+															textAlign={cellAlign}
+														>
+															<HStack
+																spacing={2}
+																align="center"
+																justify="flex-start"
+																flexDirection={isRTL ? "row-reverse" : "row"}
+															>
+																<Text>{t("admins.usersManaged", "Managed users")}</Text>
+																<SortIndicator column="users_count" />
+															</HStack>
+														</Th>
+													);
+												}
+												if (col === "data") {
+													return (
+														<Th key="data" minW="240px" textAlign={cellAlign}>
+															<HStack spacing={2} align="center">
+																<Text>{t("admins.dataUsageHeader", "Usage / Limit")}</Text>
+																<Menu>
+																	<MenuButton
+																		as={IconButton}
+																		size="xs"
+																		variant="ghost"
+																		icon={<SortIndicator column="data" />}
+																	/>
+																	<MenuList>
+																		<MenuItem onClick={() => handleSort("data_usage")}>
+																			{t("admins.sortByUsage")}
+																		</MenuItem>
+																		<MenuItem onClick={() => handleSort("data_limit")}>
+																			{t("admins.sortByLimit")}
+																		</MenuItem>
+																	</MenuList>
+																</Menu>
+															</HStack>
+														</Th>
+													);
+												}
+												return (
+													<Th
+														key="actions"
+														minW="150px"
+														width="180px"
+														textAlign={actionsAlign}
+													/>
+												);
+											})}
+									</Tr>
+								</Thead>
+								<Tbody>
+									{loading
+											? Array.from({ length: filters.limit || 5 }, (_, idx) => {
+												const cells = {
+													username: (
+														<Td key={`skeleton-username-${idx}`} textAlign={cellAlign}>
+															<Skeleton height="16px" width="60%" />
+														</Td>
+													),
+													status: (
+														<Td key={`skeleton-status-${idx}`} textAlign={cellAlign}>
+															<Skeleton height="16px" width="80px" />
+														</Td>
+													),
+													users_count: (
+														<Td key={`skeleton-users-${idx}`} textAlign={cellAlign}>
+															<Skeleton height="14px" width="70px" />
+														</Td>
+													),
+													data: (
+														<Td key={`skeleton-data-${idx}`} textAlign={cellAlign}>
+															<Skeleton height="16px" width="120px" />
+														</Td>
+													),
+													actions: (
+														<Td key={`skeleton-actions-${idx}`} textAlign={actionsAlign}>
+															<HStack spacing={2} justify="flex-start">
+																<Skeleton height="16px" width="32px" />
+																<Skeleton height="16px" width="32px" />
+															</HStack>
+														</Td>
+													),
+												} as const;
+												return (
+													<Tr key={`skeleton-${idx}`}>
+														{columnsToRender.map((key) => cells[key])}
+													</Tr>
+												);
+											})
+										: admins.map((admin, index) => {
+											const isSelected = adminInDetails?.username === admin.username;
+											const usersLimitLabel =
+												admin.users_limit && admin.users_limit > 0
+													? String(admin.users_limit)
+													: "∞";
+											const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
+											const canManageThisAdmin = canManageAdminAccount(admin);
+											const canChangeStatus =
+												canManageThisAdmin && admin.username !== currentAdminUsername;
+											const showDisableAction =
+												canChangeStatus && admin.status !== AdminStatus.Disabled;
+											const hasLimitDisabledReason =
+												admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+											const disabledReasonLabel = admin.disabled_reason
+												? hasLimitDisabledReason
+													? t(
+															"admins.disabledReason.dataLimitExceeded",
+															"Your data limit has been reached",
+														)
+													: admin.disabled_reason
+												: null;
+											const showEnableAction =
+												canChangeStatus &&
+												admin.status === AdminStatus.Disabled &&
+												!hasLimitDisabledReason;
+											const showDeleteAction = canChangeStatus;
+
+											const cells = {
+												username: (
+													<Td textAlign={cellAlign}>
+														<Stack spacing={1} align={isRTL ? "flex-end" : "flex-start"}>
+															<HStack
+																spacing={2}
+																align="center"
+																justify="flex-start"
+																flexDirection={isRTL ? "row-reverse" : "row"}
+															>
+																<Text
+																	fontWeight="semibold"
+																	noOfLines={1}
+																	dir="ltr"
+																	sx={{ unicodeBidi: "isolate" }}
+																>
+																	{admin.username}
+																</Text>
+																<Tooltip
+																	label={
+																		admin.role === AdminRole.FullAccess
+																			? t("admins.roles.fullAccess", "Full access")
+																		: admin.role === AdminRole.Sudo
+																				? t("admins.roles.sudo", "Sudo")
+																			: t("admins.roles.standard", "Standard")
+																	}
+																	placement="top"
+																>
+																<Text
+																		fontSize="xs"
+																		px={2}
+																		py={0.5}
+																		borderRadius="full"
+																		bg={
+																			admin.role === AdminRole.FullAccess
+																				? "yellow.100"
+																			: admin.role === AdminRole.Sudo
+																					? "purple.100"
+																				: "gray.100"
+																		}
+																		color={
+																			admin.role === AdminRole.FullAccess
+																				? "yellow.800"
+																			: admin.role === AdminRole.Sudo
+																					? "purple.800"
+																				: "gray.800"
+																		}
+																		_dark={{
+																			bg:
+																				admin.role === AdminRole.FullAccess
+																						? "yellow.900"
+																				: admin.role === AdminRole.Sudo
+																							? "purple.900"
+																						: "gray.700",
+																			color:
+																				admin.role === AdminRole.FullAccess
+																						? "yellow.200"
+																				: admin.role === AdminRole.Sudo
+																							? "purple.200"
+																						: "gray.200",
+																		}}
+																>
+																	{admin.role}
+																</Text>
+															</Tooltip>
+														</HStack>
+																	<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+																		{t("admins.idLabel", "ایدی")}:{" "}
+																		{admin.id}
+																	</Text>
+													</Stack>
+												</Td>
+											),
+											status: (
+												<Td textAlign={cellAlign}>
+													<Stack spacing={1} align={isRTL ? "flex-end" : "flex-start"} maxW="full">
+														<AdminStatusBadge status={admin.status} />
+														{admin.status === AdminStatus.Disabled &&
+															disabledReasonLabel && (
+																<Text fontSize="xs" color="red.400" mt={1}>
+																	{disabledReasonLabel}
+																</Text>
+															)}
+													</Stack>
+												</Td>
+											),
+											users_count: (
+												<Td textAlign={cellAlign}>
+													<Stack spacing={0} align={isRTL ? "flex-end" : "flex-start"}>
+														<Text fontSize="sm" fontWeight="semibold">
+															{activeLabel}
+														</Text>
+														{admin.online_users !== null &&
+															admin.online_users !== undefined && (
+																<Text
+																	fontSize="xs"
+																	color="green.600"
+																	_dark={{ color: "green.400" }}
+																	mt={1}
+																>
+																	{t("admins.details.onlineLabel", "Online")}: {admin.online_users}
+																</Text>
+															)}
+													</Stack>
+												</Td>
+											),
+											data: (
+												<Td textAlign={cellAlign}>
+													<AdminUsageSlider
+														isRTL={isRTL}
+														used={admin.users_usage ?? 0}
+														total={admin.data_limit ?? null}
+														lifetimeUsage={admin.lifetime_usage ?? null}
+													/>
+												</Td>
+											),
+											actions: (
+												<Td textAlign={actionsAlign}>
+													<Menu>
+														<MenuButton
+															as={IconButton}
+															icon={<EllipsisVerticalIcon width={20} />}
+															variant="ghost"
+															isDisabled={!canManageThisAdmin && !canChangeStatus}
+															onClick={(event) => event.stopPropagation()}
+														/>
+														<MenuList onClick={(event) => event.stopPropagation()}>
+															{canManageThisAdmin && (
+																<>
+																	<MenuItem
+																		icon={<PencilIcon width={20} />}
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			openAdminDialog(admin);
+																		}}
+																	>
+																		{t("edit")}
+																	</MenuItem>
+																	<MenuItem
+																		icon={<AdjustmentsHorizontalIcon width={20} />}
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			handleOpenPermissionsModal(admin);
+																		}}
+																	>
+																		{t(
+																			"admins.editPermissionsButton",
+																			"Edit permissions",
+																		)}
+																	</MenuItem>
+																	<MenuItem
+																		icon={<ArrowPathIcon width={20} />}
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			runResetUsage(admin);
+																		}}
+																		isDisabled={
+																			actionState?.username === admin.username &&
+																			actionState?.type === "reset"
+																		}
+																	>
+																		{t("admins.resetUsage")}
+																	</MenuItem>
+																</>
+															)}
+															{(showDisableAction ||
+																showEnableAction ||
+																showDeleteAction) &&
+																canManageThisAdmin && <MenuDivider />}
+															{showDisableAction && (
+																<MenuItem
+																	icon={<NoSymbolIcon width={20} />}
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		startDisableAdmin(admin);
+																	}}
+																	isDisabled={
+																		actionState?.username === admin.username &&
+																		actionState?.type === "disableAdmin"
+																	}
+																>
+																	{t("admins.disableAdmin", "Disable admin")}
+																</MenuItem>
+															)}
+															{showEnableAction && (
+																<MenuItem
+																	icon={<PlayIcon width={20} />}
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		handleEnableAdmin(admin);
+																	}}
+																	isDisabled={
+																		actionState?.username === admin.username &&
+																		actionState?.type === "enableAdmin"
+																	}
+																>
+																	{t("admins.enableAdmin", "Enable admin")}
+																</MenuItem>
+															)}
+															{showDeleteAction &&
+																(showDisableAction || showEnableAction) && (
+																	<MenuDivider />
+																)}
+															{showDeleteAction && (
+																<MenuItem
+																	color="red.500"
+																	icon={<TrashIcon width={20} />}
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		startDeleteDialog(admin);
+																	}}
+																>
+																	{t("delete")}
+																</MenuItem>
+															)}
+														</MenuList>
+													</Menu>
+												</Td>
+											),
+										} as const;
+
+										return (
+											<Tr
+												key={admin.username}
+												className={index === admins.length - 1 ? "last-row" : undefined}
+												onClick={() => openAdminDetails(admin)}
+												cursor="pointer"
+												bg={isSelected ? rowSelectedBg : undefined}
+												_hover={{ bg: rowHoverBg }}
+												transition="background-color 0.15s ease-in-out"
+											>
+												{columnsToRender.map((key) => cells[key])}
+											</Tr>
+										);
+									})}
+									{!loading && admins.length === 0 && (
+										<Tr>
+											<Td colSpan={columnsToRender.length}>
+												<Text textAlign="center" py={6}>
+													{t("admins.noAdmins")}
+												</Text>
+											</Td>
+										</Tr>
+									)}
+								</Tbody>
+							</Table>
+						</Box>
+					</Box>
+				</CardBody>
+			</Card>
+		</Box>
+		<AlertDialog
+			isOpen={isDeleteDialogOpen}
+			leastDestructiveRef={deleteCancelRef}
+			onClose={closeDeleteDialog}
+		>
+			<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
+				<AlertDialogContent
+					bg={dialogBg}
+					borderWidth="1px"
+					borderColor={dialogBorderColor}
+				>
+					<AlertDialogHeader fontSize="lg" fontWeight="bold">
+						{t("admins.confirmDeleteTitle", "Delete admin")}
+					</AlertDialogHeader>
+					<AlertDialogBody>
+						{t(
+							"admins.confirmDeleteMessage",
+							"Are you sure you want to delete {{username}}?",
+							{
+								username: adminToDelete?.username ?? "",
+							},
+						)}
+					</AlertDialogBody>
+					<AlertDialogFooter>
+						<Button
+							ref={deleteCancelRef}
+							onClick={closeDeleteDialog}
+							variant="ghost"
+							colorScheme="primary"
+						>
+							{t("cancel")}
+						</Button>
+						<Button colorScheme="red" onClick={handleDeleteAdmin} ml={3}>
+							{t("delete")}
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialogOverlay>
+		</AlertDialog>
+		<AlertDialog
+			isOpen={isDisableDialogOpen}
+			leastDestructiveRef={disableCancelRef}
+			onClose={closeDisableDialogAndReset}
+		>
+			<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
+				<AlertDialogContent
+					bg={dialogBg}
+					borderWidth="1px"
+					borderColor={dialogBorderColor}
+				>
+					<AlertDialogHeader fontSize="lg" fontWeight="bold">
+						{t("admins.disableAdminTitle", "Disable admin")}
+					</AlertDialogHeader>
+					<AlertDialogBody>
+						<Text mb={3}>
+							{t(
+								"admins.disableAdminMessage",
+								"All users owned by {{username}} will be disabled. Provide a reason for this action.",
+								{
+									username: adminToDisable?.username ?? "",
+								},
+							)}
+						</Text>
+						<Textarea
+							value={disableReason}
+							onChange={(event) => setDisableReason(event.target.value)}
+							placeholder={t(
+								"admins.disableAdminReasonPlaceholder",
+								"Reason for disabling",
+							)}
+						/>
+					</AlertDialogBody>
+					<AlertDialogFooter>
+						<Button
+							ref={disableCancelRef}
+							onClick={closeDisableDialogAndReset}
+							variant="ghost"
+							colorScheme="primary"
+						>
+							{t("cancel")}
+						</Button>
+						<Button
+							colorScheme="red"
+							onClick={confirmDisableAdmin}
+							ml={3}
+							isDisabled={disableReason.trim().length < 3}
+							isLoading={
+								actionState?.type === "disableAdmin" &&
+								actionState?.username === adminToDisable?.username
+							}
+						>
+							{t("admins.disableAdminConfirm", "Disable admin")}
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialogOverlay>
+		</AlertDialog>
+		<AdminPermissionsModal
+			isOpen={isPermissionsModalOpen}
+			onClose={handleClosePermissionsModal}
+			admin={adminForPermissions}
+		/>
 		</>
 	);
 };

@@ -157,6 +157,8 @@ export type UsersListResponse = {
 	total: number;
 	active_total?: number | null;
 	users_limit?: number | null;
+	status_breakdown?: Record<string, number>;
+	usage_total?: number | null;
 };
 
 export type AdvancedUserActionStatus = "expired" | "limited";

@@ -6,6 +6,7 @@ import {
 	chakra,
 	FormControl,
 	FormLabel,
+	FormErrorMessage,
 	HStack,
 	IconButton,
 	Modal,
@@ -23,6 +24,7 @@ import {
 	Tooltip,
 	useClipboard,
 	useToast,
+	Textarea,
 } from "@chakra-ui/react";
 import {
 	ArrowDownTrayIcon,
@@ -116,6 +118,16 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			? null
 			: Math.round(value * BYTES_IN_GB);
 
+	const formatConfigForInput = useCallback((value?: unknown) => {
+		if (!value) return "";
+		if (typeof value === "string") return value;
+		try {
+			return JSON.stringify(value, null, 2);
+		} catch (err) {
+			return "";
+		}
+	}, []);
+
 	const baseDefaults = isAddMode
 		? { ...getNodeDefaultValues(), add_as_new_host: false }
 		: {
@@ -123,12 +135,18 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 				...node,
 				add_as_new_host: false,
 			};
+	const baseConfigText = formatConfigForInput(baseDefaults.xray_config);
+	const baseSingConfigText = formatConfigForInput(baseDefaults.sing_config);
+	const baseHystConfigText = formatConfigForInput(baseDefaults.hysteria_config);
 
 	const form = useForm({
 		resolver: zodResolver(NodeSchema),
 		defaultValues: {
 			...baseDefaults,
 			data_limit: formatDataLimitForInput(baseDefaults.data_limit ?? null),
+			xray_config: baseConfigText,
+			sing_config: baseSingConfigText,
+			hysteria_config: baseHystConfigText,
 		},
 	});
 
@@ -177,10 +195,13 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			form.reset({
 				...defaults,
 				data_limit: formatDataLimitForInput(defaults.data_limit ?? null),
+				xray_config: formatConfigForInput(defaults.xray_config),
+				sing_config: formatConfigForInput(defaults.sing_config),
+				hysteria_config: formatConfigForInput(defaults.hysteria_config),
 			});
 			setShowCertificate(!isAddMode && !!node?.node_certificate);
 		}
-	}, [isOpen, isAddMode, node, form, formatDataLimitForInput]);
+	}, [isOpen, isAddMode, node, form, formatDataLimitForInput, formatConfigForInput]);
 
 	useEffect(() => {
 		if (!isAddMode && node && isOpen) {
@@ -436,6 +457,72 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								<Text fontSize="xs" color="gray.500" mt={1}>
 									{t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
 								</Text>
+							</FormControl>
+							<FormControl
+								isInvalid={Boolean(form.formState?.errors?.xray_config)}
+							>
+								<FormLabel>
+									{t(
+										"nodes.xrayConfig",
+										"Node Xray config (JSON, optional)",
+									)}
+								</FormLabel>
+								<Textarea
+									minH="160px"
+									fontFamily="mono"
+									placeholder={t(
+										"nodes.xrayConfigPlaceholder",
+										"Leave empty to use the master config for this node",
+									)}
+									{...form.register("xray_config")}
+								/>
+								<FormErrorMessage>
+									{getInputError(form.formState?.errors?.xray_config)}
+								</FormErrorMessage>
+							</FormControl>
+							<FormControl
+								isInvalid={Boolean(form.formState?.errors?.sing_config)}
+							>
+								<FormLabel>
+									{t(
+										"nodes.singConfig",
+										"Node Sing-box config (JSON, optional)",
+									)}
+								</FormLabel>
+								<Textarea
+									minH="160px"
+									fontFamily="mono"
+									placeholder={t(
+										"nodes.singConfigPlaceholder",
+										"Leave empty to use the master config for this node",
+									)}
+									{...form.register("sing_config")}
+								/>
+								<FormErrorMessage>
+									{getInputError(form.formState?.errors?.sing_config)}
+								</FormErrorMessage>
+							</FormControl>
+							<FormControl
+								isInvalid={Boolean(form.formState?.errors?.hysteria_config)}
+							>
+								<FormLabel>
+									{t(
+										"nodes.hysteriaConfig",
+										"Hysteria config (JSON, optional)",
+									)}
+								</FormLabel>
+								<Textarea
+									minH="160px"
+									fontFamily="mono"
+									placeholder={t(
+										"nodes.hysteriaConfigPlaceholder",
+										"Leave empty to use the master config for this node",
+									)}
+									{...form.register("hysteria_config")}
+								/>
+								<FormErrorMessage>
+									{getInputError(form.formState?.errors?.hysteria_config)}
+								</FormErrorMessage>
 							</FormControl>
 							{allowNobetci && (
 								<>

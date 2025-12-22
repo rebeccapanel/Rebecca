@@ -944,6 +944,12 @@ def get_user_pending_usage_state(user_id: int) -> Tuple[int, Optional[datetime]]
                         pass
             except Exception:
                 continue
+
+        # Avoid repeated cache misses: store a zero marker with a short TTL
+        try:
+            redis_client.setex(pending_total_key, 3600, total)
+        except Exception:
+            pass
         return total, online_at
     except Exception as exc:
         logger.debug(f"Failed to read pending usage total for user {user_id}: {exc}")

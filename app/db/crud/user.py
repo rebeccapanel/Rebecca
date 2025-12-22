@@ -656,6 +656,139 @@ def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None)
     return query.scalar() or 0
 
 
+def _build_filtered_users_query_for_aggregation(
+    db: Session,
+    *,
+    usernames: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    status: Optional[Union[UserStatus, list]] = None,
+    admin: Optional[Admin] = None,
+    admins: Optional[List[str]] = None,
+    advanced_filters: Optional[List[str]] = None,
+    service_id: Optional[int] = None,
+    reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+):
+    query = get_user_queryset(db, eager_load=False)
+    query = _apply_advanced_user_filters(
+        query,
+        advanced_filters,
+        datetime.now(timezone.utc),
+    )
+
+    if search:
+        like_pattern = f"%{search}%"
+        key_candidates, uuid_candidates = _derive_search_tokens(search)
+        search_clauses = [
+            User.username.ilike(like_pattern),
+            User.note.ilike(like_pattern),
+            User.credential_key.ilike(like_pattern),
+        ]
+        if key_candidates:
+            search_clauses.append(User.credential_key.in_(key_candidates))
+        if uuid_candidates:
+            proxy_exists = exists().where(
+                and_(Proxy.user_id == User.id, Proxy.settings["id"].as_string().in_(uuid_candidates))
+            )
+            search_clauses.append(proxy_exists)
+        query = query.filter(or_(*search_clauses))
+
+    if usernames:
+        query = query.filter(User.username.in_(usernames))
+
+    if status:
+        if isinstance(status, list):
+            query = query.filter(User.status.in_(status))
+        else:
+            query = query.filter(User.status == status)
+
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+
+    if reset_strategy:
+        if isinstance(reset_strategy, list):
+            query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
+        else:
+            query = query.filter(User.data_limit_reset_strategy == reset_strategy)
+
+    if admin and hasattr(admin, "id") and admin.id is not None:
+        query = query.filter(User.admin_id == admin.id)
+
+    if admins:
+        query = query.filter(User.admin.has(Admin.username.in_(admins)))
+
+    return query
+
+
+def get_users_status_breakdown(
+    db: Session,
+    *,
+    usernames: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    status: Optional[Union[UserStatus, list]] = None,
+    admin: Optional[Admin] = None,
+    admins: Optional[List[str]] = None,
+    advanced_filters: Optional[List[str]] = None,
+    service_id: Optional[int] = None,
+    reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+) -> Dict[str, int]:
+    """
+    Returns status -> count for users matching the given filters (ignores pagination).
+    """
+    query = _build_filtered_users_query_for_aggregation(
+        db,
+        usernames=usernames,
+        search=search,
+        status=status,
+        admin=admin,
+        admins=admins,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        reset_strategy=reset_strategy,
+    )
+
+    rows = query.with_entities(User.status, func.count(User.id)).group_by(User.status).all()
+
+    breakdown: Dict[str, int] = {}
+    for status_value, count in rows:
+        status_key = _status_to_str(status_value)
+        if status_key:
+            breakdown[status_key] = count or 0
+    return breakdown
+
+
+def get_users_usage_sum(
+    db: Session,
+    *,
+    usernames: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    status: Optional[Union[UserStatus, list]] = None,
+    admin: Optional[Admin] = None,
+    admins: Optional[List[str]] = None,
+    advanced_filters: Optional[List[str]] = None,
+    service_id: Optional[int] = None,
+    reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+) -> int:
+    """
+    Returns total usage (used + reset history) for filtered users.
+    """
+    query = _build_filtered_users_query_for_aggregation(
+        db,
+        usernames=usernames,
+        search=search,
+        status=status,
+        admin=admin,
+        admins=admins,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        reset_strategy=reset_strategy,
+    )
+    total_usage = query.with_entities(func.coalesce(func.sum(User.reseted_usage), 0)).scalar()
+    try:
+        return int(total_usage or 0)
+    except Exception:
+        return 0
+
+
 def _status_to_str(status: Union[UserStatus, str, None]) -> Optional[str]:
     if status is None:
         return None

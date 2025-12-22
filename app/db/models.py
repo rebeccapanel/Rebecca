@@ -392,6 +392,7 @@ class Service(Base):
     flow = Column(String(255), nullable=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    users_usage = Column(BigInteger, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,

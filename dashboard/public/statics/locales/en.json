@@ -63,6 +63,7 @@
 	"admins.enableAdminSuccess": "Admin re-enabled",
 	"admins.generatePassword": "Generate random password",
 	"admins.generateUsername": "Generate random username",
+	"admins.idLabel": "ID",
 	"admins.hidePassword": "Hide password",
 	"admins.isSudo": "Sudo access",
 	"admins.isSudoHint": "Sudo admins can manage other admins and system settings.",
@@ -100,6 +101,7 @@
 	"admins.resetUsageSuccess": "Usage reset",
 	"admins.roleLabel": "Admin role",
 	"admins.roles.fullAccess": "Full access",
+	"admins.rolesBreakdown": "Admins by role",
 	"admins.roles.fullAccessDescription": "Complete control, including other sudo admins.",
 	"admins.roles.reseller": "Reseller",
 	"admins.roles.resellerDescription": "Can create and manage their own admins.",
@@ -1221,6 +1223,8 @@
 	"username": "Username",
 	"users": "Users",
 	"usersOverview": "Users overview",
+	"usersPage.subtitle": "Manage access, usage, and subscription links with the refreshed layout.",
+	"usersPage.filtered": "Filtered",
 	"usersStatusBreakdown": "Users by status",
 	"usersTable.copied": "Copied",
 	"usersTable.copyConfigs": "Copy Configs",
@@ -1349,3 +1353,4 @@
 		"minutes": "mins"
 	}
 }
+
