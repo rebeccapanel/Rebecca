@@ -24,6 +24,7 @@ import {
 	Tooltip,
 	Tr,
 	useBreakpointValue,
+	Collapse,
 	VStack,
 } from "@chakra-ui/react";
 import {
@@ -272,6 +273,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const rowsToRender = filters.limit || 10;
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
+	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 
 	const statusBreakdown = useMemo(() => {
 		if (usersResponse.status_breakdown) {
@@ -659,10 +661,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 
 	const mobileList = (
 		<VStack key={isRTL ? "rtl-mobile" : "ltr-mobile"} spacing={3} align="stretch">
-				{loading
-					? Array.from({ length: rowsToRender }, (_, idx) => (
-							<Box
-								key={`skeleton-mobile-${idx}`}
+			{loading
+				? Array.from({ length: rowsToRender }, (_, idx) => (
+						<Box
+							key={`skeleton-mobile-${idx}`}
 							borderWidth="1px"
 							borderColor="light-border"
 							bg="surface.light"
@@ -670,22 +672,19 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							borderRadius="xl"
 							p={4}
 						>
-								<Stack spacing={3}>
-									<SkeletonText noOfLines={1} width="40%" />
-									<Skeleton height="16px" width="80px" />
-									<Skeleton height="8px" width="100%" />
-									<HStack
-										justify={isRTL ? "flex-start" : "flex-end"}
-										spacing={2}
-									>
-										<Skeleton height="16px" width="32px" />
-										<Skeleton height="16px" width="32px" />
-									</HStack>
-								</Stack>
-							</Box>
+							<Stack spacing={3}>
+								<SkeletonText noOfLines={1} width="50%" />
+								<Skeleton height="16px" width="80px" />
+								<Skeleton height="8px" width="100%" />
+								<HStack justify="flex-end" spacing={2}>
+									<Skeleton height="16px" width="32px" />
+									<Skeleton height="16px" width="32px" />
+								</HStack>
+							</Stack>
+						</Box>
 					))
 				: usersResponse.users.map((user) => (
-						<UserCard
+						<MobileUserCard
 							key={user.username}
 							user={user}
 							canEdit={canCreateUsers}
@@ -711,18 +710,20 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			dir={isRTL ? "rtl" : "ltr"}
 			data-dir={isRTL ? "rtl" : "ltr"}
 		>
-			<SimpleGrid
-				columns={{
-					base: 1,
-					sm: Math.min(summaryColumns, 2),
-					xl: summaryColumns,
-				}}
-				gap={3}
-			>
-				{summaryItems.map((item, idx) => (
-					<SummaryStat key={`${item.label}-${idx}`} {...item} />
-				))}
-			</SimpleGrid>
+			{isDesktop && (
+				<SimpleGrid
+					columns={{
+						base: 1,
+						sm: Math.min(summaryColumns, 2),
+						xl: summaryColumns,
+					}}
+					gap={3}
+				>
+					{summaryItems.map((item, idx) => (
+						<SummaryStat key={`${item.label}-${idx}`} {...item} />
+					))}
+				</SimpleGrid>
+			)}
 			<Box position="relative">
 				<Card
 					borderWidth="1px"
@@ -739,53 +740,65 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 						_dark={{ borderColor: "whiteAlpha.200" }}
 						pb={3}
 					>
-						<Flex
-							align={{ base: "flex-start", md: "center" }}
-							justify="space-between"
-							gap={3}
-							flexWrap="wrap"
-						>
-							<VStack align="flex-start" spacing={0}>
-								<Text fontWeight="semibold">{t("users")}</Text>
-								<Text
-									fontSize="sm"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
+						<Stack spacing={3}>
+							<Flex
+								align={{ base: "flex-start", md: "center" }}
+								justify="space-between"
+								gap={3}
+								flexWrap="wrap"
+							>
+								<VStack align="flex-start" spacing={0}>
+									<Text fontWeight="semibold">{t("users")}</Text>
+									<Text
+										fontSize="sm"
+										color="gray.600"
+										_dark={{ color: "gray.400" }}
+									>
+										{t("usersTable.total")}:{" "}
+										<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+											{formatCount(usersResponse.total, locale)}
+										</chakra.span>
+										{isFiltered
+											? ` • ${t("usersPage.filtered")}`
+											: ""}
+									</Text>
+								</VStack>
+								<HStack spacing={2} align="center">
+									<Text
+										fontSize="sm"
+										color="gray.600"
+										_dark={{ color: "gray.400" }}
+									>
+										{t("usersTable.status")}
+									</Text>
+									<Select
+										value={filters.status ?? ""}
+										fontSize="sm"
+										onChange={handleStatusFilter}
+										minW={{ base: "160px", md: "200px" }}
+									>
+										<option value="">
+											{t("usersPage.statusAll", "All statuses")}
+										</option>
+										<option value="active">{t("status.active")}</option>
+										<option value="on_hold">{t("status.on_hold")}</option>
+										<option value="disabled">{t("status.disabled")}</option>
+										<option value="limited">{t("status.limited")}</option>
+										<option value="expired">{t("status.expired")}</option>
+									</Select>
+								</HStack>
+							</Flex>
+							{!isDesktop && (
+								<SimpleGrid
+									columns={{ base: 2 }}
+									gap={3}
 								>
-									{t("usersTable.total")}:{" "}
-									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-										{formatCount(usersResponse.total, locale)}
-									</chakra.span>
-									{isFiltered
-										? ` • ${t("usersPage.filtered")}`
-										: ""}
-								</Text>
-							</VStack>
-							<HStack spacing={2} align="center">
-								<Text
-									fontSize="sm"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{t("usersTable.status")}
-								</Text>
-								<Select
-									value={filters.status ?? ""}
-									fontSize="sm"
-									onChange={handleStatusFilter}
-									minW={{ base: "160px", md: "200px" }}
-								>
-									<option value="">
-										{t("usersPage.statusAll", "All statuses")}
-									</option>
-									<option value="active">{t("status.active")}</option>
-									<option value="on_hold">{t("status.on_hold")}</option>
-									<option value="disabled">{t("status.disabled")}</option>
-									<option value="limited">{t("status.limited")}</option>
-									<option value="expired">{t("status.expired")}</option>
-								</Select>
-							</HStack>
-						</Flex>
+									{summaryItems.map((item, idx) => (
+										<SummaryStat key={`${item.label}-${idx}`} {...item} />
+									))}
+								</SimpleGrid>
+							)}
+						</Stack>
 					</CardHeader>
 					<CardBody
 						px={{
@@ -934,6 +947,106 @@ const UserCard: FC<UserCardProps> = ({
 		</Stack>
 	</Box>
 );
+
+const MobileUserCard: FC<UserCardProps> = ({
+	user,
+	onEdit,
+	canEdit,
+	onDelete,
+	isRTL,
+	t,
+}) => {
+	const [isOpen, setIsOpen] = useState(false);
+	const toggle = () => setIsOpen((prev) => !prev);
+	const usageLabel = (() => {
+		const used = formatBytes(user.used_traffic);
+		const total =
+			user.data_limit && user.data_limit > 0
+				? formatBytes(user.data_limit)
+				: t("usersTable.unlimited", "Unlimited");
+		return `${used} / ${total}`;
+	})();
+
+	return (
+		<Box
+			borderWidth="1px"
+			borderColor="light-border"
+			bg="surface.light"
+			_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+			borderRadius="xl"
+			p={3}
+			dir={isRTL ? "rtl" : "ltr"}
+			onClick={toggle}
+			cursor="pointer"
+		>
+			<Stack spacing={3}>
+				<HStack justify="space-between" align="center" spacing={3}>
+					<HStack spacing={3} align="center" minW={0}>
+						<OnlineBadge lastOnline={user.online_at ?? null} />
+						<Box minW={0}>
+							<Text
+								fontWeight="semibold"
+								noOfLines={1}
+								dir="ltr"
+								sx={{ unicodeBidi: "isolate" }}
+							>
+								{user.username}
+							</Text>
+							<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+								{usageLabel}
+							</Text>
+						</Box>
+					</HStack>
+					<StatusBadge expiryDate={user.expire} status={user.status} />
+				</HStack>
+				<Collapse in={isOpen} animateOpacity>
+					<Stack spacing={3} pt={1}>
+						<HStack justify="space-between" align="flex-start" spacing={4}>
+							<Box>
+								<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
+									{t("usersTable.service", "Service")}
+								</Text>
+								<Text
+									fontWeight="medium"
+									color={user.service_name ? "gray.800" : "gray.500"}
+									_dark={{ color: user.service_name ? "gray.100" : "gray.500" }}
+									noOfLines={1}
+								>
+									{user.service_name ?? t("usersTable.defaultService", "Default")}
+								</Text>
+							</Box>
+							<Box textAlign={isRTL ? "left" : "right"}>
+								<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
+									{t("usersTable.status")}
+								</Text>
+								<Text fontWeight="medium" color="gray.800" _dark={{ color: "gray.100" }}>
+									{t(`status.${user.status}`, user.status)}
+								</Text>
+							</Box>
+						</HStack>
+						<UsageMeter
+							status={user.status}
+							totalUsedTraffic={user.lifetime_used_traffic}
+							dataLimitResetStrategy={user.data_limit_reset_strategy}
+							used={user.used_traffic}
+							total={user.data_limit}
+							isRTL={isRTL}
+							t={t}
+						/>
+						<HStack justify="flex-start" align="center" spacing={3} onClick={(e) => e.stopPropagation()}>
+							<ActionButtons
+								user={user}
+								isRTL={isRTL}
+								onEdit={canEdit ? onEdit : undefined}
+								onDelete={onDelete}
+							/>
+						</HStack>
+					</Stack>
+				</Collapse>
+			</Stack>
+		</Box>
+	);
+};
 
 type ActionButtonsUser = User | UserListItem;
 type ActionButtonsProps = {

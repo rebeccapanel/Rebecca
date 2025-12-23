@@ -10,15 +10,14 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
+	Collapse,
 	chakra,
 	HStack,
 	IconButton,
 	Menu,
 	MenuButton,
-	MenuDivider,
 	MenuItem,
 	MenuList,
-	SimpleGrid,
 	Skeleton,
 	Stack,
 	Table,
@@ -31,6 +30,8 @@ import {
 	Thead,
 	Tooltip,
 	Tr,
+	VStack,
+	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
 	useToast,
@@ -40,7 +41,6 @@ import {
 	ArrowPathIcon,
 	CheckCircleIcon,
 	ChevronDownIcon,
-	EllipsisVerticalIcon,
 	PencilIcon,
 	PlayIcon,
 	TrashIcon,
@@ -194,48 +194,6 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 const formatCount = (value: number | null | undefined, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value ?? 0);
 
-type SummaryStatProps = {
-	label: string;
-	value: string | number;
-	helper?: string;
-	accentColor?: string;
-};
-
-const SummaryStat: FC<SummaryStatProps> = ({
-	label,
-	value,
-	helper,
-	accentColor = "primary.500",
-}) => (
-	<Box
-		borderWidth="1px"
-		borderColor="light-border"
-		borderRadius="xl"
-		p={4}
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-	>
-		<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-			{label}
-		</Text>
-		<Text
-			mt={1}
-			fontWeight="bold"
-			fontSize="2xl"
-			color={accentColor}
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
-		>
-			{value}
-		</Text>
-		{helper ? (
-			<Text mt={1} fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
-				{helper}
-			</Text>
-		) : null}
-	</Box>
-);
-
 const RoleChip: FC<{ label: string; value: number; color: string }> = ({
 	label,
 	value,
@@ -250,6 +208,7 @@ const RoleChip: FC<{ label: string; value: number; color: string }> = ({
 		py={2}
 		bg="surface.light"
 		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+		opacity={value === 0 ? 0.65 : 1}
 	>
 		<Text fontSize="sm" color={color} fontWeight="semibold">
 			{label}
@@ -304,6 +263,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const [adminToDelete, setAdminToDelete] = useState<Admin | null>(null);
 	const [adminToDisable, setAdminToDisable] = useState<Admin | null>(null);
 	const [disableReason, setDisableReason] = useState("");
+	const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
 	const [actionState, setActionState] = useState<{
 		type: "reset" | "disableAdmin" | "enableAdmin";
 		username: string;
@@ -506,49 +466,290 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		className: tableClassName,
 		sx: { ...baseTableSx, ...(normalizedSx || {}) },
 	};
+	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 
-	const summaryItems = useMemo(() => {
-		const active = admins.filter((a) => a.status === AdminStatus.Active).length;
-		const disabled = admins.filter((a) => a.status === AdminStatus.Disabled).length;
-		const fullAccessCount = admins.filter((a) => a.role === AdminRole.FullAccess).length;
-		const sudoCount = admins.filter((a) => a.role === AdminRole.Sudo).length;
-		const resellerCount = admins.filter((a) => a.role === AdminRole.Reseller).length;
-		const standardCount = admins.filter((a) => a.role === AdminRole.Standard).length;
+	const summaryData = useMemo(() => {
 		const usageTotal = admins.reduce(
 			(sum, a) => sum + (a.users_usage ?? 0) + (a.reset_bytes ?? 0),
 			0,
 		);
-		const items: SummaryStatProps[] = [
-			{
-				label: t("admins.total", "Total admins"),
-				value: formatCount(total, locale),
-				accentColor: "primary.500",
-			},
-			{
-				label: t("status.active"),
-				value: formatCount(active, locale),
-				accentColor: "green.400",
-			},
-			{
-				label: t("status.disabled"),
-				value: formatCount(disabled, locale),
-				accentColor: "red.400",
-			},
-			{
-				label: t("admins.rolesBreakdown", "Admins by role"),
-				value: `${t("admins.roles.fullAccess", "Full access")}: ${fullAccessCount} • ${t("admins.roles.sudo", "Sudo")}: ${sudoCount} • ${t("admins.roles.reseller", "Reseller")}: ${resellerCount} • ${t("admins.roles.standard", "Standard")}: ${standardCount}`,
-				accentColor: "blue.400",
-			},
-			{
-				label: t("UsersUsage", "Users Usage"),
-				value: formatBytes(usageTotal),
-				accentColor: "primary.500",
-			},
-		];
-		return items;
-	}, [admins, locale, t, total]);
+		const rolesActive = {
+			fullAccessCount: admins.filter(
+				(a) => a.role === AdminRole.FullAccess && a.status === AdminStatus.Active,
+			).length,
+			sudoCount: admins.filter(
+				(a) => a.role === AdminRole.Sudo && a.status === AdminStatus.Active,
+			).length,
+			resellerCount: admins.filter(
+				(a) => a.role === AdminRole.Reseller && a.status === AdminStatus.Active,
+			).length,
+			standardCount: admins.filter(
+				(a) => a.role === AdminRole.Standard && a.status === AdminStatus.Active,
+			).length,
+		};
+		const rolesDisabled = {
+			fullAccessCount: admins.filter(
+				(a) => a.role === AdminRole.FullAccess && a.status === AdminStatus.Disabled,
+			).length,
+			sudoCount: admins.filter(
+				(a) => a.role === AdminRole.Sudo && a.status === AdminStatus.Disabled,
+			).length,
+			resellerCount: admins.filter(
+				(a) => a.role === AdminRole.Reseller && a.status === AdminStatus.Disabled,
+			).length,
+			standardCount: admins.filter(
+				(a) => a.role === AdminRole.Standard && a.status === AdminStatus.Disabled,
+			).length,
+		};
+		return {
+			totalCount: total,
+			rolesActive,
+			rolesDisabled,
+			usageTotal,
+		};
+	}, [admins, total]);
 
-	const summaryColumns = Math.min(Math.max(summaryItems.length, 1), 5);
+	const mobileList = (
+		<VStack spacing={3} align="stretch">
+			{loading
+				? Array.from({ length: filters.limit || 5 }, (_, idx) => (
+						<Box
+							key={`skeleton-mobile-${idx}`}
+							borderWidth="1px"
+							borderColor="light-border"
+							bg="surface.light"
+							_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+							borderRadius="xl"
+							p={3}
+						>
+							<Stack spacing={2}>
+								<Skeleton height="16px" width="50%" />
+								<Skeleton height="12px" width="40%" />
+								<Skeleton height="8px" width="100%" />
+							</Stack>
+						</Box>
+					))
+				: admins.map((admin) => {
+						const isExpanded = expandedMobile === admin.username;
+						const usersLimitLabel =
+							admin.users_limit && admin.users_limit > 0
+								? String(admin.users_limit)
+								: "∞";
+						const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
+						const usageLabel = `${formatBytes(admin.users_usage ?? 0)} / ${
+							admin.data_limit && admin.data_limit > 0
+								? formatBytes(admin.data_limit)
+								: "∞"
+						}`;
+						const canManageThisAdmin = canManageAdminAccount(admin);
+						const canChangeStatus =
+							canManageThisAdmin && admin.username !== currentAdminUsername;
+						const showDisableAction =
+							canChangeStatus && admin.status !== AdminStatus.Disabled;
+						const hasLimitDisabledReason =
+							admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+						const disabledReasonLabel = admin.disabled_reason
+							? hasLimitDisabledReason
+								? t(
+										"admins.disabledReason.dataLimitExceeded",
+										"Your data limit has been reached",
+									)
+								: admin.disabled_reason
+							: null;
+						const showEnableAction =
+							canChangeStatus &&
+							admin.status === AdminStatus.Disabled &&
+							!hasLimitDisabledReason;
+						const showDeleteAction = canChangeStatus;
+
+						return (
+							<Box
+								key={admin.username}
+								borderWidth="1px"
+								borderColor="light-border"
+								bg="surface.light"
+								_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+								borderRadius="xl"
+								p={3}
+								dir={isRTL ? "rtl" : "ltr"}
+								onClick={() =>
+									setExpandedMobile((prev) =>
+										prev === admin.username ? null : admin.username,
+									)
+								}
+								cursor="pointer"
+							>
+								<Stack spacing={2}>
+									<HStack justify="space-between" align="center" spacing={3}>
+										<Stack spacing={0} minW={0}>
+											<Text
+												fontWeight="semibold"
+												noOfLines={1}
+												dir="ltr"
+												sx={{ unicodeBidi: "isolate" }}
+											>
+												{admin.username}
+											</Text>
+											<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+												{usageLabel}
+											</Text>
+										</Stack>
+										<AdminStatusBadge status={admin.status} />
+									</HStack>
+									<Collapse in={isExpanded} animateOpacity>
+										<Stack spacing={3} pt={1}>
+											<Stack spacing={0} align={isRTL ? "flex-end" : "flex-start"}>
+												<Text fontSize="sm" fontWeight="semibold">
+													{t("admins.usersManaged", "Managed users")}: {activeLabel}
+												</Text>
+												{admin.online_users !== null &&
+													admin.online_users !== undefined && (
+														<Text
+															fontSize="xs"
+															color="green.600"
+															_dark={{ color: "green.400" }}
+														>
+															{t("admins.details.onlineLabel", "Online")}:{" "}
+															{admin.online_users}
+														</Text>
+													)}
+											</Stack>
+											<AdminUsageSlider
+												isRTL={isRTL}
+												used={admin.users_usage ?? 0}
+												total={admin.data_limit ?? null}
+												lifetimeUsage={admin.lifetime_usage ?? null}
+											/>
+											{admin.status === AdminStatus.Disabled && disabledReasonLabel && (
+												<Text fontSize="xs" color="red.400">
+													{disabledReasonLabel}
+												</Text>
+											)}
+											<HStack
+												spacing={2}
+												justify="flex-start"
+												align="center"
+												flexWrap="wrap"
+												onClick={(event) => event.stopPropagation()}
+												dir={isRTL ? "rtl" : "ltr"}
+											>
+												{canManageThisAdmin && (
+													<>
+														<Tooltip label={t("edit")}>
+															<IconButton
+																aria-label={t("edit")}
+																icon={<PencilIcon width={20} />}
+																variant="ghost"
+																size="sm"
+																onClick={(event) => {
+																	event.stopPropagation();
+																	openAdminDialog(admin);
+																}}
+															/>
+														</Tooltip>
+														<Tooltip
+															label={t(
+																"admins.editPermissionsButton",
+																"Edit permissions",
+															)}
+														>
+															<IconButton
+																aria-label={t(
+																	"admins.editPermissionsButton",
+																	"Edit permissions",
+																)}
+																icon={<AdjustmentsHorizontalIcon width={20} />}
+																variant="ghost"
+																size="sm"
+																onClick={(event) => {
+																	event.stopPropagation();
+																	handleOpenPermissionsModal(admin);
+																}}
+															/>
+														</Tooltip>
+														<Tooltip label={t("admins.resetUsage")}>
+															<IconButton
+																aria-label={t("admins.resetUsage")}
+																icon={<ArrowPathIcon width={20} />}
+																variant="ghost"
+																size="sm"
+																isLoading={
+																	actionState?.username === admin.username &&
+																	actionState?.type === "reset"
+																}
+																onClick={(event) => {
+																	event.stopPropagation();
+																	runResetUsage(admin);
+																}}
+															/>
+														</Tooltip>
+													</>
+												)}
+												{showDisableAction && canManageThisAdmin && (
+													<Tooltip label={t("admins.disableAdmin", "Disable admin")}>
+														<IconButton
+															aria-label={t("admins.disableAdmin", "Disable admin")}
+															icon={<NoSymbolIcon width={20} />}
+															variant="ghost"
+															size="sm"
+															isLoading={
+																actionState?.username === admin.username &&
+																actionState?.type === "disableAdmin"
+															}
+															onClick={(event) => {
+																event.stopPropagation();
+																startDisableAdmin(admin);
+															}}
+														/>
+													</Tooltip>
+												)}
+												{showEnableAction && canManageThisAdmin && (
+													<Tooltip label={t("admins.enableAdmin", "Enable admin")}>
+														<IconButton
+															aria-label={t("admins.enableAdmin", "Enable admin")}
+															icon={<PlayIcon width={20} />}
+															variant="ghost"
+															size="sm"
+															isLoading={
+																actionState?.username === admin.username &&
+																actionState?.type === "enableAdmin"
+															}
+															onClick={(event) => {
+																event.stopPropagation();
+																handleEnableAdmin(admin);
+															}}
+														/>
+													</Tooltip>
+												)}
+												{showDeleteAction && canManageThisAdmin && (
+													<Tooltip label={t("delete")}>
+														<IconButton
+															aria-label={t("delete")}
+															icon={<TrashIcon width={20} />}
+															variant="ghost"
+															size="sm"
+															colorScheme="red"
+															onClick={(event) => {
+																event.stopPropagation();
+																startDeleteDialog(admin);
+															}}
+														/>
+													</Tooltip>
+												)}
+											</HStack>
+										</Stack>
+									</Collapse>
+								</Stack>
+							</Box>
+						);
+					})}
+			{!loading && admins.length === 0 && (
+				<Box py={6}>
+					<Text textAlign="center">{t("admins.noAdmins")}</Text>
+				</Box>
+			)}
+		</VStack>
+	);
 
 	if (loading && !admins.length) {
 		return (
@@ -559,20 +760,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	}
 	return (
 		<>
-			<SimpleGrid
-				columns={{
-					base: 1,
-					sm: Math.min(summaryColumns, 2),
-					md: Math.min(summaryColumns, 3),
-					xl: summaryColumns,
-				}}
-				gap={3}
-			>
-				{summaryItems.map((item, idx) => (
-					<SummaryStat key={`${item.label}-${idx}`} {...item} />
-				))}
-			</SimpleGrid>
-			<SimpleGrid columns={{ base: 1 }} gap={3}>
+			<Stack spacing={3}>
 				<Card
 					borderWidth="1px"
 					borderColor="light-border"
@@ -585,171 +773,220 @@ export const AdminsTable: FC<TableProps> = (props) => {
 						_dark={{ borderColor: "whiteAlpha.200" }}
 						pb={3}
 					>
-						<Text fontWeight="semibold">
-							{t("admins.rolesBreakdown", "Admins by role")}
-						</Text>
+						<HStack justify="space-between" align="center" flexWrap="wrap" gap={2}>
+							<HStack spacing={2} align="baseline" flexWrap="wrap">
+								<Text fontWeight="semibold">{t("admins.manageTab", "Admins")}</Text>
+								<Text color="gray.500" _dark={{ color: "gray.400" }}>·</Text>
+								<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+									{t("admins.totalLabel", "Total")}:{" "}
+									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+										{formatCount(summaryData.totalCount, locale)}
+									</chakra.span>
+								</Text>
+								<Text color="gray.500" _dark={{ color: "gray.400" }}>·</Text>
+								<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+									{t("UsersUsage")}:{" "}
+									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+										{formatBytes(summaryData.usageTotal)}
+									</chakra.span>
+								</Text>
+							</HStack>
+						</HStack>
 					</CardHeader>
 					<CardBody>
 						<Stack
-							spacing={3}
-							direction={{ base: "column", md: "row" }}
+							spacing={5}
+							direction={{ base: "column", lg: "row" }}
 							flexWrap="wrap"
+							align="flex-start"
 						>
-							<RoleChip
-								label={t("admins.roles.fullAccess", "Full access")}
-								value={admins.filter((a) => a.role === AdminRole.FullAccess).length}
-								color="yellow.500"
-							/>
-							<RoleChip
-								label={t("admins.roles.sudo", "Sudo")}
-								value={admins.filter((a) => a.role === AdminRole.Sudo).length}
-								color="purple.400"
-							/>
-							<RoleChip
-								label={t("admins.roles.reseller", "Reseller")}
-								value={admins.filter((a) => a.role === AdminRole.Reseller).length}
-								color="blue.400"
-							/>
-							<RoleChip
-								label={t("admins.roles.standard", "Standard")}
-								value={admins.filter((a) => a.role === AdminRole.Standard).length}
-								color="gray.500"
-							/>
+							<HStack spacing={3} flexWrap="wrap" align="center">
+								<Text fontWeight="semibold">{t("status.active")}</Text>
+								<RoleChip
+									label={t("admins.roles.fullAccess", "Full access")}
+									value={summaryData.rolesActive.fullAccessCount}
+									color="yellow.500"
+								/>
+								<RoleChip
+									label={t("admins.roles.sudo", "Sudo")}
+									value={summaryData.rolesActive.sudoCount}
+									color="purple.400"
+								/>
+								<RoleChip
+									label={t("admins.roles.reseller", "Reseller")}
+									value={summaryData.rolesActive.resellerCount}
+									color="blue.400"
+								/>
+								<RoleChip
+									label={t("admins.roles.standard", "Standard")}
+									value={summaryData.rolesActive.standardCount}
+									color="gray.500"
+								/>
+							</HStack>
+							<HStack spacing={3} flexWrap="wrap" align="center">
+								<Text fontWeight="semibold">{t("status.disabled")}</Text>
+								<RoleChip
+									label={t("admins.roles.fullAccess", "Full access")}
+									value={summaryData.rolesDisabled.fullAccessCount}
+									color="yellow.500"
+								/>
+								<RoleChip
+									label={t("admins.roles.sudo", "Sudo")}
+									value={summaryData.rolesDisabled.sudoCount}
+									color="purple.400"
+								/>
+								<RoleChip
+									label={t("admins.roles.reseller", "Reseller")}
+									value={summaryData.rolesDisabled.resellerCount}
+									color="blue.400"
+								/>
+								<RoleChip
+									label={t("admins.roles.standard", "Standard")}
+									value={summaryData.rolesDisabled.standardCount}
+									color="gray.500"
+								/>
+							</HStack>
 						</Stack>
 					</CardBody>
 				</Card>
-			</SimpleGrid>
-			<Box position="relative">
-				<Card
-					borderWidth="1px"
-					borderColor="light-border"
-					bg="surface.light"
-					_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-				>
-					<CardHeader
-						borderBottomWidth="1px"
+				<Box position="relative">
+					<Card
+						borderWidth="1px"
 						borderColor="light-border"
-						_dark={{ borderColor: "whiteAlpha.200" }}
-						pb={3}
+						bg="surface.light"
+						_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
 					>
-						<HStack justify="space-between" align="center" flexWrap="wrap">
-							<Stack spacing={0}>
-								<Text fontWeight="semibold">{t("admins.manageTab", "Admins")}</Text>
-								<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
-									{t("admins.totalLabel", "Total")}: {" "}
-									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-										{formatCount(total, locale)}
-									</chakra.span>
-									{isFiltered ? ` · ${t("usersPage.filtered")}` : ""}
+						<CardHeader
+							borderBottomWidth="1px"
+							borderColor="light-border"
+							_dark={{ borderColor: "whiteAlpha.200" }}
+							pb={3}
+						>
+							<HStack justify="space-between" align="center" flexWrap="wrap">
+								<Stack spacing={0}>
+									<Text fontWeight="semibold">{t("admins.manageTab", "Admins")}</Text>
+									<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+										{t("admins.totalLabel", "Total")}: {" "}
+										<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+											{formatCount(total, locale)}
+										</chakra.span>
+										{isFiltered ? ` · ${t("usersPage.filtered")}` : ""}
+									</Text>
+								</Stack>
+								<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+									{t(
+										"admins.pageDescription",
+										"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
+									)}
 								</Text>
-							</Stack>
-							<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-								{t(
-									"admins.pageDescription",
-									"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-								)}
-							</Text>
-						</HStack>
-					</CardHeader>
-					<CardBody
-						px={{ base: 3, md: 4 }}
-						py={{ base: 3, md: 4 }}
-					>
-						<Box w="full">
-							<Box w="full" borderWidth="1px" borderRadius="xl" overflow="hidden">
-								<Table
-									variant="simple"
-									dir={isRTL ? "rtl" : "ltr"}
-									width="100%"
-									w="full"
-									{...tableProps}
-								>
-									<Thead>
-										<Tr>
-											{columnsToRender.map((col) => {
-												if (col === "username") {
+							</HStack>
+						</CardHeader>
+						<CardBody
+							px={{ base: 3, md: 4 }}
+							py={{ base: 3, md: 4 }}
+						>
+							<Box w="full">
+						<Box
+							w="full"
+							borderWidth="1px"
+							borderRadius="xl"
+							overflow="hidden"
+							overflowX="auto"
+						>
+									{isDesktop ? (
+										<Table
+										variant="simple"
+										dir={isRTL ? "rtl" : "ltr"}
+										width="100%"
+										w="full"
+										{...tableProps}
+									>
+										<Thead>
+											<Tr>
+												{columnsToRender.map((col) => {
+													if (col === "username") {
+														return (
+															<Th
+																key="username"
+																minW="200px"
+																cursor="pointer"
+																onClick={() => handleSort("username")}
+																textAlign={cellAlign}
+															>
+																<HStack
+																	spacing={2}
+																	align="center"
+																	justify="flex-start"
+																	flexDirection={isRTL ? "row-reverse" : "row"}
+																>
+																	<Text>{t("username")}</Text>
+																	<SortIndicator column="username" />
+																</HStack>
+															</Th>
+														);
+													}
+													if (col === "status") {
+														return (
+															<Th key="status" minW="140px" textAlign={cellAlign}>
+																<Text>{t("status")}</Text>
+															</Th>
+														);
+													}
+													if (col === "users_count") {
+														return (
+															<Th
+																key="users_count"
+																minW="130px"
+																cursor="pointer"
+																onClick={() => handleSort("users_count")}
+																textAlign={cellAlign}
+															>
+																<HStack
+																	spacing={2}
+																	align="center"
+																	justify="flex-start"
+																	flexDirection={isRTL ? "row-reverse" : "row"}
+																>
+																	<Text>{t("admins.usersManaged", "Managed users")}</Text>
+																	<SortIndicator column="users_count" />
+																</HStack>
+															</Th>
+														);
+													}
+													if (col === "data") {
+														return (
+															<Th key="data" minW="240px" textAlign={cellAlign}>
+																<HStack spacing={2} align="center">
+																	<Text>{t("admins.dataUsageHeader", "Usage / Limit")}</Text>
+																	<Menu>
+																		<MenuButton
+																			as={IconButton}
+																			size="xs"
+																			variant="ghost"
+																			icon={<SortIndicator column="data" />}
+																		/>
+																		<MenuList>
+																			<MenuItem onClick={() => handleSort("data_usage")}>
+																				{t("admins.sortByUsage")}
+																			</MenuItem>
+																			<MenuItem onClick={() => handleSort("data_limit")}>
+																				{t("admins.sortByLimit")}
+																			</MenuItem>
+																		</MenuList>
+																	</Menu>
+																</HStack>
+															</Th>
+														);
+													}
 													return (
 														<Th
-															key="username"
-															minW="200px"
-															cursor="pointer"
-															onClick={() => handleSort("username")}
-															textAlign={cellAlign}
-														>
-															<HStack
-																spacing={2}
-																align="center"
-																justify="flex-start"
-																flexDirection={isRTL ? "row-reverse" : "row"}
-															>
-																<Text>{t("username")}</Text>
-																<SortIndicator column="username" />
-															</HStack>
-														</Th>
+															key="actions"
+															minW="150px"
+															width="180px"
+															textAlign={actionsAlign}
+														/>
 													);
-												}
-												if (col === "status") {
-													return (
-														<Th key="status" minW="160px" textAlign={cellAlign}>
-															<Text>{t("status")}</Text>
-														</Th>
-													);
-												}
-												if (col === "users_count") {
-													return (
-														<Th
-															key="users_count"
-															minW="140px"
-															cursor="pointer"
-															onClick={() => handleSort("users_count")}
-															textAlign={cellAlign}
-														>
-															<HStack
-																spacing={2}
-																align="center"
-																justify="flex-start"
-																flexDirection={isRTL ? "row-reverse" : "row"}
-															>
-																<Text>{t("admins.usersManaged", "Managed users")}</Text>
-																<SortIndicator column="users_count" />
-															</HStack>
-														</Th>
-													);
-												}
-												if (col === "data") {
-													return (
-														<Th key="data" minW="240px" textAlign={cellAlign}>
-															<HStack spacing={2} align="center">
-																<Text>{t("admins.dataUsageHeader", "Usage / Limit")}</Text>
-																<Menu>
-																	<MenuButton
-																		as={IconButton}
-																		size="xs"
-																		variant="ghost"
-																		icon={<SortIndicator column="data" />}
-																	/>
-																	<MenuList>
-																		<MenuItem onClick={() => handleSort("data_usage")}>
-																			{t("admins.sortByUsage")}
-																		</MenuItem>
-																		<MenuItem onClick={() => handleSort("data_limit")}>
-																			{t("admins.sortByLimit")}
-																		</MenuItem>
-																	</MenuList>
-																</Menu>
-															</HStack>
-														</Th>
-													);
-												}
-												return (
-													<Th
-														key="actions"
-														minW="150px"
-														width="180px"
-														textAlign={actionsAlign}
-													/>
-												);
-											})}
+												})}
 									</Tr>
 								</Thead>
 								<Tbody>
@@ -937,105 +1174,118 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											),
 											actions: (
 												<Td textAlign={actionsAlign}>
-													<Menu>
-														<MenuButton
-															as={IconButton}
-															icon={<EllipsisVerticalIcon width={20} />}
-															variant="ghost"
-															isDisabled={!canManageThisAdmin && !canChangeStatus}
-															onClick={(event) => event.stopPropagation()}
-														/>
-														<MenuList onClick={(event) => event.stopPropagation()}>
-															{canManageThisAdmin && (
-																<>
-																	<MenuItem
+													<HStack
+														spacing={2}
+														justify="flex-start"
+														align="center"
+														flexWrap="wrap"
+														onClick={(event) => event.stopPropagation()}
+														dir={isRTL ? "rtl" : "ltr"}
+													>
+														{canManageThisAdmin && (
+															<>
+																<Tooltip label={t("edit")}>
+																	<IconButton
+																		aria-label={t("edit")}
 																		icon={<PencilIcon width={20} />}
+																		variant="ghost"
+																		size="sm"
 																		onClick={(event) => {
 																			event.stopPropagation();
 																			openAdminDialog(admin);
 																		}}
-																	>
-																		{t("edit")}
-																	</MenuItem>
-																	<MenuItem
+																	/>
+																</Tooltip>
+																<Tooltip
+																	label={t(
+																		"admins.editPermissionsButton",
+																		"Edit permissions",
+																	)}
+																>
+																	<IconButton
+																		aria-label={t(
+																			"admins.editPermissionsButton",
+																			"Edit permissions",
+																		)}
 																		icon={<AdjustmentsHorizontalIcon width={20} />}
+																		variant="ghost"
+																		size="sm"
 																		onClick={(event) => {
 																			event.stopPropagation();
 																			handleOpenPermissionsModal(admin);
 																		}}
-																	>
-																		{t(
-																			"admins.editPermissionsButton",
-																			"Edit permissions",
-																		)}
-																	</MenuItem>
-																	<MenuItem
+																	/>
+																</Tooltip>
+																<Tooltip label={t("admins.resetUsage")}>
+																	<IconButton
+																		aria-label={t("admins.resetUsage")}
 																		icon={<ArrowPathIcon width={20} />}
+																		variant="ghost"
+																		size="sm"
+																		isLoading={
+																			actionState?.username === admin.username &&
+																			actionState?.type === "reset"
+																		}
 																		onClick={(event) => {
 																			event.stopPropagation();
 																			runResetUsage(admin);
 																		}}
-																		isDisabled={
-																			actionState?.username === admin.username &&
-																			actionState?.type === "reset"
-																		}
-																	>
-																		{t("admins.resetUsage")}
-																	</MenuItem>
-																</>
-															)}
-															{(showDisableAction ||
-																showEnableAction ||
-																showDeleteAction) &&
-																canManageThisAdmin && <MenuDivider />}
-															{showDisableAction && (
-																<MenuItem
+																	/>
+																</Tooltip>
+															</>
+														)}
+														{showDisableAction && canManageThisAdmin && (
+															<Tooltip label={t("admins.disableAdmin", "Disable admin")}>
+																<IconButton
+																	aria-label={t("admins.disableAdmin", "Disable admin")}
 																	icon={<NoSymbolIcon width={20} />}
+																	variant="ghost"
+																	size="sm"
+																	isLoading={
+																		actionState?.username === admin.username &&
+																		actionState?.type === "disableAdmin"
+																	}
 																	onClick={(event) => {
 																		event.stopPropagation();
 																		startDisableAdmin(admin);
 																	}}
-																	isDisabled={
-																		actionState?.username === admin.username &&
-																		actionState?.type === "disableAdmin"
-																	}
-																>
-																	{t("admins.disableAdmin", "Disable admin")}
-																</MenuItem>
-															)}
-															{showEnableAction && (
-																<MenuItem
+																/>
+															</Tooltip>
+														)}
+														{showEnableAction && canManageThisAdmin && (
+															<Tooltip label={t("admins.enableAdmin", "Enable admin")}>
+																<IconButton
+																	aria-label={t("admins.enableAdmin", "Enable admin")}
 																	icon={<PlayIcon width={20} />}
+																	variant="ghost"
+																	size="sm"
+																	isLoading={
+																		actionState?.username === admin.username &&
+																		actionState?.type === "enableAdmin"
+																	}
 																	onClick={(event) => {
 																		event.stopPropagation();
 																		handleEnableAdmin(admin);
 																	}}
-																	isDisabled={
-																		actionState?.username === admin.username &&
-																		actionState?.type === "enableAdmin"
-																	}
-																>
-																	{t("admins.enableAdmin", "Enable admin")}
-																</MenuItem>
-															)}
-															{showDeleteAction &&
-																(showDisableAction || showEnableAction) && (
-																	<MenuDivider />
-																)}
-															{showDeleteAction && (
-																<MenuItem
-																	color="red.500"
+																/>
+															</Tooltip>
+														)}
+														{showDeleteAction && canManageThisAdmin && (
+															<Tooltip label={t("delete")}>
+																<IconButton
+																	aria-label={t("delete")}
 																	icon={<TrashIcon width={20} />}
+																	variant="ghost"
+																	size="sm"
+																	colorScheme="red"
 																	onClick={(event) => {
 																		event.stopPropagation();
 																		startDeleteDialog(admin);
 																	}}
-																>
-																	{t("delete")}
-																</MenuItem>
-															)}
-														</MenuList>
-													</Menu>
+																/>
+															</Tooltip>
+														)}
+													</HStack>
 												</Td>
 											),
 										} as const;
@@ -1063,13 +1313,17 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											</Td>
 										</Tr>
 									)}
-								</Tbody>
+										</Tbody>
 							</Table>
+									) : (
+										mobileList
+									)}
 						</Box>
 					</Box>
 				</CardBody>
 			</Card>
 		</Box>
+			</Stack>
 		<AlertDialog
 			isOpen={isDeleteDialogOpen}
 			leastDestructiveRef={deleteCancelRef}
