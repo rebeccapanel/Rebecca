@@ -54,23 +54,27 @@ def upgrade() -> None:
             """
         )
     else:
-        # Fallback: small ORM loop (acceptable for dev/test SQLite)
+        # Fallback: small loop using raw queries to avoid model mismatches on SQLite
         session = Session(bind=bind)
         try:
-            from app.db.models import User, Proxy
-
-            users = session.query(User).all()
-            for user in users:
-                flow_value = getattr(user, "flow", None)
-                proxies = session.query(Proxy).filter(Proxy.user_id == user.id).all()
-                for proxy in proxies:
-                    settings = dict(proxy.settings or {})
-                    proxy_flow = settings.pop("flow", None)
-                    if not flow_value and proxy_flow:
-                        flow_value = proxy_flow
-                    proxy.settings = settings
-                if flow_value:
-                    user.flow = flow_value
+            results = session.execute(sa.text("SELECT id, user_id, settings FROM proxies")).fetchall()
+            for row in results:
+                settings = row.settings or {}
+                if isinstance(settings, str):
+                    import json
+                    settings = json.loads(settings)
+                proxy_flow = settings.pop("flow", None)
+                if proxy_flow:
+                    session.execute(
+                        sa.text(
+                            "UPDATE users SET flow = :flow WHERE id = :uid AND (flow IS NULL OR flow = '')"
+                        ),
+                        {"flow": proxy_flow, "uid": row.user_id},
+                    )
+                session.execute(
+                    sa.text("UPDATE proxies SET settings = :settings WHERE id = :pid"),
+                    {"settings": settings, "pid": row.id},
+                )
             session.commit()
         finally:
             session.close()

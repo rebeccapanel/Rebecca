@@ -406,7 +406,7 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     # Refresh user state to ensure we have latest data
     if user_state.persistent:
-        db.refresh(dbuser, ["used_traffic", "status", "node_usages", "next_plan"])
+        db.refresh(dbuser, ["used_traffic", "status", "node_usages"])
 
     usage_log = UserUsageResetLogs(
         user=dbuser,
