@@ -181,6 +181,20 @@ const EVENT_TOGGLE_GROUPS: EventToggleGroup[] = [
 					"Notify when a user's usage is reset automatically by the next plan.",
 			},
 			{
+				key: "user.auto_renew_set",
+				labelKey: "settings.telegram.events.userAutoRenewSet",
+				defaultLabel: "Auto renew set",
+				hintKey: "settings.telegram.events.userAutoRenewSetHint",
+				defaultHint: "Notify when auto renew is configured for a user.",
+			},
+			{
+				key: "user.auto_renew_applied",
+				labelKey: "settings.telegram.events.userAutoRenewApplied",
+				defaultLabel: "Auto renew applied",
+				hintKey: "settings.telegram.events.userAutoRenewAppliedHint",
+				defaultHint: "Notify when an auto renew rule triggers for a user.",
+			},
+			{
 				key: "user.subscription_revoked",
 				labelKey: "settings.telegram.events.userSubscriptionRevoked",
 				defaultLabel: "Subscription revoked",

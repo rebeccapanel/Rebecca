@@ -1,14 +1,16 @@
 import dayjs from "dayjs";
 import i18n from "i18next";
 
-const unitKeyMap: Record<"years" | "months" | "days" | "hours" | "minutes", string> =
-	{
-		years: "time.years",
-		months: "time.months",
-		days: "time.days",
-		hours: "time.hours",
-		minutes: "time.minutes",
-	};
+const unitKeyMap: Record<
+	"years" | "months" | "days" | "hours" | "minutes",
+	string
+> = {
+	years: "time.years",
+	months: "time.months",
+	days: "time.days",
+	hours: "time.hours",
+	minutes: "time.minutes",
+};
 
 const formatUnit = (value: number, unit: keyof typeof unitKeyMap): string => {
 	const abs = Math.abs(value);
@@ -20,7 +22,7 @@ const formatUnit = (value: number, unit: keyof typeof unitKeyMap): string => {
 
 export const relativeExpiryDate = (expiryDate: number | null | undefined) => {
 	const dateInfo = { status: "", time: "" };
-	if (expiryDate) {
+	if (expiryDate !== null && expiryDate !== undefined) {
 		if (
 			dayjs(expiryDate * 1000)
 				.utc()

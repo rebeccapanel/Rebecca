@@ -216,6 +216,15 @@ def add_user(
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
         user = UserResponse.model_validate(dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
+        if user.next_plans or user.next_plan:
+            total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
+            bg.add_task(
+                report.user_auto_renew_set,
+                user=user,
+                user_admin=dbuser.admin,
+                by=admin,
+                total_rules=total_rules,
+            )
         logger.info(f'New user "{dbuser.username}" added via service {service.name}')
         return user
 
@@ -462,6 +471,15 @@ def modify_user(
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
     bg.add_task(report.user_updated, user=user, user_admin=dbuser.admin, by=admin)
+    if user.next_plans or user.next_plan:
+        total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
+        bg.add_task(
+            report.user_auto_renew_set,
+            user=user,
+            user_admin=dbuser.admin,
+            by=admin,
+            total_rules=total_rules,
+        )
 
     logger.info(f'User "{user.username}" modified')
 

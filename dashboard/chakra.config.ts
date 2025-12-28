@@ -5,7 +5,8 @@ import { mode, type StyleFunctionProps } from "@chakra-ui/theme-tools";
 // switch named palettes at runtime by toggling a class on documentElement.
 // The variables below provide sensible defaults which match the previous
 // primary color scale.
-export const theme = extendTheme({
+const sharedThemeConfig = {
+	direction: "ltr" as const,
 	shadows: { outline: "0 0 0 2px var(--chakra-colors-primary-200)" },
 	fonts: {
 		body: `Arad,Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol",sans-serif`,
@@ -430,4 +431,7 @@ export const theme = extendTheme({
 			},
 		},
 	},
-});
+};
+
+export const theme = extendTheme(sharedThemeConfig);
+export const rtlTheme = extendTheme({ ...sharedThemeConfig, direction: "rtl" });

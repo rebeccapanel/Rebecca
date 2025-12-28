@@ -29,7 +29,7 @@ import { Input } from "components/Input";
 import { Language } from "components/Language";
 import ThemeSelector from "components/ThemeSelector";
 import { type FC, useEffect, useState } from "react";
-import { type FieldValues, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { fetch } from "service/http";
@@ -59,6 +59,11 @@ const LoginIcon = chakra(ArrowRightOnRectangleIcon, {
 const Eye = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const EyeSlash = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
 
+type LoginFormValues = {
+	username: string;
+	password: string;
+};
+
 export const Login: FC = () => {
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(false);
@@ -71,8 +76,18 @@ export const Login: FC = () => {
 		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
 		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
 	const endAdornmentProps = isRTL
-		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
-		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
+		? {
+				insetInlineStart: "0.5rem",
+				insetInlineEnd: "auto",
+				right: "auto",
+				left: "0.5rem",
+			}
+		: {
+				insetInlineEnd: "0.5rem",
+				insetInlineStart: "auto",
+				right: "0.5rem",
+				left: "auto",
+			};
 	const { colorMode } = useColorMode();
 	// slightly off-white in light mode so the card is visible against a plain white page
 	// const cardBg = useColorModeValue("gray.50", "gray.700");
@@ -82,16 +97,23 @@ export const Login: FC = () => {
 		register,
 		formState: { errors },
 		handleSubmit,
-	} = useForm({
+		watch,
+		trigger,
+	} = useForm<LoginFormValues>({
 		resolver: zodResolver(schema),
 	});
+	const usernameValue = watch("username") || "";
+	const passwordValue = watch("password") || "";
+	const canSubmit =
+		Boolean(usernameValue.trim().length) && Boolean(passwordValue.trim().length);
+
 	useEffect(() => {
 		removeAuthToken();
 		if (location.pathname !== "/login") {
 			navigate("/login", { replace: true });
 		}
 	}, [location.pathname, navigate]);
-	const login = (values: FieldValues) => {
+	const login = (values: LoginFormValues) => {
 		setError("");
 		const formData = new FormData();
 		formData.append("username", values.username);
@@ -109,6 +131,17 @@ export const Login: FC = () => {
 			})
 			.finally(() => setLoading(false));
 	};
+
+	const handleLoginClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
+		// Prevent submit when fields are empty and surface validation errors
+		const valid = await trigger(["username", "password"], { shouldFocus: true });
+		if (!valid) {
+			event.preventDefault();
+			return;
+		}
+		handleSubmit(login)(event);
+	};
+
 	return (
 		<VStack justifyContent="center" minH="100vh" p="6" w="full">
 			<Card
@@ -141,13 +174,17 @@ export const Login: FC = () => {
 					<Box w="full" pt="4">
 						<form onSubmit={handleSubmit(login)}>
 							<VStack spacing={4}>
-								<FormControl>
+								<FormControl isInvalid={!!errors.username}>
 									<Input
 										w="full"
 										placeholder={t("username")}
 										{...register("username")}
-										error={t(errors?.username?.message as string)}
 									/>
+									<FormErrorMessage>
+										{errors.username?.message
+											? t(errors.username.message as string)
+											: ""}
+									</FormErrorMessage>
 								</FormControl>
 								<FormControl isInvalid={!!errors.password}>
 									<InputGroup dir={isRTL ? "rtl" : "ltr"}>
@@ -178,7 +215,9 @@ export const Login: FC = () => {
 										</InputRightElement>
 									</InputGroup>
 									<FormErrorMessage>
-										{errors.password?.message as string}
+										{errors.password?.message
+											? t(errors.password.message as string)
+											: ""}
 									</FormErrorMessage>
 								</FormControl>
 								{error && (
@@ -192,6 +231,10 @@ export const Login: FC = () => {
 									type="submit"
 									w="full"
 									colorScheme="primary"
+									onClick={handleLoginClick}
+									aria-disabled={!canSubmit}
+									opacity={!canSubmit ? 0.7 : 1}
+									cursor={!canSubmit ? "not-allowed" : "pointer"}
 								>
 									{<LoginIcon marginRight={1} />}
 									{t("login")}

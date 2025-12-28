@@ -165,6 +165,10 @@ class NextPlanModel(BaseModel):
     expire: Optional[int] = None
     add_remaining_traffic: bool = False
     fire_on_either: bool = True
+    increase_data_limit: bool = False
+    start_on_first_connect: bool = False
+    trigger_on: str = "either"
+    position: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -178,6 +182,8 @@ class User(BaseModel):
     data_limit_reset_strategy: UserDataLimitResetStrategy = UserDataLimitResetStrategy.no_reset
     inbounds: Dict[ProxyTypes, List[str]] = {}
     note: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    telegram_id: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    contact_number: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     sub_updated_at: Optional[datetime] = Field(default=None, json_schema_extra={"nullable": True})
     sub_last_user_agent: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     online_at: Optional[datetime] = Field(default=None, json_schema_extra={"nullable": True})
@@ -192,6 +198,7 @@ class User(BaseModel):
     auto_delete_in_days: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
 
     next_plan: Optional[NextPlanModel] = Field(default=None, json_schema_extra={"nullable": True})
+    next_plans: Optional[List[NextPlanModel]] = Field(default=None, json_schema_extra={"nullable": True})
 
     @property
     def proxy_type(self) -> Optional[ProxyTypes]:
@@ -209,6 +216,30 @@ class User(BaseModel):
             if normalized in ALLOWED_FLOW_VALUES:
                 return normalized
         raise ValueError("Unsupported flow value")
+
+    @field_validator("telegram_id", mode="before")
+    def validate_telegram_id(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed == "":
+                return None
+            if re.match(r"^[\w.@+\- ]+$", trimmed):
+                return trimmed
+        raise ValueError("Invalid telegram_id format")
+
+    @field_validator("contact_number", mode="before")
+    def validate_contact_number(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed == "":
+                return None
+            if re.match(r"^[0-9+\-() ]+$", trimmed):
+                return trimmed
+        raise ValueError("Invalid contact_number format")
 
     def _account_email(self) -> str:
         identifier = getattr(self, "id", None)
@@ -513,6 +544,7 @@ class UserServiceCreate(BaseModel):
     on_hold_expire_duration: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     auto_delete_in_days: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     next_plan: Optional[NextPlanModel] = Field(default=None, json_schema_extra={"nullable": True})
+    next_plans: Optional[List[NextPlanModel]] = Field(default=None, json_schema_extra={"nullable": True})
     ip_limit: int = 0
     flow: Optional[str] = None
     credential_key: Optional[str] = None
@@ -547,6 +579,7 @@ class UserResponse(User):
     status: UserStatus
     used_traffic: int
     lifetime_used_traffic: int = 0
+    next_plans: List[NextPlanModel] = Field(default_factory=list)
     created_at: datetime
     links: List[str] = Field(default_factory=list, exclude=True)  # Excluded from response to reduce payload
     subscription_url: str = ""

@@ -3,7 +3,7 @@
 	"private": true,
 	"version": "0.0.0",
 	"scripts": {
-		"dev": "vite --port 3000",
+		"dev": "vite --host 127.0.0.1 --port 3000",
 		"build": "tsc && vite build",
 		"build:dev": "vite build --mode development",
 		"preview": "vite preview --port 3000",
@@ -45,6 +45,7 @@
 		"react-use-websocket": "^4.13.0",
 		"rollup-plugin-visualizer": "^5.9.0",
 		"slick-carousel": "^1.8.1",
+		"stylis-plugin-rtl": "^2.1.1",
 		"twemoji": "^14.0.2",
 		"vite-tsconfig-paths": "^4.0.3",
 		"zod": "^3.19.1",

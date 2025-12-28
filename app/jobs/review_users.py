@@ -113,7 +113,7 @@ def review():
     now = datetime.now(timezone.utc)
     now_ts = now.timestamp()
     started_at = now_ts
-    max_run_seconds = JOB_REVIEW_USERS_INTERVAL * 0.7
+    max_run_seconds = max(5, JOB_REVIEW_USERS_INTERVAL * 0.7)
     try:
         with GetDB() as db:
             try:

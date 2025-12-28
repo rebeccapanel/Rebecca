@@ -109,24 +109,27 @@ export const StatusBadge: FC<UserStatusProps> = ({
 					</Text>
 				)}
 			</Badge>
-			{showDetail && expiryDate && dateInfo.time && (
-				<Text
-					display="inline-flex"
-					fontSize="xs"
-					fontWeight="medium"
-					color="gray.600"
-					_dark={{
-						color: "gray.400",
-					}}
-					as="span"
-					gap={1}
-					alignItems="center"
-				>
-					{isExpiry
-						? renderRelativeText("expires")
-						: renderRelativeText("expired")}
-				</Text>
-			)}
+			{showDetail &&
+				expiryDate !== null &&
+				expiryDate !== undefined &&
+				dateInfo.time && (
+					<Text
+						display="inline-flex"
+						fontSize="xs"
+						fontWeight="medium"
+						color="gray.600"
+						_dark={{
+							color: "gray.400",
+						}}
+						as="span"
+						gap={1}
+						alignItems="center"
+					>
+						{isExpiry
+							? renderRelativeText("expires")
+							: renderRelativeText("expired")}
+					</Text>
+				)}
 		</Box>
 	);
 };

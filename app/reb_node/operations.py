@@ -175,7 +175,7 @@ def _prepare_user_for_runtime(dbuser: "DBUser") -> "DBUser":
             ]
             # Add next_plan if table exists
             if _next_plan_table_exists(db):
-                options.append(joinedload(User.next_plan))
+                options.append(joinedload(User.next_plans))
             query = query.options(*options)
             fresh = query.first()
             if fresh:

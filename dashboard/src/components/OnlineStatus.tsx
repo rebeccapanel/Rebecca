@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 type UserStatusProps = {
 	lastOnline: string | null;
+	withMargin?: boolean;
 };
 
 const convertDateFormat = (lastOnline: string | null): number | null => {
@@ -17,7 +18,11 @@ const convertDateFormat = (lastOnline: string | null): number | null => {
 
 const buildDurationParts = (
 	diffSeconds: number,
-	t: (key: string, defaultValue?: string, options?: Record<string, any>) => string,
+	t: (
+		key: string,
+		defaultValue?: string,
+		options?: Record<string, any>,
+	) => string,
 	isRTL: boolean,
 ): ReactNode[] => {
 	const minutesTotal = Math.floor(diffSeconds / 60);
@@ -28,7 +33,13 @@ const buildDurationParts = (
 		const parts: ReactNode[] = [];
 		if (hours > 0) {
 			parts.push(
-				<Box as="span" key="h" display="inline-flex" gap={1} alignItems="center">
+				<Box
+					as="span"
+					key="h"
+					display="inline-flex"
+					gap={1}
+					alignItems="center"
+				>
 					<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 						{hours}
 					</Box>
@@ -38,7 +49,13 @@ const buildDurationParts = (
 		}
 		if (minutes > 0) {
 			parts.push(
-				<Box as="span" key="m" display="inline-flex" gap={1} alignItems="center">
+				<Box
+					as="span"
+					key="m"
+					display="inline-flex"
+					gap={1}
+					alignItems="center"
+				>
 					<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 						{minutes}
 					</Box>
@@ -50,7 +67,11 @@ const buildDurationParts = (
 		parts.forEach((p, idx) => {
 			withJoiner.push(p);
 			if (idx < parts.length - 1) {
-				withJoiner.push(<Text as="span" key={`and-${idx}`}>و</Text>);
+				withJoiner.push(
+					<Text as="span" key={`and-${idx}`}>
+						و
+					</Text>,
+				);
 			}
 		});
 		return withJoiner;
@@ -83,16 +104,21 @@ const buildDurationParts = (
 	};
 
 	if (hours > 0) addPart(hours, "hours", "hour", "hours");
-	if (minutes > 0 || parts.length === 0) addPart(minutes, "minutes", "minute", "minutes");
+	if (minutes > 0 || parts.length === 0)
+		addPart(minutes, "minutes", "minute", "minutes");
 
 	return parts;
 };
 
-export const OnlineStatus: FC<UserStatusProps> = ({ lastOnline }) => {
+export const OnlineStatus: FC<UserStatusProps> = ({
+	lastOnline,
+	withMargin = true,
+}) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.language === "fa";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
 	const unixTime = convertDateFormat(lastOnline);
+	const marginLeft = withMargin ? "2" : undefined;
 
 	const timeDifferenceInSeconds = unixTime
 		? currentTimeInSeconds - unixTime
@@ -104,7 +130,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({ lastOnline }) => {
 				display="inline-flex"
 				fontSize="xs"
 				fontWeight="medium"
-				ml="2"
+				ml={marginLeft}
 				color="gray.600"
 				_dark={{
 					color: "gray.400",
@@ -124,7 +150,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({ lastOnline }) => {
 				display="inline-flex"
 				fontSize="xs"
 				fontWeight="medium"
-				ml="2"
+				ml={marginLeft}
 				color="gray.600"
 				_dark={{
 					color: "gray.400",
@@ -145,7 +171,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({ lastOnline }) => {
 			display="inline-flex"
 			fontSize="xs"
 			fontWeight="medium"
-			ml="2"
+			ml={marginLeft}
 			color="gray.600"
 			_dark={{
 				color: "gray.400",

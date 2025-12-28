@@ -80,7 +80,7 @@ def get_user_queryset(db: Session, eager_load: bool = True) -> Query:
             selectinload(User.usage_logs),  # one-to-many: for lifetime_used_traffic
         ]
         if _next_plan_table_exists(db):
-            options.append(joinedload(User.next_plan))  # one-to-one: one plan per user
+            options.append(selectinload(User.next_plans))
 
         query = query.options(*options)
 
@@ -417,6 +417,10 @@ def _filter_users_in_memory(
                 return True
             if u.note and search_lower in u.note.lower():
                 return True
+            if getattr(u, "telegram_id", None) and search_lower in str(u.telegram_id).lower():
+                return True
+            if getattr(u, "contact_number", None) and search_lower in str(u.contact_number).lower():
+                return True
             if u.credential_key:
                 if search_lower in u.credential_key.lower():
                     return True
@@ -562,6 +566,8 @@ def get_users(
                 User.username.ilike(like_pattern),
                 User.note.ilike(like_pattern),
                 User.credential_key.ilike(like_pattern),
+                User.telegram_id.ilike(like_pattern),
+                User.contact_number.ilike(like_pattern),
             ]
             if key_candidates:
                 search_clauses.append(User.credential_key.in_(key_candidates))
@@ -607,7 +613,7 @@ def get_users(
             selectinload(User.proxies),
         )
         if _next_plan_table_exists(db):
-            query = query.options(joinedload(User.next_plan))
+            query = query.options(selectinload(User.next_plans))
 
         if effective_sort:
             query = query.order_by(*(opt.value for opt in effective_sort))
@@ -896,6 +902,36 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         )
         proxies.append(Proxy(type=proxy_type.value, settings=serialized, excluded_inbounds=excluded_inbounds))
 
+    plans: List[NextPlan] = []
+    incoming_plans = getattr(user, "next_plans", None)
+    if incoming_plans:
+        for idx, plan in enumerate(incoming_plans):
+            plans.append(
+                NextPlan(
+                    position=idx,
+                    data_limit=plan.data_limit or 0,
+                    expire=plan.expire,
+                    add_remaining_traffic=plan.add_remaining_traffic,
+                    fire_on_either=plan.fire_on_either,
+                    increase_data_limit=getattr(plan, "increase_data_limit", False),
+                    start_on_first_connect=getattr(plan, "start_on_first_connect", False),
+                    trigger_on=getattr(plan, "trigger_on", "either") or "either",
+                )
+            )
+    elif user.next_plan:
+        plans.append(
+            NextPlan(
+                position=0,
+                data_limit=user.next_plan.data_limit or 0,
+                expire=user.next_plan.expire,
+                add_remaining_traffic=user.next_plan.add_remaining_traffic,
+                fire_on_either=user.next_plan.fire_on_either,
+                increase_data_limit=getattr(user.next_plan, "increase_data_limit", False),
+                start_on_first_connect=getattr(user.next_plan, "start_on_first_connect", False),
+                trigger_on=getattr(user.next_plan, "trigger_on", "either") or "either",
+            )
+        )
+
     # Create a fresh User object - ensure it's not from Redis cache (which would have id set)
     dbuser = User(
         username=user.username,
@@ -908,18 +944,13 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         admin=admin,
         data_limit_reset_strategy=user.data_limit_reset_strategy,
         note=user.note,
+        telegram_id=getattr(user, "telegram_id", None),
+        contact_number=getattr(user, "contact_number", None),
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
         ip_limit=user.ip_limit,
-        next_plan=NextPlan(
-            data_limit=user.next_plan.data_limit,
-            expire=user.next_plan.expire,
-            add_remaining_traffic=user.next_plan.add_remaining_traffic,
-            fire_on_either=user.next_plan.fire_on_either,
-        )
-        if user.next_plan
-        else None,
+        next_plans=plans,
     )
 
     # Ensure id is None for new user (prevent duplicate key error if object came from Redis cache)
@@ -1125,6 +1156,10 @@ def update_user(
             )
     if modify.note is not None:
         dbuser.note = modify.note or None
+    if getattr(modify, "telegram_id", None) is not None or "telegram_id" in modify.model_fields_set:
+        dbuser.telegram_id = getattr(modify, "telegram_id", None) or None
+    if getattr(modify, "contact_number", None) is not None or "contact_number" in modify.model_fields_set:
+        dbuser.contact_number = getattr(modify, "contact_number", None) or None
     if modify.data_limit_reset_strategy is not None:
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
     if "ip_limit" in modify.model_fields_set:
@@ -1134,15 +1169,35 @@ def update_user(
     if modify.on_hold_expire_duration is not None:
         dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
 
-    if modify.next_plan is not None:
-        dbuser.next_plan = NextPlan(
-            data_limit=modify.next_plan.data_limit,
-            expire=modify.next_plan.expire,
-            add_remaining_traffic=modify.next_plan.add_remaining_traffic,
-            fire_on_either=modify.next_plan.fire_on_either,
-        )
-    elif dbuser.next_plan is not None:
-        db.delete(dbuser.next_plan)
+    if getattr(modify, "next_plans", None) is not None:
+        dbuser.next_plans = [
+            NextPlan(
+                position=idx,
+                data_limit=plan.data_limit or 0,
+                expire=plan.expire,
+                add_remaining_traffic=plan.add_remaining_traffic,
+                fire_on_either=plan.fire_on_either,
+                increase_data_limit=getattr(plan, "increase_data_limit", False),
+                start_on_first_connect=getattr(plan, "start_on_first_connect", False),
+                trigger_on=getattr(plan, "trigger_on", "either") or "either",
+            )
+            for idx, plan in enumerate(modify.next_plans)
+        ]
+    elif modify.next_plan is not None:
+        dbuser.next_plans = [
+            NextPlan(
+                position=0,
+                data_limit=modify.next_plan.data_limit or 0,
+                expire=modify.next_plan.expire,
+                add_remaining_traffic=modify.next_plan.add_remaining_traffic,
+                fire_on_either=modify.next_plan.fire_on_either,
+                increase_data_limit=getattr(modify.next_plan, "increase_data_limit", False),
+                start_on_first_connect=getattr(modify.next_plan, "start_on_first_connect", False),
+                trigger_on=getattr(modify.next_plan, "trigger_on", "either") or "either",
+            )
+        ]
+    elif "next_plan" in modify.model_fields_set or "next_plans" in modify.model_fields_set:
+        dbuser.next_plans = []
 
     if service_set:
         if service is None:
@@ -1189,20 +1244,32 @@ def update_user(
 def reset_user_by_next(db: Session, dbuser: User) -> User:
     """Resets the data usage of a user based on next user."""
 
-    if dbuser.next_plan is None:
+    plan = dbuser.next_plan
+    if plan is None:
+        return
+    if plan.start_on_first_connect and dbuser.online_at is None and dbuser.used_traffic == 0:
+        # Delay until we see the first connection
         return
     db.add(UserUsageResetLogs(user=dbuser, used_traffic_at_reset=dbuser.used_traffic))
     dbuser.node_usages.clear()
     if _status_to_str(dbuser.status) != UserStatus.active.value:
         _ensure_active_user_capacity(db, dbuser.admin, exclude_user_ids=(dbuser.id,))
     dbuser.status = UserStatus.active.value
-    dbuser.data_limit = dbuser.next_plan.data_limit + (
-        0 if dbuser.next_plan.add_remaining_traffic else dbuser.data_limit - dbuser.used_traffic
-    )
-    dbuser.expire = dbuser.next_plan.expire
+    current_limit = dbuser.data_limit or 0
+    if plan.increase_data_limit:
+        dbuser.data_limit = current_limit + (plan.data_limit or 0)
+    else:
+        dbuser.data_limit = (plan.data_limit or 0) + (
+            0 if plan.add_remaining_traffic else max(current_limit - dbuser.used_traffic, 0)
+        )
+    if plan.expire:
+        dbuser.expire = plan.expire
     dbuser.used_traffic = 0
-    db.delete(dbuser.next_plan)
-    dbuser.next_plan = None
+    db.delete(plan)
+    if dbuser.next_plans:
+        dbuser.next_plans = dbuser.next_plans[1:]
+        for idx, item in enumerate(dbuser.next_plans):
+            item.position = idx
     db.add(dbuser)
     db.commit()
     db.refresh(dbuser)
@@ -1570,6 +1637,13 @@ def bulk_update_user_status(
         count += 1
     if count:
         db.commit()
+        try:
+            from app.redis.cache import cache_user
+
+            for user in query.all():
+                cache_user(user)
+        except Exception as cache_err:  # pragma: no cover - best effort
+            _logger.debug("Failed to update cache after bulk status change: %s", cache_err)
     return count
 
 
@@ -1608,6 +1682,13 @@ def update_user_status(db: Session, dbuser: User, status: UserStatus) -> User:
     dbuser.status, dbuser.last_status_change = status, datetime.now(timezone.utc)
     db.commit()
     db.refresh(dbuser)
+    # Keep Redis cache in sync so API responses reflect the new status immediately.
+    try:
+        from app.redis.cache import cache_user
+
+        cache_user(dbuser)
+    except Exception as cache_err:  # pragma: no cover - best effort
+        _logger.debug("Failed to update cached user %s after status change: %s", dbuser.id, cache_err)
     return dbuser
 
 

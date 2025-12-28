@@ -43,7 +43,9 @@ def record_outbound_traffic():
                     if stats_list:
                         all_stats.extend(stats_list)
                 except Exception as e:
-                    logger.warning(f"Failed to get outbound stats from {'master' if node_id is None else f'node {node_id}'}: {e}")
+                    logger.warning(
+                        f"Failed to get outbound stats from {'master' if node_id is None else f'node {node_id}'}: {e}"
+                    )
 
         if not all_stats:
             logger.debug("No outbound stats collected")
@@ -56,7 +58,9 @@ def record_outbound_traffic():
             logger.warning("Failed to get outbound configs from xray.config")
             outbounds_config = []
 
-        outbounds_by_tag = {outbound.get("tag", ""): outbound for outbound in outbounds_config if isinstance(outbound, dict)}
+        outbounds_by_tag = {
+            outbound.get("tag", ""): outbound for outbound in outbounds_config if isinstance(outbound, dict)
+        }
 
         # Aggregate stats by tag (in case same tag appears from multiple nodes)
         stats_by_tag = {}
@@ -82,15 +86,15 @@ def record_outbound_traffic():
                 # Skip if no traffic
                 if not stat.get("up", 0) and not stat.get("down", 0):
                     continue
-                
+
                 # Find or create outbound traffic record by tag (like 3x-ui)
                 existing = db.query(OutboundTraffic).filter(OutboundTraffic.tag == tag).first()
-                
+
                 if existing:
                     # Update existing record - add traffic (like 3x-ui: outbound.Up = outbound.Up + traffic.Up)
                     existing.uplink += stat.get("up", 0)
                     existing.downlink += stat.get("down", 0)
-                    
+
                     # Update metadata if outbound config exists
                     outbound_config = outbounds_by_tag.get(tag)
                     if outbound_config:
@@ -117,7 +121,7 @@ def record_outbound_traffic():
                         # No config found, use tag as fallback
                         metadata = {"tag": tag, "protocol": None, "address": None, "port": None}
                         outbound_id = None
-                    
+
                     new_record = OutboundTraffic(
                         outbound_id=outbound_id or f"tag_{tag}",
                         tag=tag,
@@ -132,9 +136,9 @@ def record_outbound_traffic():
 
             db.commit()
             if records_updated > 0 or records_created > 0:
-                logger.info(f"Recorded outbound traffic: {records_updated} updated, {records_created} created, {len(stats_by_tag)} outbounds")
+                logger.info(
+                    f"Recorded outbound traffic: {records_updated} updated, {records_created} created, {len(stats_by_tag)} outbounds"
+                )
 
     except Exception as e:
         logger.error(f"Failed to record outbound traffic: {e}", exc_info=True)
-
-

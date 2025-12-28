@@ -120,6 +120,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 				},
 			}}
 			position="relative"
+			userSelect="none"
 		>
 			<Text as="h1" fontWeight="semibold" fontSize="2xl">
 				{t("users")}
@@ -144,6 +145,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 						minW="170px"
 						zIndex={99999}
 						className="menuList"
+						userSelect="none"
 						sx={{
 							".chakra-menu__menuitem": {
 								bg: "transparent !important",
@@ -245,6 +247,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 						<PopoverContent
 							ref={actionsContentRef}
 							w={{ base: "90vw", sm: "56" }}
+							userSelect="none"
 						>
 							<PopoverArrow />
 							<PopoverBody>
@@ -259,7 +262,10 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 											{t("header.language", "Language")}
 										</MenuButton>
 										<Portal containerRef={actionsContentRef}>
-											<MenuList minW={{ base: "100%", sm: "200px" }}>
+											<MenuList
+												minW={{ base: "100%", sm: "200px" }}
+												userSelect="none"
+											>
 												{languageItems.map(({ code, label, flag }) => {
 													const isActiveLang = i18n.language === code;
 													return (

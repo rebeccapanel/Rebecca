@@ -89,6 +89,49 @@ html, body, #root {
   text-align: center !important;
 }
 
+[dir="rtl"] table:not(.rb-rtl-table) th,
+[dir="rtl"] table:not(.rb-rtl-table) td {
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+/* Mirror close buttons and form icons when switching direction */
+[dir="rtl"] .chakra-modal__close-btn,
+[dir="rtl"] .chakra-drawer__close-btn,
+[dir="rtl"] .chakra-popover__close-btn,
+[dir="rtl"] .chakra-popover__close-button {
+  right: auto !important;
+  left: var(--chakra-space-3) !important;
+}
+
+[dir="rtl"] .chakra-input__left-element,
+[dir="rtl"] .chakra-input__left-addon {
+  left: auto;
+  right: var(--chakra-space-3);
+}
+
+[dir="rtl"] .chakra-input__right-element,
+[dir="rtl"] .chakra-input__right-addon {
+  right: auto;
+  left: var(--chakra-space-3);
+}
+
+[dir="rtl"] .chakra-input__field,
+[dir="rtl"] .chakra-input {
+  text-align: right;
+}
+
+[dir="rtl"] .chakra-select__icon-wrapper {
+  right: auto;
+  left: var(--chakra-space-3);
+}
+
+[dir="rtl"] select.chakra-select {
+  padding-inline-start: var(--chakra-space-10);
+  padding-inline-end: var(--chakra-space-3);
+  text-align: right;
+}
+
 .bg-blue-animate {
   animation: blur-animate 200ms ease-in;
   backdrop-filter: blur(10px);
@@ -800,4 +843,13 @@ img.twemoji-emoji {
   align-items: center;
   justify-content: start;
   gap: .7rem;
+}
+
+/* Keep usage pairs (used/total) ordered correctly in RTL */
+.rb-usage-pair {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

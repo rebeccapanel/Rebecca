@@ -149,14 +149,25 @@ def _serialize_user(user: User) -> Dict[str, Any]:
             for proxy in user.proxies
         ]
 
-    # Add next_plan if exists
-    if user.next_plan:
-        user_dict["next_plan"] = {
-            "data_limit": user.next_plan.data_limit,
-            "expire": user.next_plan.expire,
-            "add_remaining_traffic": user.next_plan.add_remaining_traffic,
-            "fire_on_either": user.next_plan.fire_on_either,
-        }
+    # Add next_plans if exist (first one kept for legacy clients)
+    if getattr(user, "next_plans", None):
+        serialized_plans = []
+        for plan in user.next_plans:
+            serialized_plans.append(
+                {
+                    "data_limit": plan.data_limit,
+                    "expire": plan.expire,
+                    "add_remaining_traffic": plan.add_remaining_traffic,
+                    "fire_on_either": plan.fire_on_either,
+                    "increase_data_limit": getattr(plan, "increase_data_limit", False),
+                    "start_on_first_connect": getattr(plan, "start_on_first_connect", False),
+                    "trigger_on": getattr(plan, "trigger_on", "either"),
+                    "position": getattr(plan, "position", 0),
+                }
+            )
+        user_dict["next_plans"] = serialized_plans
+        if serialized_plans:
+            user_dict["next_plan"] = serialized_plans[0]
 
     return user_dict
 
@@ -256,8 +267,10 @@ def _deserialize_user(user_dict: Dict[str, Any], db: Optional[Any] = None) -> Op
         user.admin_id = user_dict.get("admin_id")
         user.admin_username = user_dict.get("admin_username")
         user.service_id = user_dict.get("service_id")
-        if user_dict.get("next_plan"):
-            user.next_plan = NextPlanModel(**user_dict["next_plan"])
+        if user_dict.get("next_plans"):
+            user.next_plans = [NextPlanModel(**plan) for plan in user_dict["next_plans"]]
+        elif user_dict.get("next_plan"):
+            user.next_plans = [NextPlanModel(**user_dict["next_plan"])]
 
         # Deserialize proxies
         user.proxies = []
@@ -380,7 +393,7 @@ def get_cached_user(
             selectinload(User.usage_logs),  # For lifetime_used_traffic property
         ]
         if _next_plan_table_exists(db):
-            options.append(joinedload(User.next_plan))
+            options.append(joinedload(User.next_plans))
         query = query.options(*options)
 
         db_user = query.first()

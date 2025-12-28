@@ -89,11 +89,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		: undefined;
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
-	const baseSelf = userData.permissions?.self_permissions || {
-		self_myaccount: true,
-		self_change_password: true,
-		self_api_keys: true,
+	const defaultSelfPermissions = {
+		self_myaccount: false,
+		self_change_password: false,
+		self_api_keys: false,
 	};
+	const baseSelf =
+		userData.permissions?.self_permissions ?? defaultSelfPermissions;
 	const selfAccess = isFullAccess
 		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
 		: baseSelf;
@@ -225,6 +227,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			overflowY="auto"
 			overflowX="hidden"
 			flexShrink={0}
+			userSelect="none"
 		>
 			<VStack
 				spacing={2}

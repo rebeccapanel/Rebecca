@@ -69,6 +69,8 @@ export type User = {
 	subscription_url: string;
 	inbounds: UserInbounds;
 	note: string;
+	telegram_id?: string | null;
+	contact_number?: string | null;
 	online_at: string;
 	service_id: number | null;
 	service_name: string | null;
@@ -107,6 +109,8 @@ export type UserCreate = Pick<
 	| "username"
 	| "status"
 	| "note"
+	| "telegram_id"
+	| "contact_number"
 	| "flow"
 	| "credential_key"
 > & {
@@ -123,6 +127,8 @@ export type UserCreateWithService = Pick<
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
+	| "telegram_id"
+	| "contact_number"
 	| "flow"
 > & {
 	service_id: number;

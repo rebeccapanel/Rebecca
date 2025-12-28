@@ -155,6 +155,8 @@ class User(Base):
     sub_last_user_agent = Column(String(512), nullable=True, default=None)
     created_at = Column(DateTime, default=utcnow)
     note = Column(String(500), nullable=True, default=None)
+    telegram_id = Column(String(128), nullable=True, default=None)
+    contact_number = Column(String(64), nullable=True, default=None)
     online_at = Column(DateTime, nullable=True, default=None)
     on_hold_expire_duration = Column(BigInteger, nullable=True, default=None)
     on_hold_timeout = Column(DateTime, nullable=True, default=None)
@@ -171,7 +173,25 @@ class User(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     service = relationship("Service", back_populates="users")
 
-    next_plan = relationship("NextPlan", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    next_plans = relationship(
+        "NextPlan",
+        order_by="NextPlan.position",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def next_plan(self):
+        """Compat: return the first next plan if present."""
+        return self.next_plans[0] if self.next_plans else None
+
+    @next_plan.setter
+    def next_plan(self, value):
+        """Compat setter to replace all next plans with a single entry."""
+        if value is None:
+            self.next_plans = []
+            return
+        self.next_plans = [value]
 
     @hybrid_property
     def reseted_usage(self) -> int:
@@ -250,13 +270,17 @@ class NextPlan(Base):
     __tablename__ = "next_plans"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
     data_limit = Column(BigInteger, nullable=False)
     expire = Column(Integer, nullable=True)
     add_remaining_traffic = Column(Boolean, nullable=False, default=False, server_default="0")
     fire_on_either = Column(Boolean, nullable=False, default=True, server_default="0")
+    increase_data_limit = Column(Boolean, nullable=False, default=False, server_default="0")
+    start_on_first_connect = Column(Boolean, nullable=False, default=False, server_default="0")
+    trigger_on = Column(String(16), nullable=False, default="either", server_default="either")
 
-    user = relationship("User", back_populates="next_plan")
+    user = relationship("User", back_populates="next_plans")
 
 
 class UserTemplate(Base):

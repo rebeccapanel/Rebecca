@@ -423,7 +423,7 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
     user_ids = [u.id for u in users if getattr(u, "id", None) is not None]
     hydrated_users = (
         db.query(User)
-        .options(selectinload(User.admin), selectinload(User.next_plan))
+        .options(selectinload(User.admin), selectinload(User.next_plans))
         .filter(User.id.in_(user_ids))
         .all()
     )
@@ -437,13 +437,20 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
         limited = bool(db_user.data_limit and (db_user.used_traffic or 0) >= db_user.data_limit)
         expired = bool(db_user.expire and db_user.expire <= now_ts)
 
-        if (limited or expired) and db_user.next_plan:
-            should_fire_next = bool(db_user.next_plan.fire_on_either or (limited and expired))
-            if should_fire_next:
+        if db_user.next_plan:
+            plan = db_user.next_plan
+            trigger_matches = plan.trigger_on == "either" or (
+                (plan.trigger_on == "data" and limited) or (plan.trigger_on == "expire" and expired)
+            )
+            if plan.start_on_first_connect and db_user.online_at is None and db_user.used_traffic == 0:
+                trigger_matches = False
+            if (limited or expired) and trigger_matches:
                 try:
                     crud.reset_user_by_next(db, db_user)
                     xray.operations.update_user(db_user)
-                    report.user_data_reset_by_next(user=UserResponse.model_validate(db_user), user_admin=db_user.admin)
+                    user_resp = UserResponse.model_validate(db_user)
+                    report.user_data_reset_by_next(user=user_resp, user_admin=db_user.admin)
+                    report.user_auto_renew_applied(user=user_resp, user_admin=db_user.admin)
                     continue
                 except Exception as exc:  # pragma: no cover - best-effort
                     logger.warning(f"Failed to apply next plan for user {db_user.id}: {exc}")

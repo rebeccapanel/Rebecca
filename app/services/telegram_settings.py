@@ -63,6 +63,7 @@ class TelegramSettingsService:
         "nodes": "Nodes",
         "login": "Login",
         "errors": "Errors",
+        "auto_renew": "Auto renew",
     }
 
     DEFAULT_EVENT_TOGGLES: Dict[str, bool] = {
@@ -72,6 +73,8 @@ class TelegramSettingsService:
         "user.status_change": True,
         "user.usage_reset": True,
         "user.auto_reset": True,
+        "user.auto_renew_set": True,
+        "user.auto_renew_applied": True,
         "user.subscription_revoked": True,
         "admin.created": True,
         "admin.updated": True,

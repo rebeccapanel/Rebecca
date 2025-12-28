@@ -125,265 +125,274 @@ export function AppLayout() {
 				direction={isRTL ? "row-reverse" : "row"}
 				dir={isRTL ? "rtl" : "ltr"}
 			>
-			{/* persistent sidebar on md+; drawer on mobile */}
-			{!isMobile ? (
-				<AppSidebar
-					collapsed={sidebarCollapsed}
-					onRequestExpand={() => setSidebarCollapsed(false)}
-				/>
-			) : null}
-
-			<Flex
-				flex="1"
-				direction="column"
-				minW="0"
-				overflow="hidden"
-				ml={isMobile || isRTL ? "0" : sidebarCollapsed ? "16" : "60"}
-				mr={isMobile || !isRTL ? "0" : sidebarCollapsed ? "16" : "60"}
-				transition={isRTL ? "margin-right 0.3s" : "margin-left 0.3s"}
-			>
-				<Box
-					as="header"
-					h="16"
-					minH="16"
-					borderBottom="1px"
-					borderColor="light-border"
-					bg="surface.light"
-					_dark={{ borderColor: "whiteAlpha.200", bg: "surface.dark" }}
-					display="flex"
-					alignItems="center"
-					px="6"
-					justifyContent="space-between"
-					flexShrink={0}
-					position="sticky"
-					top={0}
-					zIndex={100}
-				>
-					<IconButton
-						size="sm"
-						variant="ghost"
-						aria-label="toggle sidebar"
-						onClick={() => {
-							if (isMobile) sidebarDrawer.onOpen();
-							else setSidebarCollapsed(!sidebarCollapsed);
-						}}
-						icon={<MenuIcon />}
-						flexShrink={0}
+				{/* persistent sidebar on md+; drawer on mobile */}
+				{!isMobile ? (
+					<AppSidebar
+						collapsed={sidebarCollapsed}
+						onRequestExpand={() => setSidebarCollapsed(false)}
 					/>
-					<HStack spacing={2} alignItems="center" flexShrink={0}>
-						<GitHubStars />
+				) : null}
 
-						{/* User Menu */}
-						{getUserIsSuccess && userData.username && (
-							<Menu
-								placement="bottom-end"
-								isLazy
-								closeOnSelect={false}
-								isOpen={userMenu.isOpen}
-								onOpen={userMenu.onOpen}
-								onClose={handleUserMenuClose}
-							>
-								<MenuButton
-									as={Button}
-									size="sm"
-									variant="ghost"
-									leftIcon={<UserIcon />}
-									aria-label="user menu"
-									fontSize="sm"
-									fontWeight="medium"
-									onClick={() => {
-										if (userMenu.isOpen) {
-											handleUserMenuClose();
-										} else {
-											userMenu.onOpen();
-										}
-									}}
+				<Flex
+					flex="1"
+					direction="column"
+					minW="0"
+					overflow="hidden"
+					ml={isMobile || isRTL ? "0" : sidebarCollapsed ? "16" : "60"}
+					mr={isMobile || !isRTL ? "0" : sidebarCollapsed ? "16" : "60"}
+					transition={isRTL ? "margin-right 0.3s" : "margin-left 0.3s"}
+				>
+					<Box
+						as="header"
+						h="16"
+						minH="16"
+						borderBottom="1px"
+						borderColor="light-border"
+						bg="surface.light"
+						_dark={{ borderColor: "whiteAlpha.200", bg: "surface.dark" }}
+						display="flex"
+						alignItems="center"
+						px="6"
+						justifyContent="space-between"
+						flexShrink={0}
+						position="sticky"
+						top={0}
+						zIndex={100}
+						userSelect="none"
+					>
+						<IconButton
+							size="sm"
+							variant="ghost"
+							aria-label="toggle sidebar"
+							onClick={() => {
+								if (isMobile) sidebarDrawer.onOpen();
+								else setSidebarCollapsed(!sidebarCollapsed);
+							}}
+							icon={<MenuIcon />}
+							flexShrink={0}
+						/>
+						<HStack spacing={2} alignItems="center" flexShrink={0}>
+							<GitHubStars />
+
+							{/* User Menu */}
+							{getUserIsSuccess && userData.username && (
+								<Menu
+									placement="bottom-end"
+									isLazy
+									closeOnSelect={false}
+									isOpen={userMenu.isOpen}
+									onOpen={userMenu.onOpen}
+									onClose={handleUserMenuClose}
 								>
-									<Text
-										display={{ base: "none", sm: "inline" }}
-										maxW={{ base: "100px", sm: "150px" }}
-										isTruncated
-									>
-										{userData.username}
-									</Text>
-								</MenuButton>
-								<MenuList
-									dir={isRTL ? "rtl" : "ltr"}
-									ref={userMenuContentRef}
-									minW="220px"
-									bg={menuBg}
-									borderColor={menuBorder}
-									color={textColor}
-									zIndex={9999}
-									sx={{
-										".chakra-menu__menuitem": {
-											bg: "transparent !important",
-											"&:hover": {
-												bg: `${menuHover} !important`,
-											},
-											"&:active, &:focus": {
-												bg: `${menuHover} !important`,
-											},
-										},
-									}}
-								>
-									{/* User Info */}
-									<Box
-										px={3}
-										py={2}
-										borderBottom="1px"
-										borderColor={menuBorder}
-									>
-										<VStack align="flex-start" spacing={1}>
-											<HStack spacing={2}>
-												<UserIcon />
-												<Text fontWeight="medium" fontSize="sm">
-													{userData.username}
-												</Text>
-											</HStack>
-											<Text fontSize="xs" color={secondaryTextColor}>
-												{roleLabel}
-											</Text>
-										</VStack>
-									</Box>
-
-									{/* Language Selector */}
-									<Menu
-										placement={isRTL ? "left-start" : "right-start"}
-										strategy="fixed"
-										isOpen={languageMenu.isOpen}
-										onOpen={languageMenu.onOpen}
-										onClose={languageMenu.onClose}
-										closeOnSelect={false}
-										isLazy
-									>
-										<MenuButton
-											as={MenuItem}
-											icon={<LanguageIconStyled />}
-											onClick={(e: ReactMouseEvent) => {
-												e.stopPropagation();
-												languageMenu.isOpen
-													? languageMenu.onClose()
-													: languageMenu.onOpen();
-											}}
-										>
-											<HStack justify="space-between" w="full">
-												<Text>{t("header.language", "Language")}</Text>
-												<Text fontSize="xs" color={secondaryTextColor}>
-													{languageItems.find(
-														(item) => item.code === i18n.language,
-													)?.label || "English"}
-												</Text>
-											</HStack>
-										</MenuButton>
-										<Portal containerRef={userMenuContentRef}>
-											<MenuList
-												dir={isRTL ? "rtl" : "ltr"}
-												minW="160px"
-												bg={menuBg}
-												borderColor={menuBorder}
-												color={textColor}
-												zIndex={9999}
-												sx={{
-													".chakra-menu__menuitem": {
-														bg: "transparent !important",
-														"&:hover": {
-															bg: `${menuHover} !important`,
-														},
-														"&:active, &:focus": {
-															bg: `${menuHover} !important`,
-														},
-													},
-												}}
-											>
-												{languageItems.map(({ code, label, flag }) => {
-													const isActiveLang = i18n.language === code;
-													return (
-														<MenuItem
-															key={code}
-															onClick={() => {
-																changeLanguage(code);
-																languageMenu.onClose();
-															}}
-														>
-															<HStack justify="space-between" w="full">
-																<HStack spacing={2}>
-																	{code === "fa" ? (
-																		<ImperialIranFlag
-																			style={{ width: "16px", height: "12px" }}
-																		/>
-																	) : (
-																		<ReactCountryFlag
-																			countryCode={flag}
-																			svg
-																			style={{ width: "16px", height: "12px" }}
-																		/>
-																	)}
-																	<Text>{label}</Text>
-																</HStack>
-																{isActiveLang && <CheckIcon width={16} />}
-															</HStack>
-														</MenuItem>
-													);
-												})}
-											</MenuList>
-										</Portal>
-									</Menu>
-
-									{/* Theme Selector */}
-									<ThemeSelector
-										trigger="menuItem"
-										triggerLabel={t("header.theme", "Theme")}
-										portalContainer={userMenuContentRef}
-										onModalOpen={handleThemeModalOpen}
-										onModalClose={handleThemeModalClose}
-									/>
-
-									{/* Logout */}
-									<MenuItem
-										icon={<LogoutIcon />}
-										color="red.500"
-										bg="transparent"
-										_hover={{ bg: menuHover }}
-										_active={{ bg: menuHover }}
-										_focus={{ bg: menuHover }}
+									<MenuButton
+										as={Button}
+										size="sm"
+										variant="ghost"
+										leftIcon={<UserIcon />}
+										aria-label="user menu"
+										fontSize="sm"
+										fontWeight="medium"
 										onClick={() => {
-											navigate("/login");
+											if (userMenu.isOpen) {
+												handleUserMenuClose();
+											} else {
+												userMenu.onOpen();
+											}
 										}}
 									>
-										{t("header.logout", "Log out")}
-									</MenuItem>
-								</MenuList>
-							</Menu>
-						)}
-					</HStack>
-				</Box>
-				<Box as="main" flex="1" p="6" overflow="auto" minH="0">
-					<Outlet />
-				</Box>
-			</Flex>
+										<Text
+											display={{ base: "none", sm: "inline" }}
+											maxW={{ base: "100px", sm: "150px" }}
+											isTruncated
+										>
+											{userData.username}
+										</Text>
+									</MenuButton>
+									<MenuList
+										dir={isRTL ? "rtl" : "ltr"}
+										ref={userMenuContentRef}
+										minW="220px"
+										bg={menuBg}
+										borderColor={menuBorder}
+										color={textColor}
+										zIndex={9999}
+										userSelect="none"
+										sx={{
+											".chakra-menu__menuitem": {
+												bg: "transparent !important",
+												"&:hover": {
+													bg: `${menuHover} !important`,
+												},
+												"&:active, &:focus": {
+													bg: `${menuHover} !important`,
+												},
+											},
+										}}
+									>
+										{/* User Info */}
+										<Box
+											px={3}
+											py={2}
+											borderBottom="1px"
+											borderColor={menuBorder}
+										>
+											<VStack align="flex-start" spacing={1}>
+												<HStack spacing={2}>
+													<UserIcon />
+													<Text fontWeight="medium" fontSize="sm">
+														{userData.username}
+													</Text>
+												</HStack>
+												<Text fontSize="xs" color={secondaryTextColor}>
+													{roleLabel}
+												</Text>
+											</VStack>
+										</Box>
 
-			{/* mobile drawer */}
-			{isMobile && (
-				<Drawer
-					isOpen={sidebarDrawer.isOpen}
-					placement={isRTL ? "right" : "left"}
-					onClose={sidebarDrawer.onClose}
-					size="xs"
-				>
-					<DrawerOverlay />
-					<DrawerContent bg="surface.light" _dark={{ bg: "surface.dark" }}>
-						<DrawerBody p={0}>
-							<AppSidebar
-								collapsed={false}
-								inDrawer
-								onRequestExpand={sidebarDrawer.onClose}
-							/>
-						</DrawerBody>
-					</DrawerContent>
-				</Drawer>
-			)}
-		</Flex>
-	</>
-);
+										{/* Language Selector */}
+										<Menu
+											placement={isRTL ? "left-start" : "right-start"}
+											strategy="fixed"
+											isOpen={languageMenu.isOpen}
+											onOpen={languageMenu.onOpen}
+											onClose={languageMenu.onClose}
+											closeOnSelect={false}
+											isLazy
+										>
+											<MenuButton
+												as={MenuItem}
+												icon={<LanguageIconStyled />}
+												onClick={(e: ReactMouseEvent) => {
+													e.stopPropagation();
+													languageMenu.isOpen
+														? languageMenu.onClose()
+														: languageMenu.onOpen();
+												}}
+											>
+												<HStack justify="space-between" w="full">
+													<Text>{t("header.language", "Language")}</Text>
+													<Text fontSize="xs" color={secondaryTextColor}>
+														{languageItems.find(
+															(item) => item.code === i18n.language,
+														)?.label || "English"}
+													</Text>
+												</HStack>
+											</MenuButton>
+											<Portal containerRef={userMenuContentRef}>
+												<MenuList
+													dir={isRTL ? "rtl" : "ltr"}
+													minW="160px"
+													bg={menuBg}
+													borderColor={menuBorder}
+													color={textColor}
+													zIndex={9999}
+													userSelect="none"
+													sx={{
+														".chakra-menu__menuitem": {
+															bg: "transparent !important",
+															"&:hover": {
+																bg: `${menuHover} !important`,
+															},
+															"&:active, &:focus": {
+																bg: `${menuHover} !important`,
+															},
+														},
+													}}
+												>
+													{languageItems.map(({ code, label, flag }) => {
+														const isActiveLang = i18n.language === code;
+														return (
+															<MenuItem
+																key={code}
+																onClick={() => {
+																	changeLanguage(code);
+																	languageMenu.onClose();
+																}}
+															>
+																<HStack justify="space-between" w="full">
+																	<HStack spacing={2}>
+																		{code === "fa" ? (
+																			<ImperialIranFlag
+																				style={{
+																					width: "16px",
+																					height: "12px",
+																				}}
+																			/>
+																		) : (
+																			<ReactCountryFlag
+																				countryCode={flag}
+																				svg
+																				style={{
+																					width: "16px",
+																					height: "12px",
+																				}}
+																			/>
+																		)}
+																		<Text>{label}</Text>
+																	</HStack>
+																	{isActiveLang && <CheckIcon width={16} />}
+																</HStack>
+															</MenuItem>
+														);
+													})}
+												</MenuList>
+											</Portal>
+										</Menu>
+
+										{/* Theme Selector */}
+										<ThemeSelector
+											trigger="menuItem"
+											triggerLabel={t("header.theme", "Theme")}
+											portalContainer={userMenuContentRef}
+											onModalOpen={handleThemeModalOpen}
+											onModalClose={handleThemeModalClose}
+										/>
+
+										{/* Logout */}
+										<MenuItem
+											icon={<LogoutIcon />}
+											color="red.500"
+											bg="transparent"
+											_hover={{ bg: menuHover }}
+											_active={{ bg: menuHover }}
+											_focus={{ bg: menuHover }}
+											onClick={() => {
+												navigate("/login");
+											}}
+										>
+											{t("header.logout", "Log out")}
+										</MenuItem>
+									</MenuList>
+								</Menu>
+							)}
+						</HStack>
+					</Box>
+					<Box as="main" flex="1" p="6" overflow="auto" minH="0">
+						<Outlet />
+					</Box>
+				</Flex>
+
+				{/* mobile drawer */}
+				{isMobile && (
+					<Drawer
+						isOpen={sidebarDrawer.isOpen}
+						placement={isRTL ? "right" : "left"}
+						onClose={sidebarDrawer.onClose}
+						size="xs"
+					>
+						<DrawerOverlay />
+						<DrawerContent bg="surface.light" _dark={{ bg: "surface.dark" }}>
+							<DrawerBody p={0}>
+								<AppSidebar
+									collapsed={false}
+									inDrawer
+									onRequestExpand={sidebarDrawer.onClose}
+								/>
+							</DrawerBody>
+						</DrawerContent>
+					</Drawer>
+				)}
+			</Flex>
+		</>
+	);
 }

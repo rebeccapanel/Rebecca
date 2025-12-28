@@ -470,12 +470,22 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	const overlayBg = useColorModeValue("blackAlpha.400", "blackAlpha.700");
 	const popperModifiers = useMemo(
 		() => [
-			{ name: "preventOverflow", options: { boundary: "viewport", padding: 8 } },
+			{
+				name: "preventOverflow",
+				options: { boundary: "viewport", padding: 8 },
+			},
 			{ name: "shift", options: { padding: 8 } },
 			{
 				name: "flip",
 				options: {
-					fallbackPlacements: ["bottom-start", "bottom", "bottom-end", "top", "top-start", "top-end"],
+					fallbackPlacements: [
+						"bottom-start",
+						"bottom",
+						"bottom-end",
+						"top",
+						"top-start",
+						"top-end",
+					],
 				},
 			},
 			{

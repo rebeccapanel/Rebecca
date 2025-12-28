@@ -93,6 +93,7 @@ def _reset_user_to_next_plan(db, user: User) -> bool:
         crud.reset_user_by_next(db, user)
         xray.operations.update_user(user)
         report.user_data_reset_by_next(user=UserResponse.model_validate(user), user_admin=user.admin)
+        report.user_auto_renew_applied(user=UserResponse.model_validate(user), user_admin=user.admin)
         return True
     except Exception as exc:  # pragma: no cover - best-effort
         logger.warning(f"Failed to apply next plan for user {getattr(user, 'id', '?')}: {exc}")
@@ -110,7 +111,7 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     now_ts = datetime.now(timezone.utc).timestamp()
     users = (
         db.query(User)
-        .options(selectinload(User.admin), selectinload(User.next_plan))
+        .options(selectinload(User.admin), selectinload(User.next_plans))
         .filter(User.id.in_(user_ids))
         .all()
     )
@@ -120,9 +121,14 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
         limited = bool(user.data_limit and (user.used_traffic or 0) >= user.data_limit)
         expired = bool(user.expire and user.expire <= now_ts)
 
-        if (limited or expired) and user.next_plan:
-            should_fire_next = bool(user.next_plan.fire_on_either or (limited and expired))
-            if should_fire_next and _reset_user_to_next_plan(db, user):
+        if user.next_plan:
+            plan = user.next_plan
+            trigger_matches = plan.trigger_on == "either" or (
+                (plan.trigger_on == "data" and limited) or (plan.trigger_on == "expire" and expired)
+            )
+            if plan.start_on_first_connect and user.online_at is None and user.used_traffic == 0:
+                trigger_matches = False
+            if (limited or expired) and trigger_matches and _reset_user_to_next_plan(db, user):
                 continue
 
         target_status: Optional[UserStatus] = None

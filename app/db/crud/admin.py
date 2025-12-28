@@ -6,7 +6,7 @@ import logging
 import secrets
 from hashlib import sha256
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from types import SimpleNamespace
 
 from sqlalchemy import and_, case, func, or_
@@ -20,7 +20,7 @@ from app.db.models import (
     UserUsageResetLogs,
 )
 from app.models.admin import AdminRole, AdminStatus
-from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS
+from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
 from app.models.user import (
     UserStatus,
 )
@@ -36,6 +36,42 @@ _RECORD_CHANGED_ERRNO = 1020
 ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 # ============================================================================
+
+
+def _normalize_permissions_for_role(
+    role: AdminRole,
+    incoming: Optional[AdminPermissions | Dict[str, Any]],
+    current: Optional[AdminPermissions | Dict[str, Any]] = None,
+) -> AdminPermissions:
+    """
+    Merge role defaults, existing permissions (if any), and incoming overrides so we always
+    persist a complete permission map (including self_permissions) to the database.
+    """
+    base = ROLE_DEFAULT_PERMISSIONS[role]
+
+    def _as_permissions(payload: Optional[AdminPermissions | Dict[str, Any]]) -> Optional[AdminPermissions]:
+        if payload is None:
+            return None
+        if isinstance(payload, AdminPermissions):
+            return payload
+        return AdminPermissions.model_validate(payload)
+
+    merged = base
+    existing = _as_permissions(current)
+    overrides = _as_permissions(incoming)
+    if existing is not None:
+        merged = merged.merge(existing)
+    if overrides is not None:
+        merged = merged.merge(overrides)
+    return merged
+
+
+def _validate_max_data_limit(perms: AdminPermissions) -> None:
+    """Guard against impossible combinations when saving permissions."""
+    if perms.users.allow_unlimited_data and perms.users.max_data_limit_per_user is not None:
+        raise ValueError(
+            "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+        )
 
 
 def get_admin(db: Session, username: Optional[str] = None, admin_id: Optional[int] = None) -> Optional[Admin]:
@@ -171,12 +207,6 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
 
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
     """Creates a new admin in the database."""
-    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-    if admin.permissions and admin.permissions.users:
-        if admin.permissions.users.allow_unlimited_data and admin.permissions.users.max_data_limit_per_user is not None:
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
     normalized_username = admin.username.lower()
     existing_admin = (
         db.query(Admin)
@@ -192,27 +222,18 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         )
 
     role = admin.role or AdminRole.standard
-    permissions_payload = (
-        ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+    permissions_model = (
+        ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access]
         if role == AdminRole.full_access
-        else (admin.permissions.model_dump() if admin.permissions else None)
+        else _normalize_permissions_for_role(role, admin.permissions)
     )
-
-    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-    if permissions_payload and permissions_payload.get("users"):
-        if (
-            permissions_payload["users"].get("allow_unlimited_data")
-            and permissions_payload["users"].get("max_data_limit_per_user") is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
+    _validate_max_data_limit(permissions_model)
 
     dbadmin = Admin(
         username=admin.username,
         hashed_password=admin.hashed_password,
         role=role,
-        permissions=permissions_payload,
+        permissions=permissions_model.model_dump(),
         telegram_id=admin.telegram_id if admin.telegram_id else None,
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
@@ -232,15 +253,11 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
-        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-        if (
-            modified_admin.permissions.users.allow_unlimited_data
-            and modified_admin.permissions.users.max_data_limit_per_user is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
-        dbadmin.permissions = modified_admin.permissions.model_dump()
+        permissions_model = _normalize_permissions_for_role(
+            target_role, modified_admin.permissions, current=dbadmin.permissions
+        )
+        _validate_max_data_limit(permissions_model)
+        dbadmin.permissions = permissions_model.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
@@ -276,15 +293,11 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
-        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-        if (
-            modified_admin.permissions.users.allow_unlimited_data
-            and modified_admin.permissions.users.max_data_limit_per_user is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
-        dbadmin.permissions = modified_admin.permissions.model_dump()
+        permissions_model = _normalize_permissions_for_role(
+            target_role, modified_admin.permissions, current=dbadmin.permissions
+        )
+        _validate_max_data_limit(permissions_model)
+        dbadmin.permissions = permissions_model.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)

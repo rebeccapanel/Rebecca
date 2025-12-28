@@ -5,8 +5,8 @@ import {
 	Collapse,
 	chakra,
 	FormControl,
-	FormLabel,
 	FormErrorMessage,
+	FormLabel,
 	HStack,
 	IconButton,
 	Modal,
@@ -21,10 +21,10 @@ import {
 	Switch,
 	Tag,
 	Text,
+	Textarea,
 	Tooltip,
 	useClipboard,
 	useToast,
-	Textarea,
 } from "@chakra-ui/react";
 import {
 	ArrowDownTrayIcon,
@@ -201,7 +201,14 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			});
 			setShowCertificate(!isAddMode && !!node?.node_certificate);
 		}
-	}, [isOpen, isAddMode, node, form, formatDataLimitForInput, formatConfigForInput]);
+	}, [
+		isOpen,
+		isAddMode,
+		node,
+		form,
+		formatDataLimitForInput,
+		formatConfigForInput,
+	]);
 
 	useEffect(() => {
 		if (!isAddMode && node && isOpen) {
@@ -462,10 +469,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								isInvalid={Boolean(form.formState?.errors?.xray_config)}
 							>
 								<FormLabel>
-									{t(
-										"nodes.xrayConfig",
-										"Node Xray config (JSON, optional)",
-									)}
+									{t("nodes.xrayConfig", "Node Xray config (JSON, optional)")}
 								</FormLabel>
 								<Textarea
 									minH="160px"

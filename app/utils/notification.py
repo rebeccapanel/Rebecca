@@ -24,6 +24,8 @@ class Notification(BaseModel):
         data_usage_reset = "data_usage_reset"
         data_reset_by_next = "data_reset_by_next"
         subscription_revoked = "subscription_revoked"
+        auto_renew_set = "auto_renew_set"
+        auto_renew_applied = "auto_renew_applied"
 
         reached_usage_percent = "reached_usage_percent"
         reached_days_left = "reached_days_left"
@@ -97,6 +99,18 @@ class UserDataUsageReset(UserNotification):
 
 class UserDataResetByNext(UserNotification):
     action: Notification.Type = Notification.Type.data_usage_reset
+    user: UserResponse
+
+
+class UserAutoRenewSet(UserNotification):
+    action: Notification.Type = Notification.Type.auto_renew_set
+    by: Admin | None = None
+    user: UserResponse
+    total_rules: int = 1
+
+
+class UserAutoRenewApplied(UserNotification):
+    action: Notification.Type = Notification.Type.auto_renew_applied
     user: UserResponse
 
 

@@ -261,8 +261,18 @@ export const AdminDialog: FC = () => {
 		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
 		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
 	const endAdornmentProps = isRTL
-		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
-		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
+		? {
+				insetInlineStart: "0.5rem",
+				insetInlineEnd: "auto",
+				right: "auto",
+				left: "0.5rem",
+			}
+		: {
+				insetInlineEnd: "0.5rem",
+				insetInlineStart: "auto",
+				right: "0.5rem",
+				left: "auto",
+			};
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
 	const toast = useToast();
@@ -825,20 +835,20 @@ export const AdminDialog: FC = () => {
 			<Modal isOpen={isOpen} onClose={closeAdminDialog} size="lg">
 				<ModalOverlay />
 				<ModalContent>
-				<ModalHeader
-					display="flex"
-					alignItems="center"
-					justifyContent="space-between"
-					gap={3}
-					dir={isRTL ? "rtl" : "ltr"}
-				>
-					<Box as="span" textAlign="start">
-						{mode === "create"
-							? t("admins.addAdminTitle", "Add admin")
-							: t("admins.editAdminTitle", "Edit admin")}
-					</Box>
-					<ModalCloseButton position="static" />
-				</ModalHeader>
+					<ModalHeader
+						display="flex"
+						alignItems="center"
+						justifyContent="space-between"
+						gap={3}
+						dir={isRTL ? "rtl" : "ltr"}
+					>
+						<Box as="span" textAlign="start">
+							{mode === "create"
+								? t("admins.addAdminTitle", "Add admin")
+								: t("admins.editAdminTitle", "Edit admin")}
+						</Box>
+						<ModalCloseButton position="static" />
+					</ModalHeader>
 					<ModalBody>
 						{mode === "create" ? (
 							<Tabs colorScheme="primary" isFitted variant="enclosed">
