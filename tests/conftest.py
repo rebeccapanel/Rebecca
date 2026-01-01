@@ -5,6 +5,14 @@ os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 import sys
 import warnings
 
+# Silence noisy third-party deprecation warnings early, before imports trigger them
+warnings.filterwarnings(
+    "ignore",
+    category=PendingDeprecationWarning,
+    module="starlette.formparsers",
+    message=".*import python_multipart.*",
+)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -19,12 +27,6 @@ sys.modules["app.proto.rebecca.app.router"] = MagicMock()
 sys.modules["app.proto.rebecca.app.router.config_pb2"] = MagicMock()
 
 # Silence noisy third-party deprecation warnings in test output
-warnings.filterwarnings(
-    "ignore",
-    category=PendingDeprecationWarning,
-    module="starlette.formparsers",
-    message=".*import python_multipart.*",
-)
 warnings.filterwarnings(
     "ignore",
     category=DeprecationWarning,

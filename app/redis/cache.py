@@ -301,40 +301,17 @@ def cache_user(user: User, mark_for_sync: bool = True) -> bool:
         user_dict = _serialize_user(user)
         user_json = json.dumps(user_dict)
 
-        redis_client.setex(_get_user_id_key(user.id), USER_CACHE_TTL, user_json)
-        redis_client.setex(_get_user_key(user.username), USER_CACHE_TTL, user_json)
+        pipe = redis_client.pipeline(transaction=False)
+        pipe.setex(_get_user_id_key(user.id), USER_CACHE_TTL, user_json)
+        pipe.setex(_get_user_key(user.username), USER_CACHE_TTL, user_json)
 
-        # Incrementally update aggregated list if it exists
-        aggregated = redis_client.get(REDIS_KEY_USER_LIST_ALL)
-        if aggregated:
-            try:
-                data = json.loads(aggregated)
-                if not isinstance(data, list):
-                    data = []
-            except Exception:
-                data = []
-
-            updated = False
-            for idx, item in enumerate(data):
-                if item.get("id") == user.id:
-                    data[idx] = user_dict
-                    updated = True
-                    break
-            if not updated:
-                data.append(user_dict)
-
-            ttl = redis_client.ttl(REDIS_KEY_USER_LIST_ALL)
-            ttl_value = ttl if ttl and ttl > 0 else USER_CACHE_TTL
-            redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps(data))
-
-        # Mark user for sync to database if requested
+        # Mark user for sync to database if requested (best-effort)
         if mark_for_sync and user.id:
-            try:
-                sync_key = f"{REDIS_KEY_PREFIX_USER_PENDING_SYNC}{user.id}"
-                redis_client.setex(sync_key, USER_CACHE_TTL, user_json)
-                redis_client.sadd(REDIS_KEY_USER_PENDING_SYNC_SET, str(user.id))
-            except Exception as e:
-                logger.debug(f"Failed to mark user {user.id} for sync: {e}")
+            sync_key = f"{REDIS_KEY_PREFIX_USER_PENDING_SYNC}{user.id}"
+            pipe.setex(sync_key, USER_CACHE_TTL, user_json)
+            pipe.sadd(REDIS_KEY_USER_PENDING_SYNC_SET, str(user.id))
+
+        pipe.execute()
 
         return True
     except Exception as e:

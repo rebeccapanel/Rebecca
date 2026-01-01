@@ -58,6 +58,9 @@ class Admin(Base):
     permissions = Column(JSON, nullable=True, default=dict)
     password_reset_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, nullable=True, default=None)
+    subscription_domain = Column(String(255), nullable=True, default=None)
+    subscription_telegram_id = Column(BigInteger, nullable=True, default=None)
+    subscription_settings = Column(JSON, nullable=True, default=dict)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
     data_limit = Column(BigInteger, nullable=True, default=None)
@@ -67,6 +70,12 @@ class Admin(Base):
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
     api_keys = relationship(
         "AdminApiKey",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    subscription_domains = relationship(
+        "SubscriptionDomain",
         back_populates="admin",
         cascade="all, delete-orphan",
         lazy="selectin",
@@ -125,6 +134,47 @@ class PanelSettings(Base):
         server_default=text("'key'"),
     )
     access_insights_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class SubscriptionSettings(Base):
+    __tablename__ = "subscription_settings"
+
+    id = Column(Integer, primary_key=True)
+    subscription_url_prefix = Column(String(512), nullable=False, default="", server_default=text("''"))
+    custom_templates_directory = Column(String(512), nullable=True, default=None)
+    clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")
+    clash_settings_template = Column(String(255), nullable=False, default="clash/settings.yml")
+    subscription_page_template = Column(String(255), nullable=False, default="subscription/index.html")
+    home_page_template = Column(String(255), nullable=False, default="home/index.html")
+    v2ray_subscription_template = Column(String(255), nullable=False, default="v2ray/default.json")
+    v2ray_settings_template = Column(String(255), nullable=False, default="v2ray/settings.json")
+    singbox_subscription_template = Column(String(255), nullable=False, default="singbox/default.json")
+    singbox_settings_template = Column(String(255), nullable=False, default="singbox/settings.json")
+    mux_template = Column(String(255), nullable=False, default="mux/default.json")
+    use_custom_json_default = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_v2rayn = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_v2rayng = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_streisand = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_happ = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class SubscriptionDomain(Base):
+    __tablename__ = "subscription_domains"
+    __table_args__ = (UniqueConstraint("domain", name="uq_subscription_domain"),)
+
+    id = Column(Integer, primary_key=True)
+    domain = Column(String(255), nullable=False, index=True)
+    admin_id = Column(Integer, ForeignKey("admins.id", ondelete="SET NULL"), nullable=True, index=True)
+    admin = relationship("Admin", back_populates="subscription_domains")
+    email = Column(String(255), nullable=True)
+    provider = Column(String(64), nullable=True)
+    alt_names = Column(JSON, nullable=False, default=list)
+    last_issued_at = Column(DateTime, nullable=True)
+    last_renewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

@@ -8,17 +8,13 @@ from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
 from app.templates import render_template
+from app.services.subscription_settings import EffectiveSubscriptionSettings
 from app.utils.helpers import yml_uuid_representer
-from config import (
-    CLASH_SETTINGS_TEMPLATE,
-    CLASH_SUBSCRIPTION_TEMPLATE,
-    MUX_TEMPLATE,
-    USER_AGENT_TEMPLATE,
-)
+from config import USER_AGENT_TEMPLATE
 
 
 class ClashConfiguration(object):
-    def __init__(self):
+    def __init__(self, settings: EffectiveSubscriptionSettings):
         self.data = {
             "proxies": [],
             "proxy-groups": [],
@@ -26,8 +22,10 @@ class ClashConfiguration(object):
             "rules": [],
         }
         self.proxy_remarks = []
-        self.mux_template = render_template(MUX_TEMPLATE)
-        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
+        self._template_settings = settings
+        custom_dir = settings.custom_templates_directory
+        self.mux_template = render_template(settings.mux_template, custom_directory=custom_dir)
+        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in user_agent_data and isinstance(user_agent_data["list"], list):
             self.user_agent_list = user_agent_data["list"]
@@ -35,7 +33,9 @@ class ClashConfiguration(object):
             self.user_agent_list = []
 
         try:
-            self.settings = yaml.load(render_template(CLASH_SETTINGS_TEMPLATE), Loader=yaml.SafeLoader)
+            self.settings = yaml.load(
+                render_template(settings.clash_settings_template, custom_directory=custom_dir), Loader=yaml.SafeLoader
+            )
         except TemplateNotFound:
             self.settings = {}
 
@@ -48,7 +48,11 @@ class ClashConfiguration(object):
         yaml.add_representer(UUID, yml_uuid_representer)
         return yaml.dump(
             yaml.load(
-                render_template(CLASH_SUBSCRIPTION_TEMPLATE, {"conf": self.data, "proxy_remarks": self.proxy_remarks}),
+                render_template(
+                    self._template_settings.clash_subscription_template,
+                    {"conf": self.data, "proxy_remarks": self.proxy_remarks},
+                    custom_directory=self._template_settings.custom_templates_directory,
+                ),
                 Loader=yaml.SafeLoader,
             ),
             sort_keys=False,

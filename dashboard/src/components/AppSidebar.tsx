@@ -14,6 +14,7 @@ import {
 	Cog6ToothIcon,
 	GlobeAltIcon,
 	HomeIcon,
+	BookOpenIcon,
 	ServerIcon,
 	ShieldCheckIcon,
 	Square3Stack3DIcon,
@@ -24,9 +25,15 @@ import {
 import logoUrl from "assets/logo.svg";
 import useAds from "hooks/useAds";
 import useGetUser from "hooks/useGetUser";
-import { type ElementType, type FC, useEffect, useState } from "react";
+import {
+	type ElementType,
+	type FC,
+	type MouseEvent as ReactMouseEvent,
+	useEffect,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
 import { pickLocalizedAd } from "utils/ads";
 import { AdvertisementCard } from "./AdvertisementCard";
@@ -49,6 +56,7 @@ const ServicesIconStyled = chakra(Squares2X2Icon, iconProps);
 const UsageIconStyled = chakra(ChartPieIcon, iconProps);
 const MyAccountIconStyled = chakra(UserCircleIcon, iconProps);
 const InsightsIconStyled = chakra(GlobeAltIcon, iconProps);
+const TutorialIconStyled = chakra(BookOpenIcon, iconProps);
 interface AppSidebarProps {
 	collapsed: boolean;
 	/** when rendered inside a Drawer on mobile */
@@ -79,6 +87,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
+	const navigate = useNavigate();
 	const { colorMode } = useColorMode();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const shouldShowAds = getUserIsSuccess;
@@ -144,12 +153,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	].filter(Boolean) as SidebarSubItems;
 
 	const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
-
-	const handleNavClick = () => {
-		if (inDrawer && onRequestExpand) {
-			onRequestExpand();
-		}
-	};
 	if (canViewServicesSection) {
 		settingsSubItems.unshift({
 			title: t("services.menu", "Services"),
@@ -168,6 +171,31 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			setSettingsOpen(true);
 		}
 	}, [isSettingsRoute]);
+
+	const defaultTabByPath: Record<string, string> = {
+		"/integrations": "panel",
+		"/hosts": "inbounds",
+		"/usage": "services",
+		"/xray-settings": "basic",
+	};
+
+	const handleNavClick = (
+		event?: ReactMouseEvent,
+		targetUrl?: string,
+	) => {
+		if (inDrawer && onRequestExpand) {
+			onRequestExpand();
+		}
+		if (!targetUrl) return;
+		const defaultTab = defaultTabByPath[targetUrl];
+		if (defaultTab) {
+			event?.preventDefault();
+			const normalized = targetUrl.startsWith("/")
+				? targetUrl
+				: `/${targetUrl}`;
+			navigate(`${normalized}#${defaultTab}`);
+		}
+	};
 
 	const items: SidebarItem[] = [
 		{ title: t("dashboard"), url: "/", icon: HomeIconStyled },
@@ -189,6 +217,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			icon: UsageIconStyled,
 		});
 	}
+	items.push({
+		title: t("tutorials.menu", "Tutorials"),
+		url: "/tutorials",
+		icon: TutorialIconStyled,
+	});
 	if (canViewAdmins) {
 		items.push({
 			title: t("admins", "Admins"),
@@ -351,7 +384,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 															<NavLink
 																key={subItem.url}
 																to={subItem.url}
-																onClick={handleNavClick}
+																onClick={(e) =>
+																	handleNavClick(e, subItem.url)
+																}
 															>
 																<HStack
 																	spacing={3}
@@ -404,7 +439,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 										)}
 									</>
 								) : item.url ? (
-									<NavLink to={item.url} onClick={handleNavClick}>
+									<NavLink
+										to={item.url}
+										onClick={(e) => handleNavClick(e, item.url)}
+									>
 										<Tooltip
 											label={collapsed ? item.title : ""}
 											placement="right"

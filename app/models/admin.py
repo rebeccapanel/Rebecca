@@ -327,6 +327,11 @@ class Admin(BaseModel):
     status: AdminStatus = AdminStatus.active
     disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin's links")
+    subscription_telegram_id: Optional[int] = Field(
+        None, description="Telegram ID shown on subscription headers/pages for this admin"
+    )
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(
         None,
@@ -384,6 +389,12 @@ class Admin(BaseModel):
         data["role"] = role
         data["permissions"] = permissions
         return data
+
+    @model_validator(mode="after")
+    def normalize_subscription_settings(self):
+        if self.subscription_settings is None:
+            self.subscription_settings = {}
+        return self
 
     @property
     def has_full_access(self) -> bool:
@@ -615,6 +626,11 @@ class AdminModify(BaseModel):
         default=None, description="Fine-grained permission overrides for this admin"
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
+    subscription_telegram_id: Optional[int] = Field(
+        None, description="Telegram ID shown on subscription pages/headers for this admin"
+    )
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit in bytes (null = unlimited)",
@@ -639,6 +655,11 @@ class AdminPartialModify(AdminModify):
         default=None, description="Fine-grained permission overrides for this admin"
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
+    subscription_telegram_id: Optional[int] = Field(
+        None, description="Telegram ID shown on subscription pages/headers for this admin"
+    )
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit in bytes (null = unlimited)",

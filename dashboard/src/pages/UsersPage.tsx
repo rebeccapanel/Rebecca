@@ -20,6 +20,14 @@ export const UsersPage: FC = () => {
 		fetchInbounds();
 	}, []);
 
+	useEffect(() => {
+		const shouldOpenCreate = sessionStorage.getItem("openCreateUser");
+		if (shouldOpenCreate === "true") {
+			sessionStorage.removeItem("openCreateUser");
+			useDashboard.getState().onCreateUser(true);
+		}
+	}, []);
+
 	return (
 		<VStack spacing={6} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
 			<VStack spacing={1} align="flex-start">

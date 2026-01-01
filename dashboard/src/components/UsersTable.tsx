@@ -224,11 +224,11 @@ const UsageMeter: FC<UsageMeterProps> = ({
 			>
 				<Text>
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{totalLabel}
+						{usedLabel}
 					</chakra.span>{" "}
 					/{" "}
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{usedLabel}
+						{totalLabel}
 					</chakra.span>
 					{resetLabel ? ` · ${resetLabel}` : ""}
 				</Text>
@@ -366,7 +366,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 
 	useEffect(() => {
 		if (!contextMenu.visible) return;
-		const handleClick = () => closeContextMenu();
+		const handleClick = (event: Event) => {
+			if (contextMenuRef.current?.contains(event.target as Node)) {
+				return;
+			}
+			closeContextMenu();
+		};
 		const handleEscape = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				closeContextMenu();
@@ -382,15 +387,18 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			}
 			closeContextMenu();
 		};
+		const handleScroll = () => closeContextMenu();
 		window.addEventListener("click", handleClick, true);
 		window.addEventListener("mousedown", handlePointer, true);
 		window.addEventListener("contextmenu", handlePointer, true);
 		window.addEventListener("keydown", handleEscape);
+		window.addEventListener("scroll", handleScroll, true);
 		return () => {
 			window.removeEventListener("click", handleClick, true);
 			window.removeEventListener("mousedown", handlePointer, true);
 			window.removeEventListener("contextmenu", handlePointer, true);
 			window.removeEventListener("keydown", handleEscape);
+			window.removeEventListener("scroll", handleScroll, true);
 		};
 	}, [contextMenu.visible]);
 
@@ -1750,3 +1758,4 @@ const EmptySection: FC<EmptySectionProps> = ({
 		</Box>
 	);
 };
+

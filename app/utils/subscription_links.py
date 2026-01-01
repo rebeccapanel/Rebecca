@@ -36,15 +36,21 @@ def build_subscription_links(
     Does NOT generate credential keys; simply uses existing values.
     """
     salt = secrets.token_hex(8)
-    url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace("*", salt)
+    try:
+        from app.services.subscription_settings import SubscriptionSettingsService
+
+        effective_settings = SubscriptionSettingsService.get_effective_settings(getattr(user, "admin", None))
+        url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+    except Exception:
+        url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace("*", salt) or f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
 
     links: Dict[str, str] = {}
     if user.credential_key:
-        links["username-key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{user.username}/{user.credential_key}"
-        links["key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{user.credential_key}"
+        links["username-key"] = f"{url_prefix}/{user.username}/{user.credential_key}"
+        links["key"] = f"{url_prefix}/{user.credential_key}"
 
     token = create_subscription_token(user.username)
-    links["token"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+    links["token"] = f"{url_prefix}/{token}"
 
     has_key = bool(user.credential_key)
     if not has_key:

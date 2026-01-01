@@ -57,6 +57,7 @@ import { resetStrategy } from "constants/UserSettings";
 import { type FilterUsageType, useDashboard } from "contexts/DashboardContext";
 
 import { useServicesStore } from "contexts/ServicesContext";
+import { useSeasonal } from "contexts/SeasonalContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 
@@ -66,6 +67,7 @@ import {
 	type HTMLAttributes,
 	useCallback,
 	useEffect,
+	useMemo,
 	useState,
 } from "react";
 import ReactApexChart from "react-apexcharts";
@@ -295,232 +297,237 @@ const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 
 const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
-const baseSchema = {
-	username: z
-		.string()
-		.regex(/^[a-z0-9_]{3,32}$/, {
-			message:
-				"Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between.",
-		}),
+const usernameRegex = /^[A-Za-z0-9_]{3,32}$/;
+const buildSchema = (isEditing: boolean) => {
+	const baseSchema = {
+		username: isEditing
+			? z.string().min(1)
+			: z
+					.string()
+					.regex(usernameRegex, {
+						message:
+							"Username only can be 3 to 32 characters and contain a-z, A-Z, 0-9, and underscores in between.",
+					}),
 
-	flow: z
-		.string()
-		.optional()
-		.transform((val) => (val === "" || typeof val === "undefined" ? null : val))
-		.refine(
-			(val) => val === null || allowedFlows.includes(val),
-			"Unsupported flow",
-		),
+		flow: z
+			.string()
+			.optional()
+			.transform((val) => (val === "" || typeof val === "undefined" ? null : val))
+			.refine(
+				(val) => val === null || allowedFlows.includes(val),
+				"Unsupported flow",
+			),
 
-	service_id: z
+		service_id: z
 
-		.union([z.string(), z.number()])
+			.union([z.string(), z.number()])
 
-		.nullable()
+			.nullable()
 
-		.transform((value) => {
-			if (value === "" || value === null || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			return Number.isNaN(parsed) ? null : parsed;
-		}),
-
-	proxies: z
-
-		.record(z.string(), z.record(z.string(), z.any()))
-
-		.transform((ins) => {
-			const deleteIfEmpty = (obj: any, key: string) => {
-				if (obj && obj[key] === "") {
-					delete obj[key];
+			.transform((value) => {
+				if (value === "" || value === null || typeof value === "undefined") {
+					return null;
 				}
-			};
 
-			deleteIfEmpty(ins.vmess, "id");
+				const parsed = Number(value);
 
-			deleteIfEmpty(ins.vless, "id");
+				return Number.isNaN(parsed) ? null : parsed;
+			}),
 
-			deleteIfEmpty(ins.trojan, "password");
+		proxies: z
 
-			deleteIfEmpty(ins.shadowsocks, "password");
+			.record(z.string(), z.record(z.string(), z.any()))
 
-			deleteIfEmpty(ins.shadowsocks, "method");
+			.transform((ins) => {
+				const deleteIfEmpty = (obj: any, key: string) => {
+					if (obj && obj[key] === "") {
+						delete obj[key];
+					}
+				};
+
+				deleteIfEmpty(ins.vmess, "id");
+
+				deleteIfEmpty(ins.vless, "id");
+
+				deleteIfEmpty(ins.trojan, "password");
+
+				deleteIfEmpty(ins.shadowsocks, "password");
+
+				deleteIfEmpty(ins.shadowsocks, "method");
+
+				return ins;
+			}),
+
+		data_limit: z
+
+			.string()
+
+			.min(0)
+
+			.or(z.number())
+
+			.nullable()
+
+			.transform((str) => {
+				if (str) return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
+
+				return 0;
+			}),
+
+		expire: z.number().nullable(),
+
+		data_limit_reset_strategy: z.string(),
+
+		inbounds: z.record(z.string(), z.array(z.string())).transform((ins) => {
+			Object.keys(ins).forEach((protocol) => {
+				if (Array.isArray(ins[protocol]) && !ins[protocol]?.length)
+					delete ins[protocol];
+			});
 
 			return ins;
 		}),
 
-	data_limit: z
-
-		.string()
-
-		.min(0)
-
-		.or(z.number())
-
-		.nullable()
-
-		.transform((str) => {
-			if (str) return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
-
-			return 0;
+		note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
 		}),
 
-	expire: z.number().nullable(),
+		telegram_id: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
+		}),
 
-	data_limit_reset_strategy: z.string(),
+		contact_number: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
+		}),
 
-	inbounds: z.record(z.string(), z.array(z.string())).transform((ins) => {
-		Object.keys(ins).forEach((protocol) => {
-			if (Array.isArray(ins[protocol]) && !ins[protocol]?.length)
-				delete ins[protocol];
+		next_plan_enabled: z.boolean().default(false),
+
+		next_plan_data_limit: z
+
+			.union([z.string(), z.number(), z.null()])
+
+			.transform((value) => {
+				if (value === null || value === "" || typeof value === "undefined") {
+					return null;
+				}
+
+				const parsed = Number(value);
+
+				if (Number.isNaN(parsed)) {
+					return null;
+				}
+
+				return Math.max(0, parsed);
+			}),
+
+		next_plan_expire: z
+
+			.union([z.number(), z.string(), z.null()])
+
+			.transform((value) => {
+				if (value === "" || value === null || typeof value === "undefined") {
+					return null;
+				}
+
+				const parsed = Number(value);
+
+				return Number.isNaN(parsed) ? null : parsed;
+			}),
+
+		next_plan_add_remaining_traffic: z.boolean().default(false),
+
+		next_plan_fire_on_either: z.boolean().default(true),
+
+		ip_limit: z
+			.union([z.number().min(0), z.null()])
+			.optional()
+			.transform((value) => {
+				if (typeof value !== "number") {
+					return null;
+				}
+				return Number.isFinite(value) ? value : null;
+			}),
+
+		manual_key_entry: z.boolean().default(false),
+
+		credential_key: z
+			.union([z.string(), z.null(), z.undefined()])
+			.transform((value) => {
+				if (!value || typeof value !== "string") {
+					return null;
+				}
+				const trimmed = value.trim();
+				return trimmed === "" ? null : trimmed;
+			})
+			.nullable(),
+	};
+
+	return z
+		.discriminatedUnion("status", [
+			z.object({
+				status: z.literal("active"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("disabled"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("limited"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("expired"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("on_hold"),
+
+				on_hold_expire_duration: z.coerce
+
+					.number()
+
+					.min(0.1, "Required")
+
+					.transform((d) => {
+						return d * (24 * 60 * 60);
+					}),
+
+				...baseSchema,
+			}),
+		])
+		.superRefine((values, ctx) => {
+			if (!values.manual_key_entry) {
+				return;
+			}
+			const key = values.credential_key;
+			if (!key) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["credential_key"],
+					message: "Credential key is required when manual entry is enabled.",
+				});
+				return;
+			}
+			if (!CREDENTIAL_KEY_REGEX.test(key)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["credential_key"],
+					message: "Credential key must be a 32-character hexadecimal string.",
+				});
+			}
 		});
-
-		return ins;
-	}),
-
-	note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
-		if (typeof value !== "string") return "";
-		return value;
-	}),
-
-	telegram_id: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
-		if (typeof value !== "string") return "";
-		return value;
-	}),
-
-	contact_number: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
-		if (typeof value !== "string") return "";
-		return value;
-	}),
-
-	next_plan_enabled: z.boolean().default(false),
-
-	next_plan_data_limit: z
-
-		.union([z.string(), z.number(), z.null()])
-
-		.transform((value) => {
-			if (value === null || value === "" || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			if (Number.isNaN(parsed)) {
-				return null;
-			}
-
-			return Math.max(0, parsed);
-		}),
-
-	next_plan_expire: z
-
-		.union([z.number(), z.string(), z.null()])
-
-		.transform((value) => {
-			if (value === "" || value === null || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			return Number.isNaN(parsed) ? null : parsed;
-		}),
-
-	next_plan_add_remaining_traffic: z.boolean().default(false),
-
-	next_plan_fire_on_either: z.boolean().default(true),
-
-	ip_limit: z
-		.union([z.number().min(0), z.null()])
-		.optional()
-		.transform((value) => {
-			if (typeof value !== "number") {
-				return null;
-			}
-			return Number.isFinite(value) ? value : null;
-		}),
-
-	manual_key_entry: z.boolean().default(false),
-
-	credential_key: z
-		.union([z.string(), z.null(), z.undefined()])
-		.transform((value) => {
-			if (!value || typeof value !== "string") {
-				return null;
-			}
-			const trimmed = value.trim();
-			return trimmed === "" ? null : trimmed;
-		})
-		.nullable(),
 };
-
-const schema = z
-	.discriminatedUnion("status", [
-		z.object({
-			status: z.literal("active"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("disabled"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("limited"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("expired"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("on_hold"),
-
-			on_hold_expire_duration: z.coerce
-
-				.number()
-
-				.min(0.1, "Required")
-
-				.transform((d) => {
-					return d * (24 * 60 * 60);
-				}),
-
-			...baseSchema,
-		}),
-	])
-	.superRefine((values, ctx) => {
-		if (!values.manual_key_entry) {
-			return;
-		}
-		const key = values.credential_key;
-		if (!key) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["credential_key"],
-				message: "Credential key is required when manual entry is enabled.",
-			});
-			return;
-		}
-		if (!CREDENTIAL_KEY_REGEX.test(key)) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["credential_key"],
-				message: "Credential key must be a 32-character hexadecimal string.",
-			});
-		}
-	});
 
 export const UserDialog: FC<UserDialogProps> = () => {
 	const {
@@ -562,6 +569,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const toast = useToast();
 
 	const { t, i18n } = useTranslation();
+	const { isChristmas } = useSeasonal();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const DATA_UNIT = "GB";
 	const DAYS_UNIT = t("userDialog.days", "Days");
@@ -621,13 +629,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		);
 	};
 
-const form = useForm<FormType>({
-	defaultValues: getDefaultValues(),
+	const formSchema = useMemo(() => buildSchema(isEditing), [isEditing]);
 
-	resolver: zodResolver(schema),
-	mode: "onChange",
-	reValidateMode: "onChange",
-});
+	const form = useForm<FormType>({
+		defaultValues: getDefaultValues(),
+
+		resolver: zodResolver(formSchema),
+		mode: "onChange",
+		reValidateMode: "onChange",
+	});
 
 	const manualKeyEntryEnabled = useWatch({
 		control: form.control,

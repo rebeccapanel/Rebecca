@@ -7,15 +7,17 @@ from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
 from app.templates import render_template
-from config import MUX_TEMPLATE, SINGBOX_SETTINGS_TEMPLATE, SINGBOX_SUBSCRIPTION_TEMPLATE, USER_AGENT_TEMPLATE
+from app.services.subscription_settings import EffectiveSubscriptionSettings
+from config import USER_AGENT_TEMPLATE
 
 
 class SingBoxConfiguration(str):
-    def __init__(self):
+    def __init__(self, settings: EffectiveSubscriptionSettings):
         self.proxy_remarks = []
-        self.config = json.loads(render_template(SINGBOX_SUBSCRIPTION_TEMPLATE))
-        self.mux_template = render_template(MUX_TEMPLATE)
-        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
+        custom_dir = settings.custom_templates_directory
+        self.config = json.loads(render_template(settings.singbox_subscription_template, custom_directory=custom_dir))
+        self.mux_template = render_template(settings.mux_template, custom_directory=custom_dir)
+        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in user_agent_data and isinstance(user_agent_data["list"], list):
             self.user_agent_list = user_agent_data["list"]
@@ -23,7 +25,7 @@ class SingBoxConfiguration(str):
             self.user_agent_list = []
 
         try:
-            self.settings = json.loads(render_template(SINGBOX_SETTINGS_TEMPLATE))
+            self.settings = json.loads(render_template(settings.singbox_settings_template, custom_directory=custom_dir))
         except TemplateNotFound:
             self.settings = {}
 

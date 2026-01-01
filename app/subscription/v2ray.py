@@ -11,14 +11,12 @@ from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun, get_grpc_multi
 from app.templates import render_template
+from app.services.subscription_settings import EffectiveSubscriptionSettings
 from app.utils.helpers import UUIDEncoder, format_ip_for_url
 from config import (
     EXTERNAL_CONFIG,
     GRPC_USER_AGENT_TEMPLATE,
-    MUX_TEMPLATE,
     USER_AGENT_TEMPLATE,
-    V2RAY_SETTINGS_TEMPLATE,
-    V2RAY_SUBSCRIPTION_TEMPLATE,
 )
 
 
@@ -467,18 +465,19 @@ class V2rayShareLink(str):
 
 
 class V2rayJsonConfig(str):
-    def __init__(self):
+    def __init__(self, settings: EffectiveSubscriptionSettings):
         self.config = []
-        self.template = render_template(V2RAY_SUBSCRIPTION_TEMPLATE)
-        self.mux_template = render_template(MUX_TEMPLATE)
-        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
+        custom_dir = settings.custom_templates_directory
+        self.template = render_template(settings.v2ray_subscription_template, custom_directory=custom_dir)
+        self.mux_template = render_template(settings.mux_template, custom_directory=custom_dir)
+        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in user_agent_data and isinstance(user_agent_data["list"], list):
             self.user_agent_list = user_agent_data["list"]
         else:
             self.user_agent_list = []
 
-        grpc_user_agent_data = json.loads(render_template(GRPC_USER_AGENT_TEMPLATE))
+        grpc_user_agent_data = json.loads(render_template(GRPC_USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in grpc_user_agent_data and isinstance(grpc_user_agent_data["list"], list):
             self.grpc_user_agent_data = grpc_user_agent_data["list"]
@@ -486,7 +485,7 @@ class V2rayJsonConfig(str):
             self.grpc_user_agent_data = []
 
         try:
-            self.settings = json.loads(render_template(V2RAY_SETTINGS_TEMPLATE))
+            self.settings = json.loads(render_template(settings.v2ray_settings_template, custom_directory=custom_dir))
         except TemplateNotFound:
             self.settings = {}
 

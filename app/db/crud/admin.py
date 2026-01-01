@@ -235,6 +235,9 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         role=role,
         permissions=permissions_model.model_dump(),
         telegram_id=admin.telegram_id if admin.telegram_id else None,
+        subscription_domain=(admin.subscription_domain or "").strip() or None,
+        subscription_telegram_id=admin.subscription_telegram_id,
+        subscription_settings=admin.subscription_settings or {},
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
         status=AdminStatus.active,
@@ -261,9 +264,15 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
-    if modified_admin.telegram_id:
-        dbadmin.telegram_id = modified_admin.telegram_id
-    # Subscription fields and support_telegram_id not available in AdminModify/AdminPartialModify models
+    if "telegram_id" in modified_admin.model_fields_set:
+        dbadmin.telegram_id = modified_admin.telegram_id or None
+    if "subscription_domain" in modified_admin.model_fields_set:
+        domain = modified_admin.subscription_domain or ""
+        dbadmin.subscription_domain = domain.strip() or None
+    if "subscription_telegram_id" in modified_admin.model_fields_set:
+        dbadmin.subscription_telegram_id = modified_admin.subscription_telegram_id
+    if "subscription_settings" in modified_admin.model_fields_set:
+        dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit
@@ -301,9 +310,15 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
-    if modified_admin.telegram_id is not None:
+    if "telegram_id" in modified_admin.model_fields_set:
         dbadmin.telegram_id = modified_admin.telegram_id or None
-    # Subscription fields and support_telegram_id not available in AdminModify/AdminPartialModify models
+    if "subscription_domain" in modified_admin.model_fields_set:
+        domain = modified_admin.subscription_domain or ""
+        dbadmin.subscription_domain = domain.strip() or None
+    if "subscription_telegram_id" in modified_admin.model_fields_set:
+        dbadmin.subscription_telegram_id = modified_admin.subscription_telegram_id
+    if "subscription_settings" in modified_admin.model_fields_set:
+        dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit

@@ -14,7 +14,7 @@ import NodesUsageAnalytics from "components/NodesUsageAnalytics";
 import ServiceUsageAnalytics from "components/ServiceUsageAnalytics";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useEffect } from "react";
+import { type FC, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export const UsagePage: FC = () => {
@@ -26,6 +26,41 @@ export const UsagePage: FC = () => {
 
 	const services = useServicesStore((state) => state.services);
 	const fetchServices = useServicesStore((state) => state.fetchServices);
+	const [activeTab, setActiveTab] = useState<number>(0);
+	const tabKeys = ["services", "admins", "nodes"];
+	const splitHash = () => {
+		const hash = window.location.hash || "";
+		const idx = hash.indexOf("#", 1);
+		return {
+			base: idx >= 0 ? hash.slice(0, idx) : hash,
+			tab: idx >= 0 ? hash.slice(idx + 1) : "",
+		};
+	};
+
+	useEffect(() => {
+		const syncFromHash = () => {
+			const { tab } = splitHash();
+			const idx = tabKeys.findIndex((key) => key === tab.toLowerCase());
+			if (idx >= 0) {
+				setActiveTab(idx);
+			} else {
+				setActiveTab(0);
+				const { base } = splitHash();
+				window.location.hash = `${base || "#"}#${tabKeys[0]}`;
+			}
+		};
+		syncFromHash();
+		window.addEventListener("hashchange", syncFromHash);
+		return () => window.removeEventListener("hashchange", syncFromHash);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	const handleTabChange = (index: number) => {
+		setActiveTab(index);
+		const key = tabKeys[index] || "";
+		const { base } = splitHash();
+		window.location.hash = `${base || "#"}#${key}`;
+	};
 
 	useEffect(() => {
 		if (canViewUsage) {
@@ -69,7 +104,12 @@ export const UsagePage: FC = () => {
 				)}
 			</Text>
 
-			<Tabs variant="enclosed" colorScheme="primary">
+			<Tabs
+				variant="enclosed"
+				colorScheme="primary"
+				index={activeTab}
+				onChange={handleTabChange}
+			>
 				<TabList>
 					<Tab>{t("usage.tabs.services", "Services")}</Tab>
 					<Tab>{t("usage.tabs.admins", "Admins")}</Tab>

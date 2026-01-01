@@ -11,6 +11,7 @@ from jdatetime import date as jd
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
 from app.utils.credentials import runtime_proxy_settings
 from app.models.proxy import ProxyTypes
+from app.services.subscription_settings import EffectiveSubscriptionSettings
 
 from . import *
 
@@ -59,19 +60,28 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
 
 
 def generate_clash_subscription(
-    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
+    is_meta: bool = False,
+    settings: EffectiveSubscriptionSettings | None = None,
 ) -> str:
+    if settings is None:
+        raise ValueError("Subscription settings are required for generating clash subscriptions")
     if is_meta is True:
-        conf = ClashMetaConfiguration()
+        conf = ClashMetaConfiguration(settings)
     else:
-        conf = ClashConfiguration()
+        conf = ClashConfiguration(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
-def generate_singbox_subscription(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> str:
-    conf = SingBoxConfiguration()
+def generate_singbox_subscription(
+    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, settings: EffectiveSubscriptionSettings
+) -> str:
+    conf = SingBoxConfiguration(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
@@ -82,6 +92,7 @@ def generate_outline_subscription(
     inbounds: dict,
     extra_data: dict,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
     conf = OutlineConfiguration()
 
@@ -94,8 +105,9 @@ def generate_v2ray_json_subscription(
     inbounds: dict,
     extra_data: dict,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
-    conf = V2rayJsonConfig()
+    conf = V2rayJsonConfig(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
@@ -106,6 +118,7 @@ def generate_subscription(
     config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
     as_base64: bool,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
     kwargs = {
         "proxies": user.proxies,
@@ -117,15 +130,15 @@ def generate_subscription(
     if config_format == "v2ray":
         config = "\n".join(generate_v2ray_links(**kwargs))
     elif config_format == "clash-meta":
-        config = generate_clash_subscription(**kwargs, is_meta=True)
+        config = generate_clash_subscription(**kwargs, is_meta=True, settings=settings)
     elif config_format == "clash":
-        config = generate_clash_subscription(**kwargs)
+        config = generate_clash_subscription(**kwargs, settings=settings)
     elif config_format == "sing-box":
-        config = generate_singbox_subscription(**kwargs)
+        config = generate_singbox_subscription(**kwargs, settings=settings)
     elif config_format == "outline":
-        config = generate_outline_subscription(**kwargs)
+        config = generate_outline_subscription(**kwargs, settings=settings)
     elif config_format == "v2ray-json":
-        config = generate_v2ray_json_subscription(**kwargs)
+        config = generate_v2ray_json_subscription(**kwargs, settings=settings)
     else:
         raise ValueError(f'Unsupported format "{config_format}"')
 

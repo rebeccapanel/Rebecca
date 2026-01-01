@@ -152,6 +152,23 @@ const sharedThemeConfig = {
 				"--surface-dark": "#0f2a18",
 			},
 
+			".rb-seasonal-christmas": {
+				"--primary-50": "#ffe6e6",
+				"--primary-100": "#ffcdd2",
+				"--primary-200": "#ef9a9a",
+				"--primary-300": "#e57373",
+				"--primary-400": "#ef5350",
+				"--primary-500": "#d32f2f",
+				"--primary-600": "#c62828",
+				"--primary-700": "#b71c1c",
+				"--primary-800": "#8d0f0f",
+				"--primary-900": "#5f0a0a",
+				"--bg-light": "#fdf7f2",
+				"--bg-dark": "#0b0f19",
+				"--surface-light": "#ffffff",
+				"--surface-dark": "#141d2a",
+			},
+
 			".rb-theme-pure-dark": {
 				"--primary-50": "#e5f2ff",
 				"--primary-100": "#b8deff",

@@ -652,15 +652,21 @@ class UserResponse(User):
         if _skip_expensive_computations.get():
             return self
         salt = secrets.token_hex(8)
-        url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace("*", salt)
+        try:
+            from app.services.subscription_settings import SubscriptionSettingsService
+
+            effective_settings = SubscriptionSettingsService.get_effective_settings(getattr(self, "admin", None))
+            url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+        except Exception:
+            url_prefix = f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
 
         links: Dict[str, str] = {}
         if self.credential_key:
-            links["username-key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.username}/{self.credential_key}"
-            links["key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            links["username-key"] = f"{url_prefix}/{self.username}/{self.credential_key}"
+            links["key"] = f"{url_prefix}/{self.credential_key}"
 
         token = create_subscription_token(self.username)
-        links["token"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+        links["token"] = f"{url_prefix}/{token}"
 
         self.subscription_urls = links
 

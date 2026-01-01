@@ -107,12 +107,14 @@ export const Login: FC = () => {
 	const canSubmit =
 		Boolean(usernameValue.trim().length) && Boolean(passwordValue.trim().length);
 
+	// Only clear existing tokens on initial mount to avoid wiping the new token
 	useEffect(() => {
 		removeAuthToken();
 		if (location.pathname !== "/login") {
 			navigate("/login", { replace: true });
 		}
-	}, [location.pathname, navigate]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 	const login = (values: LoginFormValues) => {
 		setError("");
 		const formData = new FormData();

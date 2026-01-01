@@ -371,6 +371,42 @@ export const CoreSettingsPage: FC = () => {
 	const [jsonKey, setJsonKey] = useState(0); // force re-render of JsonEditor
 	const [warpOptionValue, setWarpOptionValue] = useState<string>("");
 	const [warpCustomDomain, setWarpCustomDomain] = useState<string>("");
+	const [activeTab, setActiveTab] = useState<number>(0);
+	const tabKeys = [
+		"basic",
+		"routing",
+		"outbounds",
+		"balancers",
+		"dns",
+		"advanced",
+		"logs",
+	];
+	const splitHash = () => {
+		const hash = window.location.hash || "";
+		const idx = hash.indexOf("#", 1);
+		return {
+			base: idx >= 0 ? hash.slice(0, idx) : hash,
+			tab: idx >= 0 ? hash.slice(idx + 1) : "",
+		};
+	};
+
+useEffect(() => {
+	const syncFromHash = () => {
+		const { tab } = splitHash();
+		const idx = tabKeys.findIndex((key) => key === tab.toLowerCase());
+		if (idx >= 0) {
+			setActiveTab(idx);
+		} else {
+			setActiveTab(0);
+			const { base } = splitHash();
+			window.location.hash = `${base || "#"}#${tabKeys[0]}`;
+		}
+	};
+	syncFromHash();
+	window.addEventListener("hashchange", syncFromHash);
+	return () => window.removeEventListener("hashchange", syncFromHash);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const basicSectionBorder = useColorModeValue("gray.200", "whiteAlpha.300");
 
@@ -1274,6 +1310,13 @@ export const CoreSettingsPage: FC = () => {
 	const observatoryJsonValue = getObsJson();
 	const advancedJsonValue = getAdvancedJson();
 
+	const handleTabChange = (index: number) => {
+		setActiveTab(index);
+		const key = tabKeys[index] || "";
+		const { base } = splitHash();
+		window.location.hash = `${base || "#"}#${key}`;
+	};
+
 	return (
 		<VStack spacing={6} align="stretch">
 			<Text as="h1" fontWeight="semibold" fontSize="2xl">
@@ -1316,7 +1359,14 @@ export const CoreSettingsPage: FC = () => {
 					</Button>
 				</Stack>
 			</Stack>
-			<Tabs variant="enclosed" colorScheme="primary" isLazy isManual>
+			<Tabs
+				variant="enclosed"
+				colorScheme="primary"
+				isLazy
+				isManual
+				index={activeTab}
+				onChange={handleTabChange}
+			>
 				<TabList
 					overflowX="auto"
 					flexWrap={{ base: "wrap", md: "nowrap" }}
