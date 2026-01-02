@@ -206,6 +206,7 @@ export const useDashboard = create(
 			users_limit: null,
 			status_breakdown: {},
 			usage_total: null,
+			online_total: null,
 		},
 		loading: true,
 		isUserLimitReached: false,

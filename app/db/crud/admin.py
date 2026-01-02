@@ -38,6 +38,8 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 # ============================================================================
 
 
+
+
 def _normalize_permissions_for_role(
     role: AdminRole,
     incoming: Optional[AdminPermissions | Dict[str, Any]],
@@ -236,7 +238,6 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         permissions=permissions_model.model_dump(),
         telegram_id=admin.telegram_id if admin.telegram_id else None,
         subscription_domain=(admin.subscription_domain or "").strip() or None,
-        subscription_telegram_id=admin.subscription_telegram_id,
         subscription_settings=admin.subscription_settings or {},
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
@@ -269,8 +270,6 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if "subscription_domain" in modified_admin.model_fields_set:
         domain = modified_admin.subscription_domain or ""
         dbadmin.subscription_domain = domain.strip() or None
-    if "subscription_telegram_id" in modified_admin.model_fields_set:
-        dbadmin.subscription_telegram_id = modified_admin.subscription_telegram_id
     if "subscription_settings" in modified_admin.model_fields_set:
         dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False
@@ -315,8 +314,6 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if "subscription_domain" in modified_admin.model_fields_set:
         domain = modified_admin.subscription_domain or ""
         dbadmin.subscription_domain = domain.strip() or None
-    if "subscription_telegram_id" in modified_admin.model_fields_set:
-        dbadmin.subscription_telegram_id = modified_admin.subscription_telegram_id
     if "subscription_settings" in modified_admin.model_fields_set:
         dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False

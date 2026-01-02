@@ -4,7 +4,9 @@
 /* Using local font files from public/fonts directory */
 @font-face {
   font-family: 'Arad';
-  src: url('/fonts/Arad-Regular.woff2') format('woff2');
+  src:
+    url('/statics/fonts/Arad-Regular.woff2') format('woff2'),
+    url('/fonts/Arad-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -12,7 +14,9 @@
 
 @font-face {
   font-family: 'Arad';
-  src: url('/fonts/Arad-Bold.woff2') format('woff2');
+  src:
+    url('/statics/fonts/Arad-Bold.woff2') format('woff2'),
+    url('/fonts/Arad-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;

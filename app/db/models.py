@@ -59,7 +59,6 @@ class Admin(Base):
     password_reset_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, nullable=True, default=None)
     subscription_domain = Column(String(255), nullable=True, default=None)
-    subscription_telegram_id = Column(BigInteger, nullable=True, default=None)
     subscription_settings = Column(JSON, nullable=True, default=dict)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
@@ -143,6 +142,9 @@ class SubscriptionSettings(Base):
 
     id = Column(Integer, primary_key=True)
     subscription_url_prefix = Column(String(512), nullable=False, default="", server_default=text("''"))
+    subscription_profile_title = Column(String(255), nullable=False, default="Subscription", server_default="Subscription")
+    subscription_support_url = Column(String(512), nullable=False, default="https://t.me/", server_default="https://t.me/")
+    subscription_update_interval = Column(String(32), nullable=False, default="12", server_default="12")
     custom_templates_directory = Column(String(512), nullable=True, default=None)
     clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")
     clash_settings_template = Column(String(255), nullable=False, default="clash/settings.yml")

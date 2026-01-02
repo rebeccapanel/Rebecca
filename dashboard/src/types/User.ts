@@ -165,6 +165,7 @@ export type UsersListResponse = {
 	users_limit?: number | null;
 	status_breakdown?: Record<string, number>;
 	usage_total?: number | null;
+	online_total?: number | null;
 };
 
 export type AdvancedUserActionStatus = "expired" | "limited";

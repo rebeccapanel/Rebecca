@@ -116,7 +116,6 @@ def get_subscription_settings(
             id=adm.id,
             username=adm.username,
             subscription_domain=getattr(adm, "subscription_domain", None),
-            subscription_telegram_id=getattr(adm, "subscription_telegram_id", None),
             subscription_settings=dict(getattr(adm, "subscription_settings", {}) or {}),
         )
         for adm in admin_rows
@@ -159,8 +158,6 @@ def update_admin_subscription_settings(
     if "subscription_domain" in data:
         domain = data.get("subscription_domain")
         dbadmin.subscription_domain = domain.strip() if domain else None
-    if "subscription_telegram_id" in data:
-        dbadmin.subscription_telegram_id = data.get("subscription_telegram_id")
     if "subscription_settings" in data:
         overrides = data.get("subscription_settings") or {}
         if hasattr(overrides, "model_dump"):
@@ -174,7 +171,6 @@ def update_admin_subscription_settings(
         id=dbadmin.id,
         username=dbadmin.username,
         subscription_domain=dbadmin.subscription_domain,
-        subscription_telegram_id=dbadmin.subscription_telegram_id,
         subscription_settings=dict(dbadmin.subscription_settings or {}),
     )
 

@@ -468,6 +468,9 @@ const buildSubscriptionDefaults = (
 	settings?: SubscriptionTemplateSettings,
 ): SubscriptionFormValues => ({
 	subscription_url_prefix: settings?.subscription_url_prefix ?? "",
+	subscription_profile_title: settings?.subscription_profile_title ?? "",
+	subscription_support_url: settings?.subscription_support_url ?? "",
+	subscription_update_interval: settings?.subscription_update_interval ?? "",
 	custom_templates_directory: settings?.custom_templates_directory ?? "",
 	clash_subscription_template: settings?.clash_subscription_template ?? "",
 	clash_settings_template: settings?.clash_settings_template ?? "",
@@ -1065,6 +1068,9 @@ export const IntegrationSettingsPage = () => {
 	const onSubmitSubscriptionSettings = (values: SubscriptionFormValues) => {
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
+			subscription_profile_title: values.subscription_profile_title.trim(),
+			subscription_support_url: values.subscription_support_url.trim(),
+			subscription_update_interval: values.subscription_update_interval.trim(),
 			custom_templates_directory:
 				values.custom_templates_directory?.trim() || null,
 			clash_subscription_template: values.clash_subscription_template.trim(),
@@ -1086,19 +1092,19 @@ export const IntegrationSettingsPage = () => {
 		subscriptionSettingsMutation.mutate(payload);
 	};
 
-	const handleAdminFieldChange = (
-		adminId: number,
-		field: keyof AdminSubscriptionSettings,
-		value: string | number | null,
-	) => {
-		setAdminOverrides((prev) => ({
-			...prev,
-			[adminId]: {
-				...(prev[adminId] || {}),
-				[field]: value as AdminSubscriptionSettings[keyof AdminSubscriptionSettings],
-			},
-		}));
-	};
+const handleAdminFieldChange = (
+	adminId: number,
+	field: keyof AdminSubscriptionSettings,
+	value: string | null,
+) => {
+	setAdminOverrides((prev) => ({
+		...prev,
+		[adminId]: {
+			...(prev[adminId] || {}),
+			[field]: value as AdminSubscriptionSettings[keyof AdminSubscriptionSettings],
+		},
+	}));
+};
 
 	const handleAdminTemplateChange = (
 		adminId: number,
@@ -1111,7 +1117,6 @@ export const IntegrationSettingsPage = () => {
 				username: "",
 				subscription_settings: {},
 				subscription_domain: null,
-				subscription_telegram_id: null,
 			};
 			return {
 				...prev,
@@ -1134,7 +1139,6 @@ export const IntegrationSettingsPage = () => {
 			[adminId]: {
 				...admin,
 				subscription_domain: null,
-				subscription_telegram_id: null,
 				subscription_settings: {},
 			},
 		}));
@@ -1147,7 +1151,6 @@ export const IntegrationSettingsPage = () => {
 		}
 		const payload = {
 			subscription_domain: admin.subscription_domain?.trim() || null,
-			subscription_telegram_id: admin.subscription_telegram_id ?? null,
 			subscription_settings: cleanOverridePayload(
 				admin.subscription_settings || {},
 			),
@@ -1215,10 +1218,14 @@ export const IntegrationSettingsPage = () => {
 	};
 
 	const handleIssueCertificate = () => {
-		const domains = certificateForm.domains
-			.split(/[,\\s]+/)
-			.map((domain) => domain.trim())
-			.filter(Boolean);
+		const domains = Array.from(
+			new Set(
+				certificateForm.domains
+					.split(/[,\\s]+/)
+					.map((domain) => domain.trim())
+					.filter(Boolean),
+			),
+		);
 		if (!certificateForm.email.trim() || domains.length === 0) {
 			toast({
 				title: t(
@@ -1893,6 +1900,66 @@ export const IntegrationSettingsPage = () => {
 											<FormControl>
 												<FormLabel>
 													{t(
+														"settings.subscriptions.profileTitle",
+														"Subscription profile title",
+													)}
+												</FormLabel>
+												<Input
+													placeholder="Subscription"
+													{...subscriptionRegister(
+														"subscription_profile_title",
+													)}
+												/>
+												<FormHelperText>
+													{t(
+														"settings.subscriptions.profileTitleHint",
+														"Shown in profile-title headers and subscription pages.",
+													)}
+												</FormHelperText>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t(
+														"settings.subscriptions.supportUrl",
+														"Support URL",
+													)}
+												</FormLabel>
+												<Input
+													placeholder="https://t.me/support"
+													{...subscriptionRegister(
+														"subscription_support_url",
+													)}
+												/>
+												<FormHelperText>
+													{t(
+														"settings.subscriptions.supportUrlHint",
+														"Link used in support-url header. Leave empty to rely on admin Telegram.",
+													)}
+												</FormHelperText>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t(
+														"settings.subscriptions.updateInterval",
+														"Profile update interval (hours)",
+													)}
+												</FormLabel>
+												<Input
+													type="number"
+													{...subscriptionRegister(
+														"subscription_update_interval",
+													)}
+												/>
+												<FormHelperText>
+													{t(
+														"settings.subscriptions.updateIntervalHint",
+														"Sent in profile-update-interval header.",
+													)}
+												</FormHelperText>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t(
 														"settings.subscriptions.subscriptionPageTemplate",
 														"Subscription page template",
 													)}
@@ -2520,27 +2587,6 @@ export const IntegrationSettingsPage = () => {
 																		<FormControl>
 																			<FormLabel>
 																				{t(
-																					"settings.subscriptions.adminTelegram",
-																					"Subscription Telegram ID",
-																				)}
-																			</FormLabel>
-																			<Input
-																				type="number"
-																				value={admin.subscription_telegram_id ?? ""}
-																				onChange={(event) =>
-																					handleAdminFieldChange(
-																						admin.id,
-																						"subscription_telegram_id",
-																						event.target.value
-																							? Number(event.target.value)
-																							: null,
-																					)
-																				}
-																			/>
-																		</FormControl>
-																		<FormControl>
-																			<FormLabel>
-																				{t(
 																					"settings.subscriptions.customTemplatesDir",
 																					"Custom templates directory",
 																				)}
@@ -2568,6 +2614,89 @@ export const IntegrationSettingsPage = () => {
 																					"Leave empty to inherit panel default.",
 																				)}
 																			</FormHelperText>
+																		</FormControl>
+																	</SimpleGrid>
+
+																	<SimpleGrid
+																		columns={{ base: 1, md: 3 }}
+																		spacing={4}
+																		mt={4}
+																	>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"settings.subscriptions.profileTitle",
+																					"Subscription profile title",
+																				)}
+																			</FormLabel>
+																			<Input
+																				placeholder={
+																					subscriptionBundle?.settings
+																						.subscription_profile_title || ""
+																				}
+																				value={
+																					settings.subscription_profile_title ??
+																					""
+																				}
+																				onChange={(event) =>
+																					handleAdminTemplateChange(
+																						admin.id,
+																						"subscription_profile_title",
+																						event.target.value,
+																					)
+																				}
+																			/>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"settings.subscriptions.supportUrl",
+																					"Support URL",
+																				)}
+																			</FormLabel>
+																			<Input
+																				placeholder={
+																					subscriptionBundle?.settings
+																						.subscription_support_url || ""
+																				}
+																				value={
+																					settings.subscription_support_url ??
+																					""
+																				}
+																				onChange={(event) =>
+																					handleAdminTemplateChange(
+																						admin.id,
+																						"subscription_support_url",
+																						event.target.value,
+																					)
+																				}
+																			/>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"settings.subscriptions.updateInterval",
+																					"Profile update interval (hours)",
+																				)}
+																			</FormLabel>
+																			<Input
+																				type="number"
+																				placeholder={
+																					subscriptionBundle?.settings
+																						.subscription_update_interval || ""
+																				}
+																				value={
+																					settings.subscription_update_interval ??
+																					""
+																				}
+																				onChange={(event) =>
+																					handleAdminTemplateChange(
+																						admin.id,
+																						"subscription_update_interval",
+																						event.target.value,
+																					)
+																				}
+																			/>
 																		</FormControl>
 																	</SimpleGrid>
 

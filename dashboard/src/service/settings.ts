@@ -57,6 +57,9 @@ export interface PanelSettingsUpdatePayload {
 
 export interface SubscriptionTemplateSettings {
 	subscription_url_prefix: string;
+	subscription_profile_title: string;
+	subscription_support_url: string;
+	subscription_update_interval: string;
 	custom_templates_directory: string | null;
 	clash_subscription_template: string;
 	clash_settings_template: string;
@@ -83,13 +86,11 @@ export interface AdminSubscriptionSettings {
 	id: number;
 	username: string;
 	subscription_domain: string | null;
-	subscription_telegram_id: number | null;
 	subscription_settings: Partial<SubscriptionTemplateSettings>;
 }
 
 export interface AdminSubscriptionUpdatePayload {
 	subscription_domain?: string | null;
-	subscription_telegram_id?: number | null;
 	subscription_settings?: Partial<SubscriptionTemplateSettings>;
 }
 

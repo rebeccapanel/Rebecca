@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 from app.models.user import UserResponse
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
+from config import XRAY_SUBSCRIPTION_PATH
 
 # Lazy/fallback import to avoid hard dependency in environments missing updated settings model
 try:  # pragma: no cover - defensive for mixed deployments
@@ -38,11 +38,27 @@ def build_subscription_links(
     salt = secrets.token_hex(8)
     try:
         from app.services.subscription_settings import SubscriptionSettingsService
+        admin_obj = getattr(user, "admin", None)
+        if admin_obj is None and getattr(user, "admin_id", None):
+            try:
+                from app.db.base import SessionLocal
+                from app.db.models import Admin as AdminModel
 
-        effective_settings = SubscriptionSettingsService.get_effective_settings(getattr(user, "admin", None))
+                db = SessionLocal()
+                admin_obj = db.query(AdminModel).filter(AdminModel.id == user.admin_id).first()
+            except Exception:
+                admin_obj = None
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
+        effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
         url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
     except Exception:
-        url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace("*", salt) or f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
+        path = XRAY_SUBSCRIPTION_PATH.strip("/") if XRAY_SUBSCRIPTION_PATH else "sub"
+        url_prefix = f"/{path}"
 
     links: Dict[str, str] = {}
     if user.credential_key:

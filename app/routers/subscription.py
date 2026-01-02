@@ -17,12 +17,7 @@ from app.subscription.share import encode_title, generate_subscription, is_crede
 from app.services.subscription_settings import SubscriptionSettingsService
 from app.templates import render_template
 from app.utils.proxy_uuid import ensure_user_proxy_uuids
-from config import (
-    SUB_PROFILE_TITLE,
-    SUB_SUPPORT_URL,
-    SUB_UPDATE_INTERVAL,
-    XRAY_SUBSCRIPTION_PATH,
-)
+from config import XRAY_SUBSCRIPTION_PATH
 
 client_config = {
     "clash-meta": {
@@ -66,6 +61,11 @@ client_config = {
 router = APIRouter(tags=["Subscription"], prefix=f"/{XRAY_SUBSCRIPTION_PATH}")
 
 
+def _resolve_support_url(settings) -> str:
+    support_url = (getattr(settings, "subscription_support_url", "") or "").strip()
+    return support_url
+
+
 def get_subscription_user_info(user: UserResponse) -> dict:
     """Retrieve user subscription information including upload, download, total data, and expiry."""
     used_traffic = int(getattr(user, "used_traffic", 0) or 0)
@@ -88,7 +88,10 @@ def _serve_subscription_response(
 ):
     ensure_user_proxy_uuids(db, dbuser)
     user: UserResponse = UserResponse.model_validate(dbuser)
-    settings = SubscriptionSettingsService.get_effective_settings(getattr(user, "admin", None))
+    admin = getattr(user, "admin", None)
+    if admin is None and getattr(user, "admin_id", None):
+        admin = crud.get_admin_by_id(db, user.admin_id)
+    settings = SubscriptionSettingsService.get_effective_settings(admin)
 
     accept_header = request.headers.get("Accept", "")
     if "text/html" in accept_header:
@@ -97,6 +100,7 @@ def _serve_subscription_response(
         if not base_path:
             base_path = "/"
         usage_url = "/usage" if base_path == "/" else f"{base_path}/usage"
+        support_url = _resolve_support_url(settings)
         return HTMLResponse(
             render_template(
                 settings.subscription_page_template,
@@ -104,24 +108,20 @@ def _serve_subscription_response(
                     "user": user,
                     "usage_url": usage_url,
                     "token": token_identifier,
-                    "support_url": SUB_SUPPORT_URL
-                    if not settings.subscription_telegram_id
-                    else f"https://t.me/{settings.subscription_telegram_id}",
+                    "support_url": support_url,
                 },
                 custom_directory=settings.custom_templates_directory,
             )
         )
 
     crud.update_user_sub(db, dbuser, user_agent)
-    support_url = SUB_SUPPORT_URL
-    if settings.subscription_telegram_id:
-        support_url = f"https://t.me/{settings.subscription_telegram_id}"
+    support_url = _resolve_support_url(settings)
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
         "profile-web-page-url": str(request.url),
         "support-url": support_url,
-        "profile-title": encode_title(SUB_PROFILE_TITLE),
-        "profile-update-interval": SUB_UPDATE_INTERVAL,
+        "profile-title": encode_title(settings.subscription_profile_title),
+        "profile-update-interval": settings.subscription_update_interval,
         "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
 
@@ -196,15 +196,17 @@ def _serve_subscription_response(
 def _subscription_with_client_type(request: Request, dbuser: UserResponse, client_type: str, db: Session):
     ensure_user_proxy_uuids(db, dbuser)
     user: UserResponse = UserResponse.model_validate(dbuser)
-    settings = SubscriptionSettingsService.get_effective_settings(getattr(user, "admin", None))
+    admin = getattr(user, "admin", None)
+    if admin is None and getattr(user, "admin_id", None):
+        admin = crud.get_admin_by_id(db, user.admin_id)
+    settings = SubscriptionSettingsService.get_effective_settings(admin)
+    support_url = _resolve_support_url(settings)
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
         "profile-web-page-url": str(request.url),
-        "support-url": SUB_SUPPORT_URL
-        if not settings.subscription_telegram_id
-        else f"https://t.me/{settings.subscription_telegram_id}",
-        "profile-title": encode_title(SUB_PROFILE_TITLE),
-        "profile-update-interval": SUB_UPDATE_INTERVAL,
+        "support-url": support_url,
+        "profile-title": encode_title(settings.subscription_profile_title),
+        "profile-update-interval": settings.subscription_update_interval,
         "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
     config = client_config.get(client_type)

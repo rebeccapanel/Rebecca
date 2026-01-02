@@ -3,6 +3,7 @@ import {
 	Box,
 	Button,
 	chakra,
+	Collapse,
 	Divider,
 	IconButton,
 	HStack,
@@ -37,6 +38,8 @@ import {
 	InputLeftElement,
 	InputRightElement,
 	useColorModeValue,
+	useDisclosure,
+	useBreakpointValue,
 	VStack,
 	Flex,
 	Heading,
@@ -181,6 +184,12 @@ const TutorialsPage: FC = () => {
 	const [highlightId, setHighlightId] = useState<string | null>(null);
 	const highlightTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isMobile = useBreakpointValue({ base: true, md: false });
+	const {
+		isOpen: isMenuOpen,
+		onToggle: toggleMenu,
+		onOpen: openMenu,
+	} = useDisclosure({ defaultIsOpen: true });
 	const scrollKey = "tutorials-scroll";
 	const savedScrollRef = useRef<number | null>(null);
 	const hasRestoredScroll = useRef(false);
@@ -206,6 +215,7 @@ const TutorialsPage: FC = () => {
 	const menuActiveBg = useColorModeValue("primary.50", "whiteAlpha.100");
 	const menuHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.200");
 	const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const tableColorScheme = useColorModeValue("gray", "whiteAlpha");
 	const pulseGlow = useMemo(
 		() =>
 			keyframes`
@@ -555,6 +565,12 @@ const TutorialsPage: FC = () => {
 	}, [activeTab, menuItems.length]);
 
 	useEffect(() => {
+		if (!isMobile) {
+			openMenu();
+		}
+	}, [isMobile, openMenu]);
+
+	useEffect(() => {
 		// reset expanded and active on tab change
 		setExpandedGroups(new Set());
 		if (menuItems.length) {
@@ -793,15 +809,19 @@ const TutorialsPage: FC = () => {
 				<Flex
 					gap={4}
 					alignItems="flex-start"
-					direction={isRTL ? "row-reverse" : "row"}
+					direction={{
+						base: "column",
+						md: isRTL ? "row-reverse" : "row",
+					}}
 					w="full"
 				>
 					<Box
-						w={{ base: "full", md: "280px" }}
+						w={{ base: "full", md: "300px" }}
 						flexShrink={0}
-						position="sticky"
-						top="80px"
+						position={{ base: "relative", md: "sticky" }}
+						top={{ base: "auto", md: "80px" }}
 						alignSelf="flex-start"
+						zIndex={2}
 					>
 						<VStack align="stretch" spacing={3}>
 							{adminSections.length > 0 && (
@@ -826,135 +846,166 @@ const TutorialsPage: FC = () => {
 									</Button>
 								</HStack>
 							)}
-							<Box
-								bg={menuCardBg}
-								borderWidth="1px"
-								borderColor={menuBorder}
-								borderRadius="xl"
-								boxShadow="md"
-								p={3}
-							>
-								<VStack align="stretch" spacing={3}>
-									<Heading size="sm">
-										{activeTab === "admin"
-											? t("tutorials.adminTab")
-											: t("tutorials.menuTitle")}
-									</Heading>
-									<InputGroup size="sm">
-										<InputLeftElement pointerEvents="none">
-											<SearchIcon w={4} h={4} />
-										</InputLeftElement>
-										<Input
-											placeholder={t("tutorials.menuSearchPlaceholder")}
-											value={searchTerm}
-											onChange={(event) => setSearchTerm(event.target.value)}
-											bg="surface.light"
-											_dark={{ bg: "surface.dark" }}
-											borderColor="light-border"
+							{isMobile ? (
+								<Button
+									size="sm"
+									variant="outline"
+									colorScheme="primary"
+									rightIcon={
+										<ChevronDownIcon
+											style={{
+												transform: isMenuOpen ? "rotate(180deg)" : "rotate(0deg)",
+												transition: "transform 0.2s ease",
+											}}
 										/>
-										{searchTerm ? (
-											<InputRightElement width="2.5rem">
-												<IconButton
-													aria-label={t("tutorials.clearSearch")}
-													size="xs"
-													variant="ghost"
-													onClick={() => setSearchTerm("")}
-													icon={<ClearIcon w={4} h={4} />}
-												/>
-											</InputRightElement>
-										) : null}
-									</InputGroup>
-									<VStack
-										align="stretch"
-										spacing={1}
-										maxH="70vh"
-										overflowY="auto"
-										borderRadius="lg"
-									>
-										{menuItems.map((item) => {
-											const isActive =
-												activeId === item.id ||
-												item.children?.some((child) => child.id === activeId);
-											const hasChildren = (item.children || []).length > 0;
-											const isExpanded = expandedGroups.has(item.id);
-											return (
-												<Box
-													key={item.id}
-													borderRadius="md"
-													overflow="hidden"
-													borderWidth="1px"
-													borderColor={
-														isActive ? "primary.200" : "transparent"
-													}
-												>
-													<Button
-														size="sm"
+									}
+									onClick={toggleMenu}
+									justifyContent="space-between"
+								>
+									{activeTab === "admin"
+										? t("tutorials.adminTab")
+										: t("tutorials.menuTitle")}
+								</Button>
+							) : null}
+							<Collapse in={!isMobile || isMenuOpen} animateOpacity>
+								<Box
+									bg={menuCardBg}
+									borderWidth="1px"
+									borderColor={menuBorder}
+									borderRadius="xl"
+									boxShadow="md"
+									p={3}
+								>
+									<VStack align="stretch" spacing={3}>
+										<Heading size="sm">
+											{activeTab === "admin"
+												? t("tutorials.adminTab")
+												: t("tutorials.menuTitle")}
+										</Heading>
+										<InputGroup size="sm">
+											<InputLeftElement pointerEvents="none">
+												<SearchIcon w={4} h={4} />
+											</InputLeftElement>
+											<Input
+												placeholder={t("tutorials.menuSearchPlaceholder")}
+												value={searchTerm}
+												onChange={(event) => setSearchTerm(event.target.value)}
+												bg="surface.light"
+												_dark={{ bg: "surface.dark" }}
+												borderColor="light-border"
+											/>
+											{searchTerm ? (
+												<InputRightElement width="2.5rem">
+													<IconButton
+														aria-label={t("tutorials.clearSearch")}
+														size="xs"
 														variant="ghost"
-														justifyContent="space-between"
-														w="full"
-														bg={isActive ? menuActiveBg : "transparent"}
-														_hover={{ bg: menuHoverBg }}
-														_active={{ bg: menuActiveBg }}
-														onClick={() => {
-															if (hasChildren) {
-																setExpandedFor(isExpanded ? undefined : item.id);
-															}
-															scrollToId(item.id);
-														}}
-														rightIcon={
-															hasChildren ? (
-																<ChevronDownIcon
-																	style={{
-																		transform: isExpanded
-																			? "rotate(180deg)"
-																			: "rotate(0deg)",
-																		transition: "transform 120ms ease",
-																	}}
-																/>
-															) : undefined
+														onClick={() => setSearchTerm("")}
+														icon={<ClearIcon w={4} h={4} />}
+													/>
+												</InputRightElement>
+											) : null}
+										</InputGroup>
+										<VStack
+											align="stretch"
+											spacing={1}
+											maxH={{ base: "unset", md: "70vh" }}
+											overflowY={{ base: "visible", md: "auto" }}
+											borderRadius="lg"
+										>
+											{menuItems.map((item) => {
+												const isActive =
+													activeId === item.id ||
+													item.children?.some((child) => child.id === activeId);
+												const hasChildren = (item.children || []).length > 0;
+												const isExpanded = expandedGroups.has(item.id);
+												return (
+													<Box
+														key={item.id}
+														borderRadius="md"
+														overflow="hidden"
+														borderWidth="1px"
+														borderColor={
+															isActive ? "primary.200" : "transparent"
 														}
 													>
-														<Text textAlign="start">{item.label}</Text>
-													</Button>
-													{hasChildren && isExpanded ? (
-														<VStack
-															align="stretch"
-															ps={4}
-															pe={2}
-															pb={2}
-															spacing={1}
-															borderLeftWidth="2px"
-															borderLeftColor="primary.200"
+														<Button
+															size="sm"
+															variant="ghost"
+															justifyContent="space-between"
+															w="full"
+															bg={isActive ? menuActiveBg : "transparent"}
+															_hover={{ bg: menuHoverBg }}
+															_active={{ bg: menuActiveBg }}
+															onClick={() => {
+																if (hasChildren) {
+																	setExpandedFor(isExpanded ? undefined : item.id);
+																}
+																scrollToId(item.id);
+																if (isMobile && !hasChildren) {
+																	toggleMenu();
+																}
+															}}
+															rightIcon={
+																hasChildren ? (
+																	<ChevronDownIcon
+																		style={{
+																			transform: isExpanded
+																				? "rotate(180deg)"
+																				: "rotate(0deg)",
+																			transition: "transform 120ms ease",
+																		}}
+																	/>
+																) : undefined
+															}
 														>
-															{item.children?.map((child) => {
-																const childActive = activeId === child.id;
-																return (
-																	<Button
-																		key={child.id}
-																		size="xs"
-																		variant="ghost"
-																		justifyContent="flex-start"
-																		bg={
-																			childActive
-																				? menuActiveBg
-																				: "transparent"
-																		}
-																		_hover={{ bg: menuHoverBg }}
-																		_active={{ bg: menuActiveBg }}
-																		onClick={() => scrollToId(child.id)}
-																	>
-																		{child.label}
-																	</Button>
-																);
-															})}
-														</VStack>
-													) : null}
-												</Box>
-											);
-										})}
+															<Text textAlign="start">{item.label}</Text>
+														</Button>
+														{hasChildren && isExpanded ? (
+															<VStack
+																align="stretch"
+																ps={4}
+																pe={2}
+																pb={2}
+																spacing={1}
+																borderLeftWidth="2px"
+																borderLeftColor="primary.200"
+															>
+																{item.children?.map((child) => {
+																	const childActive = activeId === child.id;
+																	return (
+																		<Button
+																			key={child.id}
+																			size="xs"
+																			variant="ghost"
+																			justifyContent="flex-start"
+																			bg={
+																				childActive
+																					? menuActiveBg
+																					: "transparent"
+																			}
+																			_hover={{ bg: menuHoverBg }}
+																			_active={{ bg: menuActiveBg }}
+																			onClick={() => {
+																				scrollToId(child.id);
+																				if (isMobile) {
+																					toggleMenu();
+																				}
+																			}}
+																		>
+																			{child.label}
+																		</Button>
+																	);
+																})}
+															</VStack>
+														) : null}
+													</Box>
+												);
+											})}
+										</VStack>
 									</VStack>
-								</VStack>
-							</Box>
+								</Box>
+							</Collapse>
 						</VStack>
 					</Box>
 			<Box flex="1" minW={0}>
@@ -1338,13 +1389,14 @@ const TutorialsPage: FC = () => {
 						</Text>
 						<TableContainer
 							overflowX="auto"
+							bg={innerCardBg}
 							borderWidth="1px"
 							borderColor="light-border"
 							borderRadius="lg"
 							_dark={{ borderColor: "whiteAlpha.200" }}
 							boxShadow="sm"
 						>
-							<Table size="sm" variant="striped" colorScheme="blackAlpha">
+							<Table size="sm" variant="striped" colorScheme={tableColorScheme}>
 								<Thead>
 									<Tr>
 										<Th fontWeight="bold">{t("tutorials.table.username")}</Th>

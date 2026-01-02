@@ -19,7 +19,7 @@ from app.utils.credentials import (
 )
 from xray_api.types.account import Account
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
+from config import XRAY_SUBSCRIPTION_PATH
 
 # Fallback import to avoid deployment breakage when settings model isn't updated yet
 try:  # pragma: no cover
@@ -654,8 +654,22 @@ class UserResponse(User):
         salt = secrets.token_hex(8)
         try:
             from app.services.subscription_settings import SubscriptionSettingsService
+            admin_obj = getattr(self, "admin", None)
+            if admin_obj is None and getattr(self, "admin_id", None):
+                try:
+                    from app.db.base import SessionLocal
 
-            effective_settings = SubscriptionSettingsService.get_effective_settings(getattr(self, "admin", None))
+                    db = SessionLocal()
+                    admin_obj = db.query(Admin).filter(Admin.id == self.admin_id).first()
+                except Exception:
+                    admin_obj = None
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+            effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
             url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
         except Exception:
             url_prefix = f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
@@ -845,6 +859,9 @@ class UsersResponse(BaseModel):
     total: int
     active_total: Optional[int] = None
     users_limit: Optional[int] = None
+    status_breakdown: Dict[str, int] = Field(default_factory=dict)
+    usage_total: Optional[int] = None
+    online_total: Optional[int] = None
 
 
 class UserUsageResponse(BaseModel):

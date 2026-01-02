@@ -328,9 +328,6 @@ class Admin(BaseModel):
     disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin's links")
-    subscription_telegram_id: Optional[int] = Field(
-        None, description="Telegram ID shown on subscription headers/pages for this admin"
-    )
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(
@@ -627,9 +624,6 @@ class AdminModify(BaseModel):
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
-    subscription_telegram_id: Optional[int] = Field(
-        None, description="Telegram ID shown on subscription pages/headers for this admin"
-    )
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,
@@ -656,9 +650,6 @@ class AdminPartialModify(AdminModify):
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
-    subscription_telegram_id: Optional[int] = Field(
-        None, description="Telegram ID shown on subscription pages/headers for this admin"
-    )
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,

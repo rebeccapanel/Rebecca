@@ -788,11 +788,45 @@ def get_users_usage_sum(
         service_id=service_id,
         reset_strategy=reset_strategy,
     )
-    total_usage = query.with_entities(func.coalesce(func.sum(User.reseted_usage), 0)).scalar()
+    total_usage = query.with_entities(
+        func.coalesce(func.sum(func.coalesce(User.used_traffic, 0) + func.coalesce(User.reseted_usage, 0)), 0)
+    ).scalar()
     try:
         return int(total_usage or 0)
     except Exception:
         return 0
+
+
+def get_users_online_count(
+    db: Session,
+    *,
+    usernames: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    status: Optional[Union[UserStatus, list]] = None,
+    admin: Optional[Admin] = None,
+    admins: Optional[List[str]] = None,
+    advanced_filters: Optional[List[str]] = None,
+    service_id: Optional[int] = None,
+    reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+) -> int:
+    """
+    Returns count of users considered online for the given filters.
+    """
+    now = datetime.now(timezone.utc)
+    online_threshold = now - ONLINE_ACTIVE_WINDOW
+    query = _build_filtered_users_query_for_aggregation(
+        db,
+        usernames=usernames,
+        search=search,
+        status=status,
+        admin=admin,
+        admins=admins,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        reset_strategy=reset_strategy,
+    )
+    query = query.filter(User.online_at.isnot(None), User.online_at >= online_threshold)
+    return query.with_entities(func.count(User.id)).scalar() or 0
 
 
 def _status_to_str(status: Union[UserStatus, str, None]) -> Optional[str]:

@@ -304,8 +304,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 	const hasSearchQuery = Boolean(filters.search?.trim());
-	// On mobile, hide cards entirely while a search query is present to avoid stale results flicker.
-	const hideMobileCardsDuringSearch = !isDesktop && hasSearchQuery;
+	// On mobile, only hide cards while a search is loading; show results once data arrives.
+	const hideMobileCardsDuringSearch = !isDesktop && hasSearchQuery && loading;
 	const [contextMenu, setContextMenu] = useState<{
 		visible: boolean;
 		x: number;
@@ -665,6 +665,11 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			label: t("status.expired"),
 			value: formatCount(statusBreakdown.expired ?? 0, locale),
 			accentColor: "red.400",
+		},
+		{
+			label: t("status.online", "Online"),
+			value: formatCount(usersResponse.online_total ?? 0, locale),
+			accentColor: "teal.400",
 		},
 	];
 

@@ -26,13 +26,19 @@ from app.services.cache_adapter import (
 from app.db.crud.user import ONLINE_ACTIVE_WINDOW, OFFLINE_STALE_WINDOW, UPDATE_STALE_WINDOW, STATUS_FILTER_MAP
 
 
-def _compute_subscription_links(username: str, credential_key: Optional[str]) -> tuple[str, dict]:
+def _compute_subscription_links(
+    username: str,
+    credential_key: Optional[str],
+    *,
+    admin=None,
+    admin_id: Optional[int] = None,
+) -> tuple[str, dict]:
     """
     Compute subscription links for list items without constructing heavy models.
     Falls back to empty values on failure.
     """
     try:
-        payload = SimpleNamespace(username=username, credential_key=credential_key)
+        payload = SimpleNamespace(username=username, credential_key=credential_key, admin=admin, admin_id=admin_id)
         links = build_subscription_links(payload)
         primary = links.get("primary", "")
         return primary or "", links
@@ -43,7 +49,7 @@ def _compute_subscription_links(username: str, credential_key: Optional[str]) ->
 
 def _map_raw_to_list_item(raw: dict) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
-        raw.get("username", ""), raw.get("credential_key")
+        raw.get("username", ""), raw.get("credential_key"), admin_id=raw.get("admin_id")
     )
     return UserListItem(
         username=raw.get("username"),
@@ -66,7 +72,7 @@ def _map_raw_to_list_item(raw: dict) -> UserListItem:
 
 def _map_user_to_list_item(user: User) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
-        getattr(user, "username", ""), getattr(user, "credential_key", None)
+        getattr(user, "username", ""), getattr(user, "credential_key", None), admin=getattr(user, "admin", None)
     )
     return UserListItem(
         username=user.username,
@@ -282,6 +288,7 @@ def get_users_list(
     active_total: Optional[int],
 ) -> UsersResponse:
     db_closed = False
+    dbadmin_in_use = dbadmin
 
     def _release_db_connection():
         nonlocal db_closed
@@ -377,6 +384,43 @@ def get_users_list(
                 items = [_map_raw_to_list_item(u) for u in filtered]
                 filter_time = time.perf_counter() - filter_start
                 total_time = time.perf_counter() - start_time
+                # Fetch aggregate stats from DB to reflect current filters
+                status_breakdown: dict = {}
+                usage_total: Optional[int] = None
+                online_total: Optional[int] = None
+                try:
+                    from app.db import GetDB as _GetDB
+
+                    with _GetDB() as stats_db:
+                        status_breakdown = crud.get_users_status_breakdown(
+                            db=stats_db,
+                            search=search,
+                            status=status,
+                            admin=dbadmin_in_use,
+                            admins=owners,
+                            advanced_filters=advanced_filters,
+                            service_id=service_id,
+                        )
+                        usage_total = crud.get_users_usage_sum(
+                            db=stats_db,
+                            search=search,
+                            status=status,
+                            admin=dbadmin_in_use,
+                            admins=owners,
+                            advanced_filters=advanced_filters,
+                            service_id=service_id,
+                        )
+                        online_total = crud.get_users_online_count(
+                            db=stats_db,
+                            search=search,
+                            status=status,
+                            admin=dbadmin_in_use,
+                            admins=owners,
+                            advanced_filters=advanced_filters,
+                            service_id=service_id,
+                        )
+                except Exception as stats_exc:
+                    logger.debug("Failed to compute user stats on Redis path: %s", stats_exc)
                 logger.info(
                     f"Users list from Redis completed in {total_time:.3f}s (cache: {cache_time:.3f}s, filter: {filter_time:.3f}s)"
                 )
@@ -386,6 +430,9 @@ def get_users_list(
                     total=total,
                     active_total=active_total,
                     users_limit=users_limit,
+                    status_breakdown=status_breakdown,
+                    usage_total=usage_total,
+                    online_total=online_total,
                 )
             elif all_users is not None and len(all_users) == 0:
                 # Cache exists but is empty - this could mean no users in DB or cache issue
@@ -433,12 +480,42 @@ def get_users_list(
         items = [_map_user_to_list_item(u) for u in users]
         if active_total is None and dbadmin_in_use:
             active_total = crud.get_users_count(db_fallback, status=UserStatus.active, admin=dbadmin_in_use)
+        status_breakdown = crud.get_users_status_breakdown(
+            db=db_fallback,
+            search=search,
+            status=status,
+            admin=dbadmin_in_use,
+            admins=owners,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+        )
+        usage_total = crud.get_users_usage_sum(
+            db=db_fallback,
+            search=search,
+            status=status,
+            admin=dbadmin_in_use,
+            admins=owners,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+        )
+        online_total = crud.get_users_online_count(
+            db=db_fallback,
+            search=search,
+            status=status,
+            admin=dbadmin_in_use,
+            admins=owners,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+        )
         return UsersResponse(
             users=items,
             link_templates={},
             total=count,
             active_total=active_total,
             users_limit=users_limit,
+            status_breakdown=status_breakdown,
+            usage_total=usage_total,
+            online_total=online_total,
         )
 
 
@@ -484,12 +561,43 @@ def get_users_list_db_only(
     if active_total is None and dbadmin:
         active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)
 
+    status_breakdown = crud.get_users_status_breakdown(
+        db=db,
+        search=search,
+        status=status,
+        admin=dbadmin,
+        admins=owners,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+    )
+    usage_total = crud.get_users_usage_sum(
+        db=db,
+        search=search,
+        status=status,
+        admin=dbadmin,
+        admins=owners,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+    )
+    online_total = crud.get_users_online_count(
+        db=db,
+        search=search,
+        status=status,
+        admin=dbadmin,
+        admins=owners,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+    )
+
     return UsersResponse(
         users=items,
         link_templates={},
         total=count,
         active_total=active_total,
         users_limit=users_limit,
+        status_breakdown=status_breakdown,
+        usage_total=usage_total,
+        online_total=online_total,
     )
 
 

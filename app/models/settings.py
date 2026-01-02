@@ -78,6 +78,9 @@ class PanelSettingsUpdate(BaseModel):
 
 class SubscriptionTemplateSettings(BaseModel):
     subscription_url_prefix: str = ""
+    subscription_profile_title: str = "Subscription"
+    subscription_support_url: str = "https://t.me/"
+    subscription_update_interval: str = "12"
     custom_templates_directory: Optional[str] = None
     clash_subscription_template: str = "clash/default.yml"
     clash_settings_template: str = "clash/settings.yml"
@@ -98,6 +101,9 @@ class SubscriptionTemplateSettings(BaseModel):
 
 class SubscriptionTemplateSettingsUpdate(BaseModel):
     subscription_url_prefix: Optional[str] = None
+    subscription_profile_title: Optional[str] = None
+    subscription_support_url: Optional[str] = None
+    subscription_update_interval: Optional[str] = None
     custom_templates_directory: Optional[str] = None
     clash_subscription_template: Optional[str] = None
     clash_settings_template: Optional[str] = None
@@ -123,13 +129,11 @@ class AdminSubscriptionSettingsResponse(BaseModel):
     id: int
     username: str
     subscription_domain: Optional[str] = None
-    subscription_telegram_id: Optional[int] = None
     subscription_settings: Dict[str, Optional[str | bool]] = Field(default_factory=dict)
 
 
 class AdminSubscriptionSettingsUpdate(BaseModel):
     subscription_domain: Optional[str] = None
-    subscription_telegram_id: Optional[int] = None
     subscription_settings: Optional[AdminSubscriptionOverrides] = None
 
 

@@ -13,25 +13,27 @@ from sqlalchemy.orm import Session
 from app.db.base import SessionLocal
 from app.templates import _get_env
 from app.utils.maintenance import maintenance_request
-from config import (
-    CLASH_SETTINGS_TEMPLATE,
-    CLASH_SUBSCRIPTION_TEMPLATE,
-    CUSTOM_TEMPLATES_DIRECTORY,
-    HOME_PAGE_TEMPLATE,
-    MUX_TEMPLATE,
-    SINGBOX_SETTINGS_TEMPLATE,
-    SINGBOX_SUBSCRIPTION_TEMPLATE,
-    SUBSCRIPTION_PAGE_TEMPLATE,
-    USE_CUSTOM_JSON_DEFAULT,
-    USE_CUSTOM_JSON_FOR_HAPP,
-    USE_CUSTOM_JSON_FOR_STREISAND,
-    USE_CUSTOM_JSON_FOR_V2RAYN,
-    USE_CUSTOM_JSON_FOR_V2RAYNG,
-    V2RAY_SETTINGS_TEMPLATE,
-    V2RAY_SUBSCRIPTION_TEMPLATE,
-    XRAY_SUBSCRIPTION_PATH,
-    XRAY_SUBSCRIPTION_URL_PREFIX,
-)
+from config import XRAY_SUBSCRIPTION_PATH
+
+DEFAULT_SUBSCRIPTION_URL_PREFIX = ""
+DEFAULT_SUBSCRIPTION_PROFILE_TITLE = "Subscription"
+DEFAULT_SUBSCRIPTION_SUPPORT_URL = "https://t.me/"
+DEFAULT_SUBSCRIPTION_UPDATE_INTERVAL = "12"
+DEFAULT_CUSTOM_TEMPLATES_DIRECTORY = None
+DEFAULT_CLASH_SUBSCRIPTION_TEMPLATE = "clash/default.yml"
+DEFAULT_CLASH_SETTINGS_TEMPLATE = "clash/settings.yml"
+DEFAULT_SUBSCRIPTION_PAGE_TEMPLATE = "subscription/index.html"
+DEFAULT_HOME_PAGE_TEMPLATE = "home/index.html"
+DEFAULT_V2RAY_SUBSCRIPTION_TEMPLATE = "v2ray/default.json"
+DEFAULT_V2RAY_SETTINGS_TEMPLATE = "v2ray/settings.json"
+DEFAULT_SINGBOX_SUBSCRIPTION_TEMPLATE = "singbox/default.json"
+DEFAULT_SINGBOX_SETTINGS_TEMPLATE = "singbox/settings.json"
+DEFAULT_MUX_TEMPLATE = "mux/default.json"
+DEFAULT_USE_CUSTOM_JSON_DEFAULT = False
+DEFAULT_USE_CUSTOM_JSON_FOR_V2RAYN = False
+DEFAULT_USE_CUSTOM_JSON_FOR_V2RAYNG = False
+DEFAULT_USE_CUSTOM_JSON_FOR_STREISAND = False
+DEFAULT_USE_CUSTOM_JSON_FOR_HAPP = False
 
 REBECCA_DATA_DIR = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca"))
 CERT_BASE_PATH = Path(os.getenv("REBECCA_CERT_BASE", REBECCA_DATA_DIR / "certs"))
@@ -55,6 +57,9 @@ def _now() -> datetime:
 @dataclass
 class SubscriptionSettingsData:
     subscription_url_prefix: str = ""
+    subscription_profile_title: str = DEFAULT_SUBSCRIPTION_PROFILE_TITLE
+    subscription_support_url: str = DEFAULT_SUBSCRIPTION_SUPPORT_URL
+    subscription_update_interval: str = DEFAULT_SUBSCRIPTION_UPDATE_INTERVAL
     custom_templates_directory: Optional[str] = None
     clash_subscription_template: str = "clash/default.yml"
     clash_settings_template: str = "clash/settings.yml"
@@ -76,7 +81,6 @@ class SubscriptionSettingsData:
 @dataclass
 class EffectiveSubscriptionSettings(SubscriptionSettingsData):
     subscription_domain: Optional[str] = None
-    subscription_telegram_id: Optional[int] = None
 
 
 @dataclass
@@ -126,25 +130,37 @@ class SubscriptionSettingsService:
             return value
         return f"https://{value}"
 
+    @staticmethod
+    def _normalize_support_url(value: Optional[str]) -> str:
+        if value is None:
+            return ""
+        cleaned = str(value).strip()
+        if not cleaned:
+            return ""
+        return SubscriptionSettingsService._ensure_scheme(cleaned)
+
     @classmethod
     def _fallback_defaults(cls) -> SubscriptionSettingsData:
         return SubscriptionSettingsData(
-            subscription_url_prefix=cls._normalize_prefix(XRAY_SUBSCRIPTION_URL_PREFIX),
-            custom_templates_directory=CUSTOM_TEMPLATES_DIRECTORY,
-            clash_subscription_template=CLASH_SUBSCRIPTION_TEMPLATE,
-            clash_settings_template=CLASH_SETTINGS_TEMPLATE,
-            subscription_page_template=SUBSCRIPTION_PAGE_TEMPLATE,
-            home_page_template=HOME_PAGE_TEMPLATE,
-            v2ray_subscription_template=V2RAY_SUBSCRIPTION_TEMPLATE,
-            v2ray_settings_template=V2RAY_SETTINGS_TEMPLATE,
-            singbox_subscription_template=SINGBOX_SUBSCRIPTION_TEMPLATE,
-            singbox_settings_template=SINGBOX_SETTINGS_TEMPLATE,
-            mux_template=MUX_TEMPLATE,
-            use_custom_json_default=USE_CUSTOM_JSON_DEFAULT,
-            use_custom_json_for_v2rayn=USE_CUSTOM_JSON_FOR_V2RAYN,
-            use_custom_json_for_v2rayng=USE_CUSTOM_JSON_FOR_V2RAYNG,
-            use_custom_json_for_streisand=USE_CUSTOM_JSON_FOR_STREISAND,
-            use_custom_json_for_happ=USE_CUSTOM_JSON_FOR_HAPP,
+            subscription_url_prefix=cls._normalize_prefix(DEFAULT_SUBSCRIPTION_URL_PREFIX),
+            subscription_profile_title=DEFAULT_SUBSCRIPTION_PROFILE_TITLE,
+            subscription_support_url=DEFAULT_SUBSCRIPTION_SUPPORT_URL,
+            subscription_update_interval=DEFAULT_SUBSCRIPTION_UPDATE_INTERVAL,
+            custom_templates_directory=DEFAULT_CUSTOM_TEMPLATES_DIRECTORY,
+            clash_subscription_template=DEFAULT_CLASH_SUBSCRIPTION_TEMPLATE,
+            clash_settings_template=DEFAULT_CLASH_SETTINGS_TEMPLATE,
+            subscription_page_template=DEFAULT_SUBSCRIPTION_PAGE_TEMPLATE,
+            home_page_template=DEFAULT_HOME_PAGE_TEMPLATE,
+            v2ray_subscription_template=DEFAULT_V2RAY_SUBSCRIPTION_TEMPLATE,
+            v2ray_settings_template=DEFAULT_V2RAY_SETTINGS_TEMPLATE,
+            singbox_subscription_template=DEFAULT_SINGBOX_SUBSCRIPTION_TEMPLATE,
+            singbox_settings_template=DEFAULT_SINGBOX_SETTINGS_TEMPLATE,
+            mux_template=DEFAULT_MUX_TEMPLATE,
+            use_custom_json_default=DEFAULT_USE_CUSTOM_JSON_DEFAULT,
+            use_custom_json_for_v2rayn=DEFAULT_USE_CUSTOM_JSON_FOR_V2RAYN,
+            use_custom_json_for_v2rayng=DEFAULT_USE_CUSTOM_JSON_FOR_V2RAYNG,
+            use_custom_json_for_streisand=DEFAULT_USE_CUSTOM_JSON_FOR_STREISAND,
+            use_custom_json_for_happ=DEFAULT_USE_CUSTOM_JSON_FOR_HAPP,
             subscription_path=XRAY_SUBSCRIPTION_PATH,
         )
 
@@ -155,16 +171,21 @@ class SubscriptionSettingsService:
 
         return SubscriptionSettingsData(
             subscription_url_prefix=cls._normalize_prefix(record.subscription_url_prefix or ""),
+            subscription_profile_title=record.subscription_profile_title or DEFAULT_SUBSCRIPTION_PROFILE_TITLE,
+            subscription_support_url=cls._normalize_support_url(
+                record.subscription_support_url or DEFAULT_SUBSCRIPTION_SUPPORT_URL
+            ),
+            subscription_update_interval=record.subscription_update_interval or DEFAULT_SUBSCRIPTION_UPDATE_INTERVAL,
             custom_templates_directory=record.custom_templates_directory,
-            clash_subscription_template=record.clash_subscription_template or CLASH_SUBSCRIPTION_TEMPLATE,
-            clash_settings_template=record.clash_settings_template or CLASH_SETTINGS_TEMPLATE,
-            subscription_page_template=record.subscription_page_template or SUBSCRIPTION_PAGE_TEMPLATE,
-            home_page_template=record.home_page_template or HOME_PAGE_TEMPLATE,
-            v2ray_subscription_template=record.v2ray_subscription_template or V2RAY_SUBSCRIPTION_TEMPLATE,
-            v2ray_settings_template=record.v2ray_settings_template or V2RAY_SETTINGS_TEMPLATE,
-            singbox_subscription_template=record.singbox_subscription_template or SINGBOX_SUBSCRIPTION_TEMPLATE,
-            singbox_settings_template=record.singbox_settings_template or SINGBOX_SETTINGS_TEMPLATE,
-            mux_template=record.mux_template or MUX_TEMPLATE,
+            clash_subscription_template=record.clash_subscription_template or DEFAULT_CLASH_SUBSCRIPTION_TEMPLATE,
+            clash_settings_template=record.clash_settings_template or DEFAULT_CLASH_SETTINGS_TEMPLATE,
+            subscription_page_template=record.subscription_page_template or DEFAULT_SUBSCRIPTION_PAGE_TEMPLATE,
+            home_page_template=record.home_page_template or DEFAULT_HOME_PAGE_TEMPLATE,
+            v2ray_subscription_template=record.v2ray_subscription_template or DEFAULT_V2RAY_SUBSCRIPTION_TEMPLATE,
+            v2ray_settings_template=record.v2ray_settings_template or DEFAULT_V2RAY_SETTINGS_TEMPLATE,
+            singbox_subscription_template=record.singbox_subscription_template or DEFAULT_SINGBOX_SUBSCRIPTION_TEMPLATE,
+            singbox_settings_template=record.singbox_settings_template or DEFAULT_SINGBOX_SETTINGS_TEMPLATE,
+            mux_template=record.mux_template or DEFAULT_MUX_TEMPLATE,
             use_custom_json_default=bool(record.use_custom_json_default),
             use_custom_json_for_v2rayn=bool(record.use_custom_json_for_v2rayn),
             use_custom_json_for_v2rayng=bool(record.use_custom_json_for_v2rayng),
@@ -183,7 +204,7 @@ class SubscriptionSettingsService:
         if template_key not in cls._template_keys():
             raise ValueError(f"Unsupported template key: {template_key}")
         template_name = getattr(base, template_key)
-        custom_directory = base.custom_templates_directory or CUSTOM_TEMPLATES_DIRECTORY
+        custom_directory = base.custom_templates_directory or DEFAULT_CUSTOM_TEMPLATES_DIRECTORY
         if admin is not None:
             overrides = getattr(admin, "subscription_settings", {}) or {}
             template_name = overrides.get(template_key) or template_name
@@ -198,6 +219,9 @@ class SubscriptionSettingsService:
             defaults = cls._fallback_defaults()
             record = SubscriptionSettingsModel(
                 subscription_url_prefix=defaults.subscription_url_prefix,
+                subscription_profile_title=defaults.subscription_profile_title,
+                subscription_support_url=defaults.subscription_support_url,
+                subscription_update_interval=defaults.subscription_update_interval,
                 custom_templates_directory=defaults.custom_templates_directory,
                 clash_subscription_template=defaults.clash_subscription_template,
                 clash_settings_template=defaults.clash_settings_template,
@@ -322,6 +346,10 @@ class SubscriptionSettingsService:
                     continue
                 if key == "subscription_url_prefix":
                     value = cls._normalize_prefix(value)
+                if key == "subscription_support_url":
+                    value = cls._normalize_support_url(value)
+                if key in {"subscription_profile_title", "subscription_update_interval"} and value is not None:
+                    value = str(value).strip()
                 if isinstance(value, str):
                     value = value.strip()
                 if key.startswith("use_custom_json"):
@@ -355,8 +383,6 @@ class SubscriptionSettingsService:
             overrides = getattr(admin, "subscription_settings", None) or {}
             if admin.subscription_domain:
                 effective.subscription_domain = admin.subscription_domain.strip()
-            if admin.subscription_telegram_id is not None:
-                effective.subscription_telegram_id = admin.subscription_telegram_id
 
         for key, value in overrides.items():
             if value in (None, ""):
@@ -364,6 +390,12 @@ class SubscriptionSettingsService:
             if hasattr(effective, key):
                 if key == "subscription_url_prefix":
                     value = cls._normalize_prefix(value)
+                if key == "subscription_support_url":
+                    value = cls._normalize_support_url(value)
+                if key in {"subscription_profile_title", "subscription_update_interval"}:
+                    value = str(value).strip()
+                if isinstance(value, str):
+                    value = value.strip()
                 if key.startswith("use_custom_json"):
                     value = bool(value)
                 setattr(effective, key, value)
@@ -372,6 +404,8 @@ class SubscriptionSettingsService:
             effective.subscription_url_prefix = cls._normalize_prefix(cls._ensure_scheme(effective.subscription_domain))
         else:
             effective.subscription_url_prefix = cls._normalize_prefix(effective.subscription_url_prefix)
+
+        effective.subscription_support_url = cls._normalize_support_url(effective.subscription_support_url)
 
         return effective
 
