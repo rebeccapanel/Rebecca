@@ -41,6 +41,7 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 # ============================================================================
 
+
 def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
     """Populate admin.service_ids from AdminServiceLink rows."""
     if not admins:
