@@ -17,6 +17,7 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	Checkbox,
 	Radio,
 	RadioGroup,
 	SimpleGrid,
@@ -28,7 +29,7 @@ import {
 	Text,
 	useToast,
 	VStack,
-	Select,
+	Badge,
 } from "@chakra-ui/react";
 import {
 	EyeIcon,
@@ -408,11 +409,24 @@ export const AdminDialog: FC = () => {
 		watch,
 		setError,
 	} = form;
-	const selectedServices = watch("services") || [];
-
 	const [showPassword, setShowPassword] = useState(false);
 	const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
+	const [serviceSearch, setServiceSearch] = useState("");
+	const filteredServices = useMemo(() => {
+		const query = serviceSearch.trim().toLowerCase();
+		if (!query) {
+			return serviceOptions;
+		}
+		return serviceOptions.filter((service) =>
+			service.name.toLowerCase().includes(query),
+		);
+	}, [serviceOptions, serviceSearch]);
+	const selectedServices = watch("services") || [];
+	const selectedServicesSet = useMemo(
+		() => new Set(selectedServices),
+		[selectedServices],
+	);
 
 	const generateRandomString = useCallback((length: number) => {
 		const characters =
@@ -443,10 +457,18 @@ export const AdminDialog: FC = () => {
 		});
 	}, [generateRandomString, mode, setValue]);
 
-	const handleServicesChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-		const next = Array.from(event.target.selectedOptions).map((opt) =>
-			Number(opt.value),
-		);
+	const handleServiceToggle = (serviceId: number) => {
+		const next = selectedServicesSet.has(serviceId)
+			? selectedServices.filter((id) => id !== serviceId)
+			: [...selectedServices, serviceId];
+		setValue("services", next, { shouldDirty: true, shouldValidate: true });
+	};
+
+	const handleToggleAllServices = () => {
+		const hasAllSelected =
+			selectedServices.length === serviceOptions.length &&
+			serviceOptions.length > 0;
+		const next = hasAllSelected ? [] : serviceOptions.map((service) => service.id);
 		setValue("services", next, { shouldDirty: true, shouldValidate: true });
 	};
 
@@ -491,8 +513,9 @@ export const AdminDialog: FC = () => {
 
 	useEffect(() => {
 		if (isOpen) {
+			setServiceSearch("");
 			// Fetch services for selection
-			fetch<{ services: ServiceSummary[]; total?: number }>("/services", {
+			fetch<{ services: ServiceSummary[]; total?: number }>("/v2/services", {
 				query: { limit: 500 },
 			})
 				.then((resp) => {
@@ -862,19 +885,98 @@ export const AdminDialog: FC = () => {
 			</SimpleGrid>
 			<FormControl>
 				<FormLabel>{t("services", "Services")}</FormLabel>
-				<Select
-					multiple
-					value={selectedServices.map((id) => String(id))}
-					onChange={handleServicesChange}
-					minH="120px"
-					overflowY="auto"
-				>
-					{serviceOptions.map((service) => (
-						<option key={service.id} value={service.id}>
-							{service.name}
-						</option>
-					))}
-				</Select>
+				<VStack align="stretch" spacing={3}>
+					<Checkbox
+						isChecked={
+							selectedServices.length === serviceOptions.length &&
+							serviceOptions.length > 0
+						}
+						isIndeterminate={
+							selectedServices.length > 0 &&
+							selectedServices.length < serviceOptions.length
+						}
+						onChange={handleToggleAllServices}
+						isDisabled={serviceOptions.length === 0}
+					>
+						{t("admins.selectAllServices", "Select all services")}
+					</Checkbox>
+					<Input
+						value={serviceSearch}
+						onChange={(event) => setServiceSearch(event.target.value)}
+						placeholder={t("admins.searchServices", "Search services")}
+						size="sm"
+					/>
+					<VStack
+						align="stretch"
+						spacing={2}
+						maxH="220px"
+						overflowY="auto"
+						borderWidth="1px"
+						borderRadius="md"
+						p={3}
+					>
+						{serviceOptions.length === 0 ? (
+							<Text fontSize="sm" color="gray.500">
+								{t("admins.noServicesFound", "No services available")}
+							</Text>
+						) : filteredServices.length === 0 ? (
+							<Text fontSize="sm" color="gray.500">
+								{t("admins.noServicesMatching", "No services match your search")}
+							</Text>
+						) : (
+							filteredServices.map((service) => {
+								const isSelected = selectedServicesSet.has(service.id);
+								return (
+									<Box
+										key={service.id}
+										borderWidth="1px"
+										borderRadius="md"
+										px={3}
+										py={2}
+										borderColor={isSelected ? "primary.400" : "gray.200"}
+										bg={isSelected ? "primary.50" : "transparent"}
+										_hover={{ borderColor: "primary.300", cursor: "pointer" }}
+										_dark={{
+											borderColor: isSelected ? "primary.300" : "gray.600",
+											bg: isSelected ? "gray.700" : "transparent",
+										}}
+										transition="all 0.1s ease-in-out"
+										onClick={() => handleServiceToggle(service.id)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" || event.key === " ") {
+												event.preventDefault();
+												handleServiceToggle(service.id);
+											}
+										}}
+										role="button"
+										tabIndex={0}
+									>
+										<HStack justify="space-between" align="flex-start" spacing={3}>
+											<VStack align="flex-start" spacing={1}>
+												<Text fontWeight="medium">{service.name}</Text>
+												<Text fontSize="xs" color="gray.500">
+													{t(
+														"admins.serviceStats",
+														"{{users}} users | {{hosts}} hosts",
+														{
+															users: service.user_count ?? 0,
+															hosts: service.host_count ?? 0,
+														},
+													)}
+												</Text>
+											</VStack>
+											{isSelected && (
+												<Badge colorScheme="primary" variant="subtle">
+													{t("admins.selectedService", "Selected")}
+												</Badge>
+											)}
+										</HStack>
+									</Box>
+								);
+							})
+						)}
+					</VStack>
+				</VStack>
 				<FormHelperText>
 					{t("admins.servicesHelper", "Assign services this admin can manage")}
 				</FormHelperText>

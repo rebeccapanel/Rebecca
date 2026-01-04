@@ -43,7 +43,7 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 
 def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
-    """Populate admin.service_ids from AdminServiceLink rows."""
+    """Populate admin.services with raw service IDs without touching the association proxy."""
     if not admins:
         return
     admin_ids = [a.id for a in admins if a.id is not None]
@@ -60,7 +60,7 @@ def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
     for admin in admins:
         if admin.id is None:
             continue
-        setattr(admin, "services", services_map.get(admin.id, []))
+        admin.__dict__["services"] = services_map.get(admin.id, [])
 
 
 def _sync_admin_services(db: Session, dbadmin: Admin, service_ids: Optional[List[int]]) -> None:
