@@ -84,7 +84,10 @@ export type InboundFormValues = {
 	fallbacks: FallbackForm[];
 
 	// shadowsocks
-	shadowsocksNetwork: string;
+	shadowsocksNetwork: "tcp" | "udp" | "tcp,udp";
+	shadowsocksMethod: string;
+	shadowsocksPassword: string;
+	shadowsocksIvCheck: boolean;
 
 	// sniffing
 	sniffingEnabled: boolean;
@@ -208,6 +211,11 @@ export const protocolOptions: Protocol[] = [
 	"shadowsocks",
 	"http",
 	"socks",
+];
+export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] = [
+	"tcp,udp",
+	"tcp",
+	"udp",
 ];
 export const streamNetworks: StreamNetwork[] = [
 	"tcp",
@@ -360,12 +368,15 @@ export const createDefaultInboundForm = (
 	vlessEncryption: "",
 	fallbacks: [],
 	shadowsocksNetwork: "tcp,udp",
+	shadowsocksMethod: "chacha20-ietf-poly1305",
+	shadowsocksPassword: "",
+	shadowsocksIvCheck: false,
 	sniffingEnabled: true,
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
 	streamNetwork: "tcp",
-	streamSecurity: "tls",
+	streamSecurity: "none",
 	tlsServerName: "",
 	tlsAlpn: [],
 	tlsAllowInsecure: false,
@@ -488,7 +499,13 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 					fallbackToForm(item),
 				)
 			: base.fallbacks,
-		shadowsocksNetwork: settings.network ?? base.shadowsocksNetwork,
+		shadowsocksNetwork:
+			settings.network && ["tcp", "udp", "tcp,udp"].includes(settings.network)
+				? (settings.network as InboundFormValues["shadowsocksNetwork"])
+				: base.shadowsocksNetwork,
+		shadowsocksMethod: settings.method ?? base.shadowsocksMethod,
+		shadowsocksPassword: settings.password ?? base.shadowsocksPassword,
+		shadowsocksIvCheck: Boolean(settings.ivCheck ?? base.shadowsocksIvCheck),
 		sniffingEnabled: Boolean(sniffing.enabled ?? base.sniffingEnabled),
 		sniffingDestinations:
 			Array.isArray(sniffing.destOverride) && sniffing.destOverride.length
@@ -919,15 +936,18 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-		case "trojan":
+	case "trojan":
 			if (values.fallbacks.length) {
 				base.fallbacks = values.fallbacks
 					.map(formToFallback)
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-		case "shadowsocks":
+	case "shadowsocks":
 			base.network = values.shadowsocksNetwork || "tcp,udp";
+			base.method = values.shadowsocksMethod || undefined;
+			base.password = values.shadowsocksPassword || undefined;
+			base.ivCheck = values.shadowsocksIvCheck || undefined;
 			break;
 		case "http": {
 			const accounts = values.httpAccounts

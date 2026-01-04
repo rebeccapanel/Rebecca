@@ -108,6 +108,9 @@ class TrojanSettings(ProxySettings):
 class ShadowsocksSettings(ProxySettings):
     password: Optional[str] = None
     method: ShadowsocksMethods = ShadowsocksMethods.CHACHA20_POLY1305
+    iv_check: bool = Field(default=False, alias="ivCheck")
+
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
     def revoke(self):
         self.password = random_password()

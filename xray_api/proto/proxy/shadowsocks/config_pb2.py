@@ -28,6 +28,10 @@ AES_256_GCM = 6
 CHACHA20_POLY1305 = 7
 XCHACHA20_POLY1305 = 8
 NONE = 9
+# Added newer shadowsocks 2022 cipher constants (protobuf descriptor may not yet include them)
+BLAKE3_AES_128_GCM = 10
+BLAKE3_AES_256_GCM = 11
+BLAKE3_CHACHA20_POLY1305 = 12
 
 
 _ACCOUNT = DESCRIPTOR.message_types_by_name['Account']
@@ -67,3 +71,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _CLIENTCONFIG._serialized_start=353
   _CLIENTCONFIG._serialized_end=421
 # @@protoc_insertion_point(module_scope)
+
+# Additional cipher constants added for newer Shadowsocks methods.
+BLAKE3_AES_128_GCM = 10
+BLAKE3_AES_256_GCM = 11
+BLAKE3_CHACHA20_POLY1305 = 12

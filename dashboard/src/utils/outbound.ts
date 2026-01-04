@@ -1481,6 +1481,7 @@ export class Outbound extends CommonClass {
 		port: number;
 		password: string;
 		method: string;
+		ivCheck?: boolean;
 		uot?: boolean;
 		UoTVersion?: string;
 
@@ -1489,6 +1490,7 @@ export class Outbound extends CommonClass {
 			port = 0,
 			password = "",
 			method = "",
+			ivCheck?: boolean,
 			uot?: boolean,
 			UoTVersion?: string,
 		) {
@@ -1497,6 +1499,7 @@ export class Outbound extends CommonClass {
 			this.port = port ?? 0;
 			this.password = password ?? "";
 			this.method = method ?? "";
+			this.ivCheck = ivCheck;
 			this.uot = uot;
 			this.UoTVersion = UoTVersion;
 		}
@@ -1510,6 +1513,7 @@ export class Outbound extends CommonClass {
 				server?.port ?? 0,
 				server?.password ?? "",
 				server?.method ?? "",
+				server?.ivCheck,
 				server?.uot,
 				server?.UoTVersion,
 			);
@@ -1519,15 +1523,16 @@ export class Outbound extends CommonClass {
 			return {
 				servers: [
 					{
-						address: this.address,
-						port: this.port,
-						password: this.password,
-						method: this.method,
-						uot: this.uot,
-						UoTVersion: this.UoTVersion,
-					},
-				],
-			};
+					address: this.address,
+					port: this.port,
+					password: this.password,
+					method: this.method,
+					ivCheck: this.ivCheck,
+					uot: this.uot,
+					UoTVersion: this.UoTVersion,
+				},
+			],
+		};
 		}
 	};
 

@@ -9,6 +9,11 @@ import {
 	Input as ChakraInput,
 	Select as ChakraSelect,
 	Textarea as ChakraTextarea,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Checkbox,
 	CheckboxGroup,
 	Collapse,
@@ -44,6 +49,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
@@ -58,6 +64,7 @@ import {
 	createDefaultInboundForm,
 	type InboundFormValues,
 	protocolOptions,
+	shadowsocksNetworkOptions,
 	type RawInbound,
 	rawInboundToFormValues,
 	type SockoptFormValues,
@@ -65,8 +72,11 @@ import {
 	streamNetworks,
 	streamSecurityOptions,
 	tlsFingerprintOptions,
+	buildInboundPayload,
 } from "utils/inbounds";
 import { generateWireguardKeypair } from "utils/wireguard";
+import { JsonEditor } from "components/JsonEditor";
+import { shadowsocksMethods } from "constants/Proxies";
 
 type Props = {
 	isOpen: boolean;
@@ -154,10 +164,14 @@ export const InboundFormModal: FC<Props> = ({
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
-	const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>(
-		[],
-	);
-	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
+const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>(
+	[],
+);
+const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
+const [activeTab, setActiveTab] = useState(0);
+const [jsonData, setJsonData] = useState<RawInbound | null>(null);
+const [jsonError, setJsonError] = useState<string | null>(null);
+const updatingFromJsonRef = useRef(false);
 
 	const form = useForm<InboundFormValues>({
 		defaultValues: createDefaultInboundForm(),
@@ -206,8 +220,8 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "protocol" }) || watch("protocol");
 	const streamNetwork =
 		useWatch({ control, name: "streamNetwork" }) || watch("streamNetwork");
-	const streamSecurity =
-		useWatch({ control, name: "streamSecurity" }) || watch("streamSecurity");
+const streamSecurity =
+	useWatch({ control, name: "streamSecurity" }) || watch("streamSecurity");
 	const sniffingEnabled =
 		useWatch({ control, name: "sniffingEnabled" }) ?? watch("sniffingEnabled");
 	const realityPrivateKey =
@@ -216,8 +230,19 @@ export const InboundFormModal: FC<Props> = ({
 	const tcpHeaderType =
 		useWatch({ control, name: "tcpHeaderType" }) || watch("tcpHeaderType");
 	const sockoptEnabled = useWatch({ control, name: "sockoptEnabled" }) ?? false;
-	const vlessSelectedAuth =
-		useWatch({ control, name: "vlessSelectedAuth" }) || "";
+const vlessSelectedAuth =
+	useWatch({ control, name: "vlessSelectedAuth" }) || "";
+const formValues = useWatch({ control }) as InboundFormValues;
+
+useEffect(() => {
+	if (updatingFromJsonRef.current) {
+		updatingFromJsonRef.current = false;
+		return;
+	}
+	const updatedJson = buildInboundPayload(formValues);
+	setJsonData(updatedJson);
+	setJsonError(null);
+}, [formValues]);
 	const socksAuth =
 		useWatch({ control, name: "socksAuth" }) || watch("socksAuth") || "noauth";
 	const socksUdpEnabled =
@@ -232,7 +257,8 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "http" && currentProtocol !== "socks";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
-	const hasBlockingErrors = Boolean(tagError || portError);
+const hasBlockingErrors = Boolean(tagError || portError);
+const hasBlockingErrorsWithJson = Boolean(tagError || portError || jsonError);
 	const defaultVlessAuthLabels = useMemo(
 		() => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
 		[],
@@ -284,21 +310,21 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [form, streamNetwork, streamSecurity]);
 
-	useEffect(() => {
-		if (isOpen) {
-			if (initialValue) {
-				const formValues = rawInboundToFormValues(initialValue);
-				reset(formValues);
-				setTagManuallyEdited(true);
-				setDefaultsSeeded(false);
-			} else {
-				reset(createDefaultInboundForm());
-				setTagManuallyEdited(false);
-				setPortWarning(null);
-				setDefaultsSeeded(false);
-			}
-		}
-	}, [initialValue, reset, isOpen]);
+useEffect(() => {
+	if (!isOpen) return;
+	const formValues = initialValue
+		? rawInboundToFormValues(initialValue)
+		: createDefaultInboundForm();
+	reset(formValues);
+	const json = buildInboundPayload(formValues);
+	setJsonData(json);
+	setJsonError(null);
+	updatingFromJsonRef.current = false;
+	setTagManuallyEdited(Boolean(initialValue));
+	setPortWarning(null);
+	setDefaultsSeeded(false);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [initialValue, isOpen]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -350,29 +376,29 @@ export const InboundFormModal: FC<Props> = ({
 		return candidate.toString();
 	}, [BLOCKED_PORTS, form]);
 
-	useEffect(() => {
-		if (mode !== "create" || initialValue || !isOpen || defaultsSeeded) {
-			return;
-		}
-		const existingPort = form.getValues("port");
-		const currentPort = existingPort || generateRandomPort();
-		const nextTag = computeAutoTag(currentProtocol, streamNetwork, currentPort);
-		form.setValue("port", currentPort, { shouldDirty: true });
-		form.setValue("tag", nextTag, { shouldDirty: true });
-		setTagError(null);
-		setPortError(null);
-		setDefaultsSeeded(true);
-	}, [
-		mode,
-		initialValue,
-		isOpen,
-		defaultsSeeded,
-		currentProtocol,
-		streamNetwork,
-		computeAutoTag,
-		generateRandomPort,
-		form,
-	]);
+useEffect(() => {
+	if (mode !== "create" || initialValue || !isOpen || defaultsSeeded) {
+		return;
+	}
+	const existingPort = form.getValues("port");
+	const currentPort = existingPort || generateRandomPort();
+	const nextTag = computeAutoTag(currentProtocol, streamNetwork, currentPort);
+	form.setValue("port", currentPort, { shouldDirty: true });
+	form.setValue("tag", nextTag, { shouldDirty: true });
+	setTagError(null);
+	setPortError(null);
+	setDefaultsSeeded(true);
+}, [
+	mode,
+	initialValue,
+	isOpen,
+	defaultsSeeded,
+	currentProtocol,
+	streamNetwork,
+	computeAutoTag,
+	generateRandomPort,
+	form,
+]);
 
 	useEffect(() => {
 		if (mode === "create" && !tagManuallyEdited) {
@@ -541,6 +567,25 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [form, toast, t]);
 
+	const handleJsonEditorChange = useCallback(
+		(value: string) => {
+			try {
+				const parsed = JSON.parse(value);
+				if (!parsed || typeof parsed !== "object") {
+					throw new Error("Invalid JSON payload");
+				}
+				const mapped = rawInboundToFormValues(parsed as RawInbound);
+				updatingFromJsonRef.current = true;
+				reset(mapped);
+				setJsonData(parsed as RawInbound);
+				setJsonError(null);
+			} catch (error) {
+				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
+			}
+		},
+		[reset],
+	);
+
 	const handleGenerateShortId = useCallback(async () => {
 		try {
 			const { shortId } = await generateRealityShortId();
@@ -699,7 +744,19 @@ export const InboundFormModal: FC<Props> = ({
 				</ModalHeader>
 				<ModalCloseButton />
 				<ModalBody>
-					<VStack align="stretch" spacing={6}>
+					<Tabs
+						variant="enclosed"
+						colorScheme="primary"
+						index={activeTab}
+						onChange={(index) => setActiveTab(index)}
+					>
+						<TabList>
+							<Tab>{t("form")}</Tab>
+							<Tab>{t("json")}</Tab>
+						</TabList>
+						<TabPanels>
+							<TabPanel px={0}>
+								<VStack align="stretch" spacing={6}>
 						<Stack
 							spacing={4}
 							borderWidth="1px"
@@ -798,12 +855,50 @@ export const InboundFormModal: FC<Props> = ({
 								</FormControl>
 							)}
 							{currentProtocol === "shadowsocks" && (
-								<FormControl>
-									<FormLabel>
-										{t("inbounds.shadowsocks.network", "Allowed networks")}
-									</FormLabel>
-									<Input {...register("shadowsocksNetwork")} />
-								</FormControl>
+								<Stack spacing={3}>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.shadowsocks.password", "Password")}
+										</FormLabel>
+										<Input
+											type="text"
+											autoComplete="off"
+											{...register("shadowsocksPassword")}
+										/>
+									</FormControl>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<FormLabel>
+												{t("inbounds.shadowsocks.method", "Encryption method")}
+											</FormLabel>
+											<Select {...register("shadowsocksMethod")}>
+												{shadowsocksMethods.map((method) => (
+													<option key={method} value={method}>
+														{method}
+													</option>
+												))}
+											</Select>
+										</FormControl>
+										<FormControl>
+											<FormLabel>
+												{t("inbounds.shadowsocks.network", "Allowed networks")}
+											</FormLabel>
+											<Select {...register("shadowsocksNetwork")}>
+												{shadowsocksNetworkOptions.map((option) => (
+													<option key={option} value={option}>
+														{option}
+													</option>
+												))}
+											</Select>
+										</FormControl>
+									</SimpleGrid>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("inbounds.shadowsocks.ivCheck", "IV check")}
+										</FormLabel>
+										<Switch {...register("shadowsocksIvCheck")} />
+									</FormControl>
+								</Stack>
 							)}
 							{currentProtocol === "vless" && (
 								<Stack spacing={3}>
@@ -1896,7 +1991,26 @@ export const InboundFormModal: FC<Props> = ({
 							)}
 						</Stack>
 					</VStack>
-				</ModalBody>
+				</TabPanel>
+				<TabPanel px={0}>
+					<VStack align="stretch" spacing={4}>
+						{jsonError && (
+							<Alert status="error">
+								<AlertIcon />
+								{jsonError}
+							</Alert>
+						)}
+						<Box height="420px">
+							<JsonEditor
+								json={jsonData ?? {}}
+								onChange={handleJsonEditorChange}
+							/>
+						</Box>
+					</VStack>
+				</TabPanel>
+			</TabPanels>
+		</Tabs>
+	</ModalBody>
 				<ModalFooter>
 					<Button variant="ghost" mr={3} onClick={onClose}>
 						{t("hostsPage.cancel", "Cancel")}
@@ -1904,7 +2018,7 @@ export const InboundFormModal: FC<Props> = ({
 					<Button
 						colorScheme="primary"
 						isLoading={isSubmitting}
-						isDisabled={hasBlockingErrors}
+						isDisabled={hasBlockingErrorsWithJson}
 						onClick={handleSubmit(submitForm)}
 					>
 						{mode === "create"

@@ -80,6 +80,7 @@ interface OutboundFormValues {
 	user: string;
 	pass: string;
 	method: string;
+	ssIvCheck: boolean;
 	tlsEnabled: boolean;
 	tlsServerName: string;
 	realityEnabled: boolean;
@@ -126,6 +127,7 @@ const defaultValues: OutboundFormValues = {
 	user: "",
 	pass: "",
 	method: SSMethods.AES_128_GCM,
+	ssIvCheck: false,
 	tlsEnabled: false,
 	tlsServerName: "",
 	realityEnabled: false,
@@ -210,6 +212,7 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 					port: basePort,
 					password: values.password || undefined,
 					method: values.method || undefined,
+					ivCheck: values.ssIvCheck || undefined,
 				},
 			];
 			break;
@@ -547,6 +550,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				mapped.method = settings?.method ?? defaultValues.method;
 				mapped.address = settings?.address ?? mapped.address;
 				mapped.port = Number(settings?.port ?? mapped.port);
+				mapped.ssIvCheck = (settings as any)?.ivCheck ?? false;
 				break;
 			}
 			case Protocols.Socks:
@@ -1060,25 +1064,33 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													)}
 												</HStack>
 												{typedProtocol === Protocols.Shadowsocks && (
-													<FormControl isRequired={requiresMethod}>
-														<FormLabel>
-															{t("pages.outbound.method", "Method")}
-														</FormLabel>
-														<Select
-															size="sm"
-															{...register("method", {
-																required: requiresMethod
-																	? requiredMessage
-																	: false,
-															})}
-														>
-															{Object.values(SSMethods).map((method) => (
-																<option key={method} value={method}>
+													<>
+														<FormControl isRequired={requiresMethod}>
+															<FormLabel>
+																{t("pages.outbound.method", "Method")}
+															</FormLabel>
+															<Select
+																size="sm"
+																{...register("method", {
+																	required: requiresMethod
+																		? requiredMessage
+																		: false,
+																})}
+															>
+																{Object.values(SSMethods).map((method) => (
+																	<option key={method} value={method}>
 																	{method}
-																</option>
-															))}
-														</Select>
-													</FormControl>
+																	</option>
+																))}
+															</Select>
+														</FormControl>
+														<FormControl display="flex" alignItems="center" gap={2}>
+															<Switch size="sm" {...register("ssIvCheck")} />
+															<FormLabel mb="0">
+																{t("pages.outbound.ivCheck", "Enable IV Check")}
+															</FormLabel>
+														</FormControl>
+													</>
 												)}
 												{typedProtocol === Protocols.VLESS && (
 													<HStack>

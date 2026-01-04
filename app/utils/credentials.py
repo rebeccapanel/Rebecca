@@ -192,6 +192,10 @@ def runtime_proxy_settings(
     else:
         data = {}
 
+    # Normalize legacy camelCase flags
+    if "ivCheck" in data and "iv_check" not in data:
+        data["iv_check"] = data["ivCheck"]
+
     # Remove persisted flow; flow is now user-scoped
     data.pop("flow", None)
 
@@ -229,6 +233,7 @@ def runtime_proxy_settings(
         else:
             data.setdefault("password", random_password())
         data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
+        data.setdefault("iv_check", False)
 
     if flow:
         data["flow"] = flow

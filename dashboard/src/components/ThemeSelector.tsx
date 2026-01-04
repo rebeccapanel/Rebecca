@@ -133,6 +133,32 @@ const DEFAULT_DARK_MODE: ModeConfig = {
 	surface: "#141f35",
 };
 
+const DEFAULT_PALETTE: PaletteVars = {
+	"--primary-50": "#9cb7f2",
+	"--primary-100": "#88a9ef",
+	"--primary-200": "#749aec",
+	"--primary-300": "#618ce9",
+	"--primary-400": "#4d7de7",
+	"--primary-500": "#396fe4",
+	"--primary-600": "#3364cd",
+	"--primary-700": "#2e59b6",
+	"--primary-800": "#284ea0",
+	"--primary-900": "#224389",
+};
+
+const DARK_PALETTE: PaletteVars = {
+	"--primary-50": "#1a202c",
+	"--primary-100": "#2d3748",
+	"--primary-200": "#4a5568",
+	"--primary-300": "#718096",
+	"--primary-400": "#a0aec0",
+	"--primary-500": "#cbd5e0",
+	"--primary-600": "#e2e8f0",
+	"--primary-700": "#f7fafc",
+	"--primary-800": "#ffffff",
+	"--primary-900": "#ffffff",
+};
+
 const BUILTIN_THEMES: ThemeDefinition[] = [
 	{ key: "light", accent: "#f7fafc", colorModeTarget: "light" },
 	{
@@ -151,6 +177,70 @@ const BUILTIN_THEMES: ThemeDefinition[] = [
 	{ key: "purple", accent: "#7c3aed", className: "rb-theme-purple" },
 	{ key: "green", accent: "#10b981", className: "rb-theme-green" },
 ];
+
+const BUILTIN_THEME_DATA: Record<
+	ThemeDefinition["key"],
+	{
+		basePrimary: string;
+		bgLight: string;
+		bgDark: string;
+		surfaceLight: string;
+		surfaceDark: string;
+		palette?: PaletteVars;
+	}
+> = {
+	light: {
+		basePrimary: DEFAULT_LIGHT_MODE.primary,
+		bgLight: DEFAULT_LIGHT_MODE.bg,
+		bgDark: DEFAULT_DARK_MODE.bg,
+		surfaceLight: DEFAULT_LIGHT_MODE.surface,
+		surfaceDark: DEFAULT_DARK_MODE.surface,
+		palette: DEFAULT_PALETTE,
+	},
+	dark: {
+		basePrimary: DEFAULT_DARK_MODE.primary,
+		bgLight: "#1a202c",
+		bgDark: "#0b1524",
+		surfaceLight: "#232c3d",
+		surfaceDark: "#121c2c",
+		palette: DARK_PALETTE,
+	},
+	"pure-dark": {
+		basePrimary: "#1a8ce0",
+		bgLight: "#0c1018",
+		bgDark: "#05070c",
+		surfaceLight: "#111827",
+		surfaceDark: "#0a0f1a",
+	},
+	"ultra-dark": {
+		basePrimary: "#319795",
+		bgLight: "#edfafa",
+		bgDark: "#091212",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#0f1f1f",
+	},
+	moontone: {
+		basePrimary: "#3b82f6",
+		bgLight: "#f5f7ff",
+		bgDark: "#0f1930",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#172544",
+	},
+	purple: {
+		basePrimary: "#7c3aed",
+		bgLight: "#f8f2ff",
+		bgDark: "#1a1031",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#261547",
+	},
+	green: {
+		basePrimary: "#10b981",
+		bgLight: "#eefdf4",
+		bgDark: "#071c10",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#0f2a18",
+	},
+};
 
 const PRESET_THEMES: PresetDefinition[] = [
 	{
@@ -631,16 +721,19 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 		if (builtIn) {
 			if (builtIn.className) root.classList.add(builtIn.className);
 
-			// Apply DEFAULT_DARK_MODE colors to dark theme
-			if (builtIn.key === "dark") {
-				const palette = generatePalette(DEFAULT_DARK_MODE.primary);
+			const builtInVars = BUILTIN_THEME_DATA[builtIn.key];
+			if (builtInVars) {
+				const palette =
+					builtInVars.palette ?? generatePalette(builtInVars.basePrimary);
 				applyPaletteToRoot(palette, {
-					bgLight: DEFAULT_LIGHT_MODE.bg,
-					bgDark: DEFAULT_DARK_MODE.bg,
-					surfaceLight: DEFAULT_LIGHT_MODE.surface,
-					surfaceDark: DEFAULT_DARK_MODE.surface,
+					bgLight: builtInVars.bgLight,
+					bgDark: builtInVars.bgDark,
+					surfaceLight: builtInVars.surfaceLight,
+					surfaceDark: builtInVars.surfaceDark,
 				});
-				updateThemeColor("dark", DEFAULT_DARK_MODE.bg);
+				const fallbackColor =
+					colorMode === "dark" ? builtInVars.bgDark : builtInVars.bgLight;
+				updateThemeColor(builtIn.key, fallbackColor);
 			} else {
 				updateThemeColor(builtIn.key);
 			}

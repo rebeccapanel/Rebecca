@@ -83,12 +83,14 @@ class V2rayShareLink(str):
             )
 
         elif inbound["protocol"] == "vless":
+            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
             link = self.vless(
                 remark=remark,
                 address=address_formatted,
                 port=inbound["port"],
                 id=settings["id"],
                 flow=settings.get("flow", ""),
+                encryption=selected_auth,
                 net=net,
                 tls=inbound["tls"],
                 sni=inbound.get("sni", ""),
@@ -265,6 +267,7 @@ class V2rayShareLink(str):
         host="",
         type="",
         flow="",
+        encryption: str | None = "none",
         tls="none",
         sni="",
         fp="",
@@ -288,6 +291,8 @@ class V2rayShareLink(str):
         payload = {"security": tls, "type": net, "headerType": type}
         if flow and (tls in ("tls", "reality") and net in ("tcp", "raw", "kcp") and type != "http"):
             payload["flow"] = flow
+        if encryption:
+            payload["encryption"] = encryption
 
         if net == "grpc":
             payload["serviceName"] = path
@@ -779,7 +784,13 @@ class V2rayJsonConfig(str):
         }
 
     @staticmethod
-    def vless_config(address=None, port=None, id=None, flow="") -> dict:
+    def vless_config(
+        address=None,
+        port=None,
+        id=None,
+        flow: str | None = "",
+        encryption: str | None = "none",
+    ) -> dict:
         return {
             "vnext": [
                 {
@@ -788,8 +799,7 @@ class V2rayJsonConfig(str):
                     "users": [
                         {
                             "id": id,
-                            "security": "auto",
-                            "encryption": "none",
+                            "encryption": encryption or "none",
                             "email": "https://rebeccapanel.github.io/rebecca/",
                             "alterId": 0,
                             "flow": flow,
@@ -813,7 +823,7 @@ class V2rayJsonConfig(str):
         }
 
     @staticmethod
-    def shadowsocks_config(address=None, port=None, password=None, method=None) -> dict:
+    def shadowsocks_config(address=None, port=None, password=None, method=None, iv_check: bool = False) -> dict:
         return {
             "servers": [
                 {
@@ -823,6 +833,7 @@ class V2rayJsonConfig(str):
                     "email": "https://rebeccapanel.github.io/rebecca/",
                     "method": method,
                     "uot": False,
+                    "ivCheck": iv_check,
                 }
             ]
         }
@@ -966,19 +977,26 @@ class V2rayJsonConfig(str):
             outbound["settings"] = self.vmess_config(address=address, port=port, id=settings["id"])
 
         elif inbound["protocol"] == "vless":
+            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
             if net in ("tcp", "raw", "kcp") and headers != "http" and tls in ("tls", "reality"):
                 flow = settings.get("flow", "")
             else:
                 flow = None
 
-            outbound["settings"] = self.vless_config(address=address, port=port, id=settings["id"], flow=flow)
+            outbound["settings"] = self.vless_config(
+                address=address, port=port, id=settings["id"], flow=flow, encryption=selected_auth
+            )
 
         elif inbound["protocol"] == "trojan":
             outbound["settings"] = self.trojan_config(address=address, port=port, password=settings["password"])
 
         elif inbound["protocol"] == "shadowsocks":
             outbound["settings"] = self.shadowsocks_config(
-                address=address, port=port, password=settings["password"], method=settings["method"]
+                address=address,
+                port=port,
+                password=settings["password"],
+                method=settings["method"],
+                iv_check=settings.get("iv_check") or settings.get("ivCheck") or False,
             )
 
         outbounds = [outbound]

@@ -822,6 +822,11 @@ class UserResponse(User):
         raise ValueError("must be an integer or a float, not a string")  # Reject strings
 
 
+class UserCreateResponse(UserResponse):
+    # Include share links in create-user responses.
+    links: List[str] = Field(default_factory=list, exclude=False)
+
+
 class SubscriptionUserResponse(UserResponse):
     admin: Admin | None = Field(default=None, exclude=True)
     excluded_inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)

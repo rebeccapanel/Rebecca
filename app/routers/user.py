@@ -13,6 +13,7 @@ from app.models.user import (
     AdvancedUserAction,
     BulkUsersActionRequest,
     UserCreate,
+    UserCreateResponse,
     UserModify,
     UserServiceCreate,
     UserResponse,
@@ -80,13 +81,13 @@ def _ensure_custom_key_permission(admin: Admin, has_key: bool) -> None:
 
 @router.post(
     "/user",
-    response_model=UserResponse,
+    response_model=UserCreateResponse,
     status_code=status.HTTP_201_CREATED,
     responses={400: responses._400, 409: responses._409},
 )
 @router.post(
     "/v2/users",
-    response_model=UserResponse,
+    response_model=UserCreateResponse,
     status_code=status.HTTP_201_CREATED,
     responses={400: responses._400, 409: responses._409},
 )
@@ -214,7 +215,7 @@ def add_user(
             raise HTTPException(status_code=409, detail="User already exists")
 
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
-        user = UserResponse.model_validate(dbuser)
+        user = UserCreateResponse.model_validate(dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
         if user.next_plans or user.next_plan:
             total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
@@ -304,7 +305,7 @@ def add_user(
         raise HTTPException(status_code=409, detail="User already exists")
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
-    user = UserResponse.model_validate(dbuser)
+    user = UserCreateResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
     return user
