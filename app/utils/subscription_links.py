@@ -38,6 +38,7 @@ def build_subscription_links(
     salt = secrets.token_hex(8)
     try:
         from app.services.subscription_settings import SubscriptionSettingsService
+
         admin_obj = getattr(user, "admin", None)
         if admin_obj is None and getattr(user, "admin_id", None):
             try:

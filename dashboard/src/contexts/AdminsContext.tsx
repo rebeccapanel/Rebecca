@@ -5,6 +5,7 @@ import type {
 	AdminUpdatePayload,
 } from "types/Admin";
 import { create } from "zustand";
+import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
 
 export type AdminFilters = {
 	search: string;
@@ -45,7 +46,7 @@ type AdminsStore = {
 
 const defaultFilters: AdminFilters = {
 	search: "",
-	limit: 10,
+	limit: getAdminsPerPageLimitSize(),
 	offset: 0,
 	sort: "username",
 };

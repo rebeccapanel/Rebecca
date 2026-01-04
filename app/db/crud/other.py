@@ -558,8 +558,11 @@ def count_users(
     return query.count()
 
 
-def count_online_users(db: Session, hours: int = 24, admin: Admin | None = None):
-    twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=hours)
+def count_online_users(db: Session, hours: int | None = None, admin: Admin | None = None):
+    from app.db.crud.user import ONLINE_ACTIVE_WINDOW  # lazy import to avoid circulars
+
+    window = timedelta(hours=hours) if hours is not None else ONLINE_ACTIVE_WINDOW
+    twenty_four_hours_ago = datetime.now(timezone.utc) - window
     query = db.query(func.count(User.id)).filter(
         User.online_at.isnot(None),
         User.online_at >= twenty_four_hours_ago,

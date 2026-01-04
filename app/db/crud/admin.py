@@ -9,25 +9,29 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from types import SimpleNamespace
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, func, or_, select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.db.models import (
     Admin,
     AdminServiceLink,
     AdminApiKey,
+    AdminUsageLogs,
+    NextPlan,
+    NodeUserUsage,
+    Proxy,
+    Service,
+    excluded_inbounds_association,
     User,
     UserUsageResetLogs,
 )
 from app.models.admin import AdminRole, AdminStatus
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
-from app.models.user import (
-    UserStatus,
-)
+from app.models.user import UserStatus
 
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
-from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users
+from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users, ONLINE_ACTIVE_WINDOW
 
 _USER_STATUS_ENUM_ENSURED = False
 
@@ -37,7 +41,45 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 # ============================================================================
 
+def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
+    """Populate admin.service_ids from AdminServiceLink rows."""
+    if not admins:
+        return
+    admin_ids = [a.id for a in admins if a.id is not None]
+    if not admin_ids:
+        return
+    links = (
+        db.query(AdminServiceLink.admin_id, AdminServiceLink.service_id)
+        .filter(AdminServiceLink.admin_id.in_(admin_ids))
+        .all()
+    )
+    services_map: Dict[int, List[int]] = {}
+    for admin_id, service_id in links:
+        services_map.setdefault(admin_id, []).append(service_id)
+    for admin in admins:
+        if admin.id is None:
+            continue
+        setattr(admin, "services", services_map.get(admin.id, []))
 
+
+def _sync_admin_services(db: Session, dbadmin: Admin, service_ids: Optional[List[int]]) -> None:
+    """Replace admin's service links with provided IDs (None = no change)."""
+    if service_ids is None or dbadmin.id is None:
+        return
+    desired_ids = set(service_ids)
+    existing_ids = {
+        sid for (sid,) in db.query(AdminServiceLink.service_id).filter(AdminServiceLink.admin_id == dbadmin.id).all()
+    }
+    to_remove = existing_ids - desired_ids
+    to_add = desired_ids - existing_ids
+    if to_remove:
+        db.query(AdminServiceLink).filter(
+            AdminServiceLink.admin_id == dbadmin.id, AdminServiceLink.service_id.in_(to_remove)
+        ).delete(synchronize_session=False)
+    if to_add:
+        valid_services = {sid for (sid,) in db.query(Service.id).filter(Service.id.in_(to_add)).all()}
+        for sid in valid_services:
+            db.add(AdminServiceLink(admin_id=dbadmin.id, service_id=sid))
 
 
 def _normalize_permissions_for_role(
@@ -246,6 +288,8 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     db.add(dbadmin)
     db.commit()
     db.refresh(dbadmin)
+    _sync_admin_services(db, dbadmin, admin.services)
+    _attach_admin_services(db, [dbadmin])
     return dbadmin
 
 
@@ -288,6 +332,8 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         enforce_admin_data_limit(db, dbadmin)
     _maybe_enable_admin_after_data_limit(db, dbadmin)
 
+    _sync_admin_services(db, dbadmin, modified_admin.services)
+    _attach_admin_services(db, [dbadmin])
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
@@ -338,40 +384,65 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
 
 def disable_admin(db: Session, dbadmin: Admin, reason: str) -> Admin:
-    """Disable an admin account and store the provided reason."""
-    dbadmin.status, dbadmin.disabled_reason = AdminStatus.disabled, reason
+    """Disable an admin account and store the provided reason via set-based update."""
+    db.query(Admin).filter(Admin.id == dbadmin.id).update(
+        {Admin.status: AdminStatus.disabled, Admin.disabled_reason: reason},
+        synchronize_session=False,
+    )
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
 
 
 def enable_admin(db: Session, dbadmin: Admin) -> Admin:
-    """Re-activate a previously disabled admin account."""
-    dbadmin.status, dbadmin.disabled_reason = AdminStatus.active, None
+    """Re-activate a previously disabled admin account (set-based update)."""
+    db.query(Admin).filter(Admin.id == dbadmin.id).update(
+        {Admin.status: AdminStatus.active, Admin.disabled_reason: None},
+        synchronize_session=False,
+    )
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
 
 
-def remove_admin(db: Session, dbadmin: Admin) -> Admin:
-    """Soft delete an admin, their users, and remove from services."""
+def remove_admin(db: Session, dbadmin: Admin) -> None:
+    """
+    Hard delete an admin and all associated records using set-based SQL operations
+    to minimize request time and resource usage.
+    """
     if dbadmin.id is None:
         raise ValueError("Admin must have a valid identifier before removal")
 
-    admin_users = db.query(User).filter(User.admin_id == dbadmin.id, User.status != UserStatus.deleted).all()
-    for dbuser in admin_users:
-        dbuser.status = UserStatus.deleted
-        try:
-            from app.reb_node import operations as core_operations
+    admin_id = dbadmin.id
 
-            core_operations.remove_user(dbuser=dbuser)
-        except Exception:
-            pass
-    db.query(AdminServiceLink).filter(AdminServiceLink.admin_id == dbadmin.id).delete(synchronize_session=False)
-    dbadmin.status = AdminStatus.deleted
+    # Subqueries for dependent rows
+    user_ids_subq = select(User.id).where(User.admin_id == admin_id)
+    proxy_ids_subq = select(Proxy.id).where(Proxy.user_id.in_(user_ids_subq))
+
+    # Delete proxy inbound exclusions for this admin's proxies
+    db.execute(
+        excluded_inbounds_association.delete().where(excluded_inbounds_association.c.proxy_id.in_(proxy_ids_subq))
+    )
+
+    # Delete proxies owned by admin's users (avoid self-referencing subquery on MySQL)
+    db.execute(delete(Proxy).where(Proxy.user_id.in_(user_ids_subq)))
+
+    # Delete usage and reset logs tied to admin's users
+    db.execute(delete(NodeUserUsage).where(NodeUserUsage.user_id.in_(user_ids_subq)))
+    db.execute(delete(UserUsageResetLogs).where(UserUsageResetLogs.user_id.in_(user_ids_subq)))
+    db.execute(delete(NextPlan).where(NextPlan.user_id.in_(user_ids_subq)))
+
+    # Delete users belonging to admin (avoid self-referencing subquery on MySQL)
+    db.execute(delete(User).where(User.admin_id == admin_id))
+
+    # Delete admin-related rows
+    db.execute(delete(AdminApiKey).where(AdminApiKey.admin_id == admin_id))
+    db.execute(delete(AdminUsageLogs).where(AdminUsageLogs.admin_id == admin_id))
+    db.execute(delete(AdminServiceLink).where(AdminServiceLink.admin_id == admin_id))
+
+    # Finally delete the admin record
+    db.execute(delete(Admin).where(Admin.id == admin_id))
     db.commit()
-    db.refresh(dbadmin)
-    return dbadmin
 
 
 def get_admin_by_id(db: Session, id: int) -> Optional[Admin]:
@@ -457,7 +528,7 @@ def get_admins(
         if admin_id in counts_by_admin and status in status_map:
             counts_by_admin[admin_id][status_map[status]] = count or 0
 
-    online_threshold = datetime.now(timezone.utc) - timedelta(hours=24)
+    online_threshold = datetime.now(timezone.utc) - ONLINE_ACTIVE_WINDOW
     online_counts = {
         admin_id: count
         for admin_id, count in (
@@ -540,6 +611,8 @@ def get_admins(
         .all()
     )
     reset_map = {row.admin_id: row.reset_bytes for row in reset_rows if row.admin_id is not None}
+
+    _attach_admin_services(db, admins)
 
     for admin in admins:
         admin_id = getattr(admin, "id", None)

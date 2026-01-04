@@ -88,7 +88,7 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
     users_on_hold = crud.get_users_count(db, status=UserStatus.on_hold, admin=scoped_admin)
     users_expired = crud.get_users_count(db, status=UserStatus.expired, admin=scoped_admin)
     users_limited = crud.get_users_count(db, status=UserStatus.limited, admin=scoped_admin)
-    online_users = crud.count_online_users(db, 24, scoped_admin)
+    online_users = crud.count_online_users(db, None, scoped_admin)
     realtime_bandwidth_stats = realtime_bandwidth()
     now = time.time()
     system_memory = psutil.virtual_memory()
@@ -796,6 +796,11 @@ def modify_hosts(
 
 
 def _load_config(db: Session) -> dict:
+    try:
+        if xray and getattr(xray, "config", None):
+            return deepcopy(xray.config)
+    except Exception:
+        pass
     return deepcopy(crud.get_xray_config(db))
 
 

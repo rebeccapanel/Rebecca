@@ -142,8 +142,12 @@ class SubscriptionSettings(Base):
 
     id = Column(Integer, primary_key=True)
     subscription_url_prefix = Column(String(512), nullable=False, default="", server_default=text("''"))
-    subscription_profile_title = Column(String(255), nullable=False, default="Subscription", server_default="Subscription")
-    subscription_support_url = Column(String(512), nullable=False, default="https://t.me/", server_default="https://t.me/")
+    subscription_profile_title = Column(
+        String(255), nullable=False, default="Subscription", server_default="Subscription"
+    )
+    subscription_support_url = Column(
+        String(512), nullable=False, default="https://t.me/", server_default="https://t.me/"
+    )
     subscription_update_interval = Column(String(32), nullable=False, default="12", server_default="12")
     custom_templates_directory = Column(String(512), nullable=True, default=None)
     clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")

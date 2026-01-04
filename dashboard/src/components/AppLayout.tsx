@@ -1,9 +1,6 @@
 import {
 	Box,
 	Button,
-	Breadcrumb,
-	BreadcrumbItem,
-	BreadcrumbLink,
 	chakra,
 	Drawer,
 	DrawerBody,
@@ -22,6 +19,7 @@ import {
 	useColorModeValue,
 	useDisclosure,
 	VStack,
+	type PlacementWithLogical,
 } from "@chakra-ui/react";
 import {
 	ArrowLeftOnRectangleIcon,
@@ -40,7 +38,7 @@ import {
 } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { AdminRole } from "types/Admin";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
@@ -69,11 +67,15 @@ export function AppLayout() {
 	const { t, i18n } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const navigate = useNavigate();
-	const location = useLocation();
 	useAppleEmoji();
 	const isRTL = i18n.language === "fa";
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+	const languagePlacement =
+		useBreakpointValue<PlacementWithLogical>({
+			base: "bottom-start",
+			md: isRTL ? "left-start" : "right-start",
+		}) ?? "bottom-start";
 
 	const menuBg = useColorModeValue("white", "gray.800");
 	const menuBorder = useColorModeValue("gray.200", "gray.700");
@@ -117,207 +119,6 @@ export function AppLayout() {
 
 	const handleThemeModalOpen = () => setIsThemeModalOpen(true);
 	const handleThemeModalClose = () => setIsThemeModalOpen(false);
-
-	type BreadcrumbEntry = {
-		href: string;
-		labelKey?: string;
-		defaultLabel?: string;
-		label?: string;
-	};
-
-	const breadcrumbs = useMemo(() => {
-		let pathKey =
-			location.pathname !== "/" ? location.pathname.replace(/\/+$/, "") : "/";
-		if (pathKey === "/" && typeof window !== "undefined") {
-			const rawHashPath = window.location.hash || "";
-			if (rawHashPath.startsWith("#/")) {
-				const withoutHash = rawHashPath.slice(1);
-				const firstSplit = withoutHash.split("#")[0] || "";
-				if (firstSplit) {
-					pathKey = firstSplit.startsWith("/") ? firstSplit : `/${firstSplit}`;
-				}
-			}
-		}
-		if (pathKey !== "/" && pathKey.endsWith("/")) {
-			pathKey = pathKey.replace(/\/+$/, "");
-		}
-		let rawTabHash = (location.hash || "").replace(/^#/, "");
-		if (!rawTabHash && typeof window !== "undefined") {
-			const rawHash = window.location.hash || "";
-			const secondIdx = rawHash.indexOf("#", 1);
-			if (secondIdx >= 0 && secondIdx + 1 < rawHash.length) {
-				rawTabHash = rawHash.slice(secondIdx + 1);
-			}
-		}
-		const tabHash = rawTabHash.toLowerCase();
-		const tabLabelForHash = (labels: Record<string, string>) => {
-			if (!tabHash) return null;
-			return labels[tabHash] || null;
-		};
-		const buildTabCrumb = (label?: string): BreadcrumbEntry[] => {
-			if (!label) return [];
-			const href = `${pathKey}${location.search || ""}${
-				rawTabHash ? `#${rawTabHash}` : ""
-			}`;
-			return [{ href, label }];
-		};
-
-		const base: BreadcrumbEntry = {
-			href: "/",
-			labelKey: "breadcrumbs.dashboard",
-			defaultLabel: "Dashboard",
-		};
-		const usageTabLabels = {
-			services: t("usage.tabs.services", "Services"),
-			admins: t("usage.tabs.admins", "Admins"),
-			nodes: t("usage.tabs.nodes", "Nodes"),
-		};
-		const hostsTabLabels = {
-			inbounds: t("hostsPage.tabInbounds", "Inbounds"),
-			hosts: t("hostsPage.tabHosts", "Hosts"),
-		};
-		const integrationsTabLabels = {
-			panel: t("settings.panel.tabTitle"),
-			telegram: t("settings.telegram"),
-			subscriptions: t("settings.subscriptions.tabTitle", "Subscriptions"),
-		};
-		const xrayTabLabels = {
-			basic: t("pages.xray.basicTemplate"),
-			routing: t("pages.xray.Routings"),
-			outbounds: t("pages.xray.Outbounds"),
-			balancers: t("pages.xray.Balancers"),
-			dns: "DNS",
-			advanced: t("pages.xray.advancedTemplate"),
-			logs: t("pages.xray.logs"),
-		};
-		const defaultTabByPath: Record<string, string> = {
-			"/usage": "services",
-			"/hosts": "inbounds",
-			"/integrations": "panel",
-			"/xray-settings": "basic",
-		};
-		const hrefWithDefaultTab = (path: string) => {
-			const tab = defaultTabByPath[path];
-			return tab ? `${path}#${tab}` : path;
-		};
-
-		switch (pathKey) {
-			case "/users":
-				return [
-					base,
-					{
-						href: "/users",
-						labelKey: "breadcrumbs.users",
-						defaultLabel: "Users",
-					},
-				];
-			case "/admins":
-				return [
-					base,
-					{
-						href: "/admins",
-						labelKey: "breadcrumbs.admins",
-						defaultLabel: "Admins",
-					},
-				];
-			case "/myaccount":
-				return [
-					base,
-					{
-						href: "/myaccount",
-						labelKey: "breadcrumbs.myAccount",
-						defaultLabel: "My Account",
-					},
-				];
-			case "/usage":
-				return [
-					base,
-					{
-						href: hrefWithDefaultTab("/usage"),
-						labelKey: "breadcrumbs.usage",
-						defaultLabel: "Usage",
-					},
-					...buildTabCrumb(tabLabelForHash(usageTabLabels) || undefined),
-				];
-			case "/tutorials":
-				return [
-					base,
-					{
-						href: "/tutorials",
-						labelKey: "breadcrumbs.tutorials",
-						defaultLabel: "Tutorials",
-					},
-				];
-			case "/services":
-				return [
-					base,
-					{
-						href: "/services",
-						labelKey: "breadcrumbs.services",
-						defaultLabel: "Services",
-					},
-				];
-			case "/hosts":
-				return [
-					base,
-					{
-						href: hrefWithDefaultTab("/hosts"),
-						labelKey: "breadcrumbs.hosts",
-						defaultLabel: "Hosts",
-					},
-					...buildTabCrumb(tabLabelForHash(hostsTabLabels) || undefined),
-				];
-			case "/node-settings":
-				return [
-					base,
-					{
-						href: "/node-settings",
-						labelKey: "breadcrumbs.nodeSettings",
-						defaultLabel: "Node Settings",
-					},
-				];
-			case "/integrations":
-				return [
-					base,
-					{
-						href: hrefWithDefaultTab("/integrations"),
-						labelKey: "breadcrumbs.integrations",
-						defaultLabel: "Integration Settings",
-					},
-					...buildTabCrumb(tabLabelForHash(integrationsTabLabels) || undefined),
-				];
-			case "/xray-settings":
-				return [
-					base,
-					{
-						href: hrefWithDefaultTab("/xray-settings"),
-						labelKey: "breadcrumbs.xraySettings",
-						defaultLabel: "Xray Settings",
-					},
-					...buildTabCrumb(tabLabelForHash(xrayTabLabels) || undefined),
-				];
-			case "/xray-logs":
-				return [
-					base,
-					{
-						href: "/xray-logs",
-						labelKey: "breadcrumbs.xrayLogs",
-						defaultLabel: "Xray Logs",
-					},
-				];
-			case "/access-insights":
-				return [
-					base,
-					{
-						href: "/access-insights",
-						labelKey: "breadcrumbs.accessInsights",
-						defaultLabel: "Access insights",
-					},
-				];
-			default:
-				return [base];
-		}
-	}, [location.pathname, location.hash, t, location.search]);
 
 	return (
 		<>
@@ -379,45 +180,6 @@ export function AppLayout() {
 								icon={<MenuIcon />}
 								flexShrink={0}
 							/>
-							<Breadcrumb
-								separator={
-									<Text color="gray.500" _dark={{ color: "gray.400" }}>
-										&gt;
-									</Text>
-								}
-								fontSize="sm"
-								color="gray.600"
-								_dark={{ color: "gray.300" }}
-								display={{ base: "none", md: "flex" }}
-								dir={isRTL ? "rtl" : "ltr"}
-								minW="0"
-								flex="1"
-							>
-								{breadcrumbs.map((crumb, index) => {
-									const isLast = index === breadcrumbs.length - 1;
-									const label = String(
-										crumb.label ??
-											(crumb.labelKey
-												? t(crumb.labelKey, {
-														defaultValue: crumb.defaultLabel || "",
-													})
-												: crumb.defaultLabel ?? ""),
-									);
-									return (
-										<BreadcrumbItem key={crumb.href} isCurrentPage={isLast}>
-											<BreadcrumbLink
-												as={Link}
-												to={crumb.href}
-												fontWeight={isLast ? "semibold" : "medium"}
-												color={isLast ? "primary.600" : undefined}
-												_dark={isLast ? { color: "primary.200" } : undefined}
-											>
-												{label}
-											</BreadcrumbLink>
-										</BreadcrumbItem>
-									);
-								})}
-							</Breadcrumb>
 						</HStack>
 						<HStack spacing={2} alignItems="center" flexShrink={0}>
 							<HeaderCalendar />
@@ -500,7 +262,7 @@ export function AppLayout() {
 
 										{/* Language Selector */}
 										<Menu
-											placement={isRTL ? "left-start" : "right-start"}
+											placement={languagePlacement}
 											strategy="fixed"
 											isOpen={languageMenu.isOpen}
 											onOpen={languageMenu.onOpen}

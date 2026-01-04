@@ -74,6 +74,7 @@ export type Admin = {
 	username: string;
 	role: AdminRole;
 	permissions: AdminPermissions;
+	services?: number[];
 	status: AdminStatus;
 	disabled_reason?: string | null;
 	telegram_id?: number | null;
@@ -98,6 +99,7 @@ export type AdminCreatePayload = {
 	password: string;
 	role: AdminRole;
 	permissions: AdminPermissions;
+	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
 	users_limit?: number | null;
@@ -107,6 +109,7 @@ export type AdminUpdatePayload = {
 	password?: string;
 	role?: AdminRole;
 	permissions?: AdminPermissions;
+	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
 	users_limit?: number | null;

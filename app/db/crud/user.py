@@ -1616,37 +1616,27 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         db (Session): Database session.
         admin (Optional[Admin]): Admin to filter users by, if any.
     """
-    disabled_users_query = db.query(User).filter(User.status == UserStatus.disabled)
-    on_hold_candidates_query = db.query(User).filter(
-        and_(
-            User.status == UserStatus.disabled,
-            User.expire.is_(None),
-            User.on_hold_expire_duration.isnot(None),
-            User.online_at.is_(None),
-        )
+    now = datetime.now(timezone.utc)
+    base_filters = [User.status == UserStatus.disabled]
+    if admin:
+        base_filters.append(User.admin == admin)
+
+    # Move eligible disabled users back to on_hold
+    on_hold_filters = list(base_filters) + [
+        User.expire.is_(None),
+        User.on_hold_expire_duration.isnot(None),
+        User.online_at.is_(None),
+    ]
+    db.query(User).filter(*on_hold_filters).update(
+        {User.status: UserStatus.on_hold, User.last_status_change: now},
+        synchronize_session=False,
     )
-    if admin:
-        disabled_users_query = disabled_users_query.filter(User.admin == admin)
-        on_hold_candidates_query = on_hold_candidates_query.filter(User.admin == admin)
 
-    for user in on_hold_candidates_query.all():
-        user.status = UserStatus.on_hold
-        user.last_status_change = datetime.now(timezone.utc)
-
-    # Refresh query to account for users moved to on-hold status
-    disabled_users_query = db.query(User).filter(User.status == UserStatus.disabled)
-    if admin:
-        disabled_users_query = disabled_users_query.filter(User.admin == admin)
-
-    for user in disabled_users_query.all():
-        if _status_to_str(user.status) != UserStatus.active.value:
-            _ensure_active_user_capacity(
-                db,
-                user.admin,
-                exclude_user_ids=(user.id,),
-            )
-        user.status = UserStatus.active
-        user.last_status_change = datetime.now(timezone.utc)
+    # Reactivate remaining disabled users
+    db.query(User).filter(*base_filters).update(
+        {User.status: UserStatus.active, User.last_status_change: now},
+        synchronize_session=False,
+    )
 
     db.commit()
 

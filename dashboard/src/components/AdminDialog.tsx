@@ -28,6 +28,7 @@ import {
 	Text,
 	useToast,
 	VStack,
+	Select,
 } from "@chakra-ui/react";
 import {
 	EyeIcon,
@@ -37,6 +38,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
+import { fetch } from "service/http";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -46,6 +48,7 @@ import type {
 	AdminUpdatePayload,
 } from "types/Admin";
 import { AdminRole, AdminStatus } from "types/Admin";
+import type { ServiceSummary } from "types/Service";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -250,6 +253,7 @@ type AdminFormValues = {
 	maxDataLimitPerUserGb?: string;
 	data_limit?: string;
 	users_limit?: string;
+	services?: number[];
 };
 
 export const AdminDialog: FC = () => {
@@ -365,8 +369,9 @@ export const AdminDialog: FC = () => {
 					.trim()
 					.optional()
 					.transform((value) => (value === "" ? undefined : value)),
-				permissions: adminPermissionsSchema,
-			})
+		permissions: adminPermissionsSchema,
+		services: z.array(z.number()).optional(),
+	})
 			.superRefine((values, ctx) => {
 				if (mode === "create" && !values.password) {
 					ctx.addIssue({
@@ -390,6 +395,7 @@ export const AdminDialog: FC = () => {
 			maxDataLimitPerUserGb: "",
 			data_limit: "",
 			users_limit: "",
+			services: [],
 		},
 	});
 
@@ -402,9 +408,11 @@ export const AdminDialog: FC = () => {
 		watch,
 		setError,
 	} = form;
+	const selectedServices = watch("services") || [];
 
 	const [showPassword, setShowPassword] = useState(false);
 	const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
+	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
 
 	const generateRandomString = useCallback((length: number) => {
 		const characters =
@@ -434,6 +442,13 @@ export const AdminDialog: FC = () => {
 			shouldValidate: true,
 		});
 	}, [generateRandomString, mode, setValue]);
+
+	const handleServicesChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		const next = Array.from(event.target.selectedOptions).map((opt) =>
+			Number(opt.value),
+		);
+		setValue("services", next, { shouldDirty: true, shouldValidate: true });
+	};
 
 	const handleGeneratePassword = useCallback(() => {
 		const randomPassword = generateRandomString(12);
@@ -471,10 +486,25 @@ export const AdminDialog: FC = () => {
 	useEffect(() => {
 		register("maxDataLimitPerUserGb");
 		register("permissions");
+		register("services");
 	}, [register]);
 
 	useEffect(() => {
 		if (isOpen) {
+			// Fetch services for selection
+			fetch<{ services: ServiceSummary[]; total?: number }>("/services", {
+				query: { limit: 500 },
+			})
+				.then((resp) => {
+					const services = Array.isArray((resp as any).services)
+						? (resp as any).services
+						: Array.isArray(resp)
+							? (resp as any)
+							: [];
+					setServiceOptions(services);
+				})
+				.catch(() => setServiceOptions([]));
+
 			const nextRole: AdminRole = admin?.role ?? AdminRole.Standard;
 			const nextPermissions = admin
 				? (JSON.parse(JSON.stringify(admin.permissions)) ??
@@ -500,6 +530,7 @@ export const AdminDialog: FC = () => {
 					admin?.users_limit !== undefined && admin?.users_limit !== null
 						? String(admin.users_limit)
 						: "",
+				services: admin?.services ?? [],
 			});
 		}
 	}, [admin, isOpen, reset]);
@@ -565,6 +596,7 @@ export const AdminDialog: FC = () => {
 					password: values.password ?? "",
 					role: selectedRole,
 					permissions: permissionPayload ?? clonePermissions(selectedRole),
+					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
 						: undefined,
@@ -583,6 +615,7 @@ export const AdminDialog: FC = () => {
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
+					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
 						: undefined,
@@ -827,6 +860,25 @@ export const AdminDialog: FC = () => {
 					</Text>
 				</FormControl>
 			</SimpleGrid>
+			<FormControl>
+				<FormLabel>{t("services", "Services")}</FormLabel>
+				<Select
+					multiple
+					value={selectedServices.map((id) => String(id))}
+					onChange={handleServicesChange}
+					minH="120px"
+					overflowY="auto"
+				>
+					{serviceOptions.map((service) => (
+						<option key={service.id} value={service.id}>
+							{service.name}
+						</option>
+					))}
+				</Select>
+				<FormHelperText>
+					{t("admins.servicesHelper", "Assign services this admin can manage")}
+				</FormHelperText>
+			</FormControl>
 		</VStack>
 	);
 

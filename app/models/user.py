@@ -588,6 +588,7 @@ class UserResponse(User):
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
     service_id: int | None = None
     service_name: str | None = None
+    admin_id: int | None = Field(default=None, exclude=True)
     service_host_orders: Dict[int, int] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict, exclude=True)  # Excluded, use link_data instead
     link_data: List[Dict[str, Any]] = Field(default_factory=list)  # UUID/password for each inbound template
@@ -654,6 +655,7 @@ class UserResponse(User):
         salt = secrets.token_hex(8)
         try:
             from app.services.subscription_settings import SubscriptionSettingsService
+
             admin_obj = getattr(self, "admin", None)
             if admin_obj is None and getattr(self, "admin_id", None):
                 try:

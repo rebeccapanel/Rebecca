@@ -20,6 +20,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 		const jsonEditorRef = useRef<JSONEditor | null>(null);
 		const latestOnChangeRef = useRef(onChange);
 		const pendingPropTextRef = useRef<string | null>(null);
+		const lastEmittedTextRef = useRef<string>("");
 
 		useEffect(() => {
 			latestOnChangeRef.current = onChange;
@@ -27,6 +28,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 
 		const handleChangeText = useCallback((value: string) => {
 			pendingPropTextRef.current = value;
+			lastEmittedTextRef.current = value;
 			latestOnChangeRef.current(value);
 		}, []);
 
@@ -60,12 +62,19 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			try {
 				if (typeof json === "string") {
 					editor.setText(json);
+					lastEmittedTextRef.current = json;
 				} else if (json !== undefined) {
 					editor.set(json);
+					try {
+						lastEmittedTextRef.current = editor.getText();
+					} catch {
+						lastEmittedTextRef.current = "";
+					}
 				}
 			} catch {
 				if (typeof json === "string") {
 					editor.updateText(json);
+					lastEmittedTextRef.current = json;
 				}
 			}
 
@@ -75,7 +84,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			};
 			// We intentionally create the editor only once.
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [colorMode, handleChangeText, json, mode]);
+		}, []);
 
 		useEffect(() => {
 			const editor = jsonEditorRef.current;
@@ -102,6 +111,11 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				return;
 			}
 
+			if (nextText === lastEmittedTextRef.current) {
+				pendingPropTextRef.current = null;
+				return;
+			}
+
 			if (pendingPropTextRef.current !== null) {
 				let normalizedPending = pendingPropTextRef.current;
 				try {
@@ -116,6 +130,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 
 				pendingPropTextRef.current = null;
 				if (normalizedPending === nextText) {
+					lastEmittedTextRef.current = nextText;
 					return;
 				}
 			}
@@ -137,6 +152,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				} catch {
 					editor.setText(nextText);
 				}
+				lastEmittedTextRef.current = nextText;
 			} else {
 				const safeValue =
 					json === undefined || json === null
@@ -146,6 +162,11 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					editor.update(safeValue);
 				} catch {
 					editor.set(safeValue);
+				}
+				try {
+					lastEmittedTextRef.current = editor.getText();
+				} catch {
+					lastEmittedTextRef.current = nextText;
 				}
 			}
 		}, [json]);

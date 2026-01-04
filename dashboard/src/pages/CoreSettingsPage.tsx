@@ -282,7 +282,8 @@ const TableGrid: FC<TableProps> = ({ children, ...props }) => {
 };
 
 export const CoreSettingsPage: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const {
 		fetchCoreSettings,
 		updateConfig,
@@ -353,7 +354,9 @@ export const CoreSettingsPage: FC = () => {
 	);
 
 	const [outboundData, setOutboundData] = useState<any[]>([]);
+	const [outboundSearch, setOutboundSearch] = useState("");
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
+	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
 	const [balancersData, setBalancersData] = useState<any[]>([]);
 	const [dnsServers, setDnsServers] = useState<any[]>([]);
 	const [fakeDns, setFakeDns] = useState<any[]>([]);
@@ -686,6 +689,47 @@ useEffect(() => {
 	const moveOutboundDown = (index: number) => {
 		moveOutbound(index, index + 1);
 	};
+
+	const normalizeSearchValue = (value: unknown): string => {
+		if (Array.isArray(value)) return value.map(normalizeSearchValue).join(" ");
+		if (value && typeof value === "object") return JSON.stringify(value);
+		return String(value ?? "");
+	};
+
+	const filteredRoutingRules = useMemo(() => {
+		const term = routingRuleSearch.trim().toLowerCase();
+		const rows = routingRuleData.map((rule, originalIndex) => ({ rule, originalIndex }));
+		if (!term) return rows;
+		return rows.filter(({ rule }) => {
+			const haystack = [
+				rule.source,
+				rule.sourcePort,
+				rule.network,
+				rule.protocol,
+				rule.attrs,
+				rule.ip,
+				rule.domain,
+				rule.port,
+				rule.inboundTag,
+				rule.user,
+				rule.outboundTag,
+				rule.balancerTag,
+			]
+				.map(normalizeSearchValue)
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(term);
+		});
+	}, [routingRuleData, routingRuleSearch]);
+
+	const filteredOutboundData = useMemo(() => {
+		const term = outboundSearch.trim().toLowerCase();
+		const rows = outboundData.map((outbound, originalIndex) => ({ outbound, originalIndex }));
+		if (!term) return rows;
+		return rows.filter(({ outbound }) =>
+			JSON.stringify(outbound).toLowerCase().includes(term),
+		);
+	}, [outboundData, outboundSearch]);
 
 	const addRule = () => {
 		setEditingRuleIndex(null);
@@ -1622,6 +1666,7 @@ useEffect(() => {
 														<Switch
 															id={id}
 															isChecked={!!field.value}
+															dir={isRTL ? "ltr" : undefined}
 															onChange={(e) => field.onChange(e.target.checked)}
 														/>
 													)}
@@ -1640,6 +1685,7 @@ useEffect(() => {
 														<Switch
 															id={id}
 															isChecked={!!field.value}
+															dir={isRTL ? "ltr" : undefined}
 															onChange={(e) => field.onChange(e.target.checked)}
 														/>
 													)}
@@ -1658,6 +1704,7 @@ useEffect(() => {
 														<Switch
 															id={id}
 															isChecked={!!field.value}
+															dir={isRTL ? "ltr" : undefined}
 															onChange={(e) => field.onChange(e.target.checked)}
 														/>
 													)}
@@ -1676,6 +1723,7 @@ useEffect(() => {
 														<Switch
 															id={id}
 															isChecked={!!field.value}
+															dir={isRTL ? "ltr" : undefined}
 															onChange={(e) => field.onChange(e.target.checked)}
 														/>
 													)}
@@ -1798,13 +1846,23 @@ useEffect(() => {
 					</TabPanel>
 					<TabPanel>
 						<VStack spacing={4} align="stretch">
-							<Button
-								leftIcon={<AddIconStyled />}
-								{...compactActionButtonProps}
-								onClick={addRule}
-							>
-								{t("pages.xray.rules.add")}
-							</Button>
+							<HStack align="center" gap={2} flexWrap="wrap">
+								<Button
+									leftIcon={<AddIconStyled />}
+									{...compactActionButtonProps}
+									size="xs"
+									onClick={addRule}
+								>
+									{t("pages.xray.rules.add")}
+								</Button>
+								<Input
+									size="xs"
+									maxW="240px"
+									placeholder={t("search", "Search")}
+									value={routingRuleSearch}
+									onChange={(e) => setRoutingRuleSearch(e.target.value)}
+								/>
+							</HStack>
 							<TableCard>
 								<TableGrid minW="1100px">
 									<Thead>
@@ -1836,7 +1894,7 @@ useEffect(() => {
 										</Tr>
 									</Thead>
 									<Tbody>
-										{routingRuleData.length === 0 && (
+										{filteredRoutingRules.length === 0 && (
 											<Tr>
 												<Td colSpan={14}>
 													<Text textAlign="center" color="gray.500">
@@ -1845,19 +1903,26 @@ useEffect(() => {
 												</Td>
 											</Tr>
 										)}
-										{routingRuleData.map((rule, index) => (
+										{filteredRoutingRules.map(({ rule, originalIndex }, index) => (
 											<Tr key={rule.key}>
 												<Td>
 													<VStack align="flex-start" spacing={1}>
-														<Text fontWeight="semibold">{index + 1}</Text>
+														<Text fontWeight="semibold">
+															{originalIndex + 1}
+														</Text>
 														<HStack spacing={1}>
 															<IconButton
 																aria-label="move up"
 																icon={<ArrowUpIconStyled />}
 																size="xs"
 																variant="ghost"
-																isDisabled={index === 0}
-																onClick={() => replaceRule(index, index - 1)}
+																isDisabled={
+																	routingRuleSearch.trim().length > 0 ||
+																	originalIndex === 0
+																}
+																onClick={() =>
+																	replaceRule(originalIndex, originalIndex - 1)
+																}
 															/>
 															<IconButton
 																aria-label="move down"
@@ -1865,9 +1930,12 @@ useEffect(() => {
 																size="xs"
 																variant="ghost"
 																isDisabled={
-																	index === routingRuleData.length - 1
+																	routingRuleSearch.trim().length > 0 ||
+																	originalIndex === routingRuleData.length - 1
 																}
-																onClick={() => replaceRule(index, index + 1)}
+																onClick={() =>
+																	replaceRule(originalIndex, originalIndex + 1)
+																}
 															/>
 														</HStack>
 													</VStack>
@@ -1891,7 +1959,7 @@ useEffect(() => {
 															icon={<EditIconStyled />}
 															size="xs"
 															variant="ghost"
-															onClick={() => editRule(index)}
+															onClick={() => editRule(originalIndex)}
 														/>
 														<IconButton
 															aria-label="delete"
@@ -1899,7 +1967,7 @@ useEffect(() => {
 															size="xs"
 															variant="ghost"
 															colorScheme="red"
-															onClick={() => deleteRule(index)}
+															onClick={() => deleteRule(originalIndex)}
 														/>
 													</HStack>
 												</Td>
@@ -1912,7 +1980,7 @@ useEffect(() => {
 					</TabPanel>
 					<TabPanel>
 						<VStack spacing={4} align="stretch">
-							<HStack>
+							<HStack align="center" gap={2} flexWrap="wrap">
 								<Button
 									leftIcon={<AddIconStyled />}
 									{...compactActionButtonProps}
@@ -1938,6 +2006,13 @@ useEffect(() => {
 								>
 									{t("refresh")}
 								</Button>
+								<Input
+									size="xs"
+									maxW="240px"
+									placeholder={t("search", "Search")}
+									value={outboundSearch}
+									onChange={(e) => setOutboundSearch(e.target.value)}
+								/>
 							</HStack>
 							<TableCard>
 								<TableGrid minW="880px">
@@ -1951,11 +2026,20 @@ useEffect(() => {
 										</Tr>
 									</Thead>
 									<Tbody>
-										{outboundData.map((outbound, index) => (
+										{filteredOutboundData.length === 0 && (
+											<Tr>
+												<Td colSpan={5}>
+													<Text textAlign="center" color="gray.500">
+														{t("pages.xray.outbound.empty", "No outbound found")}
+													</Text>
+												</Td>
+											</Tr>
+										)}
+										{filteredOutboundData.map(({ outbound, originalIndex }, index) => (
 											<Tr key={outbound.key}>
 												<Td>
 													<HStack>
-														<Text>{index + 1}</Text>
+														<Text>{originalIndex + 1}</Text>
 														<IconButton
 															aria-label={t(
 																"pages.xray.outbound.moveUp",
@@ -1964,8 +2048,11 @@ useEffect(() => {
 															icon={<ArrowUpIconStyled />}
 															size="xs"
 															variant="ghost"
-															isDisabled={index === 0}
-															onClick={() => moveOutboundUp(index)}
+															isDisabled={
+																outboundSearch.trim().length > 0 ||
+																originalIndex === 0
+															}
+															onClick={() => moveOutboundUp(originalIndex)}
 														/>
 														<IconButton
 															aria-label={t(
@@ -1975,15 +2062,18 @@ useEffect(() => {
 															icon={<ArrowDownIconStyled />}
 															size="xs"
 															variant="ghost"
-															isDisabled={index === outboundData.length - 1}
-															onClick={() => moveOutboundDown(index)}
+															isDisabled={
+																outboundSearch.trim().length > 0 ||
+																originalIndex === outboundData.length - 1
+															}
+															onClick={() => moveOutboundDown(originalIndex)}
 														/>
 														<IconButton
 															aria-label="edit"
 															icon={<EditIconStyled />}
 															size="xs"
 															variant="ghost"
-															onClick={() => editOutbound(index)}
+															onClick={() => editOutbound(originalIndex)}
 														/>
 														<IconButton
 															aria-label="delete"
@@ -1991,7 +2081,7 @@ useEffect(() => {
 															size="xs"
 															variant="ghost"
 															colorScheme="red"
-															onClick={() => deleteOutbound(index)}
+															onClick={() => deleteOutbound(originalIndex)}
 														/>
 													</HStack>
 												</Td>
@@ -2022,7 +2112,7 @@ useEffect(() => {
 												</Td>
 												<Td>
 													<Tag colorScheme="green">
-														{findOutboundTraffic(outbound, index)}
+														{findOutboundTraffic(outbound, originalIndex)}
 													</Tag>
 												</Td>
 											</Tr>

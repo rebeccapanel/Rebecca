@@ -1,7 +1,8 @@
 {
   ",": ",",
   "DNS": "DNS",
-  "UsersUsage": "مصرف کاربران",
+  
+  "dashboard.systemUsage": "مصرف سیستم",
   "actions": "عملیات",
   "actions.refresh": "بازخوانی",
   "active": "فعال",
@@ -1527,3 +1528,4 @@
   "tutorials.table.expired": "{{count}} روز پیش منقضی شده",
   "tutorials.table.ipLimit": "محدودیت IP: {{count}}"
 }
+

@@ -324,6 +324,7 @@ class Admin(BaseModel):
     username: str
     role: AdminRole = AdminRole.standard
     permissions: AdminPermissions = Field(default_factory=AdminPermissions)
+    services: List[int] = Field(default_factory=list, description="Service IDs linked to this admin")
     status: AdminStatus = AdminStatus.active
     disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
@@ -610,6 +611,7 @@ class AdminCreate(Admin):
         description="Maximum number of users (null = unlimited)",
         json_schema_extra={"example": 100},
     )
+    services: Optional[List[int]] = Field(default=None, description="Service IDs to assign to this admin")
 
     @property
     def hashed_password(self):
@@ -622,6 +624,7 @@ class AdminModify(BaseModel):
     permissions: Optional[AdminPermissions] = Field(
         default=None, description="Fine-grained permission overrides for this admin"
     )
+    services: Optional[List[int]] = Field(default=None, description="Replace admin's services with this list of IDs")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)

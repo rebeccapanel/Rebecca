@@ -313,6 +313,37 @@ def cache_user(user: User, mark_for_sync: bool = True) -> bool:
 
         pipe.execute()
 
+        # Keep the aggregated user list warm so new/updated users appear instantly.
+        try:
+            aggregated_raw = redis_client.get(REDIS_KEY_USER_LIST_ALL)
+            ttl = redis_client.ttl(REDIS_KEY_USER_LIST_ALL)
+            ttl_value = ttl if ttl and ttl > 0 else USER_CACHE_TTL
+            serialized = user_dict
+
+            if aggregated_raw:
+                try:
+                    aggregated_list = json.loads(aggregated_raw)
+                except Exception:
+                    aggregated_list = []
+
+                if isinstance(aggregated_list, list):
+                    # Replace existing entry (by id or username), then append latest
+                    filtered = []
+                    for entry in aggregated_list:
+                        entry_id = entry.get("id")
+                        entry_username = entry.get("username")
+                        if (entry_id is not None and user.id is not None and entry_id == user.id) or (
+                            entry_username and entry_username.lower() == user.username.lower()
+                        ):
+                            continue
+                        filtered.append(entry)
+                    filtered.append(serialized)
+                    redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps(filtered))
+            else:
+                redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps([serialized]))
+        except Exception as exc:
+            logger.debug(f"Failed to update aggregated user cache: {exc}")
+
         return True
     except Exception as e:
         logger.warning(f"Failed to cache user in Redis: {e}")
