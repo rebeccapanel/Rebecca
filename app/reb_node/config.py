@@ -177,8 +177,12 @@ class XRayConfig(dict):
     def _apply_api(self):
         api_inbound = self.get_inbound("API_INBOUND")
         if api_inbound:
-            api_inbound["listen"] = self.api_host
-            api_inbound["listen"]["address"] = self.api_host
+            listen = api_inbound.get("listen")
+            if isinstance(listen, dict):
+                listen["address"] = self.api_host
+            else:
+                listen = {"address": self.api_host}
+            api_inbound["listen"] = listen
             api_inbound["port"] = self.api_port
             return
 
