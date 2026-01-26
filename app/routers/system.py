@@ -31,7 +31,7 @@ from app.models.system import (
 from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
-from app.utils.xray_config import apply_config_and_restart
+from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
 from app.utils.maintenance import maintenance_request
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, REDIS_ENABLED
 from app.redis.client import get_redis
@@ -72,6 +72,16 @@ def _try_maintenance_json(path: str) -> dict | None:
         return resp.json()
     except Exception:
         return None
+
+
+def _queue_xray_restart(bg: BackgroundTasks) -> None:
+    def _restart() -> None:
+        try:
+            restart_xray_and_invalidate_cache()
+        except Exception as exc:  # pragma: no cover - best effort background task
+            logger.error("Failed to restart Xray after inbound change: %s", exc)
+
+    bg.add_task(_restart)
 
 
 @router.get("/system", response_model=SystemStats)
@@ -524,6 +534,57 @@ def generate_reality_shortid(
 
 
 @router.get(
+    "/xray/mldsa65",
+    responses={403: responses._403},
+)
+def generate_mldsa65(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate an ML-DSA-65 keypair using Xray's mldsa65 command."""
+    try:
+        result = xray.core.get_mldsa65()
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate ML-DSA-65 keypair")
+        seed = result.get("seed")
+        verify = result.get("verify")
+        if not seed or not verify:
+            raise HTTPException(status_code=500, detail="Failed to parse ML-DSA-65 keypair")
+        return {"seed": seed, "verify": verify}
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to generate ML-DSA-65 keypair: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to generate ML-DSA-65 keypair: {str(exc)}") from exc
+
+
+@router.get(
+    "/xray/ech",
+    responses={403: responses._403},
+)
+def generate_ech_cert(
+    sni: str,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate an ECH certificate using Xray's tls ech command."""
+    if not sni or not sni.strip():
+        raise HTTPException(status_code=400, detail="SNI is required to generate ECH certificate")
+    try:
+        result = xray.core.get_ech_cert(sni)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate ECH certificate")
+        ech_server_keys = result.get("echServerKeys")
+        ech_config_list = result.get("echConfigList")
+        if not ech_server_keys or not ech_config_list:
+            raise HTTPException(status_code=500, detail="Failed to parse ECH certificate")
+        return {"echServerKeys": ech_server_keys, "echConfigList": ech_config_list}
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to generate ECH certificate: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to generate ECH certificate: {str(exc)}") from exc
+
+
+@router.get(
     "/inbounds/{tag}",
     responses={403: responses._403, 404: responses._404},
 )
@@ -545,6 +606,7 @@ def get_inbound_detail(
 )
 def create_inbound(
     payload: dict,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -556,7 +618,8 @@ def create_inbound(
         raise HTTPException(status_code=400, detail=f"Inbound {tag} already exists")
 
     config.setdefault("inbounds", []).append(inbound)
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is created
@@ -591,6 +654,7 @@ def create_inbound(
 def update_inbound(
     tag: str,
     payload: dict,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -601,7 +665,8 @@ def update_inbound(
 
     inbound = _prepare_inbound_payload(payload, enforce_tag=tag)
     config["inbounds"][index] = inbound
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is updated
@@ -635,6 +700,7 @@ def update_inbound(
 )
 def delete_inbound(
     tag: str,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -649,7 +715,8 @@ def delete_inbound(
 
     affected_services = crud.remove_hosts_for_inbound(db, tag)
     del config["inbounds"][index]
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     try:
         crud.delete_inbound(db, tag)
@@ -796,11 +863,6 @@ def modify_hosts(
 
 
 def _load_config(db: Session) -> dict:
-    try:
-        if xray and getattr(xray, "config", None):
-            return deepcopy(xray.config)
-    except Exception:
-        pass
     return deepcopy(crud.get_xray_config(db))
 
 

@@ -1829,6 +1829,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														>
 															{`${usernameValue?.length ?? 0}/32`}
 														</FormHelperText>
+														{isEditing &&
+															hasElevatedRole &&
+															editingUser?.admin_username && (
+																<FormHelperText
+																	fontSize="xs"
+																	color="gray.500"
+																	mt={1}
+																	textAlign={isRTL ? "end" : "start"}
+																>
+																	{t("userDialog.createdBy", "Created by")}:{" "}
+																	{editingUser.admin_username}
+																</FormHelperText>
+															)}
 
 														<FormErrorMessage>
 															{form.formState.errors.username?.message}

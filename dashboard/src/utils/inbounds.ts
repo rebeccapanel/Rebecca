@@ -37,6 +37,17 @@ export type FallbackForm = {
 	xver: string;
 };
 
+export type TlsCertificateForm = {
+	useFile: boolean;
+	certFile: string;
+	keyFile: string;
+	cert: string;
+	key: string;
+	oneTimeLoading: boolean;
+	usage: string;
+	buildChain: boolean;
+};
+
 export type ProxyAccountForm = {
 	user: string;
 	pass: string;
@@ -101,18 +112,39 @@ export type InboundFormValues = {
 
 	// TLS
 	tlsServerName: string;
+	tlsMinVersion: string;
+	tlsMaxVersion: string;
+	tlsCipherSuites: string;
+	tlsRejectUnknownSni: boolean;
+	tlsVerifyPeerCertInNames: string;
+	tlsDisableSystemRoot: boolean;
+	tlsEnableSessionResumption: boolean;
+	tlsCertificates: TlsCertificateForm[];
 	tlsAlpn: string[];
+	tlsEchServerKeys: string;
+	tlsEchForceQuery: string;
 	tlsAllowInsecure: boolean;
 	tlsFingerprint: string;
+	tlsEchConfigList: string;
 	tlsRawSettings: Record<string, any>;
 
 	// REALITY
+	realityShow: boolean;
+	realityXver: string;
+	realityFingerprint: string;
+	realityTarget: string;
 	realityPrivateKey: string;
 	realityServerNames: string; // multi-line / comma-separated
 	realityShortIds: string; // multi-line / comma-separated
-	realityDest: string;
+	realityMaxTimediff: string;
+	realityMinClientVer: string;
+	realityMaxClientVer: string;
 	realitySpiderX: string;
-	realityXver: string;
+	realityServerName: string;
+	realityPublicKey: string;
+	realityMldsa65Seed: string;
+	realityMldsa65Verify: string;
+	realityRawSettings: Record<string, any>;
 
 	// WS
 	wsPath: string;
@@ -203,6 +235,24 @@ export const sniffingOptions = [
 
 export const tlsAlpnOptions = Object.values(ALPN_OPTION);
 export const tlsFingerprintOptions = Object.values(UTLS_FINGERPRINT);
+export const tlsVersionOptions = ["1.0", "1.1", "1.2", "1.3"];
+export const tlsCipherOptions = [
+	"TLS_AES_128_GCM_SHA256",
+	"TLS_AES_256_GCM_SHA384",
+	"TLS_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+	"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+	"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+	"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+];
+export const tlsUsageOptions = ["encipherment", "verify", "issue"];
+export const tlsEchForceOptions = ["none", "half", "full"];
 
 export const protocolOptions: Protocol[] = [
 	"vmess",
@@ -242,6 +292,19 @@ const splitLines = (value: string): string[] =>
 
 const joinLines = (values: string[] | undefined): string =>
 	values?.length ? values.join("\n") : "";
+
+const joinComma = (values: string[] | undefined): string =>
+	values?.length ? values.join(",") : "";
+
+const parseStringList = (value: unknown): string[] => {
+	if (Array.isArray(value)) {
+		return value.map((entry) => String(entry).trim()).filter(Boolean);
+	}
+	if (typeof value === "string") {
+		return splitLines(value);
+	}
+	return [];
+};
 
 const toInputValue = (value: unknown): string => {
 	if (typeof value === "number" && Number.isFinite(value)) {
@@ -301,6 +364,17 @@ const createDefaultProxyAccount = (): ProxyAccountForm => ({
 	pass: "",
 });
 
+export const createDefaultTlsCertificate = (): TlsCertificateForm => ({
+	useFile: true,
+	certFile: "",
+	keyFile: "",
+	cert: "",
+	key: "",
+	oneTimeLoading: false,
+	usage: "encipherment",
+	buildChain: false,
+});
+
 const createDefaultHeader = (): HeaderForm => ({
 	name: "",
 	value: "",
@@ -325,6 +399,47 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
 	}
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const certificateToForm = (certificate: Record<string, any>): TlsCertificateForm => {
+	const hasFile =
+		typeof certificate?.certificateFile === "string" ||
+		typeof certificate?.keyFile === "string";
+	const certContent = Array.isArray(certificate?.certificate)
+		? certificate.certificate.join("\n")
+		: certificate?.certificate ?? "";
+	const keyContent = Array.isArray(certificate?.key)
+		? certificate.key.join("\n")
+		: certificate?.key ?? "";
+	return {
+		useFile: hasFile || (!certContent && !keyContent),
+		certFile: certificate?.certificateFile ?? "",
+		keyFile: certificate?.keyFile ?? "",
+		cert: certContent ?? "",
+		key: keyContent ?? "",
+		oneTimeLoading: Boolean(certificate?.oneTimeLoading),
+		usage: certificate?.usage ?? "encipherment",
+		buildChain: Boolean(certificate?.buildChain),
+	};
+};
+
+const certificateFromForm = (certificate: TlsCertificateForm): Record<string, any> => {
+	if (certificate.useFile) {
+		return cleanObject({
+			certificateFile: certificate.certFile?.trim(),
+			keyFile: certificate.keyFile?.trim(),
+			oneTimeLoading: certificate.oneTimeLoading,
+			usage: certificate.usage || undefined,
+			buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+		});
+	}
+	return cleanObject({
+		certificate: certificate.cert ? certificate.cert.split("\n") : [],
+		key: certificate.key ? certificate.key.split("\n") : [],
+		oneTimeLoading: certificate.oneTimeLoading,
+		usage: certificate.usage || undefined,
+		buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+	});
 };
 
 const buildSockoptSettings = (values: InboundFormValues) => {
@@ -378,16 +493,37 @@ export const createDefaultInboundForm = (
 	streamNetwork: "tcp",
 	streamSecurity: "none",
 	tlsServerName: "",
-	tlsAlpn: [],
+	tlsMinVersion: "1.2",
+	tlsMaxVersion: "1.3",
+	tlsCipherSuites: "",
+	tlsRejectUnknownSni: false,
+	tlsVerifyPeerCertInNames: "dns.google,cloudflare-dns.com",
+	tlsDisableSystemRoot: false,
+	tlsEnableSessionResumption: false,
+	tlsCertificates: [createDefaultTlsCertificate()],
+	tlsAlpn: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
+	tlsEchServerKeys: "",
+	tlsEchForceQuery: "none",
 	tlsAllowInsecure: false,
-	tlsFingerprint: "",
+	tlsFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	tlsEchConfigList: "",
 	tlsRawSettings: {},
+	realityShow: false,
+	realityXver: "0",
+	realityFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	realityTarget: "",
 	realityPrivateKey: "",
 	realityServerNames: "",
 	realityShortIds: "",
-	realityDest: "",
-	realitySpiderX: "",
-	realityXver: "0",
+	realityMaxTimediff: "0",
+	realityMinClientVer: "",
+	realityMaxClientVer: "",
+	realitySpiderX: "/",
+	realityServerName: "",
+	realityPublicKey: "",
+	realityMldsa65Seed: "",
+	realityMldsa65Verify: "",
+	realityRawSettings: {},
 	wsPath: "/",
 	wsHost: "",
 	wsHeaders: [createDefaultHeader()],
@@ -478,11 +614,32 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 	const sniffing = raw.sniffing ?? {};
 	const stream = raw.streamSettings ?? {};
 	const tlsSettings = stream.tlsSettings ?? {};
+	const tlsSettingsMeta =
+		tlsSettings && typeof tlsSettings.settings === "object"
+			? tlsSettings.settings
+			: {};
 	const rawTlsSettings =
 		stream.tlsSettings !== undefined && stream.tlsSettings !== null
 			? JSON.parse(JSON.stringify(stream.tlsSettings))
 			: {};
 	const realitySettings = stream.realitySettings ?? {};
+	const realitySettingsMeta =
+		realitySettings && typeof realitySettings.settings === "object"
+			? realitySettings.settings
+			: {};
+	const rawRealitySettings =
+		stream.realitySettings !== undefined && stream.realitySettings !== null
+			? JSON.parse(JSON.stringify(stream.realitySettings))
+			: {};
+	const tlsCertificates = Array.isArray(tlsSettings.certificates)
+		? tlsSettings.certificates.map((cert: Record<string, any>) =>
+				certificateToForm(cert),
+			)
+		: base.tlsCertificates;
+	const tlsVerifyNames = parseStringList(tlsSettings.verifyPeerCertInNames);
+	const tlsAlpn = parseStringList(tlsSettings.alpn);
+	const realityServerNames = parseStringList(realitySettings.serverNames);
+	const realityShortIds = parseStringList(realitySettings.shortIds);
 
 	return {
 		...base,
@@ -523,19 +680,83 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		wsAcceptProxyProtocol: Boolean(
 			stream?.wsSettings?.acceptProxyProtocol ?? base.wsAcceptProxyProtocol,
 		),
-		tlsServerName: tlsSettings.serverName ?? base.tlsServerName,
-		tlsAlpn: Array.isArray(tlsSettings.alpn) ? tlsSettings.alpn : base.tlsAlpn,
-		tlsAllowInsecure: Boolean(
-			tlsSettings.allowInsecure ?? base.tlsAllowInsecure,
+		tlsServerName:
+			tlsSettings.serverName ?? tlsSettings.sni ?? base.tlsServerName,
+		tlsMinVersion: tlsSettings.minVersion ?? base.tlsMinVersion,
+		tlsMaxVersion: tlsSettings.maxVersion ?? base.tlsMaxVersion,
+		tlsCipherSuites: tlsSettings.cipherSuites ?? base.tlsCipherSuites,
+		tlsRejectUnknownSni: Boolean(
+			tlsSettings.rejectUnknownSni ?? base.tlsRejectUnknownSni,
 		),
-		tlsFingerprint: tlsSettings.fingerprint ?? base.tlsFingerprint,
+		tlsVerifyPeerCertInNames: tlsVerifyNames.length
+			? joinComma(tlsVerifyNames)
+			: base.tlsVerifyPeerCertInNames,
+		tlsDisableSystemRoot: Boolean(
+			tlsSettings.disableSystemRoot ?? base.tlsDisableSystemRoot,
+		),
+		tlsEnableSessionResumption: Boolean(
+			tlsSettings.enableSessionResumption ??
+				base.tlsEnableSessionResumption,
+		),
+		tlsCertificates: tlsCertificates,
+		tlsAlpn: tlsAlpn.length ? tlsAlpn : base.tlsAlpn,
+		tlsEchServerKeys: tlsSettings.echServerKeys ?? base.tlsEchServerKeys,
+		tlsEchForceQuery: tlsSettings.echForceQuery ?? base.tlsEchForceQuery,
+		tlsAllowInsecure: Boolean(
+			tlsSettingsMeta.allowInsecure ??
+				tlsSettings.allowInsecure ??
+				base.tlsAllowInsecure,
+		),
+		tlsFingerprint:
+			tlsSettingsMeta.fingerprint ??
+			tlsSettings.fingerprint ??
+			base.tlsFingerprint,
+		tlsEchConfigList:
+			tlsSettingsMeta.echConfigList ??
+			tlsSettings.echConfigList ??
+			base.tlsEchConfigList,
 		tlsRawSettings: rawTlsSettings,
+		realityShow: Boolean(realitySettings.show ?? base.realityShow),
+		realityXver: toInputValue(realitySettings.xver ?? base.realityXver),
+		realityFingerprint:
+			realitySettingsMeta.fingerprint ?? base.realityFingerprint,
+		realityTarget:
+			realitySettings.target ??
+			realitySettings.dest ??
+			base.realityTarget,
 		realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
-		realityServerNames: joinLines(realitySettings.serverNames),
-		realityShortIds: joinLines(realitySettings.shortIds),
-		realityDest: realitySettings.dest ?? base.realityDest,
-		realitySpiderX: realitySettings.spiderX ?? base.realitySpiderX,
-		realityXver: realitySettings.xver?.toString() ?? base.realityXver,
+		realityServerNames: realityServerNames.length
+			? joinComma(realityServerNames)
+			: base.realityServerNames,
+		realityShortIds: realityShortIds.length
+			? joinComma(realityShortIds)
+			: base.realityShortIds,
+		realityMaxTimediff: toInputValue(
+			realitySettings.maxTimediff ??
+				realitySettings.maxTimeDiff ??
+				base.realityMaxTimediff,
+		),
+		realityMinClientVer:
+			realitySettings.minClientVer ?? base.realityMinClientVer,
+		realityMaxClientVer:
+			realitySettings.maxClientVer ?? base.realityMaxClientVer,
+		realitySpiderX:
+			realitySettingsMeta.spiderX ??
+			realitySettings.spiderX ??
+			base.realitySpiderX,
+		realityServerName:
+			realitySettingsMeta.serverName ?? base.realityServerName,
+		realityPublicKey:
+			realitySettingsMeta.publicKey ??
+			realitySettings.publicKey ??
+			base.realityPublicKey,
+		realityMldsa65Seed:
+			realitySettings.mldsa65Seed ?? base.realityMldsa65Seed,
+		realityMldsa65Verify:
+			realitySettingsMeta.mldsa65Verify ??
+			realitySettings.mldsa65Verify ??
+			base.realityMldsa65Verify,
+		realityRawSettings: rawRealitySettings,
 		wsPath: stream?.wsSettings?.path ?? base.wsPath,
 		wsHost:
 			stream?.wsSettings?.headers?.Host !== undefined
@@ -884,23 +1105,65 @@ const buildStreamSettings = (
 				? { ...values.tlsRawSettings }
 				: {};
 		tlsPayload.serverName = values.tlsServerName || undefined;
+		tlsPayload.minVersion = values.tlsMinVersion || undefined;
+		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
+		tlsPayload.cipherSuites = values.tlsCipherSuites || undefined;
+		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
+		const verifyNames = splitLines(values.tlsVerifyPeerCertInNames);
+		tlsPayload.verifyPeerCertInNames = verifyNames.length
+			? verifyNames
+			: undefined;
+		tlsPayload.disableSystemRoot = values.tlsDisableSystemRoot;
+		tlsPayload.enableSessionResumption = values.tlsEnableSessionResumption;
+		tlsPayload.certificates = values.tlsCertificates.map((certificate) =>
+			certificateFromForm(certificate),
+		);
 		tlsPayload.alpn = values.tlsAlpn?.length ? values.tlsAlpn : undefined;
-		tlsPayload.allowInsecure = values.tlsAllowInsecure;
-		tlsPayload.fingerprint = values.tlsFingerprint || undefined;
+		tlsPayload.echServerKeys = values.tlsEchServerKeys || undefined;
+		tlsPayload.echForceQuery = values.tlsEchForceQuery || undefined;
+		const settingsPayload =
+			tlsPayload.settings && typeof tlsPayload.settings === "object"
+				? { ...tlsPayload.settings }
+				: {};
+		settingsPayload.allowInsecure = values.tlsAllowInsecure;
+		settingsPayload.fingerprint = values.tlsFingerprint || undefined;
+		settingsPayload.echConfigList = values.tlsEchConfigList || undefined;
+		tlsPayload.settings = cleanObject(settingsPayload);
 		stream.tlsSettings = cleanObject(tlsPayload);
 	}
 
 	if (values.streamSecurity === "reality") {
+		const realityPayload =
+			values.realityRawSettings &&
+			typeof values.realityRawSettings === "object"
+				? { ...values.realityRawSettings }
+				: {};
 		const serverNames = splitLines(values.realityServerNames);
 		const shortIds = splitLines(values.realityShortIds);
-		stream.realitySettings = cleanObject({
-			privateKey: values.realityPrivateKey?.trim() || undefined,
-			dest: values.realityDest?.trim() || undefined,
-			serverNames: serverNames.length ? serverNames : undefined,
-			shortIds: shortIds.length ? shortIds : undefined,
-			spiderX: values.realitySpiderX?.trim() || undefined,
-			xver: values.realityXver ? Number(values.realityXver) : undefined,
-		});
+		const target = values.realityTarget?.trim();
+		realityPayload.show = values.realityShow;
+		realityPayload.xver = parseOptionalNumber(values.realityXver);
+		realityPayload.target = target || undefined;
+		realityPayload.dest = target || undefined;
+		realityPayload.serverNames = serverNames.length ? serverNames : undefined;
+		realityPayload.privateKey = values.realityPrivateKey?.trim() || undefined;
+		realityPayload.minClientVer = values.realityMinClientVer?.trim() || undefined;
+		realityPayload.maxClientVer = values.realityMaxClientVer?.trim() || undefined;
+		realityPayload.maxTimediff = parseOptionalNumber(values.realityMaxTimediff);
+		realityPayload.shortIds = shortIds.length ? shortIds : undefined;
+		realityPayload.mldsa65Seed = values.realityMldsa65Seed?.trim() || undefined;
+		const realitySettings =
+			realityPayload.settings && typeof realityPayload.settings === "object"
+				? { ...realityPayload.settings }
+				: {};
+		realitySettings.publicKey = values.realityPublicKey?.trim() || undefined;
+		realitySettings.fingerprint = values.realityFingerprint || undefined;
+		realitySettings.serverName = values.realityServerName?.trim() || undefined;
+		realitySettings.spiderX = values.realitySpiderX?.trim() || undefined;
+		realitySettings.mldsa65Verify =
+			values.realityMldsa65Verify?.trim() || undefined;
+		realityPayload.settings = cleanObject(realitySettings);
+		stream.realitySettings = cleanObject(realityPayload);
 	}
 
 	const sockoptPayload = buildSockoptSettings(values);

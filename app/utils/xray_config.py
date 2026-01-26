@@ -49,9 +49,9 @@ def restart_xray_and_invalidate_cache(startup_config=None):
             xray.operations.restart_node(node_id, startup_config)
 
 
-def apply_config_and_restart(payload: Dict[str, Any]) -> None:
+def apply_config(payload: Dict[str, Any]) -> XRayConfig:
     """
-    Persist a new Xray configuration, restart the master core and refresh nodes.
+    Persist a new Xray configuration without restarting the core.
     """
     try:
         config = XRayConfig(payload, api_port=xray.config.api_port)
@@ -69,7 +69,15 @@ def apply_config_and_restart(payload: Dict[str, Any]) -> None:
     with GetDB() as db:
         crud.save_xray_config(db, payload)
 
-    startup_config = xray.config.include_db_users()
+    return config
+
+
+def apply_config_and_restart(payload: Dict[str, Any]) -> None:
+    """
+    Persist a new Xray configuration, restart the master core and refresh nodes.
+    """
+    config = apply_config(payload)
+    startup_config = config.include_db_users()
     restart_xray_and_invalidate_cache(startup_config)
 
 

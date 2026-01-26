@@ -37,44 +37,32 @@ class Proxyman(XRayBase):
             tag=tag,
             operation=Message(
                 command_pb2.AddUserOperation(
-                    user=user_pb2.User(
-                        level=user.level,
-                        email=user.email,
-                        account=user.message
-                    )
+                    user=user_pb2.User(level=user.level, email=user.email, account=user.message)
                 )
-            ), timeout=timeout)
+            ),
+            timeout=timeout,
+        )
 
     def remove_inbound_user(self, tag: str, email: str, timeout: int = None) -> bool:
         return self.alter_inbound(
-            tag=tag,
-            operation=Message(
-                command_pb2.RemoveUserOperation(
-                    email=email
-                )
-            ), timeout=timeout)
+            tag=tag, operation=Message(command_pb2.RemoveUserOperation(email=email)), timeout=timeout
+        )
 
     def add_outbound_user(self, tag: str, user: Account, timeout: int = None) -> bool:
         return self.alter_outbound(
             tag=tag,
             operation=Message(
                 command_pb2.AddUserOperation(
-                    user=user_pb2.User(
-                        level=user.level,
-                        email=user.email,
-                        account=user.message
-                    )
+                    user=user_pb2.User(level=user.level, email=user.email, account=user.message)
                 )
-            ), timeout=timeout)
+            ),
+            timeout=timeout,
+        )
 
     def remove_outbound_user(self, tag: str, email: str, timeout: int = None) -> bool:
         return self.alter_outbound(
-            tag=tag,
-            operation=Message(
-                command_pb2.RemoveUserOperation(
-                    email=email
-                )
-            ), timeout=timeout)
+            tag=tag, operation=Message(command_pb2.RemoveUserOperation(email=email)), timeout=timeout
+        )
 
     def add_inbound(self):
         raise NotImplementedError

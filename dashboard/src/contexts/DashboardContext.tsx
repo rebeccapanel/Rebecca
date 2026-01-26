@@ -150,6 +150,7 @@ const fetchUsers = (
 	if (sanitizedQuery.serviceId !== undefined) {
 		requestQuery.service_id = sanitizedQuery.serviceId;
 	}
+	requestQuery.links = true;
 	delete requestQuery.advancedFilters;
 	delete requestQuery.owner;
 	delete requestQuery.serviceId;

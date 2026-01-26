@@ -41,34 +41,34 @@ def prompt_role_selection(current_role: Optional[AdminRole] = None) -> AdminRole
     """Prompt user to select a role from a numbered list."""
     roles = [AdminRole.standard, AdminRole.reseller, AdminRole.sudo, AdminRole.full_access]
     roles_map = {str(i + 1): role for i, role in enumerate(roles)}
-    
+
     Console().print("\nAvailable roles:")
     for i, role in enumerate(roles, 1):
         current_marker = " (current)" if current_role == role else ""
         Console().print(f"  {i}) {role.value}{current_marker}")
     Console().print()
-    
+
     while True:
         if current_role:
             default_value = str(list(roles_map.values()).index(current_role) + 1)
         else:
             default_value = "1"
-        
+
         choice = typer.prompt(
             "Select role",
             default=default_value,
             show_default=True,
         ).strip()
-        
+
         if not choice and current_role:
             return current_role
-        
+
         if not choice:
             choice = default_value
-        
+
         if choice in roles_map:
             return roles_map[choice]
-        
+
         try:
             return parse_role(choice)
         except typer.BadParameter:
@@ -124,10 +124,11 @@ def list_admins(
             rows=rows,
         )
 
+
 @app.command(name="delete")
 def delete_admin(
     username: str = typer.Option(..., *utils.FLAGS["username"], prompt=True),
-    yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_all"], help="Skips confirmations")
+    yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_all"], help="Skips confirmations"),
 ):
     """
     Deletes the specified admin
@@ -137,7 +138,7 @@ def delete_admin(
     with GetDB() as db:
         admin: Union[Admin, None] = crud.get_admin(db, username=username)
         if not admin:
-            utils.error(f"There's no admin with username \"{username}\"!")
+            utils.error(f'There\'s no admin with username "{username}"!')
 
         if yes_to_all or typer.confirm(f'Are you sure about deleting "{username}"?', default=False):
             crud.remove_admin(db, admin)
@@ -155,10 +156,12 @@ def create_admin(
         help="Admin role (1=standard, 2=reseller, 3=sudo, 4=full_access). If not provided, will prompt interactively.",
         prompt=False,
     ),
-    password: str = typer.Option(..., prompt=True, confirmation_prompt=True,
-                                 hide_input=True, hidden=True, envvar=utils.PASSWORD_ENVIRON_NAME),
-    telegram_id: str = typer.Option('', *utils.FLAGS["telegram_id"], prompt="Telegram ID",
-                                    show_default=False, callback=validate_telegram_id),
+    password: str = typer.Option(
+        ..., prompt=True, confirmation_prompt=True, hide_input=True, hidden=True, envvar=utils.PASSWORD_ENVIRON_NAME
+    ),
+    telegram_id: str = typer.Option(
+        "", *utils.FLAGS["telegram_id"], prompt="Telegram ID", show_default=False, callback=validate_telegram_id
+    ),
 ):
     """
     Creates an admin
@@ -169,7 +172,7 @@ def create_admin(
         selected_role = prompt_role_selection()
     else:
         selected_role = parse_role(role)
-    
+
     with GetDB() as db:
         try:
             crud.create_admin(
@@ -195,23 +198,17 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
     """
 
     def _get_modify_model(admin: Admin):
-        Console().print(
-            Panel(f'Editing "{username}". Just press "Enter" to leave each field unchanged.')
-        )
+        Console().print(Panel(f'Editing "{username}". Just press "Enter" to leave each field unchanged.'))
 
         new_role = prompt_role_selection(current_role=admin.role)
         role_to_set = new_role if new_role != admin.role else None
-        
-        new_password: Union[str, None] = typer.prompt(
-            "New password",
-            default="",
-            show_default=False,
-            confirmation_prompt=True,
-            hide_input=True
-        ) or None
 
-        telegram_id: str = typer.prompt("Telegram ID (Enter 0 to clear current value)",
-                                        default=admin.telegram_id or "")
+        new_password: Union[str, None] = (
+            typer.prompt("New password", default="", show_default=False, confirmation_prompt=True, hide_input=True)
+            or None
+        )
+
+        telegram_id: str = typer.prompt("Telegram ID (Enter 0 to clear current value)", default=admin.telegram_id or "")
         telegram_id = validate_telegram_id(telegram_id)
 
         return AdminPartialModify(
@@ -223,7 +220,7 @@ def update_admin(username: str = typer.Option(..., *utils.FLAGS["username"], pro
     with GetDB() as db:
         admin: Union[Admin, None] = crud.get_admin(db, username=username)
         if not admin:
-            utils.error(f"There's no admin with username \"{username}\"!")
+            utils.error(f'There\'s no admin with username "{username}"!')
 
         crud.partial_update_admin(db, admin, _get_modify_model(admin))
         utils.success(f'Admin "{username}" updated successfully.')
@@ -245,7 +242,7 @@ def change_role(
     with GetDB() as db:
         admin: Union[Admin, None] = crud.get_admin(db, username=username)
         if not admin:
-            utils.error(f"There's no admin with username \"{username}\"!")
+            utils.error(f'There\'s no admin with username "{username}"!')
 
         if role is None:
             target_role = prompt_role_selection(current_role=admin.role)
@@ -285,8 +282,9 @@ def import_from_env(yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_
         )
 
     if not (username and password):
-        utils.error("Unable to retrieve username and password.\n"
-                    "Make sure both SUDO_USERNAME and SUDO_PASSWORD are set.")
+        utils.error(
+            "Unable to retrieve username and password.\nMake sure both SUDO_USERNAME and SUDO_PASSWORD are set."
+        )
 
     with GetDB() as db:
         admin: Union[None, Admin] = None
@@ -299,17 +297,11 @@ def import_from_env(yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_
                 utils.error("Aborted.")
 
             admin = crud.partial_update_admin(
-                db,
-                current_admin,
-                AdminPartialModify(password=password, role=AdminRole.full_access)
+                db, current_admin, AdminPartialModify(password=password, role=AdminRole.full_access)
             )
         # If env admin does not exist yet
         else:
-            admin = crud.create_admin(db, AdminCreate(
-                username=username,
-                password=password,
-                role=AdminRole.full_access
-            ))
+            admin = crud.create_admin(db, AdminCreate(username=username, password=password, role=AdminRole.full_access))
 
         updated_user_count = db.query(User).filter_by(admin_id=None).update({"admin_id": admin.id})
         db.commit()
@@ -317,5 +309,5 @@ def import_from_env(yes_to_all: bool = typer.Option(False, *utils.FLAGS["yes_to_
         utils.success(
             f'Admin "{username}" imported successfully.\n'
             f"{updated_user_count} users' admin_id set to the {username}'s id.\n"
-            'You must delete SUDO_USERNAME and SUDO_PASSWORD from your env file now.'
+            "You must delete SUDO_USERNAME and SUDO_PASSWORD from your env file now."
         )

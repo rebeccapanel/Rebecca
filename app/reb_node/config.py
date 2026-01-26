@@ -176,60 +176,19 @@ class XRayConfig(dict):
 
     def _apply_api(self):
         api_inbound = self.get_inbound("API_INBOUND")
-        if api_inbound:
-            listen = api_inbound.get("listen")
-            if isinstance(listen, dict):
-                listen["address"] = self.api_host
-            else:
-                listen = {"address": self.api_host}
-            api_inbound["listen"] = listen
-            api_inbound["port"] = self.api_port
+        if not api_inbound:
             return
 
-        self["api"] = {"services": ["HandlerService", "StatsService", "LoggerService"], "tag": "API"}
-        self["stats"] = {}
-        forced_policies = {
-            "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True}},
-            "system": {
-                "statsInboundDownlink": False,
-                "statsInboundUplink": False,
-                "statsOutboundDownlink": True,
-                "statsOutboundUplink": True,
-            },
-        }
-        current_policy = self.get("policy")
-        if not isinstance(current_policy, dict):
-            if isinstance(current_policy, str):
-                try:
-                    current_policy = json.loads(current_policy)
-                except Exception:
-                    current_policy = {}
-            else:
-                current_policy = {}
-
-        if current_policy:
-            self["policy"] = merge_dicts(current_policy, forced_policies)
+        listen_value = api_inbound.get("listen")
+        if isinstance(listen_value, dict):
+            listen_value["address"] = self.api_host
+            api_inbound["listen"] = listen_value
         else:
-            self["policy"] = forced_policies
-        inbound = {
-            "listen": self.api_host,
-            "port": self.api_port,
-            "protocol": "dokodemo-door",
-            "settings": {"address": self.api_host},
-            "tag": "API_INBOUND",
-        }
-        try:
-            self["inbounds"].insert(0, inbound)
-        except KeyError:
-            self["inbounds"] = []
-            self["inbounds"].insert(0, inbound)
-
-        rule = {"inboundTag": ["API_INBOUND"], "outboundTag": "API", "type": "field"}
-        try:
-            self["routing"]["rules"].insert(0, rule)
-        except KeyError:
-            self["routing"] = {"rules": []}
-            self["routing"]["rules"].insert(0, rule)
+            api_inbound["listen"] = self.api_host
+        api_inbound["port"] = self.api_port
+        settings = api_inbound.get("settings")
+        if isinstance(settings, dict):
+            settings["address"] = self.api_host
 
     def _migrate_deprecated_configs(self):
         """Migrate deprecated config formats to new formats to avoid deprecation warnings."""
@@ -346,18 +305,38 @@ class XRayConfig(dict):
                 tls_settings = stream.get(f"{security}Settings", {}) if security else {}
                 if not isinstance(tls_settings, dict):
                     tls_settings = {}
+                tls_settings_meta = (
+                    tls_settings.get("settings") if isinstance(tls_settings.get("settings"), dict) else {}
+                )
 
                 if settings["is_fallback"] is True:
                     # probably this is a fallback
                     security = self._fallbacks_inbound.get("streamSettings", {}).get("security")
                     tls_settings = self._fallbacks_inbound.get("streamSettings", {}).get(f"{security}Settings", {})
+                    if not isinstance(tls_settings, dict):
+                        tls_settings = {}
+                    tls_settings_meta = (
+                        tls_settings.get("settings") if isinstance(tls_settings.get("settings"), dict) else {}
+                    )
 
                 settings["network"] = net
 
                 if security == "tls":
-                    # settings['fp']
-                    # settings['alpn']
                     settings["tls"] = "tls"
+                    fp = tls_settings_meta.get("fingerprint") or tls_settings.get("fingerprint")
+                    if fp:
+                        settings["fp"] = fp
+                    allow_insecure = tls_settings_meta.get("allowInsecure")
+                    if allow_insecure is None:
+                        allow_insecure = tls_settings.get("allowInsecure")
+                    if allow_insecure is not None:
+                        settings["ais"] = bool(allow_insecure)
+                        settings["allowinsecure"] = bool(allow_insecure)
+                    alpn = tls_settings.get("alpn")
+                    if isinstance(alpn, list):
+                        alpn = ",".join([str(value) for value in alpn if value])
+                    if isinstance(alpn, str) and alpn.strip():
+                        settings["alpn"] = alpn.strip()
                     for certificate in tls_settings.get("certificates", []):
                         if certificate.get("certificateFile", None):
                             with open(certificate["certificateFile"], "rb") as file:
@@ -371,9 +350,17 @@ class XRayConfig(dict):
                             if isinstance(cert, str):
                                 cert = cert.encode()
                             settings["sni"].extend(get_cert_SANs(cert))
+                    if not settings["sni"]:
+                        server_name = tls_settings.get("serverName") or tls_settings.get("sni")
+                        if isinstance(server_name, str) and server_name.strip():
+                            settings["sni"] = [server_name.strip()]
 
                 elif security == "reality":
-                    settings["fp"] = "chrome"
+                    fp = tls_settings_meta.get("fingerprint") or tls_settings.get("fingerprint")
+                    if fp:
+                        settings["fp"] = fp
+                    else:
+                        settings["fp"] = "chrome"
                     settings["tls"] = "reality"
                     server_names = tls_settings.get("serverNames") or []
                     if isinstance(server_names, str):
@@ -383,7 +370,7 @@ class XRayConfig(dict):
                     settings["sni"] = server_names
 
                     try:
-                        settings["pbk"] = tls_settings["publicKey"]
+                        settings["pbk"] = tls_settings_meta.get("publicKey") or tls_settings["publicKey"]
                     except KeyError:
                         pvk = tls_settings.get("privateKey")
                         if not pvk:
@@ -404,7 +391,11 @@ class XRayConfig(dict):
                     sids = [sid for sid in sids if isinstance(sid, str) and sid.strip()]
                     # Allow Reality configs without short IDs (Xray treats them as optional)
                     settings["sids"] = sids
-                    spider_x = tls_settings.get("SpiderX", tls_settings.get("spiderX", ""))
+                    spider_x = (
+                        tls_settings_meta.get("spiderX")
+                        or tls_settings.get("SpiderX")
+                        or tls_settings.get("spiderX", "")
+                    )
                     settings["spx"] = spider_x or ""
 
                 if net in ("tcp", "raw"):
@@ -641,5 +632,20 @@ class XRayConfig(dict):
         if DEBUG:
             with open("generated_config-debug.json", "w") as f:
                 f.write(config.to_json(indent=4))
+
+        for inbound in config.get("inbounds", []):
+            stream = inbound.get("streamSettings")
+            if not isinstance(stream, dict):
+                continue
+            tls_settings = stream.get("tlsSettings")
+            if isinstance(tls_settings, dict) and "settings" in tls_settings:
+                tls_settings = {**tls_settings}
+                tls_settings.pop("settings", None)
+                stream["tlsSettings"] = tls_settings
+            reality_settings = stream.get("realitySettings")
+            if isinstance(reality_settings, dict) and "settings" in reality_settings:
+                reality_settings = {**reality_settings}
+                reality_settings.pop("settings", None)
+                stream["realitySettings"] = reality_settings
 
         return config

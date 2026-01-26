@@ -1,6 +1,16 @@
 import os
+from pathlib import Path
+import tempfile
+import uuid
+
+TEST_DB_PATH = Path(tempfile.gettempdir()) / f"rebecca_test_{uuid.uuid4().hex}.sqlite"
+TEST_DATABASE_URL = os.getenv("REBECCA_TEST_DATABASE_URL", f"sqlite:///{TEST_DB_PATH}")
 
 os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
+if os.getenv("REBECCA_TEST_DATABASE_URL"):
+    os.environ["SQLALCHEMY_DATABASE_URL"] = TEST_DATABASE_URL
+else:
+    os.environ.setdefault("SQLALCHEMY_DATABASE_URL", TEST_DATABASE_URL)
 
 import sys
 import warnings
@@ -110,14 +120,8 @@ with (
     # Import models to register tables
 
 
-from pathlib import Path
-import tempfile
-import uuid
-
-TEST_DB_PATH = Path(tempfile.gettempdir()) / f"rebecca_test_{uuid.uuid4().hex}.sqlite"
-TEST_DATABASE_URL = f"sqlite:///{TEST_DB_PATH}"
-
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+connect_args = {"check_same_thread": False} if TEST_DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

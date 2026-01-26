@@ -5,6 +5,7 @@ Routers call into this module; it decides between Redis and DB,
 applies business rules, and keeps caches in sync.
 """
 
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List, Optional, Union
@@ -13,10 +14,12 @@ from typing import List, Optional, Union
 from app.db import crud, Session, GetDB
 from app.db.models import User, Admin
 from app.models.user import UserListItem, UserResponse, UserStatus, UsersResponse, UserCreate, UserModify
+from app.models.proxy import ProxyTypes
 from app.redis.repositories import user_cache
 from app.redis.cache import get_user_pending_usage_state
 from app.runtime import logger
 from app.utils.subscription_links import build_subscription_links
+from app.subscription.share import generate_v2ray_links
 from app.services.cache_adapter import (
     merge_pending_usage as _merge_pending_usage_model,
     get_user_from_cache,
@@ -47,7 +50,48 @@ def _compute_subscription_links(
         return "", {}
 
 
-def _map_raw_to_list_item(raw: dict) -> UserListItem:
+def _build_user_links(user: User) -> List[str]:
+    try:
+        proxies: dict = {}
+        for proxy in getattr(user, "proxies", []) or []:
+            proxy_type = getattr(proxy, "type", None)
+            if not proxy_type:
+                continue
+            try:
+                resolved_type = proxy_type if isinstance(proxy_type, ProxyTypes) else ProxyTypes(str(proxy_type))
+            except Exception:
+                continue
+            settings = getattr(proxy, "settings", {}) or {}
+            if isinstance(settings, str):
+                try:
+                    settings = json.loads(settings)
+                except Exception:
+                    settings = {}
+            proxies[resolved_type] = settings
+
+        if not proxies:
+            return []
+
+        inbounds = getattr(user, "inbounds", {}) or {}
+        extra_data = {
+            "username": getattr(user, "username", ""),
+            "status": getattr(user, "status", None),
+            "expire": getattr(user, "expire", None),
+            "data_limit": getattr(user, "data_limit", None),
+            "used_traffic": getattr(user, "used_traffic", 0) or 0,
+            "on_hold_expire_duration": getattr(user, "on_hold_expire_duration", None),
+            "service_id": getattr(user, "service_id", None),
+            "service_host_orders": getattr(user, "service_host_orders", {}) or {},
+            "credential_key": getattr(user, "credential_key", None),
+            "flow": getattr(user, "flow", None),
+        }
+        return generate_v2ray_links(proxies, inbounds, extra_data, False) or []
+    except Exception as exc:
+        logger.debug("Failed to generate config links for %s: %s", getattr(user, "username", "<unknown>"), exc)
+        return []
+
+
+def _map_raw_to_list_item(raw: dict, include_links: bool = False) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
         raw.get("username", ""), raw.get("credential_key"), admin_id=raw.get("admin_id")
     )
@@ -65,15 +109,19 @@ def _map_raw_to_list_item(raw: dict) -> UserListItem:
         service_name=raw.get("service_name"),
         admin_id=raw.get("admin_id"),
         admin_username=raw.get("admin_username"),
+        links=[],
         subscription_url=subscription_url,
         subscription_urls=subscription_urls,
     )
 
 
-def _map_user_to_list_item(user: User) -> UserListItem:
+def _map_user_to_list_item(user: User, include_links: bool = False) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
         getattr(user, "username", ""), getattr(user, "credential_key", None), admin=getattr(user, "admin", None)
     )
+    links: List[str] = []
+    if include_links:
+        links = _build_user_links(user)
     return UserListItem(
         username=user.username,
         status=user.status,
@@ -88,6 +136,7 @@ def _map_user_to_list_item(user: User) -> UserListItem:
         service_name=getattr(user, "service", None).name if getattr(user, "service", None) else None,
         admin_id=user.admin_id,
         admin_username=getattr(user.admin, "username", None) if getattr(user, "admin", None) else None,
+        links=links,
         subscription_url=subscription_url,
         subscription_urls=subscription_urls,
     )
@@ -286,7 +335,25 @@ def get_users_list(
     owners: Optional[List[str]],
     users_limit: Optional[int],
     active_total: Optional[int],
+    include_links: bool = False,
 ) -> UsersResponse:
+    if include_links:
+        return get_users_list_db_only(
+            db,
+            offset=offset,
+            limit=limit,
+            username=username,
+            search=search,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            dbadmin=dbadmin,
+            owners=owners,
+            users_limit=users_limit,
+            active_total=active_total,
+            include_links=include_links,
+        )
     db_closed = False
     dbadmin_in_use = dbadmin
 
@@ -381,7 +448,7 @@ def get_users_list(
                             if u.get("admin_id") == dbadmin.id and u.get("status") == UserStatus.active.value
                         ]
                     )
-                items = [_map_raw_to_list_item(u) for u in filtered]
+                items = [_map_raw_to_list_item(u, include_links=False) for u in filtered]
                 filter_time = time.perf_counter() - filter_start
                 total_time = time.perf_counter() - start_time
                 # Fetch aggregate stats from DB to reflect current filters
@@ -534,6 +601,7 @@ def get_users_list_db_only(
     owners: Optional[List[str]],
     users_limit: Optional[int],
     active_total: Optional[int],
+    include_links: bool = False,
 ) -> UsersResponse:
     """
     Fast-path DB-only users list for when Redis is unavailable/disabled.
@@ -556,7 +624,7 @@ def get_users_list_db_only(
 
     for user in users:
         _apply_pending_usage_to_model(user)
-    items = [_map_user_to_list_item(u) for u in users]
+    items = [_map_user_to_list_item(u, include_links=include_links) for u in users]
 
     if active_total is None and dbadmin:
         active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)

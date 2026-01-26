@@ -1607,8 +1607,11 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 		return link.startsWith("/") ? window.location.origin + link : link;
 	};
 	const subscriptionLink = formatLink(user.subscription_url);
+	const configLinksText = userLinks.join("\n");
+	const hasConfigLinks = userLinks.length > 0;
 
 	const [copied, setCopied] = useState(false);
+	const [copiedConfigs, setCopiedConfigs] = useState(false);
 	useEffect(() => {
 		if (copied) {
 			setTimeout(() => {
@@ -1616,6 +1619,13 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 			}, 1000);
 		}
 	}, [copied]);
+	useEffect(() => {
+		if (copiedConfigs) {
+			setTimeout(() => {
+				setCopiedConfigs(false);
+			}, 1000);
+		}
+	}, [copiedConfigs]);
 
 	return (
 		<HStack
@@ -1644,6 +1654,33 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 							size={{ base: "sm", md: "md" }}
 						>
 							{copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
+						</IconButton>
+					</Tooltip>
+				</div>
+			</CopyToClipboard>
+			<CopyToClipboard
+				text={configLinksText}
+				onCopy={() => {
+					if (hasConfigLinks) setCopiedConfigs(true);
+				}}
+			>
+				<div>
+					<Tooltip
+						label={
+							copiedConfigs
+								? t("usersTable.copied")
+								: t("usersTable.copyConfigs")
+						}
+						placement="top"
+					>
+						<IconButton
+							p="0 !important"
+							aria-label="copy config links"
+							variant="ghost"
+							size={{ base: "sm", md: "md" }}
+							isDisabled={!hasConfigLinks}
+						>
+							{copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
 						</IconButton>
 					</Tooltip>
 				</div>

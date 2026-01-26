@@ -589,12 +589,19 @@ class UserResponse(User):
     service_id: int | None = None
     service_name: str | None = None
     admin_id: int | None = Field(default=None, exclude=True)
+    admin_username: str | None = None
     service_host_orders: Dict[int, int] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict, exclude=True)  # Excluded, use link_data instead
     link_data: List[Dict[str, Any]] = Field(default_factory=list)  # UUID/password for each inbound template
 
     admin: Optional[Admin] = None
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def populate_admin_username(self):
+        if self.admin_username is None and self.admin:
+            self.admin_username = self.admin.username
+        return self
 
     @model_validator(mode="after")
     def validate_links(self):
@@ -829,6 +836,7 @@ class UserCreateResponse(UserResponse):
 
 class SubscriptionUserResponse(UserResponse):
     admin: Admin | None = Field(default=None, exclude=True)
+    admin_username: str | None = Field(default=None, exclude=True)
     excluded_inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
     note: str | None = Field(None, exclude=True)
     inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
@@ -855,6 +863,7 @@ class UserListItem(BaseModel):
     service_name: str | None = None
     admin_id: int | None = None
     admin_username: str | None = None
+    links: List[str] = Field(default_factory=list)
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
     model_config = ConfigDict(from_attributes=True)

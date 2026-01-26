@@ -74,6 +74,7 @@ export type User = {
 	online_at: string;
 	service_id: number | null;
 	service_name: string | null;
+	admin_username?: string | null;
 	service_host_orders: Record<number, number>;
 	auto_delete_in_days: number | null;
 	next_plan: NextPlan | null;
@@ -93,6 +94,7 @@ export type UserListItem = {
 	service_name: string | null;
 	admin_id?: number | null;
 	admin_username?: string | null;
+	links?: string[];
 	subscription_url: string;
 	subscription_urls: Record<string, string>;
 };

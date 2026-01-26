@@ -589,6 +589,7 @@ def get_users(
     advanced_filters: List[str] = Query(None, alias="filter"),
     service_id: int = Query(None, alias="service_id"),
     sort: str = None,
+    links: bool = Query(False, description="Include full config links for each user"),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.get_current),
 ):
@@ -599,7 +600,7 @@ def get_users(
     """
     start_ts = time.perf_counter()
     logger.info(
-        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s",
+        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s links=%s",
         offset,
         limit,
         username,
@@ -609,6 +610,7 @@ def get_users(
         advanced_filters,
         service_id,
         sort,
+        links,
     )
     if sort is not None:
         opts = sort.strip(",").split(",")
@@ -636,9 +638,8 @@ def get_users(
 
     from app.services import user_service
 
-    use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
-    if use_db_only:
-        logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
+    if links:
+        # Generating share links requires DB-loaded proxies/inbounds; skip Redis fast path.
         response = user_service.get_users_list_db_only(
             db,
             offset=offset,
@@ -653,23 +654,45 @@ def get_users(
             owners=owners,
             users_limit=users_limit,
             active_total=active_total,
+            include_links=True,
         )
     else:
-        response = user_service.get_users_list(
-            db,
-            offset=offset,
-            limit=limit,
-            username=username,
-            search=search,
-            status=status,
-            sort=sort,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-            dbadmin=dbadmin,
-            owners=owners,
-            users_limit=users_limit,
-            active_total=active_total,
-        )
+        use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
+        if use_db_only:
+            logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
+            response = user_service.get_users_list_db_only(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=False,
+            )
+        else:
+            response = user_service.get_users_list(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=False,
+            )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return response
 
