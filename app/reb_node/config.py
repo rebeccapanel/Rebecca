@@ -181,7 +181,7 @@ class XRayConfig(dict):
                 "listen": self.api_host,
                 "port": self.api_port,
                 "protocol": "dokodemo-door",
-                "settings": {"address": "127.0.0.1"},
+                "settings": {"address": self.api_host},
                 "tag": "API_INBOUND",
             }
             try:
