@@ -44,6 +44,30 @@ class XRayConfig(dict):
     def _apply_api(self):
         api_inbound = self.get_inbound("API_INBOUND")
         if not api_inbound:
+            inbound = {
+                "listen": self.api_host,
+                "port": self.api_port,
+                "protocol": "dokodemo-door",
+                "settings": {"address": "127.0.0.1"},
+                "tag": "API_INBOUND",
+            }
+            try:
+                self["inbounds"].insert(0, inbound)
+            except KeyError:
+                self["inbounds"] = []
+                self["inbounds"].insert(0, inbound)
+                return
+
+            rule = {
+                "inboundTag": ["API_INBOUND"],
+                "outboundTag": "API",
+                "type": "field",
+            }
+            try:
+                self["routing"]["rules"].insert(0, rule)
+            except KeyError:
+                self["routing"] = {"rules": []}
+                self["routing"]["rules"].insert(0, rule)
             return
 
         listen_value = api_inbound.get("listen")
