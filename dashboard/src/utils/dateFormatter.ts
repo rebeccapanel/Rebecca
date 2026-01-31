@@ -76,7 +76,8 @@ export const buildRelativeTimeParts = (
 };
 
 export const formatRelativeTimeParts = (parts: RelativeTimePart[]): string => {
-	const labels = parts.map((part) => formatUnit(part.value, part.unit));
+	const nonZeroParts = parts.filter((part) => part.value > 0);
+	const labels = nonZeroParts.map((part) => formatUnit(part.value, part.unit));
 	if (labels.length === 0) {
 		return "";
 	}
