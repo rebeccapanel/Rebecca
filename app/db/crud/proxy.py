@@ -3,6 +3,7 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 """
 
 import logging
+import re
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import delete
@@ -39,6 +40,13 @@ _USER_STATUS_ENUM_ENSURED = False
 _logger = logging.getLogger(__name__)
 _RECORD_CHANGED_ERRNO = 1020
 ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
+
+_AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-\d+$", re.IGNORECASE)
+
+
+def _should_skip_default_host(inbound_tag: str) -> bool:
+    return bool(_AUTO_SERVICE_INBOUND_RE.match(inbound_tag))
+
 
 # ============================================================================
 
@@ -132,7 +140,7 @@ class ProxyInboundRepository:
 
     def add_default_host(self, inbound: ProxyInbound) -> None:
         host = ProxyHost(
-            remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+            remark="🚀 Rebecca ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
             address="{SERVER_IP}",
             inbound=inbound,
             sort=0,
@@ -168,7 +176,8 @@ class ProxyInboundRepository:
             if inbound:
                 return inbound
             raise
-        self.add_default_host(inbound)
+        if not _should_skip_default_host(inbound_tag):
+            self.add_default_host(inbound)
         self.db.refresh(inbound)
         return inbound
 

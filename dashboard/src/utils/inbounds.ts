@@ -29,6 +29,10 @@ export type RawInbound = {
 	sniffing?: Record<string, any>;
 };
 
+type BuildInboundOptions = {
+	initial?: RawInbound | null;
+};
+
 export type FallbackForm = {
 	dest: string;
 	path: string;
@@ -199,7 +203,7 @@ export type InboundFormValues = {
 	xhttpHost: string;
 	xhttpPath: string;
 	xhttpHeaders: HeaderForm[];
-	xhttpMode: "auto" | "packet-up" | "stream-up" | "stream-one";
+	xhttpMode: "" | "auto" | "packet-up" | "stream-up" | "stream-one";
 	xhttpScMaxBufferedPosts: string;
 	xhttpScMaxEachPostBytes: string;
 	xhttpScMinPostsIntervalMs: string;
@@ -357,6 +361,64 @@ const cleanObject = (value: Record<string, any>) => {
 		}
 	});
 	return value;
+};
+
+const hasInitialField = (
+	initial: RawInbound | null | undefined,
+	path: Array<string>,
+): boolean => {
+	if (!initial || !path.length) return false;
+	let current: any = initial;
+	for (const key of path) {
+		if (!current || typeof current !== "object") {
+			return false;
+		}
+		if (!Object.prototype.hasOwnProperty.call(current, key)) {
+			return false;
+		}
+		current = current[key];
+	}
+	return true;
+};
+
+const normalizeComparable = (value: unknown): unknown => {
+	if (value === null || typeof value === "undefined") {
+		return null;
+	}
+	if (typeof value === "string") {
+		return value.trim();
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (typeof value === "boolean") {
+		return value;
+	}
+	return value;
+};
+
+const shouldIncludeValue = (
+	value: unknown,
+	defaultValue: unknown,
+	initial: RawInbound | null | undefined,
+	path?: Array<string>,
+): boolean => {
+	if (path && hasInitialField(initial, path)) {
+		return true;
+	}
+	const normalizedValue = normalizeComparable(value);
+	if (normalizedValue === null || normalizedValue === "") {
+		return false;
+	}
+	const normalizedDefault = normalizeComparable(defaultValue);
+	if (
+		typeof normalizedDefault !== "undefined" &&
+		normalizedDefault !== null &&
+		normalizedValue === normalizedDefault
+	) {
+		return false;
+	}
+	return true;
 };
 
 const createDefaultProxyAccount = (): ProxyAccountForm => ({
@@ -558,14 +620,14 @@ export const createDefaultInboundForm = (
 	splithttpNoGRPCHeader: false,
 	splithttpHeaders: [createDefaultHeader()],
 	xhttpHost: "",
-	xhttpPath: "/",
-	xhttpHeaders: [createDefaultHeader()],
-	xhttpMode: "auto",
-	xhttpScMaxBufferedPosts: "30",
-	xhttpScMaxEachPostBytes: "1000000",
-	xhttpScMinPostsIntervalMs: "30",
-	xhttpScStreamUpServerSecs: "20-80",
-	xhttpPaddingBytes: "100-1000",
+	xhttpPath: "",
+	xhttpHeaders: [],
+	xhttpMode: "",
+	xhttpScMaxBufferedPosts: "",
+	xhttpScMaxEachPostBytes: "",
+	xhttpScMinPostsIntervalMs: "",
+	xhttpScStreamUpServerSecs: "",
+	xhttpPaddingBytes: "",
 	xhttpNoSSEHeader: false,
 	xhttpNoGRPCHeader: false,
 	vlessSelectedAuth: "",
@@ -934,7 +996,7 @@ const headersToForm = (
 	headers: Record<string, string | string[]> | undefined,
 ): HeaderForm[] => {
 	if (!headers) {
-		return [createDefaultHeader()];
+		return [];
 	}
 	const result: HeaderForm[] = [];
 	Object.entries(headers).forEach(([name, value]) => {
@@ -946,7 +1008,7 @@ const headersToForm = (
 			result.push({ name, value: value?.toString() ?? "" });
 		}
 	});
-	return result.length ? result : [createDefaultHeader()];
+	return result.length ? result : [];
 };
 
 const headersFromForm = (
@@ -955,11 +1017,23 @@ const headersFromForm = (
 
 const buildStreamSettings = (
 	values: InboundFormValues,
+	options?: BuildInboundOptions,
 ): Record<string, any> => {
+	const defaults = createDefaultInboundForm(values.protocol);
+	const initial = options?.initial ?? null;
 	const stream: Record<string, any> = {
 		network: values.streamNetwork,
-		security: values.streamSecurity,
 	};
+	if (
+		shouldIncludeValue(
+			values.streamSecurity,
+			defaults.streamSecurity,
+			initial,
+			["streamSettings", "security"],
+		)
+	) {
+		stream.security = values.streamSecurity;
+	}
 
 	if (values.streamNetwork === "ws") {
 		let headers = headersFromForm(values.wsHeaders);
@@ -1047,56 +1121,218 @@ const buildStreamSettings = (
 	}
 
 	if (values.streamNetwork === "splithttp") {
-		stream.splithttpSettings = cleanObject({
-			path: values.splithttpPath,
-			host: values.splithttpHost,
-			headers: headersFromForm(values.splithttpHeaders),
-			scMaxConcurrentPosts:
-				values.splithttpScMaxConcurrentPosts?.trim() || undefined,
-			scMaxEachPostBytes:
-				values.splithttpScMaxEachPostBytes?.trim() || undefined,
-			scMinPostsIntervalMs:
-				values.splithttpScMinPostsIntervalMs?.trim() || undefined,
-			noSSEHeader: values.splithttpNoSSEHeader || undefined,
-			xPaddingBytes: values.splithttpXPaddingBytes?.trim() || undefined,
+		const headers = headersFromForm(values.splithttpHeaders);
+		const splithttpSettings = cleanObject({
+			path: shouldIncludeValue(
+				values.splithttpPath,
+				defaults.splithttpPath,
+				initial,
+				["streamSettings", "splithttpSettings", "path"],
+			)
+				? values.splithttpPath
+				: undefined,
+			host: shouldIncludeValue(
+				values.splithttpHost,
+				defaults.splithttpHost,
+				initial,
+				["streamSettings", "splithttpSettings", "host"],
+			)
+				? values.splithttpHost
+				: undefined,
+			headers: headers || undefined,
+			scMaxConcurrentPosts: shouldIncludeValue(
+				values.splithttpScMaxConcurrentPosts,
+				defaults.splithttpScMaxConcurrentPosts,
+				initial,
+				["streamSettings", "splithttpSettings", "scMaxConcurrentPosts"],
+			)
+				? values.splithttpScMaxConcurrentPosts?.trim() || undefined
+				: undefined,
+			scMaxEachPostBytes: shouldIncludeValue(
+				values.splithttpScMaxEachPostBytes,
+				defaults.splithttpScMaxEachPostBytes,
+				initial,
+				["streamSettings", "splithttpSettings", "scMaxEachPostBytes"],
+			)
+				? values.splithttpScMaxEachPostBytes?.trim() || undefined
+				: undefined,
+			scMinPostsIntervalMs: shouldIncludeValue(
+				values.splithttpScMinPostsIntervalMs,
+				defaults.splithttpScMinPostsIntervalMs,
+				initial,
+				["streamSettings", "splithttpSettings", "scMinPostsIntervalMs"],
+			)
+				? values.splithttpScMinPostsIntervalMs?.trim() || undefined
+				: undefined,
+			noSSEHeader: shouldIncludeValue(
+				values.splithttpNoSSEHeader,
+				defaults.splithttpNoSSEHeader,
+				initial,
+				["streamSettings", "splithttpSettings", "noSSEHeader"],
+			)
+				? values.splithttpNoSSEHeader || undefined
+				: undefined,
+			xPaddingBytes: shouldIncludeValue(
+				values.splithttpXPaddingBytes,
+				defaults.splithttpXPaddingBytes,
+				initial,
+				["streamSettings", "splithttpSettings", "xPaddingBytes"],
+			)
+				? values.splithttpXPaddingBytes?.trim() || undefined
+				: undefined,
 			xmux: cleanObject({
-				maxConcurrency: values.splithttpXmuxMaxConcurrency?.trim() || undefined,
-				maxConnections: parseOptionalNumber(values.splithttpXmuxMaxConnections),
-				cMaxReuseTimes: values.splithttpXmuxCMaxReuseTimes?.trim() || undefined,
-				cMaxLifetimeMs: parseOptionalNumber(values.splithttpXmuxCMaxLifetimeMs),
+				maxConcurrency: shouldIncludeValue(
+					values.splithttpXmuxMaxConcurrency,
+					defaults.splithttpXmuxMaxConcurrency,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "maxConcurrency"],
+				)
+					? values.splithttpXmuxMaxConcurrency?.trim() || undefined
+					: undefined,
+				maxConnections: shouldIncludeValue(
+					values.splithttpXmuxMaxConnections,
+					defaults.splithttpXmuxMaxConnections,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "maxConnections"],
+				)
+					? parseOptionalNumber(values.splithttpXmuxMaxConnections)
+					: undefined,
+				cMaxReuseTimes: shouldIncludeValue(
+					values.splithttpXmuxCMaxReuseTimes,
+					defaults.splithttpXmuxCMaxReuseTimes,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "cMaxReuseTimes"],
+				)
+					? values.splithttpXmuxCMaxReuseTimes?.trim() || undefined
+					: undefined,
+				cMaxLifetimeMs: shouldIncludeValue(
+					values.splithttpXmuxCMaxLifetimeMs,
+					defaults.splithttpXmuxCMaxLifetimeMs,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "cMaxLifetimeMs"],
+				)
+					? parseOptionalNumber(values.splithttpXmuxCMaxLifetimeMs)
+					: undefined,
 			}),
-			mode: values.splithttpMode,
-			noGRPCHeader: values.splithttpNoGRPCHeader || undefined,
+			mode: shouldIncludeValue(
+				values.splithttpMode,
+				defaults.splithttpMode,
+				initial,
+				["streamSettings", "splithttpSettings", "mode"],
+			)
+				? values.splithttpMode
+				: undefined,
+			noGRPCHeader: shouldIncludeValue(
+				values.splithttpNoGRPCHeader,
+				defaults.splithttpNoGRPCHeader,
+				initial,
+				["streamSettings", "splithttpSettings", "noGRPCHeader"],
+			)
+				? values.splithttpNoGRPCHeader || undefined
+				: undefined,
 		});
+		if (Object.keys(splithttpSettings).length) {
+			stream.splithttpSettings = splithttpSettings;
+		}
 	}
 
 	if (values.streamNetwork === "xhttp") {
 		const mode = values.xhttpMode;
-		stream.xhttpSettings = cleanObject({
-			path: values.xhttpPath,
-			host: values.xhttpHost,
-			headers: headersFromForm(values.xhttpHeaders),
+		const headers = headersFromForm(values.xhttpHeaders);
+		const xhttpSettings = cleanObject({
+			path: shouldIncludeValue(
+				values.xhttpPath,
+				defaults.xhttpPath,
+				initial,
+				["streamSettings", "xhttpSettings", "path"],
+			)
+				? values.xhttpPath
+				: undefined,
+			host: shouldIncludeValue(
+				values.xhttpHost,
+				defaults.xhttpHost,
+				initial,
+				["streamSettings", "xhttpSettings", "host"],
+			)
+				? values.xhttpHost
+				: undefined,
+			headers: headers || undefined,
 			scMaxBufferedPosts:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMaxBufferedPosts,
+					defaults.xhttpScMaxBufferedPosts,
+					initial,
+					["streamSettings", "xhttpSettings", "scMaxBufferedPosts"],
+				)
 					? parseOptionalNumber(values.xhttpScMaxBufferedPosts)
 					: undefined,
 			scMaxEachPostBytes:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMaxEachPostBytes,
+					defaults.xhttpScMaxEachPostBytes,
+					initial,
+					["streamSettings", "xhttpSettings", "scMaxEachPostBytes"],
+				)
 					? values.xhttpScMaxEachPostBytes?.trim() || undefined
 					: undefined,
 			scMinPostsIntervalMs:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMinPostsIntervalMs,
+					defaults.xhttpScMinPostsIntervalMs,
+					initial,
+					["streamSettings", "xhttpSettings", "scMinPostsIntervalMs"],
+				)
 					? values.xhttpScMinPostsIntervalMs?.trim() || undefined
 					: undefined,
-			scStreamUpServerSecs:
-				values.xhttpScStreamUpServerSecs?.trim() || undefined,
-			xPaddingBytes: values.xhttpPaddingBytes?.trim() || undefined,
-			noSSEHeader: values.xhttpNoSSEHeader || undefined,
-			noGRPCHeader: ["stream-up", "stream-one"].includes(mode)
-				? values.xhttpNoGRPCHeader || undefined
+			scStreamUpServerSecs: shouldIncludeValue(
+				values.xhttpScStreamUpServerSecs,
+				defaults.xhttpScStreamUpServerSecs,
+				initial,
+				["streamSettings", "xhttpSettings", "scStreamUpServerSecs"],
+			)
+				? values.xhttpScStreamUpServerSecs?.trim() || undefined
 				: undefined,
-			mode,
+			xPaddingBytes: shouldIncludeValue(
+				values.xhttpPaddingBytes,
+				defaults.xhttpPaddingBytes,
+				initial,
+				["streamSettings", "xhttpSettings", "xPaddingBytes"],
+			)
+				? values.xhttpPaddingBytes?.trim() || undefined
+				: undefined,
+			noSSEHeader: shouldIncludeValue(
+				values.xhttpNoSSEHeader,
+				defaults.xhttpNoSSEHeader,
+				initial,
+				["streamSettings", "xhttpSettings", "noSSEHeader"],
+			)
+				? values.xhttpNoSSEHeader || undefined
+				: undefined,
+			noGRPCHeader:
+				["stream-up", "stream-one"].includes(mode) &&
+				shouldIncludeValue(
+					values.xhttpNoGRPCHeader,
+					defaults.xhttpNoGRPCHeader,
+					initial,
+					["streamSettings", "xhttpSettings", "noGRPCHeader"],
+				)
+					? values.xhttpNoGRPCHeader || undefined
+					: undefined,
+			mode: shouldIncludeValue(
+				mode,
+				defaults.xhttpMode,
+				initial,
+				["streamSettings", "xhttpSettings", "mode"],
+			)
+				? mode
+				: undefined,
 		});
+		if (Object.keys(xhttpSettings).length) {
+			stream.xhttpSettings = xhttpSettings;
+		}
 	}
 
 	if (values.streamSecurity === "tls") {
@@ -1245,11 +1481,14 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	return base;
 };
 
-export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
+export const buildInboundPayload = (
+	values: InboundFormValues,
+	options?: BuildInboundOptions,
+): RawInbound => {
 	const supportsStream =
 		values.protocol !== "http" && values.protocol !== "socks";
 	const streamSettings = supportsStream
-		? buildStreamSettings(values)
+		? buildStreamSettings(values, options)
 		: undefined;
 	const payload: RawInbound = {
 		tag: values.tag.trim(),
@@ -1264,12 +1503,22 @@ export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
 	}
 
 	if (values.sniffingEnabled) {
-		payload.sniffing = cleanObject({
+		const initial = options?.initial ?? null;
+		const sniffing = cleanObject({
 			enabled: true,
 			destOverride: values.sniffingDestinations,
-			routeOnly: values.sniffingRouteOnly,
-			metadataOnly: values.sniffingMetadataOnly,
+			routeOnly:
+				values.sniffingRouteOnly ||
+				(hasInitialField(initial, ["sniffing", "routeOnly"])
+					? values.sniffingRouteOnly
+					: undefined),
+			metadataOnly:
+				values.sniffingMetadataOnly ||
+				(hasInitialField(initial, ["sniffing", "metadataOnly"])
+					? values.sniffingMetadataOnly
+					: undefined),
 		});
+		payload.sniffing = sniffing;
 	} else {
 		payload.sniffing = { enabled: false };
 	}

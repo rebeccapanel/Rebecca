@@ -287,6 +287,7 @@ export const AdminDialog: FC = () => {
 		isAdminDialogOpen: isOpen,
 		closeAdminDialog,
 		createAdmin,
+		fetchAdmins,
 		updateAdmin,
 	} = useAdminsStore();
 	const admin = useMemo(() => {
@@ -567,6 +568,18 @@ export const AdminDialog: FC = () => {
 	const handleFormSubmit = handleSubmit(async (values) => {
 		const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
 		let permissionPayload: AdminPermissions | undefined;
+		if (selectedRole === AdminRole.Reseller) {
+			toast({
+				status: "warning",
+				title: t("common.comingSoon", "Coming soon"),
+				description: t(
+					"admins.roles.resellerDescription",
+					"Can create and manage their own admins.",
+				),
+				isClosable: true,
+			});
+			return;
+		}
 
 		if (mode === "create") {
 			const computedPermissions: AdminPermissions = JSON.parse(
@@ -630,11 +643,39 @@ export const AdminDialog: FC = () => {
 						? Number(values.users_limit)
 						: undefined,
 				};
-				await createAdmin(payload);
+				const createdAdmin = await createAdmin(payload);
+				const requestedServices = values.services ?? [];
+				let shouldFetch = true;
+				let serviceSyncError: unknown = null;
+				if (requestedServices.length > 0) {
+					const createdServices = new Set(createdAdmin?.services ?? []);
+					const missingServices = requestedServices.filter(
+						(serviceId) => !createdServices.has(serviceId),
+					);
+					const needsSync =
+						missingServices.length > 0 ||
+						createdServices.size !== requestedServices.length;
+					if (needsSync) {
+						try {
+							await updateAdmin(createdAdmin.username, {
+								services: requestedServices,
+							});
+							shouldFetch = false;
+						} catch (error) {
+							serviceSyncError = error;
+						}
+					}
+				}
+				if (shouldFetch) {
+					await fetchAdmins(undefined, { force: true });
+				}
 				generateSuccessMessage(
 					t("admins.createSuccess", "Admin created"),
 					toast,
 				);
+				if (serviceSyncError) {
+					generateErrorMessage(serviceSyncError, toast);
+				}
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
@@ -783,9 +824,12 @@ export const AdminDialog: FC = () => {
 								)}
 							</FormHelperText>
 						</Radio>
-						<Radio value={AdminRole.Reseller}>
+						<Radio value={AdminRole.Reseller} isDisabled>
 							<Text fontWeight="medium">
 								{t("admins.roles.reseller", "Reseller")}
+								<Box as="span" ml={2} fontSize="xs" color="orange.500">
+									{t("common.comingSoon", "Coming soon")}
+								</Box>
 							</Text>
 							<FormHelperText m={0}>
 								{t(

@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 import time
+import re
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from anyio import from_thread
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
 
 from app.db import Session, crud, get_db
@@ -37,6 +39,8 @@ xray = runtime.xray
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
+_AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-(\d+)$", re.IGNORECASE)
+
 
 def _ensure_service_visibility(service, admin: Admin):
     # Enforce service ownership/visibility for non-sudo admins.
@@ -44,6 +48,47 @@ def _ensure_service_visibility(service, admin: Admin):
         return
     if admin.id is None or admin.id not in service.admin_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
+
+
+def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int], Optional[str]]:
+    """
+    Detect the special auto-service inbound tag: setservice-<service_id>.
+
+    Auto-service mode is activated only when there is exactly one inbound tag
+    across all protocols in the *raw* payload (before model validation).
+    """
+    if payload_dict.get("service_id") is not None:
+        return None, None
+
+    inbounds_payload = payload_dict.get("inbounds")
+    if not isinstance(inbounds_payload, dict) or not inbounds_payload:
+        return None, None
+
+    tags: List[str] = []
+    for value in inbounds_payload.values():
+        if isinstance(value, list):
+            tags.extend([tag for tag in value if isinstance(tag, str)])
+        elif isinstance(value, str):
+            tags.append(value)
+
+    normalized_tags = {tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()}
+    if len(normalized_tags) != 1:
+        return None, None
+
+    inbound_tag = next(iter(normalized_tags))
+    match = _AUTO_SERVICE_INBOUND_RE.match(inbound_tag)
+    if not match:
+        return None, None
+
+    try:
+        service_id = int(match.group(1))
+    except ValueError:
+        return None, inbound_tag
+
+    if service_id <= 0:
+        return None, inbound_tag
+
+    return service_id, inbound_tag
 
 
 def _ensure_flow_permission(admin: Admin, has_flow: bool) -> None:
@@ -92,7 +137,8 @@ def _ensure_custom_key_permission(admin: Admin, has_key: bool) -> None:
     responses={400: responses._400, 409: responses._409},
 )
 def add_user(
-    payload: Union[UserCreate, dict],
+    payload: dict,
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.require_active),
@@ -114,6 +160,29 @@ def add_user(
     # Normalize service_id=0 to None to allow "no service" creation
     if payload_dict.get("service_id") == 0:
         payload_dict["service_id"] = None
+
+    # FastAPI may mutate the incoming dict while attempting UserCreate parsing
+    # (even when it later falls back to `dict`). Read the raw JSON payload to
+    # detect the auto-service tag reliably.
+    raw_payload_dict: Optional[dict] = None
+    try:
+        raw_payload_dict = from_thread.run(request.json)
+    except Exception:
+        raw_payload_dict = None
+
+    detect_payload = raw_payload_dict if isinstance(raw_payload_dict, dict) else payload_dict
+
+    # Auto-service mode: detect setservice-<service_id> inbound tag when it is
+    # the only inbound provided in the raw payload.
+    auto_service_id, auto_service_tag = _detect_auto_service_from_inbounds(detect_payload)
+    if auto_service_id is not None:
+        payload_dict["service_id"] = auto_service_id
+        logger.info(
+            'Auto-selected service_id=%s from inbound tag "%s" for user "%s"',
+            auto_service_id,
+            auto_service_tag,
+            payload_dict.get("username"),
+        )
 
     # Service mode ----------------------------------------------------------
     if payload_dict.get("service_id") is not None:

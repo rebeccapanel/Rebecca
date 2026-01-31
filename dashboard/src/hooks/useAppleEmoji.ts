@@ -53,7 +53,7 @@ export const useAppleEmoji = () => {
 	const _location = useLocation();
 
 	useEffect(() => {
-		const root = document.getElementById("root");
+		const root = document.body ?? document.getElementById("root");
 		if (!root) return;
 
 		const parse = () => {

@@ -28,9 +28,15 @@ import {
 	ModalHeader,
 	ModalOverlay,
 	Select,
+	SlideFade,
 	Spinner,
 	Stack,
 	Switch,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Text,
 	Textarea,
 	Tooltip,
@@ -40,12 +46,14 @@ import {
 } from "@chakra-ui/react";
 
 import {
-	ChartPieIcon,
 	CheckIcon,
 	ChevronDownIcon as HeroChevronDownIcon,
+	ClipboardIcon,
 	LockClosedIcon,
+	LinkIcon,
 	PencilIcon,
 	QuestionMarkCircleIcon,
+	QrCodeIcon,
 	SparklesIcon,
 	UserPlusIcon,
 } from "@heroicons/react/24/outline";
@@ -70,11 +78,13 @@ import {
 	useMemo,
 	useState,
 } from "react";
+import { keyframes } from "@emotion/react";
 import ReactApexChart from "react-apexcharts";
 
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
+import CopyToClipboard from "react-copy-to-clipboard";
 
 import { getPanelSettings } from "service/settings";
 import { AdminRole, UserPermissionToggle } from "types/Admin";
@@ -86,6 +96,8 @@ import type {
 } from "types/User";
 
 import { relativeExpiryDate } from "utils/dateFormatter";
+import { formatBytes } from "utils/formatByte";
+import { generateUserLinks } from "utils/userLinks";
 
 import { z } from "zod";
 import { DateTimePicker } from "./DateTimePicker";
@@ -97,27 +109,31 @@ import { createUsageConfig, UsageFilter } from "./UsageFilter";
 
 const AddUserIcon = chakra(UserPlusIcon, {
 	baseStyle: {
-		w: 5,
+		w: 4,
 
-		h: 5,
+		h: 4,
 	},
 });
 
 const EditUserIcon = chakra(PencilIcon, {
 	baseStyle: {
-		w: 5,
+		w: 4,
 
-		h: 5,
+		h: 4,
 	},
 });
 
-const UserUsageIcon = chakra(ChartPieIcon, {
+const actionIconProps = {
 	baseStyle: {
-		w: 5,
-
-		h: 5,
+		w: 4,
+		h: 4,
 	},
-});
+};
+
+const CopyActionIcon = chakra(ClipboardIcon, actionIconProps);
+const CopiedActionIcon = chakra(CheckIcon, actionIconProps);
+const QRActionIcon = chakra(QrCodeIcon, actionIconProps);
+const SubscriptionActionIcon = chakra(LinkIcon, actionIconProps);
 
 const LimitLockIcon = chakra(LockClosedIcon, {
 	baseStyle: {
@@ -152,6 +168,16 @@ const _ConfirmIcon = chakra(CheckIcon, {
 });
 
 export type UserDialogProps = {};
+
+const SERVICE_NOTICE_DURATION_MS = 10000;
+const serviceNoticeProgress = keyframes`
+	from {
+		transform: scaleX(1);
+	}
+	to {
+		transform: scaleX(0);
+	}
+`;
 
 type BaseFormFields = Pick<
 	UserCreate,
@@ -550,6 +576,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		users: usersState,
 
 		isUserLimitReached,
+		linkTemplates,
+		setQRCode,
+		setSubLink,
 	} = useDashboard();
 
 	const isEditing = !!editingUser;
@@ -883,12 +912,31 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	});
 	const allowIpLimit = Boolean(panelSettings?.use_nobetci);
 
-	const [usageVisible, setUsageVisible] = useState(false);
-	const handleUsageToggle = () => {
-		setUsageVisible((current) => !current);
-	};
+	const [activeTab, setActiveTab] = useState(0);
+	const [usageFetched, setUsageFetched] = useState(false);
+
+	const [serviceNoticeVisible, setServiceNoticeVisible] = useState(false);
+	const [serviceNoticeSeed, setServiceNoticeSeed] = useState(0);
+	const [statusNoticeVisible, setStatusNoticeVisible] = useState(false);
+	const [statusNoticeSeed, setStatusNoticeSeed] = useState(0);
+	const [copiedSubscription, setCopiedSubscription] = useState(false);
+	const [copiedAllConfigs, setCopiedAllConfigs] = useState(false);
+	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(null);
 
 	const autoRenewTitle = t("autoRenew.title");
+
+	useEffect(() => {
+		if (!isOpen || !isEditing || !isServiceManagedUser) {
+			setServiceNoticeVisible(false);
+			return;
+		}
+		setServiceNoticeSeed((prev) => prev + 1);
+		setServiceNoticeVisible(true);
+		const timer = window.setTimeout(() => {
+			setServiceNoticeVisible(false);
+		}, SERVICE_NOTICE_DURATION_MS);
+		return () => window.clearTimeout(timer);
+	}, [isOpen, isEditing, isServiceManagedUser, editingUser?.username]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -963,6 +1011,143 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		name: ["data_limit", "status"],
 	});
 
+	const statusNotice = useMemo(() => {
+		if (!isEditing) return null;
+		switch (userStatus) {
+			case "limited":
+				return t("userDialog.statusNoticeLimited");
+			case "expired":
+				return t("userDialog.statusNoticeExpired");
+			case "on_hold":
+				return t("userDialog.statusNoticeOnHold");
+			case "disabled":
+				return t("userDialog.statusNoticeDisabled");
+			default:
+				return null;
+		}
+	}, [isEditing, userStatus, t]);
+
+	useEffect(() => {
+		if (!isOpen || !isEditing || !statusNotice) {
+			setStatusNoticeVisible(false);
+			return;
+		}
+		setStatusNoticeSeed((prev) => prev + 1);
+		setStatusNoticeVisible(true);
+		const timer = window.setTimeout(() => {
+			setStatusNoticeVisible(false);
+		}, SERVICE_NOTICE_DURATION_MS);
+		return () => window.clearTimeout(timer);
+	}, [isOpen, isEditing, statusNotice, userStatus, editingUser?.username]);
+
+	useEffect(() => {
+		if (copiedSubscription) {
+			const timer = window.setTimeout(() => setCopiedSubscription(false), 1000);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedSubscription]);
+
+	useEffect(() => {
+		if (copiedAllConfigs) {
+			const timer = window.setTimeout(() => setCopiedAllConfigs(false), 1000);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedAllConfigs]);
+
+	useEffect(() => {
+		if (copiedConfigIndex !== null) {
+			const timer = window.setTimeout(() => setCopiedConfigIndex(null), 1000);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedConfigIndex]);
+
+	const remainingDataInfo = useMemo(() => {
+		if (!isEditing || !editingUser) return null;
+		const rawLimit = dataLimit;
+		const parsedLimit =
+			rawLimit === null ||
+			typeof rawLimit === "undefined" ||
+			(Number.isNaN(Number(rawLimit)) &&
+				String(rawLimit).trim() === "")
+				? null
+				: Number(rawLimit);
+		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+			return {
+				label: t("userDialog.remainingDataLabel"),
+				value: t("userDialog.remainingDataUnlimited"),
+			};
+		}
+		const limitBytes = parsedLimit * 1073741824;
+		const usedBytes = editingUser.used_traffic ?? 0;
+		const remainingBytes = Math.max(limitBytes - usedBytes, 0);
+		return {
+			label: t("userDialog.remainingDataLabel"),
+			value:
+				remainingBytes <= 0
+					? t("userDialog.remainingDataLimited")
+					: formatBytes(remainingBytes, 2),
+		};
+	}, [isEditing, editingUser, dataLimit, t]);
+
+	const formatLink = useCallback((link?: string | null) => {
+		if (!link) return "";
+		return link.startsWith("/") ? window.location.origin + link : link;
+	}, []);
+
+	const subscriptionLink = useMemo(
+		() => formatLink(editingUser?.subscription_url),
+		[editingUser?.subscription_url, formatLink],
+	);
+
+	const userLinks = useMemo(
+		() =>
+			editingUser
+				? generateUserLinks(editingUser, linkTemplates, {
+						includeInactive: true,
+					})
+				: [],
+		[editingUser, linkTemplates],
+	);
+
+	const configLinksText = useMemo(() => userLinks.join("\n"), [userLinks]);
+
+	const configItems = useMemo(() => {
+		return userLinks.map((link, index) => {
+			let label = "";
+			const hashIndex = link.indexOf("#");
+			if (hashIndex >= 0 && hashIndex < link.length - 1) {
+				const rawLabel = link.slice(hashIndex + 1).replace(/\+/g, " ");
+				try {
+					label = decodeURIComponent(rawLabel);
+				} catch {
+					label = rawLabel;
+				}
+				label = label.trim();
+			}
+			if (!label) {
+				label = t(
+					"userDialog.links.configFallback",
+					"Config {{index}}",
+					{ index: index + 1 },
+				);
+			}
+			return { link, label };
+		});
+	}, [userLinks, t]);
+
+	const handleTabChange = (index: number) => {
+		setActiveTab(index);
+		if (index === 1 && !usageFetched && editingUser) {
+			fetchUsageWithFilter({
+				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
+			});
+			setUsageFetched(true);
+		}
+	};
+
 	const expireValue = useWatch({
 		control: form.control,
 
@@ -1013,6 +1198,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			const formatted = formatUser(editingUser);
 			form.reset(formatted);
 			setExpireDays(deriveDaysFromSeconds(formatted.expire));
+			setUsage(createUsageConfig(colorMode, usageTitle));
+			setUsageFilter("1m");
+			setUsageFetched(false);
+			setActiveTab(0);
+			setCopiedSubscription(false);
+			setCopiedAllConfigs(false);
+			setCopiedConfigIndex(null);
 			if (formatted.next_plan_enabled) {
 				const rule: AutoRenewRule = {
 					dataLimit: formatted.next_plan_data_limit,
@@ -1026,13 +1218,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				setAutoRenewRules([]);
 				resetAutoRenewFormValues(null);
 			}
-			fetchUsageWithFilter({
-				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
-			});
 		} else {
 			const defaults = getDefaultValues();
 			form.reset(defaults);
 			setExpireDays(deriveDaysFromSeconds(defaults.expire));
+			setUsage(createUsageConfig(colorMode, usageTitle));
+			setUsageFilter("1m");
+			setUsageFetched(false);
+			setActiveTab(0);
+			setCopiedSubscription(false);
+			setCopiedAllConfigs(false);
+			setCopiedConfigIndex(null);
 			if (defaults.next_plan_enabled) {
 				const rule: AutoRenewRule = {
 					dataLimit: defaults.next_plan_data_limit,
@@ -1050,9 +1246,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	}, [
 		editingUser,
 		deriveDaysFromSeconds,
-		fetchUsageWithFilter,
 		form.reset,
 		resetAutoRenewFormValues,
+		colorMode,
+		usageTitle,
 	]);
 
 	useEffect(() => {
@@ -1509,9 +1706,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		setError(null);
 
-		setUsageVisible(false);
-
 		setUsageFilter("1m");
+		setUsageFetched(false);
+		setActiveTab(0);
+		setCopiedSubscription(false);
+		setCopiedAllConfigs(false);
+		setCopiedConfigIndex(null);
 
 		setSelectedServiceId(null);
 
@@ -1610,7 +1810,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								gap={2}
 							>
 								<Box flexShrink={0}>
-									<Icon color="primary">
+									<Icon color="primary" size={30}>
 										{isEditing ? (
 											<EditUserIcon color="white" />
 										) : (
@@ -1620,26 +1820,108 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								</Box>
 
 								<Text fontWeight="semibold" fontSize="lg">
-									{isEditing ? t("userDialog.editUserTitle") : t("createNewUser")}
+									{isEditing
+										? `${t("userDialog.editUserTitle")}${
+												editingUser?.username ? ` ${editingUser.username}` : ""
+											}`
+										: t("createNewUser")}
 								</Text>
 							</ModalHeader>
 
 							<ModalBody>
 								{isEditing && isServiceManagedUser && (
-									<Alert status="info" mb={4} borderRadius="md">
-										<AlertIcon />
+									<SlideFade
+										in={serviceNoticeVisible}
+										offsetY="-8px"
+										unmountOnExit
+									>
+										<Alert
+											status="info"
+											mb={statusNotice ? 3 : 4}
+											borderRadius="md"
+											alignItems="flex-start"
+											overflow="hidden"
+											position="relative"
+										>
+											<AlertIcon />
+											<Box flex="1" minW={0}>
+												<AlertDescription>
+													{t(
+														"userDialog.serviceManagedNotice",
+														"This user is tied to service {{service}}. Update the service to change shared settings.",
+														{
+															service: editingUser?.service_name ?? "",
+														},
+													)}
+												</AlertDescription>
+											</Box>
+											<Box
+												position="absolute"
+												insetInlineStart={0}
+												insetInlineEnd={0}
+												bottom={0}
+												h="2px"
+												bg="whiteAlpha.400"
+												borderRadius="full"
+												overflow="hidden"
+												pointerEvents="none"
+											>
+												<Box
+													key={serviceNoticeSeed}
+													h="full"
+													bg="whiteAlpha.800"
+													transformOrigin={
+														isRTL ? "right center" : "left center"
+													}
+													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
+												/>
+											</Box>
+										</Alert>
+									</SlideFade>
+								)}
 
-										{t(
-											"userDialog.serviceManagedNotice",
-
-											"This user is tied to service {{service}}. Update the service to change shared settings.",
-
-											{
-												service: editingUser?.service_name ?? "",
-											},
-										)}
-											</Alert>
-										)}
+								{isEditing && statusNotice && (
+									<SlideFade
+										in={statusNoticeVisible}
+										offsetY="-8px"
+										unmountOnExit
+									>
+										<Alert
+											status="info"
+											mb={4}
+											borderRadius="md"
+											alignItems="flex-start"
+											overflow="hidden"
+											position="relative"
+										>
+											<AlertIcon />
+											<Box flex="1" minW={0}>
+												<AlertDescription>{statusNotice}</AlertDescription>
+											</Box>
+											<Box
+												position="absolute"
+												insetInlineStart={0}
+												insetInlineEnd={0}
+												bottom={0}
+												h="2px"
+												bg="whiteAlpha.400"
+												borderRadius="full"
+												overflow="hidden"
+												pointerEvents="none"
+											>
+												<Box
+													key={statusNoticeSeed}
+													h="full"
+													bg="whiteAlpha.800"
+													transformOrigin={
+														isRTL ? "right center" : "left center"
+													}
+													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
+												/>
+											</Box>
+										</Alert>
+									</SlideFade>
+								)}
 
 										{showServiceSelector && !servicesLoading && !hasServices && (
 											<Alert
@@ -1686,16 +1968,36 @@ export const UserDialog: FC<UserDialogProps> = () => {
 											</Alert>
 										)}
 
-										<Grid
-											templateColumns={{
-												base: "repeat(1, 1fr)",
-												md: useTwoColumns ? "repeat(2, 1fr)" : "minmax(0, 1fr)",
-											}}
-									gap={3}
-									{...(shouldCenterForm
-										? { maxW: "720px", mx: "auto", w: "full" }
-										: {})}
+								<Tabs
+									index={activeTab}
+									onChange={handleTabChange}
+									variant="enclosed"
+									isLazy
+									w="full"
 								>
+									<TabList>
+										<Tab>{t("userDialog.tabs.edit", "Edit")}</Tab>
+										{isEditing && (
+											<Tab>{t("userDialog.tabs.usage", "Usage")}</Tab>
+										)}
+										{isEditing && (
+											<Tab>{t("userDialog.tabs.links", "Links")}</Tab>
+										)}
+									</TabList>
+									<TabPanels>
+										<TabPanel px={0} pt={4}>
+											<Grid
+												templateColumns={{
+													base: "repeat(1, 1fr)",
+													md: useTwoColumns
+														? "repeat(2, 1fr)"
+														: "minmax(0, 1fr)",
+												}}
+												gap={3}
+												{...(shouldCenterForm
+													? { maxW: "720px", mx: "auto", w: "full" }
+													: {})}
+											>
 									<GridItem>
 										<VStack justifyContent="space-between">
 											<Flex
@@ -1710,16 +2012,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															!!form.formState.errors.username?.message
 														}
 													>
-														<FormLabel
-															display="flex"
-															alignItems="center"
-															gap={2}
-															justifyContent="space-between"
-														>
-															<Text>{t("username")}</Text>
-															<Tooltip
-																hasArrow
-																placement="top"
+													<FormLabel
+														display="flex"
+														alignItems="center"
+														gap={2}
+														justifyContent={isRTL ? "flex-end" : "flex-start"}
+														flexDirection={isRTL ? "row-reverse" : "row"}
+													>
+														<Text>{t("username")}</Text>
+														<Tooltip
+															hasArrow
+															placement="top"
 																label={t(
 																	"userDialog.usernameHint",
 																	"Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between.",
@@ -1734,7 +2037,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																</chakra.span>
 															</Tooltip>
 														</FormLabel>
-														<HStack align="flex-end">
+														<HStack align="center">
 															<Box flex="1" minW="0">
 																<InputGroup size="sm" dir={isRTL ? "rtl" : "ltr"}>
 																	<ChakraInput
@@ -1875,6 +2178,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																			onChange: field.onChange,
 																			disabled,
 																		})}
+																		{isEditing && remainingDataInfo && (
+																			<FormHelperText
+																				fontSize="xs"
+																				color="gray.500"
+																				textAlign={isRTL ? "right" : "left"}
+																			>
+																				{`${remainingDataInfo.label}: ${remainingDataInfo.value}`}
+																			</FormHelperText>
+																		)}
 																		<FormErrorMessage>
 																			{form.formState.errors.data_limit?.message}
 																		</FormErrorMessage>
@@ -2613,35 +2925,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										)}
 									</GridItem>
 
-									{isEditing && usageVisible && (
-										<GridItem
-											pt={6}
-											colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
-										>
-											<VStack gap={4}>
-												<UsageFilter
-													defaultValue={usageFilter}
-													onChange={(filter, query) => {
-														setUsageFilter(filter);
-
-														fetchUsageWithFilter(query);
-													}}
-												/>
-
-												<Box
-													width={{ base: "100%", md: "70%" }}
-													justifySelf="center"
-												>
-													<ReactApexChart
-														options={usage.options}
-														series={usage.series}
-														type="donut"
-													/>
-												</Box>
-											</VStack>
-										</GridItem>
-									)}
-
 									<GridItem
 										colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
 										w="full"
@@ -3084,19 +3367,280 @@ export const UserDialog: FC<UserDialogProps> = () => {
 											</Collapse>
 										</Box>
 									</GridItem>
-								</Grid>
+											</Grid>
 
-								{error && (
-									<Alert
-										mt="3"
-										status="error"
-										display={{ base: "flex", md: "none" }}
-									>
-										<AlertIcon />
+											{error && (
+												<Alert
+													mt="3"
+													status="error"
+													display={{ base: "flex", md: "none" }}
+												>
+													<AlertIcon />
 
-										{error}
-									</Alert>
-								)}
+													{error}
+												</Alert>
+											)}
+										</TabPanel>
+										{isEditing && (
+											<TabPanel px={0} pt={4}>
+												<VStack gap={4}>
+													<UsageFilter
+														defaultValue={usageFilter}
+														onChange={(filter, query) => {
+															setUsageFilter(filter);
+
+															fetchUsageWithFilter(query);
+														}}
+													/>
+
+													<Box
+														width={{ base: "100%", md: "70%" }}
+														justifySelf="center"
+													>
+														<ReactApexChart
+															options={usage.options}
+															series={usage.series}
+															type="donut"
+														/>
+													</Box>
+												</VStack>
+											</TabPanel>
+										)}
+										{isEditing && (
+											<TabPanel px={0} pt={4}>
+												<VStack align="stretch" spacing={4}>
+													<Box
+														borderWidth="1px"
+														borderRadius="md"
+														px={4}
+														py={3}
+														bg="white"
+														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+													>
+														<HStack
+															justify="space-between"
+															align="center"
+															w="full"
+														>
+															<HStack spacing={2} minW={0}>
+																<SubscriptionActionIcon />
+																<Text fontWeight="semibold">
+																	{t(
+																		"userDialog.links.subscription",
+																		"Subscription link",
+																	)}
+																</Text>
+															</HStack>
+															<HStack spacing={1}>
+																<CopyToClipboard
+																	text={subscriptionLink}
+																	onCopy={() => setCopiedSubscription(true)}
+																>
+																	<div>
+																		<Tooltip
+																			label={
+																				copiedSubscription
+																					? t("usersTable.copied")
+																					: t(
+																							"userDialog.links.copy",
+																							"Copy",
+																						)
+																			}
+																			placement="top"
+																		>
+																			<IconButton
+																				aria-label="copy subscription link"
+																				variant="ghost"
+																				size="sm"
+																				type="button"
+																				isDisabled={!subscriptionLink}
+																			>
+																				{copiedSubscription ? (
+																					<CopiedActionIcon />
+																				) : (
+																					<CopyActionIcon />
+																				)}
+																			</IconButton>
+																		</Tooltip>
+																	</div>
+																</CopyToClipboard>
+																<Tooltip
+																	label={t(
+																		"userDialog.links.qr",
+																		"QR",
+																	)}
+																	placement="top"
+																>
+																	<IconButton
+																		aria-label="subscription qr"
+																		variant="ghost"
+																		size="sm"
+																		type="button"
+																		isDisabled={!subscriptionLink}
+																		onClick={() => {
+																			setQRCode([]);
+																			setSubLink(subscriptionLink);
+																		}}
+																	>
+																		<QRActionIcon />
+																	</IconButton>
+																</Tooltip>
+															</HStack>
+														</HStack>
+													</Box>
+
+													<Box
+														borderWidth="1px"
+														borderRadius="md"
+														px={4}
+														py={3}
+														bg="white"
+														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+													>
+														<HStack
+															justify="space-between"
+															align="center"
+															w="full"
+															mb={3}
+														>
+															<Text fontWeight="semibold">
+																{t("userDialog.links.configs", "Configs")}
+															</Text>
+															<CopyToClipboard
+																text={configLinksText}
+																onCopy={() => {
+																	if (configItems.length > 0) {
+																		setCopiedAllConfigs(true);
+																	}
+																}}
+															>
+																<div>
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		type="button"
+																		isDisabled={configItems.length === 0}
+																		leftIcon={
+																			copiedAllConfigs ? (
+																				<CopiedActionIcon />
+																			) : (
+																				<CopyActionIcon />
+																			)
+																		}
+																	>
+																		{copiedAllConfigs
+																			? t("usersTable.copied")
+																			: t(
+																					"userDialog.links.copyAllConfigs",
+																					"Copy all configs",
+																				)}
+																	</Button>
+																</div>
+															</CopyToClipboard>
+														</HStack>
+
+														<VStack spacing={2} align="stretch">
+															{configItems.length === 0 ? (
+																<Text fontSize="sm" color="gray.500">
+																	{t(
+																		"userDialog.links.noConfigs",
+																		"No configs available",
+																	)}
+																</Text>
+															) : (
+																configItems.map((item, index) => (
+																	<Box
+																		key={`${item.link}-${index}`}
+																		borderWidth="1px"
+																		borderRadius="md"
+																		px={3}
+																		py={2}
+																		bg="blackAlpha.50"
+																		_dark={{ bg: "whiteAlpha.50" }}
+																	>
+																		<HStack
+																			justify="space-between"
+																			align="center"
+																			w="full"
+																			dir="ltr"
+																		>
+																			<Text
+																				fontWeight="medium"
+																				noOfLines={1}
+																				minW={0}
+																				flex="1"
+																				textAlign="left"
+																				dir="ltr"
+																				sx={{ unicodeBidi: "isolate" }}
+																			>
+																				{item.label}
+																			</Text>
+																			<HStack spacing={1} flexShrink={0}>
+																				<CopyToClipboard
+																					text={item.link}
+																					onCopy={() =>
+																						setCopiedConfigIndex(index)
+																					}
+																				>
+																					<div>
+																						<Tooltip
+																							label={
+																								copiedConfigIndex === index
+																									? t("usersTable.copied")
+																									: t(
+																											"userDialog.links.copy",
+																											"Copy",
+																										)
+																							}
+																							placement="top"
+																						>
+																							<IconButton
+																								aria-label="copy config"
+																								variant="ghost"
+																								size="sm"
+																								type="button"
+																							>
+																								{copiedConfigIndex === index ? (
+																									<CopiedActionIcon />
+																								) : (
+																									<CopyActionIcon />
+																								)}
+																							</IconButton>
+																						</Tooltip>
+																					</div>
+																				</CopyToClipboard>
+																				<Tooltip
+																					label={t(
+																						"userDialog.links.qr",
+																						"QR",
+																					)}
+																					placement="top"
+																				>
+																					<IconButton
+																						aria-label="config qr"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							setQRCode([item.link]);
+																							setSubLink(null);
+																						}}
+																					>
+																						<QRActionIcon />
+																					</IconButton>
+																				</Tooltip>
+																			</HStack>
+																		</HStack>
+																	</Box>
+																))
+															)}
+														</VStack>
+													</Box>
+												</VStack>
+											</TabPanel>
+										)}
+									</TabPanels>
+								</Tabs>
 							</ModalBody>
 
 							<ModalFooter mt="3">
@@ -3137,16 +3681,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														</IconButton>
 													</Tooltip>
 												)}
-
-												<Tooltip label={t("userDialog.usage")} placement="top">
-													<IconButton
-														aria-label="usage"
-														size="sm"
-														onClick={handleUsageToggle}
-													>
-														<UserUsageIcon />
-													</IconButton>
-												</Tooltip>
 
 												{canResetUsage && (
 													<Button onClick={handleResetUsage} size="sm">

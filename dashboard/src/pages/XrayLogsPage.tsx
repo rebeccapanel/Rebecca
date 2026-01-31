@@ -179,10 +179,15 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 				color: isDark ? "#fde047" : "#ca8a04",
 				border: isDark ? "#eab308" : "#facc15",
 			},
-			info: {
+			success: {
 				bg: isDark ? "rgba(34, 197, 94, 0.2)" : "rgba(209, 250, 229, 0.8)",
 				color: isDark ? "#86efac" : "#16a34a",
 				border: isDark ? "#22c55e" : "#22c55e",
+			},
+			info: {
+				bg: isDark ? "rgba(59, 130, 246, 0.2)" : "rgba(219, 234, 254, 0.85)",
+				color: isDark ? "#93c5fd" : "#2563eb",
+				border: isDark ? "#3b82f6" : "#3b82f6",
 			},
 			debug: {
 				bg: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(241, 245, 249, 0.8)",
@@ -259,6 +264,33 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 
 	const classifyLog = (message: string) => {
 		const lowerMessage = message.toLowerCase();
+		// Prefer explicit Xray level markers when present: [Info], [Warning], [Error], ...
+		const explicitMatch = message.match(
+			/\[(debug|info|warning|warn|error|fatal|panic|critical)\]/i,
+		);
+		if (explicitMatch?.[1]) {
+			const explicit = explicitMatch[1].toLowerCase();
+			if (["error", "fatal", "panic", "critical"].includes(explicit)) {
+				return "error" as const;
+			}
+			if (["warning", "warn"].includes(explicit)) {
+				return "warn" as const;
+			}
+			if (explicit === "debug") {
+				return "debug" as const;
+			}
+			return "info" as const;
+		}
+
+		// Startup banners and successful starts should be green/success.
+		if (
+			/^xray\s+\d+/i.test(message) ||
+			/unified platform for anti-censorship/i.test(lowerMessage) ||
+			/core:\s*xray.*started/i.test(lowerMessage)
+		) {
+			return "success" as const;
+		}
+
 		// Check for error patterns first (most critical)
 		if (/error|failed|exception|fatal|panic|critical/i.test(lowerMessage)) {
 			return "error" as const;
@@ -267,10 +299,11 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 		if (/warn|warning|deprecated/i.test(lowerMessage)) {
 			return "warn" as const;
 		}
-		// Check for info patterns
-		if (
-			/info|information|success|connected|started|stopped/i.test(lowerMessage)
-		) {
+		// Check for success/info patterns
+		if (/success|connected|started|stopped/i.test(lowerMessage)) {
+			return "success" as const;
+		}
+		if (/info|information/i.test(lowerMessage)) {
 			return "info" as const;
 		}
 		// Check for debug patterns

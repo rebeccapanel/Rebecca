@@ -64,13 +64,14 @@ import {
 } from "@heroicons/react/24/outline";
 import { Input } from "components/Input";
 import { useAdminsStore } from "contexts/AdminsContext";
-import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
+import { fetchInbounds, type Inbounds, useDashboard } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import { motion } from "framer-motion";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { fetch } from "service/http";
 import type {
 	ServiceCreatePayload,
 	ServiceDeletePayload,
@@ -99,6 +100,9 @@ type ServiceDialogProps = {
 	allHosts: HostOption[];
 	allAdmins: { id: number; username: string }[];
 	initialService?: ServiceDetail | null;
+	inbounds: Inbounds;
+	refreshInbounds: () => Promise<void>;
+	refreshHosts: () => void;
 };
 
 const NO_SERVICE_OPTION_VALUE = "__no_service__";
@@ -111,6 +115,9 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	allHosts,
 	allAdmins,
 	initialService,
+	inbounds,
+	refreshInbounds,
+	refreshHosts,
 }) => {
 	const { t } = useTranslation();
 	const [name, setName] = useState(initialService?.name ?? "");
@@ -126,7 +133,24 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	const [adminSearch, setAdminSearch] = useState("");
 	const [hostSearch, setHostSearch] = useState("");
 	const [hoveredHost, setHoveredHost] = useState<number | null>(null);
+	const [autoInboundBusy, setAutoInboundBusy] = useState(false);
 	const toast = useToast();
+
+	const autoInboundTag = initialService?.id
+		? `setservice-${initialService.id}`
+		: null;
+
+	const autoInboundExists = useMemo(() => {
+		if (!autoInboundTag) {
+			return false;
+		}
+		for (const inboundList of inbounds.values()) {
+			if (inboundList.some((inbound) => inbound.tag === autoInboundTag)) {
+				return true;
+			}
+		}
+		return false;
+	}, [autoInboundTag, inbounds]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -136,6 +160,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			setSelectedHosts(initialService?.hosts.map((host) => host.id) ?? []);
 			setAdminSearch("");
 			setHostSearch("");
+			setAutoInboundBusy(false);
 		}
 	}, [isOpen, initialService]);
 
@@ -255,6 +280,72 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			},
 			initialService?.id,
 		);
+	};
+
+	const handleCreateAutoInbound = async () => {
+		if (!initialService?.id || autoInboundExists) {
+			return;
+		}
+		setAutoInboundBusy(true);
+		try {
+			await fetch(`/v2/services/${initialService.id}/auto-inbound`, {
+				method: "POST",
+			});
+			await refreshInbounds();
+			refreshHosts();
+			toast({
+				status: "success",
+				title: t(
+					"services.autoInbound.created",
+					"Auto inbound created",
+				),
+			});
+		} catch (error: any) {
+			toast({
+				status: "error",
+				title:
+					error?.data?.detail ??
+					t(
+						"services.autoInbound.createFailed",
+						"Failed to create auto inbound",
+					),
+			});
+		} finally {
+			setAutoInboundBusy(false);
+		}
+	};
+
+	const handleDeleteAutoInbound = async () => {
+		if (!initialService?.id || !autoInboundExists) {
+			return;
+		}
+		setAutoInboundBusy(true);
+		try {
+			await fetch(`/v2/services/${initialService.id}/auto-inbound`, {
+				method: "DELETE",
+			});
+			await refreshInbounds();
+			refreshHosts();
+			toast({
+				status: "success",
+				title: t(
+					"services.autoInbound.deleted",
+					"Auto inbound removed",
+				),
+			});
+		} catch (error: any) {
+			toast({
+				status: "error",
+				title:
+					error?.data?.detail ??
+					t(
+						"services.autoInbound.deleteFailed",
+						"Failed to delete auto inbound",
+					),
+			});
+		} finally {
+			setAutoInboundBusy(false);
+		}
 	};
 
 	return (
@@ -379,6 +470,97 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									"Selected admins can create users for this service",
 								)}
 							</Text>
+						</Box>
+						<Box>
+							<Text fontWeight="medium" mb={2}>
+								{t("services.autoInbound.title", "Service inbound")}
+								<Box as="span" ml={2} fontSize="xs" color="orange.500">
+									{t("common.comingSoon", "Coming soon")}
+								</Box>
+							</Text>
+							<Stack spacing={3} borderWidth="1px" borderRadius="md" p={4}>
+								<Flex align="center" justify="space-between" gap={3}>
+									<Box>
+										<Text fontSize="sm" color="gray.500">
+											{t(
+												"services.autoInbound.tagLabel",
+												"Inbound tag",
+											)}
+										</Text>
+										<Text fontFamily="mono" fontSize="sm">
+											{autoInboundTag ??
+												t(
+													"services.autoInbound.pendingTag",
+													"Save the service to generate the tag",
+												)}
+										</Text>
+									</Box>
+									<Badge colorScheme={autoInboundExists ? "green" : "gray"}>
+										{autoInboundExists
+											? t(
+													"services.autoInbound.statusCreated",
+													"Created",
+												)
+											: t(
+													"services.autoInbound.statusMissing",
+													"Not created",
+												)}
+									</Badge>
+								</Flex>
+								<HStack spacing={2} flexWrap="wrap">
+									<Button
+										size="sm"
+										onClick={handleCreateAutoInbound}
+										isDisabled={
+											true ||
+											!initialService?.id ||
+											autoInboundExists ||
+											autoInboundBusy
+										}
+										isLoading={autoInboundBusy}
+									>
+										{t(
+											"services.autoInbound.create",
+											"Create inbound",
+										)}
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										colorScheme="red"
+										onClick={handleDeleteAutoInbound}
+										isDisabled={
+											true ||
+											!initialService?.id ||
+											!autoInboundExists ||
+											autoInboundBusy
+										}
+										isLoading={autoInboundBusy}
+									>
+										{t(
+											"services.autoInbound.delete",
+											"Delete inbound",
+										)}
+									</Button>
+								</HStack>
+								<Text fontSize="sm" color="gray.500">
+									{t(
+										"services.autoInbound.helper",
+										"Use this inbound as the only selection to auto-assign the service. It uses Shadowsocks defaults and should stay without hosts.",
+									)}
+								</Text>
+								<Text fontSize="sm" color="orange.500">
+									{t("common.comingSoon", "Coming soon")}
+								</Text>
+								{!initialService?.id && (
+									<Text fontSize="sm" color="gray.500">
+										{t(
+											"services.autoInbound.saveFirst",
+											"Save the service first to enable this option.",
+										)}
+									</Text>
+								)}
+							</Stack>
 						</Box>
 						<Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4}>
 							<GridItem>
@@ -843,7 +1025,9 @@ const ServicesPage: FC = () => {
 						gap={3}
 					>
 						<Box flex="1" textAlign="left">
-							<Text fontWeight="semibold">{service.name}</Text>
+							<Text fontWeight="semibold">
+								{t("services.columns.id", "ID")} {service.id} {service.name}
+							</Text>
 							{service.description && (
 								<Text
 									fontSize="sm"
@@ -990,6 +1174,7 @@ const ServicesPage: FC = () => {
 				index === servicesStore.services.length - 1 ? "last-row" : undefined
 			}
 		>
+			<Td>{service.id}</Td>
 			<Td>
 				<VStack align="start" spacing={0}>
 					<Text fontWeight="semibold">{service.name}</Text>
@@ -1129,13 +1314,14 @@ const ServicesPage: FC = () => {
 								{servicesStore.services.map(renderServiceAccordionItem)}
 							</Accordion>
 							<Box display={{ base: "none", md: "block" }} overflowX="auto">
-								<Table variant="simple">
-									<Thead>
-										<Tr>
-											<Th>{t("services.columns.name", "Name")}</Th>
-											<Th>{t("services.columns.hosts", "Hosts")}</Th>
-											<Th>{t("services.columns.users", "Users")}</Th>
-											<Th>{t("services.columns.usage", "Usage")}</Th>
+									<Table variant="simple">
+										<Thead>
+											<Tr>
+												<Th>{t("services.columns.id", "ID")}</Th>
+												<Th>{t("services.columns.name", "Name")}</Th>
+												<Th>{t("services.columns.hosts", "Hosts")}</Th>
+												<Th>{t("services.columns.users", "Users")}</Th>
+												<Th>{t("services.columns.usage", "Usage")}</Th>
 											<Th>{t("services.columns.lifetime", "Lifetime")}</Th>
 											<Th>{t("services.columns.actions", "Actions")}</Th>
 										</Tr>
@@ -1425,6 +1611,9 @@ const ServicesPage: FC = () => {
 				allHosts={hostOptions}
 				allAdmins={adminOptions}
 				initialService={editingService ?? undefined}
+				inbounds={inbounds}
+				refreshInbounds={fetchInbounds}
+				refreshHosts={hostsStore.fetchHosts}
 			/>
 		</VStack>
 	);

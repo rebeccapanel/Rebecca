@@ -12,6 +12,7 @@ from app.db import Session, get_db, crud, GetDB
 from app.db.models import OutboundTraffic
 from app.models.admin import Admin, AdminRole
 from app.models.core import CoreStats, ServerIPs
+from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.models.warp import (
     WarpAccountResponse,
     WarpConfigResponse,
@@ -173,17 +174,27 @@ async def core_logs(websocket: WebSocket):
 
     await websocket.accept()
 
-    cache = ""
+    cache: list[str] = []
     last_sent_ts = 0
+
+    async def _flush_cache() -> bool:
+        nonlocal cache, last_sent_ts
+        if not cache:
+            return True
+        try:
+            for line in sort_log_lines(cache):
+                await websocket.send_text(line)
+        except (WebSocketDisconnect, RuntimeError):
+            return False
+        cache = []
+        last_sent_ts = time.time()
+        return True
+
     with xray.core.get_logs() as logs:
         while True:
             if interval and time.time() - last_sent_ts >= interval and cache:
-                try:
-                    await websocket.send_text(cache)
-                except (WebSocketDisconnect, RuntimeError):
+                if not await _flush_cache():
                     break
-                cache = ""
-                last_sent_ts = time.time()
 
             if not logs:
                 try:
@@ -194,15 +205,21 @@ async def core_logs(websocket: WebSocket):
                 except (WebSocketDisconnect, RuntimeError):
                     break
 
-            log = logs.popleft()
+            log_chunk = str(logs.popleft())
+            lines = normalize_log_chunk(log_chunk)
 
             if interval:
-                cache += f"{log}\n"
+                cache.extend(lines)
                 continue
 
-            try:
-                await websocket.send_text(log)
-            except (WebSocketDisconnect, RuntimeError):
+            send_failed = False
+            for line in sort_log_lines(lines):
+                try:
+                    await websocket.send_text(line)
+                except (WebSocketDisconnect, RuntimeError):
+                    send_failed = True
+                    break
+            if send_failed:
                 break
 
 

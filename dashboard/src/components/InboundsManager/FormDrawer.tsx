@@ -321,10 +321,12 @@ export const InboundFormModal: FC<Props> = ({
 			updatingFromJsonRef.current = false;
 			return;
 		}
-		const updatedJson = buildInboundPayload(formValues);
+		const updatedJson = buildInboundPayload(formValues, {
+			initial: initialValue,
+		});
 		setJsonData(updatedJson);
 		setJsonError(null);
-	}, [formValues]);
+	}, [formValues, initialValue]);
 	const socksAuth =
 		useWatch({ control, name: "socksAuth" }) || watch("socksAuth") || "noauth";
 	const socksUdpEnabled =
@@ -395,7 +397,7 @@ export const InboundFormModal: FC<Props> = ({
 			? rawInboundToFormValues(initialValue)
 			: createDefaultInboundForm();
 		reset(formValues);
-		const json = buildInboundPayload(formValues);
+		const json = buildInboundPayload(formValues, { initial: initialValue });
 		setJsonData(json);
 		setJsonError(null);
 		updatingFromJsonRef.current = false;
@@ -1559,6 +1561,9 @@ export const InboundFormModal: FC<Props> = ({
 													{t("inbounds.xhttp.mode", "Mode")}
 												</FormLabel>
 												<Select {...register("xhttpMode")}>
+													<option value="">
+														{t("common.default", "Default")}
+													</option>
 													{XHTTP_MODE_OPTIONS.map((mode) => (
 														<option key={mode} value={mode}>
 															{mode}

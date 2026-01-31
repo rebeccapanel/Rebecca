@@ -113,58 +113,60 @@ export const QRCodeDialog: FC = () => {
 								</Text>
 							</VStack>
 						)}
-						<Box w="300px">
-							<SlickSlider
-								centerPadding="0px"
-								centerMode={true}
-								slidesToShow={1}
-								slidesToScroll={1}
-								dots={false}
-								afterChange={setIndex}
-								onInit={() => setIndex(0)}
-								nextArrow={
-									<IconButton
-										size="sm"
-										position="absolute"
-										display="flex !important"
-										_before={{ content: '""' }}
-										aria-label="next"
-										mr="-4"
-									>
-										<NextIcon />
-									</IconButton>
-								}
-								prevArrow={
-									<IconButton
-										size="sm"
-										position="absolute"
-										display="flex !important"
-										_before={{ content: '""' }}
-										aria-label="prev"
-										ml="-4"
-									>
-										<PrevIcon />
-									</IconButton>
-								}
-							>
-								{QRcodeLinks.map((link) => (
-									<HStack key={link}>
-										<QRCode
-											mx="auto"
-											size={300}
-											p="2"
-											level={"L"}
-											includeMargin={false}
-											value={link}
-											bg="white"
-										/>
-									</HStack>
-								))}
-							</SlickSlider>
-							<Text display="block" textAlign="center" pb={3} mt={1}>
-								{index + 1} / {QRcodeLinks.length}
-							</Text>
-						</Box>
+						{QRcodeLinks.length > 0 && (
+							<Box w="300px">
+								<SlickSlider
+									centerPadding="0px"
+									centerMode={true}
+									slidesToShow={1}
+									slidesToScroll={1}
+									dots={false}
+									afterChange={setIndex}
+									onInit={() => setIndex(0)}
+									nextArrow={
+										<IconButton
+											size="sm"
+											position="absolute"
+											display="flex !important"
+											_before={{ content: '""' }}
+											aria-label="next"
+											mr="-4"
+										>
+											<NextIcon />
+										</IconButton>
+									}
+									prevArrow={
+										<IconButton
+											size="sm"
+											position="absolute"
+											display="flex !important"
+											_before={{ content: '""' }}
+											aria-label="prev"
+											ml="-4"
+										>
+											<PrevIcon />
+										</IconButton>
+									}
+								>
+									{QRcodeLinks.map((link) => (
+										<HStack key={link}>
+											<QRCode
+												mx="auto"
+												size={300}
+												p="2"
+												level={"L"}
+												includeMargin={false}
+												value={link}
+												bg="white"
+											/>
+										</HStack>
+									))}
+								</SlickSlider>
+								<Text display="block" textAlign="center" pb={3} mt={1}>
+									{index + 1} / {QRcodeLinks.length}
+								</Text>
+							</Box>
+						)}
 					</ModalBody>
 				)}
 			</ModalContent>

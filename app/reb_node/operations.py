@@ -18,7 +18,7 @@ from app.reb_node.node import XRayNode
 from xray_api import XRay as XRayAPI
 from xray_api import exceptions as xray_exceptions
 from xray_api.types.account import Account
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
 from app.models.proxy import ProxyTypes
 
 logger = logging.getLogger("uvicorn.error")
@@ -83,6 +83,21 @@ def _remove_inbound_user_attempts(api: XRayAPI, inbound_tag: str, email: str):
             continue
 
 
+def _flow_supported_for_inbound(inbound: dict) -> bool:
+    """
+    XTLS flow is only supported on TCP/RAW/KCP transports with TLS/Reality
+    and non-HTTP headers. If we can't determine inbound details, treat it as
+    unsupported to avoid breaking API injection.
+    """
+    try:
+        network = inbound.get("network", "tcp")
+        tls_type = inbound.get("tls", "none")
+        header_type = inbound.get("header_type", "")
+    except Exception:
+        return False
+    return network in ("tcp", "raw", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
+
+
 def _build_runtime_accounts(
     dbuser: "DBUser",
     user: UserResponse,
@@ -93,8 +108,8 @@ def _build_runtime_accounts(
     email = f"{dbuser.id}.{dbuser.username}"
     accounts: List[Account] = []
     try:
-        user_flow = getattr(dbuser, "flow", None)
-        if user_flow:
+        user_flow = normalize_flow_value(getattr(dbuser, "flow", None))
+        if user_flow and proxy_type in (ProxyTypes.VLESS, ProxyTypes.Trojan):
             proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key, flow=user_flow)
         else:
             proxy_settings = runtime_proxy_settings(settings_model, proxy_type, user.credential_key)
@@ -107,6 +122,10 @@ def _build_runtime_accounts(
             exc,
         )
         return accounts
+
+    # Remove flow when inbound doesn't support it (or inbound info is missing).
+    if proxy_settings.get("flow") and not _flow_supported_for_inbound(inbound or {}):
+        proxy_settings.pop("flow", None)
 
     if proxy_type in UUID_PROTOCOLS:
         uuid_value = proxy_settings.get("id")
@@ -123,6 +142,13 @@ def _build_runtime_accounts(
     try:
         accounts.append(proxy_type.account_model(email=email, **proxy_settings))
     except Exception as exc:
+        # Retry once without flow for server-side injection.
+        if proxy_settings.pop("flow", None) is not None:
+            try:
+                accounts.append(proxy_type.account_model(email=email, **proxy_settings))
+                return accounts
+            except Exception:
+                pass
         logger.warning(
             "Failed to create account model for user %s (%s) and proxy %s: %s",
             dbuser.id,
@@ -211,7 +237,7 @@ def _add_account_to_inbound(api: XRayAPI, inbound_tag: str, account: Account):
 
     try:
         api.add_inbound_user(tag=inbound_tag, user=account, timeout=600)
-    except xray_exceptions.ConnectionError:
+    except (xray_exceptions.EmailExistsError, xray_exceptions.ConnectionError):
         pass
     except Exception as e:
         logger.error(f"Failed to add user {account.email} to {inbound_tag}: {e}")
@@ -394,11 +420,10 @@ global _connecting_nodes
 _connecting_nodes = {}
 
 
-@threaded_function
-def connect_node(node_id, config=None):
+def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> None:
     global _connecting_nodes
 
-    if _connecting_nodes.get(node_id):
+    if not force and _connecting_nodes.get(node_id):
         return
 
     with GetDB() as db:
@@ -407,12 +432,33 @@ def connect_node(node_id, config=None):
     if not dbnode:
         return
 
-    if dbnode.status == NodeStatus.limited:
-        logger.info("Skipping connect for limited node %s", dbnode.name)
+    if dbnode.status in (NodeStatus.disabled, NodeStatus.limited):
+        logger.info("Skipping connect for %s node %s", dbnode.status, dbnode.name)
         return
+
+    if force:
+        try:
+            existing = state.nodes.get(node_id)
+            if existing:
+                try:
+                    existing.disconnect()
+                except Exception:
+                    pass
+        finally:
+            try:
+                del state.nodes[node_id]
+            except KeyError:
+                pass
+
+        try:
+            del _connecting_nodes[node_id]
+        except KeyError:
+            pass
 
     try:
         node = state.nodes[dbnode.id]
+        if force:
+            raise KeyError
         assert node.connected
     except (KeyError, AssertionError):
         node = add_node(dbnode)
@@ -421,7 +467,7 @@ def connect_node(node_id, config=None):
         _connecting_nodes[node_id] = True
 
         _change_node_status(node_id, NodeStatus.connecting)
-        logger.info(f'Connecting to "{dbnode.name}" node')
+        logger.info('Connecting to "%s" node', dbnode.name)
 
         if config is None:
             config = state.config.include_db_users()
@@ -429,17 +475,27 @@ def connect_node(node_id, config=None):
         node.start(config)
         version = node.get_version()
         _change_node_status(node_id, NodeStatus.connected, version=version)
-        logger.info(f'Connected to "{dbnode.name}" node, xray run on v{version}')
+        logger.info('Connected to "%s" node, xray run on v%s', dbnode.name, version)
 
     except Exception as e:
         _change_node_status(node_id, NodeStatus.error, message=str(e))
-        logger.info(f'Unable to connect to "{dbnode.name}" node')
+        logger.info('Unable to connect to "%s" node', dbnode.name)
 
     finally:
         try:
             del _connecting_nodes[node_id]
         except KeyError:
             pass
+
+
+@threaded_function
+def connect_node(node_id, config=None, *, force: bool = False):
+    _connect_node_impl(node_id, config=config, force=force)
+
+
+@threaded_function
+def reconnect_node(node_id, config=None):
+    _connect_node_impl(node_id, config=config, force=True)
 
 
 @threaded_function
@@ -497,5 +553,6 @@ __all__ = [
     "add_node",
     "remove_node",
     "connect_node",
+    "reconnect_node",
     "restart_node",
 ]

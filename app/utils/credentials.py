@@ -17,6 +17,29 @@ UUID_PROTOCOLS = {ProxyTypes.VMess, ProxyTypes.VLESS}
 PASSWORD_PROTOCOLS = {ProxyTypes.Trojan, ProxyTypes.Shadowsocks}
 
 
+def normalize_flow_value(flow: Optional[str]) -> Optional[str]:
+    """
+    Normalize user-provided flow values for server-side use.
+
+    - Trim whitespace.
+    - Map client-only udp443 flow variants to their server-side base flow.
+    """
+    if flow is None:
+        return None
+    if not isinstance(flow, str):
+        return None
+
+    normalized = flow.strip()
+    if not normalized:
+        return None
+
+    # Xray docs: udp443 flow is client-side only; server should use base flow.
+    if normalized.endswith("-udp443"):
+        return normalized[: -len("-udp443")]
+
+    return normalized
+
+
 def _get_uuid_masks() -> Dict[ProxyTypes, bytes]:
     """
     Retrieves UUID masks from database.

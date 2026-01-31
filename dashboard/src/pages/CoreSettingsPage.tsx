@@ -72,8 +72,9 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "react-query";
 import { fetch as apiFetch } from "service/http";
-import { BalancerModal } from "../components/BalancerModal";
+import { BalancerModal, type BalancerFormValues } from "../components/BalancerModal";
 import { DnsModal } from "../components/DnsModal";
+import { DnsPresetsModal } from "../components/DnsPresetsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { JsonEditor } from "../components/JsonEditor";
 import { OutboundModal } from "../components/OutboundModal";
@@ -123,6 +124,29 @@ const compactActionButtonProps = {
 const serializeConfig = (value: any) => JSON.stringify(value ?? {});
 const formatList = (value: string | string[] | undefined) =>
 	Array.isArray(value) ? value.join(",") : (value ?? "");
+const DNS_STRATEGY_OPTIONS = ["UseSystem", "UseIP", "UseIPv4", "UseIPv6"];
+const createDefaultDnsConfig = () => ({
+	servers: [] as any[],
+	queryStrategy: "UseIP",
+	tag: "dns_inbound",
+	enableParallelQuery: false,
+});
+const DEFAULT_OBSERVATORY = {
+	subjectSelector: [] as string[],
+	probeURL: "http://www.google.com/gen_204",
+	probeInterval: "10m",
+	enableConcurrency: true,
+};
+const DEFAULT_BURST_OBSERVATORY = {
+	subjectSelector: [] as string[],
+	pingConfig: {
+		destination: "http://www.google.com/gen_204",
+		interval: "30m",
+		connectivity: "http://connectivitycheck.platform.hicloud.com/generate_204",
+		timeout: "10s",
+		sampling: 2,
+	},
+};
 
 const SERVICES_OPTIONS: { label: string; value: string }[] = [
 	{ label: "Apple", value: "geosite:apple" },
@@ -140,6 +164,19 @@ const DEFAULT_ACCESS_LOG_PATH = `${XRAY_LOG_DIR_HINT}/access.log`;
 const DEFAULT_ERROR_LOG_PATH = `${XRAY_LOG_DIR_HINT}/error.log`;
 
 type OutboundJson = Record<string, any>;
+type BalancerConfig = {
+	tag: string;
+	selector: string[];
+	fallbackTag?: string;
+	strategy?: { type: string };
+};
+type BalancerRow = {
+	key: number;
+	tag: string;
+	strategy: string;
+	selector: string[];
+	fallbackTag: string;
+};
 
 const SettingsSection: FC<{ title: string; children: ReactNode }> = ({
 	title,
@@ -168,12 +205,37 @@ const SettingsSection: FC<{ title: string; children: ReactNode }> = ({
 	);
 };
 
+const SectionCard: FC<{ title: string; children: ReactNode }> = ({
+	title,
+	children,
+}) => {
+	const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
+	return (
+		<Box
+			borderWidth="1px"
+			borderColor={borderColor}
+			borderRadius="lg"
+			overflow="hidden"
+		>
+			<Box bg={headerBg} px={{ base: 3, md: 4 }} py={2}>
+				<Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
+					{title}
+				</Text>
+			</Box>
+			<Box p={{ base: 3, md: 4 }}>{children}</Box>
+		</Box>
+	);
+};
+
 const SettingRow: FC<{
-	label: string;
+	label: ReactNode;
+	description?: ReactNode;
 	controlId: string;
 	children: (controlId: string) => ReactNode;
-}> = ({ label, controlId, children }) => {
+}> = ({ label, description, controlId, children }) => {
 	const labelColor = useColorModeValue("gray.700", "whiteAlpha.800");
+	const descriptionColor = useColorModeValue("gray.500", "whiteAlpha.600");
 	return (
 		<Tr
 			display={{ base: "block", md: "table-row" }}
@@ -189,13 +251,20 @@ const SettingRow: FC<{
 				pr={{ base: 0, md: 4 }}
 				display={{ base: "block", md: "table-cell" }}
 			>
-				<FormLabel
-					htmlFor={controlId}
-					mb={{ base: 2, md: 0 }}
-					color={labelColor}
-				>
-					{label}
-				</FormLabel>
+				<Box>
+					<FormLabel
+						htmlFor={controlId}
+						mb={description ? 1 : { base: 2, md: 0 }}
+						color={labelColor}
+					>
+						{label}
+					</FormLabel>
+					{description && (
+						<Text fontSize="xs" color={descriptionColor}>
+							{description}
+						</Text>
+					)}
+				</Box>
 			</Td>
 			<Td py={3} display={{ base: "block", md: "table-cell" }}>
 				<FormControl
@@ -325,6 +394,11 @@ export const CoreSettingsPage: FC = () => {
 		onClose: onDnsClose,
 	} = useDisclosure();
 	const {
+		isOpen: isDnsPresetsOpen,
+		onOpen: onDnsPresetsOpen,
+		onClose: onDnsPresetsClose,
+	} = useDisclosure();
+	const {
 		isOpen: isFakeDnsOpen,
 		onOpen: onFakeDnsOpen,
 		onClose: onFakeDnsClose,
@@ -348,16 +422,18 @@ export const CoreSettingsPage: FC = () => {
 		serializeConfig(form.getValues("config")),
 	);
 	const watchedConfig = useWatch({ control: form.control, name: "config" });
+	const watchedDnsConfig = useWatch({ control: form.control, name: "config.dns" });
 	const hasConfigChanges = useMemo(
 		() => serializeConfig(watchedConfig) !== initialConfigStringRef.current,
 		[watchedConfig],
 	);
+	const dnsEnabled = Boolean(watchedDnsConfig);
 
 	const [outboundData, setOutboundData] = useState<any[]>([]);
 	const [outboundSearch, setOutboundSearch] = useState("");
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
 	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
-	const [balancersData, setBalancersData] = useState<any[]>([]);
+	const [balancersData, setBalancersData] = useState<BalancerRow[]>([]);
 	const [dnsServers, setDnsServers] = useState<any[]>([]);
 	const [fakeDns, setFakeDns] = useState<any[]>([]);
 	const [outboundsTraffic, setOutboundsTraffic] = useState<any[]>([]);
@@ -366,7 +442,13 @@ export const CoreSettingsPage: FC = () => {
 	const [editingOutboundIndex, setEditingOutboundIndex] = useState<
 		number | null
 	>(null);
+	const [editingBalancerIndex, setEditingBalancerIndex] = useState<
+		number | null
+	>(null);
 	const [editingDnsIndex, setEditingDnsIndex] = useState<number | null>(null);
+	const [editingFakeDnsIndex, setEditingFakeDnsIndex] = useState<
+		number | null
+	>(null);
 	const [isFullScreen, setIsFullScreen] = useState(false);
 	const [advSettings, setAdvSettings] = useState<string>("xraySetting");
 	const [obsSettings, setObsSettings] = useState<string>("");
@@ -412,6 +494,8 @@ useEffect(() => {
 	}, []);
 
 	const basicSectionBorder = useColorModeValue("gray.200", "whiteAlpha.300");
+	const emptyStateBorder = useColorModeValue("gray.200", "whiteAlpha.300");
+	const emptyStateBg = useColorModeValue("gray.50", "whiteAlpha.50");
 
 	const buildOutboundRows = useCallback(
 		(outbounds: OutboundJson[]) =>
@@ -462,6 +546,21 @@ useEffect(() => {
 				balancerTag: rule.balancerTag ?? "",
 				type: rule.type ?? "field",
 				domainMatcher: rule.domainMatcher ?? "",
+			})),
+		[],
+	);
+
+	const buildBalancerRows = useCallback(
+		(balancers: BalancerConfig[]) =>
+			balancers.map((balancer, index) => ({
+				key: index,
+				tag: balancer.tag || "",
+				strategy:
+					typeof balancer.strategy === "string"
+						? balancer.strategy
+						: balancer.strategy?.type || "random",
+				selector: balancer.selector || [],
+				fallbackTag: balancer.fallbackTag || "",
 			})),
 		[],
 	);
@@ -532,13 +631,7 @@ useEffect(() => {
 			syncOutboundDisplay((config?.outbounds as OutboundJson[]) || []);
 			syncRoutingRuleDisplay((config?.routing?.rules as RoutingRule[]) || []);
 			setBalancersData(
-				config?.routing?.balancers?.map((b: any, index: number) => ({
-					key: index,
-					tag: b.tag || "",
-					strategy: b.strategy?.type || "random",
-					selector: b.selector || [],
-					fallbackTag: b.fallbackTag || "",
-				})) || [],
+				buildBalancerRows((config?.routing?.balancers as BalancerConfig[]) || []),
 			);
 			setDnsServers(config?.dns?.servers || []);
 			setFakeDns(config?.fakedns || []);
@@ -552,7 +645,33 @@ useEffect(() => {
 			);
 			setJsonKey((prev) => prev + 1); // force JsonEditor re-mount
 		}
-	}, [config, form, syncOutboundDisplay, syncRoutingRuleDisplay]);
+	}, [
+		buildBalancerRows,
+		config,
+		form,
+		syncOutboundDisplay,
+		syncRoutingRuleDisplay,
+	]);
+
+	useEffect(() => {
+		const hasObservatory = Boolean(watchedConfig?.observatory);
+		const hasBurstObservatory = Boolean(watchedConfig?.burstObservatory);
+		if (obsSettings === "observatory" && !hasObservatory) {
+			setObsSettings(hasBurstObservatory ? "burstObservatory" : "");
+			return;
+		}
+		if (obsSettings === "burstObservatory" && !hasBurstObservatory) {
+			setObsSettings(hasObservatory ? "observatory" : "");
+			return;
+		}
+		if (!obsSettings) {
+			if (hasObservatory) {
+				setObsSettings("observatory");
+			} else if (hasBurstObservatory) {
+				setObsSettings("burstObservatory");
+			}
+		}
+	}, [obsSettings, watchedConfig?.observatory, watchedConfig?.burstObservatory]);
 
 	const { mutate: handleRestartCore, isLoading: isRestarting } = useMutation(
 		restartCore,
@@ -782,35 +901,178 @@ useEffect(() => {
 		onRuleClose();
 	};
 
+	const getBalancers = useCallback((): BalancerConfig[] => {
+		const balancers = form.getValues("config.routing.balancers");
+		if (Array.isArray(balancers)) {
+			return JSON.parse(JSON.stringify(balancers));
+		}
+		return [];
+	}, [form]);
+
+	const applyObservatorySelectors = useCallback(
+		(cfg: any, balancers: BalancerConfig[]) => {
+			const nextConfig = { ...cfg };
+			const getStrategy = (balancer: BalancerConfig) => {
+				if (typeof balancer.strategy === "string") {
+					return balancer.strategy;
+				}
+				return balancer.strategy?.type || "random";
+			};
+			const collectSelectors = (items: BalancerConfig[]) => {
+				const selectorSet = new Set<string>();
+				items.forEach((balancer) => {
+					(balancer.selector || []).forEach((selector) => {
+						if (selector) selectorSet.add(selector);
+					});
+				});
+				return Array.from(selectorSet);
+			};
+			const leastPings = balancers.filter(
+				(balancer) => getStrategy(balancer) === "leastPing",
+			);
+			const leastLoads = balancers.filter((balancer) =>
+				["leastLoad", "roundRobin", "random"].includes(getStrategy(balancer)),
+			);
+
+			if (leastPings.length > 0) {
+				const observatory = nextConfig.observatory
+					? { ...nextConfig.observatory }
+					: { ...DEFAULT_OBSERVATORY };
+				observatory.subjectSelector = collectSelectors(leastPings);
+				nextConfig.observatory = observatory;
+			} else {
+				delete nextConfig.observatory;
+			}
+
+			if (leastLoads.length > 0) {
+				const burstObservatory = nextConfig.burstObservatory
+					? { ...nextConfig.burstObservatory }
+					: { ...DEFAULT_BURST_OBSERVATORY };
+				burstObservatory.subjectSelector = collectSelectors(leastLoads);
+				nextConfig.burstObservatory = burstObservatory;
+			} else {
+				delete nextConfig.burstObservatory;
+			}
+
+			return nextConfig;
+		},
+		[],
+	);
+
+	const normalizeBalancerConfig = useCallback((balancer: BalancerConfig) => {
+		const strategyType =
+			typeof balancer.strategy === "string"
+				? balancer.strategy
+				: balancer.strategy?.type;
+		const normalized: BalancerConfig = {
+			tag: balancer.tag ?? "",
+			selector: balancer.selector ?? [],
+			fallbackTag: balancer.fallbackTag ?? "",
+		};
+		if (strategyType && strategyType !== "random") {
+			normalized.strategy = { type: strategyType };
+		}
+		return normalized;
+	}, []);
+
+	const commitBalancers = useCallback(
+		(
+			balancers: BalancerConfig[],
+			options?: { oldTag?: string; newTag?: string },
+		) => {
+			const normalizedBalancers = balancers.map(normalizeBalancerConfig);
+			const cfg = { ...(form.getValues("config") || {}) };
+			if (!cfg.routing) cfg.routing = {};
+			if (normalizedBalancers.length > 0) {
+				cfg.routing.balancers = normalizedBalancers;
+			} else {
+				delete cfg.routing.balancers;
+			}
+			let updatedRules: RoutingRule[] | undefined;
+			if (
+				options?.oldTag &&
+				options?.newTag &&
+				options.oldTag !== options.newTag
+			) {
+				updatedRules = (cfg.routing.rules || []).map((rule: any) => {
+					if (rule?.balancerTag === options.oldTag) {
+						return { ...rule, balancerTag: options.newTag };
+					}
+					return rule;
+				});
+				cfg.routing.rules = updatedRules;
+			}
+			const updatedConfig = applyObservatorySelectors(cfg, normalizedBalancers);
+			form.setValue("config", updatedConfig, { shouldDirty: true });
+			setBalancersData(buildBalancerRows(normalizedBalancers));
+			if (updatedRules) {
+				syncRoutingRuleDisplay(updatedRules);
+			}
+			setJsonKey((prev) => prev + 1);
+		},
+		[
+			applyObservatorySelectors,
+			buildBalancerRows,
+			form,
+			normalizeBalancerConfig,
+			syncRoutingRuleDisplay,
+		],
+	);
+
+	const toBalancerConfig = useCallback(
+		(values: BalancerFormValues): BalancerConfig => {
+			const base: BalancerConfig = {
+				tag: values.tag.trim(),
+				selector: values.selector.map((item) => item.trim()).filter(Boolean),
+				fallbackTag: values.fallbackTag ?? "",
+			};
+			if (values.strategy && values.strategy !== "random") {
+				base.strategy = { type: values.strategy };
+			}
+			return base;
+		},
+		[],
+	);
+
+	const handleBalancerSubmit = (values: BalancerFormValues) => {
+		const balancers = getBalancers();
+		const nextBalancer = toBalancerConfig(values);
+		let oldTag: string | undefined;
+		if (
+			editingBalancerIndex !== null &&
+			editingBalancerIndex >= 0 &&
+			editingBalancerIndex < balancers.length
+		) {
+			oldTag = balancers[editingBalancerIndex]?.tag;
+			balancers[editingBalancerIndex] = nextBalancer;
+		} else {
+			balancers.push(nextBalancer);
+		}
+		commitBalancers(balancers, { oldTag, newTag: nextBalancer.tag });
+		setEditingBalancerIndex(null);
+		onBalancerClose();
+	};
+
 	const addBalancer = () => {
+		setEditingBalancerIndex(null);
 		onBalancerOpen();
 	};
 
-	const editBalancer = (_index: number) => {
+	const editBalancer = (index: number) => {
+		setEditingBalancerIndex(index);
 		onBalancerOpen();
+	};
+
+	const handleBalancerModalClose = () => {
+		setEditingBalancerIndex(null);
+		onBalancerClose();
 	};
 
 	const deleteBalancer = (index: number) => {
-		const newBalancers = [...balancersData];
-		const removedBalancer = newBalancers.splice(index, 1)[0];
-		form.setValue("config.routing.balancers", newBalancers, {
-			shouldDirty: true,
-		});
-		setBalancersData(newBalancers);
-		const newConfig = { ...form.getValues("config") };
-		if (newConfig.observatory) {
-			newConfig.observatory.subjectSelector =
-				newConfig.observatory.subjectSelector.filter(
-					(s: string) => s !== removedBalancer.tag,
-				);
-		}
-		if (newConfig.burstObservatory) {
-			newConfig.burstObservatory.subjectSelector =
-				newConfig.burstObservatory.subjectSelector.filter(
-					(s: string) => s !== removedBalancer.tag,
-				);
-		}
-		form.setValue("config", newConfig, { shouldDirty: true });
+		const balancers = getBalancers();
+		if (index < 0 || index >= balancers.length) return;
+		balancers.splice(index, 1);
+		commitBalancers(balancers);
 	};
 
 	const addDnsServer = () => {
@@ -835,12 +1097,31 @@ useEffect(() => {
 		setDnsServers(newDnsServers);
 	};
 
+	const applyDnsPreset = (servers: string[]) => {
+		const currentConfig = form.getValues("config");
+		const nextConfig = { ...currentConfig };
+		const dnsConfig = nextConfig.dns
+			? { ...nextConfig.dns }
+			: createDefaultDnsConfig();
+		dnsConfig.servers = [...servers];
+		nextConfig.dns = dnsConfig;
+		form.setValue("config", nextConfig, { shouldDirty: true });
+		setDnsServers(dnsConfig.servers);
+	};
+
 	const addFakeDns = () => {
+		setEditingFakeDnsIndex(null);
 		onFakeDnsOpen();
 	};
 
-	const editFakeDns = (_index: number) => {
+	const editFakeDns = (index: number) => {
+		setEditingFakeDnsIndex(index);
 		onFakeDnsOpen();
+	};
+
+	const handleFakeDnsModalClose = () => {
+		setEditingFakeDnsIndex(null);
+		onFakeDnsClose();
 	};
 
 	const deleteFakeDns = (index: number) => {
@@ -1216,13 +1497,9 @@ useEffect(() => {
 						(parsed?.routing?.rules as RoutingRule[]) || [],
 					);
 					setBalancersData(
-						parsed?.routing?.balancers?.map((b: any, index: number) => ({
-							key: index,
-							tag: b.tag || "",
-							strategy: b.strategy?.type || "random",
-							selector: b.selector || [],
-							fallbackTag: b.fallbackTag || "",
-						})) || [],
+						buildBalancerRows(
+							(parsed?.routing?.balancers as BalancerConfig[]) || [],
+						),
 					);
 					setDnsServers(parsed?.dns?.servers || []);
 					setFakeDns(parsed?.fakedns || []);
@@ -2124,76 +2401,101 @@ useEffect(() => {
 					</TabPanel>
 					<TabPanel>
 						<VStack spacing={4} align="stretch">
-							<Button
-								leftIcon={<AddIconStyled />}
-								{...compactActionButtonProps}
-								onClick={addBalancer}
-							>
-								{t("pages.xray.balancer.addBalancer")}
-							</Button>
-							<TableCard>
-								<TableGrid minW="680px">
-									<Thead>
-										<Tr>
-											<Th>#</Th>
-											<Th>{t("pages.xray.balancer.tag")}</Th>
-											<Th>{t("pages.xray.balancer.balancerStrategy")}</Th>
-											<Th>{t("pages.xray.balancer.balancerSelectors")}</Th>
-										</Tr>
-									</Thead>
-									<Tbody>
-										{balancersData.map((balancer, index) => (
-											<Tr key={balancer.key}>
-												<Td>
-													<HStack>
-														<Text>{index + 1}</Text>
-														<IconButton
-															aria-label="edit"
-															icon={<EditIconStyled />}
-															size="xs"
-															variant="ghost"
-															onClick={() => editBalancer(index)}
-														/>
-														<IconButton
-															aria-label="delete"
-															icon={<DeleteIconStyled />}
-															size="xs"
-															variant="ghost"
-															colorScheme="red"
-															onClick={() => deleteBalancer(index)}
-														/>
-													</HStack>
-												</Td>
-												<Td>{balancer.tag}</Td>
-												<Td>
-													<Tag
-														colorScheme={
-															balancer.strategy === "random"
-																? "purple"
-																: "green"
-														}
-													>
-														{balancer.strategy === "random"
-															? "Random"
-															: balancer.strategy === "roundRobin"
-																? "Round Robin"
-																: balancer.strategy === "leastLoad"
-																	? "Least Load"
-																	: "Least Ping"}
-													</Tag>
-												</Td>
-												<Td>
-													{balancer.selector.map((sel: string) => (
-														<Tag key={sel} colorScheme="blue" m={1}>
-															{sel}
-														</Tag>
-													))}
-												</Td>
-											</Tr>
-										))}
-									</Tbody>
-								</TableGrid>
-							</TableCard>
+							{balancersData.length > 0 ? (
+								<VStack spacing={3} align="stretch">
+									<Button
+										leftIcon={<AddIconStyled />}
+										{...compactActionButtonProps}
+										onClick={addBalancer}
+									>
+										{t("pages.xray.balancer.addBalancer")}
+									</Button>
+									<TableCard>
+										<TableGrid minW="680px">
+											<Thead>
+												<Tr>
+													<Th>#</Th>
+													<Th>{t("pages.xray.balancer.tag")}</Th>
+													<Th>{t("pages.xray.balancer.balancerStrategy")}</Th>
+													<Th>{t("pages.xray.balancer.balancerSelectors")}</Th>
+												</Tr>
+											</Thead>
+											<Tbody>
+												{balancersData.map((balancer, index) => (
+													<Tr key={balancer.key}>
+														<Td>
+															<HStack>
+																<Text>{index + 1}</Text>
+																<IconButton
+																	aria-label="edit"
+																	icon={<EditIconStyled />}
+																	size="xs"
+																	variant="ghost"
+																	onClick={() => editBalancer(index)}
+																/>
+																<IconButton
+																	aria-label="delete"
+																	icon={<DeleteIconStyled />}
+																	size="xs"
+																	variant="ghost"
+																	colorScheme="red"
+																	onClick={() => deleteBalancer(index)}
+																/>
+															</HStack>
+														</Td>
+														<Td>{balancer.tag}</Td>
+														<Td>
+															<Tag
+																colorScheme={
+																	balancer.strategy === "random"
+																		? "purple"
+																		: "green"
+																}
+															>
+																{balancer.strategy === "random"
+																	? "Random"
+																	: balancer.strategy === "roundRobin"
+																		? "Round Robin"
+																		: balancer.strategy === "leastLoad"
+																			? "Least Load"
+																			: "Least Ping"}
+															</Tag>
+														</Td>
+														<Td>
+															{balancer.selector.map((sel: string) => (
+																<Tag key={sel} colorScheme="blue" m={1}>
+																	{sel}
+																</Tag>
+															))}
+														</Td>
+													</Tr>
+												))}
+											</Tbody>
+										</TableGrid>
+									</TableCard>
+								</VStack>
+							) : (
+								<Box
+									borderWidth="1px"
+									borderStyle="dashed"
+									borderColor={emptyStateBorder}
+									borderRadius="lg"
+									bg={emptyStateBg}
+									p={4}
+									textAlign="center"
+								>
+									<Text color="gray.500" mb={3}>
+										{t("emptyBalancersDesc")}
+									</Text>
+									<Button
+										leftIcon={<AddIconStyled />}
+										{...compactActionButtonProps}
+										onClick={addBalancer}
+									>
+										{t("pages.xray.balancer.addBalancer")}
+									</Button>
+								</Box>
+							)}
 							{/* Observatory / Burst Observatory editor (if present in config) */}
 							{(form.getValues("config")?.observatory ||
 								form.getValues("config")?.burstObservatory) && (
@@ -2229,152 +2531,406 @@ useEffect(() => {
 					</TabPanel>
 					<TabPanel>
 						<VStack spacing={4} align="stretch">
-							<FormControl display="flex" alignItems="center">
-								<FormLabel>{t("pages.xray.dns.enable")}</FormLabel>
-								<Controller
-									name="config.dns"
-									control={form.control}
-									render={({ field }) => (
-										<Switch
-											isChecked={!!field.value}
-											onChange={(e) => {
-												const newConfig = { ...form.getValues("config") };
-												if (e.target.checked) {
-													newConfig.dns = {
-														servers: [],
-														queryStrategy: "UseIP",
-														tag: "dns_inbound",
-													};
-													setDnsServers([]);
-													setFakeDns([]);
-												} else {
-													delete newConfig.dns;
-													delete newConfig.fakedns;
-													setDnsServers([]);
-													setFakeDns([]);
-												}
-												form.setValue("config", newConfig, {
-													shouldDirty: true,
-												});
-												field.onChange(newConfig.dns);
-											}}
+							<SettingsSection title={t("pages.xray.generalConfigs")}>
+								<SettingRow
+									label={t("pages.xray.dns.enable")}
+									description={t("pages.xray.dns.enableDesc")}
+									controlId="dns-enable"
+								>
+									{(id) => (
+										<Controller
+											name="config.dns"
+											control={form.control}
+											render={({ field }) => (
+												<Switch
+													id={id}
+													isChecked={!!field.value}
+													onChange={(e) => {
+														const newConfig = {
+															...form.getValues("config"),
+														};
+														if (e.target.checked) {
+															newConfig.dns = createDefaultDnsConfig();
+															newConfig.fakedns = [];
+															setDnsServers([]);
+															setFakeDns([]);
+														} else {
+															delete newConfig.dns;
+															delete newConfig.fakedns;
+															setDnsServers([]);
+															setFakeDns([]);
+														}
+														form.setValue("config", newConfig, {
+															shouldDirty: true,
+														});
+														field.onChange(newConfig.dns);
+													}}
+												/>
+											)}
 										/>
 									)}
-								/>
-							</FormControl>
-							{form.watch("config.dns") && (
-								<>
-									<Button
-										leftIcon={<AddIconStyled />}
-										{...compactActionButtonProps}
-										onClick={addDnsServer}
-									>
-										{t("pages.xray.dns.add")}
-									</Button>
-									{dnsServers.length > 0 && (
-										<TableCard>
-											<TableGrid minW="720px">
-												<Thead>
-													<Tr>
-														<Th>#</Th>
-														<Th>{t("pages.xray.outbound.address")}</Th>
-														<Th>{t("pages.xray.dns.domains")}</Th>
-														<Th>{t("pages.xray.dns.expectIPs")}</Th>
-													</Tr>
-												</Thead>
-												<Tbody>
-													{dnsServers.map((dns, index) => (
-														<Tr key={dns.address ?? JSON.stringify(dns)}>
-															<Td>
-																<HStack>
-																	<Text>{index + 1}</Text>
-																	<IconButton
-																		aria-label="edit"
-																		icon={<EditIconStyled />}
-																		size="xs"
-																		variant="ghost"
-																		onClick={() => editDnsServer(index)}
-																	/>
-																	<IconButton
-																		aria-label="delete"
-																		icon={<DeleteIconStyled />}
-																		size="xs"
-																		variant="ghost"
-																		colorScheme="red"
-																		onClick={() => deleteDnsServer(index)}
-																	/>
-																</HStack>
-															</Td>
-															<Td>
-																{typeof dns === "object" ? dns.address : dns}
-															</Td>
-															<Td>
-																{typeof dns === "object"
-																	? formatList(dns.domains)
-																	: ""}
-															</Td>
-															<Td>
-																{typeof dns === "object"
-																	? formatList(dns.expectIPs)
-																	: ""}
-															</Td>
+								</SettingRow>
+								{dnsEnabled && (
+									<>
+										<SettingRow
+											label={t("pages.xray.dns.tag")}
+											description={t("pages.xray.dns.tagDesc")}
+											controlId="dns-tag"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.tag"
+													control={form.control}
+													render={({ field }) => (
+														<Input
+															id={id}
+															size="sm"
+															maxW="240px"
+															value={field.value ?? ""}
+															onChange={(event) =>
+																field.onChange(event.target.value)
+															}
+															placeholder="dns_inbound"
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.clientIp")}
+											description={t("pages.xray.dns.clientIpDesc")}
+											controlId="dns-client-ip"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.clientIp"
+													control={form.control}
+													render={({ field }) => (
+														<Input
+															id={id}
+															size="sm"
+															maxW="240px"
+															value={field.value ?? ""}
+															onChange={(event) =>
+																field.onChange(event.target.value)
+															}
+															placeholder="1.1.1.1"
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.strategy")}
+											description={t("pages.xray.dns.strategyDesc")}
+											controlId="dns-strategy"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.queryStrategy"
+													control={form.control}
+													render={({ field }) => (
+														<Select
+															id={id}
+															size="sm"
+															maxW="220px"
+															value={field.value ?? "UseIP"}
+															onChange={(event) =>
+																field.onChange(event.target.value)
+															}
+														>
+															{DNS_STRATEGY_OPTIONS.map((strategy) => (
+																<option key={strategy} value={strategy}>
+																	{strategy}
+																</option>
+															))}
+														</Select>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.disableCache")}
+											description={t("pages.xray.dns.disableCacheDesc")}
+											controlId="dns-disable-cache"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.disableCache"
+													control={form.control}
+													render={({ field }) => (
+														<Switch
+															id={id}
+															isChecked={Boolean(field.value)}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.disableFallback")}
+											description={t("pages.xray.dns.disableFallbackDesc")}
+											controlId="dns-disable-fallback"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.disableFallback"
+													control={form.control}
+													render={({ field }) => (
+														<Switch
+															id={id}
+															isChecked={Boolean(field.value)}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.disableFallbackIfMatch")}
+											description={t("pages.xray.dns.disableFallbackIfMatchDesc")}
+											controlId="dns-disable-fallback-match"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.disableFallbackIfMatch"
+													control={form.control}
+													render={({ field }) => (
+														<Switch
+															id={id}
+															isChecked={Boolean(field.value)}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.enableParallelQuery")}
+											description={t("pages.xray.dns.enableParallelQueryDesc")}
+											controlId="dns-parallel-query"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.enableParallelQuery"
+													control={form.control}
+													render={({ field }) => (
+														<Switch
+															id={id}
+															isChecked={Boolean(field.value)}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+										<SettingRow
+											label={t("pages.xray.dns.useSystemHosts")}
+											description={t("pages.xray.dns.useSystemHostsDesc")}
+											controlId="dns-system-hosts"
+										>
+											{(id) => (
+												<Controller
+													name="config.dns.useSystemHosts"
+													control={form.control}
+													render={({ field }) => (
+														<Switch
+															id={id}
+															isChecked={Boolean(field.value)}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											)}
+										</SettingRow>
+									</>
+								)}
+							</SettingsSection>
+							{dnsEnabled && (
+								<SectionCard title={t("DNS")}>
+									{dnsServers.length > 0 ? (
+										<VStack align="stretch" spacing={3}>
+											<Button
+												leftIcon={<AddIconStyled />}
+												{...compactActionButtonProps}
+												onClick={addDnsServer}
+											>
+												{t("pages.xray.dns.add")}
+											</Button>
+											<TableCard>
+												<TableGrid minW="720px">
+													<Thead>
+														<Tr>
+															<Th>#</Th>
+															<Th>{t("pages.xray.outbound.address")}</Th>
+															<Th>{t("pages.xray.dns.domains")}</Th>
+															<Th>{t("pages.xray.dns.expectIPs")}</Th>
 														</Tr>
-													))}
-												</Tbody>
-											</TableGrid>
-										</TableCard>
+													</Thead>
+													<Tbody>
+														{dnsServers.map((dns, index) => (
+															<Tr key={dns.address ?? JSON.stringify(dns)}>
+																<Td>
+																	<HStack>
+																		<Text>{index + 1}</Text>
+																		<IconButton
+																			aria-label="edit"
+																			icon={<EditIconStyled />}
+																			size="xs"
+																			variant="ghost"
+																			onClick={() => editDnsServer(index)}
+																		/>
+																		<IconButton
+																			aria-label="delete"
+																			icon={<DeleteIconStyled />}
+																			size="xs"
+																			variant="ghost"
+																			colorScheme="red"
+																			onClick={() => deleteDnsServer(index)}
+																		/>
+																	</HStack>
+																</Td>
+																<Td>
+																	{typeof dns === "object"
+																		? dns.address
+																		: dns}
+																</Td>
+																<Td>
+																	{typeof dns === "object"
+																		? formatList(dns.domains)
+																		: ""}
+																</Td>
+																<Td>
+																	{typeof dns === "object"
+																		? formatList(dns.expectIPs)
+																		: ""}
+																</Td>
+															</Tr>
+														))}
+													</Tbody>
+												</TableGrid>
+											</TableCard>
+										</VStack>
+									) : (
+										<Box
+											borderWidth="1px"
+											borderStyle="dashed"
+											borderColor={emptyStateBorder}
+											borderRadius="lg"
+											bg={emptyStateBg}
+											p={4}
+											textAlign="center"
+										>
+											<Text color="gray.500" mb={3}>
+												{t("emptyDnsDesc")}
+											</Text>
+											<HStack justify="center" spacing={2} flexWrap="wrap">
+												<Button
+													leftIcon={<AddIconStyled />}
+													{...compactActionButtonProps}
+													onClick={addDnsServer}
+												>
+													{t("pages.xray.dns.add")}
+												</Button>
+												<Button
+													size="xs"
+													variant="outline"
+													onClick={onDnsPresetsOpen}
+												>
+													{t("pages.xray.dns.presets")}
+												</Button>
+											</HStack>
+										</Box>
 									)}
-								</>
+								</SectionCard>
 							)}
-							{fakeDns.length > 0 && (
-								<>
-									<Button
-										leftIcon={<AddIconStyled />}
-										{...compactActionButtonProps}
-										onClick={addFakeDns}
-									>
-										{t("pages.xray.fakedns.add")}
-									</Button>
-									<TableCard>
-										<TableGrid minW="520px">
-											<Thead>
-												<Tr>
-													<Th>#</Th>
-													<Th>{t("pages.xray.fakedns.ipPool")}</Th>
-													<Th>{t("pages.xray.fakedns.poolSize")}</Th>
-												</Tr>
-											</Thead>
-											<Tbody>
-												{fakeDns.map((fake, index) => (
-													<Tr key={fake.ipPool ?? JSON.stringify(fake)}>
-														<Td>
-															<HStack>
-																<Text>{index + 1}</Text>
-																<IconButton
-																	aria-label="edit"
-																	icon={<EditIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	onClick={() => editFakeDns(index)}
-																/>
-																<IconButton
-																	aria-label="delete"
-																	icon={<DeleteIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	colorScheme="red"
-																	onClick={() => deleteFakeDns(index)}
-																/>
-															</HStack>
-														</Td>
-														<Td>{fake.ipPool}</Td>
-														<Td>{fake.poolSize}</Td>
-													</Tr>
-												))}
-											</Tbody>
-										</TableGrid>
-									</TableCard>
-								</>
+							{dnsEnabled && (
+								<SectionCard
+									title={t("pages.xray.fakedns.title", "Fake DNS")}
+								>
+									{fakeDns.length > 0 ? (
+										<VStack align="stretch" spacing={3}>
+											<Button
+												leftIcon={<AddIconStyled />}
+												{...compactActionButtonProps}
+												onClick={addFakeDns}
+											>
+												{t("pages.xray.fakedns.add")}
+											</Button>
+											<TableCard>
+												<TableGrid minW="520px">
+													<Thead>
+														<Tr>
+															<Th>#</Th>
+															<Th>{t("pages.xray.fakedns.ipPool")}</Th>
+															<Th>{t("pages.xray.fakedns.poolSize")}</Th>
+														</Tr>
+													</Thead>
+													<Tbody>
+														{fakeDns.map((fake, index) => (
+															<Tr key={fake.ipPool ?? JSON.stringify(fake)}>
+																<Td>
+																	<HStack>
+																		<Text>{index + 1}</Text>
+																		<IconButton
+																			aria-label="edit"
+																			icon={<EditIconStyled />}
+																			size="xs"
+																			variant="ghost"
+																			onClick={() => editFakeDns(index)}
+																		/>
+																		<IconButton
+																			aria-label="delete"
+																			icon={<DeleteIconStyled />}
+																			size="xs"
+																			variant="ghost"
+																			colorScheme="red"
+																			onClick={() => deleteFakeDns(index)}
+																		/>
+																	</HStack>
+																</Td>
+																<Td>{fake.ipPool}</Td>
+																<Td>{fake.poolSize}</Td>
+															</Tr>
+														))}
+													</Tbody>
+												</TableGrid>
+											</TableCard>
+										</VStack>
+									) : (
+										<Box
+											borderWidth="1px"
+											borderStyle="dashed"
+											borderColor={emptyStateBorder}
+											borderRadius="lg"
+											bg={emptyStateBg}
+											p={4}
+											textAlign="center"
+										>
+											<Text color="gray.500" mb={3}>
+												{t("emptyFakeDnsDesc")}
+											</Text>
+											<Button
+												leftIcon={<AddIconStyled />}
+												{...compactActionButtonProps}
+												onClick={addFakeDns}
+											>
+												{t("pages.xray.fakedns.add")}
+											</Button>
+										</Box>
+									)}
+								</SectionCard>
 							)}
 						</VStack>
 					</TabPanel>
@@ -2509,9 +3065,32 @@ useEffect(() => {
 			/>
 			<BalancerModal
 				isOpen={isBalancerOpen}
-				onClose={onBalancerClose}
-				form={form}
-				setBalancersData={setBalancersData}
+				onClose={handleBalancerModalClose}
+				mode={editingBalancerIndex !== null ? "edit" : "create"}
+				initialBalancer={
+					editingBalancerIndex !== null
+						? {
+								tag: balancersData[editingBalancerIndex]?.tag ?? "",
+								strategy:
+									balancersData[editingBalancerIndex]?.strategy ?? "random",
+								selector: balancersData[editingBalancerIndex]?.selector ?? [],
+								fallbackTag:
+									balancersData[editingBalancerIndex]?.fallbackTag ?? "",
+							}
+						: null
+				}
+				outboundTags={availableOutboundTags}
+				existingTags={availableBalancerTags
+					.map((tag) => tag.trim())
+					.filter(
+						(tag) =>
+							tag &&
+							tag !==
+								(editingBalancerIndex !== null
+									? balancersData[editingBalancerIndex]?.tag
+									: ""),
+					)}
+				onSubmit={handleBalancerSubmit}
 			/>
 			<DnsModal
 				isOpen={isDnsOpen}
@@ -2523,11 +3102,22 @@ useEffect(() => {
 					editingDnsIndex !== null ? dnsServers[editingDnsIndex] : null
 				}
 			/>
+			<DnsPresetsModal
+				isOpen={isDnsPresetsOpen}
+				onClose={onDnsPresetsClose}
+				onSelectPreset={applyDnsPreset}
+			/>
 			<FakeDnsModal
 				isOpen={isFakeDnsOpen}
-				onClose={onFakeDnsClose}
+				onClose={handleFakeDnsModalClose}
 				form={form}
 				setFakeDns={setFakeDns}
+				fakeDnsIndex={editingFakeDnsIndex}
+				currentFakeDnsData={
+					editingFakeDnsIndex !== null
+						? fakeDns[editingFakeDnsIndex]
+						: null
+				}
 			/>
 		</VStack>
 	);

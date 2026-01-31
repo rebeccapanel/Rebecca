@@ -124,7 +124,7 @@ export const InboundsManager: FC = () => {
 				);
 			}
 
-			const payload = buildInboundPayload(values);
+			const payload = buildInboundPayload(values, { initial: selected });
 			const url =
 				drawerMode === "create"
 					? "/inbounds"

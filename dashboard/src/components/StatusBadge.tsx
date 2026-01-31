@@ -29,8 +29,6 @@ export const StatusBadge: FC<UserStatusProps> = ({
 	const renderRelativeText = (key: "expires" | "expired") => {
 		const raw = t(key);
 		const [before = "", after = ""] = raw.split("{{time}}");
-		const trimmedBefore = before.trim();
-		const trimmedAfter = after.trim();
 		const timeNode =
 			dateInfo.time && dateInfo.time.length > 0 ? (
 				<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }} key="time">
@@ -40,20 +38,20 @@ export const StatusBadge: FC<UserStatusProps> = ({
 
 		const nodes: JSX.Element[] = [];
 		if (!isRTL) {
-			if (trimmedBefore) {
+			if (before) {
 				nodes.push(
 					<Text as="span" key="before">
-						{trimmedBefore}
+						{before}
 					</Text>,
 				);
 			}
 			if (timeNode) {
 				nodes.push(timeNode);
 			}
-			if (trimmedAfter) {
+			if (after) {
 				nodes.push(
 					<Text as="span" key="after">
-						{trimmedAfter}
+						{after}
 					</Text>,
 				);
 			}
@@ -61,17 +59,17 @@ export const StatusBadge: FC<UserStatusProps> = ({
 			if (timeNode) {
 				nodes.push(timeNode);
 			}
-			if (trimmedAfter) {
+			if (after) {
 				nodes.push(
 					<Text as="span" key="after">
-						{trimmedAfter}
+						{after}
 					</Text>,
 				);
 			}
-			if (trimmedBefore) {
+			if (before) {
 				nodes.push(
 					<Text as="span" key="before">
-						{trimmedBefore}
+						{before}
 					</Text>,
 				);
 			}
@@ -114,7 +112,7 @@ export const StatusBadge: FC<UserStatusProps> = ({
 				expiryDate !== undefined &&
 				dateInfo.time && (
 					<Text
-						display="inline-flex"
+						display="inline"
 						fontSize="xs"
 						fontWeight="medium"
 						color="gray.600"
@@ -122,8 +120,6 @@ export const StatusBadge: FC<UserStatusProps> = ({
 							color: "gray.400",
 						}}
 						as="span"
-						gap={1}
-						alignItems="center"
 					>
 						{isExpiry
 							? renderRelativeText("expires")

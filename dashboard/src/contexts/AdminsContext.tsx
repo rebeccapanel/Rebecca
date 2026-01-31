@@ -32,7 +32,7 @@ type AdminsStore = {
 	) => Promise<void>;
 	setFilters: (filters: Partial<AdminFilters>) => void;
 	onFilterChange: (filters: Partial<AdminFilters>) => void;
-	createAdmin: (payload: AdminCreatePayload) => Promise<void>;
+	createAdmin: (payload: AdminCreatePayload) => Promise<Admin>;
 	updateAdmin: (username: string, payload: AdminUpdatePayload) => Promise<void>;
 	deleteAdmin: (username: string) => Promise<void>;
 	resetUsage: (username: string) => Promise<void>;
@@ -181,8 +181,11 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		get().fetchAdmins(partial, { force: true });
 	},
 	async createAdmin(payload) {
-		await fetch("/admin", { method: "POST", body: payload });
-		await get().fetchAdmins(undefined, { force: true });
+		const created = await fetch<Admin>("/admin", {
+			method: "POST",
+			body: payload,
+		});
+		return created;
 	},
 	async updateAdmin(username, payload) {
 		await fetch(`/admin/${encodeURIComponent(username)}`, {

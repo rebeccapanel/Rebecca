@@ -63,7 +63,14 @@ import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useEffect, useMemo, useRef, useState } from "react";
+import {
+	cloneElement,
+	type FC,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { Admin } from "types/Admin";
 import { AdminManagementPermission, AdminRole, AdminStatus } from "types/Admin";
@@ -1345,7 +1352,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																} as const;
 																return (
 																	<Tr key={`skeleton-${idx}`}>
-																		{columnsToRender.map((key) => cells[key])}
+																		{columnsToRender.map((key) =>
+																			cloneElement(cells[key], { key }),
+																		)}
 																	</Tr>
 																);
 															},
@@ -1714,7 +1723,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																	_hover={{ bg: rowHoverBg }}
 																	transition="background-color 0.15s ease-in-out"
 																>
-																	{columnsToRender.map((key) => cells[key])}
+																	{columnsToRender.map((key) =>
+																		cloneElement(cells[key], { key }),
+																	)}
 																</Tr>
 															);
 														})}

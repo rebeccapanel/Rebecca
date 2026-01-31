@@ -62,6 +62,7 @@ import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import type { User, UserListItem } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
+import { generateUserLinks } from "utils/userLinks";
 import { fetch } from "service/http";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
@@ -1546,50 +1547,6 @@ type ActionButtonsProps = {
 	onDelete?: () => void;
 	onEdit?: () => void;
 	isRTL?: boolean;
-};
-
-const generateUserLinks = (
-	user: ActionButtonsUser,
-	linkTemplates?: Record<string, string[]>,
-): string[] => {
-	if ((user as User).link_data && linkTemplates && user.status === "active") {
-		const links: string[] = [];
-		let dataIndex = 0;
-
-		for (const [protocol, templates] of Object.entries(linkTemplates)) {
-			for (const template of templates) {
-				const linkDataList = (user as User).link_data;
-				if (linkDataList && dataIndex < linkDataList.length) {
-					const linkData = linkDataList[dataIndex];
-
-					if (linkData.protocol === protocol) {
-						let link = template;
-
-						if (linkData.uuid) {
-							link = link.replace(/{UUID}/g, linkData.uuid);
-						} else if (linkData.password) {
-							link = link.replace(
-								/{PASSWORD}/g,
-								encodeURIComponent(linkData.password),
-							);
-						} else if (linkData.password_b64) {
-							link = link.replace(/{PASSWORD_B64}/g, linkData.password_b64);
-						}
-
-						links.push(link);
-						dataIndex++;
-					}
-				}
-			}
-		}
-
-		if (links.length > 0) {
-			return links;
-		}
-	}
-
-	const legacyLinks = (user as Partial<User>).links;
-	return legacyLinks || [];
 };
 
 const ActionButtons: FC<ActionButtonsProps> = ({

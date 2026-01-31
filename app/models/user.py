@@ -581,7 +581,7 @@ class UserResponse(User):
     lifetime_used_traffic: int = 0
     next_plans: List[NextPlanModel] = Field(default_factory=list)
     created_at: datetime
-    links: List[str] = Field(default_factory=list, exclude=True)  # Excluded from response to reduce payload
+    links: List[str] = Field(default_factory=list)  # Config links for this user
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
     proxies: dict

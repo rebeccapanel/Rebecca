@@ -3,14 +3,20 @@ import type { FC, PropsWithChildren } from "react";
 
 export type IconType = {
 	color: string;
+	size?: number;
 };
 
-export const Icon: FC<PropsWithChildren<IconType>> = ({ children, color }) => {
+export const Icon: FC<PropsWithChildren<IconType>> = ({
+	children,
+	color,
+	size = 36,
+}) => {
+	const baseSize = `${size}px`;
 	return (
 		<Box
 			position="relative"
-			width="36px"
-			height="36px"
+			width={baseSize}
+			height={baseSize}
 			display="flex"
 			justifyContent="center"
 			alignItems="center"

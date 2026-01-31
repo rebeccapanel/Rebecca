@@ -22,7 +22,7 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes, ProxySettings
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
 from app.utils.xray_defaults import apply_log_paths
 from config import (
     DEBUG,
@@ -135,6 +135,20 @@ def _is_valid_uuid(uuid_value) -> bool:
     return False
 
 
+def _flow_supported_for_inbound(inbound: dict) -> bool:
+    """
+    XTLS flow is only supported on TCP/RAW/KCP transports with TLS/Reality
+    and non-HTTP headers. If inbound info is missing, treat as unsupported.
+    """
+    try:
+        network = inbound.get("network", "tcp")
+        tls_type = inbound.get("tls", "none")
+        header_type = inbound.get("header_type", "")
+    except Exception:
+        return False
+    return network in ("tcp", "raw", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
+
+
 class XRayConfig(dict):
     def __init__(self, config: Union[dict, str, PosixPath] = {}, api_host: str = "127.0.0.1", api_port: int = 8080):
         if isinstance(config, str):
@@ -176,19 +190,75 @@ class XRayConfig(dict):
 
     def _apply_api(self):
         api_inbound = self.get_inbound("API_INBOUND")
-        if not api_inbound:
-            return
+        # Always enable API services/policy at runtime (do not persist).
+        self["api"] = {"services": ["HandlerService", "StatsService", "LoggerService"], "tag": "API"}
+        self["stats"] = {}
+        forced_policies = {
+            "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True}},
+            "system": {
+                "statsInboundDownlink": False,
+                "statsInboundUplink": False,
+                "statsOutboundDownlink": True,
+                "statsOutboundUplink": True,
+            },
+        }
+        current_policy = self.get("policy")
+        if not isinstance(current_policy, dict):
+            if isinstance(current_policy, str):
+                try:
+                    current_policy = json.loads(current_policy)
+                except Exception:
+                    current_policy = {}
+            else:
+                current_policy = {}
 
-        listen_value = api_inbound.get("listen")
-        if isinstance(listen_value, dict):
-            listen_value["address"] = self.api_host
-            api_inbound["listen"] = listen_value
+        if current_policy:
+            self["policy"] = merge_dicts(current_policy, forced_policies)
         else:
-            api_inbound["listen"] = self.api_host
-        api_inbound["port"] = self.api_port
-        settings = api_inbound.get("settings")
-        if isinstance(settings, dict):
-            settings["address"] = self.api_host
+            self["policy"] = forced_policies
+
+        if api_inbound:
+            listen_value = api_inbound.get("listen")
+            if isinstance(listen_value, dict):
+                listen_value["address"] = self.api_host
+                api_inbound["listen"] = listen_value
+            else:
+                api_inbound["listen"] = self.api_host
+            api_inbound["port"] = self.api_port
+            settings = api_inbound.get("settings")
+            if isinstance(settings, dict):
+                settings["address"] = self.api_host
+            else:
+                api_inbound["settings"] = {"address": self.api_host}
+        else:
+            inbound = {
+                "listen": self.api_host,
+                "port": self.api_port,
+                "protocol": "dokodemo-door",
+                "settings": {"address": self.api_host},
+                "tag": "API_INBOUND",
+            }
+            try:
+                self["inbounds"].insert(0, inbound)
+            except KeyError:
+                self["inbounds"] = []
+                self["inbounds"].insert(0, inbound)
+
+        rule = {"inboundTag": ["API_INBOUND"], "outboundTag": "API", "type": "field"}
+        rules = None
+        if isinstance(self.get("routing"), dict):
+            rules = self.get("routing", {}).get("rules")
+        if not isinstance(rules, list):
+            self["routing"] = {"rules": []}
+            rules = self["routing"]["rules"]
+        if not any(
+            isinstance(r, dict)
+            and r.get("type") == "field"
+            and r.get("outboundTag") == "API"
+            and "API_INBOUND" in (r.get("inboundTag") or [])
+            for r in rules
+        ):
+            rules.insert(0, rule)
 
     def _migrate_deprecated_configs(self):
         """Migrate deprecated config formats to new formats to avoid deprecation warnings."""
@@ -459,15 +529,23 @@ class XRayConfig(dict):
                 elif net in ("splithttp", "xhttp"):
                     settings["path"] = net_settings.get("path", "")
                     host = net_settings.get("host", "")
-                    settings["host"] = [host]
-                    settings["scMaxEachPostBytes"] = net_settings.get("scMaxEachPostBytes", 1000000)
-                    settings["scMaxConcurrentPosts"] = net_settings.get("scMaxConcurrentPosts", 100)
-                    settings["scMinPostsIntervalMs"] = net_settings.get("scMinPostsIntervalMs", 30)
-                    settings["xPaddingBytes"] = net_settings.get("xPaddingBytes", "100-1000")
-                    settings["xmux"] = net_settings.get("xmux", {})
-                    settings["mode"] = net_settings.get("mode", "auto")
-                    settings["noGRPCHeader"] = net_settings.get("noGRPCHeader", False)
-                    settings["keepAlivePeriod"] = net_settings.get("keepAlivePeriod", 0)
+                    settings["host"] = [host] if host else []
+                    if "scMaxEachPostBytes" in net_settings:
+                        settings["scMaxEachPostBytes"] = net_settings.get("scMaxEachPostBytes")
+                    if "scMaxConcurrentPosts" in net_settings:
+                        settings["scMaxConcurrentPosts"] = net_settings.get("scMaxConcurrentPosts")
+                    if "scMinPostsIntervalMs" in net_settings:
+                        settings["scMinPostsIntervalMs"] = net_settings.get("scMinPostsIntervalMs")
+                    if "xPaddingBytes" in net_settings:
+                        settings["xPaddingBytes"] = net_settings.get("xPaddingBytes")
+                    if "xmux" in net_settings and net_settings.get("xmux") is not None:
+                        settings["xmux"] = net_settings.get("xmux")
+                    if "mode" in net_settings:
+                        settings["mode"] = net_settings.get("mode")
+                    if "noGRPCHeader" in net_settings:
+                        settings["noGRPCHeader"] = net_settings.get("noGRPCHeader")
+                    if "keepAlivePeriod" in net_settings:
+                        settings["keepAlivePeriod"] = net_settings.get("keepAlivePeriod")
 
                 elif net == "kcp":
                     header = net_settings.get("header", {})
@@ -528,6 +606,7 @@ class XRayConfig(dict):
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
+                    db_models.User.flow,
                     func.lower(db_models.Proxy.type).label("type"),
                     db_models.Proxy.settings,
                     func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label(
@@ -545,6 +624,7 @@ class XRayConfig(dict):
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
+                    db_models.User.flow,
                     db_models.Proxy.settings,
                 )
             )
@@ -558,6 +638,7 @@ class XRayConfig(dict):
                         row.id,
                         row.username,
                         row.credential_key,
+                        row.flow,
                         row.settings,
                         [i for i in row.excluded_inbound_tags.split(",") if i] if row.excluded_inbound_tags else None,
                     )
@@ -572,7 +653,7 @@ class XRayConfig(dict):
                     clients = config.get_inbound(inbound["tag"])["settings"]["clients"]
 
                     for row in rows:
-                        user_id, username, credential_key, settings, excluded_inbound_tags = row
+                        user_id, username, credential_key, user_flow, settings, excluded_inbound_tags = row
 
                         if excluded_inbound_tags and inbound["tag"] in excluded_inbound_tags:
                             continue
@@ -591,25 +672,21 @@ class XRayConfig(dict):
 
                         try:
                             settings_obj = ProxySettings.from_dict(proxy_type_enum, settings.copy())
-                            runtime_settings = runtime_proxy_settings(
-                                settings_obj, proxy_type_enum, credential_key, flow=None
-                            )
+                            flow_value = normalize_flow_value(user_flow) if user_flow else None
+                            if flow_value and proxy_type_enum in (ProxyTypes.VLESS, ProxyTypes.Trojan):
+                                runtime_settings = runtime_proxy_settings(
+                                    settings_obj, proxy_type_enum, credential_key, flow=flow_value
+                                )
+                            else:
+                                runtime_settings = runtime_proxy_settings(settings_obj, proxy_type_enum, credential_key)
 
                             client_to_add = {"email": email, **runtime_settings}
 
                             if client_to_add.get("id") is not None:
                                 client_to_add["id"] = str(client_to_add["id"])
 
-                            if client_to_add.get("flow") and inbound:
-                                network = inbound.get("network", "tcp")
-                                tls_type = inbound.get("tls", "none")
-                                header_type = inbound.get("header_type", "")
-                                flow_supported = (
-                                    network in ("tcp", "raw", "kcp")
-                                    and tls_type in ("tls", "reality")
-                                    and header_type != "http"
-                                )
-                                if not flow_supported:
+                            if client_to_add.get("flow"):
+                                if not _flow_supported_for_inbound(inbound or {}):
                                     del client_to_add["flow"]
                         except Exception as e:
                             logger = logging.getLogger("uvicorn.error")

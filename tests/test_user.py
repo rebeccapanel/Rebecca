@@ -495,6 +495,42 @@ def _create_service_with_host(db, name: str):
     )
 
 
+def test_add_user_auto_service_from_inbound_tag(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        service = _create_service_with_host(db, f"auto-svc-{unique}")
+        service_id = service.id
+
+    assert service_id is not None
+    auto_tag = f"setservice-{service_id}"
+    username = f"autosvc-{unique}"
+
+    with (
+        patch(
+            "app.routers.user.xray.config.inbounds_by_protocol",
+            {"vmess": [{"tag": "VMess TCP"}]},
+        ),
+        patch(
+            "app.routers.user.xray.config.inbounds_by_tag",
+            {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}},
+        ),
+    ):
+        response = auth_client.post(
+            "/api/user",
+            json={
+                "username": username,
+                "inbounds": {"vmess": [auto_tag]},
+            },
+        )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["service_id"] == service_id
+    assert "vmess" in data["inbounds"]
+    assert "VMess TCP" in data["inbounds"]["vmess"]
+    assert auto_tag not in data["inbounds"]["vmess"]
+
+
 def test_update_user_service_change(auth_client: TestClient):
     unique = uuid4().hex[:6]
     with TestingSessionLocal() as db:
