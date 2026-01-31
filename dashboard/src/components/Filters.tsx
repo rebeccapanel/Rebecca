@@ -22,6 +22,7 @@ import {
 	Select,
 	Spinner,
 	Stack,
+	Tooltip,
 	Tag,
 	TagCloseButton,
 	TagLabel,
@@ -36,6 +37,7 @@ import {
 	MagnifyingGlassIcon,
 	PlusIcon,
 	XMarkIcon,
+	QuestionMarkCircleIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
@@ -66,6 +68,7 @@ const FilterIcon = chakra(FunnelIcon, iconProps);
 const ClearIcon = chakra(XMarkIcon, iconProps);
 export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 const PlusIconStyled = chakra(PlusIcon, iconProps);
+const HelpIcon = chakra(QuestionMarkCircleIcon, iconProps);
 
 type AdvancedFilterOption = {
 	key: string;
@@ -322,6 +325,25 @@ export const Filters: FC<FilterProps> = ({
 		>
 			<GridItem colSpan={{ base: 1, md: 1, lg: 1 }} order={{ base: 2, md: 1 }}>
 				<VStack spacing={2} align="stretch" w="full">
+					{isUserFilters && (
+						<HStack spacing={1} align="center">
+							<Text fontSize="xs" color="gray.500">
+								{t("users.searchHelpLabel", "Search tips")}
+							</Text>
+							<Tooltip
+								label={t(
+									"users.searchHelp",
+									"Search by username, key, token, UUID, config link, or subscription URL.",
+								)}
+								placement="top"
+								hasArrow
+							>
+								<Box display="inline-flex" alignItems="center">
+									<HelpIcon />
+								</Box>
+							</Tooltip>
+						</HStack>
+					)}
 					<HStack spacing={2} align="center" w="full" flexWrap="wrap">
 						<InputGroup
 							flex={{ base: "1 1 100%", sm: "1 1 auto" }}

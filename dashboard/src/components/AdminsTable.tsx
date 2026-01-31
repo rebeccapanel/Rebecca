@@ -698,6 +698,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		sx: { ...baseTableSx, ...(normalizedSx || {}) },
 	};
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
+	const isSearching =
+		typeof filters.search === "string" && filters.search.trim().length > 0;
+	const hideSummaryCard = !isDesktop && isSearching;
 
 	const summaryData = useMemo(() => {
 		const usageTotal = admins.reduce(
@@ -1016,113 +1019,115 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	return (
 		<>
 			<Stack spacing={3}>
-				<Card
-					borderWidth="1px"
-					borderColor="light-border"
-					bg="surface.light"
-					_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-				>
-					<CardHeader
-						borderBottomWidth="1px"
+				<Collapse in={!hideSummaryCard} animateOpacity>
+					<Card
+						borderWidth="1px"
 						borderColor="light-border"
-						_dark={{ borderColor: "whiteAlpha.200" }}
-						pb={3}
+						bg="surface.light"
+						_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
 					>
-						<HStack
-							justify="space-between"
-							align="center"
-							flexWrap="wrap"
-							gap={2}
+						<CardHeader
+							borderBottomWidth="1px"
+							borderColor="light-border"
+							_dark={{ borderColor: "whiteAlpha.200" }}
+							pb={3}
 						>
-							<HStack spacing={2} align="baseline" flexWrap="wrap">
-								<Text fontWeight="semibold">
-									{t("admins.manageTab", "Admins")}
-								</Text>
-								<Text color="gray.500" _dark={{ color: "gray.400" }}>
-									·
-								</Text>
-								<Text
-									fontSize="sm"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{t("admins.totalLabel", "Total")}:{" "}
-									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-										{formatCount(summaryData.totalCount, locale)}
-									</chakra.span>
-								</Text>
-								<Text color="gray.500" _dark={{ color: "gray.400" }}>
-									·
-								</Text>
-								<Text
-									fontSize="sm"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{t("UsersUsage")}:{" "}
-									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-										{formatBytes(summaryData.usageTotal)}
-									</chakra.span>
-								</Text>
+							<HStack
+								justify="space-between"
+								align="center"
+								flexWrap="wrap"
+								gap={2}
+							>
+								<HStack spacing={2} align="baseline" flexWrap="wrap">
+									<Text fontWeight="semibold">
+										{t("admins.manageTab", "Admins")}
+									</Text>
+									<Text color="gray.500" _dark={{ color: "gray.400" }}>
+										·
+									</Text>
+									<Text
+										fontSize="sm"
+										color="gray.600"
+										_dark={{ color: "gray.400" }}
+									>
+										{t("admins.totalLabel", "Total")}:{" "}
+										<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+											{formatCount(summaryData.totalCount, locale)}
+										</chakra.span>
+									</Text>
+									<Text color="gray.500" _dark={{ color: "gray.400" }}>
+										·
+									</Text>
+									<Text
+										fontSize="sm"
+										color="gray.600"
+										_dark={{ color: "gray.400" }}
+									>
+										{t("UsersUsage")}:{" "}
+										<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+											{formatBytes(summaryData.usageTotal)}
+										</chakra.span>
+									</Text>
+								</HStack>
 							</HStack>
-						</HStack>
-					</CardHeader>
-					<CardBody>
-						<Stack
-							spacing={5}
-							direction={{ base: "column", lg: "row" }}
-							flexWrap="wrap"
-							align="flex-start"
-						>
-							<HStack spacing={3} flexWrap="wrap" align="center">
-								<Text fontWeight="semibold">{t("status.active")}</Text>
-								<RoleChip
-									label={t("admins.roles.fullAccess", "Full access")}
-									value={summaryData.rolesActive.fullAccessCount}
-									color="yellow.500"
-								/>
-								<RoleChip
-									label={t("admins.roles.sudo", "Sudo")}
-									value={summaryData.rolesActive.sudoCount}
-									color="purple.400"
-								/>
-								<RoleChip
-									label={t("admins.roles.reseller", "Reseller")}
-									value={summaryData.rolesActive.resellerCount}
-									color="blue.400"
-								/>
-								<RoleChip
-									label={t("admins.roles.standard", "Standard")}
-									value={summaryData.rolesActive.standardCount}
-									color="gray.500"
-								/>
-							</HStack>
-							<HStack spacing={3} flexWrap="wrap" align="center">
-								<Text fontWeight="semibold">{t("status.disabled")}</Text>
-								<RoleChip
-									label={t("admins.roles.fullAccess", "Full access")}
-									value={summaryData.rolesDisabled.fullAccessCount}
-									color="yellow.500"
-								/>
-								<RoleChip
-									label={t("admins.roles.sudo", "Sudo")}
-									value={summaryData.rolesDisabled.sudoCount}
-									color="purple.400"
-								/>
-								<RoleChip
-									label={t("admins.roles.reseller", "Reseller")}
-									value={summaryData.rolesDisabled.resellerCount}
-									color="blue.400"
-								/>
-								<RoleChip
-									label={t("admins.roles.standard", "Standard")}
-									value={summaryData.rolesDisabled.standardCount}
-									color="gray.500"
-								/>
-							</HStack>
-						</Stack>
-					</CardBody>
-				</Card>
+						</CardHeader>
+						<CardBody>
+							<Stack
+								spacing={5}
+								direction={{ base: "column", lg: "row" }}
+								flexWrap="wrap"
+								align="flex-start"
+							>
+								<HStack spacing={3} flexWrap="wrap" align="center">
+									<Text fontWeight="semibold">{t("status.active")}</Text>
+									<RoleChip
+										label={t("admins.roles.fullAccess", "Full access")}
+										value={summaryData.rolesActive.fullAccessCount}
+										color="yellow.500"
+									/>
+									<RoleChip
+										label={t("admins.roles.sudo", "Sudo")}
+										value={summaryData.rolesActive.sudoCount}
+										color="purple.400"
+									/>
+									<RoleChip
+										label={t("admins.roles.reseller", "Reseller")}
+										value={summaryData.rolesActive.resellerCount}
+										color="blue.400"
+									/>
+									<RoleChip
+										label={t("admins.roles.standard", "Standard")}
+										value={summaryData.rolesActive.standardCount}
+										color="gray.500"
+									/>
+								</HStack>
+								<HStack spacing={3} flexWrap="wrap" align="center">
+									<Text fontWeight="semibold">{t("status.disabled")}</Text>
+									<RoleChip
+										label={t("admins.roles.fullAccess", "Full access")}
+										value={summaryData.rolesDisabled.fullAccessCount}
+										color="yellow.500"
+									/>
+									<RoleChip
+										label={t("admins.roles.sudo", "Sudo")}
+										value={summaryData.rolesDisabled.sudoCount}
+										color="purple.400"
+									/>
+									<RoleChip
+										label={t("admins.roles.reseller", "Reseller")}
+										value={summaryData.rolesDisabled.resellerCount}
+										color="blue.400"
+									/>
+									<RoleChip
+										label={t("admins.roles.standard", "Standard")}
+										value={summaryData.rolesDisabled.standardCount}
+										color="gray.500"
+									/>
+								</HStack>
+							</Stack>
+						</CardBody>
+					</Card>
+				</Collapse>
 				<Box position="relative">
 					<Card
 						borderWidth="1px"

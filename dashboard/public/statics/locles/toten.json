@@ -1,15 +1,44 @@
 {
   "meta": {
-    "updated": "2025-12-31"
+    "updated": "2026-01-31 15:05"
   },
   "intro": "This page is a quick walk-through so you can ship accounts fast without touching the backend.",
   "quickTips": [
     "When you create a fresh user, set the status to on hold so it only starts counting after the first connection.",
     "Always leave a short note (monthly, test, VIP) so future-you remembers what this account is for.",
     "If someone says the link is broken, copy the subscription URL or QR from the table to generate a clean link.",
-    "Before deleting an account, revoke the subscription so old links stop working."
+    "Before deleting an account, revoke the subscription so old links stop working.",
+    "Pro tip: the Users search box accepts subscription links, tokens, keys, UUIDs, and full config links."
   ],
   "sections": [
+    {
+      "id": "user-search",
+      "title": "Search users by links or IDs",
+      "description": "You can paste almost anything from a user and find them instantly.",
+      "steps": [
+        "Paste a subscription URL (token, key, or username/key) into the Users search box.",
+        "Paste a config link (vless/vmess/trojan/shadowsocks) to find the owner.",
+        "You can also search by UUID, credential key, or raw token."
+      ],
+      "hints": [
+        "If a user cannot connect, paste their exact config link to locate the account quickly.",
+        "Search accepts both plain values and full URLs."
+      ]
+    },
+    {
+      "id": "single-config",
+      "title": "Get a single config",
+      "description": "When you need a one-off config for a user, grab it from the Links tab.",
+      "steps": [
+        "On the Users page, click the edit icon for the user.",
+        "Open the \"Links\" tab.",
+        "Use the QR or copy button to grab the single config."
+      ],
+      "hints": [
+        "QR is fastest for sharing to phones; copy is best for messaging.",
+        "If the subscription link is broken, the single config works as a fallback."
+      ]
+    },
     {
       "id": "create-user",
       "title": "Create user",

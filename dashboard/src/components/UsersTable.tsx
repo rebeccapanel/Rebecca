@@ -1099,7 +1099,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									</Select>
 								</HStack>
 							</Flex>
-							{!isDesktop && (
+							{!isDesktop && !(isMobile && hasSearchQuery) && (
 								<SimpleGrid columns={{ base: 2 }} gap={3}>
 									{summaryItems.map((item, idx) => (
 										<SummaryStat key={`${item.label}-${idx}`} {...item} />

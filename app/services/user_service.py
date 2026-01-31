@@ -20,6 +20,7 @@ from app.redis.cache import get_user_pending_usage_state
 from app.runtime import logger
 from app.utils.subscription_links import build_subscription_links
 from app.subscription.share import generate_v2ray_links
+from app.utils.credentials import UUID_PROTOCOLS, uuid_to_key
 from app.services.cache_adapter import (
     merge_pending_usage as _merge_pending_usage_model,
     get_user_from_cache,
@@ -231,9 +232,68 @@ def _filter_users_raw(
             return False
 
         if search_lower:
+            extracted_username, extracted_key = crud._extract_subscription_identifiers(search)
+            config_uuids, config_passwords = crud._extract_config_identifiers(search)
+            fallback_uuids, fallback_passwords = crud._extract_config_fallback(search)
+            if extracted_username and (u.get("username") or "").lower() == extracted_username.lower():
+                return True
+            key_candidates, uuid_candidates = crud._derive_search_tokens(search)
+            uuid_candidates.update(config_uuids)
+            uuid_candidates.update(fallback_uuids)
+            if fallback_passwords:
+                config_passwords = set(config_passwords)
+                config_passwords.update(fallback_passwords)
+            for candidate in list(config_uuids):
+                for proxy_type in UUID_PROTOCOLS:
+                    try:
+                        key_candidates.add(uuid_to_key(candidate, proxy_type))
+                    except Exception:
+                        continue
+            for candidate in list(fallback_uuids):
+                for proxy_type in UUID_PROTOCOLS:
+                    try:
+                        key_candidates.add(uuid_to_key(candidate, proxy_type))
+                    except Exception:
+                        continue
+            if extracted_key:
+                cleaned_key = extracted_key.replace("-", "").lower()
+                if cleaned_key:
+                    key_candidates.add(cleaned_key)
+                key_candidates.add(extracted_key.lower())
+
             username = (u.get("username") or "").lower()
             note = (u.get("note") or "").lower()
             if search_lower not in username and (not note or search_lower not in note):
+                # Check credential_key, uuid and other fields before failing
+                credential_key = (u.get("credential_key") or "").lower()
+                if credential_key and search_lower in credential_key:
+                    return True
+                if key_candidates:
+                    normalized_key = credential_key.replace("-", "")
+                    if normalized_key in key_candidates:
+                        return True
+                if uuid_candidates:
+                    proxies = u.get("proxies") or []
+                    for proxy in proxies:
+                        settings = proxy.get("settings") if isinstance(proxy, dict) else None
+                        proxy_id = None
+                        proxy_password = None
+                        if isinstance(settings, dict):
+                            proxy_id = settings.get("id")
+                            proxy_password = settings.get("password")
+                        elif isinstance(settings, str):
+                            try:
+                                parsed_settings = json.loads(settings)
+                                if isinstance(parsed_settings, dict):
+                                    proxy_id = parsed_settings.get("id")
+                                    proxy_password = parsed_settings.get("password")
+                            except Exception:
+                                proxy_id = None
+                                proxy_password = None
+                        if proxy_id and proxy_id in uuid_candidates:
+                            return True
+                        if proxy_password and proxy_password in config_passwords:
+                            return True
                 return False
 
         if normalized_filters:

@@ -4,9 +4,12 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 
 import logging
 import json
+from base64 import b64decode
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 import uuid
+import re
+from urllib.parse import urlparse, unquote
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from sqlalchemy import and_, exists, func, or_, inspect
@@ -43,9 +46,11 @@ from app.models.user import (
     UserModify,
     UserStatus,
 )
+from app.utils.jwt import get_subscription_payload
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from config import (
     USERS_AUTODELETE_DAYS,
+    XRAY_SUBSCRIPTION_PATH,
 )
 
 # MasterSettingsService not available in current project structure
@@ -205,6 +210,7 @@ ONLINE_ACTIVE_WINDOW = timedelta(minutes=5)
 OFFLINE_STALE_WINDOW = timedelta(hours=24)
 UPDATE_STALE_WINDOW = timedelta(hours=24)
 _HEX_DIGITS = frozenset("0123456789abcdef")
+_UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 STATUS_FILTER_MAP = {
     "expired": UserStatus.expired,
@@ -212,6 +218,117 @@ STATUS_FILTER_MAP = {
     "disabled": UserStatus.disabled,
     "on_hold": UserStatus.on_hold,
 }
+
+
+def _decode_b64(value: str) -> Optional[str]:
+    if not value:
+        return None
+    normalized = value.replace("-", "+").replace("_", "/")
+    padding = (-len(normalized)) % 4
+    if padding:
+        normalized += "=" * padding
+    try:
+        return b64decode(normalized.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+
+
+def _extract_config_identifiers(value: str) -> Tuple[Set[str], Set[str]]:
+    """Extract UUIDs and passwords from config links (vless/vmess/trojan/ss)."""
+    uuid_candidates: Set[str] = set()
+    password_candidates: Set[str] = set()
+    raw = (value or "").strip()
+    if "://" not in raw:
+        return uuid_candidates, password_candidates
+
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return uuid_candidates, password_candidates
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme == "vmess":
+        payload = raw.split("://", 1)[1]
+        payload = payload.split("#", 1)[0]
+        decoded = _decode_b64(payload)
+        if decoded:
+            try:
+                data = json.loads(decoded)
+                vmess_id = data.get("id") or data.get("uuid")
+                if isinstance(vmess_id, str) and vmess_id:
+                    try:
+                        uuid_candidates.add(str(uuid.UUID(vmess_id)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        return uuid_candidates, password_candidates
+
+    netloc = parsed.netloc or ""
+    if "@" in netloc:
+        userinfo, _ = netloc.split("@", 1)
+    else:
+        userinfo = netloc
+
+    if scheme == "ss":
+        if userinfo and ":" not in userinfo:
+            decoded = _decode_b64(userinfo)
+            if decoded:
+                userinfo = decoded.split("@", 1)[0]
+        if userinfo and ":" in userinfo:
+            try:
+                _, password = userinfo.split(":", 1)
+                if password:
+                    password_candidates.add(password)
+            except Exception:
+                pass
+        return uuid_candidates, password_candidates
+
+    if scheme == "vless":
+        if userinfo:
+            try:
+                uuid_candidates.add(str(uuid.UUID(userinfo)))
+            except Exception:
+                pass
+        return uuid_candidates, password_candidates
+
+    if scheme == "trojan":
+        if userinfo:
+            password_candidates.add(userinfo)
+        return uuid_candidates, password_candidates
+
+    return uuid_candidates, password_candidates
+
+
+def _extract_config_fallback(value: str) -> Tuple[Set[str], Set[str]]:
+    uuid_candidates: Set[str] = set()
+    password_candidates: Set[str] = set()
+    raw = (value or "").strip()
+    if not raw:
+        return uuid_candidates, password_candidates
+
+    for match in _UUID_PATTERN.findall(raw):
+        try:
+            uuid_candidates.add(str(uuid.UUID(match)))
+        except Exception:
+            continue
+
+    if raw.lower().startswith(("trojan://", "ss://")):
+        try:
+            after_scheme = raw.split("://", 1)[1]
+            userinfo = after_scheme.split("@", 1)[0]
+            if raw.lower().startswith("ss://") and ":" not in userinfo:
+                decoded = _decode_b64(userinfo)
+                if decoded:
+                    userinfo = decoded.split("@", 1)[0]
+            if userinfo and ":" in userinfo:
+                userinfo = userinfo.split(":", 1)[1]
+            if userinfo:
+                password_candidates.add(userinfo)
+        except Exception:
+            pass
+
+    return uuid_candidates, password_candidates
 
 
 def _derive_search_tokens(value: str) -> Tuple[Set[str], Set[str]]:
@@ -243,6 +360,61 @@ def _derive_search_tokens(value: str) -> Tuple[Set[str], Set[str]]:
                 continue
 
     return key_candidates, uuid_candidates
+
+
+def _looks_like_key(value: str) -> bool:
+    cleaned = value.strip().replace("-", "").lower()
+    return len(cleaned) == 32 and all(ch in _HEX_DIGITS for ch in cleaned)
+
+
+def _extract_subscription_identifiers(value: str) -> Tuple[Optional[str], Optional[str]]:
+    raw = (value or "").strip()
+    if not raw:
+        return None, None
+
+    token_username: Optional[str] = None
+    direct_payload = get_subscription_payload(raw)
+    if direct_payload:
+        token_username = direct_payload.get("username")
+
+    candidate_path = raw
+    if "://" in raw:
+        try:
+            parsed = urlparse(raw)
+            candidate_path = parsed.path or ""
+        except Exception:
+            candidate_path = raw
+
+    candidate_path = candidate_path.split("?", 1)[0].split("#", 1)[0]
+    parts = [part for part in candidate_path.split("/") if part]
+    sub_path = (XRAY_SUBSCRIPTION_PATH or "sub").strip("/").lower()
+    username: Optional[str] = None
+    credential_key: Optional[str] = None
+
+    if parts:
+        try:
+            idx = next(i for i, part in enumerate(parts) if part.lower() == sub_path)
+            after = parts[idx + 1 :]
+        except StopIteration:
+            after = []
+
+        if after:
+            if len(after) >= 2:
+                username = unquote(after[0])
+                credential_key = after[1]
+            elif len(after) == 1:
+                possible = after[0]
+                if _looks_like_key(possible):
+                    credential_key = possible
+                else:
+                    payload = get_subscription_payload(possible)
+                    if payload:
+                        token_username = payload.get("username")
+
+    if token_username and not username:
+        username = token_username
+
+    return username, credential_key
 
 
 def _apply_advanced_user_filters(
@@ -409,10 +581,30 @@ def _filter_users_in_memory(
     if search:
         search_lower = search.lower()
         key_candidates, uuid_candidates = _derive_search_tokens(search)
+        config_uuids, config_passwords = _extract_config_identifiers(search)
+        fallback_uuids, fallback_passwords = _extract_config_fallback(search)
+        uuid_candidates.update(config_uuids)
+        uuid_candidates.update(fallback_uuids)
+        password_candidates = set(config_passwords)
+        password_candidates.update(fallback_passwords)
+        for candidate in list(uuid_candidates):
+            for proxy_type in UUID_PROTOCOLS:
+                try:
+                    key_candidates.add(uuid_to_key(candidate, proxy_type))
+                except Exception:
+                    continue
+        extracted_username, extracted_key = _extract_subscription_identifiers(search)
+        if extracted_key:
+            cleaned_key = extracted_key.replace("-", "").lower()
+            if cleaned_key:
+                key_candidates.add(cleaned_key)
+            key_candidates.add(extracted_key.lower())
         key_candidates_set = set(key_candidates) if key_candidates else set()
         uuid_candidates_set = set(uuid_candidates) if uuid_candidates else set()
 
         def matches_search(u: User) -> bool:
+            if extracted_username and u.username and u.username.lower() == extracted_username.lower():
+                return True
             if u.username and search_lower in u.username.lower():
                 return True
             if u.note and search_lower in u.note.lower():
@@ -433,16 +625,24 @@ def _filter_users_in_memory(
                     # Handle both dict and string settings
                     if isinstance(proxy.settings, dict):
                         proxy_id = proxy.settings.get("id")
+                        proxy_password = proxy.settings.get("password")
                     elif isinstance(proxy.settings, str):
                         try:
                             proxy_settings = json.loads(proxy.settings)
                             proxy_id = proxy_settings.get("id") if isinstance(proxy_settings, dict) else None
+                            proxy_password = (
+                                proxy_settings.get("password") if isinstance(proxy_settings, dict) else None
+                            )
                         except Exception:
                             proxy_id = None
+                            proxy_password = None
                     else:
                         proxy_id = None
+                        proxy_password = None
 
                     if proxy_id and proxy_id in uuid_candidates_set:
+                        return True
+                    if proxy_password and proxy_password in password_candidates:
                         return True
             return False
 
@@ -562,6 +762,25 @@ def get_users(
         if search:
             like_pattern = f"%{search}%"
             key_candidates, uuid_candidates = _derive_search_tokens(search)
+            config_uuids, config_passwords = _extract_config_identifiers(search)
+            fallback_uuids, fallback_passwords = _extract_config_fallback(search)
+            uuid_candidates.update(config_uuids)
+            uuid_candidates.update(fallback_uuids)
+            password_candidates = set(config_passwords)
+            password_candidates.update(fallback_passwords)
+            for candidate in list(uuid_candidates):
+                for proxy_type in UUID_PROTOCOLS:
+                    try:
+                        key_candidates.add(uuid_to_key(candidate, proxy_type))
+                    except Exception:
+                        continue
+            extracted_username, extracted_key = _extract_subscription_identifiers(search)
+            if extracted_key:
+                cleaned_key = extracted_key.replace("-", "").lower()
+                if cleaned_key:
+                    key_candidates.add(cleaned_key)
+                key_candidates.add(extracted_key)
+                key_candidates.add(extracted_key.lower())
             search_clauses = [
                 User.username.ilike(like_pattern),
                 User.note.ilike(like_pattern),
@@ -569,6 +788,8 @@ def get_users(
                 User.telegram_id.ilike(like_pattern),
                 User.contact_number.ilike(like_pattern),
             ]
+            if extracted_username:
+                search_clauses.append(func.lower(User.username) == extracted_username.lower())
             if key_candidates:
                 search_clauses.append(User.credential_key.in_(key_candidates))
             if uuid_candidates:
@@ -576,7 +797,13 @@ def get_users(
                     and_(Proxy.user_id == User.id, Proxy.settings["id"].as_string().in_(uuid_candidates))
                 )
                 search_clauses.append(proxy_exists)
-            query = query.filter(or_(*search_clauses))
+            if password_candidates:
+                password_exists = exists().where(
+                    and_(Proxy.user_id == User.id, Proxy.settings["password"].as_string().in_(password_candidates))
+                )
+                search_clauses.append(password_exists)
+            if search_clauses:
+                query = query.filter(or_(*search_clauses))
 
         if usernames:
             query = query.filter(User.username.in_(usernames))

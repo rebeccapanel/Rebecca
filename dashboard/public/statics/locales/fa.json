@@ -1339,6 +1339,11 @@
   "userDialog.tabs.usage": "مصرف",
   "userDialog.tabs.links": "لینک‌ها",
   "userDialog.links.subscription": "لینک سابسکریپشن",
+  "userDialog.links.subscriptionUsernameKey": "نام کاربری + کلید",
+  "userDialog.links.subscriptionKey": "کلید",
+  "userDialog.links.subscriptionToken": "توکن",
+  "userDialog.links.noSubscription": "لینک اشتراکی موجود نیست",
+  "userDialog.links.recommended": "پیشنهاد شده",
   "userDialog.links.configs": "کانفیگ‌ها",
   "userDialog.links.copyAllConfigs": "کپی همه کانفیگ‌ها",
   "userDialog.links.copy": "کپی",
@@ -1396,6 +1401,8 @@
   "usersTable.service": "سرویس",
   "usersTable.status": "وضعیت",
   "usersTable.total": "مجموع",
+  "users.searchHelpLabel": "راهنمای جستجو",
+  "users.searchHelp": "با نام کاربری، کلید، توکن، UUID، لینک کانفیگ یا لینک سابسکریپشن جستجو کن.",
   "validation.invalidPort": "پورت نامعتبر است",
   "validation.required": "پر کردن این فیلد الزامی است",
   "viewHistory": "نمایش تاریخچه",
@@ -1603,6 +1610,13 @@
   "tutorials.table.today": "امروز",
   "tutorials.table.daysLeft": "{{count}} روز تا پایان",
   "tutorials.table.expired": "{{count}} روز پیش منقضی شده",
-  "tutorials.table.ipLimit": "محدودیت IP: {{count}}"
+  "tutorials.table.ipLimit": "محدودیت IP: {{count}}",
+  "nav.dashboard": "داشبورد",
+  "nav.users": "یوزرها",
+  "nav.myaccount": "حساب من",
+  "nav.admins": "ادمین‌ها",
+  "pwa.ios.title": "افزودن به صفحه اصلی",
+  "pwa.ios.body": "برای تجربه سریع‌تر، روی دکمه Share بزن و Add to Home Screen را انتخاب کن.",
+  "pwa.ios.dismiss": "متوجه شدم"
 }
 

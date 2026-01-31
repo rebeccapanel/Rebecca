@@ -919,7 +919,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const [serviceNoticeSeed, setServiceNoticeSeed] = useState(0);
 	const [statusNoticeVisible, setStatusNoticeVisible] = useState(false);
 	const [statusNoticeSeed, setStatusNoticeSeed] = useState(0);
-	const [copiedSubscription, setCopiedSubscription] = useState(false);
+	const [copiedSubscriptionKey, setCopiedSubscriptionKey] = useState<string | null>(
+		null,
+	);
 	const [copiedAllConfigs, setCopiedAllConfigs] = useState(false);
 	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(null);
 
@@ -1041,12 +1043,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	}, [isOpen, isEditing, statusNotice, userStatus, editingUser?.username]);
 
 	useEffect(() => {
-		if (copiedSubscription) {
-			const timer = window.setTimeout(() => setCopiedSubscription(false), 1000);
+		if (copiedSubscriptionKey) {
+			const timer = window.setTimeout(
+				() => setCopiedSubscriptionKey(null),
+				1000,
+			);
 			return () => window.clearTimeout(timer);
 		}
 		return undefined;
-	}, [copiedSubscription]);
+	}, [copiedSubscriptionKey]);
 
 	useEffect(() => {
 		if (copiedAllConfigs) {
@@ -1097,10 +1102,49 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		return link.startsWith("/") ? window.location.origin + link : link;
 	}, []);
 
-	const subscriptionLink = useMemo(
-		() => formatLink(editingUser?.subscription_url),
-		[editingUser?.subscription_url, formatLink],
-	);
+	const subscriptionLinks = useMemo(() => {
+		if (!editingUser) {
+			return [];
+		}
+		const urls = editingUser.subscription_urls ?? {};
+		const order = ["username-key", "key", "token"] as const;
+		const labels: Record<(typeof order)[number], string> = {
+			"username-key": t(
+				"userDialog.links.subscriptionUsernameKey",
+				"Username + Key",
+			),
+			key: t("userDialog.links.subscriptionKey", "Key"),
+			token: t("userDialog.links.subscriptionToken", "Token"),
+		};
+
+		const results: Array<{ key: string; label: string; url: string }> = [];
+		order.forEach((key) => {
+			const value = urls[key];
+			if (!value) {
+				return;
+			}
+			const url = formatLink(value);
+			if (url) {
+				results.push({ key, label: labels[key], url });
+			}
+		});
+
+		if (results.length === 0 && editingUser.subscription_url) {
+			const fallback = formatLink(editingUser.subscription_url);
+			if (fallback) {
+				results.push({
+					key: "primary",
+					label: t(
+						"userDialog.links.subscription",
+						"Subscription link",
+					),
+					url: fallback,
+				});
+			}
+		}
+
+		return results;
+	}, [editingUser, formatLink, t]);
 
 	const userLinks = useMemo(
 		() =>
@@ -1263,7 +1307,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			setUsageFilter("1m");
 			setUsageFetched(false);
 			setActiveTab(0);
-			setCopiedSubscription(false);
+			setCopiedSubscriptionKey(null);
 			setCopiedAllConfigs(false);
 			setCopiedConfigIndex(null);
 			if (formatted.next_plan_enabled) {
@@ -1287,7 +1331,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			setUsageFilter("1m");
 			setUsageFetched(false);
 			setActiveTab(0);
-			setCopiedSubscription(false);
+			setCopiedSubscriptionKey(null);
 			setCopiedAllConfigs(false);
 			setCopiedConfigIndex(null);
 			if (defaults.next_plan_enabled) {
@@ -1770,7 +1814,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		setUsageFilter("1m");
 		setUsageFetched(false);
 		setActiveTab(0);
-		setCopiedSubscription(false);
+		setCopiedSubscriptionKey(null);
 		setCopiedAllConfigs(false);
 		setCopiedConfigIndex(null);
 
@@ -3478,76 +3522,118 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														bg="white"
 														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
 													>
-														<HStack
-															justify="space-between"
-															align="center"
-															w="full"
-														>
-															<HStack spacing={2} minW={0}>
-																<SubscriptionActionIcon />
-																<Text fontWeight="semibold">
+														<HStack spacing={2} minW={0} mb={3}>
+															<SubscriptionActionIcon />
+															<Text fontWeight="semibold">
+																{t(
+																	"userDialog.links.subscription",
+																	"Subscription link",
+																)}
+															</Text>
+														</HStack>
+														<VStack spacing={2} align="stretch">
+															{subscriptionLinks.length === 0 ? (
+																<Text fontSize="sm" color="gray.500">
 																	{t(
-																		"userDialog.links.subscription",
-																		"Subscription link",
+																		"userDialog.links.noSubscription",
+																		"No subscription links",
 																	)}
 																</Text>
-															</HStack>
-															<HStack spacing={1}>
-																<CopyToClipboard
-																	text={subscriptionLink}
-																	onCopy={() => setCopiedSubscription(true)}
-																>
-																	<div>
-																		<Tooltip
-																			label={
-																				copiedSubscription
-																					? t("usersTable.copied")
-																					: t(
-																							"userDialog.links.copy",
-																							"Copy",
-																						)
-																			}
-																			placement="top"
-																		>
-																			<IconButton
-																				aria-label="copy subscription link"
-																				variant="ghost"
-																				size="sm"
-																				type="button"
-																				isDisabled={!subscriptionLink}
-																			>
-																				{copiedSubscription ? (
-																					<CopiedActionIcon />
-																				) : (
-																					<CopyActionIcon />
-																				)}
-																			</IconButton>
-																		</Tooltip>
-																	</div>
-																</CopyToClipboard>
-																<Tooltip
-																	label={t(
-																		"userDialog.links.qr",
-																		"QR",
-																	)}
-																	placement="top"
-																>
-																	<IconButton
-																		aria-label="subscription qr"
-																		variant="ghost"
-																		size="sm"
-																		type="button"
-																		isDisabled={!subscriptionLink}
-																		onClick={() => {
-																			setQRCode([]);
-																			setSubLink(subscriptionLink);
-																		}}
+															) : (
+																subscriptionLinks.map((item) => (
+																	<Box
+																		key={item.key}
+																		borderWidth="1px"
+																		borderRadius="md"
+																		px={3}
+																		py={2}
+																		bg="blackAlpha.50"
+																		_dark={{ bg: "whiteAlpha.50" }}
 																	>
-																		<QRActionIcon />
-																	</IconButton>
-																</Tooltip>
-															</HStack>
-														</HStack>
+																		<HStack
+																			justify="space-between"
+																			align="center"
+																			w="full"
+																		>
+																			<HStack spacing={2} minW={0}>
+																				<Text fontWeight="medium">
+																					{item.label}
+																				</Text>
+																				{item.key === "key" && (
+																					<Badge
+																						colorScheme="primary"
+																						borderRadius="full"
+																						fontSize="xs"
+																					>
+																						{t(
+																							"userDialog.links.recommended",
+																							"Recommended",
+																						)}
+																					</Badge>
+																				)}
+																			</HStack>
+																			<HStack spacing={1} flexShrink={0}>
+																				<CopyToClipboard
+																					text={item.url}
+																					onCopy={() =>
+																						setCopiedSubscriptionKey(item.key)
+																					}
+																				>
+																					<div>
+																						<Tooltip
+																							label={
+																								copiedSubscriptionKey ===
+																								item.key
+																									? t("usersTable.copied")
+																									: t(
+																											"userDialog.links.copy",
+																											"Copy",
+																										)
+																							}
+																							placement="top"
+																						>
+																							<IconButton
+																								aria-label="copy subscription link"
+																								variant="ghost"
+																								size="sm"
+																								type="button"
+																							>
+																								{copiedSubscriptionKey ===
+																								item.key ? (
+																									<CopiedActionIcon />
+																								) : (
+																									<CopyActionIcon />
+																								)}
+																							</IconButton>
+																						</Tooltip>
+																					</div>
+																				</CopyToClipboard>
+																				<Tooltip
+																					label={t(
+																						"userDialog.links.qr",
+																						"QR",
+																					)}
+																					placement="top"
+																				>
+																					<IconButton
+																						aria-label="subscription qr"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							setQRCode([]);
+																							setSubLink(item.url);
+																						}}
+																					>
+																						<QRActionIcon />
+																					</IconButton>
+																				</Tooltip>
+																			</HStack>
+																		</HStack>
+																	</Box>
+																))
+															)}
+														</VStack>
 													</Box>
 
 													<Box

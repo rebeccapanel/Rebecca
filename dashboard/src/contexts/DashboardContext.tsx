@@ -119,6 +119,8 @@ type DashboardStateType = {
 	onEditingCore: (isEditingCore: boolean) => void;
 };
 
+let usersFetchSequence = 0;
+
 const fetchUsers = (
 	query: FilterType,
 	options: { force?: boolean } = {},
@@ -137,6 +139,7 @@ const fetchUsers = (
 		return Promise.resolve(users);
 	}
 
+	const requestId = ++usersFetchSequence;
 	useDashboard.setState({ loading: true });
 	const requestQuery: Record<string, unknown> = {
 		...sanitizedQuery,
@@ -157,6 +160,9 @@ const fetchUsers = (
 
 	return fetch<UsersListResponse>("/users", { query: requestQuery })
 		.then((usersResponse) => {
+			if (requestId !== usersFetchSequence) {
+				return usersResponse;
+			}
 			const limit = usersResponse.users_limit ?? null;
 			const activeTotal = usersResponse.active_total ?? null;
 			const isUserLimitReached =
@@ -176,7 +182,9 @@ const fetchUsers = (
 			return usersResponse;
 		})
 		.finally(() => {
-			useDashboard.setState({ loading: false });
+			if (requestId === usersFetchSequence) {
+				useDashboard.setState({ loading: false });
+			}
 		});
 };
 

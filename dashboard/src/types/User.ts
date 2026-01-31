@@ -67,6 +67,7 @@ export type User = {
 	links: string[]; // Deprecated, use link_data with link_templates instead
 	link_data?: UserLinkData[]; // UUID/password for each inbound
 	subscription_url: string;
+	subscription_urls?: Record<string, string>;
 	inbounds: UserInbounds;
 	note: string;
 	telegram_id?: string | null;

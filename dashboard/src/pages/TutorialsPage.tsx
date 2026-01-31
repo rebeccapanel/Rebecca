@@ -74,6 +74,14 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import type { Status } from "types/User";
+import {
+	acknowledgeTutorialIds,
+	getTutorialAssetUrl,
+	isTutorialUpdated,
+	normalizeTutorialLang,
+	readTutorialStorage,
+	writeTutorialStorage,
+} from "utils/tutorialUpdates";
 
 type TutorialSection = {
 	id: string;
@@ -182,7 +190,11 @@ const TutorialsPage: FC = () => {
 	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 	const [activeTab, setActiveTab] = useState<"general" | "admin">("general");
 	const [highlightId, setHighlightId] = useState<string | null>(null);
+	const [newMenuIds, setNewMenuIds] = useState<Set<string>>(new Set());
 	const highlightTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+	const autoScrollTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+	const autoScrollDone = useRef(false);
+	const autoScrollAttempts = useRef(0);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	const {
@@ -225,12 +237,95 @@ const TutorialsPage: FC = () => {
 			`,
 		[],
 	);
+	const normalizedUserRole = useMemo(
+		() => normalizeRole(userData?.role as string | undefined),
+		[userData],
+	);
+	const menuIdSets = useMemo(() => {
+		const general: string[] = [];
+		const admin: string[] = [];
+
+		if (!content) {
+			return { all: [], general: [], admin: [] };
+		}
+
+		const sectionIsVisible = (
+			section: TutorialSection & { requiresRole?: ("sudo" | "full_access")[] },
+		) => {
+			if (!section.requiresRole?.length) return true;
+			if (!getUserIsSuccess || !normalizedUserRole) return false;
+			const requiredRoles = section.requiresRole
+				.map((role) => normalizeRole(role))
+				.filter(Boolean);
+			return requiredRoles.includes(normalizedUserRole);
+		};
+
+		const generalSections = (content.sections || []).filter(
+			(section) => sectionIsVisible(section) && !section.requiresRole?.length,
+		);
+		const adminSections = (content.sections || []).filter(
+			(section) => sectionIsVisible(section) && section.requiresRole?.length,
+		);
+
+		if (content.quickTips?.length) {
+			general.push("quick-tips");
+		}
+
+		generalSections.forEach((section) => {
+			general.push(`section-${section.id}`);
+			section.subsections?.forEach((sub) => {
+				general.push(`section-${section.id}-${sub.id}`);
+			});
+		});
+
+		if (content.dialogSections?.length) {
+			general.push("dialog-guide", "dialog-illustration");
+			content.dialogSections.forEach((section) => {
+				general.push(`dialog-${section.id}`);
+			});
+		}
+
+		if (content.samples?.length) {
+			general.push("samples");
+		}
+
+		if (content.statuses?.length) {
+			general.push("statuses");
+			content.statuses.forEach((status) => {
+				general.push(`status-${status.status}`);
+			});
+		}
+
+		if (content.faqs?.length) {
+			general.push("faq");
+			content.faqs.forEach((faq) => {
+				general.push(`faq-${faq.id}`);
+			});
+		}
+
+		adminSections.forEach((section) => {
+			admin.push(`section-${section.id}`);
+			section.subsections?.forEach((sub) => {
+				admin.push(`section-${section.id}-${sub.id}`);
+			});
+		});
+
+		if (content.adminRoles?.length) {
+			admin.push("admin-roles");
+			content.adminRoles.forEach((role) => {
+				admin.push(`admin-role-${role.id}`);
+			});
+		}
+
+		const unique = (values: string[]) => Array.from(new Set(values));
+		const generalUnique = unique(general);
+		const adminUnique = unique(admin);
+		const all = unique([...generalUnique, ...adminUnique]);
+		return { all, general: generalUnique, admin: adminUnique };
+	}, [content, getUserIsSuccess, normalizedUserRole]);
 
 	const buildTutorialUrl = useCallback(() => {
-		const lang = (i18n.language || "en").toLowerCase();
-		const file = lang.startsWith("fa") ? "totfa.json" : "toten.json";
-		const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
-		return `${base}/statics/locles/${file}`;
+		return getTutorialAssetUrl(i18n.language);
 	}, [i18n.language]);
 
 	const fetchContent = useCallback(async () => {
@@ -281,8 +376,6 @@ const TutorialsPage: FC = () => {
 
 		const filterArray = <T,>(arr: T[], matcher: (item: T) => boolean) =>
 			normalizedSearch ? arr.filter(matcher) : arr;
-
-		const normalizedUserRole = normalizeRole(userData?.role as string | undefined);
 
 		const quickTips = filterArray(content.quickTips || [], (tip) =>
 			containsTerm(tip),
@@ -373,7 +466,22 @@ const TutorialsPage: FC = () => {
 		});
 
 		return { quickTips, sections, dialogSections, statuses, faqs, samples, adminRoles };
-	}, [content, getUserIsSuccess, normalizedSearch, userData]);
+	}, [content, getUserIsSuccess, normalizedSearch, normalizedUserRole]);
+
+	const allMenuIds = menuIdSets.all;
+	const hasNewGeneral = useMemo(
+		() => menuIdSets.general.some((id) => newMenuIds.has(id)),
+		[menuIdSets.general, newMenuIds],
+	);
+	const hasNewAdmin = useMemo(
+		() => menuIdSets.admin.some((id) => newMenuIds.has(id)),
+		[menuIdSets.admin, newMenuIds],
+	);
+	const firstNewId = useMemo(
+		() => allMenuIds.find((id) => newMenuIds.has(id)),
+		[allMenuIds, newMenuIds],
+	);
+	const hasNewForActiveTab = activeTab === "admin" ? hasNewAdmin : hasNewGeneral;
 
 	const generalSections = useMemo(
 		() => filtered.sections.filter((section) => !section.requiresRole?.length),
@@ -500,6 +608,44 @@ const TutorialsPage: FC = () => {
 		t,
 	]);
 
+	useEffect(() => {
+		if (!content) return;
+		const updated = content.meta?.updated?.toString().trim();
+		if (!updated) {
+			setNewMenuIds(new Set());
+			return;
+		}
+		const langKey = normalizeTutorialLang(i18n.language);
+		const stored = readTutorialStorage(langKey);
+
+		if (!stored.updated) {
+			writeTutorialStorage(langKey, updated, allMenuIds, []);
+			setNewMenuIds(new Set());
+			return;
+		}
+
+		if (isTutorialUpdated(updated, stored.updated)) {
+			autoScrollDone.current = false;
+			const newIds = allMenuIds.filter((id) => !stored.ids.includes(id));
+			const mergedUnseen = Array.from(
+				new Set([...stored.unseen, ...newIds]),
+			).filter((id) => allMenuIds.includes(id));
+			writeTutorialStorage(langKey, updated, allMenuIds, mergedUnseen);
+			setNewMenuIds(new Set(mergedUnseen));
+			return;
+		}
+
+		const activeUnseen = stored.unseen.filter((id) => allMenuIds.includes(id));
+		if (
+			allMenuIds.length &&
+			(stored.ids.length !== allMenuIds.length ||
+				activeUnseen.length !== stored.unseen.length)
+		) {
+			writeTutorialStorage(langKey, stored.updated, allMenuIds, activeUnseen);
+		}
+		setNewMenuIds(new Set(activeUnseen));
+	}, [allMenuIds, content, i18n.language]);
+
 	const formatExpiryLabel = (days?: number | null) => {
 		if (days === null || typeof days === "undefined") {
 			return t("tutorials.table.noExpiry");
@@ -602,9 +748,9 @@ const TutorialsPage: FC = () => {
 	};
 
 	const scrollToId = (id: string) => {
-		if (typeof document === "undefined") return;
+		if (typeof document === "undefined") return false;
 		const el = document.getElementById(id);
-		if (!el) return;
+		if (!el) return false;
 		const prefersReduce =
 			typeof window !== "undefined" &&
 			window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -615,6 +761,7 @@ const TutorialsPage: FC = () => {
 		});
 		setActiveId(id);
 		triggerHighlight(id);
+		return true;
 	};
 
 	const setExpandedFor = (id?: string) => {
@@ -629,6 +776,24 @@ const TutorialsPage: FC = () => {
 			return new Set<string>([id]);
 		});
 	};
+
+	const roleIcons: Record<string, typeof SparkleIcon | undefined> = {
+		crown: SparkleIcon,
+		shield: ShieldCheck,
+		tag: TagShape,
+		user: UserShape,
+	};
+
+	const acknowledgeMenuId = useCallback((id: string) => {
+		setNewMenuIds((prev) => {
+			if (!prev.has(id)) return prev;
+			const next = new Set(prev);
+			next.delete(id);
+			return next;
+		});
+		const langKey = normalizeTutorialLang(i18n.language);
+		acknowledgeTutorialIds(langKey, id);
+	}, [i18n.language]);
 
 	useEffect(() => {
 		if (typeof document === "undefined") return;
@@ -659,12 +824,33 @@ const TutorialsPage: FC = () => {
 		return () => observer.disconnect();
 	}, [menuItems]);
 
-	const roleIcons: Record<string, typeof SparkleIcon | undefined> = {
-		crown: SparkleIcon,
-		shield: ShieldCheck,
-		tag: TagShape,
-		user: UserShape,
-	};
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		if (!firstNewId || autoScrollDone.current) return;
+		const targetTab = menuIdSets.admin.includes(firstNewId) ? "admin" : "general";
+		if (activeTab !== targetTab) {
+			setActiveTab(targetTab);
+			return;
+		}
+		autoScrollAttempts.current = 0;
+		const attemptScroll = () => {
+			autoScrollAttempts.current += 1;
+			const found = scrollToId(firstNewId);
+			if (found) {
+				autoScrollDone.current = true;
+				return;
+			}
+			if (autoScrollAttempts.current < 8) {
+				autoScrollTimer.current = window.setTimeout(attemptScroll, 150);
+			}
+		};
+		autoScrollTimer.current = window.setTimeout(attemptScroll, 120);
+		return () => {
+			if (autoScrollTimer.current) {
+				clearTimeout(autoScrollTimer.current);
+			}
+		};
+	}, [activeTab, firstNewId, menuIdSets.admin, scrollToId]);
 
 	const highlightStyles = (id: string) => {
 		const isActive = highlightId === id;
@@ -679,6 +865,9 @@ const TutorialsPage: FC = () => {
 		() => () => {
 			if (highlightTimer.current) {
 				clearTimeout(highlightTimer.current);
+			}
+			if (autoScrollTimer.current) {
+				clearTimeout(autoScrollTimer.current);
 			}
 		},
 		[],
@@ -710,11 +899,15 @@ const TutorialsPage: FC = () => {
 		if (typeof window === "undefined") return;
 		if (hasRestoredScroll.current) return;
 		if (loading) return;
+		if (firstNewId) {
+			hasRestoredScroll.current = true;
+			return;
+		}
 		if (savedScrollRef.current !== null) {
 			window.scrollTo({ top: savedScrollRef.current, behavior: "auto" });
 		}
 		hasRestoredScroll.current = true;
-	}, [loading]);
+	}, [firstNewId, loading]);
 
 	return (
 		<VStack spacing={6} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
@@ -833,7 +1026,18 @@ const TutorialsPage: FC = () => {
 										onClick={() => setActiveTab("general")}
 										flex="1"
 									>
-										{t("tutorials.menuTitle")}
+										<HStack spacing={2}>
+											<Text>{t("tutorials.menuTitle")}</Text>
+											{hasNewGeneral ? (
+												<Box
+													w="2"
+													h="2"
+													borderRadius="full"
+													bg="yellow.400"
+													_dark={{ bg: "yellow.300" }}
+												/>
+											) : null}
+										</HStack>
 									</Button>
 									<Button
 										size="sm"
@@ -842,7 +1046,18 @@ const TutorialsPage: FC = () => {
 										onClick={() => setActiveTab("admin")}
 										flex="1"
 									>
-										{t("tutorials.adminTab")}
+										<HStack spacing={2}>
+											<Text>{t("tutorials.adminTab")}</Text>
+											{hasNewAdmin ? (
+												<Box
+													w="2"
+													h="2"
+													borderRadius="full"
+													bg="yellow.400"
+													_dark={{ bg: "yellow.300" }}
+												/>
+											) : null}
+										</HStack>
 									</Button>
 								</HStack>
 							)}
@@ -862,9 +1077,22 @@ const TutorialsPage: FC = () => {
 									onClick={toggleMenu}
 									justifyContent="space-between"
 								>
-									{activeTab === "admin"
-										? t("tutorials.adminTab")
-										: t("tutorials.menuTitle")}
+									<HStack spacing={2}>
+										<Text>
+											{activeTab === "admin"
+												? t("tutorials.adminTab")
+												: t("tutorials.menuTitle")}
+										</Text>
+										{hasNewForActiveTab ? (
+											<Box
+												w="2"
+												h="2"
+												borderRadius="full"
+												bg="yellow.400"
+												_dark={{ bg: "yellow.300" }}
+											/>
+										) : null}
+									</HStack>
 								</Button>
 							) : null}
 							<Collapse in={!isMobile || isMenuOpen} animateOpacity>
@@ -919,6 +1147,7 @@ const TutorialsPage: FC = () => {
 													item.children?.some((child) => child.id === activeId);
 												const hasChildren = (item.children || []).length > 0;
 												const isExpanded = expandedGroups.has(item.id);
+												const isItemNew = newMenuIds.has(item.id);
 												return (
 													<Box
 														key={item.id}
@@ -941,6 +1170,7 @@ const TutorialsPage: FC = () => {
 																if (hasChildren) {
 																	setExpandedFor(isExpanded ? undefined : item.id);
 																}
+																acknowledgeMenuId(item.id);
 																scrollToId(item.id);
 																if (isMobile && !hasChildren) {
 																	toggleMenu();
@@ -959,7 +1189,19 @@ const TutorialsPage: FC = () => {
 																) : undefined
 															}
 														>
-															<Text textAlign="start">{item.label}</Text>
+															<HStack spacing={2} align="center">
+																<Text textAlign="start">{item.label}</Text>
+																{isItemNew ? (
+																	<Box
+																		w="2"
+																		h="2"
+																		borderRadius="full"
+																		bg="yellow.400"
+																		_dark={{ bg: "yellow.300" }}
+																		flexShrink={0}
+																	/>
+																) : null}
+															</HStack>
 														</Button>
 														{hasChildren && isExpanded ? (
 															<VStack
@@ -973,6 +1215,7 @@ const TutorialsPage: FC = () => {
 															>
 																{item.children?.map((child) => {
 																	const childActive = activeId === child.id;
+																	const isChildNew = newMenuIds.has(child.id);
 																	return (
 																		<Button
 																			key={child.id}
@@ -987,13 +1230,28 @@ const TutorialsPage: FC = () => {
 																			_hover={{ bg: menuHoverBg }}
 																			_active={{ bg: menuActiveBg }}
 																			onClick={() => {
+																				acknowledgeMenuId(child.id);
 																				scrollToId(child.id);
 																				if (isMobile) {
 																					toggleMenu();
 																				}
 																			}}
 																		>
-																			{child.label}
+																			<HStack spacing={2} align="center">
+																				<Text textAlign="start">
+																					{child.label}
+																				</Text>
+																				{isChildNew ? (
+																					<Box
+																						w="2"
+																						h="2"
+																						borderRadius="full"
+																						bg="yellow.400"
+																						_dark={{ bg: "yellow.300" }}
+																						flexShrink={0}
+																					/>
+																				) : null}
+																			</HStack>
 																		</Button>
 																	);
 																})}
