@@ -193,7 +193,7 @@ def login(username: str, password: str, client_ip: str, success: bool) -> None:
             username=username,
             password=password,
             client_ip=client_ip,
-            status="? Success" if success else "? Failed",
+            status="✅ Success" if success else "❌ Failed",
         )
 
 
