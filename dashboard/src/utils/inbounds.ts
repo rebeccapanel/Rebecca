@@ -753,7 +753,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			// Try new format first
 			const newValue = tlsSettings.verifyPeerCertByName;
 			if (newValue) {
-				return newValue || base.tlsVerifyPeerCertByName;
+				return newValue;
 			}
 			// Fall back to old format (array)
 			const oldValue = tlsSettings.verifyPeerCertInNames;
