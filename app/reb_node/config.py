@@ -764,10 +764,14 @@ class XRayConfig(dict):
             if not isinstance(stream, dict):
                 continue
             tls_settings = stream.get("tlsSettings")
-            if isinstance(tls_settings, dict) and "settings" in tls_settings:
+            if isinstance(tls_settings, dict):
+                # Create a copy to modify
                 tls_settings = {**tls_settings}
-                tls_settings.pop("settings", None)
-                stream["tlsSettings"] = tls_settings
+                # Remove deprecated "settings" key if present
+                if "settings" in tls_settings:
+                    tls_settings.pop("settings", None)
+
+                # Apply version-based migration
                 if is_xray_version_at_least("26.1.31"):
                     # verifyPeerCertInNames is the old one it has been replaced by verifyPeerCertByName
                     if tls_settings.get("verifyPeerCertInNames"):
@@ -789,6 +793,10 @@ class XRayConfig(dict):
                                 tls_settings["verifyPeerCertInNames"] = [names]
                             elif isinstance(names, list):
                                 tls_settings["verifyPeerCertInNames"] = names
+
+                # Update the stream with the modified settings
+                stream["tlsSettings"] = tls_settings
+
             reality_settings = stream.get("realitySettings")
             if isinstance(reality_settings, dict) and "settings" in reality_settings:
                 reality_settings = {**reality_settings}
