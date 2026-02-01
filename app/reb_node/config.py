@@ -706,10 +706,6 @@ class XRayConfig(dict):
                                 proxy_type,
                             )
 
-        if DEBUG:
-            with open("generated_config-debug.json", "w") as f:
-                f.write(config.to_json(indent=4))
-
         for inbound in config.get("inbounds", []):
             stream = inbound.get("streamSettings")
             if not isinstance(stream, dict):
@@ -724,5 +720,9 @@ class XRayConfig(dict):
                 reality_settings = {**reality_settings}
                 reality_settings.pop("settings", None)
                 stream["realitySettings"] = reality_settings
+
+        if DEBUG:
+            with open("generated_config-debug.json", "w") as f:
+                f.write(config.to_json(indent=4))
 
         return config
