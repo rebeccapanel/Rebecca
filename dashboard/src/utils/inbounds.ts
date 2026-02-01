@@ -120,7 +120,7 @@ export type InboundFormValues = {
 	tlsMaxVersion: string;
 	tlsCipherSuites: string;
 	tlsRejectUnknownSni: boolean;
-	tlsVerifyPeerCertInNames: string;
+	tlsVerifyPeerCertByName: string;
 	tlsDisableSystemRoot: boolean;
 	tlsEnableSessionResumption: boolean;
 	tlsCertificates: TlsCertificateForm[];
@@ -559,7 +559,7 @@ export const createDefaultInboundForm = (
 	tlsMaxVersion: "1.3",
 	tlsCipherSuites: "",
 	tlsRejectUnknownSni: false,
-	tlsVerifyPeerCertInNames: "dns.google,cloudflare-dns.com",
+	tlsVerifyPeerCertByName: "dns.google",
 	tlsDisableSystemRoot: false,
 	tlsEnableSessionResumption: false,
 	tlsCertificates: [createDefaultTlsCertificate()],
@@ -698,7 +698,6 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				certificateToForm(cert),
 			)
 		: base.tlsCertificates;
-	const tlsVerifyNames = parseStringList(tlsSettings.verifyPeerCertInNames);
 	const tlsAlpn = parseStringList(tlsSettings.alpn);
 	const realityServerNames = parseStringList(realitySettings.serverNames);
 	const realityShortIds = parseStringList(realitySettings.shortIds);
@@ -750,9 +749,20 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		tlsRejectUnknownSni: Boolean(
 			tlsSettings.rejectUnknownSni ?? base.tlsRejectUnknownSni,
 		),
-		tlsVerifyPeerCertInNames: tlsVerifyNames.length
-			? joinComma(tlsVerifyNames)
-			: base.tlsVerifyPeerCertInNames,
+		tlsVerifyPeerCertByName: (() => {
+			// Try new format first
+			const newValue = tlsSettings.verifyPeerCertByName;
+			if (newValue) {
+				return newValue || base.tlsVerifyPeerCertByName;
+			}
+			// Fall back to old format (array)
+			const oldValue = tlsSettings.verifyPeerCertInNames;
+			if (Array.isArray(oldValue) && oldValue.length > 0) {
+				const firstDomain = String(oldValue[0]).trim();
+				return firstDomain || base.tlsVerifyPeerCertByName;
+			}
+			return base.tlsVerifyPeerCertByName;
+		})(),
 		tlsDisableSystemRoot: Boolean(
 			tlsSettings.disableSystemRoot ?? base.tlsDisableSystemRoot,
 		),
@@ -1345,10 +1355,8 @@ const buildStreamSettings = (
 		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
 		tlsPayload.cipherSuites = values.tlsCipherSuites || undefined;
 		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
-		const verifyNames = splitLines(values.tlsVerifyPeerCertInNames);
-		tlsPayload.verifyPeerCertInNames = verifyNames.length
-			? verifyNames
-			: undefined;
+		tlsPayload.verifyPeerCertByName = values.tlsVerifyPeerCertByName || undefined;
+		delete tlsPayload.verifyPeerCertInNames; // Remove old format
 		tlsPayload.disableSystemRoot = values.tlsDisableSystemRoot;
 		tlsPayload.enableSessionResumption = values.tlsEnableSessionResumption;
 		tlsPayload.certificates = values.tlsCertificates.map((certificate) =>

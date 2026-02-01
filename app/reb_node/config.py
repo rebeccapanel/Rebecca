@@ -715,6 +715,17 @@ class XRayConfig(dict):
                 tls_settings = {**tls_settings}
                 tls_settings.pop("settings", None)
                 stream["tlsSettings"] = tls_settings
+                if tls_settings.get("verifyPeerCertInNames"):
+                    # continue if already set
+                    if tls_settings.get("verifyPeerCertByName"):
+                        pass
+                    else:
+                        names = tls_settings.pop("verifyPeerCertInNames")
+                        # verifyPeerCertByName expects a string, not an array
+                        if isinstance(names, list) and len(names) > 0:
+                            tls_settings["verifyPeerCertByName"] = names[0]
+                        elif isinstance(names, str):
+                            tls_settings["verifyPeerCertByName"] = names
             reality_settings = stream.get("realitySettings")
             if isinstance(reality_settings, dict) and "settings" in reality_settings:
                 reality_settings = {**reality_settings}

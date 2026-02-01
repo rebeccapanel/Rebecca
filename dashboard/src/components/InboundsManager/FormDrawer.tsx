@@ -1933,11 +1933,11 @@ export const InboundFormModal: FC<Props> = ({
 								<FormControl>
 									<FormLabel>
 										{t(
-											"inbounds.tls.verifyPeerCertInNames",
-											"Verify peer cert in names",
+											"inbounds.tls.verifyPeerCertByName",
+											"Verify peer cert by name",
 										)}
 									</FormLabel>
-									<Input {...register("tlsVerifyPeerCertInNames")} />
+									<Input {...register("tlsVerifyPeerCertByName")} />
 								</FormControl>
 								<Divider />
 								<Stack spacing={3}>
