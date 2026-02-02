@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 export const AdminsPage: FC = () => {
 	const { t } = useTranslation();
 	const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
+	const openAdminDialog = useAdminsStore((s) => s.openAdminDialog);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewAdmins =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.admins);
@@ -21,6 +22,15 @@ export const AdminsPage: FC = () => {
 			fetchAdmins();
 		}
 	}, [fetchAdmins, canViewAdmins]);
+
+	useEffect(() => {
+		if (!canViewAdmins) return;
+		const shouldOpenCreate = sessionStorage.getItem("openCreateAdmin");
+		if (shouldOpenCreate === "true") {
+			sessionStorage.removeItem("openCreateAdmin");
+			openAdminDialog();
+		}
+	}, [canViewAdmins, openAdminDialog]);
 
 	if (!canViewAdmins) {
 		return (

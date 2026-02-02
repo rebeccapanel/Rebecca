@@ -17,7 +17,13 @@ import {
 } from "@chakra-ui/react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import classNames from "classnames";
-import React, { type PropsWithChildren, type ReactNode } from "react";
+import React, {
+	type ChangeEvent,
+	type FocusEvent,
+	type MouseEvent,
+	type PropsWithChildren,
+	type ReactNode,
+} from "react";
 
 const ClearIcon = chakra(XMarkIcon, {
 	baseStyle: {
@@ -34,9 +40,13 @@ export type InputProps = PropsWithChildren<
 		startAdornment?: ReactNode;
 		type?: string;
 		placeholder?: string;
-		onChange?: (e: any) => void;
-		onBlur?: (e: any) => void;
-		onClick?: (e: any) => void;
+		onChange?: (
+			e:
+				| ChangeEvent<HTMLInputElement>
+				| { target: { value: string; valueAsNumber?: number; name?: string } },
+		) => void;
+		onBlur?: (e: FocusEvent<HTMLInputElement>) => void;
+		onClick?: (e: MouseEvent<HTMLInputElement>) => void;
 		name?: string;
 		error?: string;
 		disabled?: boolean;

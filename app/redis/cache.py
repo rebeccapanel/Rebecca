@@ -131,9 +131,7 @@ def _serialize_user(user: User) -> Dict[str, Any]:
         "admin_id": user.admin_id,
         "admin_username": user.admin.username if getattr(user, "admin", None) else None,
         "service_id": user.service_id,
-        "service_name": (
-            user.service.name if getattr(user, "service", None) else None
-        ),
+        "service_name": (user.service.name if getattr(user, "service", None) else None),
     }
 
     # Add proxies
@@ -151,14 +149,25 @@ def _serialize_user(user: User) -> Dict[str, Any]:
             for proxy in user.proxies
         ]
 
-    # Add next_plan if exists
-    if user.next_plan:
-        user_dict["next_plan"] = {
-            "data_limit": user.next_plan.data_limit,
-            "expire": user.next_plan.expire,
-            "add_remaining_traffic": user.next_plan.add_remaining_traffic,
-            "fire_on_either": user.next_plan.fire_on_either,
-        }
+    # Add next_plans if exist (first one kept for legacy clients)
+    if getattr(user, "next_plans", None):
+        serialized_plans = []
+        for plan in user.next_plans:
+            serialized_plans.append(
+                {
+                    "data_limit": plan.data_limit,
+                    "expire": plan.expire,
+                    "add_remaining_traffic": plan.add_remaining_traffic,
+                    "fire_on_either": plan.fire_on_either,
+                    "increase_data_limit": getattr(plan, "increase_data_limit", False),
+                    "start_on_first_connect": getattr(plan, "start_on_first_connect", False),
+                    "trigger_on": getattr(plan, "trigger_on", "either"),
+                    "position": getattr(plan, "position", 0),
+                }
+            )
+        user_dict["next_plans"] = serialized_plans
+        if serialized_plans:
+            user_dict["next_plan"] = serialized_plans[0]
 
     return user_dict
 
@@ -258,8 +267,10 @@ def _deserialize_user(user_dict: Dict[str, Any], db: Optional[Any] = None) -> Op
         user.admin_id = user_dict.get("admin_id")
         user.admin_username = user_dict.get("admin_username")
         user.service_id = user_dict.get("service_id")
-        if user_dict.get("next_plan"):
-            user.next_plan = NextPlanModel(**user_dict["next_plan"])
+        if user_dict.get("next_plans"):
+            user.next_plans = [NextPlanModel(**plan) for plan in user_dict["next_plans"]]
+        elif user_dict.get("next_plan"):
+            user.next_plans = [NextPlanModel(**user_dict["next_plan"])]
 
         # Deserialize proxies
         user.proxies = []
@@ -290,40 +301,48 @@ def cache_user(user: User, mark_for_sync: bool = True) -> bool:
         user_dict = _serialize_user(user)
         user_json = json.dumps(user_dict)
 
-        redis_client.setex(_get_user_id_key(user.id), USER_CACHE_TTL, user_json)
-        redis_client.setex(_get_user_key(user.username), USER_CACHE_TTL, user_json)
+        pipe = redis_client.pipeline(transaction=False)
+        pipe.setex(_get_user_id_key(user.id), USER_CACHE_TTL, user_json)
+        pipe.setex(_get_user_key(user.username), USER_CACHE_TTL, user_json)
 
-        # Incrementally update aggregated list if it exists
-        aggregated = redis_client.get(REDIS_KEY_USER_LIST_ALL)
-        if aggregated:
-            try:
-                data = json.loads(aggregated)
-                if not isinstance(data, list):
-                    data = []
-            except Exception:
-                data = []
+        # Mark user for sync to database if requested (best-effort)
+        if mark_for_sync and user.id:
+            sync_key = f"{REDIS_KEY_PREFIX_USER_PENDING_SYNC}{user.id}"
+            pipe.setex(sync_key, USER_CACHE_TTL, user_json)
+            pipe.sadd(REDIS_KEY_USER_PENDING_SYNC_SET, str(user.id))
 
-            updated = False
-            for idx, item in enumerate(data):
-                if item.get("id") == user.id:
-                    data[idx] = user_dict
-                    updated = True
-                    break
-            if not updated:
-                data.append(user_dict)
+        pipe.execute()
 
+        # Keep the aggregated user list warm so new/updated users appear instantly.
+        try:
+            aggregated_raw = redis_client.get(REDIS_KEY_USER_LIST_ALL)
             ttl = redis_client.ttl(REDIS_KEY_USER_LIST_ALL)
             ttl_value = ttl if ttl and ttl > 0 else USER_CACHE_TTL
-            redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps(data))
+            serialized = user_dict
 
-        # Mark user for sync to database if requested
-        if mark_for_sync and user.id:
-            try:
-                sync_key = f"{REDIS_KEY_PREFIX_USER_PENDING_SYNC}{user.id}"
-                redis_client.setex(sync_key, USER_CACHE_TTL, user_json)
-                redis_client.sadd(REDIS_KEY_USER_PENDING_SYNC_SET, str(user.id))
-            except Exception as e:
-                logger.debug(f"Failed to mark user {user.id} for sync: {e}")
+            if aggregated_raw:
+                try:
+                    aggregated_list = json.loads(aggregated_raw)
+                except Exception:
+                    aggregated_list = []
+
+                if isinstance(aggregated_list, list):
+                    # Replace existing entry (by id or username), then append latest
+                    filtered = []
+                    for entry in aggregated_list:
+                        entry_id = entry.get("id")
+                        entry_username = entry.get("username")
+                        if (entry_id is not None and user.id is not None and entry_id == user.id) or (
+                            entry_username and entry_username.lower() == user.username.lower()
+                        ):
+                            continue
+                        filtered.append(entry)
+                    filtered.append(serialized)
+                    redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps(filtered))
+            else:
+                redis_client.setex(REDIS_KEY_USER_LIST_ALL, ttl_value, json.dumps([serialized]))
+        except Exception as exc:
+            logger.debug(f"Failed to update aggregated user cache: {exc}")
 
         return True
     except Exception as e:
@@ -382,7 +401,7 @@ def get_cached_user(
             selectinload(User.usage_logs),  # For lifetime_used_traffic property
         ]
         if _next_plan_table_exists(db):
-            options.append(joinedload(User.next_plan))
+            options.append(joinedload(User.next_plans))
         query = query.options(*options)
 
         db_user = query.first()
@@ -946,6 +965,12 @@ def get_user_pending_usage_state(user_id: int) -> Tuple[int, Optional[datetime]]
                         pass
             except Exception:
                 continue
+
+        # Avoid repeated cache misses: store a zero marker with a short TTL
+        try:
+            redis_client.setex(pending_total_key, 3600, total)
+        except Exception:
+            pass
         return total, online_at
     except Exception as exc:
         logger.debug(f"Failed to read pending usage total for user {user_id}: {exc}")

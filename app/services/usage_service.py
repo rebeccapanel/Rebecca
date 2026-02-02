@@ -9,10 +9,13 @@ import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
-from app.db import GetDB
+from sqlalchemy.orm import selectinload
+
+from app.db import GetDB, crud
 from app.db.models import User, Admin
+from app.models.user import UserResponse, UserStatus
 from app.redis.cache import (
     get_pending_usage_updates,
     get_pending_usage_snapshots,
@@ -23,6 +26,8 @@ from app.redis.cache import (
     REDIS_KEY_USER_PENDING_ONLINE,
 )
 from app.redis.client import get_redis
+from app.utils import report
+from app.runtime import xray
 from config import REDIS_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -143,6 +148,9 @@ def sync_usage_updates_to_db() -> None:
                         db.commit()
                         total_synced += len(users_usage)
                         success = True
+
+                        # Enforce per-user limits/expiry immediately.
+                        _enforce_user_limits_after_sync(db, list(user_dict.values()))
 
                 except Exception as e:
                     from sqlalchemy.exc import OperationalError
@@ -398,3 +406,90 @@ def _sync_usage_snapshots(redis_client, max_snapshots: Optional[int] = None) -> 
     except Exception as e:
         logger.error(f"Failed to sync usage snapshots: {e}", exc_info=True)
     return False
+
+
+def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
+    """
+    Ensure users are limited/expired as soon as their usage is applied to DB.
+    Mirrors the enforcement used during live recording so Redis-on/off behaves the same.
+    """
+    if not users:
+        return
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    changed: List[User] = []
+
+    # Ensure relationships needed for notifications are available.
+    user_ids = [u.id for u in users if getattr(u, "id", None) is not None]
+    hydrated_users = (
+        db.query(User)
+        .options(selectinload(User.admin), selectinload(User.next_plans))
+        .filter(User.id.in_(user_ids))
+        .all()
+    )
+    indexed = {u.id: u for u in hydrated_users}
+
+    for user in users:
+        db_user = indexed.get(user.id)
+        if not db_user:
+            continue
+
+        limited = bool(db_user.data_limit and (db_user.used_traffic or 0) >= db_user.data_limit)
+        expired = bool(db_user.expire and db_user.expire <= now_ts)
+
+        if db_user.next_plan:
+            plan = db_user.next_plan
+            trigger_matches = plan.trigger_on == "either" or (
+                (plan.trigger_on == "data" and limited) or (plan.trigger_on == "expire" and expired)
+            )
+            if plan.start_on_first_connect and db_user.online_at is None and db_user.used_traffic == 0:
+                trigger_matches = False
+            if (limited or expired) and trigger_matches:
+                try:
+                    crud.reset_user_by_next(db, db_user)
+                    xray.operations.update_user(db_user)
+                    user_resp = UserResponse.model_validate(db_user)
+                    report.user_data_reset_by_next(user=user_resp, user_admin=db_user.admin)
+                    report.user_auto_renew_applied(user=user_resp, user_admin=db_user.admin)
+                    continue
+                except Exception as exc:  # pragma: no cover - best-effort
+                    logger.warning(f"Failed to apply next plan for user {db_user.id}: {exc}")
+
+        target_status: Optional[UserStatus] = None
+        if limited:
+            target_status = UserStatus.limited
+        elif expired:
+            target_status = UserStatus.expired
+
+        if target_status and db_user.status != target_status:
+            db_user.status = target_status
+            db_user.last_status_change = datetime.now(timezone.utc)
+            changed.append(db_user)
+
+    if changed:
+        db.commit()
+
+        for user in changed:
+            try:
+                xray.operations.remove_user(user)
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
+
+            try:
+                report.status_change(
+                    username=user.username,
+                    status=user.status,
+                    user=UserResponse.model_validate(user),
+                    user_admin=user.admin,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
+
+            # Best-effort cache refresh
+            try:
+                from app.redis.cache import cache_user, invalidate_user_cache
+
+                invalidate_user_cache(username=user.username, user_id=user.id)
+                cache_user(user, mark_for_sync=True)
+            except Exception:
+                pass

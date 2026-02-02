@@ -1,5 +1,6 @@
+import logging
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -20,6 +21,7 @@ from app.models.admin import (
     AdminRole,
     AdminStatus,
     Token,
+    UserPermission,
 )
 from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
@@ -28,6 +30,7 @@ from config import LOGIN_NOTIFY_WHITE_LIST
 from app.services import metrics_service
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
+logger = logging.getLogger("uvicorn.error")
 
 
 class AdminsListResponse(BaseModel):
@@ -37,6 +40,16 @@ class AdminsListResponse(BaseModel):
 
 class AdminDisablePayload(BaseModel):
     reason: str = Field(..., min_length=3, max_length=512, description="Reason shown to the disabled admin")
+
+
+class StandardAdminsBulkPermissionsPayload(BaseModel):
+    permissions: List[UserPermission] = Field(..., min_length=1)
+    mode: Literal["disable", "restore"] = "disable"
+
+
+class StandardAdminsBulkPermissionsResponse(BaseModel):
+    updated: int
+    mode: Literal["disable", "restore"]
 
 
 def get_client_ip(request: Request) -> str:
@@ -65,6 +78,17 @@ def validate_dates(start: str, end: str) -> tuple[datetime, datetime]:
         raise HTTPException(status_code=400, detail="Start date must be before end date")
 
     return start_date, end_date
+
+
+def _restart_xray_with_nodes(startup_config):
+    """Restart master core and connected nodes; best-effort to keep request fast."""
+    try:
+        xray.core.restart(startup_config)
+        for node_id, node in list(xray.nodes.items()):
+            if node.connected:
+                xray.operations.restart_node(node_id, startup_config)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("Failed to restart Xray after admin status change: %s", exc, exc_info=True)
 
 
 @router.post("/admin/token", response_model=Token)
@@ -206,11 +230,37 @@ def get_admins(
 
 
 @router.post(
+    "/admin/permissions/standard/bulk",
+    response_model=StandardAdminsBulkPermissionsResponse,
+    responses={403: responses._403},
+)
+def bulk_update_standard_admin_permissions(
+    payload: StandardAdminsBulkPermissionsPayload,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Bulk update user permissions for all standard admins."""
+    if not (admin.has_full_access or admin.permissions.admin_management.allows(AdminManagementPermission.edit)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You're not allowed to manage other admins.",
+        )
+
+    updated = crud.bulk_update_standard_admin_permissions(
+        db,
+        payload.permissions,
+        mode=payload.mode,
+    )
+    return StandardAdminsBulkPermissionsResponse(updated=updated, mode=payload.mode)
+
+
+@router.post(
     "/admin/{username}/disable",
     response_model=Admin,
     responses={403: responses._403, 404: responses._404},
 )
 def disable_admin_account(
+    background_tasks: BackgroundTasks,
     payload: AdminDisablePayload,
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
@@ -233,12 +283,13 @@ def disable_admin_account(
     crud.disable_all_active_users(db=db, admin=dbadmin)
     updated_admin = crud.disable_admin(db, dbadmin, reason)
 
-    # Restart xray with updated config to remove disabled users
-    startup_config = xray.config.include_db_users()
-    xray.core.restart(startup_config)
-    for node_id, node in list(xray.nodes.items()):
-        if node.connected:
-            xray.operations.restart_node(node_id, startup_config)
+    # Restart xray with updated config to remove disabled users (async to avoid client timeouts)
+    try:
+        startup_config = xray.config.include_db_users()
+    except Exception as exc:
+        logger.warning("Failed to build Xray config after disabling admin %s: %s", dbadmin.username, exc)
+    else:
+        background_tasks.add_task(_restart_xray_with_nodes, startup_config)
 
     admin_schema = Admin.model_validate(updated_admin)
     report.admin_updated(admin_schema, current_admin, previous=previous_state)
@@ -251,6 +302,7 @@ def disable_admin_account(
     responses={403: responses._403, 404: responses._404},
 )
 def enable_admin_account(
+    background_tasks: BackgroundTasks,
     dbadmin: Admin = Depends(get_admin_by_username),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(Admin.check_sudo_admin),
@@ -276,11 +328,12 @@ def enable_admin_account(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
-    startup_config = xray.config.include_db_users()
-    xray.core.restart(startup_config)
-    for node_id, node in list(xray.nodes.items()):
-        if node.connected:
-            xray.operations.restart_node(node_id, startup_config)
+    try:
+        startup_config = xray.config.include_db_users()
+    except Exception as exc:
+        logger.warning("Failed to build Xray config after enabling admin %s: %s", dbadmin.username, exc)
+    else:
+        background_tasks.add_task(_restart_xray_with_nodes, startup_config)
 
     admin_schema = Admin.model_validate(updated_admin)
     report.admin_updated(admin_schema, current_admin, previous=previous_state)

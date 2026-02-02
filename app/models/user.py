@@ -16,10 +16,11 @@ from app.utils.credentials import (
     runtime_proxy_settings,
     PASSWORD_PROTOCOLS,
     UUID_PROTOCOLS,
+    normalize_flow_value,
 )
 from xray_api.types.account import Account
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH, XRAY_SUBSCRIPTION_URL_PREFIX
+from config import XRAY_SUBSCRIPTION_PATH
 
 # Fallback import to avoid deployment breakage when settings model isn't updated yet
 try:  # pragma: no cover
@@ -36,12 +37,26 @@ USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.
 
 _skip_expensive_computations: ContextVar[bool] = ContextVar("skip_expensive_computations", default=False)
 
-ALLOWED_FLOW_VALUES = {
-    None,
-    "",
-    "xtls-rprx-vision",
-    "xtls-rprx-vision-udp443",
-}
+
+def _extract_flow_from_proxies(proxies: Optional[Dict[ProxyTypes, ProxySettings]]) -> Optional[str]:
+    if not proxies:
+        return None
+
+    def _get_flow(proxy_key: ProxyTypes) -> Optional[str]:
+        settings = proxies.get(proxy_key) or proxies.get(proxy_key.value)
+        if settings is None:
+            return None
+        flow_value = None
+        if hasattr(settings, "flow"):
+            flow_value = getattr(settings, "flow", None)
+        elif isinstance(settings, dict):
+            flow_value = settings.get("flow")
+        return normalize_flow_value(flow_value)
+
+    flow = _get_flow(ProxyTypes.VLESS)
+    if flow:
+        return flow
+    return _get_flow(ProxyTypes.Trojan)
 
 
 def _normalize_ip_limit(value) -> int:
@@ -113,6 +128,7 @@ class BulkUsersActionRequest(BaseModel):
     days: Optional[int] = None
     gigabytes: Optional[float] = None
     statuses: Optional[List[UserStatus]] = None
+    scope: Optional[List[UserStatus]] = None
     admin_username: Optional[str] = None
     service_id: Optional[int] = None
     target_service_id: Optional[int] = None
@@ -148,6 +164,20 @@ class BulkUsersActionRequest(BaseModel):
                 raise ValueError("cleanup_status only accepts expired or limited")
             self.statuses = resolved_statuses
 
+        if self.scope:
+            cleaned = [status for status in self.scope if status != UserStatus.deleted]
+            if not cleaned:
+                raise ValueError("scope cannot be empty or include deleted")
+            # Preserve order while removing duplicates
+            deduped = []
+            seen = set()
+            for status in cleaned:
+                if status in seen:
+                    continue
+                seen.add(status)
+                deduped.append(status)
+            self.scope = deduped
+
         service_id = self.service_id
         if service_id is not None and service_id <= 0:
             raise ValueError("service_id must be a positive integer")
@@ -165,6 +195,10 @@ class NextPlanModel(BaseModel):
     expire: Optional[int] = None
     add_remaining_traffic: bool = False
     fire_on_either: bool = True
+    increase_data_limit: bool = False
+    start_on_first_connect: bool = False
+    trigger_on: str = "either"
+    position: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -178,6 +212,8 @@ class User(BaseModel):
     data_limit_reset_strategy: UserDataLimitResetStrategy = UserDataLimitResetStrategy.no_reset
     inbounds: Dict[ProxyTypes, List[str]] = {}
     note: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    telegram_id: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    contact_number: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     sub_updated_at: Optional[datetime] = Field(default=None, json_schema_extra={"nullable": True})
     sub_last_user_agent: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     online_at: Optional[datetime] = Field(default=None, json_schema_extra={"nullable": True})
@@ -192,6 +228,7 @@ class User(BaseModel):
     auto_delete_in_days: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
 
     next_plan: Optional[NextPlanModel] = Field(default=None, json_schema_extra={"nullable": True})
+    next_plans: Optional[List[NextPlanModel]] = Field(default=None, json_schema_extra={"nullable": True})
 
     @property
     def proxy_type(self) -> Optional[ProxyTypes]:
@@ -200,15 +237,47 @@ class User(BaseModel):
         first = next(iter(self.proxies))
         return first if isinstance(first, ProxyTypes) else ProxyTypes(first)
 
+    @model_validator(mode="after")
+    def derive_flow_from_proxies(self):
+        # Backward compatibility: allow flow to be provided inside proxy settings (Marzban-style).
+        if not self.flow and self.proxies:
+            derived = _extract_flow_from_proxies(self.proxies)
+            if derived:
+                self.flow = derived
+        return self
+
     @field_validator("flow", mode="before")
     def validate_flow(cls, value):
         if value in (None, ""):
             return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if normalized in ALLOWED_FLOW_VALUES:
-                return normalized
+        normalized = normalize_flow_value(value)
+        if normalized:
+            return normalized
         raise ValueError("Unsupported flow value")
+
+    @field_validator("telegram_id", mode="before")
+    def validate_telegram_id(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed == "":
+                return None
+            if re.match(r"^[\w.@+\- ]+$", trimmed):
+                return trimmed
+        raise ValueError("Invalid telegram_id format")
+
+    @field_validator("contact_number", mode="before")
+    def validate_contact_number(cls, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed == "":
+                return None
+            if re.match(r"^[0-9+\-() ]+$", trimmed):
+                return trimmed
+        raise ValueError("Invalid contact_number format")
 
     def _account_email(self) -> str:
         identifier = getattr(self, "id", None)
@@ -233,7 +302,7 @@ class User(BaseModel):
 
         account_data = {"email": self._account_email()}
         runtime_key = credential_key or self.credential_key
-        if runtime_key and self.flow:
+        if runtime_key and self.flow and resolved_type in (ProxyTypes.VLESS, ProxyTypes.Trojan):
             proxy_data = runtime_proxy_settings(settings, resolved_type, runtime_key, flow=self.flow)
         elif runtime_key:
             proxy_data = runtime_proxy_settings(settings, resolved_type, runtime_key)
@@ -513,6 +582,7 @@ class UserServiceCreate(BaseModel):
     on_hold_expire_duration: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     auto_delete_in_days: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     next_plan: Optional[NextPlanModel] = Field(default=None, json_schema_extra={"nullable": True})
+    next_plans: Optional[List[NextPlanModel]] = Field(default=None, json_schema_extra={"nullable": True})
     ip_limit: int = 0
     flow: Optional[str] = None
     credential_key: Optional[str] = None
@@ -535,10 +605,9 @@ class UserServiceCreate(BaseModel):
     def validate_flow(cls, value):
         if value in (None, ""):
             return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if normalized in ALLOWED_FLOW_VALUES:
-                return normalized
+        normalized = normalize_flow_value(value)
+        if normalized:
+            return normalized
         raise ValueError("Unsupported flow value")
 
 
@@ -547,20 +616,29 @@ class UserResponse(User):
     status: UserStatus
     used_traffic: int
     lifetime_used_traffic: int = 0
+    next_plans: List[NextPlanModel] = Field(default_factory=list)
     created_at: datetime
-    links: List[str] = Field(default_factory=list, exclude=True)  # Excluded from response to reduce payload
+    links: List[str] = Field(default_factory=list)  # Config links for this user
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
     service_id: int | None = None
     service_name: str | None = None
+    admin_id: int | None = Field(default=None, exclude=True)
+    admin_username: str | None = None
     service_host_orders: Dict[int, int] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict, exclude=True)  # Excluded, use link_data instead
     link_data: List[Dict[str, Any]] = Field(default_factory=list)  # UUID/password for each inbound template
 
     admin: Optional[Admin] = None
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def populate_admin_username(self):
+        if self.admin_username is None and self.admin:
+            self.admin_username = self.admin.username
+        return self
 
     @model_validator(mode="after")
     def validate_links(self):
@@ -619,15 +697,36 @@ class UserResponse(User):
         if _skip_expensive_computations.get():
             return self
         salt = secrets.token_hex(8)
-        url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace("*", salt)
+        try:
+            from app.services.subscription_settings import SubscriptionSettingsService
+
+            admin_obj = getattr(self, "admin", None)
+            if admin_obj is None and getattr(self, "admin_id", None):
+                try:
+                    from app.db.base import SessionLocal
+
+                    db = SessionLocal()
+                    admin_obj = db.query(Admin).filter(Admin.id == self.admin_id).first()
+                except Exception:
+                    admin_obj = None
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+            effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
+            url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+        except Exception:
+            url_prefix = f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
 
         links: Dict[str, str] = {}
         if self.credential_key:
-            links["username-key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.username}/{self.credential_key}"
-            links["key"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{self.credential_key}"
+            links["username-key"] = f"{url_prefix}/{self.username}/{self.credential_key}"
+            links["key"] = f"{url_prefix}/{self.credential_key}"
 
         token = create_subscription_token(self.username)
-        links["token"] = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
+        links["token"] = f"{url_prefix}/{token}"
 
         self.subscription_urls = links
 
@@ -767,8 +866,14 @@ class UserResponse(User):
         raise ValueError("must be an integer or a float, not a string")  # Reject strings
 
 
+class UserCreateResponse(UserResponse):
+    # Include share links in create-user responses.
+    links: List[str] = Field(default_factory=list, exclude=False)
+
+
 class SubscriptionUserResponse(UserResponse):
     admin: Admin | None = Field(default=None, exclude=True)
+    admin_username: str | None = Field(default=None, exclude=True)
     excluded_inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
     note: str | None = Field(None, exclude=True)
     inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
@@ -795,6 +900,7 @@ class UserListItem(BaseModel):
     service_name: str | None = None
     admin_id: int | None = None
     admin_username: str | None = None
+    links: List[str] = Field(default_factory=list)
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
     model_config = ConfigDict(from_attributes=True)
@@ -806,6 +912,9 @@ class UsersResponse(BaseModel):
     total: int
     active_total: Optional[int] = None
     users_limit: Optional[int] = None
+    status_breakdown: Dict[str, int] = Field(default_factory=dict)
+    usage_total: Optional[int] = None
+    online_total: Optional[int] = None
 
 
 class UserUsageResponse(BaseModel):

@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 import time
+import re
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from anyio import from_thread
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
 
 from app.db import Session, crud, get_db
@@ -13,6 +15,7 @@ from app.models.user import (
     AdvancedUserAction,
     BulkUsersActionRequest,
     UserCreate,
+    UserCreateResponse,
     UserModify,
     UserServiceCreate,
     UserResponse,
@@ -27,12 +30,16 @@ from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
+from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
+from app.redis.client import get_redis
 
 # region Helpers
 
 xray = runtime.xray
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
+
+_AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-(\d+)$", re.IGNORECASE)
 
 
 def _ensure_service_visibility(service, admin: Admin):
@@ -41,6 +48,47 @@ def _ensure_service_visibility(service, admin: Admin):
         return
     if admin.id is None or admin.id not in service.admin_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
+
+
+def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int], Optional[str]]:
+    """
+    Detect the special auto-service inbound tag: setservice-<service_id>.
+
+    Auto-service mode is activated only when there is exactly one inbound tag
+    across all protocols in the *raw* payload (before model validation).
+    """
+    if payload_dict.get("service_id") is not None:
+        return None, None
+
+    inbounds_payload = payload_dict.get("inbounds")
+    if not isinstance(inbounds_payload, dict) or not inbounds_payload:
+        return None, None
+
+    tags: List[str] = []
+    for value in inbounds_payload.values():
+        if isinstance(value, list):
+            tags.extend([tag for tag in value if isinstance(tag, str)])
+        elif isinstance(value, str):
+            tags.append(value)
+
+    normalized_tags = {tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()}
+    if len(normalized_tags) != 1:
+        return None, None
+
+    inbound_tag = next(iter(normalized_tags))
+    match = _AUTO_SERVICE_INBOUND_RE.match(inbound_tag)
+    if not match:
+        return None, None
+
+    try:
+        service_id = int(match.group(1))
+    except ValueError:
+        return None, inbound_tag
+
+    if service_id <= 0:
+        return None, inbound_tag
+
+    return service_id, inbound_tag
 
 
 def _ensure_flow_permission(admin: Admin, has_flow: bool) -> None:
@@ -78,18 +126,19 @@ def _ensure_custom_key_permission(admin: Admin, has_key: bool) -> None:
 
 @router.post(
     "/user",
-    response_model=UserResponse,
+    response_model=UserCreateResponse,
     status_code=status.HTTP_201_CREATED,
     responses={400: responses._400, 409: responses._409},
 )
 @router.post(
     "/v2/users",
-    response_model=UserResponse,
+    response_model=UserCreateResponse,
     status_code=status.HTTP_201_CREATED,
     responses={400: responses._400, 409: responses._409},
 )
 def add_user(
-    payload: Union[UserCreate, dict],
+    payload: dict,
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.require_active),
@@ -111,6 +160,29 @@ def add_user(
     # Normalize service_id=0 to None to allow "no service" creation
     if payload_dict.get("service_id") == 0:
         payload_dict["service_id"] = None
+
+    # FastAPI may mutate the incoming dict while attempting UserCreate parsing
+    # (even when it later falls back to `dict`). Read the raw JSON payload to
+    # detect the auto-service tag reliably.
+    raw_payload_dict: Optional[dict] = None
+    try:
+        raw_payload_dict = from_thread.run(request.json)
+    except Exception:
+        raw_payload_dict = None
+
+    detect_payload = raw_payload_dict if isinstance(raw_payload_dict, dict) else payload_dict
+
+    # Auto-service mode: detect setservice-<service_id> inbound tag when it is
+    # the only inbound provided in the raw payload.
+    auto_service_id, auto_service_tag = _detect_auto_service_from_inbounds(detect_payload)
+    if auto_service_id is not None:
+        payload_dict["service_id"] = auto_service_id
+        logger.info(
+            'Auto-selected service_id=%s from inbound tag "%s" for user "%s"',
+            auto_service_id,
+            auto_service_tag,
+            payload_dict.get("username"),
+        )
 
     # Service mode ----------------------------------------------------------
     if payload_dict.get("service_id") is not None:
@@ -212,8 +284,17 @@ def add_user(
             raise HTTPException(status_code=409, detail="User already exists")
 
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
-        user = UserResponse.model_validate(dbuser)
+        user = UserCreateResponse.model_validate(dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
+        if user.next_plans or user.next_plan:
+            total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
+            bg.add_task(
+                report.user_auto_renew_set,
+                user=user,
+                user_admin=dbuser.admin,
+                by=admin,
+                total_rules=total_rules,
+            )
         logger.info(f'New user "{dbuser.username}" added via service {service.name}')
         return user
 
@@ -293,7 +374,7 @@ def add_user(
         raise HTTPException(status_code=409, detail="User already exists")
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
-    user = UserResponse.model_validate(dbuser)
+    user = UserCreateResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
     return user
@@ -460,6 +541,15 @@ def modify_user(
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
     bg.add_task(report.user_updated, user=user, user_admin=dbuser.admin, by=admin)
+    if user.next_plans or user.next_plan:
+        total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
+        bg.add_task(
+            report.user_auto_renew_set,
+            user=user,
+            user_admin=dbuser.admin,
+            by=admin,
+            total_rules=total_rules,
+        )
 
     logger.info(f'User "{user.username}" modified')
 
@@ -568,6 +658,7 @@ def get_users(
     advanced_filters: List[str] = Query(None, alias="filter"),
     service_id: int = Query(None, alias="service_id"),
     sort: str = None,
+    links: bool = Query(False, description="Include full config links for each user"),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.get_current),
 ):
@@ -578,7 +669,7 @@ def get_users(
     """
     start_ts = time.perf_counter()
     logger.info(
-        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s",
+        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s links=%s",
         offset,
         limit,
         username,
@@ -588,6 +679,7 @@ def get_users(
         advanced_filters,
         service_id,
         sort,
+        links,
     )
     if sort is not None:
         opts = sort.strip(",").split(",")
@@ -598,7 +690,11 @@ def get_users(
             except KeyError:
                 raise HTTPException(status_code=400, detail=f'"{opt}" is not a valid sort option')
 
-    owners = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username]
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        owners = owner if owner and len(owner) > 0 else None
+    else:
+        owners = [admin.username]
+
     dbadmin = None
     users_limit = None
     active_total = None
@@ -611,21 +707,61 @@ def get_users(
 
     from app.services import user_service
 
-    response = user_service.get_users_list(
-        db,
-        offset=offset,
-        limit=limit,
-        username=username,
-        search=search,
-        status=status,
-        sort=sort,
-        advanced_filters=advanced_filters,
-        service_id=service_id,
-        dbadmin=dbadmin,
-        owners=owners,
-        users_limit=users_limit,
-        active_total=active_total,
-    )
+    if links:
+        # Generating share links requires DB-loaded proxies/inbounds; skip Redis fast path.
+        response = user_service.get_users_list_db_only(
+            db,
+            offset=offset,
+            limit=limit,
+            username=username,
+            search=search,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            dbadmin=dbadmin,
+            owners=owners,
+            users_limit=users_limit,
+            active_total=active_total,
+            include_links=True,
+        )
+    else:
+        use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
+        if use_db_only:
+            logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
+            response = user_service.get_users_list_db_only(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=False,
+            )
+        else:
+            response = user_service.get_users_list(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=False,
+            )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return response
 
@@ -696,6 +832,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Expiration dates extended"
         elif payload.action == AdvancedUserAction.reduce_expire:
@@ -705,6 +842,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
@@ -715,6 +853,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
@@ -725,6 +864,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
@@ -797,6 +937,13 @@ def perform_users_bulk_action(
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        from app.redis.cache import invalidate_user_cache
+
+        invalidate_user_cache()
+    except Exception:
+        pass
 
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)

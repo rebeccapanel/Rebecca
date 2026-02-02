@@ -22,7 +22,7 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes, ProxySettings
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
 from app.utils.xray_defaults import apply_log_paths
 from config import (
     DEBUG,
@@ -135,6 +135,74 @@ def _is_valid_uuid(uuid_value) -> bool:
     return False
 
 
+def _flow_supported_for_inbound(inbound: dict) -> bool:
+    """
+    XTLS flow is only supported on TCP/RAW/KCP transports with TLS/Reality
+    and non-HTTP headers. If inbound info is missing, treat as unsupported.
+    """
+    try:
+        network = inbound.get("network", "tcp")
+        tls_type = inbound.get("tls", "none")
+        header_type = inbound.get("header_type", "")
+    except Exception:
+        return False
+    return network in ("tcp", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
+
+
+def get_xray_version():
+    """
+    Get the installed Xray core version from the running instance.
+    Falls back to creating a temporary instance if runtime is not yet initialized.
+
+    Returns:
+        str: Version string (e.g., "1.8.4") if Xray is available, None otherwise.
+    """
+    try:
+        # Try to use the already-running core instance from runtime
+        from app.reb_node.state import core
+
+        return core.version if core.available else None
+    except Exception:
+        return None
+
+
+def is_xray_version_at_least(target_version: str) -> bool:
+    """
+    Check if the current Xray version is at least the target version.
+    Version format is YY.M.DD (e.g., "26.1.31" for Jan 31, 2026).
+
+    Args:
+        target_version: Target version string (e.g., "26.1.31")
+
+    Returns:
+        bool: True if current version >= target version, False otherwise.
+              Returns True if version cannot be determined.
+
+    Examples:
+        >>> is_xray_version_at_least("26.1.31")  # Check if current version is at least 26.1.31
+    """
+
+    current_version = get_xray_version()
+
+    if not current_version or not target_version:
+        return True  # Assume true if version cannot be determined
+
+    try:
+        # Parse versions into tuples of integers for comparison
+        current_parts = [int(x) for x in current_version.split(".")]
+        target_parts = [int(x) for x in target_version.split(".")]
+
+        # Pad shorter version with zeros for comparison
+        max_len = max(len(current_parts), len(target_parts))
+        current_parts.extend([0] * (max_len - len(current_parts)))
+        target_parts.extend([0] * (max_len - len(target_parts)))
+
+        # Compare versions
+        return tuple(current_parts) >= tuple(target_parts)
+    except (ValueError, AttributeError):
+        return True  # Assume true if version cannot be determined
+
+
 class XRayConfig(dict):
     def __init__(self, config: Union[dict, str, PosixPath] = {}, api_host: str = "127.0.0.1", api_port: int = 8080):
         if isinstance(config, str):
@@ -176,12 +244,7 @@ class XRayConfig(dict):
 
     def _apply_api(self):
         api_inbound = self.get_inbound("API_INBOUND")
-        if api_inbound:
-            api_inbound["listen"] = self.api_host
-            api_inbound["listen"]["address"] = self.api_host
-            api_inbound["port"] = self.api_port
-            return
-
+        # Always enable API services/policy at runtime (do not persist).
         self["api"] = {"services": ["HandlerService", "StatsService", "LoggerService"], "tag": "API"}
         self["stats"] = {}
         forced_policies = {
@@ -207,25 +270,49 @@ class XRayConfig(dict):
             self["policy"] = merge_dicts(current_policy, forced_policies)
         else:
             self["policy"] = forced_policies
-        inbound = {
-            "listen": self.api_host,
-            "port": self.api_port,
-            "protocol": "dokodemo-door",
-            "settings": {"address": self.api_host},
-            "tag": "API_INBOUND",
-        }
-        try:
-            self["inbounds"].insert(0, inbound)
-        except KeyError:
-            self["inbounds"] = []
-            self["inbounds"].insert(0, inbound)
+
+        if api_inbound:
+            listen_value = api_inbound.get("listen")
+            if isinstance(listen_value, dict):
+                listen_value["address"] = self.api_host
+                api_inbound["listen"] = listen_value
+            else:
+                api_inbound["listen"] = self.api_host
+            api_inbound["port"] = self.api_port
+            settings = api_inbound.get("settings")
+            if isinstance(settings, dict):
+                settings["address"] = self.api_host
+            else:
+                api_inbound["settings"] = {"address": self.api_host}
+        else:
+            inbound = {
+                "listen": self.api_host,
+                "port": self.api_port,
+                "protocol": "dokodemo-door",
+                "settings": {"address": self.api_host},
+                "tag": "API_INBOUND",
+            }
+            try:
+                self["inbounds"].insert(0, inbound)
+            except KeyError:
+                self["inbounds"] = []
+                self["inbounds"].insert(0, inbound)
 
         rule = {"inboundTag": ["API_INBOUND"], "outboundTag": "API", "type": "field"}
-        try:
-            self["routing"]["rules"].insert(0, rule)
-        except KeyError:
+        rules = None
+        if isinstance(self.get("routing"), dict):
+            rules = self.get("routing", {}).get("rules")
+        if not isinstance(rules, list):
             self["routing"] = {"rules": []}
-            self["routing"]["rules"].insert(0, rule)
+            rules = self["routing"]["rules"]
+        if not any(
+            isinstance(r, dict)
+            and r.get("type") == "field"
+            and r.get("outboundTag") == "API"
+            and "API_INBOUND" in (r.get("inboundTag") or [])
+            for r in rules
+        ):
+            rules.insert(0, rule)
 
     def _migrate_deprecated_configs(self):
         """Migrate deprecated config formats to new formats to avoid deprecation warnings."""
@@ -342,18 +429,38 @@ class XRayConfig(dict):
                 tls_settings = stream.get(f"{security}Settings", {}) if security else {}
                 if not isinstance(tls_settings, dict):
                     tls_settings = {}
+                tls_settings_meta = (
+                    tls_settings.get("settings") if isinstance(tls_settings.get("settings"), dict) else {}
+                )
 
                 if settings["is_fallback"] is True:
                     # probably this is a fallback
                     security = self._fallbacks_inbound.get("streamSettings", {}).get("security")
                     tls_settings = self._fallbacks_inbound.get("streamSettings", {}).get(f"{security}Settings", {})
+                    if not isinstance(tls_settings, dict):
+                        tls_settings = {}
+                    tls_settings_meta = (
+                        tls_settings.get("settings") if isinstance(tls_settings.get("settings"), dict) else {}
+                    )
 
                 settings["network"] = net
 
                 if security == "tls":
-                    # settings['fp']
-                    # settings['alpn']
                     settings["tls"] = "tls"
+                    fp = tls_settings_meta.get("fingerprint") or tls_settings.get("fingerprint")
+                    if fp:
+                        settings["fp"] = fp
+                    allow_insecure = tls_settings_meta.get("allowInsecure")
+                    if allow_insecure is None:
+                        allow_insecure = tls_settings.get("allowInsecure")
+                    if allow_insecure is not None:
+                        settings["ais"] = bool(allow_insecure)
+                        settings["allowinsecure"] = bool(allow_insecure)
+                    alpn = tls_settings.get("alpn")
+                    if isinstance(alpn, list):
+                        alpn = ",".join([str(value) for value in alpn if value])
+                    if isinstance(alpn, str) and alpn.strip():
+                        settings["alpn"] = alpn.strip()
                     for certificate in tls_settings.get("certificates", []):
                         if certificate.get("certificateFile", None):
                             with open(certificate["certificateFile"], "rb") as file:
@@ -367,9 +474,17 @@ class XRayConfig(dict):
                             if isinstance(cert, str):
                                 cert = cert.encode()
                             settings["sni"].extend(get_cert_SANs(cert))
+                    if not settings["sni"]:
+                        server_name = tls_settings.get("serverName") or tls_settings.get("sni")
+                        if isinstance(server_name, str) and server_name.strip():
+                            settings["sni"] = [server_name.strip()]
 
                 elif security == "reality":
-                    settings["fp"] = "chrome"
+                    fp = tls_settings_meta.get("fingerprint") or tls_settings.get("fingerprint")
+                    if fp:
+                        settings["fp"] = fp
+                    else:
+                        settings["fp"] = "chrome"
                     settings["tls"] = "reality"
                     server_names = tls_settings.get("serverNames") or []
                     if isinstance(server_names, str):
@@ -379,7 +494,7 @@ class XRayConfig(dict):
                     settings["sni"] = server_names
 
                     try:
-                        settings["pbk"] = tls_settings["publicKey"]
+                        settings["pbk"] = tls_settings_meta.get("publicKey") or tls_settings["publicKey"]
                     except KeyError:
                         pvk = tls_settings.get("privateKey")
                         if not pvk:
@@ -400,7 +515,11 @@ class XRayConfig(dict):
                     sids = [sid for sid in sids if isinstance(sid, str) and sid.strip()]
                     # Allow Reality configs without short IDs (Xray treats them as optional)
                     settings["sids"] = sids
-                    spider_x = tls_settings.get("SpiderX", tls_settings.get("spiderX", ""))
+                    spider_x = (
+                        tls_settings_meta.get("spiderX")
+                        or tls_settings.get("SpiderX")
+                        or tls_settings.get("spiderX", "")
+                    )
                     settings["spx"] = spider_x or ""
 
                 if net in ("tcp", "raw"):
@@ -464,15 +583,23 @@ class XRayConfig(dict):
                 elif net in ("splithttp", "xhttp"):
                     settings["path"] = net_settings.get("path", "")
                     host = net_settings.get("host", "")
-                    settings["host"] = [host]
-                    settings["scMaxEachPostBytes"] = net_settings.get("scMaxEachPostBytes", 1000000)
-                    settings["scMaxConcurrentPosts"] = net_settings.get("scMaxConcurrentPosts", 100)
-                    settings["scMinPostsIntervalMs"] = net_settings.get("scMinPostsIntervalMs", 30)
-                    settings["xPaddingBytes"] = net_settings.get("xPaddingBytes", "100-1000")
-                    settings["xmux"] = net_settings.get("xmux", {})
-                    settings["mode"] = net_settings.get("mode", "auto")
-                    settings["noGRPCHeader"] = net_settings.get("noGRPCHeader", False)
-                    settings["keepAlivePeriod"] = net_settings.get("keepAlivePeriod", 0)
+                    settings["host"] = [host] if host else []
+                    if "scMaxEachPostBytes" in net_settings:
+                        settings["scMaxEachPostBytes"] = net_settings.get("scMaxEachPostBytes")
+                    if "scMaxConcurrentPosts" in net_settings:
+                        settings["scMaxConcurrentPosts"] = net_settings.get("scMaxConcurrentPosts")
+                    if "scMinPostsIntervalMs" in net_settings:
+                        settings["scMinPostsIntervalMs"] = net_settings.get("scMinPostsIntervalMs")
+                    if "xPaddingBytes" in net_settings:
+                        settings["xPaddingBytes"] = net_settings.get("xPaddingBytes")
+                    if "xmux" in net_settings and net_settings.get("xmux") is not None:
+                        settings["xmux"] = net_settings.get("xmux")
+                    if "mode" in net_settings:
+                        settings["mode"] = net_settings.get("mode")
+                    if "noGRPCHeader" in net_settings:
+                        settings["noGRPCHeader"] = net_settings.get("noGRPCHeader")
+                    if "keepAlivePeriod" in net_settings:
+                        settings["keepAlivePeriod"] = net_settings.get("keepAlivePeriod")
 
                 elif net == "kcp":
                     header = net_settings.get("header", {})
@@ -533,6 +660,7 @@ class XRayConfig(dict):
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
+                    db_models.User.flow,
                     func.lower(db_models.Proxy.type).label("type"),
                     db_models.Proxy.settings,
                     func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label(
@@ -550,6 +678,7 @@ class XRayConfig(dict):
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
+                    db_models.User.flow,
                     db_models.Proxy.settings,
                 )
             )
@@ -563,6 +692,7 @@ class XRayConfig(dict):
                         row.id,
                         row.username,
                         row.credential_key,
+                        row.flow,
                         row.settings,
                         [i for i in row.excluded_inbound_tags.split(",") if i] if row.excluded_inbound_tags else None,
                     )
@@ -577,7 +707,7 @@ class XRayConfig(dict):
                     clients = config.get_inbound(inbound["tag"])["settings"]["clients"]
 
                     for row in rows:
-                        user_id, username, credential_key, settings, excluded_inbound_tags = row
+                        user_id, username, credential_key, user_flow, settings, excluded_inbound_tags = row
 
                         if excluded_inbound_tags and inbound["tag"] in excluded_inbound_tags:
                             continue
@@ -596,25 +726,21 @@ class XRayConfig(dict):
 
                         try:
                             settings_obj = ProxySettings.from_dict(proxy_type_enum, settings.copy())
-                            runtime_settings = runtime_proxy_settings(
-                                settings_obj, proxy_type_enum, credential_key, flow=None
-                            )
+                            flow_value = normalize_flow_value(user_flow) if user_flow else None
+                            if flow_value and proxy_type_enum in (ProxyTypes.VLESS, ProxyTypes.Trojan):
+                                runtime_settings = runtime_proxy_settings(
+                                    settings_obj, proxy_type_enum, credential_key, flow=flow_value
+                                )
+                            else:
+                                runtime_settings = runtime_proxy_settings(settings_obj, proxy_type_enum, credential_key)
 
                             client_to_add = {"email": email, **runtime_settings}
 
                             if client_to_add.get("id") is not None:
                                 client_to_add["id"] = str(client_to_add["id"])
 
-                            if client_to_add.get("flow") and inbound:
-                                network = inbound.get("network", "tcp")
-                                tls_type = inbound.get("tls", "none")
-                                header_type = inbound.get("header_type", "")
-                                flow_supported = (
-                                    network in ("tcp", "raw", "kcp")
-                                    and tls_type in ("tls", "reality")
-                                    and header_type != "http"
-                                )
-                                if not flow_supported:
+                            if client_to_add.get("flow"):
+                                if not _flow_supported_for_inbound(inbound or {}):
                                     del client_to_add["flow"]
                         except Exception as e:
                             logger = logging.getLogger("uvicorn.error")
@@ -633,6 +759,50 @@ class XRayConfig(dict):
                                 user_id,
                                 proxy_type,
                             )
+
+        for inbound in config.get("inbounds", []):
+            stream = inbound.get("streamSettings")
+            if not isinstance(stream, dict):
+                continue
+            tls_settings = stream.get("tlsSettings")
+            if isinstance(tls_settings, dict):
+                # Create a copy to modify
+                tls_settings = {**tls_settings}
+                # Remove deprecated "settings" key if present
+                if "settings" in tls_settings:
+                    tls_settings.pop("settings", None)
+
+                # Apply version-based migration
+                if is_xray_version_at_least("26.1.31"):
+                    # verifyPeerCertInNames is the old one it has been replaced by verifyPeerCertByName
+                    if tls_settings.get("verifyPeerCertInNames"):
+                        names = tls_settings.pop("verifyPeerCertInNames", None)
+                        # If verifyPeerCertByName is already set, keep its value and just remove the old field.
+                        if not tls_settings.get("verifyPeerCertByName") and names:
+                            # verifyPeerCertByName expects a string, not an array
+                            if isinstance(names, list) and len(names) > 0:
+                                tls_settings["verifyPeerCertByName"] = names[0]
+                            elif isinstance(names, str):
+                                tls_settings["verifyPeerCertByName"] = names
+                else:
+                    if tls_settings.get("verifyPeerCertByName"):
+                        names = tls_settings.pop("verifyPeerCertByName", None)
+                        # If verifyPeerCertInNames is already set, keep its value and just remove the new field.
+                        if not tls_settings.get("verifyPeerCertInNames") and names:
+                            # verifyPeerCertInNames expects a list
+                            if isinstance(names, str):
+                                tls_settings["verifyPeerCertInNames"] = [names]
+                            elif isinstance(names, list):
+                                tls_settings["verifyPeerCertInNames"] = names
+
+                # Update the stream with the modified settings
+                stream["tlsSettings"] = tls_settings
+
+            reality_settings = stream.get("realitySettings")
+            if isinstance(reality_settings, dict) and "settings" in reality_settings:
+                reality_settings = {**reality_settings}
+                reality_settings.pop("settings", None)
+                stream["realitySettings"] = reality_settings
 
         if DEBUG:
             with open("generated_config-debug.json", "w") as f:

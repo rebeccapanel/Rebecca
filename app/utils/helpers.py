@@ -31,7 +31,7 @@ def inbound_requires_xtls_flow(inbound: Mapping[str, Any]) -> bool:
     protocol = inbound.get("protocol")
     return (
         protocol in {"vless", "trojan"}
-        and inbound.get("network", "tcp") in {"tcp", "raw", "kcp"}
+        and inbound.get("network", "tcp") in {"tcp", "kcp"}
         and inbound.get("tls") in {"tls", "reality"}
         and inbound.get("header_type") != "http"
     )

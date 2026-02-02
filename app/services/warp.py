@@ -41,8 +41,8 @@ class WarpService:
             "key": public_key,
             "tos": utcnow_naive().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "type": "PC",
-            "model": "rebeca-panel",
-            "name": socket.gethostname() or "rebeca-panel",
+            "model": "rebecca-panel",
+            "name": socket.gethostname() or "rebecca-panel",
         }
 
         response = self._request("POST", "/reg", json=payload)

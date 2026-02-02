@@ -41,6 +41,11 @@ import {
 	Spinner,
 	Stack,
 	Switch,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Tag,
 	Text,
 	Tooltip,
@@ -50,8 +55,10 @@ import {
 import {
 	Bars3Icon,
 	InformationCircleIcon,
+	ListBulletIcon,
 	PencilIcon,
 	PlusIcon,
+	Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import {
 	proxyALPN,
@@ -72,6 +79,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteIcon } from "./DeleteUserModal";
+import { JsonEditor } from "./JsonEditor";
 
 type HostData = {
 	id: number | null;
@@ -92,6 +100,27 @@ type HostData = {
 	alpn: string;
 	fingerprint: string;
 	use_sni_as_host: boolean;
+};
+
+const EMPTY_HOST_DATA: HostData = {
+	id: null,
+	remark: "",
+	address: "",
+	sort: 0,
+	port: null,
+	path: "",
+	sni: "",
+	host: "",
+	mux_enable: false,
+	allowinsecure: false,
+	is_disabled: false,
+	fragment_setting: "",
+	noise_setting: "",
+	random_user_agent: false,
+	security: "inbound_default",
+	alpn: "",
+	fingerprint: "",
+	use_sni_as_host: false,
 };
 
 type HostState = {
@@ -135,6 +164,20 @@ const AddIcon = chakra(PlusIcon, {
 });
 
 const HandleIcon = chakra(Bars3Icon, {
+	baseStyle: {
+		w: 4,
+		h: 4,
+	},
+});
+
+const GridViewIcon = chakra(Squares2X2Icon, {
+	baseStyle: {
+		w: 4,
+		h: 4,
+	},
+});
+
+const ListViewIcon = chakra(ListBulletIcon, {
 	baseStyle: {
 		w: 4,
 		h: 4,
@@ -332,7 +375,11 @@ const mapHostsToState = (hosts: HostsSchema): HostState[] => {
 					original: cloneHostData(normalized),
 				});
 			} catch (error) {
-				console.error(`Failed to normalize host at index ${index} for tag ${tag}:`, error, host);
+				console.error(
+					`Failed to normalize host at index ${index} for tag ${tag}:`,
+					error,
+					host,
+				);
 			}
 		});
 	});
@@ -514,6 +561,122 @@ const HostCard: FC<HostCardProps> = ({
 	);
 };
 
+const HostListRow: FC<HostCardProps> = ({
+	host,
+	inboundOptions,
+	orderIndex,
+	onToggleActive,
+	onEdit,
+	onDelete,
+	saving,
+	deleting,
+}) => {
+	const { t } = useTranslation();
+	const inbound = inboundOptions.find(
+		(option) => option.value === host.inboundTag,
+	);
+	const active = !host.data.is_disabled;
+	const dirty = isHostDirty(host);
+	const hostName = host.data.remark || t("hostsPage.untitledHost");
+
+	return (
+		<Box
+			borderWidth="1px"
+			borderRadius="md"
+			borderColor={dirty ? "primary.400" : "gray.200"}
+			_dark={{
+				borderColor: dirty ? "primary.300" : "gray.700",
+				bg: dirty ? "gray.800" : "gray.900",
+			}}
+			px={{ base: 4, md: 5 }}
+			py={3}
+			onClick={() => onEdit(host.uid)}
+			cursor="pointer"
+			transition="border-color 0.2s ease"
+			_hover={{ borderColor: "primary.400" }}
+		>
+			<HStack justify="space-between" align="center" spacing={4}>
+				<VStack align="flex-start" spacing={1} flex="1">
+					<HStack spacing={2} flexWrap="wrap">
+						<Tag colorScheme="gray" size="sm">
+							{t("hostsPage.orderIndex", { value: orderIndex + 1 })}
+						</Tag>
+						<Text fontWeight="semibold" noOfLines={1}>
+							{hostName}
+						</Text>
+						{inbound && (
+							<Tag colorScheme="purple" size="sm">
+								{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
+							</Tag>
+						)}
+						{typeof host.data.port === "number" && (
+							<Tag colorScheme="blue" size="sm">
+								{t("hostsPage.portTag", { value: host.data.port })}
+							</Tag>
+						)}
+						{dirty && (
+							<Tag colorScheme="orange" size="sm">
+								{t("hostsPage.unsaved")}
+							</Tag>
+						)}
+					</HStack>
+					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
+						{host.data.address || t("hostsPage.noAddress")}
+					</Text>
+				</VStack>
+				<HStack
+					spacing={3}
+					onClick={(event) => event.stopPropagation()}
+					onPointerDown={(event) => event.stopPropagation()}
+				>
+					<Switch
+						size="sm"
+						colorScheme="primary"
+						isChecked={active}
+						onChange={(event) => {
+							event.stopPropagation();
+							onToggleActive(host.uid, event.target.checked);
+						}}
+						onClick={(event) => event.stopPropagation()}
+						onPointerDown={(event) => event.stopPropagation()}
+						aria-label={t("hostsPage.toggleActive")}
+					/>
+					<Text
+						fontSize="sm"
+						color="gray.600"
+						_dark={{ color: "gray.300" }}
+					>
+						{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
+					</Text>
+					<IconButton
+						aria-label={t("hostsPage.edit")}
+						size="sm"
+						variant="ghost"
+						icon={<EditIcon />}
+						onClick={(event) => {
+							event.stopPropagation();
+							onEdit(host.uid);
+						}}
+						isLoading={saving}
+					/>
+					<IconButton
+						aria-label={t("hostsPage.delete")}
+						size="sm"
+						colorScheme="red"
+						variant="ghost"
+						onClick={(event) => {
+							event.stopPropagation();
+							onDelete(host.uid);
+						}}
+						icon={<DeleteIcon />}
+						isLoading={deleting}
+					/>
+				</HStack>
+			</HStack>
+		</Box>
+	);
+};
+
 type SortRowProps = {
 	host: HostState;
 	index: number;
@@ -623,15 +786,122 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	deleting,
 }) => {
 	const { t } = useTranslation();
+	const [jsonData, setJsonData] = useState<Record<string, unknown> | null>(
+		null,
+	);
+	const [jsonError, setJsonError] = useState<string | null>(null);
+	const updatingFromJsonRef = useRef(false);
+	const resolvedHost = host ?? {
+		uid: "",
+		inboundTag: "",
+		initialInboundTag: "",
+		data: EMPTY_HOST_DATA,
+		original: EMPTY_HOST_DATA,
+	};
+	const dirty = host ? isHostDirty(host) : false;
+	const hostPayload = host
+		? {
+				inboundTag: host.inboundTag,
+				...host.data,
+			}
+		: null;
+
+	useEffect(() => {
+		if (!hostPayload) {
+			setJsonData(null);
+			setJsonError(null);
+			return;
+		}
+		if (updatingFromJsonRef.current) {
+			updatingFromJsonRef.current = false;
+			return;
+		}
+		setJsonData(hostPayload);
+		setJsonError(null);
+	}, [hostPayload]);
+
+	const coerceHostValue = <Key extends keyof HostData>(
+		key: Key,
+		value: unknown,
+	): HostData[Key] => {
+		const currentData = resolvedHost.data;
+		if (key === "sort") {
+			const numeric = Number(value);
+			return Number.isFinite(numeric)
+				? (numeric as HostData[Key])
+				: (currentData.sort as HostData[Key]);
+		}
+		if (key === "port") {
+			if (value === null || value === "") {
+				return null as HostData[Key];
+			}
+			const numeric = Number(value);
+			return Number.isFinite(numeric)
+				? (numeric as HostData[Key])
+				: (currentData.port as HostData[Key]);
+		}
+		if (key === "id") {
+			if (value === null || value === "") {
+				return null as HostData[Key];
+			}
+			const numeric = Number(value);
+			return Number.isFinite(numeric)
+				? (numeric as HostData[Key])
+				: (currentData.id as HostData[Key]);
+		}
+		if (
+			key === "mux_enable" ||
+			key === "allowinsecure" ||
+			key === "is_disabled" ||
+			key === "random_user_agent" ||
+			key === "use_sni_as_host"
+		) {
+			return Boolean(value) as HostData[Key];
+		}
+		return (value ?? "") as HostData[Key];
+	};
+
+	const handleJsonEditorChange = useCallback(
+		(value: string) => {
+			if (!host) {
+				return;
+			}
+			try {
+				const parsed = JSON.parse(value);
+				if (!parsed || typeof parsed !== "object") {
+					throw new Error("Invalid JSON payload");
+				}
+				const payload = parsed as Record<string, unknown>;
+				const nextInboundTag =
+					typeof payload.inboundTag === "string"
+						? payload.inboundTag
+						: host.inboundTag;
+
+				updatingFromJsonRef.current = true;
+				if (nextInboundTag !== host.inboundTag) {
+					onChangeInbound(host.uid, nextInboundTag);
+				}
+
+				(Object.keys(host.data) as Array<keyof HostData>).forEach((key) => {
+					if (Object.prototype.hasOwnProperty.call(payload, key)) {
+						onChange(host.uid, key, coerceHostValue(key, payload[key]));
+					}
+				});
+
+				setJsonData(parsed as Record<string, unknown>);
+				setJsonError(null);
+			} catch (error) {
+				setJsonError(
+					error instanceof Error ? error.message : "Invalid JSON",
+				);
+			}
+		},
+		[host, onChange, onChangeInbound],
+	);
 
 	if (!host) {
 		return null;
 	}
-
-	const inbound = inboundOptions.find(
-		(option) => option.value === host.inboundTag,
-	);
-	const dirty = isHostDirty(host);
 
 	return (
 		<Modal
@@ -650,18 +920,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 						<Text fontWeight="semibold" fontSize="lg">
 							{host.data.remark || t("hostsPage.untitledHost")}
 						</Text>
-						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-							{host.data.address || t("hostsPage.noAddress")}
-						</Text>
-						{inbound && (
-							<Tag colorScheme="purple" size="sm" alignSelf="flex-start">
-								{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
-							</Tag>
-						)}
 					</VStack>
 				</ModalHeader>
 				<ModalBody>
-					<VStack align="stretch" spacing={5}>
+					<Tabs variant="enclosed" colorScheme="primary">
+						<TabList>
+							<Tab>{t("form")}</Tab>
+							<Tab>{t("json")}</Tab>
+						</TabList>
+						<TabPanels>
+							<TabPanel px={0}>
+								<VStack align="stretch" spacing={5}>
 						<Card variant="outline">
 							<CardHeader pb={2}>
 								<Text fontWeight="semibold">
@@ -944,7 +1213,23 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 								</VStack>
 							</CardBody>
 						</Card>
-					</VStack>
+								</VStack>
+							</TabPanel>
+							<TabPanel px={0}>
+								<VStack align="stretch" spacing={3}>
+									<JsonEditor
+										json={jsonData ?? hostPayload}
+										onChange={handleJsonEditorChange}
+									/>
+									{jsonError && (
+										<Text fontSize="sm" color="red.500">
+											{jsonError}
+										</Text>
+									)}
+								</VStack>
+							</TabPanel>
+						</TabPanels>
+					</Tabs>
 				</ModalBody>
 				<ModalFooter justifyContent="space-between">
 					<Button
@@ -1237,6 +1522,7 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
+	// Disabled hosts are hidden by default.
 	const [includeDisabled, setIncludeDisabled] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [createOpen, setCreateOpen] = useState(false);
@@ -1250,10 +1536,29 @@ export const HostsManager: FC = () => {
 	const [savingOrder, setSavingOrder] = useState(false);
 	const [isSorting, setIsSorting] = useState(false);
 	const [visualOrder, setVisualOrder] = useState<HostState[] | null>(null);
+	const viewModeStorageKey = "hostsViewMode";
+	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+		if (typeof window === "undefined") {
+			return "grid";
+		}
+		const saved = window.localStorage.getItem(viewModeStorageKey);
+		return saved === "list" ? "list" : "grid";
+	});
 
 	useEffect(() => {
 		fetchHosts();
 	}, [fetchHosts]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		try {
+			window.localStorage.setItem(viewModeStorageKey, viewMode);
+		} catch (error) {
+			console.warn("Unable to persist hosts view mode", error);
+		}
+	}, [viewMode]);
 
 	useEffect(() => {
 		if (!inbounds.size) {
@@ -1321,20 +1626,20 @@ export const HostsManager: FC = () => {
 
 	const activeHosts = useMemo(
 		() =>
-			hostItemsRef.current
+			_hostItemsState
 				.filter((host) => !host.data.is_disabled)
 				.sort(
 					(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
 				),
-		[],
+		[_hostItemsState],
 	);
 
 	const allHosts = useMemo(
 		() =>
-			[...hostItemsRef.current].sort(
+			[..._hostItemsState].sort(
 				(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
 			),
-		[],
+		[_hostItemsState],
 	);
 
 	const baseFilteredHosts = useMemo(
@@ -1614,10 +1919,44 @@ export const HostsManager: FC = () => {
 		);
 	};
 
-	const toggleActive = (uid: string, isActive: boolean) => {
-		updateHost(uid, "is_disabled", !isActive);
+	const toggleActive = async (uid: string, isActive: boolean) => {
+		if (isPostLoading) {
+			return;
+		}
+		const previousHosts = hostItemsRef.current;
+		const nextHosts = sortHosts(
+			previousHosts.map((host) =>
+				host.uid === uid
+					? { ...host, data: { ...host.data, is_disabled: !isActive } }
+					: host,
+			),
+		);
+		applyHostItems(nextHosts);
 		if (!isActive) {
 			setIncludeDisabled(true);
+		}
+		setSavingHostUid(uid);
+		try {
+			const updatedHost = nextHosts.find((host) => host.uid === uid);
+			if (!updatedHost) {
+				throw new Error("Host not found");
+			}
+			const payload = buildInboundPayload(nextHosts, [
+				updatedHost.inboundTag,
+				updatedHost.initialInboundTag,
+			]);
+			await setHosts(payload);
+			await fetchHosts();
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.error.save"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setSavingHostUid(null);
 		}
 	};
 
@@ -1825,6 +2164,26 @@ export const HostsManager: FC = () => {
 						/>
 						<HStack spacing={2} justify="flex-end">
 							{isRefreshing && <Spinner size="sm" />}
+							<Tooltip label={t("hostsPage.viewList", "List view")}>
+								<IconButton
+									aria-label={t("hostsPage.viewList", "List view")}
+									icon={<ListViewIcon />}
+									variant={viewMode === "list" ? "solid" : "ghost"}
+									colorScheme={viewMode === "list" ? "primary" : undefined}
+									size="sm"
+									onClick={() => setViewMode("list")}
+								/>
+							</Tooltip>
+							<Tooltip label={t("hostsPage.viewGrid", "Grid view")}>
+								<IconButton
+									aria-label={t("hostsPage.viewGrid", "Grid view")}
+									icon={<GridViewIcon />}
+									variant={viewMode === "grid" ? "solid" : "ghost"}
+									colorScheme={viewMode === "grid" ? "primary" : undefined}
+									size="sm"
+									onClick={() => setViewMode("grid")}
+								/>
+							</Tooltip>
 							<Button
 								size="sm"
 								variant="outline"
@@ -1878,6 +2237,22 @@ export const HostsManager: FC = () => {
 						<SortRow key={host.uid} host={host} index={index} />
 					))}
 				</Reorder.Group>
+			) : viewMode === "list" ? (
+				<VStack align="stretch" spacing={3}>
+					{displayedHosts.map((host, index) => (
+						<HostListRow
+							key={host.uid}
+							host={host}
+							inboundOptions={inboundOptions}
+							orderIndex={orderIndexMap.get(host.uid) ?? index}
+							onToggleActive={toggleActive}
+							onEdit={setSelectedHostUid}
+							onDelete={handleDeleteHost}
+							saving={savingHostUid === host.uid && isPostLoading}
+							deleting={deletingUid === host.uid && isPostLoading}
+						/>
+					))}
+				</VStack>
 			) : (
 				<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
 					{displayedHosts.map((host, index) => (

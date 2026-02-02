@@ -31,7 +31,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
-import { type FC, type ReactNode, useRef } from "react";
+import { type FC, type ReactNode, useRef, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -60,7 +60,7 @@ const MoreIcon = chakra(EllipsisVerticalIcon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
-	const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
+	const { userData } = useGetUser();
 	const { t, i18n } = useTranslation();
 	const actionsContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -79,6 +79,12 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 
 	const { onResetAllUsage, onEditingNodes } = useDashboard();
 	const actionsMenu = useDisclosure();
+	const [lockActionsMenu, setLockActionsMenu] = useState(false);
+	const closeActionsMenu = () => {
+		if (!lockActionsMenu) {
+			actionsMenu.onClose();
+		}
+	};
 
 	const languageItems = [
 		{ code: "en", label: "English", flag: "US" },
@@ -91,6 +97,19 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 		i18n.changeLanguage(lang);
 	};
 
+	const handleActionsMenuClose = () => {
+		if (lockActionsMenu) return;
+		actionsMenu.onClose();
+	};
+
+	const handleThemeModalOpen = () => {
+		setLockActionsMenu(true);
+	};
+
+	const handleThemeModalClose = () => {
+		setLockActionsMenu(false);
+	};
+
 	return (
 		<HStack
 			gap={2}
@@ -101,6 +120,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 				},
 			}}
 			position="relative"
+			userSelect="none"
 		>
 			<Text as="h1" fontWeight="semibold" fontSize="2xl">
 				{t("users")}
@@ -121,7 +141,31 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 						icon={<SettingsIcon />}
 						position="relative"
 					/>
-					<MenuList minW="170px" zIndex={99999} className="menuList">
+					<MenuList
+						minW="170px"
+						zIndex={99999}
+						className="menuList"
+						userSelect="none"
+						sx={{
+							".chakra-menu__menuitem": {
+								bg: "transparent !important",
+								"&:hover": {
+									bg: "var(--chakra-colors-blackAlpha-50) !important",
+								},
+								"&:active, &:focus": {
+									bg: "var(--chakra-colors-blackAlpha-50) !important",
+								},
+								"[data-theme='dark'] &": {
+									"&:hover": {
+										bg: "var(--chakra-colors-whiteAlpha-100) !important",
+									},
+									"&:active, &:focus": {
+										bg: "var(--chakra-colors-whiteAlpha-100) !important",
+									},
+								},
+							},
+						}}
+					>
 						{hasSettingsActions && (
 							<>
 								{canAccessHosts && (
@@ -131,6 +175,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										icon={<HostsIcon />}
 										as={Link}
 										to="/hosts"
+										bg="transparent"
 									>
 										{t("header.hostSettings")}
 									</MenuItem>
@@ -141,6 +186,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										fontSize="sm"
 										icon={<NodesIcon />}
 										onClick={onEditingNodes.bind(null, true)}
+										bg="transparent"
 									>
 										{t("header.nodeSettings")}
 									</MenuItem>
@@ -151,6 +197,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										fontSize="sm"
 										icon={<ResetUsageIcon />}
 										onClick={onResetAllUsage.bind(null, true)}
+										bg="transparent"
 									>
 										{t("resetAllUsage")}
 									</MenuItem>
@@ -178,7 +225,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 				<Popover
 					isOpen={actionsMenu.isOpen}
 					onOpen={actionsMenu.onOpen}
-					onClose={actionsMenu.onClose}
+					onClose={handleActionsMenuClose}
 					placement="bottom-end"
 				>
 					<PopoverTrigger>
@@ -187,17 +234,20 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 							variant="outline"
 							icon={<MoreIcon />}
 							aria-label="more options"
-							onClick={() =>
-								actionsMenu.isOpen
-									? actionsMenu.onClose()
-									: actionsMenu.onOpen()
-							}
+							onClick={() => {
+								if (actionsMenu.isOpen) {
+									closeActionsMenu();
+								} else {
+									actionsMenu.onOpen();
+								}
+							}}
 						/>
 					</PopoverTrigger>
 					<Portal>
 						<PopoverContent
 							ref={actionsContentRef}
 							w={{ base: "90vw", sm: "56" }}
+							userSelect="none"
 						>
 							<PopoverArrow />
 							<PopoverBody>
@@ -212,7 +262,10 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 											{t("header.language", "Language")}
 										</MenuButton>
 										<Portal containerRef={actionsContentRef}>
-											<MenuList minW={{ base: "100%", sm: "200px" }}>
+											<MenuList
+												minW={{ base: "100%", sm: "200px" }}
+												userSelect="none"
+											>
 												{languageItems.map(({ code, label, flag }) => {
 													const isActiveLang = i18n.language === code;
 													return (
@@ -220,8 +273,9 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 															key={code}
 															onClick={() => {
 																changeLanguage(code);
-																actionsMenu.onClose();
+																closeActionsMenu();
 															}}
+															bg="transparent"
 														>
 															<HStack justify="space-between" w="full">
 																<HStack spacing={2}>
@@ -251,6 +305,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										trigger="menu"
 										triggerLabel={t("header.theme", "Theme")}
 										portalContainer={actionsContentRef}
+										onModalOpen={handleThemeModalOpen}
+										onModalClose={handleThemeModalClose}
 									/>
 									<Divider />
 									<Button
@@ -259,7 +315,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										justifyContent="flex-start"
 										as={Link}
 										to="/login"
-										onClick={actionsMenu.onClose}
+										onClick={closeActionsMenu}
 									>
 										{t("header.logout")}
 									</Button>

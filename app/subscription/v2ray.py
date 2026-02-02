@@ -11,14 +11,12 @@ from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun, get_grpc_multi
 from app.templates import render_template
+from app.services.subscription_settings import EffectiveSubscriptionSettings
 from app.utils.helpers import UUIDEncoder, format_ip_for_url
 from config import (
     EXTERNAL_CONFIG,
     GRPC_USER_AGENT_TEMPLATE,
-    MUX_TEMPLATE,
     USER_AGENT_TEMPLATE,
-    V2RAY_SETTINGS_TEMPLATE,
-    V2RAY_SUBSCRIPTION_TEMPLATE,
 )
 
 
@@ -73,24 +71,26 @@ class V2rayShareLink(str):
                 ais=inbound.get("ais", ""),
                 fs=inbound.get("fragment_setting", ""),
                 multiMode=multi_mode,
-                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes", 1000000),
-                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts", 100),
-                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs", 30),
-                x_padding_bytes=inbound.get("xPaddingBytes", "100-1000"),
-                mode=inbound.get("mode", "auto"),
-                noGRPCHeader=inbound.get("noGRPCHeader", False),
-                heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
-                keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
-                xmux=inbound.get("xmux", {}),
+                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes"),
+                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts"),
+                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs"),
+                x_padding_bytes=inbound.get("xPaddingBytes"),
+                mode=inbound.get("mode"),
+                noGRPCHeader=inbound.get("noGRPCHeader"),
+                heartbeatPeriod=inbound.get("heartbeatPeriod"),
+                keepAlivePeriod=inbound.get("keepAlivePeriod"),
+                xmux=inbound.get("xmux"),
             )
 
         elif inbound["protocol"] == "vless":
+            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
             link = self.vless(
                 remark=remark,
                 address=address_formatted,
                 port=inbound["port"],
                 id=settings["id"],
                 flow=settings.get("flow", ""),
+                encryption=selected_auth,
                 net=net,
                 tls=inbound["tls"],
                 sni=inbound.get("sni", ""),
@@ -105,15 +105,15 @@ class V2rayShareLink(str):
                 ais=inbound.get("ais", ""),
                 fs=inbound.get("fragment_setting", ""),
                 multiMode=multi_mode,
-                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes", 1000000),
-                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts", 100),
-                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs", 30),
-                x_padding_bytes=inbound.get("xPaddingBytes", "100-1000"),
-                mode=inbound.get("mode", "auto"),
-                noGRPCHeader=inbound.get("noGRPCHeader", False),
-                heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
-                keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
-                xmux=inbound.get("xmux", {}),
+                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes"),
+                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts"),
+                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs"),
+                x_padding_bytes=inbound.get("xPaddingBytes"),
+                mode=inbound.get("mode"),
+                noGRPCHeader=inbound.get("noGRPCHeader"),
+                heartbeatPeriod=inbound.get("heartbeatPeriod"),
+                keepAlivePeriod=inbound.get("keepAlivePeriod"),
+                xmux=inbound.get("xmux"),
             )
 
         elif inbound["protocol"] == "trojan":
@@ -137,15 +137,15 @@ class V2rayShareLink(str):
                 ais=inbound.get("ais", ""),
                 fs=inbound.get("fragment_setting", ""),
                 multiMode=multi_mode,
-                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes", 1000000),
-                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts", 100),
-                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs", 30),
-                x_padding_bytes=inbound.get("xPaddingBytes", "100-1000"),
-                mode=inbound.get("mode", "auto"),
-                noGRPCHeader=inbound.get("noGRPCHeader", False),
-                heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
-                keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
-                xmux=inbound.get("xmux", {}),
+                sc_max_each_post_bytes=inbound.get("scMaxEachPostBytes"),
+                sc_max_concurrent_posts=inbound.get("scMaxConcurrentPosts"),
+                sc_min_posts_interval_ms=inbound.get("scMinPostsIntervalMs"),
+                x_padding_bytes=inbound.get("xPaddingBytes"),
+                mode=inbound.get("mode"),
+                noGRPCHeader=inbound.get("noGRPCHeader"),
+                heartbeatPeriod=inbound.get("heartbeatPeriod"),
+                keepAlivePeriod=inbound.get("keepAlivePeriod"),
+                xmux=inbound.get("xmux"),
             )
 
         elif inbound["protocol"] == "shadowsocks":
@@ -182,15 +182,15 @@ class V2rayShareLink(str):
         ais="",
         fs="",
         multiMode: bool = False,
-        sc_max_each_post_bytes: int = 1000000,
-        sc_max_concurrent_posts: int = 100,
-        sc_min_posts_interval_ms: int = 30,
-        x_padding_bytes: str = "100-1000",
-        mode: str = "auto",
-        noGRPCHeader: bool = False,
-        heartbeatPeriod: int = 0,
-        keepAlivePeriod: int = 0,
-        xmux: dict = {},
+        sc_max_each_post_bytes: int | None = None,
+        sc_max_concurrent_posts: int | None = None,
+        sc_min_posts_interval_ms: int | None = None,
+        x_padding_bytes: str | None = None,
+        mode: str | None = None,
+        noGRPCHeader: bool | None = None,
+        heartbeatPeriod: int | None = None,
+        keepAlivePeriod: int | None = None,
+        xmux: dict | None = None,
     ):
         payload = {
             "add": address,
@@ -235,19 +235,25 @@ class V2rayShareLink(str):
                 payload["mode"] = "gun"
 
         elif net in ("splithttp", "xhttp"):
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
+            extra = {}
+            if sc_max_each_post_bytes is not None:
+                extra["scMaxEachPostBytes"] = sc_max_each_post_bytes
+            if sc_max_concurrent_posts is not None:
+                extra["scMaxConcurrentPosts"] = sc_max_concurrent_posts
+            if sc_min_posts_interval_ms is not None:
+                extra["scMinPostsIntervalMs"] = sc_min_posts_interval_ms
+            if x_padding_bytes is not None:
+                extra["xPaddingBytes"] = x_padding_bytes
+            if noGRPCHeader is not None:
+                extra["noGRPCHeader"] = noGRPCHeader
             if xmux:
                 extra["xmux"] = xmux
-            payload["type"] = mode
-            if keepAlivePeriod > 0:
+            if mode is not None:
+                payload["type"] = mode
+            if keepAlivePeriod is not None and keepAlivePeriod > 0:
                 extra["keepAlivePeriod"] = keepAlivePeriod
-            payload["extra"] = extra
+            if extra:
+                payload["extra"] = extra
 
         elif net == "ws":
             if heartbeatPeriod:
@@ -267,6 +273,7 @@ class V2rayShareLink(str):
         host="",
         type="",
         flow="",
+        encryption: str | None = "none",
         tls="none",
         sni="",
         fp="",
@@ -277,19 +284,21 @@ class V2rayShareLink(str):
         ais="",
         fs="",
         multiMode: bool = False,
-        sc_max_each_post_bytes: int = 1000000,
-        sc_max_concurrent_posts: int = 100,
-        sc_min_posts_interval_ms: int = 30,
-        x_padding_bytes: str = "100-1000",
-        mode: str = "auto",
-        noGRPCHeader: bool = False,
-        heartbeatPeriod: int = 0,
-        keepAlivePeriod: int = 0,
-        xmux: dict = {},
+        sc_max_each_post_bytes: int | None = None,
+        sc_max_concurrent_posts: int | None = None,
+        sc_min_posts_interval_ms: int | None = None,
+        x_padding_bytes: str | None = None,
+        mode: str | None = None,
+        noGRPCHeader: bool | None = None,
+        heartbeatPeriod: int | None = None,
+        keepAlivePeriod: int | None = None,
+        xmux: dict | None = None,
     ):
         payload = {"security": tls, "type": net, "headerType": type}
         if flow and (tls in ("tls", "reality") and net in ("tcp", "raw", "kcp") and type != "http"):
             payload["flow"] = flow
+        if encryption:
+            payload["encryption"] = encryption
 
         if net == "grpc":
             payload["serviceName"] = path
@@ -306,19 +315,25 @@ class V2rayShareLink(str):
         elif net in ("splithttp", "xhttp"):
             payload["path"] = path
             payload["host"] = host
-            payload["mode"] = mode
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
-            if keepAlivePeriod > 0:
+            if mode is not None:
+                payload["mode"] = mode
+            extra = {}
+            if sc_max_each_post_bytes is not None:
+                extra["scMaxEachPostBytes"] = sc_max_each_post_bytes
+            if sc_max_concurrent_posts is not None:
+                extra["scMaxConcurrentPosts"] = sc_max_concurrent_posts
+            if sc_min_posts_interval_ms is not None:
+                extra["scMinPostsIntervalMs"] = sc_min_posts_interval_ms
+            if x_padding_bytes is not None:
+                extra["xPaddingBytes"] = x_padding_bytes
+            if noGRPCHeader is not None:
+                extra["noGRPCHeader"] = noGRPCHeader
+            if keepAlivePeriod is not None and keepAlivePeriod > 0:
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            if extra:
+                payload["extra"] = json.dumps(extra)
 
         elif net == "kcp":
             payload["seed"] = path
@@ -376,15 +391,15 @@ class V2rayShareLink(str):
         ais="",
         fs="",
         multiMode: bool = False,
-        sc_max_each_post_bytes: int = 1000000,
-        sc_max_concurrent_posts: int = 100,
-        sc_min_posts_interval_ms: int = 30,
-        x_padding_bytes: str = "100-1000",
-        mode: str = "auto",
-        noGRPCHeader: bool = False,
-        heartbeatPeriod: int = 0,
-        keepAlivePeriod: int = 0,
-        xmux: dict = {},
+        sc_max_each_post_bytes: int | None = None,
+        sc_max_concurrent_posts: int | None = None,
+        sc_min_posts_interval_ms: int | None = None,
+        x_padding_bytes: str | None = None,
+        mode: str | None = None,
+        noGRPCHeader: bool | None = None,
+        heartbeatPeriod: int | None = None,
+        keepAlivePeriod: int | None = None,
+        xmux: dict | None = None,
     ):
         payload = {"security": tls, "type": net, "headerType": type}
         if flow and (tls in ("tls", "reality") and net in ("tcp", "raw", "kcp") and type != "http"):
@@ -401,19 +416,25 @@ class V2rayShareLink(str):
         elif net in ("splithttp", "xhttp"):
             payload["path"] = path
             payload["host"] = host
-            payload["mode"] = mode
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
-            if keepAlivePeriod > 0:
+            if mode is not None:
+                payload["mode"] = mode
+            extra = {}
+            if sc_max_each_post_bytes is not None:
+                extra["scMaxEachPostBytes"] = sc_max_each_post_bytes
+            if sc_max_concurrent_posts is not None:
+                extra["scMaxConcurrentPosts"] = sc_max_concurrent_posts
+            if sc_min_posts_interval_ms is not None:
+                extra["scMinPostsIntervalMs"] = sc_min_posts_interval_ms
+            if x_padding_bytes is not None:
+                extra["xPaddingBytes"] = x_padding_bytes
+            if noGRPCHeader is not None:
+                extra["noGRPCHeader"] = noGRPCHeader
+            if keepAlivePeriod is not None and keepAlivePeriod > 0:
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            if extra:
+                payload["extra"] = json.dumps(extra)
 
         elif net == "quic":
             payload["key"] = path
@@ -467,18 +488,19 @@ class V2rayShareLink(str):
 
 
 class V2rayJsonConfig(str):
-    def __init__(self):
+    def __init__(self, settings: EffectiveSubscriptionSettings):
         self.config = []
-        self.template = render_template(V2RAY_SUBSCRIPTION_TEMPLATE)
-        self.mux_template = render_template(MUX_TEMPLATE)
-        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
+        custom_dir = settings.custom_templates_directory
+        self.template = render_template(settings.v2ray_subscription_template, custom_directory=custom_dir)
+        self.mux_template = render_template(settings.mux_template, custom_directory=custom_dir)
+        user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in user_agent_data and isinstance(user_agent_data["list"], list):
             self.user_agent_list = user_agent_data["list"]
         else:
             self.user_agent_list = []
 
-        grpc_user_agent_data = json.loads(render_template(GRPC_USER_AGENT_TEMPLATE))
+        grpc_user_agent_data = json.loads(render_template(GRPC_USER_AGENT_TEMPLATE, custom_directory=custom_dir))
 
         if "list" in grpc_user_agent_data and isinstance(grpc_user_agent_data["list"], list):
             self.grpc_user_agent_data = grpc_user_agent_data["list"]
@@ -486,7 +508,7 @@ class V2rayJsonConfig(str):
             self.grpc_user_agent_data = []
 
         try:
-            self.settings = json.loads(render_template(V2RAY_SETTINGS_TEMPLATE))
+            self.settings = json.loads(render_template(settings.v2ray_settings_template, custom_directory=custom_dir))
         except TemplateNotFound:
             self.settings = {}
 
@@ -780,7 +802,13 @@ class V2rayJsonConfig(str):
         }
 
     @staticmethod
-    def vless_config(address=None, port=None, id=None, flow="") -> dict:
+    def vless_config(
+        address=None,
+        port=None,
+        id=None,
+        flow: str | None = "",
+        encryption: str | None = "none",
+    ) -> dict:
         return {
             "vnext": [
                 {
@@ -789,8 +817,7 @@ class V2rayJsonConfig(str):
                     "users": [
                         {
                             "id": id,
-                            "security": "auto",
-                            "encryption": "none",
+                            "encryption": encryption or "none",
                             "email": "https://rebeccapanel.github.io/rebecca/",
                             "alterId": 0,
                             "flow": flow,
@@ -814,7 +841,7 @@ class V2rayJsonConfig(str):
         }
 
     @staticmethod
-    def shadowsocks_config(address=None, port=None, password=None, method=None) -> dict:
+    def shadowsocks_config(address=None, port=None, password=None, method=None, iv_check: bool = False) -> dict:
         return {
             "servers": [
                 {
@@ -824,6 +851,7 @@ class V2rayJsonConfig(str):
                     "email": "https://rebeccapanel.github.io/rebecca/",
                     "method": method,
                     "uot": False,
+                    "ivCheck": iv_check,
                 }
             ]
         }
@@ -967,19 +995,26 @@ class V2rayJsonConfig(str):
             outbound["settings"] = self.vmess_config(address=address, port=port, id=settings["id"])
 
         elif inbound["protocol"] == "vless":
+            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
             if net in ("tcp", "raw", "kcp") and headers != "http" and tls in ("tls", "reality"):
                 flow = settings.get("flow", "")
             else:
                 flow = None
 
-            outbound["settings"] = self.vless_config(address=address, port=port, id=settings["id"], flow=flow)
+            outbound["settings"] = self.vless_config(
+                address=address, port=port, id=settings["id"], flow=flow, encryption=selected_auth
+            )
 
         elif inbound["protocol"] == "trojan":
             outbound["settings"] = self.trojan_config(address=address, port=port, password=settings["password"])
 
         elif inbound["protocol"] == "shadowsocks":
             outbound["settings"] = self.shadowsocks_config(
-                address=address, port=port, password=settings["password"], method=settings["method"]
+                address=address,
+                port=port,
+                password=settings["password"],
+                method=settings["method"],
+                iv_check=settings.get("iv_check") or settings.get("ivCheck") or False,
             )
 
         outbounds = [outbound]

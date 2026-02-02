@@ -119,6 +119,8 @@ type DashboardStateType = {
 	onEditingCore: (isEditingCore: boolean) => void;
 };
 
+let usersFetchSequence = 0;
+
 const fetchUsers = (
 	query: FilterType,
 	options: { force?: boolean } = {},
@@ -137,6 +139,7 @@ const fetchUsers = (
 		return Promise.resolve(users);
 	}
 
+	const requestId = ++usersFetchSequence;
 	useDashboard.setState({ loading: true });
 	const requestQuery: Record<string, unknown> = {
 		...sanitizedQuery,
@@ -150,12 +153,16 @@ const fetchUsers = (
 	if (sanitizedQuery.serviceId !== undefined) {
 		requestQuery.service_id = sanitizedQuery.serviceId;
 	}
+	requestQuery.links = true;
 	delete requestQuery.advancedFilters;
 	delete requestQuery.owner;
 	delete requestQuery.serviceId;
 
 	return fetch<UsersListResponse>("/users", { query: requestQuery })
 		.then((usersResponse) => {
+			if (requestId !== usersFetchSequence) {
+				return usersResponse;
+			}
 			const limit = usersResponse.users_limit ?? null;
 			const activeTotal = usersResponse.active_total ?? null;
 			const isUserLimitReached =
@@ -175,7 +182,9 @@ const fetchUsers = (
 			return usersResponse;
 		})
 		.finally(() => {
-			useDashboard.setState({ loading: false });
+			if (requestId === usersFetchSequence) {
+				useDashboard.setState({ loading: false });
+			}
 		});
 };
 
@@ -204,6 +213,9 @@ export const useDashboard = create(
 			total: 0,
 			active_total: 0,
 			users_limit: null,
+			status_breakdown: {},
+			usage_total: null,
+			online_total: null,
 		},
 		loading: true,
 		isUserLimitReached: false,

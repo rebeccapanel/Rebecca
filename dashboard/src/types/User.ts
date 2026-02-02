@@ -67,11 +67,15 @@ export type User = {
 	links: string[]; // Deprecated, use link_data with link_templates instead
 	link_data?: UserLinkData[]; // UUID/password for each inbound
 	subscription_url: string;
+	subscription_urls?: Record<string, string>;
 	inbounds: UserInbounds;
 	note: string;
+	telegram_id?: string | null;
+	contact_number?: string | null;
 	online_at: string;
 	service_id: number | null;
 	service_name: string | null;
+	admin_username?: string | null;
 	service_host_orders: Record<number, number>;
 	auto_delete_in_days: number | null;
 	next_plan: NextPlan | null;
@@ -91,6 +95,7 @@ export type UserListItem = {
 	service_name: string | null;
 	admin_id?: number | null;
 	admin_username?: string | null;
+	links?: string[];
 	subscription_url: string;
 	subscription_urls: Record<string, string>;
 };
@@ -107,6 +112,8 @@ export type UserCreate = Pick<
 	| "username"
 	| "status"
 	| "note"
+	| "telegram_id"
+	| "contact_number"
 	| "flow"
 	| "credential_key"
 > & {
@@ -123,6 +130,8 @@ export type UserCreateWithService = Pick<
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
+	| "telegram_id"
+	| "contact_number"
 	| "flow"
 > & {
 	service_id: number;
@@ -157,9 +166,19 @@ export type UsersListResponse = {
 	total: number;
 	active_total?: number | null;
 	users_limit?: number | null;
+	status_breakdown?: Record<string, number>;
+	usage_total?: number | null;
+	online_total?: number | null;
 };
 
 export type AdvancedUserActionStatus = "expired" | "limited";
+
+export type AdvancedUserActionScopeStatus =
+	| "active"
+	| "on_hold"
+	| "expired"
+	| "limited"
+	| "disabled";
 
 export type AdvancedUserActionType =
 	| "extend_expire"
@@ -176,6 +195,7 @@ export type AdvancedUserActionPayload = {
 	days?: number;
 	gigabytes?: number;
 	statuses?: AdvancedUserActionStatus[];
+	scope?: AdvancedUserActionScopeStatus[];
 	admin_username?: string | null;
 	service_id?: number;
 	service_id_is_null?: boolean;

@@ -12,7 +12,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func
 
 from app import __version__
@@ -31,7 +31,7 @@ from app.models.system import (
 from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.system import cpu_usage, realtime_bandwidth
-from app.utils.xray_config import apply_config_and_restart
+from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
 from app.utils.maintenance import maintenance_request
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, REDIS_ENABLED
 from app.redis.client import get_redis
@@ -74,6 +74,16 @@ def _try_maintenance_json(path: str) -> dict | None:
         return None
 
 
+def _queue_xray_restart(bg: BackgroundTasks) -> None:
+    def _restart() -> None:
+        try:
+            restart_xray_and_invalidate_cache()
+        except Exception as exc:  # pragma: no cover - best effort background task
+            logger.error("Failed to restart Xray after inbound change: %s", exc)
+
+    bg.add_task(_restart)
+
+
 @router.get("/system", response_model=SystemStats)
 def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin.get_current)):
     """Fetch system stats including CPU and user metrics."""
@@ -88,7 +98,7 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
     users_on_hold = crud.get_users_count(db, status=UserStatus.on_hold, admin=scoped_admin)
     users_expired = crud.get_users_count(db, status=UserStatus.expired, admin=scoped_admin)
     users_limited = crud.get_users_count(db, status=UserStatus.limited, admin=scoped_admin)
-    online_users = crud.count_online_users(db, 24, scoped_admin)
+    online_users = crud.count_online_users(db, None, scoped_admin)
     realtime_bandwidth_stats = realtime_bandwidth()
     now = time.time()
     system_memory = psutil.virtual_memory()
@@ -524,6 +534,57 @@ def generate_reality_shortid(
 
 
 @router.get(
+    "/xray/mldsa65",
+    responses={403: responses._403},
+)
+def generate_mldsa65(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate an ML-DSA-65 keypair using Xray's mldsa65 command."""
+    try:
+        result = xray.core.get_mldsa65()
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate ML-DSA-65 keypair")
+        seed = result.get("seed")
+        verify = result.get("verify")
+        if not seed or not verify:
+            raise HTTPException(status_code=500, detail="Failed to parse ML-DSA-65 keypair")
+        return {"seed": seed, "verify": verify}
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to generate ML-DSA-65 keypair: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to generate ML-DSA-65 keypair: {str(exc)}") from exc
+
+
+@router.get(
+    "/xray/ech",
+    responses={403: responses._403},
+)
+def generate_ech_cert(
+    sni: str,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Generate an ECH certificate using Xray's tls ech command."""
+    if not sni or not sni.strip():
+        raise HTTPException(status_code=400, detail="SNI is required to generate ECH certificate")
+    try:
+        result = xray.core.get_ech_cert(sni)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate ECH certificate")
+        ech_server_keys = result.get("echServerKeys")
+        ech_config_list = result.get("echConfigList")
+        if not ech_server_keys or not ech_config_list:
+            raise HTTPException(status_code=500, detail="Failed to parse ECH certificate")
+        return {"echServerKeys": ech_server_keys, "echConfigList": ech_config_list}
+    except FileNotFoundError as exc:  # pragma: no cover - depends on host setup
+        raise HTTPException(status_code=500, detail="Xray binary not found") from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to generate ECH certificate: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to generate ECH certificate: {str(exc)}") from exc
+
+
+@router.get(
     "/inbounds/{tag}",
     responses={403: responses._403, 404: responses._404},
 )
@@ -545,6 +606,7 @@ def get_inbound_detail(
 )
 def create_inbound(
     payload: dict,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -556,7 +618,8 @@ def create_inbound(
         raise HTTPException(status_code=400, detail=f"Inbound {tag} already exists")
 
     config.setdefault("inbounds", []).append(inbound)
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is created
@@ -591,6 +654,7 @@ def create_inbound(
 def update_inbound(
     tag: str,
     payload: dict,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -601,7 +665,8 @@ def update_inbound(
 
     inbound = _prepare_inbound_payload(payload, enforce_tag=tag)
     config["inbounds"][index] = inbound
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is updated
@@ -635,6 +700,7 @@ def update_inbound(
 )
 def delete_inbound(
     tag: str,
+    bg: BackgroundTasks,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
@@ -649,7 +715,8 @@ def delete_inbound(
 
     affected_services = crud.remove_hosts_for_inbound(db, tag)
     del config["inbounds"][index]
-    apply_config_and_restart(config)
+    apply_config(config)
+    _queue_xray_restart(bg)
 
     try:
         crud.delete_inbound(db, tag)
@@ -688,7 +755,7 @@ def delete_inbound(
             from app.reb_node.state import rebuild_service_hosts_cache
             from app.redis.cache import cache_service_host_map
             from app.reb_node import state as xray_state
-            
+
             rebuild_service_hosts_cache()
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
@@ -703,15 +770,24 @@ def delete_inbound(
     return {"detail": "Inbound removed"}
 
 
+def _ensure_hosts_permission(admin: Admin) -> None:
+    if admin.role in (AdminRole.sudo, AdminRole.full_access):
+        return
+    if getattr(admin.permissions.sections, "hosts", False):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
+
+
 @router.get("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
-def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
+def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.require_active)):
     """Get a list of proxy hosts grouped by inbound tag."""
+    _ensure_hosts_permission(admin)
     from app.services.data_access import get_inbounds_by_tag_cached
-    
+
     inbound_map = get_inbounds_by_tag_cached(db)
     if not inbound_map:
         inbound_map = xray.config.inbounds_by_tag
-    
+
     hosts_dict = {}
     for tag in inbound_map:
         try:
@@ -719,10 +795,11 @@ def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_
             hosts_dict[tag] = [ProxyHost.model_validate(host) for host in db_hosts]
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to get hosts for tag {tag}: {e}", exc_info=True)
             hosts_dict[tag] = []
-    
+
     return hosts_dict
 
 
@@ -731,9 +808,10 @@ def modify_hosts(
     modified_hosts: Dict[str, List[ProxyHost]],
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(Admin.check_sudo_admin),
+    admin: Admin = Depends(Admin.require_active),
 ):
     """Modify proxy hosts and update the configuration."""
+    _ensure_hosts_permission(admin)
     for inbound_tag in modified_hosts:
         if inbound_tag not in xray.config.inbounds_by_tag:
             raise HTTPException(status_code=400, detail=f"Inbound {inbound_tag} doesn't exist")
@@ -753,26 +831,30 @@ def modify_hosts(
             if user.id is not None:
                 users_to_refresh[user.id] = user
 
-    xray.hosts.update()
+    # Schedule slower side-effects in background to reduce response latency
+    bg.add_task(xray.hosts.update)
 
     from config import REDIS_ENABLED
 
     if REDIS_ENABLED:
-        try:
-            from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
 
-            invalidate_service_host_map_cache()
-            invalidate_inbounds_cache()
-            rebuild_service_hosts_cache()
-            from app.reb_node import state as xray_state
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass 
+        def _refresh_redis_caches():
+            try:
+                from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
+                from app.reb_node.state import rebuild_service_hosts_cache
+                from app.redis.cache import cache_service_host_map
+                from app.reb_node import state as xray_state
+
+                invalidate_service_host_map_cache()
+                invalidate_inbounds_cache()
+                rebuild_service_hosts_cache()
+                for service_id, host_map in xray_state.service_hosts_cache.items():
+                    if host_map:
+                        cache_service_host_map(service_id, host_map)
+            except Exception:
+                pass
+
+        bg.add_task(_refresh_redis_caches)
 
     for user in users_to_refresh.values():
         bg.add_task(xray.operations.update_user, dbuser=user)

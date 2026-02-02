@@ -12,7 +12,6 @@ import {
 	Text,
 	type UseRadioProps,
 	useBreakpointValue,
-	useColorMode,
 	useDisclosure,
 	useOutsideClick,
 	useRadio,
@@ -78,7 +77,6 @@ export const UsageFilter: FC<UsageFilterProps> = ({
 	...props
 }) => {
 	const { t, i18n } = useTranslation();
-	const { colorMode } = useColorMode();
 
 	const filterOptions = useBreakpointValue({
 		base: ["7h", "1d", "3d", "1w"],
@@ -105,11 +103,7 @@ export const UsageFilter: FC<UsageFilterProps> = ({
 			{ title: "months", options: ["1m", "2m", "3m", "6m", "8m"] },
 		],
 	})!;
-	const {
-		getRootProps,
-		getRadioProps,
-		setValue: setDefaultFilter,
-	} = useRadioGroup({
+	const { getRootProps, getRadioProps } = useRadioGroup({
 		name: "filter",
 		defaultValue: defaultValue,
 		onChange: (value: string) => {
@@ -353,7 +347,7 @@ export function createUsageConfig(
 				},
 			},
 			tooltip: {
-				custom: ({ series, seriesIndex, dataPointIndex, w }) => {
+				custom: ({ series, seriesIndex, w }) => {
 					const readable = formatBytes(series[seriesIndex], 1);
 					const total = Math.max(
 						(series as [number]).reduce((t, c) => t + c, 0),

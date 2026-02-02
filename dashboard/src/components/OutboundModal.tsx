@@ -80,6 +80,7 @@ interface OutboundFormValues {
 	user: string;
 	pass: string;
 	method: string;
+	ssIvCheck: boolean;
 	tlsEnabled: boolean;
 	tlsServerName: string;
 	realityEnabled: boolean;
@@ -109,8 +110,8 @@ interface OutboundModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	mode: "create" | "edit";
-	initialOutbound?: any | null;
-	onSubmitOutbound: (outboundJson: any) => Promise<void> | void;
+	initialOutbound?: Record<string, unknown> | null;
+	onSubmitOutbound: (outboundJson: unknown) => Promise<void> | void;
 }
 
 const defaultValues: OutboundFormValues = {
@@ -126,6 +127,7 @@ const defaultValues: OutboundFormValues = {
 	user: "",
 	pass: "",
 	method: SSMethods.AES_128_GCM,
+	ssIvCheck: false,
 	tlsEnabled: false,
 	tlsServerName: "",
 	realityEnabled: false,
@@ -160,7 +162,7 @@ const defaultValues: OutboundFormValues = {
 };
 
 const buildOutboundJson = (values: OutboundFormValues) => {
-	const settings: any = {};
+	const settings: Record<string, unknown> = {};
 	const baseAddress = values.address || undefined;
 	const basePort = Number(values.port) || undefined;
 
@@ -210,6 +212,7 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 					port: basePort,
 					password: values.password || undefined,
 					method: values.method || undefined,
+					ivCheck: values.ssIvCheck || undefined,
 				},
 			];
 			break;
@@ -271,10 +274,10 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 
 	const streamSettings = new StreamSettings();
 	streamSettings.network = values.network;
-	streamSettings.security = values.tlsEnabled
-		? "tls"
-		: values.realityEnabled
-			? "reality"
+	streamSettings.security = values.realityEnabled
+		? "reality"
+		: values.tlsEnabled
+			? "tls"
 			: "none";
 
 	if (values.network === "tcp") {
@@ -390,6 +393,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	).includes(typedProtocol);
 	const requiresPassword = (
 		[Protocols.Trojan, Protocols.Shadowsocks] as ProtocolValue[]
+	).includes(typedProtocol);
+	const supportsUserPass = (
+		[Protocols.Socks, Protocols.HTTP] as ProtocolValue[]
 	).includes(typedProtocol);
 	const requiresMethod = typedProtocol === Protocols.Shadowsocks;
 	const requiresDnsServer = typedProtocol === Protocols.DNS;
@@ -544,6 +550,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				mapped.method = settings?.method ?? defaultValues.method;
 				mapped.address = settings?.address ?? mapped.address;
 				mapped.port = Number(settings?.port ?? mapped.port);
+				mapped.ssIvCheck = (settings as any)?.ivCheck ?? false;
 				break;
 			}
 			case Protocols.Socks:
@@ -977,7 +984,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														})}
 													/>
 												</FormControl>
-												<HStack>
+												<HStack flexWrap="wrap" spacing={3} alignItems="flex-end">
 													<FormControl isRequired={requiresEndpoint}>
 														<FormLabel>
 															{t("pages.outbound.port", "Port")}
@@ -1026,6 +1033,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																})}
 															/>
 														</FormControl>
+													) : supportsUserPass ? (
+														<HStack flex="1" spacing={3} flexWrap="wrap">
+															<FormControl minW="180px">
+																<FormLabel>{t("username")}</FormLabel>
+																<Input
+																	size="sm"
+																	placeholder="username"
+																	{...register("user")}
+																/>
+															</FormControl>
+															<FormControl minW="180px">
+																<FormLabel>{t("password")}</FormLabel>
+																<Input
+																	size="sm"
+																	placeholder="password"
+																	{...register("pass")}
+																/>
+															</FormControl>
+														</HStack>
 													) : (
 														<FormControl>
 															<FormLabel>{t("username")}</FormLabel>
@@ -1038,25 +1064,33 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													)}
 												</HStack>
 												{typedProtocol === Protocols.Shadowsocks && (
-													<FormControl isRequired={requiresMethod}>
-														<FormLabel>
-															{t("pages.outbound.method", "Method")}
-														</FormLabel>
-														<Select
-															size="sm"
-															{...register("method", {
-																required: requiresMethod
-																	? requiredMessage
-																	: false,
-															})}
-														>
-															{Object.values(SSMethods).map((method) => (
-																<option key={method} value={method}>
+													<>
+														<FormControl isRequired={requiresMethod}>
+															<FormLabel>
+																{t("pages.outbound.method", "Method")}
+															</FormLabel>
+															<Select
+																size="sm"
+																{...register("method", {
+																	required: requiresMethod
+																		? requiredMessage
+																		: false,
+																})}
+															>
+																{Object.values(SSMethods).map((method) => (
+																	<option key={method} value={method}>
 																	{method}
-																</option>
-															))}
-														</Select>
-													</FormControl>
+																	</option>
+																))}
+															</Select>
+														</FormControl>
+														<FormControl display="flex" alignItems="center" gap={2}>
+															<Switch size="sm" {...register("ssIvCheck")} />
+															<FormLabel mb="0">
+																{t("pages.outbound.ivCheck", "Enable IV Check")}
+															</FormLabel>
+														</FormControl>
+													</>
 												)}
 												{typedProtocol === Protocols.VLESS && (
 													<HStack>
@@ -1385,44 +1419,67 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											<Text fontWeight="semibold" mb={3}>
 												{t("pages.outbound.security")}
 											</Text>
-											<HStack>
-												{canTls && (
-													<FormControl display="flex" alignItems="center">
-														<FormLabel mb="0">TLS</FormLabel>
-														<Switch
+											{/*
+												Security behaves like Xray docs / 3x-ui:
+												one of none / tls / reality (when supported).
+											*/}
+											{(() => {
+												const securityValue: "none" | "tls" | "reality" =
+													realityEnabled && canReality
+														? "reality"
+														: tlsEnabled && canTls
+															? "tls"
+															: "none";
+												const securityOptions: Array<{
+													value: "none" | "tls" | "reality";
+													label: string;
+													disabled?: boolean;
+												}> = [
+													{ value: "none", label: t("common.none", "None") },
+													{ value: "tls", label: "TLS", disabled: !canTls },
+													{
+														value: "reality",
+														label: "Reality",
+														disabled: !canReality,
+													},
+												];
+												return (
+													<FormControl maxW="260px">
+														<FormLabel mb={1}>
+															{t("pages.outbound.security")}
+														</FormLabel>
+														<Select
 															size="sm"
-															isChecked={tlsEnabled}
-															isDisabled={!canTls}
+															value={securityValue}
 															onChange={(event) => {
-																if (!canTls) return;
-																const checked = event.target.checked;
-																setValue("tlsEnabled", checked);
-																if (checked) {
-																	setValue("realityEnabled", false);
+																const next = event.target.value as
+																	| "none"
+																	| "tls"
+																	| "reality";
+																setValue("tlsEnabled", next === "tls");
+																setValue("realityEnabled", next === "reality");
+																if (next !== "tls") {
+																	setValue("tlsServerName", "");
+																}
+																if (next !== "reality") {
+																	setValue("realityPublicKey", "");
+																	setValue("realityShortId", "");
 																}
 															}}
-														/>
+														>
+															{securityOptions.map((opt) => (
+																<option
+																	key={opt.value}
+																	value={opt.value}
+																	disabled={opt.disabled}
+																>
+																	{opt.label}
+																</option>
+															))}
+														</Select>
 													</FormControl>
-												)}
-												{canReality && (
-													<FormControl display="flex" alignItems="center">
-														<FormLabel mb="0">Reality</FormLabel>
-														<Switch
-															size="sm"
-															isChecked={realityEnabled}
-															isDisabled={!canReality}
-															onChange={(event) => {
-																if (!canReality) return;
-																const checked = event.target.checked;
-																setValue("realityEnabled", checked);
-																if (checked) {
-																	setValue("tlsEnabled", false);
-																}
-															}}
-														/>
-													</FormControl>
-												)}
-											</HStack>
+												);
+											})()}
 											{tlsEnabled && canTls && (
 												<FormControl mt={3}>
 													<FormLabel>SNI</FormLabel>

@@ -17,12 +17,8 @@ from app.db.models import (
     XrayConfig,
 )
 from app.utils.xray_defaults import apply_log_paths, load_legacy_xray_config
-from config import (
-    SUB_PROFILE_TITLE,
-    SUB_SUPPORT_URL,
-    XRAY_SUBSCRIPTION_PATH,
-    XRAY_SUBSCRIPTION_URL_PREFIX,
-)
+from app.services.subscription_settings import SubscriptionSettingsService
+from config import XRAY_SUBSCRIPTION_PATH
 
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
@@ -37,16 +33,15 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 
 def _default_admin_subscription_settings(db: Session) -> dict:
-    # MasterSettingsService not available, using config directly
-    links = (
-        [XRAY_SUBSCRIPTION_URL_PREFIX] if XRAY_SUBSCRIPTION_URL_PREFIX or XRAY_SUBSCRIPTION_URL_PREFIX == "" else [""]
-    )
+    settings = SubscriptionSettingsService.get_settings(ensure_record=True, db=db)
+    prefix = settings.subscription_url_prefix or ""
+    links = [prefix] if prefix or prefix == "" else [""]
     return {
         "subscription_links": links,
-        "subscription_path": XRAY_SUBSCRIPTION_PATH,
+        "subscription_path": settings.subscription_path or XRAY_SUBSCRIPTION_PATH,
         "subscription_template": None,
-        "subscription_support_url": SUB_SUPPORT_URL,
-        "subscription_title": SUB_PROFILE_TITLE,
+        "subscription_support_url": settings.subscription_support_url,
+        "subscription_title": settings.subscription_profile_title,
     }
 
 

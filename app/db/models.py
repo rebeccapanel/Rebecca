@@ -58,6 +58,8 @@ class Admin(Base):
     permissions = Column(JSON, nullable=True, default=dict)
     password_reset_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, nullable=True, default=None)
+    subscription_domain = Column(String(255), nullable=True, default=None)
+    subscription_settings = Column(JSON, nullable=True, default=dict)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
     data_limit = Column(BigInteger, nullable=True, default=None)
@@ -67,6 +69,12 @@ class Admin(Base):
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
     api_keys = relationship(
         "AdminApiKey",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    subscription_domains = relationship(
+        "SubscriptionDomain",
         back_populates="admin",
         cascade="all, delete-orphan",
         lazy="selectin",
@@ -129,6 +137,54 @@ class PanelSettings(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class SubscriptionSettings(Base):
+    __tablename__ = "subscription_settings"
+
+    id = Column(Integer, primary_key=True)
+    subscription_url_prefix = Column(String(512), nullable=False, default="", server_default=text("''"))
+    subscription_profile_title = Column(
+        String(255), nullable=False, default="Subscription", server_default="Subscription"
+    )
+    subscription_support_url = Column(
+        String(512), nullable=False, default="https://t.me/", server_default="https://t.me/"
+    )
+    subscription_update_interval = Column(String(32), nullable=False, default="12", server_default="12")
+    custom_templates_directory = Column(String(512), nullable=True, default=None)
+    clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")
+    clash_settings_template = Column(String(255), nullable=False, default="clash/settings.yml")
+    subscription_page_template = Column(String(255), nullable=False, default="subscription/index.html")
+    home_page_template = Column(String(255), nullable=False, default="home/index.html")
+    v2ray_subscription_template = Column(String(255), nullable=False, default="v2ray/default.json")
+    v2ray_settings_template = Column(String(255), nullable=False, default="v2ray/settings.json")
+    singbox_subscription_template = Column(String(255), nullable=False, default="singbox/default.json")
+    singbox_settings_template = Column(String(255), nullable=False, default="singbox/settings.json")
+    mux_template = Column(String(255), nullable=False, default="mux/default.json")
+    use_custom_json_default = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_v2rayn = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_v2rayng = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_streisand = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    use_custom_json_for_happ = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class SubscriptionDomain(Base):
+    __tablename__ = "subscription_domains"
+    __table_args__ = (UniqueConstraint("domain", name="uq_subscription_domain"),)
+
+    id = Column(Integer, primary_key=True)
+    domain = Column(String(255), nullable=False, index=True)
+    admin_id = Column(Integer, ForeignKey("admins.id", ondelete="SET NULL"), nullable=True, index=True)
+    admin = relationship("Admin", back_populates="subscription_domains")
+    email = Column(String(255), nullable=True)
+    provider = Column(String(64), nullable=True)
+    alt_names = Column(JSON, nullable=False, default=list)
+    last_issued_at = Column(DateTime, nullable=True)
+    last_renewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -155,6 +211,8 @@ class User(Base):
     sub_last_user_agent = Column(String(512), nullable=True, default=None)
     created_at = Column(DateTime, default=utcnow)
     note = Column(String(500), nullable=True, default=None)
+    telegram_id = Column(String(128), nullable=True, default=None)
+    contact_number = Column(String(64), nullable=True, default=None)
     online_at = Column(DateTime, nullable=True, default=None)
     on_hold_expire_duration = Column(BigInteger, nullable=True, default=None)
     on_hold_timeout = Column(DateTime, nullable=True, default=None)
@@ -171,7 +229,25 @@ class User(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     service = relationship("Service", back_populates="users")
 
-    next_plan = relationship("NextPlan", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    next_plans = relationship(
+        "NextPlan",
+        order_by="NextPlan.position",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def next_plan(self):
+        """Compat: return the first next plan if present."""
+        return self.next_plans[0] if self.next_plans else None
+
+    @next_plan.setter
+    def next_plan(self, value):
+        """Compat setter to replace all next plans with a single entry."""
+        if value is None:
+            self.next_plans = []
+            return
+        self.next_plans = [value]
 
     @hybrid_property
     def reseted_usage(self) -> int:
@@ -250,13 +326,17 @@ class NextPlan(Base):
     __tablename__ = "next_plans"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
     data_limit = Column(BigInteger, nullable=False)
     expire = Column(Integer, nullable=True)
     add_remaining_traffic = Column(Boolean, nullable=False, default=False, server_default="0")
     fire_on_either = Column(Boolean, nullable=False, default=True, server_default="0")
+    increase_data_limit = Column(Boolean, nullable=False, default=False, server_default="0")
+    start_on_first_connect = Column(Boolean, nullable=False, default=False, server_default="0")
+    trigger_on = Column(String(16), nullable=False, default="either", server_default="either")
 
-    user = relationship("User", back_populates="next_plan")
+    user = relationship("User", back_populates="next_plans")
 
 
 class UserTemplate(Base):
@@ -392,6 +472,7 @@ class Service(Base):
     flow = Column(String(255), nullable=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    users_usage = Column(BigInteger, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,
@@ -541,3 +622,19 @@ class NodeUsage(Base):
     node = relationship("Node", back_populates="usages")
     uplink = Column(BigInteger, default=0)
     downlink = Column(BigInteger, default=0)
+
+
+class OutboundTraffic(Base):
+    __tablename__ = "outbound_traffic"
+    __table_args__ = (UniqueConstraint("outbound_id"),)
+
+    id = Column(Integer, primary_key=True)
+    outbound_id = Column(String(256), unique=True, nullable=False, index=True)  # Unique ID for outbound (not tag)
+    tag = Column(String(256), nullable=True, index=True)  # Outbound tag for reference
+    protocol = Column(String(64), nullable=True)  # Protocol type (vmess, vless, etc.)
+    address = Column(String(256), nullable=True)  # Server address
+    port = Column(Integer, nullable=True)  # Server port
+    uplink = Column(BigInteger, default=0)  # Total upload traffic
+    downlink = Column(BigInteger, default=0)  # Total download traffic
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)

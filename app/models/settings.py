@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -73,3 +74,105 @@ class PanelSettingsUpdate(BaseModel):
     use_nobetci: Optional[bool] = None
     default_subscription_type: Optional[SubscriptionLinkType] = None
     access_insights_enabled: Optional[bool] = None
+
+
+class SubscriptionTemplateSettings(BaseModel):
+    subscription_url_prefix: str = ""
+    subscription_profile_title: str = "Subscription"
+    subscription_support_url: str = "https://t.me/"
+    subscription_update_interval: str = "12"
+    custom_templates_directory: Optional[str] = None
+    clash_subscription_template: str = "clash/default.yml"
+    clash_settings_template: str = "clash/settings.yml"
+    subscription_page_template: str = "subscription/index.html"
+    home_page_template: str = "home/index.html"
+    v2ray_subscription_template: str = "v2ray/default.json"
+    v2ray_settings_template: str = "v2ray/settings.json"
+    singbox_subscription_template: str = "singbox/default.json"
+    singbox_settings_template: str = "singbox/settings.json"
+    mux_template: str = "mux/default.json"
+    use_custom_json_default: bool = False
+    use_custom_json_for_v2rayn: bool = False
+    use_custom_json_for_v2rayng: bool = False
+    use_custom_json_for_streisand: bool = False
+    use_custom_json_for_happ: bool = False
+    subscription_path: str = "sub"
+
+
+class SubscriptionTemplateSettingsUpdate(BaseModel):
+    subscription_url_prefix: Optional[str] = None
+    subscription_profile_title: Optional[str] = None
+    subscription_support_url: Optional[str] = None
+    subscription_update_interval: Optional[str] = None
+    custom_templates_directory: Optional[str] = None
+    clash_subscription_template: Optional[str] = None
+    clash_settings_template: Optional[str] = None
+    subscription_page_template: Optional[str] = None
+    home_page_template: Optional[str] = None
+    v2ray_subscription_template: Optional[str] = None
+    v2ray_settings_template: Optional[str] = None
+    singbox_subscription_template: Optional[str] = None
+    singbox_settings_template: Optional[str] = None
+    mux_template: Optional[str] = None
+    use_custom_json_default: Optional[bool] = None
+    use_custom_json_for_v2rayn: Optional[bool] = None
+    use_custom_json_for_v2rayng: Optional[bool] = None
+    use_custom_json_for_streisand: Optional[bool] = None
+    use_custom_json_for_happ: Optional[bool] = None
+
+
+class AdminSubscriptionOverrides(SubscriptionTemplateSettingsUpdate):
+    pass
+
+
+class AdminSubscriptionSettingsResponse(BaseModel):
+    id: int
+    username: str
+    subscription_domain: Optional[str] = None
+    subscription_settings: Dict[str, Optional[str | bool]] = Field(default_factory=dict)
+
+
+class AdminSubscriptionSettingsUpdate(BaseModel):
+    subscription_domain: Optional[str] = None
+    subscription_settings: Optional[AdminSubscriptionOverrides] = None
+
+
+class SubscriptionCertificate(BaseModel):
+    id: Optional[int] = None
+    domain: str
+    admin_id: Optional[int] = None
+    email: Optional[str] = None
+    provider: Optional[str] = None
+    alt_names: List[str] = Field(default_factory=list)
+    last_issued_at: Optional[datetime] = None
+    last_renewed_at: Optional[datetime] = None
+    path: str
+
+
+class SubscriptionSettingsBundle(BaseModel):
+    settings: SubscriptionTemplateSettings
+    admins: List[AdminSubscriptionSettingsResponse] = Field(default_factory=list)
+    certificates: List[SubscriptionCertificate] = Field(default_factory=list)
+
+
+class SubscriptionTemplateContentResponse(BaseModel):
+    template_key: str
+    template_name: str
+    custom_directory: Optional[str] = None
+    resolved_path: Optional[str] = None
+    admin_id: Optional[int] = None
+    content: str
+
+
+class SubscriptionTemplateContentUpdate(BaseModel):
+    content: str
+
+
+class SubscriptionCertificateIssueRequest(BaseModel):
+    email: str
+    domains: List[str]
+    admin_id: Optional[int] = None
+
+
+class SubscriptionCertificateRenewRequest(BaseModel):
+    domain: Optional[str] = None

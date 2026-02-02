@@ -6,9 +6,16 @@ import {
 	AlertTitle,
 	Box,
 	Button,
+	Divider,
+	IconButton,
 	Input as ChakraInput,
 	Select as ChakraSelect,
 	Textarea as ChakraTextarea,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Checkbox,
 	CheckboxGroup,
 	Collapse,
@@ -25,6 +32,8 @@ import {
 	ModalOverlay,
 	NumberInput,
 	NumberInputField,
+	Radio,
+	RadioGroup,
 	SimpleGrid,
 	Stack,
 	Switch,
@@ -35,6 +44,7 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
+	ArrowPathIcon,
 	QuestionMarkCircleIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
@@ -44,11 +54,14 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
+	generateEchCert,
+	generateMldsa65,
 	generateRealityKeypair,
 	generateRealityShortId,
 	getVlessEncAuthBlocks,
@@ -56,17 +69,26 @@ import {
 } from "service/xray";
 import {
 	createDefaultInboundForm,
+	createDefaultTlsCertificate,
 	type InboundFormValues,
 	protocolOptions,
+	shadowsocksNetworkOptions,
 	type RawInbound,
 	rawInboundToFormValues,
 	type SockoptFormValues,
 	sniffingOptions,
 	streamNetworks,
 	streamSecurityOptions,
+	tlsAlpnOptions,
+	tlsCipherOptions,
+	tlsEchForceOptions,
 	tlsFingerprintOptions,
+	tlsUsageOptions,
+	tlsVersionOptions,
+	buildInboundPayload,
 } from "utils/inbounds";
-import { generateWireguardKeypair } from "utils/wireguard";
+import { JsonEditor } from "components/JsonEditor";
+import { shadowsocksMethods } from "constants/Proxies";
 
 type Props = {
 	isOpen: boolean;
@@ -98,18 +120,6 @@ Textarea.displayName = "InboundFormTextarea";
 const formatRealityKeyForDisplay = (value?: string | null) =>
 	(value ?? "").replace(/\s+/g, "").replace(/=+$/, "");
 
-const prepareRealityKeyForDerivation = (value?: string | null) => {
-	const trimmed = (value ?? "")
-		.replace(/\s+/g, "")
-		.replace(/-/g, "+")
-		.replace(/_/g, "/");
-	if (!trimmed) {
-		return "";
-	}
-	const remainder = trimmed.length % 4;
-	return remainder === 0 ? trimmed : `${trimmed}${"=".repeat(4 - remainder)}`;
-};
-
 const DOMAIN_STRATEGY_OPTIONS = [
 	"AsIs",
 	"UseIP",
@@ -130,10 +140,28 @@ const TPROXY_OPTIONS: Array<"" | "off" | "redirect" | "tproxy"> = [
 	"redirect",
 	"tproxy",
 ];
+const TLS_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
+	"vmess",
+	"vless",
+	"trojan",
+	"shadowsocks",
+];
+const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
+	"tcp",
+	"ws",
+	"http",
+	"grpc",
+	"httpupgrade",
+	"xhttp",
+];
+const REALITY_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
+	"vless",
+	"trojan",
+];
 const REALITY_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
 	"tcp",
+	"http",
 	"grpc",
-	"splithttp",
 	"xhttp",
 ];
 const XHTTP_MODE_OPTIONS: Array<InboundFormValues["xhttpMode"]> = [
@@ -142,6 +170,63 @@ const XHTTP_MODE_OPTIONS: Array<InboundFormValues["xhttpMode"]> = [
 	"stream-up",
 	"stream-one",
 ];
+const REALITY_TARGETS = [
+	{ target: "www.icloud.com:443", sni: "www.icloud.com,icloud.com" },
+	{ target: "www.apple.com:443", sni: "www.apple.com,apple.com" },
+	{ target: "www.tesla.com:443", sni: "www.tesla.com,tesla.com" },
+	{ target: "www.sony.com:443", sni: "www.sony.com,sony.com" },
+	{ target: "www.nvidia.com:443", sni: "www.nvidia.com,nvidia.com" },
+	{ target: "www.amd.com:443", sni: "www.amd.com,amd.com" },
+	{ target: "azure.microsoft.com:443", sni: "azure.microsoft.com,www.azure.com" },
+	{ target: "aws.amazon.com:443", sni: "aws.amazon.com,amazon.com" },
+	{ target: "www.bing.com:443", sni: "www.bing.com,bing.com" },
+	{ target: "www.oracle.com:443", sni: "www.oracle.com,oracle.com" },
+	{ target: "www.intel.com:443", sni: "www.intel.com,intel.com" },
+	{ target: "www.microsoft.com:443", sni: "www.microsoft.com,microsoft.com" },
+	{ target: "www.amazon.com:443", sni: "www.amazon.com,amazon.com" },
+];
+const REALITY_SHORT_ID_LENGTHS = [2, 4, 6, 8, 10, 12, 14, 16];
+
+const fillRandomValues = (buffer: Uint8Array) => {
+	if (globalThis.crypto?.getRandomValues) {
+		globalThis.crypto.getRandomValues(buffer);
+		return;
+	}
+	for (let i = 0; i < buffer.length; i += 1) {
+		buffer[i] = Math.floor(Math.random() * 256);
+	}
+};
+
+const randomHex = (length: number): string => {
+	const bytes = new Uint8Array(Math.ceil(length / 2));
+	fillRandomValues(bytes);
+	const hex = Array.from(bytes, (value) =>
+		value.toString(16).padStart(2, "0"),
+	).join("");
+	return hex.slice(0, length);
+};
+
+const shuffleArray = <T,>(values: T[]): T[] => {
+	const array = [...values];
+	for (let i = array.length - 1; i > 0; i -= 1) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[array[i], array[j]] = [array[j], array[i]];
+	}
+	return array;
+};
+
+const generateRandomShortIds = (): string =>
+	shuffleArray(REALITY_SHORT_ID_LENGTHS)
+		.map((length) => randomHex(length))
+		.join(",");
+
+const getRandomRealityTarget = () => {
+	if (!REALITY_TARGETS.length) {
+		return null;
+	}
+	const index = Math.floor(Math.random() * REALITY_TARGETS.length);
+	return REALITY_TARGETS[index];
+};
 
 export const InboundFormModal: FC<Props> = ({
 	isOpen,
@@ -154,21 +239,23 @@ export const InboundFormModal: FC<Props> = ({
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
-	const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>(
-		[],
-	);
+	const [vlessAuthOptions, setVlessAuthOptions] = useState<
+		VlessEncAuthBlock[]
+	>([]);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
+	const [activeTab, setActiveTab] = useState(0);
+	const [jsonData, setJsonData] = useState<RawInbound | null>(null);
+	const [jsonError, setJsonError] = useState<string | null>(null);
+	const updatingFromJsonRef = useRef(false);
 
 	const form = useForm<InboundFormValues>({
 		defaultValues: createDefaultInboundForm(),
 	});
 	const { control, register, handleSubmit, reset, watch, formState } = form;
 	const { errors } = formState;
-	const [tagManuallyEdited, setTagManuallyEdited] = useState(false);
 	const [portWarning, setPortWarning] = useState<string | null>(null);
 	const [tagError, setTagError] = useState<string | null>(null);
 	const [portError, setPortError] = useState<string | null>(null);
-	const [defaultsSeeded, setDefaultsSeeded] = useState(false);
 	const {
 		fields: fallbackFields,
 		append: appendFallback,
@@ -201,6 +288,14 @@ export const InboundFormModal: FC<Props> = ({
 		control,
 		name: "xhttpHeaders",
 	});
+	const {
+		fields: tlsCertificateFields,
+		append: appendTlsCertificate,
+		remove: removeTlsCertificate,
+	} = useFieldArray({
+		control,
+		name: "tlsCertificates",
+	});
 
 	const currentProtocol =
 		useWatch({ control, name: "protocol" }) || watch("protocol");
@@ -210,14 +305,28 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "streamSecurity" }) || watch("streamSecurity");
 	const sniffingEnabled =
 		useWatch({ control, name: "sniffingEnabled" }) ?? watch("sniffingEnabled");
-	const realityPrivateKey =
-		useWatch({ control, name: "realityPrivateKey" }) ||
-		watch("realityPrivateKey");
+	const tlsCertificates =
+		useWatch({ control, name: "tlsCertificates" }) ||
+		watch("tlsCertificates") ||
+		[];
 	const tcpHeaderType =
 		useWatch({ control, name: "tcpHeaderType" }) || watch("tcpHeaderType");
 	const sockoptEnabled = useWatch({ control, name: "sockoptEnabled" }) ?? false;
 	const vlessSelectedAuth =
 		useWatch({ control, name: "vlessSelectedAuth" }) || "";
+	const formValues = useWatch({ control }) as InboundFormValues;
+
+	useEffect(() => {
+		if (updatingFromJsonRef.current) {
+			updatingFromJsonRef.current = false;
+			return;
+		}
+		const updatedJson = buildInboundPayload(formValues, {
+			initial: initialValue,
+		});
+		setJsonData(updatedJson);
+		setJsonError(null);
+	}, [formValues, initialValue]);
 	const socksAuth =
 		useWatch({ control, name: "socksAuth" }) || watch("socksAuth") || "noauth";
 	const socksUdpEnabled =
@@ -232,26 +341,47 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "http" && currentProtocol !== "socks";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
-	const hasBlockingErrors = Boolean(tagError || portError);
 	const defaultVlessAuthLabels = useMemo(
 		() => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
 		[],
 	);
-	const ALL_SECURITY_OPTIONS = streamSecurityOptions;
 	const ALL_NETWORK_OPTIONS = streamNetworks;
-	const availableSecurityOptions = useMemo(() => {
-		if (currentProtocol === "vless" || currentProtocol === "trojan") {
-			return ALL_SECURITY_OPTIONS;
+	const canEnableTls = useMemo(
+		() =>
+			TLS_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
+			TLS_COMPATIBLE_NETWORKS.includes(streamNetwork),
+		[currentProtocol, streamNetwork],
+	);
+	const canEnableReality = useMemo(
+		() =>
+			REALITY_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
+			REALITY_COMPATIBLE_NETWORKS.includes(streamNetwork),
+		[currentProtocol, streamNetwork],
+	);
+	const streamCompatibilityError = useMemo(() => {
+		if (!supportsStreamSettings) {
+			return null;
 		}
-		return ALL_SECURITY_OPTIONS.filter((opt) => opt !== "reality");
-	}, [ALL_SECURITY_OPTIONS, currentProtocol]);
-
-	const availableNetworkOptions = useMemo(() => {
-		if (streamSecurity === "reality") {
-			return REALITY_COMPATIBLE_NETWORKS;
+		if (streamSecurity === "tls" && !canEnableTls) {
+			return t(
+				"inbounds.error.tlsUnsupported",
+				"TLS is not supported for the selected protocol/network.",
+			);
 		}
-		return ALL_NETWORK_OPTIONS;
-	}, [ALL_NETWORK_OPTIONS, streamSecurity]);
+		if (streamSecurity === "reality" && !canEnableReality) {
+			return t(
+				"inbounds.error.realityUnsupported",
+				"Reality is not supported for the selected protocol/network.",
+			);
+		}
+		return null;
+	}, [canEnableReality, canEnableTls, streamSecurity, supportsStreamSettings, t]);
+	const hasBlockingErrors = Boolean(
+		tagError || portError || streamCompatibilityError,
+	);
+	const hasBlockingErrorsWithJson = Boolean(
+		tagError || portError || jsonError || streamCompatibilityError,
+	);
 	const computedVlessAuthOptions = useMemo(() => {
 		const labels = [
 			...defaultVlessAuthLabels,
@@ -262,43 +392,18 @@ export const InboundFormModal: FC<Props> = ({
 	}, [defaultVlessAuthLabels, vlessAuthOptions]);
 
 	useEffect(() => {
-		if (
-			!(currentProtocol === "vless" || currentProtocol === "trojan") &&
-			streamSecurity === "reality"
-		) {
-			const fallback = availableSecurityOptions.includes(
-				"tls" as InboundFormValues["streamSecurity"],
-			)
-				? "tls"
-				: "none";
-			form.setValue("streamSecurity", fallback, { shouldDirty: true });
-		}
-	}, [availableSecurityOptions, currentProtocol, form, streamSecurity]);
-
-	useEffect(() => {
-		if (
-			streamSecurity === "reality" &&
-			!REALITY_COMPATIBLE_NETWORKS.includes(streamNetwork as any)
-		) {
-			form.setValue("streamNetwork", "tcp", { shouldDirty: true });
-		}
-	}, [form, streamNetwork, streamSecurity]);
-
-	useEffect(() => {
-		if (isOpen) {
-			if (initialValue) {
-				const formValues = rawInboundToFormValues(initialValue);
-				reset(formValues);
-				setTagManuallyEdited(true);
-				setDefaultsSeeded(false);
-			} else {
-				reset(createDefaultInboundForm());
-				setTagManuallyEdited(false);
-				setPortWarning(null);
-				setDefaultsSeeded(false);
-			}
-		}
-	}, [initialValue, reset, isOpen]);
+		if (!isOpen) return;
+		const formValues = initialValue
+			? rawInboundToFormValues(initialValue)
+			: createDefaultInboundForm();
+		reset(formValues);
+		const json = buildInboundPayload(formValues, { initial: initialValue });
+		setJsonData(json);
+		setJsonError(null);
+		updatingFromJsonRef.current = false;
+		setPortWarning(null);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [initialValue, isOpen]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -322,18 +427,6 @@ export const InboundFormModal: FC<Props> = ({
 		[],
 	);
 
-	const computeAutoTag = useCallback(
-		(protocol: string, network: string, port: string | number) => {
-			const cleanedPort = port?.toString().trim();
-			const parts = [protocol || "inbound", network || "net"];
-			if (cleanedPort) {
-				parts.push(cleanedPort);
-			}
-			return parts.join("+");
-		},
-		[],
-	);
-
 	const generateRandomPort = useCallback(() => {
 		let candidate = 0;
 		for (let i = 0; i < 10; i += 1) {
@@ -349,45 +442,6 @@ export const InboundFormModal: FC<Props> = ({
 		form.setValue("port", candidate.toString(), { shouldDirty: true });
 		return candidate.toString();
 	}, [BLOCKED_PORTS, form]);
-
-	useEffect(() => {
-		if (mode !== "create" || initialValue || !isOpen || defaultsSeeded) {
-			return;
-		}
-		const existingPort = form.getValues("port");
-		const currentPort = existingPort || generateRandomPort();
-		const nextTag = computeAutoTag(currentProtocol, streamNetwork, currentPort);
-		form.setValue("port", currentPort, { shouldDirty: true });
-		form.setValue("tag", nextTag, { shouldDirty: true });
-		setTagError(null);
-		setPortError(null);
-		setDefaultsSeeded(true);
-	}, [
-		mode,
-		initialValue,
-		isOpen,
-		defaultsSeeded,
-		currentProtocol,
-		streamNetwork,
-		computeAutoTag,
-		generateRandomPort,
-		form,
-	]);
-
-	useEffect(() => {
-		if (mode === "create" && !tagManuallyEdited) {
-			const nextTag = computeAutoTag(currentProtocol, streamNetwork, portValue);
-			form.setValue("tag", nextTag, { shouldDirty: true });
-		}
-	}, [
-		mode,
-		tagManuallyEdited,
-		computeAutoTag,
-		currentProtocol,
-		streamNetwork,
-		portValue,
-		form,
-	]);
 
 	useEffect(() => {
 		if (!portValue) {
@@ -521,7 +575,13 @@ export const InboundFormModal: FC<Props> = ({
 					shouldDirty: true,
 				},
 			);
-			// Public key will be derived automatically via useMemo
+			form.setValue(
+				"realityPublicKey",
+				formatRealityKeyForDisplay(publicKey),
+				{
+					shouldDirty: true,
+				},
+			);
 			toast({
 				status: "success",
 				title: t("inbounds.reality.generateKeys", "Generate key pair"),
@@ -541,6 +601,97 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [form, toast, t]);
 
+	const handleClearRealityKeypair = useCallback(() => {
+		form.setValue("realityPrivateKey", "", { shouldDirty: true });
+		form.setValue("realityPublicKey", "", { shouldDirty: true });
+	}, [form]);
+
+	const handleGenerateEchCert = useCallback(async () => {
+		const sni = form.getValues("tlsServerName")?.trim();
+		if (!sni) {
+			toast({
+				status: "warning",
+				title: t("inbounds.tls.echMissingSni", "SNI is required"),
+			});
+			return;
+		}
+		try {
+			const { echServerKeys, echConfigList } = await generateEchCert(sni);
+			form.setValue("tlsEchServerKeys", echServerKeys ?? "", {
+				shouldDirty: true,
+			});
+			form.setValue("tlsEchConfigList", echConfigList ?? "", {
+				shouldDirty: true,
+			});
+			toast({
+				status: "success",
+				title: t("inbounds.tls.echGenerated", "ECH certificate generated"),
+				duration: 2000,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t("inbounds.tls.echError", "Unable to generate ECH certificate"),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		}
+	}, [form, t, toast]);
+
+	const handleClearEchCert = useCallback(() => {
+		form.setValue("tlsEchServerKeys", "", { shouldDirty: true });
+		form.setValue("tlsEchConfigList", "", { shouldDirty: true });
+	}, [form]);
+
+	const handleGenerateMldsa65 = useCallback(async () => {
+		try {
+			const { seed, verify } = await generateMldsa65();
+			form.setValue("realityMldsa65Seed", seed ?? "", { shouldDirty: true });
+			form.setValue("realityMldsa65Verify", verify ?? "", {
+				shouldDirty: true,
+			});
+			toast({
+				status: "success",
+				title: t("inbounds.reality.mldsaGenerated", "ML-DSA-65 generated"),
+				duration: 2000,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.reality.mldsaError",
+					"Unable to generate ML-DSA-65",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		}
+	}, [form, t, toast]);
+
+	const handleClearMldsa65 = useCallback(() => {
+		form.setValue("realityMldsa65Seed", "", { shouldDirty: true });
+		form.setValue("realityMldsa65Verify", "", { shouldDirty: true });
+	}, [form]);
+
+	const handleJsonEditorChange = useCallback(
+		(value: string) => {
+			try {
+				const parsed = JSON.parse(value);
+				if (!parsed || typeof parsed !== "object") {
+					throw new Error("Invalid JSON payload");
+				}
+				const mapped = rawInboundToFormValues(parsed as RawInbound);
+				updatingFromJsonRef.current = true;
+				reset(mapped);
+				setJsonData(parsed as RawInbound);
+				setJsonError(null);
+			} catch (error) {
+				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
+			}
+		},
+		[reset],
+	);
+
 	const handleGenerateShortId = useCallback(async () => {
 		try {
 			const { shortId } = await generateRealityShortId();
@@ -550,7 +701,7 @@ export const InboundFormModal: FC<Props> = ({
 				.map((entry) => entry.trim())
 				.filter(Boolean);
 			entries.push(shortId);
-			form.setValue("realityShortIds", entries.join("\n"), {
+			form.setValue("realityShortIds", entries.join(","), {
 				shouldDirty: true,
 			});
 			toast({
@@ -572,21 +723,27 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [form, toast, t]);
 
-	const derivedRealityPublicKey = useMemo(() => {
-		const normalized = prepareRealityKeyForDerivation(realityPrivateKey);
-		if (!normalized) {
-			return "";
+	const handleRandomizeRealityTarget = useCallback(() => {
+		const randomTarget = getRandomRealityTarget();
+		if (!randomTarget) {
+			return;
 		}
-		try {
-			const { publicKey } = generateWireguardKeypair(normalized);
-			return formatRealityKeyForDisplay(publicKey);
-		} catch {
-			return "";
-		}
-	}, [realityPrivateKey]);
+		form.setValue("realityTarget", randomTarget.target, { shouldDirty: true });
+		form.setValue("realityServerNames", randomTarget.sni, {
+			shouldDirty: true,
+		});
+	}, [form]);
+
+	const handleRandomizeRealityShortIds = useCallback(() => {
+		form.setValue("realityShortIds", generateRandomShortIds(), {
+			shouldDirty: true,
+		});
+	}, [form]);
 
 	const handleAddFallback = () =>
 		appendFallback({ dest: "", path: "", type: "", alpn: "", xver: "" });
+	const handleAddTlsCertificate = () =>
+		appendTlsCertificate(createDefaultTlsCertificate());
 
 	const fetchVlessAuthBlocks = useCallback(async () => {
 		setVlessAuthLoading(true);
@@ -699,7 +856,19 @@ export const InboundFormModal: FC<Props> = ({
 				</ModalHeader>
 				<ModalCloseButton />
 				<ModalBody>
-					<VStack align="stretch" spacing={6}>
+					<Tabs
+						variant="enclosed"
+						colorScheme="primary"
+						index={activeTab}
+						onChange={(index) => setActiveTab(index)}
+					>
+						<TabList>
+							<Tab>{t("form")}</Tab>
+							<Tab>{t("json")}</Tab>
+						</TabList>
+						<TabPanels>
+							<TabPanel px={0}>
+								<VStack align="stretch" spacing={6}>
 						<Stack
 							spacing={4}
 							borderWidth="1px"
@@ -711,10 +880,7 @@ export const InboundFormModal: FC<Props> = ({
 								<FormControl isRequired isInvalid={!!tagError}>
 									<FormLabel>{t("inbounds.tag", "Tag")}</FormLabel>
 									<Input
-										{...register("tag", {
-											required: true,
-											onChange: () => setTagManuallyEdited(true),
-										})}
+										{...register("tag", { required: true })}
 										isDisabled={mode === "edit"}
 									/>
 									{tagError && (
@@ -751,7 +917,6 @@ export const InboundFormModal: FC<Props> = ({
 										borderColor={portWarning ? warningBorder : undefined}
 									/>
 									<HStack justify="space-between" mt={1}>
-										ار
 										<Button
 											size="xs"
 											variant="ghost"
@@ -798,12 +963,50 @@ export const InboundFormModal: FC<Props> = ({
 								</FormControl>
 							)}
 							{currentProtocol === "shadowsocks" && (
-								<FormControl>
-									<FormLabel>
-										{t("inbounds.shadowsocks.network", "Allowed networks")}
-									</FormLabel>
-									<Input {...register("shadowsocksNetwork")} />
-								</FormControl>
+								<Stack spacing={3}>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.shadowsocks.password", "Password")}
+										</FormLabel>
+										<Input
+											type="text"
+											autoComplete="off"
+											{...register("shadowsocksPassword")}
+										/>
+									</FormControl>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<FormLabel>
+												{t("inbounds.shadowsocks.method", "Encryption method")}
+											</FormLabel>
+											<Select {...register("shadowsocksMethod")}>
+												{shadowsocksMethods.map((method) => (
+													<option key={method} value={method}>
+														{method}
+													</option>
+												))}
+											</Select>
+										</FormControl>
+										<FormControl>
+											<FormLabel>
+												{t("inbounds.shadowsocks.network", "Allowed networks")}
+											</FormLabel>
+											<Select {...register("shadowsocksNetwork")}>
+												{shadowsocksNetworkOptions.map((option) => (
+													<option key={option} value={option}>
+														{option}
+													</option>
+												))}
+											</Select>
+										</FormControl>
+									</SimpleGrid>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("inbounds.shadowsocks.ivCheck", "IV check")}
+										</FormLabel>
+										<Switch {...register("shadowsocksIvCheck")} />
+									</FormControl>
+								</Stack>
 							)}
 							{currentProtocol === "vless" && (
 								<Stack spacing={3}>
@@ -1063,7 +1266,7 @@ export const InboundFormModal: FC<Props> = ({
 									<FormControl>
 										<FormLabel>{t("inbounds.network", "Network")}</FormLabel>
 										<Select {...register("streamNetwork")}>
-											{availableNetworkOptions.map((network) => (
+											{ALL_NETWORK_OPTIONS.map((network) => (
 												<option key={network} value={network}>
 													{network}
 												</option>
@@ -1072,15 +1275,50 @@ export const InboundFormModal: FC<Props> = ({
 									</FormControl>
 									<FormControl>
 										<FormLabel>{t("inbounds.security", "Security")}</FormLabel>
-										<Select {...register("streamSecurity")}>
-											{availableSecurityOptions.map((security) => (
-												<option key={security} value={security}>
-													{security}
-												</option>
-											))}
-										</Select>
+										<Controller
+											control={control}
+											name="streamSecurity"
+											render={({ field }) => (
+												<RadioGroup
+													value={field.value}
+													onChange={field.onChange}
+												>
+													<HStack spacing={4}>
+														{streamSecurityOptions.map((security) => {
+															const disabled =
+																security === "tls"
+																	? !TLS_COMPATIBLE_PROTOCOLS.includes(
+																			currentProtocol,
+																		)
+																	: security === "reality"
+																		? !REALITY_COMPATIBLE_PROTOCOLS.includes(
+																				currentProtocol,
+																			)
+																		: false;
+															return (
+																<Radio
+																	key={security}
+																	value={security}
+																	isDisabled={disabled}
+																>
+																	{security}
+																</Radio>
+															);
+														})}
+													</HStack>
+												</RadioGroup>
+											)}
+										/>
 									</FormControl>
 								</SimpleGrid>
+								{streamCompatibilityError && (
+									<Alert status="error" borderRadius="md">
+										<AlertIcon />
+										<AlertDescription fontSize="sm">
+											{streamCompatibilityError}
+										</AlertDescription>
+									</Alert>
+								)}
 
 								{streamNetwork === "ws" && (
 									<Alert status="warning" borderRadius="md" mt={2}>
@@ -1323,6 +1561,9 @@ export const InboundFormModal: FC<Props> = ({
 													{t("inbounds.xhttp.mode", "Mode")}
 												</FormLabel>
 												<Select {...register("xhttpMode")}>
+													<option value="">
+														{t("common.default", "Default")}
+													</option>
 													{XHTTP_MODE_OPTIONS.map((mode) => (
 														<option key={mode} value={mode}>
 															{mode}
@@ -1570,15 +1811,56 @@ export const InboundFormModal: FC<Props> = ({
 								borderRadius="lg"
 								p={4}
 							>
-								<FormControl>
-									<FormLabel>
-										{t("inbounds.tls.serverName", "Server name (SNI)")}
-									</FormLabel>
-									<Input
-										{...register("tlsServerName")}
-										placeholder="example.com"
-									/>
-								</FormControl>
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.serverName", "Server name (SNI)")}
+										</FormLabel>
+										<Input
+											{...register("tlsServerName")}
+											placeholder="example.com"
+										/>
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.cipherSuites", "Cipher suites")}
+										</FormLabel>
+										<Select {...register("tlsCipherSuites")}>
+											<option value="">{t("common.auto", "Auto")}</option>
+											{tlsCipherOptions.map((option) => (
+												<option key={option} value={option}>
+													{option}
+												</option>
+											))}
+										</Select>
+									</FormControl>
+								</SimpleGrid>
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.minVersion", "Min version")}
+										</FormLabel>
+										<Select {...register("tlsMinVersion")}>
+											{tlsVersionOptions.map((option) => (
+												<option key={option} value={option}>
+													{option}
+												</option>
+											))}
+										</Select>
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.maxVersion", "Max version")}
+										</FormLabel>
+										<Select {...register("tlsMaxVersion")}>
+											{tlsVersionOptions.map((option) => (
+												<option key={option} value={option}>
+													{option}
+												</option>
+											))}
+										</Select>
+									</FormControl>
+								</SimpleGrid>
 								<FormControl>
 									<FormLabel>
 										{t("inbounds.tls.fingerprint", "uTLS fingerprint")}
@@ -1592,12 +1874,279 @@ export const InboundFormModal: FC<Props> = ({
 										))}
 									</Select>
 								</FormControl>
-								<FormControl display="flex" alignItems="center">
-									<FormLabel mb={0}>
-										{t("inbounds.tls.allowInsecure", "Allow insecure")}
-									</FormLabel>
-									<Switch {...register("tlsAllowInsecure")} />
+								<FormControl>
+									<FormLabel>{t("inbounds.tls.alpn", "ALPN")}</FormLabel>
+									<Controller
+										control={control}
+										name="tlsAlpn"
+										render={({ field }) => (
+											<CheckboxGroup
+												value={field.value ?? []}
+												onChange={field.onChange}
+											>
+												<HStack spacing={4} flexWrap="wrap">
+													{tlsAlpnOptions.map((option) => (
+														<Checkbox key={option} value={option}>
+															{option}
+														</Checkbox>
+													))}
+												</HStack>
+											</CheckboxGroup>
+										)}
+									/>
 								</FormControl>
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("inbounds.tls.allowInsecure", "Allow insecure")}
+										</FormLabel>
+										<Switch {...register("tlsAllowInsecure")} />
+									</FormControl>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t(
+												"inbounds.tls.rejectUnknownSni",
+												"Reject unknown SNI",
+											)}
+										</FormLabel>
+										<Switch {...register("tlsRejectUnknownSni")} />
+									</FormControl>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t(
+												"inbounds.tls.disableSystemRoot",
+												"Disable system root",
+											)}
+										</FormLabel>
+										<Switch {...register("tlsDisableSystemRoot")} />
+									</FormControl>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t(
+												"inbounds.tls.enableSessionResumption",
+												"Session resumption",
+											)}
+										</FormLabel>
+										<Switch {...register("tlsEnableSessionResumption")} />
+									</FormControl>
+								</SimpleGrid>
+								<FormControl>
+									<FormLabel>
+										{t(
+											"inbounds.tls.verifyPeerCertByName",
+											"Verify peer cert by name",
+										)}
+									</FormLabel>
+									<Input {...register("tlsVerifyPeerCertByName")} />
+								</FormControl>
+								<Divider />
+								<Stack spacing={3}>
+									<Flex align="center" justify="space-between">
+										<Box fontWeight="medium">
+											{t("inbounds.tls.certificates", "Certificates")}
+										</Box>
+										<Button size="xs" onClick={handleAddTlsCertificate}>
+											{t("inbounds.tls.addCertificate", "Add certificate")}
+										</Button>
+									</Flex>
+									{tlsCertificateFields.map((field, index) => {
+										const certConfig = tlsCertificates[index] || {
+											useFile: true,
+											usage: "encipherment",
+										};
+										const usage = certConfig.usage || "encipherment";
+										return (
+											<Box
+												key={field.id}
+												borderWidth="1px"
+												borderRadius="md"
+												borderColor={sectionBorder}
+												p={3}
+											>
+												<Flex justify="space-between" align="center" mb={3}>
+													<Text fontWeight="semibold">
+														{t("inbounds.tls.certificate", "Certificate")} #
+														{index + 1}
+													</Text>
+													{tlsCertificateFields.length > 1 && (
+														<Button
+															size="xs"
+															variant="ghost"
+															colorScheme="red"
+															onClick={() => removeTlsCertificate(index)}
+														>
+															{t("hostsPage.delete", "Delete")}
+														</Button>
+													)}
+												</Flex>
+												<FormControl>
+													<FormLabel>
+														{t(
+															"inbounds.tls.certificateSource",
+															"Certificate source",
+														)}
+													</FormLabel>
+													<Controller
+														control={control}
+														name={`tlsCertificates.${index}.useFile` as const}
+														render={({ field }) => (
+															<RadioGroup
+																value={field.value ? "file" : "content"}
+																onChange={(value) =>
+																	field.onChange(value === "file")
+																}
+															>
+																<HStack spacing={4}>
+																	<Radio value="file">
+																		{t(
+																			"inbounds.tls.certificatePath",
+																			"Path",
+																		)}
+																	</Radio>
+																	<Radio value="content">
+																		{t(
+																			"inbounds.tls.certificateContent",
+																			"Content",
+																		)}
+																	</Radio>
+																</HStack>
+															</RadioGroup>
+														)}
+													/>
+												</FormControl>
+												{certConfig.useFile ? (
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.tls.certFile", "Certificate file")}
+															</FormLabel>
+															<Input
+																{...register(
+																	`tlsCertificates.${index}.certFile` as const,
+																)}
+															/>
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.tls.keyFile", "Key file")}
+															</FormLabel>
+															<Input
+																{...register(
+																	`tlsCertificates.${index}.keyFile` as const,
+																)}
+															/>
+														</FormControl>
+													</SimpleGrid>
+												) : (
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.tls.cert", "Certificate")}
+															</FormLabel>
+															<Textarea
+																rows={3}
+																{...register(
+																	`tlsCertificates.${index}.cert` as const,
+																)}
+															/>
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.tls.key", "Key")}
+															</FormLabel>
+															<Textarea
+																rows={3}
+																{...register(
+																	`tlsCertificates.${index}.key` as const,
+																)}
+															/>
+														</FormControl>
+													</SimpleGrid>
+												)}
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t(
+																"inbounds.tls.oneTimeLoading",
+																"One time loading",
+															)}
+														</FormLabel>
+														<Switch
+															{...register(
+																`tlsCertificates.${index}.oneTimeLoading` as const,
+															)}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.tls.usage", "Usage option")}
+														</FormLabel>
+														<Select
+															{...register(
+																`tlsCertificates.${index}.usage` as const,
+															)}
+														>
+															{tlsUsageOptions.map((option) => (
+																<option key={option} value={option}>
+																	{option}
+																</option>
+															))}
+														</Select>
+													</FormControl>
+												</SimpleGrid>
+												{usage === "issue" && (
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t("inbounds.tls.buildChain", "Build chain")}
+														</FormLabel>
+														<Switch
+															{...register(
+																`tlsCertificates.${index}.buildChain` as const,
+															)}
+														/>
+													</FormControl>
+												)}
+											</Box>
+										);
+									})}
+								</Stack>
+								<Divider />
+								<Stack spacing={3}>
+									<FormControl>
+										<FormLabel>{t("inbounds.tls.echKey", "ECH key")}</FormLabel>
+										<Input {...register("tlsEchServerKeys")} />
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.echConfig", "ECH config")}
+										</FormLabel>
+										<Input {...register("tlsEchConfigList")} />
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.tls.echForceQuery", "ECH force query")}
+										</FormLabel>
+										<Select {...register("tlsEchForceQuery")}>
+											{tlsEchForceOptions.map((option) => (
+												<option key={option} value={option}>
+													{option}
+												</option>
+											))}
+										</Select>
+									</FormControl>
+									<HStack spacing={3}>
+										<Button size="xs" onClick={handleGenerateEchCert}>
+											{t("inbounds.tls.echGenerate", "Get new ECH cert")}
+										</Button>
+										<Button
+											size="xs"
+											variant="ghost"
+											onClick={handleClearEchCert}
+										>
+											{t("common.clear", "Clear")}
+										</Button>
+									</HStack>
+								</Stack>
 							</Stack>
 						)}
 
@@ -1609,27 +2158,99 @@ export const InboundFormModal: FC<Props> = ({
 								borderRadius="lg"
 								p={4}
 							>
+								<FormControl display="flex" alignItems="center">
+									<FormLabel mb={0}>
+										{t("inbounds.reality.show", "Show")}
+									</FormLabel>
+									<Switch {...register("realityShow")} />
+								</FormControl>
+								<FormControl>
+									<FormLabel>{t("inbounds.reality.xver", "Xver")}</FormLabel>
+									<Controller
+										control={control}
+										name="realityXver"
+										render={({ field }) => (
+											<NumberInput
+												value={field.value ?? ""}
+												onChange={(value) => field.onChange(value)}
+												min={0}
+											>
+												<NumberInputField />
+											</NumberInput>
+										)}
+									/>
+								</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("inbounds.reality.fingerprint", "uTLS fingerprint")}
+									</FormLabel>
+									<Select {...register("realityFingerprint")}>
+										{tlsFingerprintOptions.map((option) => (
+											<option key={option} value={option}>
+												{option}
+											</option>
+										))}
+									</Select>
+								</FormControl>
 								<FormControl
 									isRequired
-									isInvalid={Boolean(errors.realityPrivateKey)}
+									isInvalid={Boolean(errors.realityTarget)}
 								>
 									<FormLabel>
-										{t("inbounds.reality.privateKey", "Reality private key")}
+										<HStack spacing={2}>
+											<Text>{t("inbounds.reality.target", "Target")}</Text>
+											<Tooltip label={t("common.randomize", "Randomize")}>
+												<IconButton
+													aria-label={t("common.randomize", "Randomize")}
+													variant="ghost"
+													size="xs"
+													icon={<ArrowPathIcon width={14} height={14} />}
+													onClick={handleRandomizeRealityTarget}
+												/>
+											</Tooltip>
+										</HStack>
 									</FormLabel>
-									<Textarea
-										rows={3}
-										{...register("realityPrivateKey", { required: true })}
+									<Input
+										{...register("realityTarget", { required: true })}
+										placeholder="example.com:443"
 									/>
-									<Button
-										size="xs"
-										mt={2}
-										variant="outline"
-										onClick={handleGenerateRealityKeypair}
-										alignSelf="flex-start"
-									>
-										{t("inbounds.reality.generateKeys", "Generate key pair")}
-									</Button>
-									{errors.realityPrivateKey && (
+									{errors.realityTarget && (
+										<Text fontSize="xs" color="red.500" mt={1}>
+											{t("validation.required", "This field is required")}
+										</Text>
+									)}
+								</FormControl>
+								<FormControl
+									isRequired
+									isInvalid={Boolean(errors.realityServerNames)}
+								>
+									<FormLabel>
+										<HStack spacing={2}>
+											<Text>
+												{t("inbounds.reality.serverNames", "Server names")}
+											</Text>
+											<Tooltip label={t("common.randomize", "Randomize")}>
+												<IconButton
+													aria-label={t("common.randomize", "Randomize")}
+													variant="ghost"
+													size="xs"
+													icon={<ArrowPathIcon width={14} height={14} />}
+													onClick={handleRandomizeRealityTarget}
+												/>
+											</Tooltip>
+										</HStack>
+									</FormLabel>
+									<Input
+										{...register("realityServerNames", { required: true })}
+										placeholder="domain.com"
+									/>
+									<Box fontSize="sm" color="gray.500">
+										{t(
+											"inbounds.serverNamesHint",
+											"Separate entries with commas or new lines.",
+										)}
+									</Box>
+									{errors.realityServerNames && (
 										<Text fontSize="xs" color="red.500" mt={1}>
 											{t("validation.required", "This field is required")}
 										</Text>
@@ -1637,63 +2258,61 @@ export const InboundFormModal: FC<Props> = ({
 								</FormControl>
 								<FormControl>
 									<FormLabel>
-										{t("inbounds.reality.publicKey", "Reality public key")}
+										{t(
+											"inbounds.reality.maxTimediff",
+											"Max time diff (ms)",
+										)}
 									</FormLabel>
-									<Input
-										value={derivedRealityPublicKey}
-										isReadOnly
-										placeholder={t(
-											"inbounds.reality.publicKeyPlaceholder",
-											"Derived automatically",
+									<Controller
+										control={control}
+										name="realityMaxTimediff"
+										render={({ field }) => (
+											<NumberInput
+												value={field.value ?? ""}
+												onChange={(value) => field.onChange(value)}
+												min={0}
+											>
+												<NumberInputField />
+											</NumberInput>
 										)}
 									/>
 								</FormControl>
 								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-									<FormControl
-										isRequired
-										isInvalid={Boolean(errors.realityServerNames)}
-									>
+									<FormControl>
 										<FormLabel>
-											{t("inbounds.reality.serverNames", "Server names")}
-										</FormLabel>
-										<Textarea
-											rows={2}
-											{...register("realityServerNames", { required: true })}
-											placeholder="domain.com"
-										/>
-										<Box fontSize="sm" color="gray.500">
-											{t(
-												"inbounds.serverNamesHint",
-												"Separate entries with commas or new lines.",
-											)}
-										</Box>
-										{errors.realityServerNames && (
-											<Text fontSize="xs" color="red.500" mt={1}>
-												{t("validation.required", "This field is required")}
-											</Text>
-										)}
-									</FormControl>
-									<FormControl
-										isRequired
-										isInvalid={Boolean(errors.realityDest)}
-									>
-										<FormLabel>
-											{t("inbounds.reality.dest", "Destination (host:port)")}
+											{t("inbounds.reality.minClientVer", "Min client ver")}
 										</FormLabel>
 										<Input
-											{...register("realityDest", { required: true })}
-											placeholder="example.com:443"
+											{...register("realityMinClientVer")}
+											placeholder="25.9.11"
 										/>
-										{errors.realityDest && (
-											<Text fontSize="xs" color="red.500" mt={1}>
-												{t("validation.required", "This field is required")}
-											</Text>
-										)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("inbounds.reality.maxClientVer", "Max client ver")}
+										</FormLabel>
+										<Input
+											{...register("realityMaxClientVer")}
+											placeholder="25.9.11"
+										/>
 									</FormControl>
 								</SimpleGrid>
 								<FormControl isInvalid={Boolean(errors.realityShortIds)}>
 									<FormLabel>
-										{t("inbounds.reality.shortIds", "Short IDs")}
+										<HStack spacing={2}>
+											<Text>
+												{t("inbounds.reality.shortIds", "Short IDs")}
+											</Text>
+											<Tooltip label={t("common.randomize", "Randomize")}>
+												<IconButton
+													aria-label={t("common.randomize", "Randomize")}
+													variant="ghost"
+													size="xs"
+													icon={<ArrowPathIcon width={14} height={14} />}
+													onClick={handleRandomizeRealityShortIds}
+												/>
+											</Tooltip>
+										</HStack>
 									</FormLabel>
 									<Textarea rows={2} {...register("realityShortIds")} />
 									<Button
@@ -1717,18 +2336,74 @@ export const InboundFormModal: FC<Props> = ({
 										</Text>
 									)}
 								</FormControl>
-								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-									<FormControl>
-										<FormLabel>
-											{t("inbounds.reality.spiderX", "SpiderX")}
-										</FormLabel>
-										<Input {...register("realitySpiderX")} />
-									</FormControl>
-									<FormControl>
-										<FormLabel>{t("inbounds.reality.xver", "Xver")}</FormLabel>
-										<Input {...register("realityXver")} />
-									</FormControl>
-								</SimpleGrid>
+								<FormControl>
+									<FormLabel>
+										{t("inbounds.reality.spiderX", "SpiderX")}
+									</FormLabel>
+									<Input {...register("realitySpiderX")} />
+								</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("inbounds.reality.publicKey", "Reality public key")}
+									</FormLabel>
+									<Textarea rows={2} {...register("realityPublicKey")} />
+								</FormControl>
+								<FormControl
+									isRequired
+									isInvalid={Boolean(errors.realityPrivateKey)}
+								>
+									<FormLabel>
+										{t("inbounds.reality.privateKey", "Reality private key")}
+									</FormLabel>
+									<Textarea
+										rows={2}
+										{...register("realityPrivateKey", { required: true })}
+									/>
+									{errors.realityPrivateKey && (
+										<Text fontSize="xs" color="red.500" mt={1}>
+											{t("validation.required", "This field is required")}
+										</Text>
+									)}
+								</FormControl>
+								<HStack spacing={3}>
+									<Button size="xs" onClick={handleGenerateRealityKeypair}>
+										{t("inbounds.reality.generateKeys", "Get new cert")}
+									</Button>
+									<Button
+										size="xs"
+										variant="ghost"
+										onClick={handleClearRealityKeypair}
+									>
+										{t("common.clear", "Clear")}
+									</Button>
+								</HStack>
+								<FormControl>
+									<FormLabel>
+										{t("inbounds.reality.mldsa65Seed", "ML-DSA-65 seed")}
+									</FormLabel>
+									<Textarea rows={2} {...register("realityMldsa65Seed")} />
+								</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t(
+											"inbounds.reality.mldsa65Verify",
+											"ML-DSA-65 verify",
+										)}
+									</FormLabel>
+									<Textarea rows={2} {...register("realityMldsa65Verify")} />
+								</FormControl>
+								<HStack spacing={3}>
+									<Button size="xs" onClick={handleGenerateMldsa65}>
+										{t("inbounds.reality.mldsa65Generate", "Get new seed")}
+									</Button>
+									<Button
+										size="xs"
+										variant="ghost"
+										onClick={handleClearMldsa65}
+									>
+										{t("common.clear", "Clear")}
+									</Button>
+								</HStack>
 							</Stack>
 						)}
 
@@ -1896,6 +2571,25 @@ export const InboundFormModal: FC<Props> = ({
 							)}
 						</Stack>
 					</VStack>
+				</TabPanel>
+				<TabPanel px={0}>
+					<VStack align="stretch" spacing={4}>
+						{jsonError && (
+							<Alert status="error">
+								<AlertIcon />
+								{jsonError}
+							</Alert>
+						)}
+						<Box height="420px">
+							<JsonEditor
+								json={jsonData ?? {}}
+								onChange={handleJsonEditorChange}
+							/>
+						</Box>
+					</VStack>
+				</TabPanel>
+			</TabPanels>
+		</Tabs>
 				</ModalBody>
 				<ModalFooter>
 					<Button variant="ghost" mr={3} onClick={onClose}>
@@ -1904,7 +2598,7 @@ export const InboundFormModal: FC<Props> = ({
 					<Button
 						colorScheme="primary"
 						isLoading={isSubmitting}
-						isDisabled={hasBlockingErrors}
+						isDisabled={hasBlockingErrorsWithJson}
 						onClick={handleSubmit(submitForm)}
 					>
 						{mode === "create"

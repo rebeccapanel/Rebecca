@@ -171,7 +171,13 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
 
 
 def record_node_usages():
-    api_instances = {None: xray.api}
+    api_instances = {}
+    try:
+        if getattr(xray.core, "available", False) and getattr(xray.core, "started", False):
+            api_instances[None] = xray.api
+    except Exception:
+        # Skip master core if it's unavailable; still record from nodes
+        pass
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
             api_instances[node_id] = node.api

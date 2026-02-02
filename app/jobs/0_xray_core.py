@@ -9,16 +9,21 @@ from xray_api import exc as xray_exc
 
 
 def core_health_check():
-    if not xray.core.available:
-        return
-
     config = None
 
-    # main core
-    if not xray.core.started:
-        if not config:
-            config = xray.config.include_db_users()
-        xray.core.restart(config)
+    # main core: only attempt to (re)start when binary is available
+    if xray.core.available:
+        if not xray.core.started:
+            if not config:
+                config = xray.config.include_db_users()
+            xray.core.restart(config)
+    else:
+        # Ensure we still have a config for node operations even if master core is missing
+        if config is None:
+            try:
+                config = xray.config.include_db_users()
+            except Exception:
+                config = None
 
     # nodes' core
     for node_id, node in list(xray.nodes.items()):
@@ -38,10 +43,6 @@ def core_health_check():
 
 
 def start_core():
-    if not xray.core.available:
-        logger.warning("XRay core is not available. Skipping XRay core startup.")
-        return
-
     logger.info("Generating Xray core config")
 
     start_time = time.time()
@@ -55,14 +56,22 @@ def start_core():
         return
 
     # main core
-    logger.info("Starting main Xray core")
-    try:
-        xray.core.start(config)
-    except Exception as e:
-        logger.error(f"Failed to start Xray core: {e}")
-        logger.warning("Panel will continue running without Xray core. Please fix the Xray configuration.")
-        traceback.print_exc()
-        # Don't return here - continue to start nodes and scheduler
+    if xray.core.available:
+        if xray.core.started:
+            logger.info("Main Xray core already running, skipping start")
+        else:
+            logger.info("Starting main Xray core")
+            try:
+                xray.core.start(config)
+            except Exception as e:
+                logger.error(f"Failed to start Xray core: {e}")
+                logger.warning("Panel will continue running without Xray core. Please fix the Xray configuration.")
+                traceback.print_exc()
+            finally:
+                if not xray.core.started:
+                    logger.error("Master Xray core did not start successfully during startup.")
+    else:
+        logger.warning("XRay core is not available. Skipping local core startup but continuing with node connections.")
 
     # nodes' core
     logger.info("Starting nodes Xray core")

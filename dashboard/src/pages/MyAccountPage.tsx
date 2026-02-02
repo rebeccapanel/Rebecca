@@ -179,7 +179,8 @@ const ChangePasswordModal: React.FC<{
 	onClose: () => void;
 	onSubmit: (current: string, next: string) => Promise<void>;
 }> = ({ isOpen, onClose, onSubmit }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
 	const toast = useToast();
 	const [showCurrent, setShowCurrent] = useState(false);
 	const [showNew, setShowNew] = useState(false);
@@ -242,14 +243,19 @@ const ChangePasswordModal: React.FC<{
 				<ModalBody>
 					<VStack spacing={4} align="stretch">
 						<Box maxW="420px">
-							<InputGroup>
+							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 								<Input
 									placeholder={t("myaccount.currentPassword")}
 									type={showCurrent ? "text" : "password"}
 									value={currentPassword}
 									onChange={(e) => setCurrentPassword(e.target.value)}
+									paddingInlineEnd="2.75rem"
 								/>
-								<InputRightElement>
+								<InputRightElement
+									insetInlineEnd="0.5rem"
+									right="auto"
+									left="auto"
+								>
 									<IconButton
 										aria-label={
 											showCurrent
@@ -272,14 +278,19 @@ const ChangePasswordModal: React.FC<{
 						</Box>
 						<Box maxW="420px">
 							<HStack spacing={2}>
-								<InputGroup>
+								<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 									<Input
 										placeholder={t("myaccount.newPassword")}
 										type={showNew ? "text" : "password"}
 										value={newPassword}
 										onChange={(e) => setNewPassword(e.target.value)}
+										paddingInlineEnd="2.75rem"
 									/>
-									<InputRightElement>
+									<InputRightElement
+										insetInlineEnd="0.5rem"
+										right="auto"
+										left="auto"
+									>
 										<IconButton
 											aria-label={
 												showNew
@@ -329,13 +340,14 @@ const ChangePasswordModal: React.FC<{
 };
 
 export const MyAccountPage: React.FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.language === "fa";
 	const toast = useToast();
 	const modal = useDisclosure();
 	const apiKeyModal = useDisclosure();
 	const queryClient = useQueryClient();
 	const { colorMode } = useColorMode();
-	const { userData } = useGetUser();
+	const { userData, getUserIsSuccess } = useGetUser();
 	const { onCopy, setValue: setClipboardValue } = useClipboard("");
 	const [range, setRange] = useState<DateRangeValue>(() => {
 		const end = dayjs().utc().endOf("day");
@@ -348,26 +360,32 @@ export const MyAccountPage: React.FC = () => {
 		};
 	});
 
-	const { data, isLoading, isFetching, refetch } = useQuery<MyAccountResponse>(
+	const username = userData?.username;
+	const isFullAccess = userData?.role === AdminRole.FullAccess;
+	const defaultSelfPermissions = {
+		self_myaccount: false,
+		self_change_password: false,
+		self_api_keys: false,
+	};
+	const baseSelfPermissions =
+		userData?.permissions?.self_permissions ?? defaultSelfPermissions;
+	const selfPermissions = isFullAccess
+		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
+		: baseSelfPermissions;
+
+	const { data, isLoading, isFetching } = useQuery<MyAccountResponse>(
 		["myaccount", range.start, range.end],
 		() =>
 			getMyAccount({
 				start: `${dayjs(range.start).utc().format("YYYY-MM-DDTHH:mm:ss")}Z`,
 				end: `${dayjs(range.end).utc().format("YYYY-MM-DDTHH:mm:ss")}Z`,
 			}),
-		{ keepPreviousData: true },
+		{
+			keepPreviousData: true,
+			enabled: selfPermissions.self_myaccount && getUserIsSuccess,
+		},
 	);
-	const username = userData?.username;
-	const isFullAccess = userData?.role === AdminRole.FullAccess;
-	const baseSelfPermissions = userData?.permissions?.self_permissions || {
-		self_myaccount: true,
-		self_change_password: true,
-		self_api_keys: true,
-	};
-	const selfPermissions = isFullAccess
-		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
-		: baseSelfPermissions;
-	const { data: nodesData, isFetching: isFetchingNodes } = useQuery(
+	const { data: nodesData } = useQuery(
 		["myaccount-nodes", username, range.start, range.end],
 		() =>
 			username
@@ -376,7 +394,11 @@ export const MyAccountPage: React.FC = () => {
 						end: `${dayjs(range.end).utc().format("YYYY-MM-DDTHH:mm:ss")}Z`,
 					})
 				: Promise.resolve({ usages: [] }),
-		{ keepPreviousData: true, enabled: Boolean(username) },
+		{
+			keepPreviousData: true,
+			enabled:
+				selfPermissions.self_myaccount && Boolean(username) && getUserIsSuccess,
+		},
 	);
 	const mutation = useMutation(changeMyAccountPassword, {
 		onSuccess: () => {
@@ -386,6 +408,7 @@ export const MyAccountPage: React.FC = () => {
 	const apiKeysQuery = useQuery<AdminApiKey[]>(
 		["myaccount-api-keys"],
 		listApiKeys,
+		{ enabled: selfPermissions.self_api_keys && getUserIsSuccess },
 	);
 	const createKeyMutation = useMutation(createApiKey, {
 		onSuccess: (data) => {
@@ -483,14 +506,6 @@ export const MyAccountPage: React.FC = () => {
 		[perNodeUsage],
 	);
 
-	if (isLoading || !data) {
-		return (
-			<Flex justify="center" align="center" py={10}>
-				<Spinner />
-			</Flex>
-		);
-	}
-
 	if (!selfPermissions.self_myaccount) {
 		return (
 			<VStack spacing={3} align="start">
@@ -501,6 +516,14 @@ export const MyAccountPage: React.FC = () => {
 					{t("myaccount.forbiddenDescription")}
 				</Text>
 			</VStack>
+		);
+	}
+
+	if (isLoading || !data) {
+		return (
+			<Flex justify="center" align="center" py={10}>
+				<Spinner />
+			</Flex>
 		);
 	}
 
@@ -657,16 +680,20 @@ export const MyAccountPage: React.FC = () => {
 				</GridItem>
 			</Grid>
 
-			<ChartBox
-				title={t("myaccount.apiKeys")}
-				headerActions={
-					<Button size="sm" colorScheme="primary" onClick={apiKeyModal.onOpen}>
-						{t("myaccount.createApiKey")}
-					</Button>
-				}
-			>
-				{selfPermissions.self_api_keys ? (
-					apiKeysQuery.isLoading ? (
+			{selfPermissions.self_api_keys && (
+				<ChartBox
+					title={t("myaccount.apiKeys")}
+					headerActions={
+						<Button
+							size="sm"
+							colorScheme="primary"
+							onClick={apiKeyModal.onOpen}
+						>
+							{t("myaccount.createApiKey")}
+						</Button>
+					}
+				>
+					{apiKeysQuery.isLoading ? (
 						<HStack>
 							<Spinner size="sm" />
 							<Text>{t("loading")}</Text>
@@ -725,13 +752,9 @@ export const MyAccountPage: React.FC = () => {
 								))}
 							</Tbody>
 						</Table>
-					)
-				) : (
-					<Text color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("myaccount.apiKeysForbidden")}
-					</Text>
-				)}
-			</ChartBox>
+					)}
+				</ChartBox>
+			)}
 
 			{selfPermissions.self_change_password && (
 				<ChartBox title={t("myaccount.changePasswordCard")}>
@@ -751,103 +774,105 @@ export const MyAccountPage: React.FC = () => {
 				</ChartBox>
 			)}
 
-			<Modal
-				isOpen={apiKeyModal.isOpen}
-				onClose={() => {
-					apiKeyModal.onClose();
-					setGeneratedKey("");
-				}}
-				isCentered
-			>
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader>{t("myaccount.createApiKey")}</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
-						<VStack spacing={4} align="stretch">
-							{!hasGeneratedKey && (
-								<Box>
-									<Text fontWeight="medium" mb={2}>
-										{t("myaccount.apiKeyLifetime")}
-									</Text>
-									<Select
-										value={selectedLifetime}
-										onChange={(e) => setSelectedLifetime(e.target.value)}
-									>
-										<option value="1m">{t("myaccount.lifetime1m")}</option>
-										<option value="3m">{t("myaccount.lifetime3m")}</option>
-										<option value="6m">{t("myaccount.lifetime6m")}</option>
-										<option value="12m">{t("myaccount.lifetime12m")}</option>
-										<option value="forever">
-											{t("myaccount.lifetimeForever")}
-										</option>
-									</Select>
-								</Box>
-							)}
-							{hasGeneratedKey && (
-								<Box>
-									<Text fontWeight="medium" mb={1}>
-										{t("myaccount.yourApiKey")}
-									</Text>
-									<HStack>
-										<Input value={generatedKey} isReadOnly />
-										<IconButton
-											aria-label={t("copy")}
-											icon={<CopyIcon />}
-											onClick={() => {
-												setClipboardValue(generatedKey);
-												onCopy();
-												toast({
-													title: t("copied"),
-													status: "success",
-													duration: 1200,
-												});
-											}}
-										/>
-									</HStack>
-									<Text fontSize="xs" color="orange.500" mt={2}>
-										{t("myaccount.apiKeyWarning")}
-									</Text>
-								</Box>
-							)}
-						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						{hasGeneratedKey ? (
-							<Button
-								colorScheme="primary"
-								onClick={() => {
-									apiKeyModal.onClose();
-									setGeneratedKey("");
-								}}
-							>
-								{t("close")}
-							</Button>
-						) : (
-							<>
+			{selfPermissions.self_api_keys && (
+				<Modal
+					isOpen={apiKeyModal.isOpen}
+					onClose={() => {
+						apiKeyModal.onClose();
+						setGeneratedKey("");
+					}}
+					isCentered
+				>
+					<ModalOverlay />
+					<ModalContent>
+						<ModalHeader>{t("myaccount.createApiKey")}</ModalHeader>
+						<ModalCloseButton />
+						<ModalBody>
+							<VStack spacing={4} align="stretch">
+								{!hasGeneratedKey && (
+									<Box>
+										<Text fontWeight="medium" mb={2}>
+											{t("myaccount.apiKeyLifetime")}
+										</Text>
+										<Select
+											value={selectedLifetime}
+											onChange={(e) => setSelectedLifetime(e.target.value)}
+										>
+											<option value="1m">{t("myaccount.lifetime1m")}</option>
+											<option value="3m">{t("myaccount.lifetime3m")}</option>
+											<option value="6m">{t("myaccount.lifetime6m")}</option>
+											<option value="12m">{t("myaccount.lifetime12m")}</option>
+											<option value="forever">
+												{t("myaccount.lifetimeForever")}
+											</option>
+										</Select>
+									</Box>
+								)}
+								{hasGeneratedKey && (
+									<Box>
+										<Text fontWeight="medium" mb={1}>
+											{t("myaccount.yourApiKey")}
+										</Text>
+										<HStack>
+											<Input value={generatedKey} isReadOnly />
+											<IconButton
+												aria-label={t("copy")}
+												icon={<CopyIcon />}
+												onClick={() => {
+													setClipboardValue(generatedKey);
+													onCopy();
+													toast({
+														title: t("copied"),
+														status: "success",
+														duration: 1200,
+													});
+												}}
+											/>
+										</HStack>
+										<Text fontSize="xs" color="orange.500" mt={2}>
+											{t("myaccount.apiKeyWarning")}
+										</Text>
+									</Box>
+								)}
+							</VStack>
+						</ModalBody>
+						<ModalFooter>
+							{hasGeneratedKey ? (
 								<Button
-									variant="ghost"
-									mr={3}
+									colorScheme="primary"
 									onClick={() => {
 										apiKeyModal.onClose();
 										setGeneratedKey("");
 									}}
 								>
-									{t("cancel")}
+									{t("close")}
 								</Button>
-								<Button
-									colorScheme="primary"
-									isLoading={createKeyMutation.isLoading}
-									onClick={() => createKeyMutation.mutate(selectedLifetime)}
-									isDisabled={hasGeneratedKey}
-								>
-									{t("create")}
-								</Button>
-							</>
-						)}
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+							) : (
+								<>
+									<Button
+										variant="ghost"
+										mr={3}
+										onClick={() => {
+											apiKeyModal.onClose();
+											setGeneratedKey("");
+										}}
+									>
+										{t("cancel")}
+									</Button>
+									<Button
+										colorScheme="primary"
+										isLoading={createKeyMutation.isLoading}
+										onClick={() => createKeyMutation.mutate(selectedLifetime)}
+										isDisabled={hasGeneratedKey}
+									>
+										{t("create")}
+									</Button>
+								</>
+							)}
+						</ModalFooter>
+					</ModalContent>
+				</Modal>
+			)}
 
 			<ChangePasswordModal
 				isOpen={modal.isOpen}
@@ -855,90 +880,97 @@ export const MyAccountPage: React.FC = () => {
 				onSubmit={handlePasswordChange}
 			/>
 
-			<Modal
-				isOpen={deleteModal.isOpen}
-				onClose={() => {
-					deleteModal.onClose();
-					setDeleteKeyId(null);
-					setDeletePassword("");
-					setShowDeletePassword(false);
-				}}
-				isCentered
-			>
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader>{t("myaccount.deleteApiKey")}</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
-						<VStack spacing={3} align="stretch">
-							<Text color="gray.600" _dark={{ color: "gray.300" }}>
-								{t("myaccount.deleteApiKeyPrompt")}
-							</Text>
-							<InputGroup>
-								<Input
-									placeholder={t("myaccount.currentPassword")}
-									type={showDeletePassword ? "text" : "password"}
-									value={deletePassword}
-									onChange={(e) => setDeletePassword(e.target.value)}
-								/>
-								<InputRightElement>
-									<IconButton
-										aria-label={
-											showDeletePassword
-												? t("admins.hidePassword")
-												: t("admins.showPassword")
-										}
-										size="sm"
-										variant="ghost"
-										icon={
-											showDeletePassword ? (
-												<EyeSlashIcon width={16} />
-											) : (
-												<EyeIcon width={16} />
-											)
-										}
-										onClick={() => setShowDeletePassword(!showDeletePassword)}
-									/>
-								</InputRightElement>
-							</InputGroup>
-							{deleteKeyMutation.isError && (
-								<Text color="red.500" fontSize="sm">
-									{t("myaccount.incorrectPassword")}
+			{selfPermissions.self_api_keys && (
+				<Modal
+					isOpen={deleteModal.isOpen}
+					onClose={() => {
+						deleteModal.onClose();
+						setDeleteKeyId(null);
+						setDeletePassword("");
+						setShowDeletePassword(false);
+					}}
+					isCentered
+				>
+					<ModalOverlay />
+					<ModalContent>
+						<ModalHeader>{t("myaccount.deleteApiKey")}</ModalHeader>
+						<ModalCloseButton />
+						<ModalBody>
+							<VStack spacing={3} align="stretch">
+								<Text color="gray.600" _dark={{ color: "gray.300" }}>
+									{t("myaccount.deleteApiKeyPrompt")}
 								</Text>
-							)}
-						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						<Button
-							variant="ghost"
-							mr={3}
-							onClick={() => {
-								deleteModal.onClose();
-								setDeleteKeyId(null);
-								setDeletePassword("");
-								setShowDeletePassword(false);
-							}}
-						>
-							{t("cancel")}
-						</Button>
-						<Button
-							colorScheme="red"
-							isLoading={deleteKeyMutation.isLoading}
-							isDisabled={!deletePassword || deleteKeyId === null}
-							onClick={() => {
-								if (deleteKeyId !== null) {
-									deleteKeyMutation.mutate({
-										id: deleteKeyId,
-										current_password: deletePassword,
-									} as any);
-								}
-							}}
-						>
-							{t("delete")}
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+								<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+									<Input
+										placeholder={t("myaccount.currentPassword")}
+										type={showDeletePassword ? "text" : "password"}
+										value={deletePassword}
+										onChange={(e) => setDeletePassword(e.target.value)}
+										paddingInlineEnd="2.75rem"
+									/>
+									<InputRightElement
+										insetInlineEnd="0.5rem"
+										right="auto"
+										left="auto"
+									>
+										<IconButton
+											aria-label={
+												showDeletePassword
+													? t("admins.hidePassword")
+													: t("admins.showPassword")
+											}
+											size="sm"
+											variant="ghost"
+											icon={
+												showDeletePassword ? (
+													<EyeSlashIcon width={16} />
+												) : (
+													<EyeIcon width={16} />
+												)
+											}
+											onClick={() => setShowDeletePassword(!showDeletePassword)}
+										/>
+									</InputRightElement>
+								</InputGroup>
+								{deleteKeyMutation.isError && (
+									<Text color="red.500" fontSize="sm">
+										{t("myaccount.incorrectPassword")}
+									</Text>
+								)}
+							</VStack>
+						</ModalBody>
+						<ModalFooter>
+							<Button
+								variant="ghost"
+								mr={3}
+								onClick={() => {
+									deleteModal.onClose();
+									setDeleteKeyId(null);
+									setDeletePassword("");
+									setShowDeletePassword(false);
+								}}
+							>
+								{t("cancel")}
+							</Button>
+							<Button
+								colorScheme="red"
+								isLoading={deleteKeyMutation.isLoading}
+								isDisabled={!deletePassword || deleteKeyId === null}
+								onClick={() => {
+									if (deleteKeyId !== null) {
+										deleteKeyMutation.mutate({
+											id: deleteKeyId,
+											current_password: deletePassword,
+										} as any);
+									}
+								}}
+							>
+								{t("delete")}
+							</Button>
+						</ModalFooter>
+					</ModalContent>
+				</Modal>
+			)}
 		</VStack>
 	);
 };

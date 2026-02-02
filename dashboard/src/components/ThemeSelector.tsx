@@ -94,14 +94,18 @@ type PresetDefinition = {
 };
 
 type ThemeSelectorProps = {
-	/** when true, render a minimal menu (only built-in themes) — used on the login screen */
+	/** when true, render a minimal menu (only built-in themes) - used on the login screen */
 	minimal?: boolean;
 	/** Optional container ref to keep the Dropdown portal constrained */
 	portalContainer?: MutableRefObject<HTMLElement | null>;
 	/** Optional trigger variant */
-	trigger?: "icon" | "menu";
+	trigger?: "icon" | "menu" | "menuItem";
 	/** Optional custom label when using the menu trigger */
 	triggerLabel?: string;
+	/** Notify parent when any modal opens (so parent menus/popovers can stay mounted) */
+	onModalOpen?: () => void;
+	/** Notify parent when all ThemeSelector modals are closed */
+	onModalClose?: () => void;
 };
 
 const PRIMARY_VARS = [
@@ -129,6 +133,32 @@ const DEFAULT_DARK_MODE: ModeConfig = {
 	surface: "#141f35",
 };
 
+const DEFAULT_PALETTE: PaletteVars = {
+	"--primary-50": "#9cb7f2",
+	"--primary-100": "#88a9ef",
+	"--primary-200": "#749aec",
+	"--primary-300": "#618ce9",
+	"--primary-400": "#4d7de7",
+	"--primary-500": "#396fe4",
+	"--primary-600": "#3364cd",
+	"--primary-700": "#2e59b6",
+	"--primary-800": "#284ea0",
+	"--primary-900": "#224389",
+};
+
+const DARK_PALETTE: PaletteVars = {
+	"--primary-50": "#1a202c",
+	"--primary-100": "#2d3748",
+	"--primary-200": "#4a5568",
+	"--primary-300": "#718096",
+	"--primary-400": "#a0aec0",
+	"--primary-500": "#cbd5e0",
+	"--primary-600": "#e2e8f0",
+	"--primary-700": "#f7fafc",
+	"--primary-800": "#ffffff",
+	"--primary-900": "#ffffff",
+};
+
 const BUILTIN_THEMES: ThemeDefinition[] = [
 	{ key: "light", accent: "#f7fafc", colorModeTarget: "light" },
 	{
@@ -137,11 +167,80 @@ const BUILTIN_THEMES: ThemeDefinition[] = [
 		colorModeTarget: "dark",
 		className: "rb-theme-dark",
 	},
+	{
+		key: "pure-dark",
+		accent: "#1a8ce0",
+		className: "rb-theme-pure-dark",
+	},
 	{ key: "ultra-dark", accent: "#319795", className: "rb-theme-ultra-dark" },
 	{ key: "moontone", accent: "#3b82f6", className: "rb-theme-moontone" },
 	{ key: "purple", accent: "#7c3aed", className: "rb-theme-purple" },
 	{ key: "green", accent: "#10b981", className: "rb-theme-green" },
 ];
+
+const BUILTIN_THEME_DATA: Record<
+	ThemeDefinition["key"],
+	{
+		basePrimary: string;
+		bgLight: string;
+		bgDark: string;
+		surfaceLight: string;
+		surfaceDark: string;
+		palette?: PaletteVars;
+	}
+> = {
+	light: {
+		basePrimary: DEFAULT_LIGHT_MODE.primary,
+		bgLight: DEFAULT_LIGHT_MODE.bg,
+		bgDark: DEFAULT_DARK_MODE.bg,
+		surfaceLight: DEFAULT_LIGHT_MODE.surface,
+		surfaceDark: DEFAULT_DARK_MODE.surface,
+		palette: DEFAULT_PALETTE,
+	},
+	dark: {
+		basePrimary: DEFAULT_DARK_MODE.primary,
+		bgLight: "#1a202c",
+		bgDark: "#0b1524",
+		surfaceLight: "#232c3d",
+		surfaceDark: "#121c2c",
+		palette: DARK_PALETTE,
+	},
+	"pure-dark": {
+		basePrimary: "#1a8ce0",
+		bgLight: "#0c1018",
+		bgDark: "#05070c",
+		surfaceLight: "#111827",
+		surfaceDark: "#0a0f1a",
+	},
+	"ultra-dark": {
+		basePrimary: "#319795",
+		bgLight: "#edfafa",
+		bgDark: "#091212",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#0f1f1f",
+	},
+	moontone: {
+		basePrimary: "#3b82f6",
+		bgLight: "#f5f7ff",
+		bgDark: "#0f1930",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#172544",
+	},
+	purple: {
+		basePrimary: "#7c3aed",
+		bgLight: "#f8f2ff",
+		bgDark: "#1a1031",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#261547",
+	},
+	green: {
+		basePrimary: "#10b981",
+		bgLight: "#eefdf4",
+		bgDark: "#071c10",
+		surfaceLight: "#ffffff",
+		surfaceDark: "#0f2a18",
+	},
+};
 
 const PRESET_THEMES: PresetDefinition[] = [
 	{
@@ -443,18 +542,49 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	portalContainer,
 	trigger = "icon",
 	triggerLabel,
+	onModalOpen,
+	onModalClose,
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const toast = useToast();
 	const { colorMode, toggleColorMode } = useColorMode();
 	const createModal = useDisclosure();
 	const importModal = useDisclosure();
+	const themeMenu = useDisclosure();
+	const isRTL = i18n.language === "fa";
 	const popoverBg = useColorModeValue("surface.light", "surface.dark");
 	const popoverHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	const popoverBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const primaryText = useColorModeValue("gray.800", "gray.100");
 	const secondaryText = useColorModeValue("gray.600", "gray.300");
 	const overlayBg = useColorModeValue("blackAlpha.400", "blackAlpha.700");
+	const popperModifiers = useMemo(
+		() => [
+			{
+				name: "preventOverflow",
+				options: { boundary: "viewport", padding: 8 },
+			},
+			{ name: "shift", options: { padding: 8 } },
+			{
+				name: "flip",
+				options: {
+					fallbackPlacements: [
+						"bottom-start",
+						"bottom",
+						"bottom-end",
+						"top",
+						"top-start",
+						"top-end",
+					],
+				},
+			},
+			{
+				name: "offset",
+				options: { offset: [0, 8] },
+			},
+		],
+		[],
+	);
 	const menuGroupStyles = useMemo(
 		() => ({
 			".chakra-menu__group__title": {
@@ -547,6 +677,15 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	const [importPayload, setImportPayload] = useState<string>("");
 
 	useEffect(() => {
+		const anyModalOpen = createModal.isOpen || importModal.isOpen;
+		if (anyModalOpen) {
+			onModalOpen?.();
+		} else {
+			onModalClose?.();
+		}
+	}, [createModal.isOpen, importModal.isOpen, onModalClose, onModalOpen]);
+
+	useEffect(() => {
 		try {
 			localStorage.setItem(CUSTOM_THEMES_KEY, JSON.stringify(customThemes));
 		} catch {}
@@ -582,16 +721,19 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 		if (builtIn) {
 			if (builtIn.className) root.classList.add(builtIn.className);
 
-			// Apply DEFAULT_DARK_MODE colors to dark theme
-			if (builtIn.key === "dark") {
-				const palette = generatePalette(DEFAULT_DARK_MODE.primary);
+			const builtInVars = BUILTIN_THEME_DATA[builtIn.key];
+			if (builtInVars) {
+				const palette =
+					builtInVars.palette ?? generatePalette(builtInVars.basePrimary);
 				applyPaletteToRoot(palette, {
-					bgLight: DEFAULT_LIGHT_MODE.bg,
-					bgDark: DEFAULT_DARK_MODE.bg,
-					surfaceLight: DEFAULT_LIGHT_MODE.surface,
-					surfaceDark: DEFAULT_DARK_MODE.surface,
+					bgLight: builtInVars.bgLight,
+					bgDark: builtInVars.bgDark,
+					surfaceLight: builtInVars.surfaceLight,
+					surfaceDark: builtInVars.surfaceDark,
 				});
-				updateThemeColor("dark", DEFAULT_DARK_MODE.bg);
+				const fallbackColor =
+					colorMode === "dark" ? builtInVars.bgDark : builtInVars.bgLight;
+				updateThemeColor(builtIn.key, fallbackColor);
 			} else {
 				updateThemeColor(builtIn.key);
 			}
@@ -961,14 +1103,26 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 
 	const menuList = (
 		<MenuList
-			minW={{ base: "82vw", sm: "240px" }}
-			maxW="320px"
+			minW={{ base: "calc(100vw - 24px)", sm: "260px" }}
+			maxW="min(420px, calc(100vw - 16px))"
 			zIndex={9999}
 			bg={popoverBg}
 			color={primaryText}
 			borderColor={popoverBorder}
 			maxH="70vh"
 			overflowY="auto"
+			// Ensure all menu items have transparent background by default to match dropdown panel
+			sx={{
+				".chakra-menu__menuitem": {
+					bg: "transparent !important",
+					"&:hover": {
+						bg: `${popoverHoverBg} !important`,
+					},
+					"&[data-active], &:active, &:focus": {
+						bg: `${popoverHoverBg} !important`,
+					},
+				},
+			}}
 		>
 			<MenuGroup title={t("theme.builtIn")} sx={menuGroupStyles}>
 				{BUILTIN_THEMES.map((theme) => {
@@ -977,7 +1131,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 						<MenuItem
 							key={theme.key}
 							onClick={() => handleSelectBuiltIn(theme)}
+							bg="transparent"
 							_hover={{ bg: popoverHoverBg }}
+							_active={{ bg: popoverHoverBg }}
+							_focus={{ bg: popoverHoverBg }}
 						>
 							<HStack justify="space-between" w="full">
 								<HStack>
@@ -1008,7 +1165,10 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 									<MenuItem
 										key={theme.id}
 										onClick={() => handleSelectCustom(theme.id)}
+										bg="transparent"
 										_hover={{ bg: popoverHoverBg }}
+										_active={{ bg: popoverHoverBg }}
+										_focus={{ bg: popoverHoverBg }}
 									>
 										<HStack justify="space-between" w="full">
 											<HStack>
@@ -1079,12 +1239,17 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 								);
 							})
 						) : (
-							<MenuItem isDisabled>{t("theme.noCustom")}</MenuItem>
+							<MenuItem isDisabled bg="transparent" opacity={0.5}>
+								{t("theme.noCustom")}
+							</MenuItem>
 						)}
 						<MenuItem
 							icon={<PlusIconChakra />}
 							onClick={() => openCreateModal()}
+							bg="transparent"
 							_hover={{ bg: popoverHoverBg }}
+							_active={{ bg: popoverHoverBg }}
+							_focus={{ bg: popoverHoverBg }}
 						>
 							{t("theme.createCustom")}
 						</MenuItem>
@@ -1093,28 +1258,40 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 					<MenuItem
 						icon={<SparklesIconChakra />}
 						onClick={() => openCreateModal(PRESET_THEMES[0])}
+						bg="transparent"
 						_hover={{ bg: popoverHoverBg }}
+						_active={{ bg: popoverHoverBg }}
+						_focus={{ bg: popoverHoverBg }}
 					>
 						{t("theme.quickPreset")}
 					</MenuItem>
 					<MenuItem
 						icon={<ArrowUpIconChakra />}
 						onClick={handleExport}
+						bg="transparent"
 						_hover={{ bg: popoverHoverBg }}
+						_active={{ bg: popoverHoverBg }}
+						_focus={{ bg: popoverHoverBg }}
 					>
 						{t("theme.export")}
 					</MenuItem>
 					<MenuItem
 						icon={<ArrowDownIconChakra />}
 						onClick={() => importModal.onOpen()}
+						bg="transparent"
 						_hover={{ bg: popoverHoverBg }}
+						_active={{ bg: popoverHoverBg }}
+						_focus={{ bg: popoverHoverBg }}
 					>
 						{t("theme.import")}
 					</MenuItem>
 					<MenuItem
 						icon={<ResetIconChakra />}
 						onClick={handleReset}
+						bg="transparent"
 						_hover={{ bg: popoverHoverBg }}
+						_active={{ bg: popoverHoverBg }}
+						_focus={{ bg: popoverHoverBg }}
 					>
 						{t("theme.reset")}
 					</MenuItem>
@@ -1122,6 +1299,249 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 			)}
 		</MenuList>
 	);
+
+	// If trigger is "menuItem", we only return the MenuList for use as nested menu
+	if (trigger === "menuItem") {
+		return (
+			<>
+				<Menu
+					placement="auto-start"
+					strategy="fixed"
+					isLazy
+					autoSelect={false}
+					gutter={6}
+					computePositionOnMount
+					modifiers={popperModifiers}
+					isOpen={themeMenu.isOpen}
+					onOpen={themeMenu.onOpen}
+					onClose={themeMenu.onClose}
+					closeOnSelect={false}
+				>
+					<MenuButton
+						as={MenuItem}
+						icon={<SwatchIconChakra />}
+						onClick={(e: ReactMouseEvent) => {
+							e.stopPropagation();
+							themeMenu.isOpen ? themeMenu.onClose() : themeMenu.onOpen();
+						}}
+					>
+						{triggerLabel || t("theme.triggerLabel", "Theme")}
+					</MenuButton>
+					{portalContainer ? (
+						<Portal containerRef={portalContainer}>{menuList}</Portal>
+					) : (
+						<Portal>{menuList}</Portal>
+					)}
+				</Menu>
+				<Modal
+					isOpen={createModal.isOpen}
+					onClose={createModal.onClose}
+					isCentered
+					size="xl"
+				>
+					<ModalOverlay bg={overlayBg} backdropFilter="blur(4px)" />
+					<ModalContent
+						mx={4}
+						bg={popoverBg}
+						borderColor={popoverBorder}
+						borderWidth="1px"
+						color={primaryText}
+					>
+						<ModalHeader color={primaryText}>
+							{editingId ? t("theme.editThemeTitle") : t("theme.customTitle")}
+						</ModalHeader>
+						<ModalCloseButton />
+						<ModalBody>
+							<VStack spacing={6} align="stretch">
+								<FormControl>
+									<FormLabel color={secondaryText}>
+										{t("theme.customName")}
+									</FormLabel>
+									<Input
+										placeholder={t("theme.customNamePlaceholder") || ""}
+										value={customDraft.name}
+										onChange={(e) =>
+											setCustomDraft((prev) => ({
+												...prev,
+												name: e.target.value,
+											}))
+										}
+									/>
+								</FormControl>
+
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+									{renderPreviewCard("light")}
+									{renderPreviewCard("dark")}
+								</SimpleGrid>
+
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+									<Stack spacing={4}>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.lightPrimary")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.light.primary}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														light: { ...prev.light, primary: e.target.value },
+													}))
+												}
+											/>
+											<FormHelperText color={secondaryText}>
+												{t("theme.lightPrimaryHint")}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.lightSurface")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.light.surface}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														light: { ...prev.light, surface: e.target.value },
+													}))
+												}
+											/>
+											<FormHelperText color={secondaryText}>
+												{t("theme.lightSurfaceHint")}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.lightBackground")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.light.bg}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														light: { ...prev.light, bg: e.target.value },
+													}))
+												}
+											/>
+										</FormControl>
+									</Stack>
+									<Stack spacing={4}>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.darkPrimary")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.dark.primary}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														dark: { ...prev.dark, primary: e.target.value },
+													}))
+												}
+											/>
+											<FormHelperText color={secondaryText}>
+												{t("theme.darkPrimaryHint")}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.darkSurface")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.dark.surface}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														dark: { ...prev.dark, surface: e.target.value },
+													}))
+												}
+											/>
+											<FormHelperText color={secondaryText}>
+												{t("theme.darkSurfaceHint")}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel color={secondaryText}>
+												{t("theme.darkBackground")}
+											</FormLabel>
+											<Input
+												type="color"
+												value={customDraft.dark.bg}
+												onChange={(e) =>
+													setCustomDraft((prev) => ({
+														...prev,
+														dark: { ...prev.dark, bg: e.target.value },
+													}))
+												}
+											/>
+										</FormControl>
+									</Stack>
+								</SimpleGrid>
+							</VStack>
+						</ModalBody>
+						<ModalFooter>
+							<Button variant="ghost" onClick={createModal.onClose}>
+								{t("cancel")}
+							</Button>
+							<Button
+								onClick={handleSaveCustom}
+								isDisabled={!customDraft.name.trim()}
+							>
+								{editingId ? t("update") : t("create")}
+							</Button>
+						</ModalFooter>
+					</ModalContent>
+				</Modal>
+				{/* Import Modal */}
+				<Modal
+					isOpen={importModal.isOpen}
+					onClose={importModal.onClose}
+					isCentered
+					size="lg"
+				>
+					<ModalOverlay bg={overlayBg} backdropFilter="blur(4px)" />
+					<ModalContent
+						mx={4}
+						bg={popoverBg}
+						borderColor={popoverBorder}
+						borderWidth="1px"
+						color={primaryText}
+					>
+						<ModalHeader color={primaryText}>
+							{t("theme.importTitle")}
+						</ModalHeader>
+						<ModalCloseButton />
+						<ModalBody>
+							<VStack spacing={4} align="stretch">
+								<Textarea
+									placeholder={t("theme.importPlaceholder") || ""}
+									value={importPayload}
+									onChange={(e) => setImportPayload(e.target.value)}
+									rows={8}
+								/>
+								<FormHelperText color={secondaryText}>
+									{t("theme.importHelper")}
+								</FormHelperText>
+							</VStack>
+						</ModalBody>
+						<ModalFooter>
+							<Button variant="ghost" onClick={importModal.onClose}>
+								{t("cancel")}
+							</Button>
+							<Button onClick={handleImport} isDisabled={!importPayload.trim()}>
+								{t("theme.import")}
+							</Button>
+						</ModalFooter>
+					</ModalContent>
+				</Modal>
+			</>
+		);
+	}
 
 	const triggerContent =
 		trigger === "icon" ? (
@@ -1146,7 +1566,15 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 
 	return (
 		<>
-			<Menu placement="bottom-end">
+			<Menu
+				placement="auto-start"
+				strategy="fixed"
+				isLazy
+				autoSelect={false}
+				gutter={6}
+				computePositionOnMount
+				modifiers={popperModifiers}
+			>
 				{triggerContent}
 				{portalContainer ? (
 					<Portal containerRef={portalContainer}>{menuList}</Portal>

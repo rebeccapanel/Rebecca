@@ -69,12 +69,14 @@ def _has_self_permission(admin: Admin, key: str) -> bool:
         return True
     perms = getattr(admin, "permissions", None)
     if not perms:
-        return True
+        return False
     self_perms = getattr(perms, "self_permissions", None) or {}
-    try:
-        return bool(self_perms.get(key, True))
-    except Exception:
-        return True
+    value = self_perms.get(key, False)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
 
 
 @router.get("/myaccount", response_model=MyAccountResponse)

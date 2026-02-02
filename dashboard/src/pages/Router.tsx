@@ -15,6 +15,7 @@ import ServicesPage from "./ServicesPage";
 import UsagePage from "./UsagePage";
 import { UsersPage } from "./UsersPage";
 import { XrayLogsPage } from "./XrayLogsPage";
+import TutorialsPage from "./TutorialsPage";
 
 const fetchAdminLoader = async () => {
 	try {
@@ -64,6 +65,10 @@ export const router = createHashRouter([
 			{
 				path: "usage",
 				element: <UsagePage />,
+			},
+			{
+				path: "tutorials",
+				element: <TutorialsPage />,
 			},
 			{
 				path: "services",

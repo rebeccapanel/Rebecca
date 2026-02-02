@@ -71,15 +71,12 @@ def _get_usage_data(
         if admin:
             entity_id = admin.id
         if entity_id:
-            user_ids = [
-                u.id
-                for u in db.query(User.id).filter(User.admin_id == entity_id).filter(User.status != UserStatus.deleted)
-            ]
+            admin_filter = and_(User.admin_id == entity_id, User.status != UserStatus.deleted)
     elif entity_type == "service":
         if service:
             entity_id = service.id
         if entity_id:
-            service_filter = User.service_id == entity_id
+            service_filter = and_(User.service_id == entity_id, User.status != UserStatus.deleted)
     elif entity_type == "node":
         if entity_id is not None:
             node_filter = (NodeUserUsage.node_id == entity_id) if entity_id != 0 else NodeUserUsage.node_id.is_(None)
@@ -100,12 +97,12 @@ def _get_usage_data(
         if not user_ids:
             return []
         query = query.filter(NodeUserUsage.user_id.in_(user_ids))
-    if service_filter:
+    if service_filter is not None:
         query = query.join(User, User.id == NodeUserUsage.user_id).filter(service_filter)
-    if node_filter:
-        query = query.filter(node_filter)
-    if admin_filter:
+    if admin_filter is not None:
         query = query.join(User, User.id == NodeUserUsage.user_id).filter(admin_filter)
+    if node_filter is not None:
+        query = query.filter(node_filter)
 
     query = query.filter(NodeUserUsage.created_at >= start_aware, NodeUserUsage.created_at <= end_aware)
 
@@ -127,7 +124,14 @@ def _get_usage_data(
     # Handle different formats
     if format == "timeseries":
         return _get_usage_timeseries(
-            query, start_aware, end_aware, target_tz, granularity_value, node_lookup, include_node_breakdown
+            db,
+            query,
+            start_aware,
+            end_aware,
+            target_tz,
+            granularity_value,
+            node_lookup,
+            include_node_breakdown,
         )
     elif format == "by_nodes":
         return _get_usage_by_nodes(query, node_lookup)
@@ -137,7 +141,78 @@ def _get_usage_data(
         return _get_usage_aggregated(query, node_lookup, entity_type == "all_nodes")
 
 
+def _get_dialect_name(db: Optional[Session]) -> str:
+    if db is None:
+        return ""
+    bind = db.get_bind()
+    if not bind or not getattr(bind, "dialect", None):
+        return ""
+    return bind.dialect.name or ""
+
+
+def _bucket_expr(db: Session, column, granularity: str):
+    dialect = _get_dialect_name(db)
+    if granularity == "hour":
+        if dialect == "sqlite":
+            return func.strftime("%Y-%m-%d %H:00", column)
+        if dialect in {"mysql", "mariadb"}:
+            return func.date_format(column, "%Y-%m-%d %H:00")
+        if dialect == "postgresql":
+            return func.date_trunc("hour", column)
+        return func.date_trunc("hour", column)
+    # day
+    if dialect == "sqlite":
+        return func.strftime("%Y-%m-%d", column)
+    if dialect in {"mysql", "mariadb"}:
+        return func.date_format(column, "%Y-%m-%d")
+    if dialect == "postgresql":
+        return func.date_trunc("day", column)
+    return func.date_trunc("day", column)
+
+
+def _bucket_label_expr(db: Session, column, granularity: str):
+    dialect = _get_dialect_name(db)
+    if granularity == "hour":
+        if dialect == "postgresql":
+            return func.to_char(func.date_trunc("hour", column), "YYYY-MM-DD HH24:00")
+        if dialect in {"mysql", "mariadb"}:
+            return func.date_format(column, "%Y-%m-%d %H:00")
+        return func.strftime("%Y-%m-%d %H:00", column)
+    if dialect == "postgresql":
+        return func.to_char(func.date_trunc("day", column), "YYYY-MM-DD")
+    if dialect in {"mysql", "mariadb"}:
+        return func.date_format(column, "%Y-%m-%d")
+    return func.strftime("%Y-%m-%d", column)
+
+
+def _normalize_bucket_value(value, granularity: str, tz: timezone) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        bucket = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if granularity == "hour":
+            if len(text) == 16:  # "YYYY-MM-DD HH:00"
+                text = f"{text}:00"
+            bucket = datetime.fromisoformat(text)
+        else:
+            bucket = datetime.fromisoformat(text)
+    else:
+        return None
+
+    if bucket.tzinfo is None:
+        bucket = bucket.replace(tzinfo=tz)
+    else:
+        bucket = bucket.astimezone(tz)
+
+    if granularity == "hour":
+        return bucket.replace(minute=0, second=0, microsecond=0)
+    return bucket.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _get_usage_timeseries(
+    db: Session,
     query: Query,
     start: datetime,
     end: datetime,
@@ -165,27 +240,26 @@ def _get_usage_timeseries(
         usage_map[cursor] = {"total": 0, "nodes": defaultdict(int)} if include_node_breakdown else {"total": 0}
         cursor += step
 
-    rows = query.with_entities(NodeUserUsage.created_at, NodeUserUsage.node_id, NodeUserUsage.used_traffic).all()
+    bucket_expr = _bucket_expr(db, NodeUserUsage.created_at, granularity).label("bucket")
+    rows = (
+        query.with_entities(
+            bucket_expr,
+            NodeUserUsage.node_id,
+            func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
+        )
+        .group_by(bucket_expr, NodeUserUsage.node_id)
+        .all()
+    )
 
-    for created_at, node_id, used_traffic in rows:
-        if created_at is None or used_traffic is None:
+    for bucket_value, node_id, used_traffic in rows:
+        bucket = _normalize_bucket_value(bucket_value, granularity, tz)
+        if bucket is None:
             continue
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=tz)
-        else:
-            created_at = created_at.astimezone(tz)
-
-        if granularity == "hour":
-            bucket = created_at.replace(minute=0, second=0, microsecond=0)
-        else:
-            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
-
         if bucket not in usage_map:
             usage_map[bucket] = {"total": 0, "nodes": defaultdict(int)} if include_node_breakdown else {"total": 0}
-
-        usage_map[bucket]["total"] += int(used_traffic)
+        usage_map[bucket]["total"] += int(used_traffic or 0)
         if include_node_breakdown:
-            usage_map[bucket]["nodes"][node_id] += int(used_traffic)
+            usage_map[bucket]["nodes"][node_id] += int(used_traffic or 0)
 
     result = []
     for bucket in sorted(usage_map.keys()):
@@ -236,40 +310,27 @@ def _get_usage_by_nodes(query: Query, node_lookup: Dict[Optional[int], str]) -> 
 def _get_usage_by_day(query: Query, start: datetime, end: datetime, granularity: str) -> List[Dict]:
     """Helper for by_day format"""
     if granularity == "hour":
-        current = start.replace(minute=0, second=0, microsecond=0)
-        end_aligned = end.replace(minute=0, second=0, microsecond=0)
-        step = timedelta(hours=1)
         fmt = "%Y-%m-%d %H:00"
     else:
-        current = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_aligned = end.replace(hour=0, minute=0, second=0, microsecond=0)
-        step = timedelta(days=1)
         fmt = "%Y-%m-%d"
 
-    if current > end_aligned:
-        return []
+    bucket_expr = _bucket_label_expr(query.session, NodeUserUsage.created_at, granularity).label("bucket")
+    rows = (
+        query.with_entities(bucket_expr, func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"))
+        .group_by(bucket_expr)
+        .all()
+    )
 
-    usage_by_date: Dict[str, int] = {}
-    while current <= end_aligned:
-        label = current.strftime(fmt)
-        usage_by_date[label] = 0
-        current += step
+    results = []
+    for bucket_label, used_traffic in rows:
+        if used_traffic:
+            if isinstance(bucket_label, datetime):
+                label = bucket_label.strftime(fmt)
+            else:
+                label = str(bucket_label)
+            results.append({"date": label, "used_traffic": int(used_traffic or 0)})
 
-    rows = query.with_entities(NodeUserUsage.created_at, NodeUserUsage.used_traffic).all()
-
-    for created_at, used_traffic in rows:
-        if created_at is None:
-            continue
-        bucket_time = created_at
-        if granularity == "hour":
-            bucket_time = bucket_time.replace(minute=0, second=0, microsecond=0)
-        else:
-            bucket_time = bucket_time.replace(hour=0, minute=0, second=0, microsecond=0)
-        label = bucket_time.strftime(fmt)
-        if label in usage_by_date:
-            usage_by_date[label] += int(used_traffic or 0)
-
-    return [{"date": label, "used_traffic": usage} for label, usage in sorted(usage_by_date.items()) if usage > 0]
+    return sorted(results, key=lambda item: item["date"])
 
 
 def _get_usage_aggregated(
@@ -291,11 +352,18 @@ def _get_usage_aggregated(
             if node_id is not None:
                 usages[node_id] = UserUsageResponse(node_id=node_id, node_name=node_lookup[node_id], used_traffic=0)
 
-        rows = query.all()
-        for v in rows:
-            node_key = v.node_id if v.node_id is not None else None
+        rows = (
+            query.with_entities(
+                NodeUserUsage.node_id,
+                func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
+            )
+            .group_by(NodeUserUsage.node_id)
+            .all()
+        )
+        for node_id, used_traffic in rows:
+            node_key = node_id if node_id is not None else None
             if node_key in usages:
-                usages[node_key].used_traffic += int(v.used_traffic or 0)
+                usages[node_key].used_traffic += int(used_traffic or 0)
 
         return list(usages.values())
 
@@ -406,7 +474,7 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     # Refresh user state to ensure we have latest data
     if user_state.persistent:
-        db.refresh(dbuser, ["used_traffic", "status", "node_usages", "next_plan"])
+        db.refresh(dbuser, ["used_traffic", "status", "node_usages"])
 
     usage_log = UserUsageResetLogs(
         user=dbuser,
@@ -587,9 +655,19 @@ def get_nodes_usage(db: Session, start: datetime, end: datetime) -> List[NodeUsa
         )
 
     cond = and_(NodeUsage.created_at >= start, NodeUsage.created_at <= end)
+    rows = (
+        db.query(
+            NodeUsage.node_id,
+            func.coalesce(func.sum(NodeUsage.uplink), 0).label("uplink"),
+            func.coalesce(func.sum(NodeUsage.downlink), 0).label("downlink"),
+        )
+        .filter(cond)
+        .group_by(NodeUsage.node_id)
+        .all()
+    )
 
-    for entry in db.query(NodeUsage).filter(cond):
-        target_id = entry.node_id
+    for node_id, uplink, downlink in rows:
+        target_id = node_id
         if target_id not in usages:
             usages[target_id] = NodeUsageResponse(
                 node_id=target_id,
@@ -597,8 +675,8 @@ def get_nodes_usage(db: Session, start: datetime, end: datetime) -> List[NodeUsa
                 uplink=0,
                 downlink=0,
             )
-        usages[target_id].uplink += entry.uplink
-        usages[target_id].downlink += entry.downlink
+        usages[target_id].uplink += int(uplink or 0)
+        usages[target_id].downlink += int(downlink or 0)
 
     return list(usages.values())
 
@@ -656,15 +734,15 @@ def get_admin_usages_by_day(
     Retrieves usage for all users under a specific admin, optionally filtered by node_id.
     Supports daily (default) or hourly granularity.
     """
-    # Note: node_id filter not yet supported in _get_usage_data, using direct query for now
-    user_ids = [
-        u.id for u in db.query(User.id).filter(User.admin_id == dbadmin.id).filter(User.status != UserStatus.deleted)
-    ]
-    if not user_ids:
-        return []
-
-    query = db.query(NodeUserUsage).filter(
-        NodeUserUsage.user_id.in_(user_ids), NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end
+    query = (
+        db.query(NodeUserUsage)
+        .join(User, User.id == NodeUserUsage.user_id)
+        .filter(
+            User.admin_id == dbadmin.id,
+            User.status != UserStatus.deleted,
+            NodeUserUsage.created_at >= start,
+            NodeUserUsage.created_at <= end,
+        )
     )
     if node_id is not None:
         if node_id == 0:

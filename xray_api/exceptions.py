@@ -49,7 +49,7 @@ class TimeoutError(XrayError):
 
 
 class UnknownError(XrayError):
-    def __init__(self, details=''):
+    def __init__(self, details=""):
         super().__init__(details)
 
 

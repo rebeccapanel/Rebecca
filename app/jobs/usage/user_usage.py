@@ -1,14 +1,17 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, Tuple, Union
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import and_, bindparam, func, insert, select, update
+from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
 from app.models.admin import Admin as AdminSchema
+from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
 from app.utils import report
 from config import DISABLE_RECORDING_NODE_USAGE
@@ -20,8 +23,16 @@ from config import DISABLE_RECORDING_NODE_USAGE
 
 
 def _build_api_instances():
-    api_instances = {None: xray.api}
-    usage_coefficient = {None: 1}
+    api_instances = {}
+    usage_coefficient = {}
+
+    try:
+        if getattr(xray.core, "available", False) and getattr(xray.core, "started", False):
+            api_instances[None] = xray.api
+            usage_coefficient[None] = 1
+    except Exception:
+        # Skip master core if it's unavailable; still record from nodes
+        pass
 
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
@@ -32,8 +43,11 @@ def _build_api_instances():
 
 
 def _collect_usage_params(api_instances):
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
+    if not api_instances:
+        return {}
+
+    executor = ThreadPoolExecutor(max_workers=10)
+    futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
 
     api_params = {}
     for node_id, future in futures.items():
@@ -42,6 +56,16 @@ def _collect_usage_params(api_instances):
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
             api_params[node_id] = []
+            try:
+                future.cancel()
+            except Exception:
+                pass
+
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except TypeError:
+        executor.shutdown(wait=False)
+
     return api_params
 
 
@@ -77,6 +101,97 @@ def _collect_admin_service_usage(users_usage, mapping: Dict[int, Tuple[Optional[
                 admin_service_usage[(admin_id, service_id)] += value
 
     return admin_usage, service_usage, admin_service_usage
+
+
+# endregion
+
+# region Limit/expire enforcement helpers
+
+
+def _reset_user_to_next_plan(db, user: User) -> bool:
+    """Apply next plan and notify; return True if applied successfully."""
+    try:
+        crud.reset_user_by_next(db, user)
+        xray.operations.update_user(user)
+        report.user_data_reset_by_next(user=UserResponse.model_validate(user), user_admin=user.admin)
+        report.user_auto_renew_applied(user=UserResponse.model_validate(user), user_admin=user.admin)
+        return True
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.warning(f"Failed to apply next plan for user {getattr(user, 'id', '?')}: {exc}")
+        return False
+
+
+def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
+    """
+    Ensure users crossing their data/time limits are moved to limited/expired immediately.
+    Also handles fire_on_either next_plan resets so we don't rely solely on the review job.
+    """
+    if not user_ids:
+        return []
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    users = (
+        db.query(User)
+        .options(selectinload(User.admin), selectinload(User.next_plans))
+        .filter(User.id.in_(user_ids))
+        .all()
+    )
+
+    changed: List[User] = []
+    for user in users:
+        limited = bool(user.data_limit and (user.used_traffic or 0) >= user.data_limit)
+        expired = bool(user.expire and user.expire <= now_ts)
+
+        if user.next_plan:
+            plan = user.next_plan
+            trigger_matches = plan.trigger_on == "either" or (
+                (plan.trigger_on == "data" and limited) or (plan.trigger_on == "expire" and expired)
+            )
+            if plan.start_on_first_connect and user.online_at is None and user.used_traffic == 0:
+                trigger_matches = False
+            if (limited or expired) and trigger_matches and _reset_user_to_next_plan(db, user):
+                continue
+
+        target_status: Optional[UserStatus] = None
+        if limited:
+            target_status = UserStatus.limited
+        elif expired:
+            target_status = UserStatus.expired
+
+        if target_status and user.status != target_status:
+            user.status = target_status
+            user.last_status_change = datetime.now(timezone.utc)
+            changed.append(user)
+
+    if changed:
+        db.commit()
+
+        for user in changed:
+            try:
+                xray.operations.remove_user(user)
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
+
+            try:
+                report.status_change(
+                    username=user.username,
+                    status=user.status,
+                    user=UserResponse.model_validate(user),
+                    user_admin=user.admin,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
+
+            # Keep Redis caches in sync (best-effort)
+            try:
+                from app.redis.cache import cache_user, invalidate_user_cache
+
+                invalidate_user_cache(username=user.username, user_id=user.id)
+                cache_user(user, mark_for_sync=True)
+            except Exception:
+                pass
+
+    return changed
 
 
 # endregion
@@ -268,6 +383,9 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
             if dbadmin:
                 crud.enforce_admin_data_limit(db, dbadmin)
 
+        # Enforce per-user limits/expiry immediately using the freshly updated usage.
+        _enforce_user_limits_and_expiry(db, [int(usage["uid"]) for usage in users_usage if usage.get("uid")])
+
     return admin_limit_events
 
 
@@ -279,6 +397,8 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
 
 def record_user_usages():
     api_instances, usage_coefficient = _build_api_instances()
+    if not api_instances:
+        return
     api_params = _collect_usage_params(api_instances)
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)

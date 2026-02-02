@@ -17,6 +17,7 @@ from app.utils.system import readable_size
 
 
 CATEGORY_USERS = "users"
+CATEGORY_AUTO_RENEW = "auto_renew"
 CATEGORY_LOGIN = "login"
 CATEGORY_NODES = "nodes"
 CATEGORY_ADMINS = "admins"
@@ -414,6 +415,50 @@ def report_user_data_reset_by_next(
 
     chat_id = admin.telegram_id if admin and getattr(admin, "telegram_id", None) else None
     report(text=text, category=CATEGORY_USERS, chat_id=chat_id)
+
+
+def report_user_auto_renew_set(
+    user: User,
+    by: Optional[Admin] = None,
+    admin: Optional[Admin] = None,
+    total_rules: int = 1,
+) -> None:
+    text = """\
+?? <b>#AutoRenewSet</b>
+?????????????
+<b>Username:</b> <code>{username}</code>
+<b>Total rules:</b> <code>{rules}</code>
+<b>Belongs To:</b> <code>{owner}</code>
+<b>By:</b> <b>#{by}</b>""".format(
+        username=escape_html(user.username),
+        rules=total_rules,
+        owner=escape_html(admin.username) if admin else "-",
+        by=escape_html(by.username if isinstance(by, Admin) else getattr(by, "username", "system") or "system"),
+    )
+
+    chat_id = admin.telegram_id if admin and getattr(admin, "telegram_id", None) else None
+    report(text=text, category=CATEGORY_AUTO_RENEW, chat_id=chat_id)
+
+
+def report_user_auto_renew_applied(
+    user: User,
+    admin: Optional[Admin] = None,
+) -> None:
+    text = """\
+?? <b>#AutoRenewApplied</b>
+?????????????
+<b>Username:</b> <code>{username}</code>
+<b>New Traffic Limit:</b> <code>{data_limit}</code>
+<b>New Expire:</b> <code>{expire_date}</code>
+<b>Belongs To:</b> <code>{owner}</code>""".format(
+        username=escape_html(user.username),
+        data_limit=_format_data_limit(getattr(user, "data_limit", None)),
+        expire_date=_format_expire(getattr(user, "expire", None)),
+        owner=escape_html(admin.username) if admin else "-",
+    )
+
+    chat_id = admin.telegram_id if admin and getattr(admin, "telegram_id", None) else None
+    report(text=text, category=CATEGORY_AUTO_RENEW, chat_id=chat_id)
 
 
 def report_user_subscription_revoked(

@@ -3,8 +3,11 @@ import type {
 	Admin,
 	AdminCreatePayload,
 	AdminUpdatePayload,
+	StandardAdminPermissionsBulkPayload,
+	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
 import { create } from "zustand";
+import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
 
 export type AdminFilters = {
 	search: string;
@@ -31,12 +34,15 @@ type AdminsStore = {
 	) => Promise<void>;
 	setFilters: (filters: Partial<AdminFilters>) => void;
 	onFilterChange: (filters: Partial<AdminFilters>) => void;
-	createAdmin: (payload: AdminCreatePayload) => Promise<void>;
+	createAdmin: (payload: AdminCreatePayload) => Promise<Admin>;
 	updateAdmin: (username: string, payload: AdminUpdatePayload) => Promise<void>;
 	deleteAdmin: (username: string) => Promise<void>;
 	resetUsage: (username: string) => Promise<void>;
 	disableAdmin: (username: string, reason: string) => Promise<void>;
 	enableAdmin: (username: string) => Promise<void>;
+	bulkUpdateStandardPermissions: (
+		payload: StandardAdminPermissionsBulkPayload,
+	) => Promise<StandardAdminPermissionsBulkResponse>;
 	openAdminDialog: (admin?: Admin) => void;
 	closeAdminDialog: () => void;
 	openAdminDetails: (admin: Admin) => void;
@@ -45,7 +51,7 @@ type AdminsStore = {
 
 const defaultFilters: AdminFilters = {
 	search: "",
-	limit: 10,
+	limit: getAdminsPerPageLimitSize(),
 	offset: 0,
 	sort: "username",
 };
@@ -180,8 +186,11 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		get().fetchAdmins(partial, { force: true });
 	},
 	async createAdmin(payload) {
-		await fetch("/admin", { method: "POST", body: payload });
-		await get().fetchAdmins(undefined, { force: true });
+		const created = await fetch<Admin>("/admin", {
+			method: "POST",
+			body: payload,
+		});
+		return created;
 	},
 	async updateAdmin(username, payload) {
 		await fetch(`/admin/${encodeURIComponent(username)}`, {
@@ -214,6 +223,17 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			method: "POST",
 		});
 		await get().fetchAdmins(undefined, { force: true });
+	},
+	async bulkUpdateStandardPermissions(payload) {
+		const response = await fetch<StandardAdminPermissionsBulkResponse>(
+			"/admin/permissions/standard/bulk",
+			{
+				method: "POST",
+				body: payload,
+			},
+		);
+		await get().fetchAdmins(undefined, { force: true });
+		return response;
 	},
 	openAdminDialog(admin) {
 		set({ isAdminDialogOpen: true, adminInDialog: admin || null });

@@ -171,7 +171,7 @@ def get_service_admin_usage_timeseries(
 
     from .usage import _get_usage_timeseries
 
-    return _get_usage_timeseries(query, start_aware, end_aware, tzinfo, granularity, {}, False)
+    return _get_usage_timeseries(db, query, start_aware, end_aware, tzinfo, granularity, {}, False)
 
 
 def get_service_admin_usage(

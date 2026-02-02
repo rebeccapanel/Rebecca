@@ -3,6 +3,7 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 """
 
 import logging
+import re
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import delete
@@ -24,7 +25,12 @@ from app.utils.credentials import (
     uuid_to_key,
     UUID_PROTOCOLS,
 )
-from app.models.proxy import ProxyHost as ProxyHostModify, ProxySettings
+from app.models.proxy import (
+    ProxyHost as ProxyHostModify,
+    ProxyHostALPN,
+    ProxyHostFingerprint,
+    ProxySettings,
+)
 
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
@@ -34,6 +40,13 @@ _USER_STATUS_ENUM_ENSURED = False
 _logger = logging.getLogger(__name__)
 _RECORD_CHANGED_ERRNO = 1020
 ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
+
+_AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-\d+$", re.IGNORECASE)
+
+
+def _should_skip_default_host(inbound_tag: str) -> bool:
+    return bool(_AUTO_SERVICE_INBOUND_RE.match(inbound_tag))
+
 
 # ============================================================================
 
@@ -74,6 +87,28 @@ def _apply_proxy_host_payload(
     """
     Copy shared host fields from the pydantic payload to the SQLAlchemy model.
     """
+
+    def _normalize_enum(value, enum_cls, default_member):
+        """Coerce incoming (possibly empty) value into a valid Enum member."""
+        if value is None:
+            return default_member
+        if isinstance(value, enum_cls):
+            return value
+        if isinstance(value, str):
+            if not value.strip():
+                return default_member
+            try:
+                return enum_cls[value]
+            except KeyError:
+                try:
+                    return enum_cls(value)
+                except Exception:
+                    return default_member
+        try:
+            return enum_cls(value)
+        except Exception:
+            return default_member
+
     db_host.remark = host_data.remark
     db_host.address = host_data.address
     db_host.port = host_data.port
@@ -85,8 +120,8 @@ def _apply_proxy_host_payload(
     db_host.sni = host_data.sni
     db_host.host = host_data.host
     db_host.security = host_data.security
-    db_host.alpn = host_data.alpn
-    db_host.fingerprint = host_data.fingerprint
+    db_host.alpn = _normalize_enum(host_data.alpn, ProxyHostALPN, ProxyHostALPN.none)
+    db_host.fingerprint = _normalize_enum(host_data.fingerprint, ProxyHostFingerprint, ProxyHostFingerprint.none)
     db_host.allowinsecure = host_data.allowinsecure
     db_host.is_disabled = host_data.is_disabled
     db_host.mux_enable = host_data.mux_enable
@@ -105,7 +140,7 @@ class ProxyInboundRepository:
 
     def add_default_host(self, inbound: ProxyInbound) -> None:
         host = ProxyHost(
-            remark="🚀 Marz ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+            remark="🚀 Rebecca ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
             address="{SERVER_IP}",
             inbound=inbound,
             sort=0,
@@ -141,7 +176,8 @@ class ProxyInboundRepository:
             if inbound:
                 return inbound
             raise
-        self.add_default_host(inbound)
+        if not _should_skip_default_host(inbound_tag):
+            self.add_default_host(inbound)
         self.db.refresh(inbound)
         return inbound
 

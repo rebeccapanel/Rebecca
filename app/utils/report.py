@@ -14,6 +14,8 @@ from app.utils.notification import (
     UserDeleted,
     UserDisabled,
     UserEnabled,
+    UserAutoRenewApplied,
+    UserAutoRenewSet,
     UserExpired,
     UserLimited,
     UserSubscriptionRevoked,
@@ -143,6 +145,32 @@ def user_data_reset_by_next(user: UserResponse, user_admin: Admin = None) -> Non
     notify(UserDataResetByNext(username=user.username, action=Notification.Type.data_reset_by_next, user=user))
 
 
+def user_auto_renew_set(user: UserResponse, by: Admin | None = None, user_admin: Admin = None, total_rules: int = 1):
+    enabled = _event_enabled("user.auto_renew_set")
+    if enabled:
+        _call_telegram("report_user_auto_renew_set", user=user, by=by, admin=user_admin, total_rules=total_rules)
+    notify(
+        UserAutoRenewSet(
+            username=user.username,
+            user=user,
+            by=by or user_admin,
+            total_rules=total_rules,
+        )
+    )
+
+
+def user_auto_renew_applied(user: UserResponse, user_admin: Admin = None):
+    enabled = _event_enabled("user.auto_renew_applied")
+    if enabled:
+        _call_telegram("report_user_auto_renew_applied", user=user, admin=user_admin)
+    notify(
+        UserAutoRenewApplied(
+            username=user.username,
+            user=user,
+        )
+    )
+
+
 def user_subscription_revoked(user: UserResponse, by: Admin, user_admin: Admin = None) -> None:
     enabled = _event_enabled("user.subscription_revoked")
     if enabled:
@@ -165,7 +193,7 @@ def login(username: str, password: str, client_ip: str, success: bool) -> None:
             username=username,
             password=password,
             client_ip=client_ip,
-            status="? Success" if success else "? Failed",
+            status="✅ Success" if success else "❌ Failed",
         )
 
 

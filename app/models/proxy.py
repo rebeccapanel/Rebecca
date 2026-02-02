@@ -108,6 +108,9 @@ class TrojanSettings(ProxySettings):
 class ShadowsocksSettings(ProxySettings):
     password: Optional[str] = None
     method: ShadowsocksMethods = ShadowsocksMethods.CHACHA20_POLY1305
+    iv_check: bool = Field(default=False, alias="ivCheck")
+
+    model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 
     def revoke(self):
         self.password = random_password()
@@ -176,7 +179,7 @@ class ProxyHost(BaseModel):
     random_user_agent: Union[bool, None] = None
     use_sni_as_host: Union[bool, None] = None
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-    
+
     @field_validator("is_disabled", mode="before")
     @classmethod
     def normalize_is_disabled(cls, v):

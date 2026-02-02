@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timezone
 from collections.abc import Mapping
 
@@ -104,7 +104,7 @@ class SectionPermissionSettings(BaseModel):
     usage: bool = False
     admins: bool = False
     services: bool = False
-    hosts: bool = False
+    hosts: bool = True
     nodes: bool = False
     integrations: bool = False
     xray: bool = False
@@ -324,9 +324,12 @@ class Admin(BaseModel):
     username: str
     role: AdminRole = AdminRole.standard
     permissions: AdminPermissions = Field(default_factory=AdminPermissions)
+    services: List[int] = Field(default_factory=list, description="Service IDs linked to this admin")
     status: AdminStatus = AdminStatus.active
     disabled_reason: Optional[str] = Field(None, description="Reason provided by sudo admin when account is disabled")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin's links")
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     data_limit: Optional[int] = Field(
         None,
@@ -384,6 +387,12 @@ class Admin(BaseModel):
         data["role"] = role
         data["permissions"] = permissions
         return data
+
+    @model_validator(mode="after")
+    def normalize_subscription_settings(self):
+        if self.subscription_settings is None:
+            self.subscription_settings = {}
+        return self
 
     @property
     def has_full_access(self) -> bool:
@@ -602,6 +611,7 @@ class AdminCreate(Admin):
         description="Maximum number of users (null = unlimited)",
         json_schema_extra={"example": 100},
     )
+    services: Optional[List[int]] = Field(default=None, description="Service IDs to assign to this admin")
 
     @property
     def hashed_password(self):
@@ -614,7 +624,10 @@ class AdminModify(BaseModel):
     permissions: Optional[AdminPermissions] = Field(
         default=None, description="Fine-grained permission overrides for this admin"
     )
+    services: Optional[List[int]] = Field(default=None, description="Replace admin's services with this list of IDs")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit in bytes (null = unlimited)",
@@ -639,6 +652,8 @@ class AdminPartialModify(AdminModify):
         default=None, description="Fine-grained permission overrides for this admin"
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
+    subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
+    subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit in bytes (null = unlimited)",

@@ -4,6 +4,29 @@ import { z } from "zod";
 import { create } from "zustand";
 import { type FilterUsageType, useDashboard } from "./DashboardContext";
 
+const configSchema = z
+	.union([
+		z
+			.string()
+			.optional()
+			.transform((val, ctx) => {
+				const trimmed = (val ?? "").trim();
+				if (!trimmed) return null;
+				try {
+					return JSON.parse(trimmed);
+				} catch (err) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Invalid JSON for Xray config",
+					});
+					return z.NEVER;
+				}
+			}),
+		z.record(z.any()),
+		z.null(),
+	])
+	.nullish();
+
 export const NodeSchema = z.object({
 	name: z.string().min(1),
 	address: z
@@ -68,6 +91,9 @@ export const NodeSchema = z.object({
 	uses_default_certificate: z.boolean().optional(),
 	certificate_public_key: z.string().nullable().optional(),
 	node_certificate: z.string().nullable().optional(),
+	xray_config: configSchema,
+	sing_config: configSchema,
+	hysteria_config: configSchema,
 });
 
 export type NodeType = z.infer<typeof NodeSchema>;
@@ -86,6 +112,9 @@ export const getNodeDefaultValues = (): NodeType => ({
 	use_nobetci: false,
 	access_insights_enabled: false,
 	nobetci_port: null,
+	xray_config: null,
+	sing_config: null,
+	hysteria_config: null,
 });
 
 export const FetchNodesQueryKey = "fetch-nodes-query-key";

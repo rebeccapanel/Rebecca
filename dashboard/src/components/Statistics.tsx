@@ -102,30 +102,57 @@ const HistoryModal: FC<{
 	t: TFunction;
 }> = ({ isOpen, onClose, payload, intervalSeconds, onIntervalChange, t }) => {
 	const { colorMode } = useColorMode();
-	const nowSeconds = Math.floor(Date.now() / 1000);
-	const cutoff = nowSeconds - intervalSeconds;
+	const latestTimestamp = useMemo(() => {
+		if (!payload) return Math.floor(Date.now() / 1000);
+		const extractLatest = (entries: Array<{ timestamp: number }>) =>
+			entries.length ? entries[entries.length - 1].timestamp : null;
+		if (payload.type === "network") {
+			return (
+				extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
+			);
+		}
+		if (payload.type === "panel") {
+			return (
+				extractLatest(payload.cpuEntries) ??
+				extractLatest(payload.memoryEntries) ??
+				Math.floor(Date.now() / 1000)
+			);
+		}
+		return (
+			extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
+		);
+	}, [payload]);
+	const cutoff = latestTimestamp - intervalSeconds;
 	const filteredStandardEntries = useMemo(() => {
 		if (!payload || payload.type === "network" || payload.type === "panel") {
 			return [];
 		}
-		return payload.entries.filter((entry) => entry.timestamp >= cutoff);
+		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
+		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredNetworkEntries = useMemo(() => {
 		if (!payload || payload.type !== "network") {
 			return [];
 		}
-		return payload.entries.filter((entry) => entry.timestamp >= cutoff);
+		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
+		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelCpu = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		return payload.cpuEntries.filter((entry) => entry.timestamp >= cutoff);
+		const entries = payload.cpuEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
+		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelMemory = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		return payload.memoryEntries.filter((entry) => entry.timestamp >= cutoff);
+		const entries = payload.memoryEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
+		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const chartSeries = useMemo(() => {
@@ -684,7 +711,7 @@ const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => {
 						<ChartIcon color={iconColor} />
 					</Box>
 					<Text fontSize="xs" color="gray.500">
-						{t("UsersUsage")}
+						{t("dashboard.systemUsage", "System usage")}
 					</Text>
 				</HStack>
 				<Text fontSize="2xl" fontWeight="semibold">

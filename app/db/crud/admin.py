@@ -6,28 +6,32 @@ import logging
 import secrets
 from hashlib import sha256
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from types import SimpleNamespace
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, func, or_, select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.db.models import (
     Admin,
     AdminServiceLink,
     AdminApiKey,
+    AdminUsageLogs,
+    NextPlan,
+    NodeUserUsage,
+    Proxy,
+    Service,
+    excluded_inbounds_association,
     User,
     UserUsageResetLogs,
 )
-from app.models.admin import AdminRole, AdminStatus
-from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS
-from app.models.user import (
-    UserStatus,
-)
+from app.models.admin import AdminRole, AdminStatus, UserPermission
+from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
+from app.models.user import UserStatus
 
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
-from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users
+from .user import _get_active_users_count, disable_all_active_users, activate_all_disabled_users, ONLINE_ACTIVE_WINDOW
 
 _USER_STATUS_ENUM_ENSURED = False
 
@@ -36,6 +40,83 @@ _RECORD_CHANGED_ERRNO = 1020
 ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 # ============================================================================
+
+
+def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
+    """Populate admin.services with raw service IDs without touching the association proxy."""
+    if not admins:
+        return
+    admin_ids = [a.id for a in admins if a.id is not None]
+    if not admin_ids:
+        return
+    links = (
+        db.query(AdminServiceLink.admin_id, AdminServiceLink.service_id)
+        .filter(AdminServiceLink.admin_id.in_(admin_ids))
+        .all()
+    )
+    services_map: Dict[int, List[int]] = {}
+    for admin_id, service_id in links:
+        services_map.setdefault(admin_id, []).append(service_id)
+    for admin in admins:
+        if admin.id is None:
+            continue
+        admin.__dict__["services"] = services_map.get(admin.id, [])
+
+
+def _sync_admin_services(db: Session, dbadmin: Admin, service_ids: Optional[List[int]]) -> None:
+    """Replace admin's service links with provided IDs (None = no change)."""
+    if service_ids is None or dbadmin.id is None:
+        return
+    desired_ids = set(service_ids)
+    existing_ids = {
+        sid for (sid,) in db.query(AdminServiceLink.service_id).filter(AdminServiceLink.admin_id == dbadmin.id).all()
+    }
+    to_remove = existing_ids - desired_ids
+    to_add = desired_ids - existing_ids
+    if to_remove:
+        db.query(AdminServiceLink).filter(
+            AdminServiceLink.admin_id == dbadmin.id, AdminServiceLink.service_id.in_(to_remove)
+        ).delete(synchronize_session=False)
+    if to_add:
+        valid_services = {sid for (sid,) in db.query(Service.id).filter(Service.id.in_(to_add)).all()}
+        for sid in valid_services:
+            db.add(AdminServiceLink(admin_id=dbadmin.id, service_id=sid))
+
+
+def _normalize_permissions_for_role(
+    role: AdminRole,
+    incoming: Optional[AdminPermissions | Dict[str, Any]],
+    current: Optional[AdminPermissions | Dict[str, Any]] = None,
+) -> AdminPermissions:
+    """
+    Merge role defaults, existing permissions (if any), and incoming overrides so we always
+    persist a complete permission map (including self_permissions) to the database.
+    """
+    base = ROLE_DEFAULT_PERMISSIONS[role]
+
+    def _as_permissions(payload: Optional[AdminPermissions | Dict[str, Any]]) -> Optional[AdminPermissions]:
+        if payload is None:
+            return None
+        if isinstance(payload, AdminPermissions):
+            return payload
+        return AdminPermissions.model_validate(payload)
+
+    merged = base
+    existing = _as_permissions(current)
+    overrides = _as_permissions(incoming)
+    if existing is not None:
+        merged = merged.merge(existing)
+    if overrides is not None:
+        merged = merged.merge(overrides)
+    return merged
+
+
+def _validate_max_data_limit(perms: AdminPermissions) -> None:
+    """Guard against impossible combinations when saving permissions."""
+    if perms.users.allow_unlimited_data and perms.users.max_data_limit_per_user is not None:
+        raise ValueError(
+            "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
+        )
 
 
 def get_admin(db: Session, username: Optional[str] = None, admin_id: Optional[int] = None) -> Optional[Admin]:
@@ -171,12 +252,6 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
 
 def create_admin(db: Session, admin: AdminCreate) -> Admin:
     """Creates a new admin in the database."""
-    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-    if admin.permissions and admin.permissions.users:
-        if admin.permissions.users.allow_unlimited_data and admin.permissions.users.max_data_limit_per_user is not None:
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
     normalized_username = admin.username.lower()
     existing_admin = (
         db.query(Admin)
@@ -192,28 +267,21 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         )
 
     role = admin.role or AdminRole.standard
-    permissions_payload = (
-        ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+    permissions_model = (
+        ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access]
         if role == AdminRole.full_access
-        else (admin.permissions.model_dump() if admin.permissions else None)
+        else _normalize_permissions_for_role(role, admin.permissions)
     )
-
-    # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-    if permissions_payload and permissions_payload.get("users"):
-        if (
-            permissions_payload["users"].get("allow_unlimited_data")
-            and permissions_payload["users"].get("max_data_limit_per_user") is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
+    _validate_max_data_limit(permissions_model)
 
     dbadmin = Admin(
         username=admin.username,
         hashed_password=admin.hashed_password,
         role=role,
-        permissions=permissions_payload,
+        permissions=permissions_model.model_dump(),
         telegram_id=admin.telegram_id if admin.telegram_id else None,
+        subscription_domain=(admin.subscription_domain or "").strip() or None,
+        subscription_settings=admin.subscription_settings or {},
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         users_limit=admin.users_limit if admin.users_limit is not None else None,
         status=AdminStatus.active,
@@ -221,7 +289,55 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     db.add(dbadmin)
     db.commit()
     db.refresh(dbadmin)
+    _sync_admin_services(db, dbadmin, admin.services)
+    _attach_admin_services(db, [dbadmin])
     return dbadmin
+
+
+def bulk_update_standard_admin_permissions(
+    db: Session,
+    permissions: List[UserPermission],
+    *,
+    mode: str = "disable",
+) -> int:
+    """
+    Bulk update user permissions for all standard admins.
+
+    mode="disable": force selected permissions to False.
+    mode="restore": reset selected permissions to role defaults.
+    """
+    if mode not in {"disable", "restore"}:
+        raise ValueError("Unsupported bulk permission mode")
+    if not permissions:
+        return 0
+
+    targets = db.query(Admin).filter(Admin.status != AdminStatus.deleted).filter(Admin.role == AdminRole.standard).all()
+    if not targets:
+        return 0
+
+    default_users = ROLE_DEFAULT_PERMISSIONS[AdminRole.standard].users
+    updated = 0
+
+    for dbadmin in targets:
+        perms = _normalize_permissions_for_role(AdminRole.standard, None, dbadmin.permissions)
+        before = perms.model_dump()
+
+        for perm in permissions:
+            key = perm.value if isinstance(perm, UserPermission) else str(perm)
+            if not hasattr(perms.users, key):
+                continue
+            if mode == "disable":
+                setattr(perms.users, key, False)
+            else:
+                setattr(perms.users, key, getattr(default_users, key))
+
+        if perms.model_dump() != before:
+            dbadmin.permissions = perms.model_dump()
+            updated += 1
+
+    if updated:
+        db.commit()
+    return updated
 
 
 def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Admin:
@@ -232,21 +348,21 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
-        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-        if (
-            modified_admin.permissions.users.allow_unlimited_data
-            and modified_admin.permissions.users.max_data_limit_per_user is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
-        dbadmin.permissions = modified_admin.permissions.model_dump()
+        permissions_model = _normalize_permissions_for_role(
+            target_role, modified_admin.permissions, current=dbadmin.permissions
+        )
+        _validate_max_data_limit(permissions_model)
+        dbadmin.permissions = permissions_model.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
-    if modified_admin.telegram_id:
-        dbadmin.telegram_id = modified_admin.telegram_id
-    # Subscription fields and support_telegram_id not available in AdminModify/AdminPartialModify models
+    if "telegram_id" in modified_admin.model_fields_set:
+        dbadmin.telegram_id = modified_admin.telegram_id or None
+    if "subscription_domain" in modified_admin.model_fields_set:
+        domain = modified_admin.subscription_domain or ""
+        dbadmin.subscription_domain = domain.strip() or None
+    if "subscription_settings" in modified_admin.model_fields_set:
+        dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit
@@ -263,6 +379,8 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         enforce_admin_data_limit(db, dbadmin)
     _maybe_enable_admin_after_data_limit(db, dbadmin)
 
+    _sync_admin_services(db, dbadmin, modified_admin.services)
+    _attach_admin_services(db, [dbadmin])
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
@@ -276,21 +394,21 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
     elif modified_admin.permissions is not None:
-        # Validate: if allow_unlimited_data is True, max_data_limit_per_user must be None
-        if (
-            modified_admin.permissions.users.allow_unlimited_data
-            and modified_admin.permissions.users.max_data_limit_per_user is not None
-        ):
-            raise ValueError(
-                "Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit."
-            )
-        dbadmin.permissions = modified_admin.permissions.model_dump()
+        permissions_model = _normalize_permissions_for_role(
+            target_role, modified_admin.permissions, current=dbadmin.permissions
+        )
+        _validate_max_data_limit(permissions_model)
+        dbadmin.permissions = permissions_model.model_dump()
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
-    if modified_admin.telegram_id is not None:
+    if "telegram_id" in modified_admin.model_fields_set:
         dbadmin.telegram_id = modified_admin.telegram_id or None
-    # Subscription fields and support_telegram_id not available in AdminModify/AdminPartialModify models
+    if "subscription_domain" in modified_admin.model_fields_set:
+        domain = modified_admin.subscription_domain or ""
+        dbadmin.subscription_domain = domain.strip() or None
+    if "subscription_settings" in modified_admin.model_fields_set:
+        dbadmin.subscription_settings = modified_admin.subscription_settings or {}
     data_limit_modified = False
     if "data_limit" in modified_admin.model_fields_set:
         dbadmin.data_limit = modified_admin.data_limit
@@ -313,40 +431,65 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
 
 def disable_admin(db: Session, dbadmin: Admin, reason: str) -> Admin:
-    """Disable an admin account and store the provided reason."""
-    dbadmin.status, dbadmin.disabled_reason = AdminStatus.disabled, reason
+    """Disable an admin account and store the provided reason via set-based update."""
+    db.query(Admin).filter(Admin.id == dbadmin.id).update(
+        {Admin.status: AdminStatus.disabled, Admin.disabled_reason: reason},
+        synchronize_session=False,
+    )
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
 
 
 def enable_admin(db: Session, dbadmin: Admin) -> Admin:
-    """Re-activate a previously disabled admin account."""
-    dbadmin.status, dbadmin.disabled_reason = AdminStatus.active, None
+    """Re-activate a previously disabled admin account (set-based update)."""
+    db.query(Admin).filter(Admin.id == dbadmin.id).update(
+        {Admin.status: AdminStatus.active, Admin.disabled_reason: None},
+        synchronize_session=False,
+    )
     db.commit()
     db.refresh(dbadmin)
     return dbadmin
 
 
-def remove_admin(db: Session, dbadmin: Admin) -> Admin:
-    """Soft delete an admin, their users, and remove from services."""
+def remove_admin(db: Session, dbadmin: Admin) -> None:
+    """
+    Hard delete an admin and all associated records using set-based SQL operations
+    to minimize request time and resource usage.
+    """
     if dbadmin.id is None:
         raise ValueError("Admin must have a valid identifier before removal")
 
-    admin_users = db.query(User).filter(User.admin_id == dbadmin.id, User.status != UserStatus.deleted).all()
-    for dbuser in admin_users:
-        dbuser.status = UserStatus.deleted
-        try:
-            from app.reb_node import operations as core_operations
+    admin_id = dbadmin.id
 
-            core_operations.remove_user(dbuser=dbuser)
-        except Exception:
-            pass
-    db.query(AdminServiceLink).filter(AdminServiceLink.admin_id == dbadmin.id).delete(synchronize_session=False)
-    dbadmin.status = AdminStatus.deleted
+    # Subqueries for dependent rows
+    user_ids_subq = select(User.id).where(User.admin_id == admin_id)
+    proxy_ids_subq = select(Proxy.id).where(Proxy.user_id.in_(user_ids_subq))
+
+    # Delete proxy inbound exclusions for this admin's proxies
+    db.execute(
+        excluded_inbounds_association.delete().where(excluded_inbounds_association.c.proxy_id.in_(proxy_ids_subq))
+    )
+
+    # Delete proxies owned by admin's users (avoid self-referencing subquery on MySQL)
+    db.execute(delete(Proxy).where(Proxy.user_id.in_(user_ids_subq)))
+
+    # Delete usage and reset logs tied to admin's users
+    db.execute(delete(NodeUserUsage).where(NodeUserUsage.user_id.in_(user_ids_subq)))
+    db.execute(delete(UserUsageResetLogs).where(UserUsageResetLogs.user_id.in_(user_ids_subq)))
+    db.execute(delete(NextPlan).where(NextPlan.user_id.in_(user_ids_subq)))
+
+    # Delete users belonging to admin (avoid self-referencing subquery on MySQL)
+    db.execute(delete(User).where(User.admin_id == admin_id))
+
+    # Delete admin-related rows
+    db.execute(delete(AdminApiKey).where(AdminApiKey.admin_id == admin_id))
+    db.execute(delete(AdminUsageLogs).where(AdminUsageLogs.admin_id == admin_id))
+    db.execute(delete(AdminServiceLink).where(AdminServiceLink.admin_id == admin_id))
+
+    # Finally delete the admin record
+    db.execute(delete(Admin).where(Admin.id == admin_id))
     db.commit()
-    db.refresh(dbadmin)
-    return dbadmin
 
 
 def get_admin_by_id(db: Session, id: int) -> Optional[Admin]:
@@ -432,7 +575,7 @@ def get_admins(
         if admin_id in counts_by_admin and status in status_map:
             counts_by_admin[admin_id][status_map[status]] = count or 0
 
-    online_threshold = datetime.now(timezone.utc) - timedelta(hours=24)
+    online_threshold = datetime.now(timezone.utc) - ONLINE_ACTIVE_WINDOW
     online_counts = {
         admin_id: count
         for admin_id, count in (
@@ -515,6 +658,8 @@ def get_admins(
         .all()
     )
     reset_map = {row.admin_id: row.reset_bytes for row in reset_rows if row.admin_id is not None}
+
+    _attach_admin_services(db, admins)
 
     for admin in admins:
         admin_id = getattr(admin, "id", None)

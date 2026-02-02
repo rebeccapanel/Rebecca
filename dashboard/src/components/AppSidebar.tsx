@@ -14,6 +14,7 @@ import {
 	Cog6ToothIcon,
 	GlobeAltIcon,
 	HomeIcon,
+	BookOpenIcon,
 	ServerIcon,
 	ShieldCheckIcon,
 	Square3Stack3DIcon,
@@ -24,11 +25,26 @@ import {
 import logoUrl from "assets/logo.svg";
 import useAds from "hooks/useAds";
 import useGetUser from "hooks/useGetUser";
-import { type ElementType, type FC, useEffect, useMemo, useState } from "react";
+import {
+	type ElementType,
+	type FC,
+	type MouseEvent as ReactMouseEvent,
+	useCallback,
+	useEffect,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
 import { pickLocalizedAd } from "utils/ads";
+import {
+	TUTORIALS_UPDATED_EVENT,
+	getTutorialAssetUrl,
+	isTutorialUpdated,
+	normalizeTutorialLang,
+	readTutorialStorage,
+	writeTutorialStorage,
+} from "utils/tutorialUpdates";
 import { AdvertisementCard } from "./AdvertisementCard";
 
 const iconProps = {
@@ -49,6 +65,7 @@ const ServicesIconStyled = chakra(Squares2X2Icon, iconProps);
 const UsageIconStyled = chakra(ChartPieIcon, iconProps);
 const MyAccountIconStyled = chakra(UserCircleIcon, iconProps);
 const InsightsIconStyled = chakra(GlobeAltIcon, iconProps);
+const TutorialIconStyled = chakra(BookOpenIcon, iconProps);
 interface AppSidebarProps {
 	collapsed: boolean;
 	/** when rendered inside a Drawer on mobile */
@@ -79,6 +96,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
+	const navigate = useNavigate();
 	const { colorMode } = useColorMode();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const shouldShowAds = getUserIsSuccess;
@@ -87,23 +105,15 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const sidebarAd = shouldShowAds
 		? pickLocalizedAd(adsData, "sidebar", currentLanguage)
 		: undefined;
-	const roleLabel = useMemo(() => {
-		switch (userData.role) {
-			case AdminRole.FullAccess:
-				return t("admins.roles.fullAccess", "Full access");
-			case AdminRole.Sudo:
-				return t("admins.roles.sudo", "Sudo");
-			default:
-				return t("admins.roles.standard", "Standard");
-		}
-	}, [t, userData.role]);
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
-	const baseSelf = userData.permissions?.self_permissions || {
-		self_myaccount: true,
-		self_change_password: true,
-		self_api_keys: true,
+	const defaultSelfPermissions = {
+		self_myaccount: false,
+		self_change_password: false,
+		self_api_keys: false,
 	};
+	const baseSelf =
+		userData.permissions?.self_permissions ?? defaultSelfPermissions;
 	const selfAccess = isFullAccess
 		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
 		: baseSelf;
@@ -112,6 +122,54 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const canViewServicesSection = Boolean(
 		sectionAccess?.[AdminSection.Services],
 	);
+	const [hasNewTutorials, setHasNewTutorials] = useState(false);
+
+	const checkTutorialUpdates = useCallback(async () => {
+		const langKey = normalizeTutorialLang(i18n.language);
+		try {
+			const response = await fetch(getTutorialAssetUrl(i18n.language), {
+				headers: { "Cache-Control": "no-cache" },
+			});
+			if (!response.ok) {
+				throw new Error(`Failed to load tutorial meta: ${response.status}`);
+			}
+			const data = (await response.json()) as { meta?: { updated?: string } };
+			const updated = data?.meta?.updated?.toString().trim();
+			if (!updated) {
+				setHasNewTutorials(false);
+				return;
+			}
+			const stored = readTutorialStorage(langKey);
+			if (stored.unseen.length > 0) {
+				setHasNewTutorials(true);
+				return;
+			}
+			if (!stored.updated) {
+				writeTutorialStorage(langKey, updated, stored.ids, stored.unseen);
+				setHasNewTutorials(false);
+				return;
+			}
+			setHasNewTutorials(isTutorialUpdated(updated, stored.updated));
+		} catch (err) {
+			console.error("Failed to check tutorial updates", err);
+			setHasNewTutorials(false);
+		}
+	}, [i18n.language]);
+
+	useEffect(() => {
+		void checkTutorialUpdates();
+	}, [checkTutorialUpdates]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const handleUpdate = () => {
+			void checkTutorialUpdates();
+		};
+		window.addEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
+		return () => {
+			window.removeEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
+		};
+	}, [checkTutorialUpdates]);
 
 	const baseSettingsSubItems: SidebarSubItems = [
 		sectionAccess?.[AdminSection.Hosts]
@@ -152,12 +210,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	].filter(Boolean) as SidebarSubItems;
 
 	const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
-
-	const handleNavClick = () => {
-		if (inDrawer && onRequestExpand) {
-			onRequestExpand();
-		}
-	};
 	if (canViewServicesSection) {
 		settingsSubItems.unshift({
 			title: t("services.menu", "Services"),
@@ -176,6 +228,31 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			setSettingsOpen(true);
 		}
 	}, [isSettingsRoute]);
+
+	const defaultTabByPath: Record<string, string> = {
+		"/integrations": "panel",
+		"/hosts": "inbounds",
+		"/usage": "services",
+		"/xray-settings": "basic",
+	};
+
+	const handleNavClick = (
+		event?: ReactMouseEvent,
+		targetUrl?: string,
+	) => {
+		if (inDrawer && onRequestExpand) {
+			onRequestExpand();
+		}
+		if (!targetUrl) return;
+		const defaultTab = defaultTabByPath[targetUrl];
+		if (defaultTab) {
+			event?.preventDefault();
+			const normalized = targetUrl.startsWith("/")
+				? targetUrl
+				: `/${targetUrl}`;
+			navigate(`${normalized}#${defaultTab}`);
+		}
+	};
 
 	const items: SidebarItem[] = [
 		{ title: t("dashboard"), url: "/", icon: HomeIconStyled },
@@ -197,6 +274,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			icon: UsageIconStyled,
 		});
 	}
+	items.push({
+		title: t("tutorials.menu", "Tutorials"),
+		url: "/tutorials",
+		icon: TutorialIconStyled,
+	});
 	if (canViewAdmins) {
 		items.push({
 			title: t("admins", "Admins"),
@@ -235,6 +317,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			overflowY="auto"
 			overflowX="hidden"
 			flexShrink={0}
+			userSelect="none"
 		>
 			<VStack
 				spacing={2}
@@ -284,6 +367,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 								location.pathname.startsWith(itemUrl)) ||
 							item.subItems?.some((sub) => location.pathname === sub.url);
 						const Icon = item.icon;
+						const showTutorialBadge =
+							itemUrl === "/tutorials" && hasNewTutorials;
 
 						return (
 							<Box key={item.title}>
@@ -358,7 +443,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 															<NavLink
 																key={subItem.url}
 																to={subItem.url}
-																onClick={handleNavClick}
+																onClick={(e) =>
+																	handleNavClick(e, subItem.url)
+																}
 															>
 																<HStack
 																	spacing={3}
@@ -411,7 +498,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 										)}
 									</>
 								) : item.url ? (
-									<NavLink to={item.url} onClick={handleNavClick}>
+									<NavLink
+										to={item.url}
+										onClick={(e) => handleNavClick(e, item.url)}
+									>
 										<Tooltip
 											label={collapsed ? item.title : ""}
 											placement="right"
@@ -438,17 +528,47 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												transition="all 0.2s"
 												justifyContent={collapsed ? "center" : "flex-start"}
 											>
-												<Icon
-													w={collapsed ? 5 : undefined}
-													h={collapsed ? 5 : undefined}
-												/>
+												{showTutorialBadge && collapsed ? (
+													<Box position="relative" display="inline-flex">
+														<Icon
+															w={collapsed ? 5 : undefined}
+															h={collapsed ? 5 : undefined}
+														/>
+														<Box
+															position="absolute"
+															top="-2px"
+															right="-2px"
+															w="2"
+															h="2"
+															borderRadius="full"
+															bg="yellow.400"
+															_dark={{ bg: "yellow.300" }}
+														/>
+													</Box>
+												) : (
+													<Icon
+														w={collapsed ? 5 : undefined}
+														h={collapsed ? 5 : undefined}
+													/>
+												)}
 												{!collapsed && (
-													<Text
-														fontSize="sm"
-														fontWeight={isActive ? "semibold" : "normal"}
-													>
-														{item.title}
-													</Text>
+													<>
+														<Text
+															fontSize="sm"
+															fontWeight={isActive ? "semibold" : "normal"}
+														>
+															{item.title}
+														</Text>
+														{showTutorialBadge ? (
+															<Box
+																w="2"
+																h="2"
+																borderRadius="full"
+																bg="yellow.400"
+																_dark={{ bg: "yellow.300" }}
+															/>
+														) : null}
+													</>
 												)}
 											</HStack>
 										</Tooltip>
@@ -461,82 +581,6 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				{sidebarAd && !collapsed && (
 					<Box px={collapsed ? 2 : 2.5} py={2.5} mt={4} w="full">
 						<AdvertisementCard ad={sidebarAd} maxSize={440} />
-					</Box>
-				)}
-				{getUserIsSuccess && userData.username && (
-					<Box
-						px={collapsed ? 2 : 3}
-						py={2}
-						borderTop="1px"
-						borderColor="light-border"
-						_dark={{ borderColor: "whiteAlpha.200" }}
-						mt={4}
-					>
-						{!collapsed ? (
-							<VStack align="flex-start" spacing={1}>
-								<Text
-									fontSize="xs"
-									fontWeight="semibold"
-									color="gray.500"
-									_dark={{ color: "gray.500" }}
-								>
-									{t("sidebar.username", "username:")}
-								</Text>
-								<Text
-									fontSize="sm"
-									fontWeight="medium"
-									color="gray.700"
-									_dark={{ color: "gray.300" }}
-									noOfLines={1}
-								>
-									{userData.username}
-								</Text>
-								<Text
-									fontSize="xs"
-									fontWeight="semibold"
-									color="gray.500"
-									_dark={{ color: "gray.500" }}
-								>
-									{t("admins.roleLabel", "Admin role")}
-								</Text>
-								<Text
-									fontSize="sm"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{roleLabel}
-								</Text>
-							</VStack>
-						) : (
-							<Tooltip
-								label={`${userData.username} · ${roleLabel}`}
-								placement="right"
-								hasArrow
-							>
-								<Box
-									w="8"
-									h="8"
-									borderRadius="full"
-									bg="primary.100"
-									_dark={{ bg: "primary.800" }}
-									display="flex"
-									alignItems="center"
-									justifyContent="center"
-									mx="auto"
-									flexShrink={0}
-								>
-									<Text
-										fontSize="sm"
-										fontWeight="bold"
-										color="primary.600"
-										_dark={{ color: "primary.300" }}
-										textAlign="center"
-									>
-										{userData.username.charAt(0).toUpperCase()}
-									</Text>
-								</Box>
-							</Tooltip>
-						)}
 					</Box>
 				)}
 			</VStack>

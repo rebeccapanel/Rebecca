@@ -5,6 +5,7 @@ import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, MutableMapping, Optional, Union
 from uuid import UUID
+from enum import Enum
 
 from app.models.proxy import ProxySettings, ProxyTypes, ShadowsocksMethods
 from app.utils.system import random_password
@@ -15,6 +16,45 @@ if TYPE_CHECKING:
 
 UUID_PROTOCOLS = {ProxyTypes.VMess, ProxyTypes.VLESS}
 PASSWORD_PROTOCOLS = {ProxyTypes.Trojan, ProxyTypes.Shadowsocks}
+
+
+def normalize_flow_value(flow: Optional[str]) -> Optional[str]:
+    """
+    Normalize user-provided flow values.
+
+    - Trim whitespace and normalize case.
+    - Allow XTLS Vision variants used by clients.
+    """
+    if flow is None:
+        return None
+    if isinstance(flow, Enum):
+        flow = flow.value  # type: ignore[assignment]
+    if not isinstance(flow, str):
+        return None
+
+    normalized = flow.strip().lower()
+    if not normalized:
+        return None
+
+    if normalized not in {"xtls-rprx-vision", "xtls-rprx-vision-udp443"}:
+        return None
+
+    return normalized
+
+
+def normalize_flow_for_server(flow: Optional[str]) -> Optional[str]:
+    """
+    Normalize flow values for server-side Xray accounts.
+
+    Xray expects the base flow string. Client-only udp443 variants are
+    mapped to their base flow.
+    """
+    normalized = normalize_flow_value(flow)
+    if not normalized:
+        return None
+    if normalized.endswith("-udp443"):
+        return normalized[: -len("-udp443")]
+    return normalized
 
 
 def _get_uuid_masks() -> Dict[ProxyTypes, bytes]:
@@ -192,7 +232,11 @@ def runtime_proxy_settings(
     else:
         data = {}
 
-    # Remove persisted flow; flow is now user-scoped
+    # Normalize legacy camelCase flags
+    if "ivCheck" in data and "iv_check" not in data:
+        data["iv_check"] = data["ivCheck"]
+
+    flow_value = flow if flow is not None else data.get("flow")
     data.pop("flow", None)
 
     current_id = data.get("id") or data.get("uuid")
@@ -229,9 +273,11 @@ def runtime_proxy_settings(
         else:
             data.setdefault("password", random_password())
         data.setdefault("method", ShadowsocksMethods.CHACHA20_POLY1305.value)
+        data.setdefault("iv_check", False)
 
-    if flow:
-        data["flow"] = flow
+    normalized_flow = normalize_flow_for_server(flow_value)
+    if normalized_flow:
+        data["flow"] = normalized_flow
 
     return data
 

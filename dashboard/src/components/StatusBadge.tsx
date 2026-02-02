@@ -20,11 +20,70 @@ export const StatusBadge: FC<UserStatusProps> = ({
 	showDetail = true,
 	extraText,
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const dateInfo = relativeExpiryDate(expiryDate);
 	const Icon = statusColors[userStatus].icon;
+	const isExpiry = dateInfo.status === "expires";
+
+	const renderRelativeText = (key: "expires" | "expired") => {
+		const raw = t(key);
+		const [before = "", after = ""] = raw.split("{{time}}");
+		const timeNode =
+			dateInfo.time && dateInfo.time.length > 0 ? (
+				<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }} key="time">
+					{dateInfo.time}
+				</Box>
+			) : null;
+
+		const nodes: JSX.Element[] = [];
+		if (!isRTL) {
+			if (before) {
+				nodes.push(
+					<Text as="span" key="before">
+						{before}
+					</Text>,
+				);
+			}
+			if (timeNode) {
+				nodes.push(timeNode);
+			}
+			if (after) {
+				nodes.push(
+					<Text as="span" key="after">
+						{after}
+					</Text>,
+				);
+			}
+		} else {
+			if (timeNode) {
+				nodes.push(timeNode);
+			}
+			if (after) {
+				nodes.push(
+					<Text as="span" key="after">
+						{after}
+					</Text>,
+				);
+			}
+			if (before) {
+				nodes.push(
+					<Text as="span" key="before">
+						{before}
+					</Text>,
+				);
+			}
+		}
+		return nodes;
+	};
 	return (
-		<>
+		<Box
+			display="inline-flex"
+			alignItems="center"
+			gap={2}
+			flexWrap="wrap"
+			dir={isRTL ? "rtl" : "ltr"}
+		>
 			<Badge
 				colorScheme={statusColors[userStatus].statusColor}
 				rounded="full"
@@ -48,54 +107,25 @@ export const StatusBadge: FC<UserStatusProps> = ({
 					</Text>
 				)}
 			</Badge>
-			{showDetail && expiryDate && dateInfo.time && (
-				<Text
-					display="inline-flex"
-					fontSize="xs"
-					fontWeight="medium"
-					ml="2"
-					color="gray.600"
-					_dark={{
-						color: "gray.400",
-					}}
-					as="span"
-					gap={1}
-					alignItems="center"
-				>
-					{dateInfo.status === "expires" ? (
-						<>
-							<Text as="span">
-								{t("expires").replace("{{time}}", "").trim()}
-							</Text>
-							<Box
-								as="span"
-								dir="ltr"
-								display="inline"
-								style={{ unicodeBidi: "embed" }}
-							>
-								{dateInfo.time}
-							</Box>
-						</>
-					) : (
-						<>
-							<Box
-								as="span"
-								dir="ltr"
-								display="inline"
-								style={{ unicodeBidi: "embed" }}
-							>
-								{dateInfo.time}
-							</Box>
-							<Text as="span">
-								{" " +
-									(t("expired").includes("{{time}}")
-										? t("expired").split("{{time}}")[1]
-										: " پیش به پایان رسیده")}
-							</Text>
-						</>
-					)}
-				</Text>
-			)}
-		</>
+			{showDetail &&
+				expiryDate !== null &&
+				expiryDate !== undefined &&
+				dateInfo.time && (
+					<Text
+						display="inline"
+						fontSize="xs"
+						fontWeight="medium"
+						color="gray.600"
+						_dark={{
+							color: "gray.400",
+						}}
+						as="span"
+					>
+						{isExpiry
+							? renderRelativeText("expires")
+							: renderRelativeText("expired")}
+					</Text>
+				)}
+		</Box>
 	);
 };

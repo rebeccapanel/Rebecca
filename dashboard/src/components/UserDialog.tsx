@@ -18,6 +18,7 @@ import {
 	HStack,
 	IconButton,
 	InputGroup,
+	InputRightAddon,
 	InputRightElement,
 	Modal,
 	ModalBody,
@@ -27,9 +28,15 @@ import {
 	ModalHeader,
 	ModalOverlay,
 	Select,
+	SlideFade,
 	Spinner,
 	Stack,
 	Switch,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Text,
 	Textarea,
 	Tooltip,
@@ -39,11 +46,14 @@ import {
 } from "@chakra-ui/react";
 
 import {
-	ChartPieIcon,
 	CheckIcon,
+	ChevronDownIcon as HeroChevronDownIcon,
+	ClipboardIcon,
 	LockClosedIcon,
+	LinkIcon,
 	PencilIcon,
 	QuestionMarkCircleIcon,
+	QrCodeIcon,
 	SparklesIcon,
 	UserPlusIcon,
 } from "@heroicons/react/24/outline";
@@ -55,15 +65,26 @@ import { resetStrategy } from "constants/UserSettings";
 import { type FilterUsageType, useDashboard } from "contexts/DashboardContext";
 
 import { useServicesStore } from "contexts/ServicesContext";
+import { useSeasonal } from "contexts/SeasonalContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 
-import { type FC, useCallback, useEffect, useState } from "react";
+import {
+	type ChangeEvent,
+	type FC,
+	type HTMLAttributes,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+import { keyframes } from "@emotion/react";
 import ReactApexChart from "react-apexcharts";
 
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
+import CopyToClipboard from "react-copy-to-clipboard";
 
 import { getPanelSettings } from "service/settings";
 import { AdminRole, UserPermissionToggle } from "types/Admin";
@@ -75,6 +96,8 @@ import type {
 } from "types/User";
 
 import { relativeExpiryDate } from "utils/dateFormatter";
+import { formatBytes } from "utils/formatByte";
+import { generateUserLinks } from "utils/userLinks";
 
 import { z } from "zod";
 import { DateTimePicker } from "./DateTimePicker";
@@ -86,27 +109,31 @@ import { createUsageConfig, UsageFilter } from "./UsageFilter";
 
 const AddUserIcon = chakra(UserPlusIcon, {
 	baseStyle: {
-		w: 5,
+		w: 4,
 
-		h: 5,
+		h: 4,
 	},
 });
 
 const EditUserIcon = chakra(PencilIcon, {
 	baseStyle: {
-		w: 5,
+		w: 4,
 
-		h: 5,
+		h: 4,
 	},
 });
 
-const UserUsageIcon = chakra(ChartPieIcon, {
+const actionIconProps = {
 	baseStyle: {
-		w: 5,
-
-		h: 5,
+		w: 4,
+		h: 4,
 	},
-});
+};
+
+const CopyActionIcon = chakra(ClipboardIcon, actionIconProps);
+const CopiedActionIcon = chakra(CheckIcon, actionIconProps);
+const QRActionIcon = chakra(QrCodeIcon, actionIconProps);
+const SubscriptionActionIcon = chakra(LinkIcon, actionIconProps);
 
 const LimitLockIcon = chakra(LockClosedIcon, {
 	baseStyle: {
@@ -124,6 +151,14 @@ const LimitLockIcon = chakra(LockClosedIcon, {
 	},
 });
 
+const SectionChevronIcon = chakra(HeroChevronDownIcon, {
+	baseStyle: {
+		w: 4,
+
+		h: 4,
+	},
+});
+
 const _ConfirmIcon = chakra(CheckIcon, {
 	baseStyle: {
 		w: 4,
@@ -133,6 +168,16 @@ const _ConfirmIcon = chakra(CheckIcon, {
 });
 
 export type UserDialogProps = {};
+
+const SERVICE_NOTICE_DURATION_MS = 10000;
+const serviceNoticeProgress = keyframes`
+	from {
+		transform: scaleX(1);
+	}
+	to {
+		transform: scaleX(0);
+	}
+`;
 
 type BaseFormFields = Pick<
 	UserCreate,
@@ -144,6 +189,8 @@ type BaseFormFields = Pick<
 	| "data_limit_reset_strategy"
 	| "on_hold_expire_duration"
 	| "note"
+	| "telegram_id"
+	| "contact_number"
 	| "flow"
 	| "credential_key"
 	| "proxies"
@@ -202,6 +249,9 @@ const formatUser = (user: User): FormType => {
 		next_plan_add_remaining_traffic: nextPlan?.add_remaining_traffic ?? false,
 
 		next_plan_fire_on_either: nextPlan?.fire_on_either ?? true,
+
+		telegram_id: user.telegram_id ?? "",
+		contact_number: user.contact_number ?? "",
 	};
 };
 
@@ -263,6 +313,9 @@ const getDefaultValues = (): FormType => {
 		next_plan_add_remaining_traffic: false,
 
 		next_plan_fire_on_either: true,
+
+		telegram_id: "",
+		contact_number: "",
 	};
 };
 
@@ -270,214 +323,237 @@ const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 
 const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
-const baseSchema = {
-	username: z.string().min(1, { message: "Required" }),
+const usernameRegex = /^[A-Za-z0-9_]{3,32}$/;
+const buildSchema = (isEditing: boolean) => {
+	const baseSchema = {
+		username: isEditing
+			? z.string().min(1)
+			: z
+					.string()
+					.regex(usernameRegex, {
+						message:
+							"Username only can be 3 to 32 characters and contain a-z, A-Z, 0-9, and underscores in between.",
+					}),
 
-	note: z.string().nullable(),
+		flow: z
+			.string()
+			.optional()
+			.transform((val) => (val === "" || typeof val === "undefined" ? null : val))
+			.refine(
+				(val) => val === null || allowedFlows.includes(val),
+				"Unsupported flow",
+			),
 
-	flow: z
-		.string()
-		.optional()
-		.transform((val) => (val === "" || typeof val === "undefined" ? null : val))
-		.refine(
-			(val) => val === null || allowedFlows.includes(val),
-			"Unsupported flow",
-		),
+		service_id: z
 
-	service_id: z
+			.union([z.string(), z.number()])
 
-		.union([z.string(), z.number()])
+			.nullable()
 
-		.nullable()
-
-		.transform((value) => {
-			if (value === "" || value === null || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			return Number.isNaN(parsed) ? null : parsed;
-		}),
-
-	proxies: z
-
-		.record(z.string(), z.record(z.string(), z.any()))
-
-		.transform((ins) => {
-			const deleteIfEmpty = (obj: any, key: string) => {
-				if (obj && obj[key] === "") {
-					delete obj[key];
+			.transform((value) => {
+				if (value === "" || value === null || typeof value === "undefined") {
+					return null;
 				}
-			};
 
-			deleteIfEmpty(ins.vmess, "id");
+				const parsed = Number(value);
 
-			deleteIfEmpty(ins.vless, "id");
+				return Number.isNaN(parsed) ? null : parsed;
+			}),
 
-			deleteIfEmpty(ins.trojan, "password");
+		proxies: z
 
-			deleteIfEmpty(ins.shadowsocks, "password");
+			.record(z.string(), z.record(z.string(), z.any()))
 
-			deleteIfEmpty(ins.shadowsocks, "method");
+			.transform((ins) => {
+				const deleteIfEmpty = (obj: any, key: string) => {
+					if (obj && obj[key] === "") {
+						delete obj[key];
+					}
+				};
+
+				deleteIfEmpty(ins.vmess, "id");
+
+				deleteIfEmpty(ins.vless, "id");
+
+				deleteIfEmpty(ins.trojan, "password");
+
+				deleteIfEmpty(ins.shadowsocks, "password");
+
+				deleteIfEmpty(ins.shadowsocks, "method");
+
+				return ins;
+			}),
+
+		data_limit: z
+
+			.string()
+
+			.min(0)
+
+			.or(z.number())
+
+			.nullable()
+
+			.transform((str) => {
+				if (str) return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
+
+				return 0;
+			}),
+
+		expire: z.number().nullable(),
+
+		data_limit_reset_strategy: z.string(),
+
+		inbounds: z.record(z.string(), z.array(z.string())).transform((ins) => {
+			Object.keys(ins).forEach((protocol) => {
+				if (Array.isArray(ins[protocol]) && !ins[protocol]?.length)
+					delete ins[protocol];
+			});
 
 			return ins;
 		}),
 
-	data_limit: z
-
-		.string()
-
-		.min(0)
-
-		.or(z.number())
-
-		.nullable()
-
-		.transform((str) => {
-			if (str) return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
-
-			return 0;
+		note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
 		}),
 
-	expire: z.number().nullable(),
+		telegram_id: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
+		}),
 
-	data_limit_reset_strategy: z.string(),
+		contact_number: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
+			if (typeof value !== "string") return "";
+			return value;
+		}),
 
-	inbounds: z.record(z.string(), z.array(z.string())).transform((ins) => {
-		Object.keys(ins).forEach((protocol) => {
-			if (Array.isArray(ins[protocol]) && !ins[protocol]?.length)
-				delete ins[protocol];
+		next_plan_enabled: z.boolean().default(false),
+
+		next_plan_data_limit: z
+
+			.union([z.string(), z.number(), z.null()])
+
+			.transform((value) => {
+				if (value === null || value === "" || typeof value === "undefined") {
+					return null;
+				}
+
+				const parsed = Number(value);
+
+				if (Number.isNaN(parsed)) {
+					return null;
+				}
+
+				return Math.max(0, parsed);
+			}),
+
+		next_plan_expire: z
+
+			.union([z.number(), z.string(), z.null()])
+
+			.transform((value) => {
+				if (value === "" || value === null || typeof value === "undefined") {
+					return null;
+				}
+
+				const parsed = Number(value);
+
+				return Number.isNaN(parsed) ? null : parsed;
+			}),
+
+		next_plan_add_remaining_traffic: z.boolean().default(false),
+
+		next_plan_fire_on_either: z.boolean().default(true),
+
+		ip_limit: z
+			.union([z.number().min(0), z.null()])
+			.optional()
+			.transform((value) => {
+				if (typeof value !== "number") {
+					return null;
+				}
+				return Number.isFinite(value) ? value : null;
+			}),
+
+		manual_key_entry: z.boolean().default(false),
+
+		credential_key: z
+			.union([z.string(), z.null(), z.undefined()])
+			.transform((value) => {
+				if (!value || typeof value !== "string") {
+					return null;
+				}
+				const trimmed = value.trim();
+				return trimmed === "" ? null : trimmed;
+			})
+			.nullable(),
+	};
+
+	return z
+		.discriminatedUnion("status", [
+			z.object({
+				status: z.literal("active"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("disabled"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("limited"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("expired"),
+
+				...baseSchema,
+			}),
+
+			z.object({
+				status: z.literal("on_hold"),
+
+				on_hold_expire_duration: z.coerce
+
+					.number()
+
+					.min(0.1, "Required")
+
+					.transform((d) => {
+						return d * (24 * 60 * 60);
+					}),
+
+				...baseSchema,
+			}),
+		])
+		.superRefine((values, ctx) => {
+			if (!values.manual_key_entry) {
+				return;
+			}
+			const key = values.credential_key;
+			if (!key) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["credential_key"],
+					message: "Credential key is required when manual entry is enabled.",
+				});
+				return;
+			}
+			if (!CREDENTIAL_KEY_REGEX.test(key)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["credential_key"],
+					message: "Credential key must be a 32-character hexadecimal string.",
+				});
+			}
 		});
-
-		return ins;
-	}),
-
-	next_plan_enabled: z.boolean().default(false),
-
-	next_plan_data_limit: z
-
-		.union([z.string(), z.number(), z.null()])
-
-		.transform((value) => {
-			if (value === null || value === "" || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			if (Number.isNaN(parsed)) {
-				return null;
-			}
-
-			return Math.max(0, parsed);
-		}),
-
-	next_plan_expire: z
-
-		.union([z.number(), z.string(), z.null()])
-
-		.transform((value) => {
-			if (value === "" || value === null || typeof value === "undefined") {
-				return null;
-			}
-
-			const parsed = Number(value);
-
-			return Number.isNaN(parsed) ? null : parsed;
-		}),
-
-	next_plan_add_remaining_traffic: z.boolean().default(false),
-
-	next_plan_fire_on_either: z.boolean().default(true),
-
-	ip_limit: z
-		.union([z.number().min(0), z.null()])
-		.optional()
-		.transform((value) => {
-			if (typeof value !== "number") {
-				return null;
-			}
-			return Number.isFinite(value) ? value : null;
-		}),
-
-	manual_key_entry: z.boolean().default(false),
-
-	credential_key: z
-		.union([z.string(), z.null(), z.undefined()])
-		.transform((value) => {
-			if (!value || typeof value !== "string") {
-				return null;
-			}
-			const trimmed = value.trim();
-			return trimmed === "" ? null : trimmed;
-		})
-		.nullable(),
 };
-
-const schema = z
-	.discriminatedUnion("status", [
-		z.object({
-			status: z.literal("active"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("disabled"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("limited"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("expired"),
-
-			...baseSchema,
-		}),
-
-		z.object({
-			status: z.literal("on_hold"),
-
-			on_hold_expire_duration: z.coerce
-
-				.number()
-
-				.min(0.1, "Required")
-
-				.transform((d) => {
-					return d * (24 * 60 * 60);
-				}),
-
-			...baseSchema,
-		}),
-	])
-	.superRefine((values, ctx) => {
-		if (!values.manual_key_entry) {
-			return;
-		}
-		const key = values.credential_key;
-		if (!key) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["credential_key"],
-				message: "Credential key is required when manual entry is enabled.",
-			});
-			return;
-		}
-		if (!CREDENTIAL_KEY_REGEX.test(key)) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["credential_key"],
-				message: "Credential key must be a 32-character hexadecimal string.",
-			});
-		}
-	});
 
 export const UserDialog: FC<UserDialogProps> = () => {
 	const {
@@ -500,6 +576,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		users: usersState,
 
 		isUserLimitReached,
+		linkTemplates,
+		setQRCode,
+		setSubLink,
 	} = useDashboard();
 
 	const isEditing = !!editingUser;
@@ -518,25 +597,88 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const toast = useToast();
 
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const { isChristmas } = useSeasonal();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const DATA_UNIT = "GB";
+	const DAYS_UNIT = t("userDialog.days", "Days");
+	const basePad = "0.75rem";
+	const endPadding = isRTL
+		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
+		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
+	const endAdornmentProps = isRTL
+		? { insetInlineStart: "0.5rem", insetInlineEnd: "auto", right: "auto", left: "0.5rem" }
+		: { insetInlineEnd: "0.5rem", insetInlineStart: "auto", right: "0.5rem", left: "auto" };
 
 	const { colorMode } = useColorMode();
+
+	const UNIT_RADIUS = "6px";
+
+	const renderUnitInput = (args: {
+		value: string;
+		onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+		unit: string;
+		disabled?: boolean;
+		placeholder?: string;
+		type?: string;
+		inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+	}) => {
+		const addonBg = colorMode === "dark" ? "whiteAlpha.100" : "blackAlpha.50";
+		const addonBorder = colorMode === "dark" ? "gray.700" : "gray.200";
+		const addonColor = colorMode === "dark" ? "gray.200" : "gray.600";
+
+		return (
+			<InputGroup size="sm" dir="ltr" w="full">
+				<ChakraInput
+					value={args.value}
+					onChange={args.onChange}
+					placeholder={args.placeholder}
+					type={args.type ?? "text"}
+					inputMode={args.inputMode ?? "decimal"}
+					isDisabled={args.disabled}
+					borderRadius={UNIT_RADIUS}
+					borderEndRadius="0"
+					dir="ltr"
+					textAlign={isRTL ? "right" : "left"}
+				/>
+
+				<InputRightAddon
+					bg={addonBg}
+					borderColor={addonBorder}
+					color={addonColor}
+					borderStartRadius="0"
+					borderEndRadius={UNIT_RADIUS}
+					px={3}
+					fontSize="sm"
+					userSelect="none"
+				>
+					{args.unit}
+				</InputRightAddon>
+			</InputGroup>
+		);
+	};
+
+	const formSchema = useMemo(() => buildSchema(isEditing), [isEditing]);
 
 	const form = useForm<FormType>({
 		defaultValues: getDefaultValues(),
 
-		resolver: zodResolver(schema),
+		resolver: zodResolver(formSchema),
+		mode: "onChange",
+		reValidateMode: "onChange",
 	});
 
 	const manualKeyEntryEnabled = useWatch({
 		control: form.control,
 		name: "manual_key_entry",
 	});
+	const usernameValue = useWatch({
+		control: form.control,
+		name: "username",
+	});
 	const hasExistingKey = Boolean(editingUser?.credential_key);
 
 	const expireInitialValue = form.getValues("expire");
-
-	const nextPlanInitialValue = form.getValues("next_plan_expire");
 
 	const deriveDaysFromSeconds = useCallback((value: unknown): number | null => {
 		if (typeof value !== "number" || value <= 0) {
@@ -558,9 +700,152 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const [_expireDays, setExpireDays] = useState<number | null>(() =>
 		deriveDaysFromSeconds(expireInitialValue),
 	);
-	const [nextPlanDays, setNextPlanDays] = useState<number | null>(() =>
-		deriveDaysFromSeconds(nextPlanInitialValue),
+	const [autoRenewOpen, setAutoRenewOpen] = useState(false);
+
+	type AutoRenewRule = {
+		dataLimit: number | null;
+		expire: number | null;
+		addRemaining: boolean;
+		fireOnEither: boolean;
+		localOnly?: boolean;
+	};
+
+	const initialRule: AutoRenewRule | null =
+		form.getValues("next_plan_enabled")
+			? {
+					dataLimit: form.getValues("next_plan_data_limit"),
+					expire: form.getValues("next_plan_expire"),
+					addRemaining: form.getValues("next_plan_add_remaining_traffic"),
+					fireOnEither: form.getValues("next_plan_fire_on_either"),
+					localOnly: false,
+				}
+			: null;
+
+	const [autoRenewRules, setAutoRenewRules] = useState<AutoRenewRule[]>(
+		initialRule ? [initialRule] : [],
 	);
+	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+	const [autoRenewFormMode, setAutoRenewFormMode] = useState<"add" | "edit" | null>(
+		null,
+	);
+	const [autoRenewDataValue, setAutoRenewDataValue] = useState<string>("");
+	const [autoRenewExpireDaysValue, setAutoRenewExpireDaysValue] = useState<string>("");
+	const [autoRenewAddRemainingValue, setAutoRenewAddRemainingValue] = useState(false);
+	const [autoRenewFireOnEitherValue, setAutoRenewFireOnEitherValue] = useState(true);
+
+	const [noteValue, telegramValue, contactNumberValue] = useWatch({
+		control: form.control,
+		name: ["note", "telegram_id", "contact_number"],
+	});
+
+	const otherInfoCount =
+		(noteValue ? 1 : 0) +
+		(telegramValue ? 1 : 0) +
+		(contactNumberValue ? 1 : 0);
+
+	const resetAutoRenewFormValues = useCallback(
+		(rule?: AutoRenewRule | null) => {
+			if (rule) {
+				setAutoRenewDataValue(
+					typeof rule.dataLimit === "number" && Number.isFinite(rule.dataLimit)
+						? String(rule.dataLimit)
+						: "",
+				);
+				const derivedDays = deriveDaysFromSeconds(rule.expire);
+				setAutoRenewExpireDaysValue(
+					derivedDays !== null && typeof derivedDays !== "undefined"
+						? String(derivedDays)
+						: "",
+				);
+				setAutoRenewAddRemainingValue(Boolean(rule.addRemaining));
+				setAutoRenewFireOnEitherValue(Boolean(rule.fireOnEither));
+			} else {
+				setAutoRenewDataValue("");
+				setAutoRenewExpireDaysValue("");
+				setAutoRenewAddRemainingValue(false);
+				setAutoRenewFireOnEitherValue(true);
+			}
+		},
+		[deriveDaysFromSeconds],
+	);
+
+	const startAddAutoRenew = () => {
+		setAutoRenewOpen(true);
+		setAutoRenewFormMode("add");
+		setEditingRuleIndex(null);
+		resetAutoRenewFormValues(null);
+	};
+
+	const startEditAutoRenew = (index: number) => {
+		const rule = autoRenewRules[index];
+		if (!rule) return;
+		setAutoRenewOpen(true);
+		setAutoRenewFormMode("edit");
+		setEditingRuleIndex(index);
+		resetAutoRenewFormValues(rule);
+	};
+
+	const handleCancelAutoRenewForm = () => {
+		setAutoRenewFormMode(null);
+		setEditingRuleIndex(null);
+	};
+
+	const handleSaveAutoRenewRule = () => {
+		setError(null);
+		const parsedLimit =
+			autoRenewDataValue.trim() === ""
+				? null
+				: Number.parseFloat(autoRenewDataValue.trim());
+		if (
+			parsedLimit !== null &&
+			(!Number.isFinite(parsedLimit) || Number.isNaN(parsedLimit) || parsedLimit < 0)
+		) {
+			setError(t("userDialog.autoRenewInvalidLimit", "Invalid renewal limit"));
+			return;
+		}
+
+		const parsedDays =
+			autoRenewExpireDaysValue.trim() === ""
+				? null
+				: Number.parseFloat(autoRenewExpireDaysValue.trim());
+		if (
+			parsedDays !== null &&
+			(!Number.isFinite(parsedDays) || Number.isNaN(parsedDays) || parsedDays < 0)
+		) {
+			setError(t("userDialog.autoRenewInvalidDays", "Invalid renewal days"));
+			return;
+		}
+
+		const expireSeconds =
+			parsedDays !== null ? convertDaysToSecondsFromNow(Math.round(parsedDays)) : null;
+
+		const newRule: AutoRenewRule = {
+			dataLimit: parsedLimit === null ? null : parsedLimit,
+			expire: expireSeconds,
+			addRemaining: autoRenewAddRemainingValue,
+			fireOnEither: autoRenewFireOnEitherValue,
+		};
+
+		setAutoRenewRules((prev) => {
+			const next = [...prev];
+			if (autoRenewFormMode === "edit" && editingRuleIndex !== null) {
+				next[editingRuleIndex] = newRule;
+			} else {
+				next.push(newRule);
+			}
+			return next;
+		});
+		setAutoRenewFormMode(null);
+		setEditingRuleIndex(null);
+	};
+
+	const handleDeleteAutoRenewRule = (index: number) => {
+		setAutoRenewRules((prev) => prev.filter((_, i) => i !== index));
+		if (editingRuleIndex === index) {
+			setAutoRenewFormMode(null);
+			setEditingRuleIndex(null);
+		}
+	};
 
 	const quickExpiryOptions = [
 		{
@@ -620,7 +905,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const useTwoColumns = showServiceSelector && services.length > 0;
 	const shouldCenterForm = !useTwoColumns;
 	const shouldCompactModal = !hasElevatedRole && services.length === 0;
-
 	const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
 		enabled: isOpen,
 		staleTime: 5 * 60 * 1000,
@@ -628,10 +912,33 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	});
 	const allowIpLimit = Boolean(panelSettings?.use_nobetci);
 
-	const [usageVisible, setUsageVisible] = useState(false);
-	const handleUsageToggle = () => {
-		setUsageVisible((current) => !current);
-	};
+	const [activeTab, setActiveTab] = useState(0);
+	const [usageFetched, setUsageFetched] = useState(false);
+
+	const [serviceNoticeVisible, setServiceNoticeVisible] = useState(false);
+	const [serviceNoticeSeed, setServiceNoticeSeed] = useState(0);
+	const [statusNoticeVisible, setStatusNoticeVisible] = useState(false);
+	const [statusNoticeSeed, setStatusNoticeSeed] = useState(0);
+	const [copiedSubscriptionKey, setCopiedSubscriptionKey] = useState<string | null>(
+		null,
+	);
+	const [copiedAllConfigs, setCopiedAllConfigs] = useState(false);
+	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(null);
+
+	const autoRenewTitle = t("autoRenew.title");
+
+	useEffect(() => {
+		if (!isOpen || !isEditing || !isServiceManagedUser) {
+			setServiceNoticeVisible(false);
+			return;
+		}
+		setServiceNoticeSeed((prev) => prev + 1);
+		setServiceNoticeVisible(true);
+		const timer = window.setTimeout(() => {
+			setServiceNoticeVisible(false);
+		}, SERVICE_NOTICE_DURATION_MS);
+		return () => window.clearTimeout(timer);
+	}, [isOpen, isEditing, isServiceManagedUser, editingUser?.username]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -673,17 +980,278 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		}
 	}, [nonSudoSingleService, services]);
 
+	useEffect(() => {
+		const firstRule = autoRenewRules[0];
+		if (firstRule) {
+			form.setValue("next_plan_enabled", true, { shouldDirty: false });
+			form.setValue("next_plan_data_limit", firstRule.dataLimit, {
+				shouldDirty: false,
+			});
+			form.setValue("next_plan_expire", firstRule.expire, {
+				shouldDirty: false,
+			});
+			form.setValue("next_plan_add_remaining_traffic", firstRule.addRemaining, {
+				shouldDirty: false,
+			});
+			form.setValue("next_plan_fire_on_either", firstRule.fireOnEither, {
+				shouldDirty: false,
+			});
+		} else {
+			form.setValue("next_plan_enabled", false, { shouldDirty: false });
+			form.setValue("next_plan_data_limit", null, { shouldDirty: false });
+			form.setValue("next_plan_expire", null, { shouldDirty: false });
+			form.setValue("next_plan_add_remaining_traffic", false, {
+				shouldDirty: false,
+			});
+			form.setValue("next_plan_fire_on_either", true, { shouldDirty: false });
+		}
+	}, [autoRenewRules, form]);
+
 	const [dataLimit, userStatus] = useWatch({
 		control: form.control,
 
 		name: ["data_limit", "status"],
 	});
 
-	const nextPlanEnabled = useWatch({
-		control: form.control,
+	const statusNotice = useMemo(() => {
+		if (!isEditing) return null;
+		switch (userStatus) {
+			case "limited":
+				return t("userDialog.statusNoticeLimited");
+			case "expired":
+				return t("userDialog.statusNoticeExpired");
+			case "on_hold":
+				return t("userDialog.statusNoticeOnHold");
+			case "disabled":
+				return t("userDialog.statusNoticeDisabled");
+			default:
+				return null;
+		}
+	}, [isEditing, userStatus, t]);
 
-		name: "next_plan_enabled",
-	});
+	useEffect(() => {
+		if (!isOpen || !isEditing || !statusNotice) {
+			setStatusNoticeVisible(false);
+			return;
+		}
+		setStatusNoticeSeed((prev) => prev + 1);
+		setStatusNoticeVisible(true);
+		const timer = window.setTimeout(() => {
+			setStatusNoticeVisible(false);
+		}, SERVICE_NOTICE_DURATION_MS);
+		return () => window.clearTimeout(timer);
+	}, [isOpen, isEditing, statusNotice, userStatus, editingUser?.username]);
+
+	useEffect(() => {
+		if (copiedSubscriptionKey) {
+			const timer = window.setTimeout(
+				() => setCopiedSubscriptionKey(null),
+				1000,
+			);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedSubscriptionKey]);
+
+	useEffect(() => {
+		if (copiedAllConfigs) {
+			const timer = window.setTimeout(() => setCopiedAllConfigs(false), 1000);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedAllConfigs]);
+
+	useEffect(() => {
+		if (copiedConfigIndex !== null) {
+			const timer = window.setTimeout(() => setCopiedConfigIndex(null), 1000);
+			return () => window.clearTimeout(timer);
+		}
+		return undefined;
+	}, [copiedConfigIndex]);
+
+	const remainingDataInfo = useMemo(() => {
+		if (!isEditing || !editingUser) return null;
+		const rawLimit = dataLimit;
+		const parsedLimit =
+			rawLimit === null ||
+			typeof rawLimit === "undefined" ||
+			(Number.isNaN(Number(rawLimit)) &&
+				String(rawLimit).trim() === "")
+				? null
+				: Number(rawLimit);
+		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+			return {
+				label: t("userDialog.remainingDataLabel"),
+				value: t("userDialog.remainingDataUnlimited"),
+			};
+		}
+		const limitBytes = parsedLimit * 1073741824;
+		const usedBytes = editingUser.used_traffic ?? 0;
+		const remainingBytes = Math.max(limitBytes - usedBytes, 0);
+		return {
+			label: t("userDialog.remainingDataLabel"),
+			value:
+				remainingBytes <= 0
+					? t("userDialog.remainingDataLimited")
+					: formatBytes(remainingBytes, 2),
+		};
+	}, [isEditing, editingUser, dataLimit, t]);
+
+	const formatLink = useCallback((link?: string | null) => {
+		if (!link) return "";
+		return link.startsWith("/") ? window.location.origin + link : link;
+	}, []);
+
+	const subscriptionLinks = useMemo(() => {
+		if (!editingUser) {
+			return [];
+		}
+		const urls = editingUser.subscription_urls ?? {};
+		const order = ["username-key", "key", "token"] as const;
+		const labels: Record<(typeof order)[number], string> = {
+			"username-key": t(
+				"userDialog.links.subscriptionUsernameKey",
+				"Username + Key",
+			),
+			key: t("userDialog.links.subscriptionKey", "Key"),
+			token: t("userDialog.links.subscriptionToken", "Token"),
+		};
+
+		const results: Array<{ key: string; label: string; url: string }> = [];
+		order.forEach((key) => {
+			const value = urls[key];
+			if (!value) {
+				return;
+			}
+			const url = formatLink(value);
+			if (url) {
+				results.push({ key, label: labels[key], url });
+			}
+		});
+
+		if (results.length === 0 && editingUser.subscription_url) {
+			const fallback = formatLink(editingUser.subscription_url);
+			if (fallback) {
+				results.push({
+					key: "primary",
+					label: t(
+						"userDialog.links.subscription",
+						"Subscription link",
+					),
+					url: fallback,
+				});
+			}
+		}
+
+		return results;
+	}, [editingUser, formatLink, t]);
+
+	const userLinks = useMemo(
+		() =>
+			editingUser
+				? generateUserLinks(editingUser, linkTemplates, {
+						includeInactive: true,
+					})
+				: [],
+		[editingUser, linkTemplates],
+	);
+
+	const configLinksText = useMemo(() => userLinks.join("\n"), [userLinks]);
+
+	const configItems = useMemo(() => {
+		const decodeLabel = (value: string) => {
+			const normalized = value.replace(/\+/g, " ");
+			try {
+				return decodeURIComponent(normalized).trim();
+			} catch {
+				return normalized.trim();
+			}
+		};
+
+		const extractFromHash = (link: string) => {
+			const hashIndex = link.indexOf("#");
+			if (hashIndex >= 0 && hashIndex < link.length - 1) {
+				return decodeLabel(link.slice(hashIndex + 1));
+			}
+			return "";
+		};
+
+		const extractFromQuery = (link: string) => {
+			const queryIndex = link.indexOf("?");
+			if (queryIndex === -1) return "";
+			const hashIndex = link.indexOf("#");
+			const endIndex = hashIndex === -1 ? link.length : hashIndex;
+			const query = link.slice(queryIndex + 1, endIndex);
+			const params = new URLSearchParams(query);
+			const keys = ["remark", "remarks", "ps", "name", "tag", "host"];
+			for (const key of keys) {
+				const value = params.get(key);
+				if (value) {
+					return decodeLabel(value);
+				}
+			}
+			return "";
+		};
+
+		const decodeVmessName = (link: string) => {
+			if (!link.toLowerCase().startsWith("vmess://")) return "";
+			let payload = link.slice(8);
+			const hashIndex = payload.indexOf("#");
+			if (hashIndex >= 0) {
+				payload = payload.slice(0, hashIndex);
+			}
+			if (!payload) return "";
+			let normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+			const padding = normalized.length % 4;
+			if (padding) {
+				normalized += "=".repeat(4 - padding);
+			}
+			if (typeof window === "undefined" || typeof window.atob !== "function") {
+				return "";
+			}
+			try {
+				const decoded = window.atob(normalized);
+				const parsed = JSON.parse(decoded);
+				const name =
+					typeof parsed?.ps === "string"
+						? parsed.ps
+						: typeof parsed?.name === "string"
+							? parsed.name
+							: typeof parsed?.tag === "string"
+								? parsed.tag
+								: "";
+				return name ? decodeLabel(name) : "";
+			} catch {
+				return "";
+			}
+		};
+
+		return userLinks.map((link, index) => {
+			let label =
+				extractFromHash(link) ||
+				decodeVmessName(link) ||
+				extractFromQuery(link);
+
+			if (!label) {
+				label = t(
+					"userDialog.links.configFallback",
+					"Config {{index}}",
+					{ index: index + 1 },
+				);
+			}
+			return { link, label };
+		});
+	}, [userLinks, t]);
+
+	const handleTabChange = (index: number) => {
+		setActiveTab(index);
+		if (index === 1 && !usageFetched && editingUser) {
+			fetchUsageWithFilter({
+				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
+			});
+			setUsageFetched(true);
+		}
+	};
 
 	const expireValue = useWatch({
 		control: form.control,
@@ -697,57 +1265,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		name: "next_plan_data_limit",
 	});
 
-	const nextPlanExpire = useWatch({
-		control: form.control,
-
-		name: "next_plan_expire",
-	});
-
-	const nextPlanAddRemainingTraffic = useWatch({
-		control: form.control,
-
-		name: "next_plan_add_remaining_traffic",
-	});
-
-	const nextPlanFireOnEither = useWatch({
-		control: form.control,
-
-		name: "next_plan_fire_on_either",
-	});
-
 	useEffect(() => {
 		const derivedDays = deriveDaysFromSeconds(expireValue);
 		setExpireDays((prev) => (prev === derivedDays ? prev : derivedDays));
 	}, [expireValue, deriveDaysFromSeconds]);
-
-	useEffect(() => {
-		const derivedDays = deriveDaysFromSeconds(nextPlanExpire);
-		setNextPlanDays((prev) => (prev === derivedDays ? prev : derivedDays));
-	}, [nextPlanExpire, deriveDaysFromSeconds]);
-
-	const handleNextPlanToggle = (checked: boolean) => {
-		form.setValue("next_plan_enabled", checked, { shouldDirty: true });
-
-		if (checked) {
-			if (form.getValues("next_plan_data_limit") === null) {
-				form.setValue("next_plan_data_limit", 0, { shouldDirty: false });
-			}
-
-			if (form.getValues("next_plan_add_remaining_traffic") === undefined) {
-				form.setValue("next_plan_add_remaining_traffic", false, {
-					shouldDirty: false,
-				});
-			}
-
-			if (form.getValues("next_plan_fire_on_either") === undefined) {
-				form.setValue("next_plan_fire_on_either", true, { shouldDirty: false });
-			}
-		} else {
-			form.setValue("next_plan_data_limit", null, { shouldDirty: true });
-			form.setValue("next_plan_expire", null, { shouldDirty: true });
-			setNextPlanDays(null);
-		}
-	};
 
 	const usageTitle = t("userDialog.total");
 
@@ -782,17 +1303,59 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			const formatted = formatUser(editingUser);
 			form.reset(formatted);
 			setExpireDays(deriveDaysFromSeconds(formatted.expire));
-			setNextPlanDays(deriveDaysFromSeconds(formatted.next_plan_expire));
-			fetchUsageWithFilter({
-				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
-			});
+			setUsage(createUsageConfig(colorMode, usageTitle));
+			setUsageFilter("1m");
+			setUsageFetched(false);
+			setActiveTab(0);
+			setCopiedSubscriptionKey(null);
+			setCopiedAllConfigs(false);
+			setCopiedConfigIndex(null);
+			if (formatted.next_plan_enabled) {
+				const rule: AutoRenewRule = {
+					dataLimit: formatted.next_plan_data_limit,
+					expire: formatted.next_plan_expire,
+					addRemaining: formatted.next_plan_add_remaining_traffic,
+					fireOnEither: formatted.next_plan_fire_on_either,
+				};
+				setAutoRenewRules([rule]);
+				resetAutoRenewFormValues(rule);
+			} else {
+				setAutoRenewRules([]);
+				resetAutoRenewFormValues(null);
+			}
 		} else {
 			const defaults = getDefaultValues();
 			form.reset(defaults);
 			setExpireDays(deriveDaysFromSeconds(defaults.expire));
-			setNextPlanDays(deriveDaysFromSeconds(defaults.next_plan_expire));
+			setUsage(createUsageConfig(colorMode, usageTitle));
+			setUsageFilter("1m");
+			setUsageFetched(false);
+			setActiveTab(0);
+			setCopiedSubscriptionKey(null);
+			setCopiedAllConfigs(false);
+			setCopiedConfigIndex(null);
+			if (defaults.next_plan_enabled) {
+				const rule: AutoRenewRule = {
+					dataLimit: defaults.next_plan_data_limit,
+					expire: defaults.next_plan_expire,
+					addRemaining: defaults.next_plan_add_remaining_traffic,
+					fireOnEither: defaults.next_plan_fire_on_either,
+				};
+				setAutoRenewRules([rule]);
+				resetAutoRenewFormValues(rule);
+			} else {
+				setAutoRenewRules([]);
+				resetAutoRenewFormValues(null);
+			}
 		}
-	}, [editingUser, deriveDaysFromSeconds, fetchUsageWithFilter, form.reset]);
+	}, [
+		editingUser,
+		deriveDaysFromSeconds,
+		form.reset,
+		resetAutoRenewFormValues,
+		colorMode,
+		usageTitle,
+	]);
 
 	useEffect(() => {
 		if (!canSetCustomKey) {
@@ -807,18 +1370,27 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const submit = (values: FormType) => {
 		// Check user limit before submitting (even if status is not active)
 		// This prevents creating users that would exceed the limit
-		if (usersLimit !== null && usersLimit !== undefined && usersLimit > 0 && activeUsersCount !== null) {
+		if (
+			usersLimit !== null &&
+			usersLimit !== undefined &&
+			usersLimit > 0 &&
+			activeUsersCount !== null
+		) {
 			if (activeUsersCount >= usersLimit) {
-				const errorMessage = t("userDialog.usersLimitReached", "User limit reached. You have {{active}} active users out of {{limit}} allowed.", {
-					active: activeUsersCount,
-					limit: usersLimit
-				});
+				const errorMessage = t(
+					"userDialog.usersLimitReached",
+					"User limit reached. You have {{active}} active users out of {{limit}} allowed.",
+					{
+						active: activeUsersCount,
+						limit: usersLimit,
+					},
+				);
 				setError(errorMessage);
 				setLoading(false);
 				return;
 			}
 		}
-		
+
 		if (limitReached) {
 			return;
 		}
@@ -864,17 +1436,24 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		} = values;
 
 		// Validate data_limit based on admin permissions (don't auto-normalize, show error instead)
-		const maxDataLimitPerUser = userData?.permissions?.users?.max_data_limit_per_user;
-		const allowUnlimitedData = hasElevatedRole || Boolean(userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData]);
-		
+		const maxDataLimitPerUser =
+			userData?.permissions?.users?.max_data_limit_per_user;
+		const allowUnlimitedData =
+			hasElevatedRole ||
+			Boolean(
+				userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData],
+			);
+
 		// data_limit from schema is already in bytes
 		const dataLimitBytes = data_limit || 0;
-		
+
 		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
 			// If unlimited (0) is requested but not allowed, show error
 			if (dataLimitBytes === 0 && !allowUnlimitedData) {
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
-				const errorMessage = t("userDialog.unlimitedNotAllowed", { max: maxGb });
+				const errorMessage = t("userDialog.unlimitedNotAllowed", {
+					max: maxGb,
+				});
 				setError(errorMessage);
 				setLoading(false);
 				form.setError("data_limit", {
@@ -889,7 +1468,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 				const errorMessage = t("userDialog.dataLimitExceedsMax", {
 					original: originalGb,
-					max: maxGb
+					max: maxGb,
 				});
 				setError(errorMessage);
 				setLoading(false);
@@ -906,14 +1485,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
 				? Number((Number(next_plan_data_limit) * 1073741824).toFixed(5))
 				: 0;
-		
-		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined && normalizedNextPlanDataLimit > 0) {
+
+		if (
+			maxDataLimitPerUser !== null &&
+			maxDataLimitPerUser !== undefined &&
+			normalizedNextPlanDataLimit > 0
+		) {
 			if (normalizedNextPlanDataLimit > maxDataLimitPerUser) {
-				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(2);
+				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(
+					2,
+				);
 				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 				const errorMessage = t("userDialog.nextPlanDataLimitExceedsMax", {
 					original: originalGb,
-					max: maxGb
+					max: maxGb,
 				});
 				setError(errorMessage);
 				setLoading(false);
@@ -925,10 +1510,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			}
 		}
 		// If unlimited (0) is requested but not allowed, show error
-		if (normalizedNextPlanDataLimit === 0 && next_plan_enabled && !allowUnlimitedData && maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
+		if (
+			normalizedNextPlanDataLimit === 0 &&
+			next_plan_enabled &&
+			!allowUnlimitedData &&
+			maxDataLimitPerUser !== null &&
+			maxDataLimitPerUser !== undefined
+		) {
 			const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
 			const errorMessage = t("userDialog.nextPlanUnlimitedNotAllowed", {
-				max: maxGb
+				max: maxGb,
 			});
 			setError(errorMessage);
 			setLoading(false);
@@ -974,6 +1565,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				service_id: effectiveServiceId ?? 0,
 
 				note: values.note,
+
+				telegram_id: values.telegram_id,
+
+				contact_number: values.contact_number,
 
 				status:
 					values.status === "active" ||
@@ -1209,7 +1804,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const onClose = () => {
 		form.reset(getDefaultValues());
 		setExpireDays(null);
-		setNextPlanDays(null);
 
 		onCreateUser(false);
 
@@ -1217,11 +1811,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		setError(null);
 
-		setUsageVisible(false);
-
 		setUsageFilter("1m");
+		setUsageFetched(false);
+		setActiveTab(0);
+		setCopiedSubscriptionKey(null);
+		setCopiedAllConfigs(false);
+		setCopiedConfigIndex(null);
 
 		setSelectedServiceId(null);
+
+		setAutoRenewRules([]);
+		resetAutoRenewFormValues(null);
+		setAutoRenewFormMode(null);
+		setEditingRuleIndex(null);
+		setAutoRenewOpen(false);
 	};
 
 	const handleResetUsage = () => {
@@ -1243,10 +1846,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const disabled = loading || limitReached;
+	const submitDisabled = disabled || !form.formState.isValid;
 
 	const isOnHold = userStatus === "on_hold";
 
 	const [randomUsernameLoading, setrandomUsernameLoading] = useState(false);
+
+	const [otherInfoOpen, setOtherInfoOpen] = useState(false);
 
 	const createRandomUsername = (): string => {
 		setrandomUsernameLoading(true);
@@ -1278,8 +1884,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
 
 			<FormProvider {...form}>
-				<ModalContent mx="3" position="relative" overflow="hidden">
-					<ModalCloseButton mt={3} disabled={loading} />
+				<ModalContent mx="3" position="relative" overflow="hidden" dir={isRTL ? "rtl" : "ltr"}>
+					<ModalCloseButton
+						mt={3}
+						disabled={loading}
+						insetInlineEnd={4}
+						insetInlineStart="auto"
+						top={4}
+						position="absolute"
+						zIndex={2}
+						_rtl={{
+							insetInlineEnd: "auto",
+							insetInlineStart: 4,
+						}}
+					/>
 
 					<Box
 						pointerEvents={limitReached ? "none" : "auto"}
@@ -1287,51 +1905,204 @@ export const UserDialog: FC<UserDialogProps> = () => {
 						transition="filter 0.2s ease"
 					>
 						<form onSubmit={form.handleSubmit(submit)}>
-							<ModalHeader pt={6}>
-								<HStack gap={2}>
-									<Icon color="primary">
+							<ModalHeader
+								pt={6}
+								pe={12}
+								position="relative"
+								display="flex"
+								alignItems="center"
+								justifyContent="flex-start"
+								gap={2}
+							>
+								<Box flexShrink={0}>
+									<Icon color="primary" size={30}>
 										{isEditing ? (
 											<EditUserIcon color="white" />
 										) : (
 											<AddUserIcon color="white" />
 										)}
 									</Icon>
+								</Box>
 
-									<Text fontWeight="semibold" fontSize="lg">
-										{isEditing
-											? t("userDialog.editUserTitle")
-											: t("createNewUser")}
-									</Text>
-								</HStack>
+								<Text fontWeight="semibold" fontSize="lg">
+									{isEditing
+										? `${t("userDialog.editUserTitle")}${
+												editingUser?.username ? ` ${editingUser.username}` : ""
+											}`
+										: t("createNewUser")}
+								</Text>
 							</ModalHeader>
 
 							<ModalBody>
 								{isEditing && isServiceManagedUser && (
-									<Alert status="info" mb={4} borderRadius="md">
-										<AlertIcon />
-
-										{t(
-											"userDialog.serviceManagedNotice",
-
-											"This user is tied to service {{service}}. Update the service to change shared settings.",
-
-											{
-												service: editingUser?.service_name ?? "",
-											},
-										)}
-									</Alert>
+									<SlideFade
+										in={serviceNoticeVisible}
+										offsetY="-8px"
+										unmountOnExit
+									>
+										<Alert
+											status="info"
+											mb={statusNotice ? 3 : 4}
+											borderRadius="md"
+											alignItems="flex-start"
+											overflow="hidden"
+											position="relative"
+										>
+											<AlertIcon />
+											<Box flex="1" minW={0}>
+												<AlertDescription>
+													{t(
+														"userDialog.serviceManagedNotice",
+														"This user is tied to service {{service}}. Update the service to change shared settings.",
+														{
+															service: editingUser?.service_name ?? "",
+														},
+													)}
+												</AlertDescription>
+											</Box>
+											<Box
+												position="absolute"
+												insetInlineStart={0}
+												insetInlineEnd={0}
+												bottom={0}
+												h="2px"
+												bg="whiteAlpha.400"
+												borderRadius="full"
+												overflow="hidden"
+												pointerEvents="none"
+											>
+												<Box
+													key={serviceNoticeSeed}
+													h="full"
+													bg="whiteAlpha.800"
+													transformOrigin={
+														isRTL ? "right center" : "left center"
+													}
+													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
+												/>
+											</Box>
+										</Alert>
+									</SlideFade>
 								)}
 
-								<Grid
-									templateColumns={{
-										base: "repeat(1, 1fr)",
-										md: useTwoColumns ? "repeat(2, 1fr)" : "minmax(0, 1fr)",
-									}}
-									gap={3}
-									{...(shouldCenterForm
-										? { maxW: "720px", mx: "auto", w: "full" }
-										: {})}
+								{isEditing && statusNotice && (
+									<SlideFade
+										in={statusNoticeVisible}
+										offsetY="-8px"
+										unmountOnExit
+									>
+										<Alert
+											status="info"
+											mb={4}
+											borderRadius="md"
+											alignItems="flex-start"
+											overflow="hidden"
+											position="relative"
+										>
+											<AlertIcon />
+											<Box flex="1" minW={0}>
+												<AlertDescription>{statusNotice}</AlertDescription>
+											</Box>
+											<Box
+												position="absolute"
+												insetInlineStart={0}
+												insetInlineEnd={0}
+												bottom={0}
+												h="2px"
+												bg="whiteAlpha.400"
+												borderRadius="full"
+												overflow="hidden"
+												pointerEvents="none"
+											>
+												<Box
+													key={statusNoticeSeed}
+													h="full"
+													bg="whiteAlpha.800"
+													transformOrigin={
+														isRTL ? "right center" : "left center"
+													}
+													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
+												/>
+											</Box>
+										</Alert>
+									</SlideFade>
+								)}
+
+										{showServiceSelector && !servicesLoading && !hasServices && (
+											<Alert
+												status="warning"
+												variant="subtle"
+												mb={4}
+												borderRadius="md"
+												w="full"
+											>
+												<AlertIcon />
+												<AlertDescription>
+													{`${t(
+														"userDialog.noServicesAvailable",
+														"No services are available yet.",
+													)} ${t(
+														"userDialog.createServiceToManage",
+														"Create a service to manage users.",
+													)}`}
+												</AlertDescription>
+											</Alert>
+										)}
+
+										{showServiceSelector && !servicesLoading && !hasServices && (
+											<Alert
+												status="warning"
+												variant="subtle"
+												w="full"
+												px={4}
+												py={3}
+												borderRadius="md"
+												alignItems="flex-start"
+												mb={4}
+											>
+												<AlertIcon />
+												<AlertDescription>
+													{`${t(
+														"userDialog.noServicesAvailable",
+														"No services are available yet.",
+													)} ${t(
+														"userDialog.createServiceToManage",
+														"Create a service to manage users.",
+													)}`}
+												</AlertDescription>
+											</Alert>
+										)}
+
+								<Tabs
+									index={activeTab}
+									onChange={handleTabChange}
+									variant="enclosed"
+									isLazy
+									w="full"
 								>
+									<TabList>
+										<Tab>{t("userDialog.tabs.edit", "Edit")}</Tab>
+										{isEditing && (
+											<Tab>{t("userDialog.tabs.usage", "Usage")}</Tab>
+										)}
+										{isEditing && (
+											<Tab>{t("userDialog.tabs.links", "Links")}</Tab>
+										)}
+									</TabList>
+									<TabPanels>
+										<TabPanel px={0} pt={4}>
+											<Grid
+												templateColumns={{
+													base: "repeat(1, 1fr)",
+													md: useTwoColumns
+														? "repeat(2, 1fr)"
+														: "minmax(0, 1fr)",
+												}}
+												gap={3}
+												{...(shouldCenterForm
+													? { maxW: "720px", mx: "auto", w: "full" }
+													: {})}
+											>
 									<GridItem>
 										<VStack justifyContent="space-between">
 											<Flex
@@ -1346,19 +2117,50 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															!!form.formState.errors.username?.message
 														}
 													>
-														<FormLabel>{t("username")}</FormLabel>
-														<HStack align="flex-end">
+													<FormLabel
+														display="flex"
+														alignItems="center"
+														gap={2}
+														justifyContent={isRTL ? "flex-end" : "flex-start"}
+														flexDirection={isRTL ? "row-reverse" : "row"}
+													>
+														<Text>{t("username")}</Text>
+														<Tooltip
+															hasArrow
+															placement="top"
+																label={t(
+																	"userDialog.usernameHint",
+																	"Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between.",
+																)}
+															>
+																<chakra.span
+																	display="inline-flex"
+																	color="gray.400"
+																	cursor="help"
+																>
+																	<QuestionMarkCircleIcon width={16} height={16} />
+																</chakra.span>
+															</Tooltip>
+														</FormLabel>
+														<HStack align="center">
 															<Box flex="1" minW="0">
-																<InputGroup size="sm">
+																<InputGroup size="sm" dir={isRTL ? "rtl" : "ltr"}>
 																	<ChakraInput
 																		type="text"
 																		borderRadius="6px"
 																		placeholder={t("username")}
 																		isDisabled={disabled || isEditing}
+																		{...(!isEditing ? endPadding : {})}
 																		{...form.register("username")}
 																	/>
 																	{!isEditing && (
-																		<InputRightElement width="auto" pr={1}>
+																		<InputRightElement
+																			width="auto"
+																			insetInlineEnd={endAdornmentProps.insetInlineEnd}
+																			insetInlineStart={endAdornmentProps.insetInlineStart}
+																			right={endAdornmentProps.right}
+																			left={endAdornmentProps.left}
+																		>
 																			<IconButton
 																				aria-label={t(
 																					"userDialog.generateUsername",
@@ -1375,8 +2177,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																						randomUsername,
 																						{
 																							shouldDirty: true,
+																							shouldValidate: true,
 																						},
 																					);
+																					form.trigger("username");
 																					setTimeout(() => {
 																						setrandomUsernameLoading(false);
 																					}, 350);
@@ -1426,6 +2230,27 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															)}
 														</HStack>
 
+														<FormHelperText
+															fontSize="xs"
+															color="gray.500"
+															textAlign={isRTL ? "end" : "start"}
+														>
+															{`${usernameValue?.length ?? 0}/32`}
+														</FormHelperText>
+														{isEditing &&
+															hasElevatedRole &&
+															editingUser?.admin_username && (
+																<FormHelperText
+																	fontSize="xs"
+																	color="gray.500"
+																	mt={1}
+																	textAlign={isRTL ? "end" : "start"}
+																>
+																	{t("userDialog.createdBy", "Created by")}:{" "}
+																	{editingUser.admin_username}
+																</FormHelperText>
+															)}
+
 														<FormErrorMessage>
 															{form.formState.errors.username?.message}
 														</FormErrorMessage>
@@ -1437,28 +2262,40 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													spacing={4}
 													mb={"10px"}
 												>
-													<FormControl flex="1">
-														<FormLabel>{t("userDialog.dataLimit")}</FormLabel>
+													<FormControl
+														flex="1"
+														isInvalid={
+															!!form.formState.errors.data_limit?.message
+														}
+													>
+														<FormLabel textAlign={isRTL ? "right" : "left"}>
+															{t("userDialog.dataLimit")}
+														</FormLabel>
 														<Controller
 															control={form.control}
 															name="data_limit"
 															render={({ field }) => {
 																return (
-																	<Input
-																		endAdornment="GB"
-																		type="text"
-																		inputMode="decimal"
-																		size="sm"
-																		borderRadius="6px"
-																		onChange={field.onChange}
-																		disabled={disabled}
-																		error={
-																			form.formState.errors.data_limit?.message
-																		}
-																		value={
-																			field.value ? String(field.value) : ""
-																		}
-																	/>
+																	<>
+																		{renderUnitInput({
+																			unit: DATA_UNIT,
+																			value: field.value ? String(field.value) : "",
+																			onChange: field.onChange,
+																			disabled,
+																		})}
+																		{isEditing && remainingDataInfo && (
+																			<FormHelperText
+																				fontSize="xs"
+																				color="gray.500"
+																				textAlign={isRTL ? "right" : "left"}
+																			>
+																				{`${remainingDataInfo.label}: ${remainingDataInfo.value}`}
+																			</FormHelperText>
+																		)}
+																		<FormErrorMessage>
+																			{form.formState.errors.data_limit?.message}
+																		</FormErrorMessage>
+																	</>
 																);
 															}}
 														/>
@@ -1469,6 +2306,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																display="flex"
 																alignItems="center"
 																gap={2}
+																justifyContent={
+																	isRTL ? "flex-end" : "flex-start"
+																}
+																flexDirection={isRTL ? "row-reverse" : "row"}
+																textAlign={isRTL ? "right" : "left"}
 															>
 																{t("userDialog.ipLimitLabel", "IP limit")}
 																<Tooltip
@@ -1548,6 +2390,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		error={
 																			form.formState.errors.ip_limit?.message
 																		}
+																		dir="ltr"
+																		textAlign={isRTL ? "right" : "left"}
 																	/>
 																)}
 															/>
@@ -1561,7 +2405,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													style={{ width: "100%" }}
 												>
 													<FormControl height="66px">
-														<FormLabel>
+														<FormLabel textAlign={isRTL ? "right" : "left"}>
 															{t("userDialog.periodicUsageReset")}
 														</FormLabel>
 
@@ -1605,122 +2449,93 @@ export const UserDialog: FC<UserDialogProps> = () => {
 												</Collapse>
 
 												<FormControl
-													mb={"10px"}
+													mb="10px"
 													isInvalid={
-														!isOnHold && Boolean(form.formState.errors.expire)
+														isOnHold
+															? Boolean(
+																	form.formState.errors.on_hold_expire_duration,
+																)
+															: Boolean(form.formState.errors.expire)
 													}
 												>
-													<Flex
-														justify="space-between"
-														align={{ base: "flex-start", md: "center" }}
+													<Stack
+														direction={{ base: "column", md: "row" }}
+														align={{ base: "stretch", md: "flex-end" }}
 														gap={{ base: 2, md: 4 }}
-														flexDirection={{ base: "column", md: "row" }}
+														w="full"
+														flexWrap={{ base: "wrap", md: "nowrap" }}
 													>
-														<FormLabel mb={0}>
-															{isOnHold
-																? t("userDialog.onHoldExpireDuration")
-																: t(
-																		"userDialog.expiryDaysLabel",
-																		"Expires in (days)",
-																	)}
-														</FormLabel>
-														{!isEditing && (
-															<Controller
-																name="status"
-																control={form.control}
-																render={({ field }) => {
-																	const checked = field.value === "on_hold";
-																	return (
-																		<HStack spacing={2} align="center">
-																			<Text
-																				fontSize="sm"
-																				color="gray.600"
-																				_dark={{ color: "gray.400" }}
-																			>
-																				{t("userDialog.onHold")}
-																			</Text>
-																			<Switch
-																				colorScheme="primary"
-																				isChecked={checked}
-																				onChange={(event) => {
-																					const nextChecked =
-																						event.target.checked;
-																					if (nextChecked) {
-																						field.onChange("on_hold");
-																					} else {
-																						field.onChange("active");
-																						form.setValue(
-																							"on_hold_expire_duration",
-																							null,
-																							{
-																								shouldDirty: true,
-																							},
-																						);
-																					}
-																				}}
-																				isDisabled={disabled}
-																			/>
-																		</HStack>
-																	);
-																}}
-															/>
-														)}
-													</Flex>
+														<Box flex="1" minW={0}>
+															<FormLabel
+																mb={2}
+																textAlign={isRTL ? "right" : "left"}
+															>
+																{isOnHold
+																	? t("expires.days", "Expires in (days)")
+																	: t(
+																			"expires.selectDate",
+																			"Select expiration date",
+																		)}
+															</FormLabel>
+															{isOnHold ? (
+																<Controller
+																	control={form.control}
+																	name="on_hold_expire_duration"
+																	render={({ field }) => {
+																		return renderUnitInput({
+																			unit: DAYS_UNIT,
+																			value: field.value ? String(field.value) : "",
+																			disabled,
+																			type: "text",
+																			inputMode: "decimal",
+																			onChange: (event) => {
+																				form.setValue("expire", null);
+																				const raw = event.target.value;
+																				if (!raw) {
+																					field.onChange(null);
+																					return;
+																				}
+																				if (!/^[0-9]*\.?[0-9]*$/.test(raw)) {
+																					return;
+																				}
+																				const parsed = Number(raw);
+																				if (Number.isNaN(parsed) || parsed < 0) {
+																					return;
+																				}
+																				field.onChange(Math.round(parsed));
+																			},
+																		});
+																	}}
+																/>
+															) : (
+																<Controller
+																	name="expire"
+																	control={form.control}
+																	render={({ field }) => {
+																		const { status, time } = relativeExpiryDate(
+																			field.value,
+																		);
+																		const selectedDate = field.value
+																			? dayjs.unix(field.value).toDate()
+																			: null;
 
-													{isOnHold ? (
-														<Controller
-															control={form.control}
-															name="on_hold_expire_duration"
-															render={({ field }) => {
-																return (
-																	<Input
-																		endAdornment="Days"
-																		type="number"
-																		size="sm"
-																		borderRadius="6px"
-																		onChange={(event) => {
-																			form.setValue("expire", null);
-																			const raw = event.target.value;
-																			if (!raw) {
+																		const handleDateChange = (
+																			value: Date | null,
+																		) => {
+																			if (!value) {
 																				field.onChange(null);
+																				form.setValue(
+																					"on_hold_expire_duration",
+																					null,
+																					{
+																						shouldDirty: false,
+																					},
+																				);
 																				return;
 																			}
-																			const parsed = Number(raw);
-																			if (Number.isNaN(parsed) || parsed < 0) {
-																				return;
-																			}
-																			field.onChange(Math.round(parsed));
-																		}}
-																		disabled={disabled}
-																		error={
-																			form.formState.errors
-																				.on_hold_expire_duration?.message
-																		}
-																		value={
-																			field.value ? String(field.value) : ""
-																		}
-																	/>
-																);
-															}}
-														/>
-													) : (
-														<>
-															<Controller
-																name="expire"
-																control={form.control}
-																render={({ field }) => {
-																	const { status, time } = relativeExpiryDate(
-																		field.value,
-																	);
-																	const selectedDate = field.value
-																		? dayjs.unix(field.value).toDate()
-																		: null;
-
-																	const handleDateChange = (
-																		value: Date | null,
-																	) => {
-																		if (!value) {
-																			field.onChange(null);
+																			const normalized = dayjs(value)
+																				.utc()
+																				.unix();
 																			form.setValue(
 																				"on_hold_expire_duration",
 																				null,
@@ -1728,263 +2543,130 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																					shouldDirty: false,
 																				},
 																			);
-																			return;
-																		}
-																		const normalized = dayjs(value)
-																			.utc()
-																			.unix();
-																		form.setValue(
-																			"on_hold_expire_duration",
-																			null,
-																			{
-																				shouldDirty: false,
-																			},
-																		);
-																		field.onChange(normalized);
-																	};
-
-																	return (
-																		<Box mt="3px">
-																			<DateTimePicker
-																				value={selectedDate}
-																				onChange={handleDateChange}
-																				placeholder={t(
-																					"userDialog.selectExpiryDate",
-																					"Select expiration date",
-																				)}
-																				disabled={disabled}
-																				minDate={new Date()}
-																				quickSelects={quickExpiryOptions.map(
-																					(option) => ({
-																						label: option.label,
-																						onClick: () => {
-																							const newDate = dayjs()
-																								.add(option.amount, option.unit)
-																								.endOf("day");
-																							handleDateChange(
-																								newDate.toDate(),
-																							);
-																						},
-																					}),
-																				)}
-																			/>
-																			{field.value ? (
-																				<FormHelperText>
-																					{t(status, { time })}
-																				</FormHelperText>
-																			) : null}
-																		</Box>
-																	);
-																}}
-															/>
-															<FormErrorMessage>
-																{form.formState.errors.expire?.message}
-															</FormErrorMessage>
-														</>
-													)}
-												</FormControl>
-
-												<Box mb={"10px"}>
-													<HStack justify="space-between" align="center">
-														<FormLabel mb={0}>
-															{t("userDialog.nextPlanTitle", "Next plan")}
-														</FormLabel>
-														<Switch
-															colorScheme="primary"
-															isChecked={nextPlanEnabled}
-															onChange={(event) =>
-																handleNextPlanToggle(event.target.checked)
-															}
-															isDisabled={disabled}
-														/>
-													</HStack>
-													<Text
-														fontSize="xs"
-														color="gray.500"
-														_dark={{ color: "gray.400" }}
-														mt={1}
-													>
-														{t(
-															"userDialog.nextPlanDescription",
-															"Configure automatic renewal details for this user.",
-														)}
-													</Text>
-													<Collapse
-														in={nextPlanEnabled}
-														animateOpacity
-														style={{ width: "100%" }}
-													>
-														<VStack align="stretch" spacing={3} mt={3}>
-															<FormControl>
-																<FormLabel fontSize="sm">
-																	{t(
-																		"userDialog.nextPlanDataLimit",
-																		"Next plan data limit",
-																	)}
-																</FormLabel>
-																<Input
-																	endAdornment="GB"
-																	type="text"
-																	inputMode="decimal"
-																	size="sm"
-																	borderRadius="6px"
-																	disabled={disabled}
-																	value={
-																		nextPlanDataLimit !== null &&
-																		typeof nextPlanDataLimit !== "undefined"
-																			? String(nextPlanDataLimit)
-																			: ""
-																	}
-																	onChange={(event) => {
-																		const rawValue = event.target.value;
-																		if (!rawValue) {
-																			form.setValue(
-																				"next_plan_data_limit",
-																				null,
-																				{ shouldDirty: true },
-																			);
-																			return;
-																		}
-																		// Allow partial decimals while typing (e.g., "0.", "1.5")
-																		if (!/^[0-9]*\\.?[0-9]*$/.test(rawValue)) {
-																			return;
-																		}
-																		form.setValue(
-																			"next_plan_data_limit",
-																			rawValue,
-																			{ shouldDirty: true },
-																		);
-																	}}
-																/>
-															</FormControl>
-															<FormControl>
-																<FormLabel fontSize="sm">
-																	{t(
-																		"userDialog.nextPlanExpireDays",
-																		"Next plan in (days)",
-																	)}
-																</FormLabel>
-																<Controller
-																	control={form.control}
-																	name="next_plan_expire"
-																	render={({ field }) => {
-																		const handleDaysChange = (
-																			valueAsString: string,
-																		) => {
-																			if (!valueAsString) {
-																				setNextPlanDays(null);
-																				field.onChange(null);
-																				return;
-																			}
-																			const parsed = Number(valueAsString);
-																			if (Number.isNaN(parsed) || parsed < 0) {
-																				return;
-																			}
-																			const normalizedDays = Math.min(
-																				Math.round(parsed),
-																				3650,
-																			);
-																			setNextPlanDays(normalizedDays);
-																			const normalized =
-																				convertDaysToSecondsFromNow(
-																					normalizedDays,
-																				);
 																			field.onChange(normalized);
 																		};
 
 																		return (
-																			<Input
-																				endAdornment={t(
-																					"userDialog.days",
-																					"Days",
-																				)}
-																				type="number"
-																				size="sm"
-																				borderRadius="6px"
-																				value={
-																					typeof nextPlanDays === "number"
-																						? String(nextPlanDays)
-																						: ""
-																				}
-																				onChange={(event) =>
-																					handleDaysChange(event.target.value)
-																				}
-																				disabled={disabled}
-																			/>
+																			<Box w="full" minW={0}>
+																				<DateTimePicker
+																					value={selectedDate}
+																					onChange={handleDateChange}
+																					placeholder={t(
+																						"expires.selectDate",
+																						"Select expiration date",
+																					)}
+																					disabled={disabled}
+																					minDate={new Date()}
+																					quickSelects={quickExpiryOptions.map(
+																						(option) => ({
+																							label: option.label,
+																							onClick: () => {
+																								const newDate = dayjs()
+																									.add(
+																										option.amount,
+																										option.unit,
+																									)
+																									.endOf("day");
+																								handleDateChange(
+																									newDate.toDate(),
+																								);
+																							},
+																						}),
+																					)}
+																				/>
+																				{field.value ? (
+																					<FormHelperText>
+																						{t(status, { time })}
+																					</FormHelperText>
+																				) : null}
+																			</Box>
 																		);
 																	}}
 																/>
-															</FormControl>
-															<HStack justify="space-between">
-																<Text
-																	fontSize="sm"
-																	color="gray.600"
-																	_dark={{ color: "gray.400" }}
-																>
-																	{t(
-																		"userDialog.nextPlanAddRemainingTraffic",
-																		"Carry over remaining traffic",
-																	)}
-																</Text>
-																<Switch
-																	size="sm"
-																	colorScheme="primary"
-																	isChecked={Boolean(
-																		nextPlanAddRemainingTraffic,
-																	)}
-																	onChange={(event) =>
-																		form.setValue(
-																			"next_plan_add_remaining_traffic",
-																			event.target.checked,
-																			{ shouldDirty: true },
-																		)
-																	}
-																	isDisabled={disabled}
-																/>
-															</HStack>
-															<HStack justify="space-between">
-																<Text
-																	fontSize="sm"
-																	color="gray.600"
-																	_dark={{ color: "gray.400" }}
-																>
-																	{t(
-																		"userDialog.nextPlanFireOnEither",
-																		"Trigger on data or expiry",
-																	)}
-																</Text>
-																<Switch
-																	size="sm"
-																	colorScheme="primary"
-																	isChecked={Boolean(nextPlanFireOnEither)}
-																	onChange={(event) =>
-																		form.setValue(
-																			"next_plan_fire_on_either",
-																			event.target.checked,
-																			{
-																				shouldDirty: true,
-																			},
-																		)
-																	}
-																	isDisabled={disabled}
-																/>
-															</HStack>
-														</VStack>
-													</Collapse>
-												</Box>
-
-												<FormControl
-													mb={"10px"}
-													isInvalid={!!form.formState.errors.note}
-												>
-													<FormLabel>{t("userDialog.note")}</FormLabel>
-
-													<Textarea {...form.register("note")} />
-
-													<FormErrorMessage>
-														{form.formState.errors?.note?.message}
-													</FormErrorMessage>
+															)}
+														</Box>
+														<Button
+															size="sm"
+															variant={isOnHold ? "solid" : "outline"}
+															colorScheme={isOnHold ? "primary" : "gray"}
+															onClick={() => {
+																if (isOnHold) {
+																	form.setValue("status", "active", {
+																		shouldDirty: true,
+																	});
+																	form.setValue("on_hold_expire_duration", null, {
+																		shouldDirty: true,
+																	});
+																} else {
+																	form.setValue("status", "on_hold", {
+																		shouldDirty: true,
+																	});
+																	form.setValue("expire", null, {
+																		shouldDirty: true,
+																	});
+																}
+															}}
+															isDisabled={disabled}
+															minW={{ base: "100%", md: "auto" }}
+															alignSelf={{ base: "stretch", md: "flex-end" }}
+															flexShrink={0}
+															h="32px"
+														>
+															{t("onHold.button")}
+														</Button>
+													</Stack>
+													{isOnHold ? (
+														<FormErrorMessage>
+															{
+																form.formState.errors.on_hold_expire_duration
+																	?.message
+															}
+														</FormErrorMessage>
+													) : (
+														<FormErrorMessage>
+															{form.formState.errors.expire?.message}
+														</FormErrorMessage>
+													)}
 												</FormControl>
+
+												{canSetFlow && (
+													<FormControl mb="10px">
+														<FormLabel>
+															{t("userDialog.flow.label", "Flow")}
+														</FormLabel>
+														<Controller
+															name="flow"
+															control={form.control}
+															render={({ field }) => (
+																<Select
+																	size="sm"
+																	value={field.value ?? ""}
+																	onChange={(event) =>
+																		field.onChange(event.target.value)
+																	}
+																	isDisabled={disabled}
+																>
+																	<option value="">
+																		{t("userDialog.flow.none", "None")}
+																	</option>
+																	<option value="xtls-rprx-vision">
+																		{t(
+																			"userDialog.flow.xtls_rprx_vision",
+																			"xtls-rprx-vision",
+																		)}
+																	</option>
+																	<option value="xtls-rprx-vision-udp443">
+																		{t(
+																			"userDialog.flow.xtls_rprx_vision_udp443",
+																			"xtls-rprx-vision-udp443",
+																		)}
+																	</option>
+																</Select>
+															)}
+														/>
+													</FormControl>
+												)}
+
 											</Flex>
 
 											{error && (
@@ -1999,6 +2681,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 											)}
 										</VStack>
 									</GridItem>
+
 
 									{showServiceSelector && (
 										<GridItem mt={useTwoColumns ? 0 : 4}>
@@ -2273,48 +2956,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										</GridItem>
 									)}
 
-									{canSetFlow && (
-										<GridItem
-											colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
-										>
-											<FormControl>
-												<FormLabel>
-													{t("userDialog.flow.label", "Flow")}
-												</FormLabel>
-												<Controller
-													name="flow"
-													control={form.control}
-													render={({ field }) => (
-														<Select
-															size="sm"
-															value={field.value ?? ""}
-															onChange={(event) =>
-																field.onChange(event.target.value)
-															}
-															isDisabled={disabled}
-														>
-															<option value="">
-																{t("userDialog.flow.none", "None")}
-															</option>
-															<option value="xtls-rprx-vision">
-																{t(
-																	"userDialog.flow.xtls_rprx_vision",
-																	"xtls-rprx-vision",
-																)}
-															</option>
-															<option value="xtls-rprx-vision-udp443">
-																{t(
-																	"userDialog.flow.xtls_rprx_vision_udp443",
-																	"xtls-rprx-vision-udp443",
-																)}
-															</option>
-														</Select>
-													)}
-												/>
-											</FormControl>
-										</GridItem>
-									)}
-
 									<GridItem
 										colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
 									>
@@ -2369,6 +3010,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		field.onChange(event.target.value)
 																	}
 																	isDisabled={disabled}
+																	dir="ltr"
+																	textAlign="left"
 																/>
 															)}
 														/>
@@ -2387,47 +3030,764 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										)}
 									</GridItem>
 
-									{isEditing && usageVisible && (
-										<GridItem
-											pt={6}
-											colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
-										>
-											<VStack gap={4}>
-												<UsageFilter
-													defaultValue={usageFilter}
-													onChange={(filter, query) => {
-														setUsageFilter(filter);
-
-														fetchUsageWithFilter(query);
-													}}
-												/>
-
-												<Box
-													width={{ base: "100%", md: "70%" }}
-													justifySelf="center"
-												>
-													<ReactApexChart
-														options={usage.options}
-														series={usage.series}
-														type="donut"
-													/>
-												</Box>
-											</VStack>
-										</GridItem>
-									)}
-								</Grid>
-
-								{error && (
-									<Alert
-										mt="3"
-										status="error"
-										display={{ base: "flex", md: "none" }}
+									<GridItem
+										colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
+										w="full"
+										minW={0}
 									>
-										<AlertIcon />
+										<Box
+											w="full"
+											minW={0}
+											borderWidth="1px"
+											borderRadius="md"
+											bg="white"
+											_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+											overflow="hidden"
+											mb="10px"
+										>
+											<Flex
+												align="center"
+												justify="space-between"
+												px={4}
+												py={3}
+												cursor="pointer"
+												onClick={() => setAutoRenewOpen((prev) => !prev)}
+												gap={3}
+												dir={isRTL ? "rtl" : "ltr"}
+											>
+												<HStack
+													spacing={2}
+													align="center"
+													flex="1"
+													justify="flex-start"
+												>
+													<Text
+														fontWeight="semibold"
+														textAlign={isRTL ? "right" : "left"}
+														w="full"
+													>
+														{autoRenewTitle}
+													</Text>
+													{autoRenewRules.length > 0 && (
+														<Badge colorScheme="gray" borderRadius="full">
+															{autoRenewRules.length}
+														</Badge>
+													)}
+												</HStack>
+												<SectionChevronIcon
+													transform={
+														autoRenewOpen ? "rotate(-180deg)" : "rotate(0deg)"
+													}
+													transition="transform 0.2s ease"
+												/>
+											</Flex>
+											<Collapse in={autoRenewOpen} animateOpacity>
+												<VStack
+													align="stretch"
+													spacing={4}
+													px={4}
+													pb={4}
+													w="full"
+													minW={0}
+												>
+													<Text
+														fontSize="sm"
+														color="gray.500"
+														_dark={{ color: "gray.400" }}
+														textAlign={isRTL ? "right" : "left"}
+													>
+														{t("userDialog.autoRenewDescription")}
+													</Text>
 
-										{error}
-									</Alert>
-								)}
+													{autoRenewRules.length === 0 ? (
+														<VStack spacing={3} align="stretch">
+															<Text
+																textAlign="center"
+																color="gray.400"
+																fontSize="sm"
+															>
+																{t("autoRenew.empty")}
+															</Text>
+															<Button
+																variant="outline"
+																onClick={startAddAutoRenew}
+																isDisabled={disabled}
+																w="full"
+															>
+																{t("autoRenew.add")}
+															</Button>
+														</VStack>
+													) : (
+														<>
+															<VStack spacing={3} align="stretch" w="full">
+																{autoRenewRules.map((rule, idx) => {
+																	const dayText = deriveDaysFromSeconds(
+																		rule.expire,
+																	);
+																			return (
+																				<Box
+																					key={`rule-${idx}`}
+																					borderWidth="1px"
+																					borderRadius="md"
+																			p={3}
+																			bg="blackAlpha.50"
+																			_dark={{ bg: "whiteAlpha.50" }}
+																			w="full"
+																			minW={0}
+																		>
+																			<Flex
+																				align={{ base: "flex-start", md: "center" }}
+																				justify="space-between"
+																				gap={3}
+																				flexDirection={{
+																					base: "column",
+																					md: "row",
+																				}}
+																				>
+																					<HStack
+																						spacing={2}
+																						dir={isRTL ? "rtl" : "ltr"}
+																						align="center"
+																					>
+																						<Badge
+																							colorScheme="primary"
+																							borderRadius="full"
+																					>
+																						{idx + 1}
+																					</Badge>
+																					<Text fontWeight="semibold">
+																						{rule.dataLimit !== null &&
+																						typeof rule.dataLimit !== "undefined"
+																							? `${rule.dataLimit} ${DATA_UNIT}`
+																							: t("userDialog.autoRenewUnlimited")}
+																					</Text>
+																					<Text color="gray.500" fontSize="sm">
+																						{dayText !== null
+																							? `${dayText} ${DAYS_UNIT}`
+																							: t("userDialog.autoRenewUnlimited")}
+																					</Text>
+																				</HStack>
+																				<HStack spacing={2} justify="flex-end">
+																					<IconButton
+																						size="sm"
+																						aria-label={t("edit")}
+																						variant="ghost"
+																						onClick={() => startEditAutoRenew(idx)}
+																						isDisabled={disabled}
+																					>
+																						<PencilIcon width={16} />
+																					</IconButton>
+																					<IconButton
+																						size="sm"
+																						aria-label={t("delete")}
+																						variant="ghost"
+																						onClick={() =>
+																							handleDeleteAutoRenewRule(idx)
+																						}
+																						isDisabled={disabled}
+																					>
+																						<DeleteIcon />
+																					</IconButton>
+																				</HStack>
+																			</Flex>
+																			{idx > 0 && (
+																				<Text
+																					fontSize="xs"
+																					color="gray.500"
+																					mt={2}
+																				>
+																					{t("autoRenew.queuedNote")}
+																				</Text>
+																			)}
+																		</Box>
+																	);
+																})}
+															</VStack>
+															<Button
+																variant="outline"
+																onClick={startAddAutoRenew}
+																isDisabled={disabled}
+															>
+																{t("autoRenew.add")}
+															</Button>
+														</>
+													)}
+
+													{autoRenewFormMode && (
+														<VStack
+															align="stretch"
+															spacing={3}
+															borderWidth="1px"
+															borderRadius="md"
+															p={3}
+															bg="blackAlpha.50"
+															_dark={{ bg: "whiteAlpha.50" }}
+															minW={0}
+														>
+															<HStack
+																justify="space-between"
+																align="center"
+																w="full"
+																flexDirection="row"
+															>
+																<Text fontWeight="semibold">
+																	{t("autoRenew.new")}
+																</Text>
+															</HStack>
+
+															<Grid
+																templateColumns={{
+																	base: "1fr",
+																	md: "minmax(0, 1fr) 220px",
+																}}
+																gap={3}
+																w="full"
+																minW={0}
+																dir={isRTL ? "rtl" : "ltr"}
+																alignItems="end"
+															>
+																<FormControl minW={0}>
+																	<FormLabel
+																		fontSize="sm"
+																		textAlign={isRTL ? "right" : "left"}
+																		w="full"
+																	>
+																		{t("userDialog.autoRenewDataLimit")}
+																	</FormLabel>
+																	{renderUnitInput({
+																		unit: DATA_UNIT,
+																		value: autoRenewDataValue,
+																		disabled,
+																		onChange: (event) => {
+																			const rawValue = event.target.value;
+																			if (!rawValue) {
+																				setAutoRenewDataValue("");
+																				return;
+																			}
+																			if (!/^[0-9]*\.?[0-9]*$/.test(rawValue)) {
+																				return;
+																			}
+																			setAutoRenewDataValue(rawValue);
+																		},
+																	})}
+																</FormControl>
+
+																<Button
+																	size="sm"
+																	variant={autoRenewAddRemainingValue ? "solid" : "outline"}
+																	colorScheme={autoRenewAddRemainingValue ? "primary" : "gray"}
+																	onClick={() =>
+																		setAutoRenewAddRemainingValue((prev) => !prev)
+																	}
+																	isDisabled={disabled}
+																	w={{ base: "full", md: "auto" }}
+																	maxW="220px"
+																	whiteSpace="nowrap"
+																	flexShrink={0}
+																>
+																	{autoRenewAddRemainingValue
+																		? t("userDialog.nextPlanAddRemainingTraffic")
+																		: t("userDialog.autoRenewResetUsage")}
+																</Button>
+
+																<FormControl minW={0}>
+																	<FormLabel
+																		fontSize="sm"
+																		textAlign={isRTL ? "right" : "left"}
+																		w="full"
+																	>
+																		{t("userDialog.autoRenewTimeLimit")}
+																	</FormLabel>
+																	{renderUnitInput({
+																		unit: DAYS_UNIT,
+																		value: autoRenewExpireDaysValue,
+																		disabled,
+																		onChange: (event) => {
+																			const rawValue = event.target.value;
+																			if (!rawValue) {
+																				setAutoRenewExpireDaysValue("");
+																				return;
+																			}
+																			if (!/^[0-9]*\.?[0-9]*$/.test(rawValue)) {
+																				return;
+																			}
+																			setAutoRenewExpireDaysValue(rawValue);
+																		},
+																	})}
+																</FormControl>
+
+																<Button
+																	size="sm"
+																	variant={autoRenewFireOnEitherValue ? "solid" : "outline"}
+																	colorScheme={autoRenewFireOnEitherValue ? "primary" : "gray"}
+																	onClick={() =>
+																		setAutoRenewFireOnEitherValue((prev) => !prev)
+																	}
+																	isDisabled={disabled}
+																	w={{ base: "full", md: "auto" }}
+																	maxW="220px"
+																	whiteSpace="nowrap"
+																	flexShrink={0}
+																>
+																	{t("userDialog.nextPlanFireOnEither")}
+																</Button>
+															</Grid>
+
+															<HStack
+																spacing={3}
+																w="full"
+																justify={isRTL ? "flex-start" : "flex-end"}
+																flexDirection={isRTL ? "row-reverse" : "row"}
+																flexWrap="wrap"
+															>
+																<Button
+																	size="sm"
+																	variant="outline"
+																	onClick={handleCancelAutoRenewForm}
+																	isDisabled={disabled}
+																>
+																	{t("autoRenew.cancel")}
+																</Button>
+
+																<Button
+																	size="sm"
+																	colorScheme="primary"
+																	onClick={handleSaveAutoRenewRule}
+																	isDisabled={disabled}
+																>
+																	{autoRenewFormMode === "edit"
+																		? t("autoRenew.save")
+																		: t("autoRenew.add")}
+																</Button>
+															</HStack>
+														</VStack>
+													)}
+												</VStack>
+											</Collapse>
+										</Box>
+									</GridItem>
+
+									<GridItem colSpan={{ base: 1, md: 2 }} w="full" minW={0}>
+										<Box
+											w="full"
+											minW={0}
+											borderWidth="1px"
+											borderRadius="md"
+											bg="white"
+											_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+											overflow="hidden"
+											mb="10px"
+										>
+											<Flex
+												align="center"
+												justify="space-between"
+												px={4}
+												py={3}
+												cursor="pointer"
+												onClick={() => setOtherInfoOpen((prev) => !prev)}
+												gap={3}
+											>
+												<Text
+													fontWeight="semibold"
+													textAlign="start"
+													flex="1"
+												>
+													{t("otherInfo.title")}
+												</Text>
+												<SectionChevronIcon
+													transform={
+														otherInfoOpen ? "rotate(-180deg)" : "rotate(0deg)"
+													}
+													transition="transform 0.2s ease"
+												/>
+											</Flex>
+											<Collapse in={otherInfoOpen} animateOpacity>
+												<VStack
+													align="stretch"
+													spacing={3}
+													px={4}
+													pb={4}
+													w="full"
+													minW={0}
+												>
+													<FormControl
+														isInvalid={!!form.formState.errors.note}
+														w="full"
+													>
+														<FormLabel
+															textAlign={isRTL ? "right" : "left"}
+															w="full"
+														>
+															{t("fields.note")}
+														</FormLabel>
+														<Textarea
+															{...form.register("note")}
+															textAlign={isRTL ? "right" : "left"}
+														/>
+														<FormErrorMessage>
+															{form.formState.errors?.note?.message}
+														</FormErrorMessage>
+													</FormControl>
+													<FormControl
+														isInvalid={!!form.formState.errors.telegram_id}
+														w="full"
+													>
+														<FormLabel
+															textAlign={isRTL ? "right" : "left"}
+															w="full"
+														>
+															{t("fields.telegramId")}
+														</FormLabel>
+														<ChakraInput
+															{...form.register("telegram_id")}
+															textAlign={isRTL ? "right" : "left"}
+															w="full"
+															minW={0}
+														/>
+														<FormErrorMessage>
+															{form.formState.errors?.telegram_id?.message}
+														</FormErrorMessage>
+													</FormControl>
+													<FormControl
+														isInvalid={!!form.formState.errors.contact_number}
+														w="full"
+													>
+														<FormLabel
+															textAlign={isRTL ? "right" : "left"}
+															w="full"
+														>
+															{t("fields.contactNumber")}
+														</FormLabel>
+														<ChakraInput
+															{...form.register("contact_number")}
+															textAlign={isRTL ? "right" : "left"}
+															w="full"
+															minW={0}
+														/>
+														<FormErrorMessage>
+															{form.formState.errors?.contact_number?.message}
+														</FormErrorMessage>
+													</FormControl>
+												</VStack>
+											</Collapse>
+										</Box>
+									</GridItem>
+											</Grid>
+
+											{error && (
+												<Alert
+													mt="3"
+													status="error"
+													display={{ base: "flex", md: "none" }}
+												>
+													<AlertIcon />
+
+													{error}
+												</Alert>
+											)}
+										</TabPanel>
+										{isEditing && (
+											<TabPanel px={0} pt={4}>
+												<VStack gap={4}>
+													<UsageFilter
+														defaultValue={usageFilter}
+														onChange={(filter, query) => {
+															setUsageFilter(filter);
+
+															fetchUsageWithFilter(query);
+														}}
+													/>
+
+													<Box
+														width={{ base: "100%", md: "70%" }}
+														justifySelf="center"
+													>
+														<ReactApexChart
+															options={usage.options}
+															series={usage.series}
+															type="donut"
+														/>
+													</Box>
+												</VStack>
+											</TabPanel>
+										)}
+										{isEditing && (
+											<TabPanel px={0} pt={4}>
+												<VStack align="stretch" spacing={4}>
+													<Box
+														borderWidth="1px"
+														borderRadius="md"
+														px={4}
+														py={3}
+														bg="white"
+														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+													>
+														<HStack spacing={2} minW={0} mb={3}>
+															<SubscriptionActionIcon />
+															<Text fontWeight="semibold">
+																{t(
+																	"userDialog.links.subscription",
+																	"Subscription link",
+																)}
+															</Text>
+														</HStack>
+														<VStack spacing={2} align="stretch">
+															{subscriptionLinks.length === 0 ? (
+																<Text fontSize="sm" color="gray.500">
+																	{t(
+																		"userDialog.links.noSubscription",
+																		"No subscription links",
+																	)}
+																</Text>
+															) : (
+																subscriptionLinks.map((item) => (
+																	<Box
+																		key={item.key}
+																		borderWidth="1px"
+																		borderRadius="md"
+																		px={3}
+																		py={2}
+																		bg="blackAlpha.50"
+																		_dark={{ bg: "whiteAlpha.50" }}
+																	>
+																		<HStack
+																			justify="space-between"
+																			align="center"
+																			w="full"
+																		>
+																			<HStack spacing={2} minW={0}>
+																				<Text fontWeight="medium">
+																					{item.label}
+																				</Text>
+																				{item.key === "key" && (
+																					<Badge
+																						colorScheme="primary"
+																						borderRadius="full"
+																						fontSize="xs"
+																					>
+																						{t(
+																							"userDialog.links.recommended",
+																							"Recommended",
+																						)}
+																					</Badge>
+																				)}
+																			</HStack>
+																			<HStack spacing={1} flexShrink={0}>
+																				<CopyToClipboard
+																					text={item.url}
+																					onCopy={() =>
+																						setCopiedSubscriptionKey(item.key)
+																					}
+																				>
+																					<div>
+																						<Tooltip
+																							label={
+																								copiedSubscriptionKey ===
+																								item.key
+																									? t("usersTable.copied")
+																									: t(
+																											"userDialog.links.copy",
+																											"Copy",
+																										)
+																							}
+																							placement="top"
+																						>
+																							<IconButton
+																								aria-label="copy subscription link"
+																								variant="ghost"
+																								size="sm"
+																								type="button"
+																							>
+																								{copiedSubscriptionKey ===
+																								item.key ? (
+																									<CopiedActionIcon />
+																								) : (
+																									<CopyActionIcon />
+																								)}
+																							</IconButton>
+																						</Tooltip>
+																					</div>
+																				</CopyToClipboard>
+																				<Tooltip
+																					label={t(
+																						"userDialog.links.qr",
+																						"QR",
+																					)}
+																					placement="top"
+																				>
+																					<IconButton
+																						aria-label="subscription qr"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							setQRCode([]);
+																							setSubLink(item.url);
+																						}}
+																					>
+																						<QRActionIcon />
+																					</IconButton>
+																				</Tooltip>
+																			</HStack>
+																		</HStack>
+																	</Box>
+																))
+															)}
+														</VStack>
+													</Box>
+
+													<Box
+														borderWidth="1px"
+														borderRadius="md"
+														px={4}
+														py={3}
+														bg="white"
+														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
+													>
+														<HStack
+															justify="space-between"
+															align="center"
+															w="full"
+															mb={3}
+														>
+															<Text fontWeight="semibold">
+																{t("userDialog.links.configs", "Configs")}
+															</Text>
+															<CopyToClipboard
+																text={configLinksText}
+																onCopy={() => {
+																	if (configItems.length > 0) {
+																		setCopiedAllConfigs(true);
+																	}
+																}}
+															>
+																<div>
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		type="button"
+																		isDisabled={configItems.length === 0}
+																		leftIcon={
+																			copiedAllConfigs ? (
+																				<CopiedActionIcon />
+																			) : (
+																				<CopyActionIcon />
+																			)
+																		}
+																	>
+																		{copiedAllConfigs
+																			? t("usersTable.copied")
+																			: t(
+																					"userDialog.links.copyAllConfigs",
+																					"Copy all configs",
+																				)}
+																	</Button>
+																</div>
+															</CopyToClipboard>
+														</HStack>
+
+														<VStack spacing={2} align="stretch">
+															{configItems.length === 0 ? (
+																<Text fontSize="sm" color="gray.500">
+																	{t(
+																		"userDialog.links.noConfigs",
+																		"No configs available",
+																	)}
+																</Text>
+															) : (
+																configItems.map((item, index) => (
+																	<Box
+																		key={`${item.link}-${index}`}
+																		borderWidth="1px"
+																		borderRadius="md"
+																		px={3}
+																		py={2}
+																		bg="blackAlpha.50"
+																		_dark={{ bg: "whiteAlpha.50" }}
+																	>
+																		<HStack
+																			justify="space-between"
+																			align="center"
+																			w="full"
+																			dir="ltr"
+																		>
+																			<Text
+																				fontWeight="medium"
+																				noOfLines={1}
+																				minW={0}
+																				flex="1"
+																				textAlign="left"
+																				dir="ltr"
+																				sx={{ unicodeBidi: "isolate" }}
+																			>
+																				{item.label}
+																			</Text>
+																			<HStack spacing={1} flexShrink={0}>
+																				<CopyToClipboard
+																					text={item.link}
+																					onCopy={() =>
+																						setCopiedConfigIndex(index)
+																					}
+																				>
+																					<div>
+																						<Tooltip
+																							label={
+																								copiedConfigIndex === index
+																									? t("usersTable.copied")
+																									: t(
+																											"userDialog.links.copy",
+																											"Copy",
+																										)
+																							}
+																							placement="top"
+																						>
+																							<IconButton
+																								aria-label="copy config"
+																								variant="ghost"
+																								size="sm"
+																								type="button"
+																							>
+																								{copiedConfigIndex === index ? (
+																									<CopiedActionIcon />
+																								) : (
+																									<CopyActionIcon />
+																								)}
+																							</IconButton>
+																						</Tooltip>
+																					</div>
+																				</CopyToClipboard>
+																				<Tooltip
+																					label={t(
+																						"userDialog.links.qr",
+																						"QR",
+																					)}
+																					placement="top"
+																				>
+																					<IconButton
+																						aria-label="config qr"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							setQRCode([item.link]);
+																							setSubLink(null);
+																						}}
+																					>
+																						<QRActionIcon />
+																					</IconButton>
+																				</Tooltip>
+																			</HStack>
+																		</HStack>
+																	</Box>
+																))
+															)}
+														</VStack>
+													</Box>
+												</VStack>
+											</TabPanel>
+										)}
+									</TabPanels>
+								</Tabs>
 							</ModalBody>
 
 							<ModalFooter mt="3">
@@ -2469,16 +3829,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													</Tooltip>
 												)}
 
-												<Tooltip label={t("userDialog.usage")} placement="top">
-													<IconButton
-														aria-label="usage"
-														size="sm"
-														onClick={handleUsageToggle}
-													>
-														<UserUsageIcon />
-													</IconButton>
-												</Tooltip>
-
 												{canResetUsage && (
 													<Button onClick={handleResetUsage} size="sm">
 														{t("userDialog.resetUsage")}
@@ -2505,7 +3855,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 											px="8"
 											colorScheme="primary"
 											leftIcon={loading ? <Spinner size="xs" /> : undefined}
-											disabled={disabled}
+											disabled={submitDisabled}
 										>
 											{isEditing ? t("userDialog.editUser") : t("createUser")}
 										</Button>
@@ -2553,3 +3903,4 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		</Modal>
 	);
 };
+

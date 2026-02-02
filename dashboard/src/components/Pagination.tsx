@@ -16,7 +16,10 @@ import { useDashboard } from "contexts/DashboardContext";
 import { type ChangeEvent, type FC, useMemo } from "react";
 
 import { useTranslation } from "react-i18next";
-import { setUsersPerPageLimitSize } from "utils/userPreferenceStorage";
+import {
+	setUsersPerPageLimitSize,
+	setAdminsPerPageLimitSize,
+} from "utils/userPreferenceStorage";
 
 const PrevIcon = chakra(ArrowLongLeftIcon, {
 	baseStyle: {
@@ -129,9 +132,8 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 			limit: next,
 			offset: 0,
 		});
-		if (target === "users") {
-			setUsersPerPageLimitSize(e.target.value);
-		}
+		if (target === "users") setUsersPerPageLimitSize(e.target.value);
+		if (target === "admins") setAdminsPerPageLimitSize(e.target.value);
 	};
 
 	const canPrev = useMemo(() => page > 0 && noPages > 0, [page, noPages]);
@@ -166,6 +168,8 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 						<option value="10">10</option>
 						<option value="20">20</option>
 						<option value="30">30</option>
+						<option value="50">50</option>
+						<option value="100">100</option>
 					</Select>
 					<Text whiteSpace="nowrap" fontSize="sm">
 						{t("itemsPerPage")}

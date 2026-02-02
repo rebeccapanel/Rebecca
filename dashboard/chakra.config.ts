@@ -5,7 +5,8 @@ import { mode, type StyleFunctionProps } from "@chakra-ui/theme-tools";
 // switch named palettes at runtime by toggling a class on documentElement.
 // The variables below provide sensible defaults which match the previous
 // primary color scale.
-export const theme = extendTheme({
+const sharedThemeConfig = {
+	direction: "ltr" as const,
 	shadows: { outline: "0 0 0 2px var(--chakra-colors-primary-200)" },
 	fonts: {
 		body: `Arad,Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol",sans-serif`,
@@ -150,6 +151,40 @@ export const theme = extendTheme({
 				"--surface-light": "#ffffff",
 				"--surface-dark": "#0f2a18",
 			},
+
+			".rb-seasonal-christmas": {
+				"--primary-50": "#ffe6e6",
+				"--primary-100": "#ffcdd2",
+				"--primary-200": "#ef9a9a",
+				"--primary-300": "#e57373",
+				"--primary-400": "#ef5350",
+				"--primary-500": "#d32f2f",
+				"--primary-600": "#c62828",
+				"--primary-700": "#b71c1c",
+				"--primary-800": "#8d0f0f",
+				"--primary-900": "#5f0a0a",
+				"--bg-light": "#fdf7f2",
+				"--bg-dark": "#0b0f19",
+				"--surface-light": "#ffffff",
+				"--surface-dark": "#141d2a",
+			},
+
+			".rb-theme-pure-dark": {
+				"--primary-50": "#e5f2ff",
+				"--primary-100": "#b8deff",
+				"--primary-200": "#8bcaff",
+				"--primary-300": "#5eb6ff",
+				"--primary-400": "#31a2ff",
+				"--primary-500": "#1a8ce0",
+				"--primary-600": "#126fb3",
+				"--primary-700": "#0a5286",
+				"--primary-800": "#03355a",
+				"--primary-900": "#001a2f",
+				"--bg-light": "#0c1018",
+				"--bg-dark": "#05070c",
+				"--surface-light": "#111827",
+				"--surface-dark": "#0a0f1a",
+			},
 		},
 	},
 	components: {
@@ -192,22 +227,29 @@ export const theme = extendTheme({
 			}),
 		},
 		Menu: {
-			baseStyle: (props: StyleFunctionProps) => ({
-				list: {
-					bg: mode("surface.light", "surface.dark")(props),
-					borderWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
-					boxShadow: mode("lg", "dark-lg")(props),
-				},
-				item: {
-					_hover: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+			baseStyle: (props: StyleFunctionProps) => {
+				const hoverBg = mode("blackAlpha.50", "whiteAlpha.100")(props);
+				return {
+					list: {
+						bg: mode("surface.light", "surface.dark")(props),
+						borderWidth: "1px",
+						borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+						boxShadow: mode("lg", "dark-lg")(props),
 					},
-					_focus: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+					item: {
+						bg: "transparent !important",
+						_hover: {
+							bg: `${hoverBg} !important`,
+						},
+						_focus: {
+							bg: `${hoverBg} !important`,
+						},
+						_active: {
+							bg: `${hoverBg} !important`,
+						},
 					},
-				},
-			}),
+				};
+			},
 		},
 		Popover: {
 			baseStyle: (props: StyleFunctionProps) => ({
@@ -406,4 +448,7 @@ export const theme = extendTheme({
 			},
 		},
 	},
-});
+};
+
+export const theme = extendTheme(sharedThemeConfig);
+export const rtlTheme = extendTheme({ ...sharedThemeConfig, direction: "rtl" });

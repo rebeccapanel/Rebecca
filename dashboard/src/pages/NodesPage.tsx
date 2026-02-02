@@ -14,6 +14,7 @@ import {
 	chakra,
 	Divider,
 	HStack,
+	Collapse,
 	IconButton,
 	Input,
 	InputGroup,
@@ -42,10 +43,12 @@ import {
 	PlusIcon as AddIcon,
 	ArrowDownTrayIcon,
 	ArrowPathIcon,
+	Bars3Icon,
 	TrashIcon as DeleteIcon,
 	DocumentDuplicateIcon,
 	PencilIcon as EditIcon,
 	MagnifyingGlassIcon,
+	Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import {
@@ -87,6 +90,8 @@ const EditIconStyled = chakra(EditIcon, { baseStyle: { w: 4, h: 4 } });
 const ArrowPathIconStyled = chakra(ArrowPathIcon, {
 	baseStyle: { w: 4, h: 4 },
 });
+const GridViewIcon = chakra(Squares2X2Icon, { baseStyle: { w: 4, h: 4 } });
+const ListViewIcon = chakra(Bars3Icon, { baseStyle: { w: 4, h: 4 } });
 const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
 const CopyIconStyled = chakra(DocumentDuplicateIcon, {
 	baseStyle: { w: 4, h: 4 },
@@ -180,6 +185,17 @@ export const NodesPage: FC = () => {
 	const [editingNode, setEditingNode] = useState<NodeType | null>(null);
 	const [isAddNodeOpen, setAddNodeOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
+	const viewModeStorageKey = "nodesViewMode";
+	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+		if (typeof window === "undefined") {
+			return "grid";
+		}
+		const saved = window.localStorage.getItem(viewModeStorageKey);
+		return saved === "list" ? "list" : "grid";
+	});
+	const [expandedNodeKeys, setExpandedNodeKeys] = useState<
+		Record<string, boolean>
+	>({});
 	const [versionDialogTarget, setVersionDialogTarget] =
 		useState<VersionDialogTarget | null>(null);
 	const [geoDialogTarget, setGeoDialogTarget] =
@@ -231,6 +247,17 @@ export const NodesPage: FC = () => {
 		onClose: closeMasterReset,
 	} = useDisclosure();
 	const masterResetCancelRef = useRef<HTMLButtonElement | null>(null);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		try {
+			window.localStorage.setItem(viewModeStorageKey, viewMode);
+		} catch (error) {
+			console.warn("Unable to persist nodes view mode", error);
+		}
+	}, [viewMode]);
 
 	const {
 		data: coreStats,
@@ -541,6 +568,10 @@ export const NodesPage: FC = () => {
 		masterRemainingBytes !== null && masterRemainingBytes !== undefined
 			? formatBytes(masterRemainingBytes, 2)
 			: null;
+	const nodeGridColumns = useMemo(
+		() => (viewMode === "list" ? { base: 1 } : { base: 1, md: 2, xl: 3 }),
+		[viewMode],
+	);
 
 	const handleMasterLimitInputChange = (value: string) => {
 		setMasterLimitDirty(true);
@@ -579,6 +610,10 @@ export const NodesPage: FC = () => {
 		setTogglingNodeId(nodeId);
 		setPendingStatus((prev) => ({ ...prev, [nodeId]: !isEnabled }));
 		toggleNodeStatus({ ...node, status: nextStatus });
+	};
+
+	const toggleExpandedNode = (key: string) => {
+		setExpandedNodeKeys((prev) => ({ ...prev, [key]: !prev[key] }));
 	};
 
 	const handleResetNodeUsage = (node: NodeType) => {
@@ -925,6 +960,211 @@ export const NodesPage: FC = () => {
 					})
 				: "";
 
+	const masterContent = isMasterCardLoading ? (
+		<VStack spacing={3} align="center" justify="center">
+			<Spinner />
+			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				{t("loading")}
+			</Text>
+		</VStack>
+	) : masterErrorMessage ? (
+		<VStack spacing={3} align="stretch">
+			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				{masterErrorMessage}
+			</Text>
+			<Button
+				size="sm"
+				variant="outline"
+				onClick={() => {
+					refetchCoreStats();
+					refetchMasterState();
+				}}
+			>
+				{t("refresh", "Refresh")}
+			</Button>
+		</VStack>
+	) : !masterState ? (
+		<VStack spacing={3} align="stretch">
+			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				{t("nodes.masterLoadFailed", "Unable to load master details.")}
+			</Text>
+			<Button
+				size="sm"
+				variant="outline"
+				onClick={() => {
+					refetchCoreStats();
+					refetchMasterState();
+				}}
+			>
+				{t("refresh", "Refresh")}
+			</Button>
+		</VStack>
+	) : (
+		<VStack align="stretch" spacing={4}>
+			<Stack spacing={2}>
+				<HStack spacing={3} align="center" flexWrap="wrap">
+					<Text fontWeight="semibold" fontSize="lg">
+						{masterLabel}
+					</Text>
+					<Tag colorScheme="purple" size="sm">
+						{coreStats?.version
+							? `Xray ${coreStats.version}`
+							: t("nodes.versionUnknown", "Version unknown")}
+					</Tag>
+				</HStack>
+				<HStack spacing={2} align="center">
+					<NodeModalStatusBadge status={masterStatus} compact />
+					{masterState.limit_exceeded && (
+						<Tag colorScheme="red" size="sm">
+							{t("nodes.limitReached", "Limit reached")}
+						</Tag>
+					)}
+				</HStack>
+				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+					{coreStats?.started
+						? t("nodes.masterStartedAt", {
+								date: dayjs(coreStats.started).local().format("YYYY-MM-DD HH:mm"),
+							})
+						: t("nodes.masterStartedUnknown", "Start time unavailable")}
+				</Text>
+			</Stack>
+			{masterState.message && (
+				<Alert status="warning" variant="left-accent" borderRadius="md">
+					<AlertIcon />
+					<AlertDescription fontSize="sm">
+						{masterState.message}
+					</AlertDescription>
+				</Alert>
+			)}
+			<Divider />
+			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+				<Box>
+					<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+						{t("nodes.totalUsage", "Total usage")}
+					</Text>
+					<Text fontWeight="medium">{masterUsageDisplay}</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+						{t("nodes.dataLimitLabel", "Data limit")}
+					</Text>
+					<Text fontWeight="medium">{masterDataLimitDisplay}</Text>
+				</Box>
+				{masterRemainingDisplay && (
+					<Box>
+						<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+							{t("nodes.remainingData", "Remaining data")}
+						</Text>
+						<Text fontWeight="medium">{masterRemainingDisplay}</Text>
+					</Box>
+				)}
+				{masterUpdatedAt && (
+					<Box>
+						<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+							{t("nodes.lastUpdated", "Last updated")}
+						</Text>
+						<Text fontWeight="medium">{masterUpdatedAt}</Text>
+					</Box>
+				)}
+			</SimpleGrid>
+			<Stack
+				direction={{ base: "column", md: "row" }}
+				spacing={2}
+				align={{ base: "stretch", md: "center" }}
+			>
+				<InputGroup size="sm" maxW={{ base: "full", md: "240px" }}>
+					<Input
+						type="number"
+						step="0.01"
+						min={0}
+						inputMode="decimal"
+						value={masterLimitInput}
+						onChange={(event) =>
+							handleMasterLimitInputChange(event.target.value)
+						}
+						placeholder={t(
+							"nodes.dataLimitPlaceholder",
+							"e.g., 500 (empty = unlimited)",
+						)}
+					/>
+					<InputRightElement pointerEvents="none">
+						<Text fontSize="xs" color="gray.500">
+							GB
+						</Text>
+					</InputRightElement>
+				</InputGroup>
+				<Button
+					colorScheme="primary"
+					size="sm"
+					onClick={handleMasterLimitSave}
+					isDisabled={
+						!hasMasterLimitChanged || masterLimitInvalid || isUpdatingMasterLimit
+					}
+					isLoading={isUpdatingMasterLimit}
+				>
+					{t("save", "Save")}
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={handleMasterLimitClear}
+					isDisabled={masterDataLimit === null || isUpdatingMasterLimit}
+					isLoading={isUpdatingMasterLimit && masterDataLimit === null}
+				>
+					{t("nodes.clearDataLimit", "Clear limit")}
+				</Button>
+			</Stack>
+			{masterLimitInvalid && (
+				<Text fontSize="xs" color="red.500">
+					{t(
+						"nodes.dataLimitValidation",
+						"Data limit must be a non-negative number",
+					)}
+				</Text>
+			)}
+			<Stack direction={{ base: "column", sm: "row" }} spacing={2} flexWrap="wrap">
+				<Button
+					size="sm"
+					variant="outline"
+					colorScheme="primary"
+					onClick={() => setVersionDialogTarget({ type: "master" })}
+					isLoading={updatingMasterCore}
+					flex={{ base: "1", sm: "0 1 auto" }}
+					minW={{ base: "full", sm: "auto" }}
+					whiteSpace="normal"
+					wordBreak="break-word"
+				>
+					{t("nodes.coreVersionDialog.updateMasterButton")}
+				</Button>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={() => setGeoDialogTarget({ type: "master" })}
+					isLoading={updatingMasterGeo}
+					flex={{ base: "1", sm: "0 1 auto" }}
+					minW={{ base: "full", sm: "auto" }}
+					whiteSpace="normal"
+					wordBreak="break-word"
+				>
+					{t("nodes.geoDialog.updateMasterButton")}
+				</Button>
+				<Button
+					size="sm"
+					variant="outline"
+					colorScheme="red"
+					onClick={handleResetMasterUsageRequest}
+					isLoading={isResettingMasterUsage}
+					flex={{ base: "1", sm: "0 1 auto" }}
+					minW={{ base: "full", sm: "auto" }}
+					whiteSpace="normal"
+					wordBreak="break-word"
+				>
+					{t("nodes.resetUsage", "Reset usage")}
+				</Button>
+			</Stack>
+		</VStack>
+	);
+
 	if (!getUserIsSuccess) {
 		return (
 			<VStack spacing={4} align="center" py={10}>
@@ -1038,6 +1278,26 @@ export const NodesPage: FC = () => {
 								isLoading={isFetching}
 							/>
 						</Tooltip>
+						<Tooltip label={t("nodes.viewList", "List view")}>
+							<IconButton
+								aria-label={t("nodes.viewList", "List view")}
+								icon={<ListViewIcon />}
+								variant={viewMode === "list" ? "solid" : "ghost"}
+								colorScheme={viewMode === "list" ? "primary" : undefined}
+								size="sm"
+								onClick={() => setViewMode("list")}
+							/>
+						</Tooltip>
+						<Tooltip label={t("nodes.viewGrid", "Grid view")}>
+							<IconButton
+								aria-label={t("nodes.viewGrid", "Grid view")}
+								icon={<GridViewIcon />}
+								variant={viewMode === "grid" ? "solid" : "ghost"}
+								colorScheme={viewMode === "grid" ? "primary" : undefined}
+								size="sm"
+								onClick={() => setViewMode("grid")}
+							/>
+						</Tooltip>
 					</HStack>
 					<Stack
 						direction={{ base: "column", sm: "row" }}
@@ -1070,7 +1330,7 @@ export const NodesPage: FC = () => {
 			</Stack>
 
 			{isLoading ? (
-				<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+				<SimpleGrid columns={nodeGridColumns} spacing={4}>
 					{Array.from({ length: 3 }, (_, idx) => `nodes-skeleton-${idx}`).map(
 						(skeletonKey) => (
 							<Box
@@ -1098,276 +1358,46 @@ export const NodesPage: FC = () => {
 					)}
 				</SimpleGrid>
 			) : (
-				<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+				<SimpleGrid columns={nodeGridColumns} spacing={4}>
 					{masterMatchesSearch && (
 						<Box
 							key="master-node"
 							borderWidth="1px"
 							borderRadius="lg"
-							p={6}
+							p={viewMode === "list" ? 4 : 6}
 							boxShadow="sm"
 							_hover={{ boxShadow: "md" }}
 							transition="box-shadow 0.2s ease-in-out"
 						>
-							{isMasterCardLoading ? (
-								<VStack spacing={3} align="center" justify="center">
-									<Spinner />
-									<Text
-										fontSize="sm"
-										color="gray.500"
-										_dark={{ color: "gray.400" }}
+							{viewMode === "list" ? (
+								<VStack align="stretch" spacing={3}>
+									<HStack
+										justify="space-between"
+										align="center"
+										onClick={() => toggleExpandedNode("master")}
+										cursor="pointer"
 									>
-										{t("loading")}
-									</Text>
-								</VStack>
-							) : masterErrorMessage ? (
-								<VStack spacing={3} align="stretch">
-									<Text
-										fontSize="sm"
-										color="gray.500"
-										_dark={{ color: "gray.400" }}
-									>
-										{masterErrorMessage}
-									</Text>
-									<Button
-										size="sm"
-										variant="outline"
-										onClick={() => {
-											refetchCoreStats();
-											refetchMasterState();
-										}}
-									>
-										{t("refresh", "Refresh")}
-									</Button>
-								</VStack>
-							) : !masterState ? (
-								<VStack spacing={3} align="stretch">
-									<Text
-										fontSize="sm"
-										color="gray.500"
-										_dark={{ color: "gray.400" }}
-									>
-										{t(
-											"nodes.masterLoadFailed",
-											"Unable to load master details.",
-										)}
-									</Text>
-									<Button
-										size="sm"
-										variant="outline"
-										onClick={() => {
-											refetchCoreStats();
-											refetchMasterState();
-										}}
-									>
-										{t("refresh", "Refresh")}
-									</Button>
+										<VStack align="flex-start" spacing={0} flex="1">
+											<Text fontWeight="semibold">{masterLabel}</Text>
+											<Text
+												fontSize="sm"
+												color="gray.500"
+												_dark={{ color: "gray.400" }}
+											>
+												{t("nodes.thisNode", "this node")}
+											</Text>
+										</VStack>
+										<NodeModalStatusBadge status={masterStatus} compact />
+									</HStack>
+									<Collapse in={Boolean(expandedNodeKeys.master)} animateOpacity>
+										<Box pt={4}>
+											<Divider mb={4} />
+											{masterContent}
+										</Box>
+									</Collapse>
 								</VStack>
 							) : (
-								<VStack align="stretch" spacing={4}>
-									<Stack spacing={2}>
-										<HStack spacing={3} align="center" flexWrap="wrap">
-											<Text fontWeight="semibold" fontSize="lg">
-												{masterLabel}
-											</Text>
-											<Tag colorScheme="purple" size="sm">
-												{coreStats?.version
-													? `Xray ${coreStats.version}`
-													: t("nodes.versionUnknown", "Version unknown")}
-											</Tag>
-										</HStack>
-										<HStack spacing={2} align="center">
-											<NodeModalStatusBadge status={masterStatus} compact />
-											{masterState.limit_exceeded && (
-												<Tag colorScheme="red" size="sm">
-													{t("nodes.limitReached", "Limit reached")}
-												</Tag>
-											)}
-										</HStack>
-										<Text
-											fontSize="sm"
-											color="gray.500"
-											_dark={{ color: "gray.400" }}
-										>
-											{coreStats?.started
-												? t("nodes.masterStartedAt", {
-														date: dayjs(coreStats.started)
-															.local()
-															.format("YYYY-MM-DD HH:mm"),
-													})
-												: t(
-														"nodes.masterStartedUnknown",
-														"Start time unavailable",
-													)}
-										</Text>
-									</Stack>
-									{masterState.message && (
-										<Alert
-											status="warning"
-											variant="left-accent"
-											borderRadius="md"
-										>
-											<AlertIcon />
-											<AlertDescription fontSize="sm">
-												{masterState.message}
-											</AlertDescription>
-										</Alert>
-									)}
-									<Divider />
-									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<Box>
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.totalUsage", "Total usage")}
-											</Text>
-											<Text fontWeight="medium">{masterUsageDisplay}</Text>
-										</Box>
-										<Box>
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.dataLimitLabel", "Data limit")}
-											</Text>
-											<Text fontWeight="medium">{masterDataLimitDisplay}</Text>
-										</Box>
-										{masterRemainingDisplay && (
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.remainingData", "Remaining data")}
-												</Text>
-												<Text fontWeight="medium">
-													{masterRemainingDisplay}
-												</Text>
-											</Box>
-										)}
-										{masterUpdatedAt && (
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.lastUpdated", "Last updated")}
-												</Text>
-												<Text fontWeight="medium">{masterUpdatedAt}</Text>
-											</Box>
-										)}
-									</SimpleGrid>
-									<Stack
-										direction={{ base: "column", md: "row" }}
-										spacing={2}
-										align={{ base: "stretch", md: "center" }}
-									>
-										<InputGroup size="sm" maxW={{ base: "full", md: "240px" }}>
-											<Input
-												type="number"
-												step="0.01"
-												min={0}
-												inputMode="decimal"
-												value={masterLimitInput}
-												onChange={(event) =>
-													handleMasterLimitInputChange(event.target.value)
-												}
-												placeholder={t(
-													"nodes.dataLimitPlaceholder",
-													"e.g., 500 (empty = unlimited)",
-												)}
-											/>
-											<InputRightElement pointerEvents="none">
-												<Text fontSize="xs" color="gray.500">
-													GB
-												</Text>
-											</InputRightElement>
-										</InputGroup>
-										<Button
-											colorScheme="primary"
-											size="sm"
-											onClick={handleMasterLimitSave}
-											isDisabled={
-												!hasMasterLimitChanged ||
-												masterLimitInvalid ||
-												isUpdatingMasterLimit
-											}
-											isLoading={isUpdatingMasterLimit}
-										>
-											{t("save", "Save")}
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={handleMasterLimitClear}
-											isDisabled={
-												masterDataLimit === null || isUpdatingMasterLimit
-											}
-											isLoading={
-												isUpdatingMasterLimit && masterDataLimit === null
-											}
-										>
-											{t("nodes.clearDataLimit", "Clear limit")}
-										</Button>
-									</Stack>
-									{masterLimitInvalid && (
-										<Text fontSize="xs" color="red.500">
-											{t(
-												"nodes.dataLimitValidation",
-												"Data limit must be a non-negative number",
-											)}
-										</Text>
-									)}
-									<Stack
-										direction={{ base: "column", sm: "row" }}
-										spacing={2}
-										flexWrap="wrap"
-									>
-										<Button
-											size="sm"
-											variant="outline"
-											colorScheme="primary"
-											onClick={() => setVersionDialogTarget({ type: "master" })}
-											isLoading={updatingMasterCore}
-											flex={{ base: "1", sm: "0 1 auto" }}
-											minW={{ base: "full", sm: "auto" }}
-											whiteSpace="normal"
-											wordBreak="break-word"
-										>
-											{t("nodes.coreVersionDialog.updateMasterButton")}
-										</Button>
-										<Button
-											size="sm"
-											variant="outline"
-											onClick={() => setGeoDialogTarget({ type: "master" })}
-											isLoading={updatingMasterGeo}
-											flex={{ base: "1", sm: "0 1 auto" }}
-											minW={{ base: "full", sm: "auto" }}
-											whiteSpace="normal"
-											wordBreak="break-word"
-										>
-											{t("nodes.geoDialog.updateMasterButton")}
-										</Button>
-										<Button
-											size="sm"
-											variant="outline"
-											colorScheme="red"
-											onClick={handleResetMasterUsageRequest}
-											isLoading={isResettingMasterUsage}
-											flex={{ base: "1", sm: "0 1 auto" }}
-											minW={{ base: "full", sm: "auto" }}
-											whiteSpace="normal"
-											wordBreak="break-word"
-										>
-											{t("nodes.resetUsage", "Reset usage")}
-										</Button>
-									</Stack>
-								</VStack>
+								masterContent
 							)}
 						</Box>
 					)}
@@ -1410,292 +1440,328 @@ export const NodesPage: FC = () => {
 								) : (
 									statusBadge
 								);
+							const nodeKey =
+								nodeId != null
+									? `node-${nodeId}`
+									: `node-${node.name ?? node.address ?? "unknown"}`;
+							const nodeContent = (
+								<VStack align="stretch" spacing={4}>
+									<Stack spacing={2}>
+										<HStack spacing={3} align="center" flexWrap="wrap">
+											<Text fontWeight="semibold" fontSize="lg">
+												{node.name || t("nodes.unnamedNode", "Unnamed node")}
+											</Text>
+											<Switch
+												size="sm"
+												colorScheme="primary"
+												isChecked={displayEnabled}
+												onChange={() => handleToggleNode(node)}
+												isDisabled={isToggleLoading}
+												aria-label={t(
+													"nodes.toggleAvailability",
+													"Toggle node availability",
+												)}
+											/>
+											{node.status === "error" && (
+												<Button
+													size="sm"
+													variant="outline"
+													leftIcon={<ArrowPathIconStyled />}
+													onClick={() => reconnect(node)}
+													isLoading={isReconnecting}
+												>
+													{t("nodes.reconnect")}
+												</Button>
+											)}
+										</HStack>
+										<HStack spacing={2} flexWrap="wrap">
+											{statusDisplay}
+											<HStack spacing={1} align="center">
+												<Tag colorScheme="blue" size="sm">
+													{node.xray_version
+														? `Xray ${node.xray_version}`
+														: t("nodes.versionUnknown", "Version unknown")}
+												</Tag>
+												<Tag colorScheme="green" size="sm">
+													{node.node_service_version
+														? t("nodes.nodeServiceVersionTag", {
+																version: node.node_service_version,
+															})
+														: t(
+																"nodes.nodeServiceVersionUnknown",
+																"Node version unknown",
+															)}
+												</Tag>
+												<Button
+													size="xs"
+													variant="ghost"
+													colorScheme="primary"
+													onClick={() =>
+														nodeId &&
+														setVersionDialogTarget({ type: "node", node })
+													}
+													isLoading={isCoreUpdating}
+													isDisabled={!nodeId}
+												>
+													{t("nodes.updateCoreAction")}
+												</Button>
+											</HStack>
+											<Button
+												size="xs"
+												variant="ghost"
+												onClick={() =>
+													nodeId && setGeoDialogTarget({ type: "node", node })
+												}
+												isLoading={isGeoUpdating}
+												isDisabled={!nodeId}
+											>
+												{t("nodes.updateGeoAction", "Update geo")}
+											</Button>
+											<Button
+												size="xs"
+												variant="ghost"
+												colorScheme="orange"
+												onClick={() => handleRestartNodeService(node)}
+												isLoading={isRestartingMaintenance}
+												isDisabled={!nodeId}
+											>
+												{t(
+													"nodes.restartServiceAction",
+													"Restart node service",
+												)}
+											</Button>
+											<Button
+												size="xs"
+												variant="ghost"
+												colorScheme="teal"
+												onClick={() => handleUpdateNodeService(node)}
+												isLoading={isUpdatingMaintenance}
+												isDisabled={!nodeId}
+											>
+												{t(
+													"nodes.updateServiceAction",
+													"Update node service",
+												)}
+											</Button>
+											<Button
+												size="xs"
+												variant="ghost"
+												colorScheme="red"
+												onClick={() => handleResetNodeUsage(node)}
+												isLoading={
+													isResettingUsage &&
+													nodeId != null &&
+													resettingNodeId === nodeId
+												}
+												isDisabled={!nodeId}
+											>
+												{t("nodes.resetUsage", "Reset usage")}
+											</Button>
+										</HStack>
+										{status === "limited" && (
+											<Text fontSize="sm" color="red.500">
+												{t(
+													"nodes.limitedStatusDescription",
+													"This node is limited because its data limit is exhausted. Increase the limit or reset usage to reconnect it.",
+												)}
+											</Text>
+										)}
+										{node.uses_default_certificate && (
+											<Alert
+												status="warning"
+												borderRadius="md"
+												alignItems="flex-start"
+												gap={3}
+												textAlign="start"
+											>
+												<AlertIcon mt={0.5} />
+												<Box>
+													<Text
+														fontWeight="semibold"
+														fontSize="sm"
+														lineHeight="short"
+													>
+														{t(
+															"nodes.legacyCertCardTitle",
+															"Legacy shared certificate in use",
+														)}
+													</Text>
+													<Text fontSize="xs" lineHeight="short">
+														{t(
+															"nodes.legacyCertCardDesc",
+															"Generate a private certificate for this node and reinstall it on the node host.",
+														)}
+													</Text>
+													<Button
+														size="xs"
+														mt={2}
+														colorScheme="primary"
+														onClick={() =>
+															nodeId && regenerateNodeCertMutate(node)
+														}
+														isLoading={
+															isRegenerating &&
+															nodeId != null &&
+															regeneratingNodeId === nodeId
+														}
+														isDisabled={!nodeId}
+														alignSelf="flex-start"
+													>
+														{t(
+															"nodes.generatePrivateCert",
+															"Generate private certificate",
+														)}
+													</Button>
+												</Box>
+											</Alert>
+										)}
+									</Stack>
+
+									<Divider />
+									<SimpleGrid columns={{ base: 1, sm: 2 }} spacingY={2}>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.nodeAddress")}
+											</Text>
+											<Text fontWeight="medium">{node.address}</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.nodePort")}
+											</Text>
+											<Text fontWeight="medium">{node.port}</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.nodeAPIPort")}
+											</Text>
+											<Text fontWeight="medium">{node.api_port}</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.usageCoefficient", "Usage coefficient")}
+											</Text>
+											<Text fontWeight="medium">{node.usage_coefficient}</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.totalUsage", "Total usage")}
+											</Text>
+											<Text fontWeight="medium">
+												{formatBytes(
+													(node.uplink ?? 0) + (node.downlink ?? 0),
+													2,
+												)}
+											</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.dataLimitLabel", "Data limit")}
+											</Text>
+											<Text fontWeight="medium">
+												{node.data_limit != null && node.data_limit > 0
+													? formatBytes(node.data_limit, 2)
+													: t("nodes.unlimited", "Unlimited")}
+											</Text>
+										</Box>
+									</SimpleGrid>
+									<Divider />
+									<HStack
+										justify="space-between"
+										align="center"
+										flexWrap="wrap"
+										gap={2}
+									>
+										<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+											{t("nodes.id", "ID")}: {node.id ?? "-"}
+										</Text>
+										<ButtonGroup size="sm" variant="ghost">
+											<IconButton
+												aria-label={t("edit")}
+												icon={<EditIconStyled />}
+												onClick={() => setEditingNode(node)}
+											/>
+											<IconButton
+												aria-label={t("delete")}
+												icon={<DeleteIconStyled />}
+												colorScheme="red"
+												onClick={() => setDeletingNode(node)}
+											/>
+										</ButtonGroup>
+									</HStack>
+								</VStack>
+							);
 
 							return (
 								<Box
 									key={node.id ?? node.name}
 									borderWidth="1px"
 									borderRadius="lg"
-									p={6}
+									p={viewMode === "list" ? 4 : 6}
 									boxShadow="sm"
 									_hover={{ boxShadow: "md" }}
 									transition="box-shadow 0.2s ease-in-out"
 								>
-									<VStack align="stretch" spacing={4}>
-										<Stack spacing={2}>
-											<HStack spacing={3} align="center" flexWrap="wrap">
-												<Text fontWeight="semibold" fontSize="lg">
-													{node.name || t("nodes.unnamedNode", "Unnamed node")}
-												</Text>
-												<Switch
-													size="sm"
-													colorScheme="primary"
-													isChecked={displayEnabled}
-													onChange={() => handleToggleNode(node)}
-													isDisabled={isToggleLoading}
-													aria-label={t(
-														"nodes.toggleAvailability",
-														"Toggle node availability",
-													)}
-												/>
-												{node.status === "error" && (
-													<Button
-														size="sm"
-														variant="outline"
-														leftIcon={<ArrowPathIconStyled />}
-														onClick={() => reconnect(node)}
-														isLoading={isReconnecting}
-													>
-														{t("nodes.reconnect")}
-													</Button>
-												)}
-											</HStack>
-											<HStack spacing={2} flexWrap="wrap">
-												{statusDisplay}
-												<HStack spacing={1} align="center">
-													<Tag colorScheme="blue" size="sm">
-														{node.xray_version
-															? `Xray ${node.xray_version}`
-															: t("nodes.versionUnknown", "Version unknown")}
-													</Tag>
-													<Tag colorScheme="green" size="sm">
-														{node.node_service_version
-															? t("nodes.nodeServiceVersionTag", {
-																	version: node.node_service_version,
-																})
-															: t(
-																	"nodes.nodeServiceVersionUnknown",
-																	"Node version unknown",
-																)}
-													</Tag>
-													<Button
-														size="xs"
-														variant="ghost"
-														colorScheme="primary"
-														onClick={() =>
-															nodeId &&
-															setVersionDialogTarget({ type: "node", node })
-														}
-														isLoading={isCoreUpdating}
-														isDisabled={!nodeId}
-													>
-														{t("nodes.updateCoreAction")}
-													</Button>
-												</HStack>
-												<Button
-													size="xs"
-													variant="ghost"
-													onClick={() =>
-														nodeId && setGeoDialogTarget({ type: "node", node })
-													}
-													isLoading={isGeoUpdating}
-													isDisabled={!nodeId}
-												>
-													{t("nodes.updateGeoAction", "Update geo")}
-												</Button>
-												<Button
-													size="xs"
-													variant="ghost"
-													colorScheme="orange"
-													onClick={() => handleRestartNodeService(node)}
-													isLoading={isRestartingMaintenance}
-													isDisabled={!nodeId}
-												>
-													{t(
-														"nodes.restartServiceAction",
-														"Restart node service",
-													)}
-												</Button>
-												<Button
-													size="xs"
-													variant="ghost"
-													colorScheme="teal"
-													onClick={() => handleUpdateNodeService(node)}
-													isLoading={isUpdatingMaintenance}
-													isDisabled={!nodeId}
-												>
-													{t(
-														"nodes.updateServiceAction",
-														"Update node service",
-													)}
-												</Button>
-												<Button
-													size="xs"
-													variant="ghost"
-													colorScheme="red"
-													onClick={() => handleResetNodeUsage(node)}
-													isLoading={
-														isResettingUsage &&
-														nodeId != null &&
-														resettingNodeId === nodeId
-													}
-													isDisabled={!nodeId}
-												>
-													{t("nodes.resetUsage", "Reset usage")}
-												</Button>
-											</HStack>
-											{status === "limited" && (
-												<Text fontSize="sm" color="red.500">
-													{t(
-														"nodes.limitedStatusDescription",
-														"This node is limited because its data limit is exhausted. Increase the limit or reset usage to reconnect it.",
-													)}
-												</Text>
-											)}
-											{node.uses_default_certificate && (
-												<Alert
-													status="warning"
-													borderRadius="md"
-													alignItems="flex-start"
-													gap={3}
-													textAlign="start"
-												>
-													<AlertIcon mt={0.5} />
-													<Box>
-														<Text
-															fontWeight="semibold"
-															fontSize="sm"
-															lineHeight="short"
-														>
-															{t(
-																"nodes.legacyCertCardTitle",
-																"Legacy shared certificate in use",
-															)}
-														</Text>
-														<Text fontSize="xs" lineHeight="short">
-															{t(
-																"nodes.legacyCertCardDesc",
-																"Generate a private certificate for this node and reinstall it on the node host.",
-															)}
-														</Text>
-														<Button
-															size="xs"
-															mt={2}
-															colorScheme="primary"
-															onClick={() =>
-																nodeId && regenerateNodeCertMutate(node)
-															}
-															isLoading={
-																isRegenerating &&
-																nodeId != null &&
-																regeneratingNodeId === nodeId
-															}
-															isDisabled={!nodeId}
-															alignSelf="flex-start"
-														>
-															{t(
-																"nodes.generatePrivateCert",
-																"Generate private certificate",
-															)}
-														</Button>
-													</Box>
-												</Alert>
-											)}
-										</Stack>
-
-										<Divider />
-										<SimpleGrid columns={{ base: 1, sm: 2 }} spacingY={2}>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.nodeAddress")}
-												</Text>
-												<Text fontWeight="medium">{node.address}</Text>
-											</Box>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.nodePort")}
-												</Text>
-												<Text fontWeight="medium">{node.port}</Text>
-											</Box>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.nodeAPIPort")}
-												</Text>
-												<Text fontWeight="medium">{node.api_port}</Text>
-											</Box>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.usageCoefficient", "Usage coefficient")}
-												</Text>
-												<Text fontWeight="medium">
-													{node.usage_coefficient}
-												</Text>
-											</Box>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.totalUsage", "Total usage")}
-												</Text>
-												<Text fontWeight="medium">
-													{formatBytes(
-														(node.uplink ?? 0) + (node.downlink ?? 0),
-														2,
-													)}
-												</Text>
-											</Box>
-											<Box>
-												<Text
-													fontSize="xs"
-													textTransform="uppercase"
-													color="gray.500"
-												>
-													{t("nodes.dataLimitLabel", "Data limit")}
-												</Text>
-												<Text fontWeight="medium">
-													{node.data_limit != null && node.data_limit > 0
-														? formatBytes(node.data_limit, 2)
-														: t("nodes.unlimited", "Unlimited")}
-												</Text>
-											</Box>
-										</SimpleGrid>
-										<Divider />
-										<HStack
-											justify="space-between"
-											align="center"
-											flexWrap="wrap"
-											gap={2}
-										>
-											<Text
-												fontSize="xs"
-												color="gray.500"
-												_dark={{ color: "gray.400" }}
+									{viewMode === "list" ? (
+										<VStack align="stretch" spacing={3}>
+											<HStack
+												justify="space-between"
+												align="center"
+												onClick={() => toggleExpandedNode(nodeKey)}
+												cursor="pointer"
 											>
-												{t("nodes.id", "ID")}: {node.id ?? "-"}
-											</Text>
-											<ButtonGroup size="sm" variant="ghost">
-												<IconButton
-													aria-label={t("edit")}
-													icon={<EditIconStyled />}
-													onClick={() => setEditingNode(node)}
-												/>
-												<IconButton
-													aria-label={t("delete")}
-													icon={<DeleteIconStyled />}
-													colorScheme="red"
-													onClick={() => setDeletingNode(node)}
-												/>
-											</ButtonGroup>
-										</HStack>
-									</VStack>
+												<VStack align="flex-start" spacing={0} flex="1">
+													<Text fontWeight="semibold">
+														{node.name ||
+															t("nodes.unnamedNode", "Unnamed node")}
+													</Text>
+													<Text
+														fontSize="sm"
+														color="gray.500"
+														_dark={{ color: "gray.400" }}
+													>
+														{node.address}
+													</Text>
+												</VStack>
+												{statusDisplay}
+											</HStack>
+											<Collapse
+												in={Boolean(expandedNodeKeys[nodeKey])}
+												animateOpacity
+											>
+												<Box pt={4}>
+													<Divider mb={4} />
+													{nodeContent}
+												</Box>
+											</Collapse>
+										</VStack>
+									) : (
+										nodeContent
+									)}
 								</Box>
 							);
 						})

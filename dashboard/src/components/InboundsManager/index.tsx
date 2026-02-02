@@ -124,7 +124,7 @@ export const InboundsManager: FC = () => {
 				);
 			}
 
-			const payload = buildInboundPayload(values);
+			const payload = buildInboundPayload(values, { initial: selected });
 			const url =
 				drawerMode === "create"
 					? "/inbounds"
@@ -143,11 +143,28 @@ export const InboundsManager: FC = () => {
 			refreshInboundsStore();
 			await loadInbounds();
 			onClose();
-		} catch (err: any) {
+		} catch (err: unknown) {
+			let description: string | undefined;
+			if (
+				err &&
+				typeof err === "object" &&
+				"data" in err &&
+				typeof (err as { data?: { detail?: unknown } }).data?.detail ===
+					"string"
+			) {
+				description = (err as { data?: { detail?: string } }).data?.detail;
+			} else if (
+				err &&
+				typeof err === "object" &&
+				"message" in err &&
+				typeof (err as { message?: unknown }).message === "string"
+			) {
+				description = (err as { message?: string }).message;
+			}
 			toast({
 				status: "error",
 				title: t("inbounds.error.submit", "Unable to save inbound"),
-				description: err?.data?.detail || err?.message,
+				description,
 			});
 		} finally {
 			setIsMutating(false);
@@ -172,11 +189,28 @@ export const InboundsManager: FC = () => {
 			});
 			refreshInboundsStore();
 			await loadInbounds();
-		} catch (err: any) {
+		} catch (err: unknown) {
+			let description: string | undefined;
+			if (
+				err &&
+				typeof err === "object" &&
+				"data" in err &&
+				typeof (err as { data?: { detail?: unknown } }).data?.detail ===
+					"string"
+			) {
+				description = (err as { data?: { detail?: string } }).data?.detail;
+			} else if (
+				err &&
+				typeof err === "object" &&
+				"message" in err &&
+				typeof (err as { message?: unknown }).message === "string"
+			) {
+				description = (err as { message?: string }).message;
+			}
 			toast({
 				status: "error",
 				title: t("inbounds.error.submit", "Unable to save inbound"),
-				description: err?.data?.detail || err?.message,
+				description,
 			});
 		} finally {
 			setIsMutating(false);

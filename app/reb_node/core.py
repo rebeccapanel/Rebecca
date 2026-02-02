@@ -113,6 +113,38 @@ class XRayCore:
         # Fallback to python implementation
         return self._generate_x25519_python(private_key)
 
+    def get_mldsa65(self):
+        if not self.available:
+            raise RuntimeError("XRay is not available. Please install XRay to enable this functionality.")
+        cmd = [self.executable_path, "mldsa65"]
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if len(lines) < 2:
+            raise ValueError("Invalid mldsa65 output")
+        seed_parts = lines[0].split(":", 1)
+        verify_parts = lines[1].split(":", 1)
+        if len(seed_parts) < 2 or len(verify_parts) < 2:
+            raise ValueError("Invalid mldsa65 output")
+        return {
+            "seed": seed_parts[1].strip(),
+            "verify": verify_parts[1].strip(),
+        }
+
+    def get_ech_cert(self, server_name: str):
+        if not self.available:
+            raise RuntimeError("XRay is not available. Please install XRay to enable this functionality.")
+        if not server_name or not server_name.strip():
+            raise ValueError("SNI is required to generate ECH certificate")
+        cmd = [self.executable_path, "tls", "ech", "--serverName", server_name.strip()]
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
+        lines = [line.strip() for line in output.splitlines()]
+        if len(lines) < 4:
+            raise ValueError("Invalid ECH output")
+        return {
+            "echServerKeys": lines[3],
+            "echConfigList": lines[1],
+        }
+
     def __capture_process_logs(self):
         def capture_and_debug_log():
             while self.process:

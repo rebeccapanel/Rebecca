@@ -33,7 +33,7 @@ const CheckIconChakra = chakra(CheckIcon, {
 	},
 });
 
-export const Language: FC<HeaderProps> = ({ actions }) => {
+export const Language: FC<HeaderProps> = () => {
 	const { i18n } = useTranslation();
 	const menuBg = useColorModeValue("surface.light", "surface.dark");
 	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
@@ -51,8 +51,29 @@ export const Language: FC<HeaderProps> = ({ actions }) => {
 		{ code: "ru", label: "Русский", flag: "RU" },
 	];
 
+	const popperModifiers = [
+		{
+			name: "preventOverflow",
+			options: { boundary: "viewport", padding: 8 },
+		},
+		{
+			name: "flip",
+			options: {
+				fallbackPlacements: ["bottom-start", "bottom", "top-end", "top-start"],
+			},
+		},
+	];
+
 	return (
-		<Menu placement="bottom-end">
+		<Menu
+			placement="bottom-end"
+			strategy="fixed"
+			isLazy
+			autoSelect={false}
+			gutter={6}
+			computePositionOnMount
+			modifiers={popperModifiers}
+		>
 			<MenuButton
 				as={IconButton}
 				size="sm"
@@ -61,18 +82,33 @@ export const Language: FC<HeaderProps> = ({ actions }) => {
 				position="relative"
 			/>
 			<MenuList
-				minW={{ base: "70vw", sm: "160px" }}
+				minW={{ base: "calc(100vw - 24px)", sm: "200px" }}
+				maxW="calc(100vw - 16px)"
 				zIndex={9999}
 				bg={menuBg}
 				borderColor={borderColor}
 				color={textColor}
+				sx={{
+					".chakra-menu__menuitem": {
+						bg: "transparent !important",
+						"&:hover": {
+							bg: `${hoverBg} !important`,
+						},
+						"&:active, &:focus": {
+							bg: `${hoverBg} !important`,
+						},
+					},
+				}}
 			>
 				{items.map(({ code, label, flag }) => (
 					<MenuItem
 						key={code}
 						fontSize="sm"
 						onClick={() => changeLanguage(code)}
+						bg="transparent"
 						_hover={{ bg: hoverBg }}
+						_active={{ bg: hoverBg }}
+						_focus={{ bg: hoverBg }}
 					>
 						<HStack justify="space-between" w="full">
 							<HStack spacing={2}>

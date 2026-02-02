@@ -29,12 +29,27 @@ export type RawInbound = {
 	sniffing?: Record<string, any>;
 };
 
+type BuildInboundOptions = {
+	initial?: RawInbound | null;
+};
+
 export type FallbackForm = {
 	dest: string;
 	path: string;
 	type: string;
 	alpn: string;
 	xver: string;
+};
+
+export type TlsCertificateForm = {
+	useFile: boolean;
+	certFile: string;
+	keyFile: string;
+	cert: string;
+	key: string;
+	oneTimeLoading: boolean;
+	usage: string;
+	buildChain: boolean;
 };
 
 export type ProxyAccountForm = {
@@ -84,7 +99,10 @@ export type InboundFormValues = {
 	fallbacks: FallbackForm[];
 
 	// shadowsocks
-	shadowsocksNetwork: string;
+	shadowsocksNetwork: "tcp" | "udp" | "tcp,udp";
+	shadowsocksMethod: string;
+	shadowsocksPassword: string;
+	shadowsocksIvCheck: boolean;
 
 	// sniffing
 	sniffingEnabled: boolean;
@@ -98,18 +116,39 @@ export type InboundFormValues = {
 
 	// TLS
 	tlsServerName: string;
+	tlsMinVersion: string;
+	tlsMaxVersion: string;
+	tlsCipherSuites: string;
+	tlsRejectUnknownSni: boolean;
+	tlsVerifyPeerCertByName: string;
+	tlsDisableSystemRoot: boolean;
+	tlsEnableSessionResumption: boolean;
+	tlsCertificates: TlsCertificateForm[];
 	tlsAlpn: string[];
+	tlsEchServerKeys: string;
+	tlsEchForceQuery: string;
 	tlsAllowInsecure: boolean;
 	tlsFingerprint: string;
+	tlsEchConfigList: string;
 	tlsRawSettings: Record<string, any>;
 
 	// REALITY
+	realityShow: boolean;
+	realityXver: string;
+	realityFingerprint: string;
+	realityTarget: string;
 	realityPrivateKey: string;
 	realityServerNames: string; // multi-line / comma-separated
 	realityShortIds: string; // multi-line / comma-separated
-	realityDest: string;
+	realityMaxTimediff: string;
+	realityMinClientVer: string;
+	realityMaxClientVer: string;
 	realitySpiderX: string;
-	realityXver: string;
+	realityServerName: string;
+	realityPublicKey: string;
+	realityMldsa65Seed: string;
+	realityMldsa65Verify: string;
+	realityRawSettings: Record<string, any>;
 
 	// WS
 	wsPath: string;
@@ -164,7 +203,7 @@ export type InboundFormValues = {
 	xhttpHost: string;
 	xhttpPath: string;
 	xhttpHeaders: HeaderForm[];
-	xhttpMode: "auto" | "packet-up" | "stream-up" | "stream-one";
+	xhttpMode: "" | "auto" | "packet-up" | "stream-up" | "stream-one";
 	xhttpScMaxBufferedPosts: string;
 	xhttpScMaxEachPostBytes: string;
 	xhttpScMinPostsIntervalMs: string;
@@ -200,6 +239,24 @@ export const sniffingOptions = [
 
 export const tlsAlpnOptions = Object.values(ALPN_OPTION);
 export const tlsFingerprintOptions = Object.values(UTLS_FINGERPRINT);
+export const tlsVersionOptions = ["1.0", "1.1", "1.2", "1.3"];
+export const tlsCipherOptions = [
+	"TLS_AES_128_GCM_SHA256",
+	"TLS_AES_256_GCM_SHA384",
+	"TLS_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+	"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+	"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+	"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+];
+export const tlsUsageOptions = ["encipherment", "verify", "issue"];
+export const tlsEchForceOptions = ["none", "half", "full"];
 
 export const protocolOptions: Protocol[] = [
 	"vmess",
@@ -208,6 +265,11 @@ export const protocolOptions: Protocol[] = [
 	"shadowsocks",
 	"http",
 	"socks",
+];
+export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] = [
+	"tcp,udp",
+	"tcp",
+	"udp",
 ];
 export const streamNetworks: StreamNetwork[] = [
 	"tcp",
@@ -234,6 +296,19 @@ const splitLines = (value: string): string[] =>
 
 const joinLines = (values: string[] | undefined): string =>
 	values?.length ? values.join("\n") : "";
+
+const joinComma = (values: string[] | undefined): string =>
+	values?.length ? values.join(",") : "";
+
+const parseStringList = (value: unknown): string[] => {
+	if (Array.isArray(value)) {
+		return value.map((entry) => String(entry).trim()).filter(Boolean);
+	}
+	if (typeof value === "string") {
+		return splitLines(value);
+	}
+	return [];
+};
 
 const toInputValue = (value: unknown): string => {
 	if (typeof value === "number" && Number.isFinite(value)) {
@@ -288,9 +363,78 @@ const cleanObject = (value: Record<string, any>) => {
 	return value;
 };
 
+const hasInitialField = (
+	initial: RawInbound | null | undefined,
+	path: Array<string>,
+): boolean => {
+	if (!initial || !path.length) return false;
+	let current: any = initial;
+	for (const key of path) {
+		if (!current || typeof current !== "object") {
+			return false;
+		}
+		if (!Object.prototype.hasOwnProperty.call(current, key)) {
+			return false;
+		}
+		current = current[key];
+	}
+	return true;
+};
+
+const normalizeComparable = (value: unknown): unknown => {
+	if (value === null || typeof value === "undefined") {
+		return null;
+	}
+	if (typeof value === "string") {
+		return value.trim();
+	}
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+	if (typeof value === "boolean") {
+		return value;
+	}
+	return value;
+};
+
+const shouldIncludeValue = (
+	value: unknown,
+	defaultValue: unknown,
+	initial: RawInbound | null | undefined,
+	path?: Array<string>,
+): boolean => {
+	if (path && hasInitialField(initial, path)) {
+		return true;
+	}
+	const normalizedValue = normalizeComparable(value);
+	if (normalizedValue === null || normalizedValue === "") {
+		return false;
+	}
+	const normalizedDefault = normalizeComparable(defaultValue);
+	if (
+		typeof normalizedDefault !== "undefined" &&
+		normalizedDefault !== null &&
+		normalizedValue === normalizedDefault
+	) {
+		return false;
+	}
+	return true;
+};
+
 const createDefaultProxyAccount = (): ProxyAccountForm => ({
 	user: "",
 	pass: "",
+});
+
+export const createDefaultTlsCertificate = (): TlsCertificateForm => ({
+	useFile: true,
+	certFile: "",
+	keyFile: "",
+	cert: "",
+	key: "",
+	oneTimeLoading: false,
+	usage: "encipherment",
+	buildChain: false,
 });
 
 const createDefaultHeader = (): HeaderForm => ({
@@ -317,6 +461,47 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
 	}
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const certificateToForm = (certificate: Record<string, any>): TlsCertificateForm => {
+	const hasFile =
+		typeof certificate?.certificateFile === "string" ||
+		typeof certificate?.keyFile === "string";
+	const certContent = Array.isArray(certificate?.certificate)
+		? certificate.certificate.join("\n")
+		: certificate?.certificate ?? "";
+	const keyContent = Array.isArray(certificate?.key)
+		? certificate.key.join("\n")
+		: certificate?.key ?? "";
+	return {
+		useFile: hasFile || (!certContent && !keyContent),
+		certFile: certificate?.certificateFile ?? "",
+		keyFile: certificate?.keyFile ?? "",
+		cert: certContent ?? "",
+		key: keyContent ?? "",
+		oneTimeLoading: Boolean(certificate?.oneTimeLoading),
+		usage: certificate?.usage ?? "encipherment",
+		buildChain: Boolean(certificate?.buildChain),
+	};
+};
+
+const certificateFromForm = (certificate: TlsCertificateForm): Record<string, any> => {
+	if (certificate.useFile) {
+		return cleanObject({
+			certificateFile: certificate.certFile?.trim(),
+			keyFile: certificate.keyFile?.trim(),
+			oneTimeLoading: certificate.oneTimeLoading,
+			usage: certificate.usage || undefined,
+			buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+		});
+	}
+	return cleanObject({
+		certificate: certificate.cert ? certificate.cert.split("\n") : [],
+		key: certificate.key ? certificate.key.split("\n") : [],
+		oneTimeLoading: certificate.oneTimeLoading,
+		usage: certificate.usage || undefined,
+		buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+	});
 };
 
 const buildSockoptSettings = (values: InboundFormValues) => {
@@ -360,23 +545,47 @@ export const createDefaultInboundForm = (
 	vlessEncryption: "",
 	fallbacks: [],
 	shadowsocksNetwork: "tcp,udp",
+	shadowsocksMethod: "chacha20-ietf-poly1305",
+	shadowsocksPassword: "",
+	shadowsocksIvCheck: false,
 	sniffingEnabled: true,
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
 	streamNetwork: "tcp",
-	streamSecurity: "tls",
+	streamSecurity: "none",
 	tlsServerName: "",
-	tlsAlpn: [],
+	tlsMinVersion: "1.2",
+	tlsMaxVersion: "1.3",
+	tlsCipherSuites: "",
+	tlsRejectUnknownSni: false,
+	tlsVerifyPeerCertByName: "dns.google",
+	tlsDisableSystemRoot: false,
+	tlsEnableSessionResumption: false,
+	tlsCertificates: [createDefaultTlsCertificate()],
+	tlsAlpn: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
+	tlsEchServerKeys: "",
+	tlsEchForceQuery: "none",
 	tlsAllowInsecure: false,
-	tlsFingerprint: "",
+	tlsFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	tlsEchConfigList: "",
 	tlsRawSettings: {},
+	realityShow: false,
+	realityXver: "0",
+	realityFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	realityTarget: "",
 	realityPrivateKey: "",
 	realityServerNames: "",
 	realityShortIds: "",
-	realityDest: "",
-	realitySpiderX: "",
-	realityXver: "0",
+	realityMaxTimediff: "0",
+	realityMinClientVer: "",
+	realityMaxClientVer: "",
+	realitySpiderX: "/",
+	realityServerName: "",
+	realityPublicKey: "",
+	realityMldsa65Seed: "",
+	realityMldsa65Verify: "",
+	realityRawSettings: {},
 	wsPath: "/",
 	wsHost: "",
 	wsHeaders: [createDefaultHeader()],
@@ -411,14 +620,14 @@ export const createDefaultInboundForm = (
 	splithttpNoGRPCHeader: false,
 	splithttpHeaders: [createDefaultHeader()],
 	xhttpHost: "",
-	xhttpPath: "/",
-	xhttpHeaders: [createDefaultHeader()],
-	xhttpMode: "auto",
-	xhttpScMaxBufferedPosts: "30",
-	xhttpScMaxEachPostBytes: "1000000",
-	xhttpScMinPostsIntervalMs: "30",
-	xhttpScStreamUpServerSecs: "20-80",
-	xhttpPaddingBytes: "100-1000",
+	xhttpPath: "",
+	xhttpHeaders: [],
+	xhttpMode: "",
+	xhttpScMaxBufferedPosts: "",
+	xhttpScMaxEachPostBytes: "",
+	xhttpScMinPostsIntervalMs: "",
+	xhttpScStreamUpServerSecs: "",
+	xhttpPaddingBytes: "",
 	xhttpNoSSEHeader: false,
 	xhttpNoGRPCHeader: false,
 	vlessSelectedAuth: "",
@@ -467,11 +676,31 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 	const sniffing = raw.sniffing ?? {};
 	const stream = raw.streamSettings ?? {};
 	const tlsSettings = stream.tlsSettings ?? {};
+	const tlsSettingsMeta =
+		tlsSettings && typeof tlsSettings.settings === "object"
+			? tlsSettings.settings
+			: {};
 	const rawTlsSettings =
 		stream.tlsSettings !== undefined && stream.tlsSettings !== null
 			? JSON.parse(JSON.stringify(stream.tlsSettings))
 			: {};
 	const realitySettings = stream.realitySettings ?? {};
+	const realitySettingsMeta =
+		realitySettings && typeof realitySettings.settings === "object"
+			? realitySettings.settings
+			: {};
+	const rawRealitySettings =
+		stream.realitySettings !== undefined && stream.realitySettings !== null
+			? JSON.parse(JSON.stringify(stream.realitySettings))
+			: {};
+	const tlsCertificates = Array.isArray(tlsSettings.certificates)
+		? tlsSettings.certificates.map((cert: Record<string, any>) =>
+				certificateToForm(cert),
+			)
+		: base.tlsCertificates;
+	const tlsAlpn = parseStringList(tlsSettings.alpn);
+	const realityServerNames = parseStringList(realitySettings.serverNames);
+	const realityShortIds = parseStringList(realitySettings.shortIds);
 
 	return {
 		...base,
@@ -488,7 +717,13 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 					fallbackToForm(item),
 				)
 			: base.fallbacks,
-		shadowsocksNetwork: settings.network ?? base.shadowsocksNetwork,
+		shadowsocksNetwork:
+			settings.network && ["tcp", "udp", "tcp,udp"].includes(settings.network)
+				? (settings.network as InboundFormValues["shadowsocksNetwork"])
+				: base.shadowsocksNetwork,
+		shadowsocksMethod: settings.method ?? base.shadowsocksMethod,
+		shadowsocksPassword: settings.password ?? base.shadowsocksPassword,
+		shadowsocksIvCheck: Boolean(settings.ivCheck ?? base.shadowsocksIvCheck),
 		sniffingEnabled: Boolean(sniffing.enabled ?? base.sniffingEnabled),
 		sniffingDestinations:
 			Array.isArray(sniffing.destOverride) && sniffing.destOverride.length
@@ -506,19 +741,94 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		wsAcceptProxyProtocol: Boolean(
 			stream?.wsSettings?.acceptProxyProtocol ?? base.wsAcceptProxyProtocol,
 		),
-		tlsServerName: tlsSettings.serverName ?? base.tlsServerName,
-		tlsAlpn: Array.isArray(tlsSettings.alpn) ? tlsSettings.alpn : base.tlsAlpn,
-		tlsAllowInsecure: Boolean(
-			tlsSettings.allowInsecure ?? base.tlsAllowInsecure,
+		tlsServerName:
+			tlsSettings.serverName ?? tlsSettings.sni ?? base.tlsServerName,
+		tlsMinVersion: tlsSettings.minVersion ?? base.tlsMinVersion,
+		tlsMaxVersion: tlsSettings.maxVersion ?? base.tlsMaxVersion,
+		tlsCipherSuites: tlsSettings.cipherSuites ?? base.tlsCipherSuites,
+		tlsRejectUnknownSni: Boolean(
+			tlsSettings.rejectUnknownSni ?? base.tlsRejectUnknownSni,
 		),
-		tlsFingerprint: tlsSettings.fingerprint ?? base.tlsFingerprint,
+		tlsVerifyPeerCertByName: (() => {
+			// Try new format first
+			const newValue = tlsSettings.verifyPeerCertByName;
+			if (newValue) {
+				return newValue;
+			}
+			// Fall back to old format (array)
+			const oldValue = tlsSettings.verifyPeerCertInNames;
+			if (Array.isArray(oldValue) && oldValue.length > 0) {
+				const firstDomain = String(oldValue[0]).trim();
+				return firstDomain || base.tlsVerifyPeerCertByName;
+			}
+			return base.tlsVerifyPeerCertByName;
+		})(),
+		tlsDisableSystemRoot: Boolean(
+			tlsSettings.disableSystemRoot ?? base.tlsDisableSystemRoot,
+		),
+		tlsEnableSessionResumption: Boolean(
+			tlsSettings.enableSessionResumption ??
+				base.tlsEnableSessionResumption,
+		),
+		tlsCertificates: tlsCertificates,
+		tlsAlpn: tlsAlpn.length ? tlsAlpn : base.tlsAlpn,
+		tlsEchServerKeys: tlsSettings.echServerKeys ?? base.tlsEchServerKeys,
+		tlsEchForceQuery: tlsSettings.echForceQuery ?? base.tlsEchForceQuery,
+		tlsAllowInsecure: Boolean(
+			tlsSettingsMeta.allowInsecure ??
+				tlsSettings.allowInsecure ??
+				base.tlsAllowInsecure,
+		),
+		tlsFingerprint:
+			tlsSettingsMeta.fingerprint ??
+			tlsSettings.fingerprint ??
+			base.tlsFingerprint,
+		tlsEchConfigList:
+			tlsSettingsMeta.echConfigList ??
+			tlsSettings.echConfigList ??
+			base.tlsEchConfigList,
 		tlsRawSettings: rawTlsSettings,
+		realityShow: Boolean(realitySettings.show ?? base.realityShow),
+		realityXver: toInputValue(realitySettings.xver ?? base.realityXver),
+		realityFingerprint:
+			realitySettingsMeta.fingerprint ?? base.realityFingerprint,
+		realityTarget:
+			realitySettings.target ??
+			realitySettings.dest ??
+			base.realityTarget,
 		realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
-		realityServerNames: joinLines(realitySettings.serverNames),
-		realityShortIds: joinLines(realitySettings.shortIds),
-		realityDest: realitySettings.dest ?? base.realityDest,
-		realitySpiderX: realitySettings.spiderX ?? base.realitySpiderX,
-		realityXver: realitySettings.xver?.toString() ?? base.realityXver,
+		realityServerNames: realityServerNames.length
+			? joinComma(realityServerNames)
+			: base.realityServerNames,
+		realityShortIds: realityShortIds.length
+			? joinComma(realityShortIds)
+			: base.realityShortIds,
+		realityMaxTimediff: toInputValue(
+			realitySettings.maxTimediff ??
+				realitySettings.maxTimeDiff ??
+				base.realityMaxTimediff,
+		),
+		realityMinClientVer:
+			realitySettings.minClientVer ?? base.realityMinClientVer,
+		realityMaxClientVer:
+			realitySettings.maxClientVer ?? base.realityMaxClientVer,
+		realitySpiderX:
+			realitySettingsMeta.spiderX ??
+			realitySettings.spiderX ??
+			base.realitySpiderX,
+		realityServerName:
+			realitySettingsMeta.serverName ?? base.realityServerName,
+		realityPublicKey:
+			realitySettingsMeta.publicKey ??
+			realitySettings.publicKey ??
+			base.realityPublicKey,
+		realityMldsa65Seed:
+			realitySettings.mldsa65Seed ?? base.realityMldsa65Seed,
+		realityMldsa65Verify:
+			realitySettingsMeta.mldsa65Verify ??
+			realitySettings.mldsa65Verify ??
+			base.realityMldsa65Verify,
+		realityRawSettings: rawRealitySettings,
 		wsPath: stream?.wsSettings?.path ?? base.wsPath,
 		wsHost:
 			stream?.wsSettings?.headers?.Host !== undefined
@@ -696,7 +1006,7 @@ const headersToForm = (
 	headers: Record<string, string | string[]> | undefined,
 ): HeaderForm[] => {
 	if (!headers) {
-		return [createDefaultHeader()];
+		return [];
 	}
 	const result: HeaderForm[] = [];
 	Object.entries(headers).forEach(([name, value]) => {
@@ -708,7 +1018,7 @@ const headersToForm = (
 			result.push({ name, value: value?.toString() ?? "" });
 		}
 	});
-	return result.length ? result : [createDefaultHeader()];
+	return result.length ? result : [];
 };
 
 const headersFromForm = (
@@ -717,11 +1027,23 @@ const headersFromForm = (
 
 const buildStreamSettings = (
 	values: InboundFormValues,
+	options?: BuildInboundOptions,
 ): Record<string, any> => {
+	const defaults = createDefaultInboundForm(values.protocol);
+	const initial = options?.initial ?? null;
 	const stream: Record<string, any> = {
 		network: values.streamNetwork,
-		security: values.streamSecurity,
 	};
+	if (
+		shouldIncludeValue(
+			values.streamSecurity,
+			defaults.streamSecurity,
+			initial,
+			["streamSettings", "security"],
+		)
+	) {
+		stream.security = values.streamSecurity;
+	}
 
 	if (values.streamNetwork === "ws") {
 		let headers = headersFromForm(values.wsHeaders);
@@ -809,56 +1131,218 @@ const buildStreamSettings = (
 	}
 
 	if (values.streamNetwork === "splithttp") {
-		stream.splithttpSettings = cleanObject({
-			path: values.splithttpPath,
-			host: values.splithttpHost,
-			headers: headersFromForm(values.splithttpHeaders),
-			scMaxConcurrentPosts:
-				values.splithttpScMaxConcurrentPosts?.trim() || undefined,
-			scMaxEachPostBytes:
-				values.splithttpScMaxEachPostBytes?.trim() || undefined,
-			scMinPostsIntervalMs:
-				values.splithttpScMinPostsIntervalMs?.trim() || undefined,
-			noSSEHeader: values.splithttpNoSSEHeader || undefined,
-			xPaddingBytes: values.splithttpXPaddingBytes?.trim() || undefined,
+		const headers = headersFromForm(values.splithttpHeaders);
+		const splithttpSettings = cleanObject({
+			path: shouldIncludeValue(
+				values.splithttpPath,
+				defaults.splithttpPath,
+				initial,
+				["streamSettings", "splithttpSettings", "path"],
+			)
+				? values.splithttpPath
+				: undefined,
+			host: shouldIncludeValue(
+				values.splithttpHost,
+				defaults.splithttpHost,
+				initial,
+				["streamSettings", "splithttpSettings", "host"],
+			)
+				? values.splithttpHost
+				: undefined,
+			headers: headers || undefined,
+			scMaxConcurrentPosts: shouldIncludeValue(
+				values.splithttpScMaxConcurrentPosts,
+				defaults.splithttpScMaxConcurrentPosts,
+				initial,
+				["streamSettings", "splithttpSettings", "scMaxConcurrentPosts"],
+			)
+				? values.splithttpScMaxConcurrentPosts?.trim() || undefined
+				: undefined,
+			scMaxEachPostBytes: shouldIncludeValue(
+				values.splithttpScMaxEachPostBytes,
+				defaults.splithttpScMaxEachPostBytes,
+				initial,
+				["streamSettings", "splithttpSettings", "scMaxEachPostBytes"],
+			)
+				? values.splithttpScMaxEachPostBytes?.trim() || undefined
+				: undefined,
+			scMinPostsIntervalMs: shouldIncludeValue(
+				values.splithttpScMinPostsIntervalMs,
+				defaults.splithttpScMinPostsIntervalMs,
+				initial,
+				["streamSettings", "splithttpSettings", "scMinPostsIntervalMs"],
+			)
+				? values.splithttpScMinPostsIntervalMs?.trim() || undefined
+				: undefined,
+			noSSEHeader: shouldIncludeValue(
+				values.splithttpNoSSEHeader,
+				defaults.splithttpNoSSEHeader,
+				initial,
+				["streamSettings", "splithttpSettings", "noSSEHeader"],
+			)
+				? values.splithttpNoSSEHeader || undefined
+				: undefined,
+			xPaddingBytes: shouldIncludeValue(
+				values.splithttpXPaddingBytes,
+				defaults.splithttpXPaddingBytes,
+				initial,
+				["streamSettings", "splithttpSettings", "xPaddingBytes"],
+			)
+				? values.splithttpXPaddingBytes?.trim() || undefined
+				: undefined,
 			xmux: cleanObject({
-				maxConcurrency: values.splithttpXmuxMaxConcurrency?.trim() || undefined,
-				maxConnections: parseOptionalNumber(values.splithttpXmuxMaxConnections),
-				cMaxReuseTimes: values.splithttpXmuxCMaxReuseTimes?.trim() || undefined,
-				cMaxLifetimeMs: parseOptionalNumber(values.splithttpXmuxCMaxLifetimeMs),
+				maxConcurrency: shouldIncludeValue(
+					values.splithttpXmuxMaxConcurrency,
+					defaults.splithttpXmuxMaxConcurrency,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "maxConcurrency"],
+				)
+					? values.splithttpXmuxMaxConcurrency?.trim() || undefined
+					: undefined,
+				maxConnections: shouldIncludeValue(
+					values.splithttpXmuxMaxConnections,
+					defaults.splithttpXmuxMaxConnections,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "maxConnections"],
+				)
+					? parseOptionalNumber(values.splithttpXmuxMaxConnections)
+					: undefined,
+				cMaxReuseTimes: shouldIncludeValue(
+					values.splithttpXmuxCMaxReuseTimes,
+					defaults.splithttpXmuxCMaxReuseTimes,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "cMaxReuseTimes"],
+				)
+					? values.splithttpXmuxCMaxReuseTimes?.trim() || undefined
+					: undefined,
+				cMaxLifetimeMs: shouldIncludeValue(
+					values.splithttpXmuxCMaxLifetimeMs,
+					defaults.splithttpXmuxCMaxLifetimeMs,
+					initial,
+					["streamSettings", "splithttpSettings", "xmux", "cMaxLifetimeMs"],
+				)
+					? parseOptionalNumber(values.splithttpXmuxCMaxLifetimeMs)
+					: undefined,
 			}),
-			mode: values.splithttpMode,
-			noGRPCHeader: values.splithttpNoGRPCHeader || undefined,
+			mode: shouldIncludeValue(
+				values.splithttpMode,
+				defaults.splithttpMode,
+				initial,
+				["streamSettings", "splithttpSettings", "mode"],
+			)
+				? values.splithttpMode
+				: undefined,
+			noGRPCHeader: shouldIncludeValue(
+				values.splithttpNoGRPCHeader,
+				defaults.splithttpNoGRPCHeader,
+				initial,
+				["streamSettings", "splithttpSettings", "noGRPCHeader"],
+			)
+				? values.splithttpNoGRPCHeader || undefined
+				: undefined,
 		});
+		if (Object.keys(splithttpSettings).length) {
+			stream.splithttpSettings = splithttpSettings;
+		}
 	}
 
 	if (values.streamNetwork === "xhttp") {
 		const mode = values.xhttpMode;
-		stream.xhttpSettings = cleanObject({
-			path: values.xhttpPath,
-			host: values.xhttpHost,
-			headers: headersFromForm(values.xhttpHeaders),
+		const headers = headersFromForm(values.xhttpHeaders);
+		const xhttpSettings = cleanObject({
+			path: shouldIncludeValue(
+				values.xhttpPath,
+				defaults.xhttpPath,
+				initial,
+				["streamSettings", "xhttpSettings", "path"],
+			)
+				? values.xhttpPath
+				: undefined,
+			host: shouldIncludeValue(
+				values.xhttpHost,
+				defaults.xhttpHost,
+				initial,
+				["streamSettings", "xhttpSettings", "host"],
+			)
+				? values.xhttpHost
+				: undefined,
+			headers: headers || undefined,
 			scMaxBufferedPosts:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMaxBufferedPosts,
+					defaults.xhttpScMaxBufferedPosts,
+					initial,
+					["streamSettings", "xhttpSettings", "scMaxBufferedPosts"],
+				)
 					? parseOptionalNumber(values.xhttpScMaxBufferedPosts)
 					: undefined,
 			scMaxEachPostBytes:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMaxEachPostBytes,
+					defaults.xhttpScMaxEachPostBytes,
+					initial,
+					["streamSettings", "xhttpSettings", "scMaxEachPostBytes"],
+				)
 					? values.xhttpScMaxEachPostBytes?.trim() || undefined
 					: undefined,
 			scMinPostsIntervalMs:
-				mode === "packet-up"
+				mode === "packet-up" &&
+				shouldIncludeValue(
+					values.xhttpScMinPostsIntervalMs,
+					defaults.xhttpScMinPostsIntervalMs,
+					initial,
+					["streamSettings", "xhttpSettings", "scMinPostsIntervalMs"],
+				)
 					? values.xhttpScMinPostsIntervalMs?.trim() || undefined
 					: undefined,
-			scStreamUpServerSecs:
-				values.xhttpScStreamUpServerSecs?.trim() || undefined,
-			xPaddingBytes: values.xhttpPaddingBytes?.trim() || undefined,
-			noSSEHeader: values.xhttpNoSSEHeader || undefined,
-			noGRPCHeader: ["stream-up", "stream-one"].includes(mode)
-				? values.xhttpNoGRPCHeader || undefined
+			scStreamUpServerSecs: shouldIncludeValue(
+				values.xhttpScStreamUpServerSecs,
+				defaults.xhttpScStreamUpServerSecs,
+				initial,
+				["streamSettings", "xhttpSettings", "scStreamUpServerSecs"],
+			)
+				? values.xhttpScStreamUpServerSecs?.trim() || undefined
 				: undefined,
-			mode,
+			xPaddingBytes: shouldIncludeValue(
+				values.xhttpPaddingBytes,
+				defaults.xhttpPaddingBytes,
+				initial,
+				["streamSettings", "xhttpSettings", "xPaddingBytes"],
+			)
+				? values.xhttpPaddingBytes?.trim() || undefined
+				: undefined,
+			noSSEHeader: shouldIncludeValue(
+				values.xhttpNoSSEHeader,
+				defaults.xhttpNoSSEHeader,
+				initial,
+				["streamSettings", "xhttpSettings", "noSSEHeader"],
+			)
+				? values.xhttpNoSSEHeader || undefined
+				: undefined,
+			noGRPCHeader:
+				["stream-up", "stream-one"].includes(mode) &&
+				shouldIncludeValue(
+					values.xhttpNoGRPCHeader,
+					defaults.xhttpNoGRPCHeader,
+					initial,
+					["streamSettings", "xhttpSettings", "noGRPCHeader"],
+				)
+					? values.xhttpNoGRPCHeader || undefined
+					: undefined,
+			mode: shouldIncludeValue(
+				mode,
+				defaults.xhttpMode,
+				initial,
+				["streamSettings", "xhttpSettings", "mode"],
+			)
+				? mode
+				: undefined,
 		});
+		if (Object.keys(xhttpSettings).length) {
+			stream.xhttpSettings = xhttpSettings;
+		}
 	}
 
 	if (values.streamSecurity === "tls") {
@@ -867,23 +1351,63 @@ const buildStreamSettings = (
 				? { ...values.tlsRawSettings }
 				: {};
 		tlsPayload.serverName = values.tlsServerName || undefined;
+		tlsPayload.minVersion = values.tlsMinVersion || undefined;
+		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
+		tlsPayload.cipherSuites = values.tlsCipherSuites || undefined;
+		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
+		tlsPayload.verifyPeerCertByName = values.tlsVerifyPeerCertByName || undefined;
+		delete tlsPayload.verifyPeerCertInNames; // Remove old format
+		tlsPayload.disableSystemRoot = values.tlsDisableSystemRoot;
+		tlsPayload.enableSessionResumption = values.tlsEnableSessionResumption;
+		tlsPayload.certificates = values.tlsCertificates.map((certificate) =>
+			certificateFromForm(certificate),
+		);
 		tlsPayload.alpn = values.tlsAlpn?.length ? values.tlsAlpn : undefined;
-		tlsPayload.allowInsecure = values.tlsAllowInsecure;
-		tlsPayload.fingerprint = values.tlsFingerprint || undefined;
+		tlsPayload.echServerKeys = values.tlsEchServerKeys || undefined;
+		tlsPayload.echForceQuery = values.tlsEchForceQuery || undefined;
+		const settingsPayload =
+			tlsPayload.settings && typeof tlsPayload.settings === "object"
+				? { ...tlsPayload.settings }
+				: {};
+		settingsPayload.allowInsecure = values.tlsAllowInsecure;
+		settingsPayload.fingerprint = values.tlsFingerprint || undefined;
+		settingsPayload.echConfigList = values.tlsEchConfigList || undefined;
+		tlsPayload.settings = cleanObject(settingsPayload);
 		stream.tlsSettings = cleanObject(tlsPayload);
 	}
 
 	if (values.streamSecurity === "reality") {
+		const realityPayload =
+			values.realityRawSettings &&
+			typeof values.realityRawSettings === "object"
+				? { ...values.realityRawSettings }
+				: {};
 		const serverNames = splitLines(values.realityServerNames);
 		const shortIds = splitLines(values.realityShortIds);
-		stream.realitySettings = cleanObject({
-			privateKey: values.realityPrivateKey?.trim() || undefined,
-			dest: values.realityDest?.trim() || undefined,
-			serverNames: serverNames.length ? serverNames : undefined,
-			shortIds: shortIds.length ? shortIds : undefined,
-			spiderX: values.realitySpiderX?.trim() || undefined,
-			xver: values.realityXver ? Number(values.realityXver) : undefined,
-		});
+		const target = values.realityTarget?.trim();
+		realityPayload.show = values.realityShow;
+		realityPayload.xver = parseOptionalNumber(values.realityXver);
+		realityPayload.target = target || undefined;
+		realityPayload.dest = target || undefined;
+		realityPayload.serverNames = serverNames.length ? serverNames : undefined;
+		realityPayload.privateKey = values.realityPrivateKey?.trim() || undefined;
+		realityPayload.minClientVer = values.realityMinClientVer?.trim() || undefined;
+		realityPayload.maxClientVer = values.realityMaxClientVer?.trim() || undefined;
+		realityPayload.maxTimediff = parseOptionalNumber(values.realityMaxTimediff);
+		realityPayload.shortIds = shortIds.length ? shortIds : undefined;
+		realityPayload.mldsa65Seed = values.realityMldsa65Seed?.trim() || undefined;
+		const realitySettings =
+			realityPayload.settings && typeof realityPayload.settings === "object"
+				? { ...realityPayload.settings }
+				: {};
+		realitySettings.publicKey = values.realityPublicKey?.trim() || undefined;
+		realitySettings.fingerprint = values.realityFingerprint || undefined;
+		realitySettings.serverName = values.realityServerName?.trim() || undefined;
+		realitySettings.spiderX = values.realitySpiderX?.trim() || undefined;
+		realitySettings.mldsa65Verify =
+			values.realityMldsa65Verify?.trim() || undefined;
+		realityPayload.settings = cleanObject(realitySettings);
+		stream.realitySettings = cleanObject(realityPayload);
 	}
 
 	const sockoptPayload = buildSockoptSettings(values);
@@ -919,15 +1443,18 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-		case "trojan":
+	case "trojan":
 			if (values.fallbacks.length) {
 				base.fallbacks = values.fallbacks
 					.map(formToFallback)
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-		case "shadowsocks":
+	case "shadowsocks":
 			base.network = values.shadowsocksNetwork || "tcp,udp";
+			base.method = values.shadowsocksMethod || undefined;
+			base.password = values.shadowsocksPassword || undefined;
+			base.ivCheck = values.shadowsocksIvCheck || undefined;
 			break;
 		case "http": {
 			const accounts = values.httpAccounts
@@ -962,11 +1489,14 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	return base;
 };
 
-export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
+export const buildInboundPayload = (
+	values: InboundFormValues,
+	options?: BuildInboundOptions,
+): RawInbound => {
 	const supportsStream =
 		values.protocol !== "http" && values.protocol !== "socks";
 	const streamSettings = supportsStream
-		? buildStreamSettings(values)
+		? buildStreamSettings(values, options)
 		: undefined;
 	const payload: RawInbound = {
 		tag: values.tag.trim(),
@@ -981,12 +1511,22 @@ export const buildInboundPayload = (values: InboundFormValues): RawInbound => {
 	}
 
 	if (values.sniffingEnabled) {
-		payload.sniffing = cleanObject({
+		const initial = options?.initial ?? null;
+		const sniffing = cleanObject({
 			enabled: true,
 			destOverride: values.sniffingDestinations,
-			routeOnly: values.sniffingRouteOnly,
-			metadataOnly: values.sniffingMetadataOnly,
+			routeOnly:
+				values.sniffingRouteOnly ||
+				(hasInitialField(initial, ["sniffing", "routeOnly"])
+					? values.sniffingRouteOnly
+					: undefined),
+			metadataOnly:
+				values.sniffingMetadataOnly ||
+				(hasInitialField(initial, ["sniffing", "metadataOnly"])
+					? values.sniffingMetadataOnly
+					: undefined),
 		});
+		payload.sniffing = sniffing;
 	} else {
 		payload.sniffing = { enabled: false };
 	}

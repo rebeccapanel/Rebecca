@@ -11,6 +11,7 @@ from jdatetime import date as jd
 from app.utils.system import get_public_ip, get_public_ipv6, readable_size
 from app.utils.credentials import runtime_proxy_settings
 from app.models.proxy import ProxyTypes
+from app.services.subscription_settings import EffectiveSubscriptionSettings
 
 from . import *
 
@@ -52,26 +53,54 @@ def is_credential_key(value: str) -> bool:
     return len(cleaned) == 32 and all(ch in string.hexdigits for ch in cleaned)
 
 
-def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> list:
+def generate_v2ray_links(
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
+    *,
+    inbounds_by_tag: dict | None = None,
+    host_map: dict | None = None,
+    force_refresh: bool = True,
+) -> list:
     format_variables = setup_format_variables(extra_data)
     conf = V2rayShareLink()
-    return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
+    return process_inbounds_and_tags(
+        inbounds,
+        proxies,
+        format_variables,
+        extra_data,
+        conf=conf,
+        reverse=reverse,
+        inbounds_by_tag=inbounds_by_tag,
+        host_map=host_map,
+        force_refresh=force_refresh,
+    )
 
 
 def generate_clash_subscription(
-    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
+    proxies: dict,
+    inbounds: dict,
+    extra_data: dict,
+    reverse: bool,
+    is_meta: bool = False,
+    settings: EffectiveSubscriptionSettings | None = None,
 ) -> str:
+    if settings is None:
+        raise ValueError("Subscription settings are required for generating clash subscriptions")
     if is_meta is True:
-        conf = ClashMetaConfiguration()
+        conf = ClashMetaConfiguration(settings)
     else:
-        conf = ClashConfiguration()
+        conf = ClashConfiguration(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
 
 
-def generate_singbox_subscription(proxies: dict, inbounds: dict, extra_data: dict, reverse: bool) -> str:
-    conf = SingBoxConfiguration()
+def generate_singbox_subscription(
+    proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, settings: EffectiveSubscriptionSettings
+) -> str:
+    conf = SingBoxConfiguration(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
@@ -82,6 +111,7 @@ def generate_outline_subscription(
     inbounds: dict,
     extra_data: dict,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
     conf = OutlineConfiguration()
 
@@ -94,8 +124,9 @@ def generate_v2ray_json_subscription(
     inbounds: dict,
     extra_data: dict,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
-    conf = V2rayJsonConfig()
+    conf = V2rayJsonConfig(settings)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(inbounds, proxies, format_variables, extra_data, conf=conf, reverse=reverse)
@@ -106,6 +137,7 @@ def generate_subscription(
     config_format: Literal["v2ray", "clash-meta", "clash", "sing-box", "outline", "v2ray-json"],
     as_base64: bool,
     reverse: bool,
+    settings: EffectiveSubscriptionSettings,
 ) -> str:
     kwargs = {
         "proxies": user.proxies,
@@ -117,15 +149,15 @@ def generate_subscription(
     if config_format == "v2ray":
         config = "\n".join(generate_v2ray_links(**kwargs))
     elif config_format == "clash-meta":
-        config = generate_clash_subscription(**kwargs, is_meta=True)
+        config = generate_clash_subscription(**kwargs, is_meta=True, settings=settings)
     elif config_format == "clash":
-        config = generate_clash_subscription(**kwargs)
+        config = generate_clash_subscription(**kwargs, settings=settings)
     elif config_format == "sing-box":
-        config = generate_singbox_subscription(**kwargs)
+        config = generate_singbox_subscription(**kwargs, settings=settings)
     elif config_format == "outline":
-        config = generate_outline_subscription(**kwargs)
+        config = generate_outline_subscription(**kwargs, settings=settings)
     elif config_format == "v2ray-json":
-        config = generate_v2ray_json_subscription(**kwargs)
+        config = generate_v2ray_json_subscription(**kwargs, settings=settings)
     else:
         raise ValueError(f'Unsupported format "{config_format}"')
 
@@ -248,6 +280,9 @@ def process_inbounds_and_tags(
         OutlineConfiguration,
     ],
     reverse=False,
+    inbounds_by_tag: dict | None = None,
+    host_map: dict | None = None,
+    force_refresh: bool = True,
 ) -> Union[List, str]:
     from app.runtime import xray
     from app.services.data_access import get_service_host_map_cached
@@ -259,15 +294,16 @@ def process_inbounds_and_tags(
 
     from app.services.data_access import get_inbounds_by_tag_cached
     from config import REDIS_ENABLED
-    
-    inbounds_by_tag = {}
-    if REDIS_ENABLED:
+
+    if inbounds_by_tag is None:
+        inbounds_by_tag = {}
+    if not inbounds_by_tag and REDIS_ENABLED:
         try:
             with GetDB() as db:
-                inbounds_by_tag = get_inbounds_by_tag_cached(db)
+                inbounds_by_tag = get_inbounds_by_tag_cached(db, force_refresh=force_refresh)
         except Exception:
             pass
-    
+
     if not inbounds_by_tag:
         xray_config = None
         try:
@@ -282,12 +318,13 @@ def process_inbounds_and_tags(
 
         inbounds_by_tag = getattr(xray_config, "inbounds_by_tag", {}) or {}
 
-    host_map = {}
-    if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
-        try:
-            host_map = get_service_host_map_cached(service_id, force_refresh=True)
-        except Exception:
-            host_map = {}
+    if host_map is None:
+        host_map = {}
+        if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+            try:
+                host_map = get_service_host_map_cached(service_id, force_refresh=force_refresh)
+            except Exception:
+                host_map = {}
     inbound_index = {tag: index for index, tag in enumerate(inbounds_by_tag.keys())}
 
     service_host_orders = (extra_data or {}).get("service_host_orders") or {}

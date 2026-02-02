@@ -7,8 +7,8 @@ load_dotenv()
 
 
 SQLALCHEMY_DATABASE_URL = config("SQLALCHEMY_DATABASE_URL", default="sqlite:///db.sqlite3")
-SQLALCHEMY_POOL_SIZE = config("SQLALCHEMY_POOL_SIZE", cast=int, default=20)
-SQLALCHEMY_MAX_OVERFLOW = config("SQLALCHEMY_MAX_OVERFLOW", cast=int, default=50)
+SQLALCHEMY_POOL_SIZE = config("SQLALCHEMY_POOL_SIZE", cast=int, default=50)
+SQLALCHEMY_MAX_OVERFLOW = config("SQLALCHEMY_MAX_OVERFLOW", cast=int, default=100)
 
 UVICORN_HOST = config("UVICORN_HOST", default="::")
 UVICORN_PORT = config("UVICORN_PORT", cast=int, default=8000)
@@ -35,7 +35,7 @@ XRAY_FALLBACKS_INBOUND_TAG = config("XRAY_FALLBACKS_INBOUND_TAG", cast=str, defa
 XRAY_EXECUTABLE_PATH = config("XRAY_EXECUTABLE_PATH", default="/usr/local/bin/xray")
 XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
-XRAY_SUBSCRIPTION_URL_PREFIX = config("XRAY_SUBSCRIPTION_URL_PREFIX", default="").strip("/")
+XRAY_SUBSCRIPTION_URL_PREFIX = ""  # subscription prefix now comes from DB
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
 XRAY_JSON = config("XRAY_JSON", default="/var/lib/rebecca/xray_config.json")
 XRAY_LOG_DIR = config("XRAY_LOG_DIR", default="").strip()
@@ -122,10 +122,10 @@ NUMBER_OF_RECURRENT_NOTIFICATIONS = config("NUMBER_OF_RECURRENT_NOTIFICATIONS", 
 
 DISABLE_RECORDING_NODE_USAGE = config("DISABLE_RECORDING_NODE_USAGE", cast=bool, default=False)
 
-# headers: profile-update-interval, support-url, profile-title
-SUB_UPDATE_INTERVAL = config("SUB_UPDATE_INTERVAL", default="12")
-SUB_SUPPORT_URL = config("SUB_SUPPORT_URL", default="https://t.me/")
-SUB_PROFILE_TITLE = config("SUB_PROFILE_TITLE", default="Subscription")
+# headers: profile-update-interval, support-url, profile-title (DB-driven; keep static defaults)
+SUB_UPDATE_INTERVAL = "12"
+SUB_SUPPORT_URL = "https://t.me/"
+SUB_PROFILE_TITLE = "Subscription"
 
 # Interval jobs, all values are in seconds
 JOB_CORE_HEALTH_CHECK_INTERVAL = config("JOB_CORE_HEALTH_CHECK_INTERVAL", cast=int, default=10)

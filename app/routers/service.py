@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Optional
+import logging
+import random
+from copy import deepcopy
+from typing import List, Optional, Set, Tuple
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -38,12 +41,118 @@ from app.models.user import (
 )
 from app.reb_node import operations as core_operations
 from app.utils import responses
+from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
 
 router = APIRouter(
     prefix="/api/v2/services",
     tags=["Service V2"],
     responses={401: responses._401},
 )
+
+logger = logging.getLogger(__name__)
+_AUTO_INBOUND_PREFIX = "setservice-"
+
+
+def _queue_xray_restart(bg: BackgroundTasks) -> None:
+    def _restart() -> None:
+        try:
+            restart_xray_and_invalidate_cache()
+        except Exception as exc:  # pragma: no cover - best effort background task
+            logger.error("Failed to restart Xray after service inbound change: %s", exc)
+
+    bg.add_task(_restart)
+
+
+def _load_config(db: Session) -> dict:
+    return deepcopy(crud.get_xray_config(db))
+
+
+def _auto_inbound_tag(service_id: int) -> str:
+    return f"{_AUTO_INBOUND_PREFIX}{service_id}"
+
+
+def _collect_ports(value: object, used: Set[int], ranges: List[Tuple[int, int]]) -> None:
+    if value is None:
+        return
+    if isinstance(value, int):
+        used.add(value)
+        return
+    if isinstance(value, str):
+        for chunk in value.split(","):
+            part = chunk.strip()
+            if not part:
+                continue
+            if part.isdigit():
+                used.add(int(part))
+                continue
+            if "-" in part:
+                start_str, end_str = part.split("-", 1)
+                if start_str.strip().isdigit() and end_str.strip().isdigit():
+                    start = int(start_str.strip())
+                    end = int(end_str.strip())
+                    if start > end:
+                        start, end = end, start
+                    ranges.append((start, end))
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _collect_ports(item, used, ranges)
+
+
+def _extract_used_ports(config: dict) -> tuple[Set[int], List[Tuple[int, int]]]:
+    used: Set[int] = set()
+    ranges: List[Tuple[int, int]] = []
+    for inbound in config.get("inbounds", []) or []:
+        if isinstance(inbound, dict):
+            _collect_ports(inbound.get("port"), used, ranges)
+    if getattr(xray, "config", None):
+        try:
+            used.add(int(xray.config.api_port))
+        except Exception:
+            pass
+    return used, ranges
+
+
+def _is_port_used(port: int, used: Set[int], ranges: List[Tuple[int, int]]) -> bool:
+    if port in used:
+        return True
+    for start, end in ranges:
+        if start <= port <= end:
+            return True
+    return False
+
+
+def _pick_available_port(config: dict, *, min_port: int = 10000, max_port: int = 60000) -> int:
+    used, ranges = _extract_used_ports(config)
+    for _ in range(200):
+        candidate = random.randint(min_port, max_port)
+        if not _is_port_used(candidate, used, ranges):
+            return candidate
+    for candidate in range(min_port, max_port + 1):
+        if not _is_port_used(candidate, used, ranges):
+            return candidate
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No available port found")
+
+
+def _refresh_inbounds_cache(db: Session) -> None:
+    from config import REDIS_ENABLED
+
+    if not REDIS_ENABLED:
+        return
+    try:
+        from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
+        from app.reb_node.config import XRayConfig
+
+        raw_config = crud.get_xray_config(db)
+        xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
+        inbounds_dict = {
+            "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
+            "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
+        }
+        cache_inbounds(inbounds_dict)
+        invalidate_service_host_map_cache()
+    except Exception:
+        pass
 
 
 @threaded_function
@@ -171,8 +280,7 @@ def get_services(
     )
     user_counts = data.get("user_counts", {})
     services = [
-        _service_to_summary(service, db, user_count=int(user_counts.get(service.id, 0)))
-        for service in data["services"]
+        _service_to_summary(service, db, user_count=int(user_counts.get(service.id, 0))) for service in data["services"]
     ]
     return ServiceListResponse(services=services, total=data["total"])
 
@@ -209,6 +317,7 @@ def create_service(
             rebuild_service_hosts_cache()
             # Re-cache all service host maps
             from app.reb_node import state as xray_state
+
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
                 if host_map:
@@ -280,6 +389,7 @@ def modify_service(
                 rebuild_service_hosts_cache()
                 # Re-cache all service host maps
                 from app.reb_node import state as xray_state
+
                 for service_id in xray_state.service_hosts_cache.keys():
                     host_map = xray_state.service_hosts_cache.get(service_id)
                     if host_map:
@@ -288,6 +398,91 @@ def modify_service(
                 pass  # Don't fail if Redis is unavailable
 
     return _service_to_detail(db, service)
+
+
+@router.post(
+    "/{service_id}/auto-inbound",
+    responses={403: responses._403, 404: responses._404},
+)
+def create_service_auto_inbound(
+    service_id: int,
+    bg: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    del admin
+    service = crud.get_service(db, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    tag = _auto_inbound_tag(service_id)
+    config = _load_config(db)
+    if any(inbound.get("tag") == tag for inbound in config.get("inbounds", []) or []):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Auto inbound already exists")
+
+    port = _pick_available_port(config)
+    inbound = {
+        "tag": tag,
+        "listen": "::",
+        "port": port,
+        "protocol": "shadowsocks",
+        "settings": {
+            "clients": [],
+            "network": "tcp,udp",
+        },
+    }
+
+    config.setdefault("inbounds", []).append(inbound)
+    apply_config(config)
+    _queue_xray_restart(bg)
+
+    crud.get_or_create_inbound(db, tag)
+    xray.hosts.update()
+    _refresh_inbounds_cache(db)
+
+    return {"detail": "Auto inbound created", "tag": tag, "port": port}
+
+
+@router.delete(
+    "/{service_id}/auto-inbound",
+    responses={403: responses._403, 404: responses._404},
+)
+def delete_service_auto_inbound(
+    service_id: int,
+    bg: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    del admin
+    service = crud.get_service(db, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    tag = _auto_inbound_tag(service_id)
+    config = _load_config(db)
+    index = None
+    for idx, inbound in enumerate(config.get("inbounds", []) or []):
+        if inbound.get("tag") == tag:
+            index = idx
+            break
+
+    if index is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Auto inbound not found")
+
+    del config["inbounds"][index]
+    apply_config(config)
+    _queue_xray_restart(bg)
+
+    try:
+        crud.delete_inbound(db, tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    db.commit()
+    xray.hosts.update()
+    _refresh_inbounds_cache(db)
+
+    return {"detail": "Auto inbound removed"}
 
 
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -343,6 +538,7 @@ def delete_service(
             rebuild_service_hosts_cache()
             # Re-cache all service host maps
             from app.reb_node import state as xray_state
+
             for service_id in xray_state.service_hosts_cache.keys():
                 host_map = xray_state.service_hosts_cache.get(service_id)
                 if host_map:
@@ -563,20 +759,42 @@ def perform_service_users_action(
     detail = "Advanced action applied"
     try:
         if payload.action == AdvancedUserAction.extend_expire:
-            affected = crud.adjust_all_users_expire(db, payload.days * 86400, admin=target_admin, service_id=service.id)
+            affected = crud.adjust_all_users_expire(
+                db,
+                payload.days * 86400,
+                admin=target_admin,
+                service_id=service.id,
+                status_scope=payload.scope,
+            )
             detail = "Expiration dates extended"
         elif payload.action == AdvancedUserAction.reduce_expire:
             affected = crud.adjust_all_users_expire(
-                db, -payload.days * 86400, admin=target_admin, service_id=service.id
+                db,
+                -payload.days * 86400,
+                admin=target_admin,
+                service_id=service.id,
+                status_scope=payload.scope,
             )
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_limit(db, delta, admin=target_admin, service_id=service.id)
+            affected = crud.adjust_all_users_limit(
+                db,
+                delta,
+                admin=target_admin,
+                service_id=service.id,
+                status_scope=payload.scope,
+            )
             detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
             delta = max(1, int(round(payload.gigabytes * 1073741824)))
-            affected = crud.adjust_all_users_limit(db, -delta, admin=target_admin, service_id=service.id)
+            affected = crud.adjust_all_users_limit(
+                db,
+                -delta,
+                admin=target_admin,
+                service_id=service.id,
+                status_scope=payload.scope,
+            )
             detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:
             affected = crud.delete_users_by_status_age(
@@ -600,6 +818,13 @@ def perform_service_users_action(
         if isinstance(exc, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        from app.redis.cache import invalidate_user_cache
+
+        invalidate_user_cache()
+    except Exception:
+        pass
 
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)

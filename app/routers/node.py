@@ -26,6 +26,7 @@ from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
 from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT
+from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
     generate_certificate,
     generate_unique_cn,
@@ -276,21 +277,31 @@ async def node_logs(node_id: int, websocket: WebSocket):
 
     await websocket.accept()
 
-    cache = ""
+    cache: list[str] = []
     last_sent_ts = 0
     node = xray.nodes[node_id]
+
+    async def _flush_cache() -> bool:
+        nonlocal cache, last_sent_ts
+        if not cache:
+            return True
+        try:
+            for line in sort_log_lines(cache):
+                await websocket.send_text(line)
+        except (WebSocketDisconnect, RuntimeError):
+            return False
+        cache = []
+        last_sent_ts = time.time()
+        return True
+
     with node.get_logs() as logs:
         while True:
             if not node == xray.nodes[node_id]:
                 break
 
             if interval and time.time() - last_sent_ts >= interval and cache:
-                try:
-                    await websocket.send_text(cache)
-                except (WebSocketDisconnect, RuntimeError):
+                if not await _flush_cache():
                     break
-                cache = ""
-                last_sent_ts = time.time()
 
             if not logs:
                 try:
@@ -301,15 +312,21 @@ async def node_logs(node_id: int, websocket: WebSocket):
                 except (WebSocketDisconnect, RuntimeError):
                     break
 
-            log = logs.popleft()
+            log_chunk = str(logs.popleft())
+            lines = normalize_log_chunk(log_chunk)
 
             if interval:
-                cache += f"{log}\n"
+                cache.extend(lines)
                 continue
 
-            try:
-                await websocket.send_text(log)
-            except (WebSocketDisconnect, RuntimeError):
+            send_failed = False
+            for line in sort_log_lines(lines):
+                try:
+                    await websocket.send_text(line)
+                except (WebSocketDisconnect, RuntimeError):
+                    send_failed = True
+                    break
+            if send_failed:
                 break
 
 
@@ -365,12 +382,15 @@ def reset_node_usage(
 @router.post("/node/{node_id}/reconnect")
 def reconnect_node(
     bg: BackgroundTasks,
-    dbnode: NodeResponse = Depends(get_node),
+    dbnode: DBNode = Depends(get_dbnode),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Trigger a reconnection for the specified node. Only accessible to sudo admins."""
-    bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
-    return {"detail": "Reconnection task scheduled"}
+    """Force a reconnection for the specified node (disconnect + reconnect)."""
+    if dbnode.status in {NodeStatus.disabled, NodeStatus.limited}:
+        raise HTTPException(status_code=400, detail="Node is disabled or limited")
+
+    bg.add_task(xray.operations.connect_node, node_id=dbnode.id, force=True)
+    return {"detail": "Reconnection task scheduled", "node_id": dbnode.id}
 
 
 @router.delete("/node/{node_id}")

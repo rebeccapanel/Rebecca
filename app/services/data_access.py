@@ -100,4 +100,5 @@ def get_inbounds_by_tag_cached(db: Session, force_refresh: bool = False) -> Dict
 
     # Fallback to xray.config
     from app.runtime import xray
+
     return xray.config.inbounds_by_tag
