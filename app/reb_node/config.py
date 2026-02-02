@@ -149,6 +149,59 @@ def _flow_supported_for_inbound(inbound: dict) -> bool:
     return network in ("tcp", "raw", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
 
 
+def get_xray_version():
+    """
+    Get the installed Xray core version from the running instance.
+    Falls back to creating a temporary instance if runtime is not yet initialized.
+
+    Returns:
+        str: Version string (e.g., "1.8.4") if Xray is available, None otherwise.
+    """
+    try:
+        # Try to use the already-running core instance from runtime
+        from app.reb_node.state import core
+        return core.version if core.available else None
+    except Exception:
+        return None
+
+
+def is_xray_version_at_least(target_version: str) -> bool:
+    """
+    Check if the current Xray version is at least the target version.
+    Version format is YY.M.DD (e.g., "26.1.31" for Jan 31, 2026).
+
+    Args:
+        target_version: Target version string (e.g., "26.1.31")
+
+    Returns:
+        bool: True if current version >= target version, False otherwise.
+              Returns True if version cannot be determined.
+
+    Examples:
+        >>> is_xray_version_at_least("26.1.31")  # Check if current version is at least 26.1.31
+    """
+
+    current_version = get_xray_version()
+
+    if not current_version or not target_version:
+        return True  # Assume true if version cannot be determined
+
+    try:
+        # Parse versions into tuples of integers for comparison
+        current_parts = [int(x) for x in current_version.split('.')]
+        target_parts = [int(x) for x in target_version.split('.')]
+
+        # Pad shorter version with zeros for comparison
+        max_len = max(len(current_parts), len(target_parts))
+        current_parts.extend([0] * (max_len - len(current_parts)))
+        target_parts.extend([0] * (max_len - len(target_parts)))
+
+        # Compare versions
+        return tuple(current_parts) >= tuple(target_parts)
+    except (ValueError, AttributeError):
+        return True  # Assume true if version cannot be determined
+
+
 class XRayConfig(dict):
     def __init__(self, config: Union[dict, str, PosixPath] = {}, api_host: str = "127.0.0.1", api_port: int = 8080):
         if isinstance(config, str):
@@ -706,23 +759,52 @@ class XRayConfig(dict):
                                 proxy_type,
                             )
 
-        if DEBUG:
-            with open("generated_config-debug.json", "w") as f:
-                f.write(config.to_json(indent=4))
-
         for inbound in config.get("inbounds", []):
             stream = inbound.get("streamSettings")
             if not isinstance(stream, dict):
                 continue
             tls_settings = stream.get("tlsSettings")
-            if isinstance(tls_settings, dict) and "settings" in tls_settings:
+            if isinstance(tls_settings, dict):
+                # Create a copy to modify
                 tls_settings = {**tls_settings}
-                tls_settings.pop("settings", None)
+                # Remove deprecated "settings" key if present
+                if "settings" in tls_settings:
+                    tls_settings.pop("settings", None)
+
+                # Apply version-based migration
+                if is_xray_version_at_least("26.1.31"):
+                    # verifyPeerCertInNames is the old one it has been replaced by verifyPeerCertByName
+                    if tls_settings.get("verifyPeerCertInNames"):
+                        names = tls_settings.pop("verifyPeerCertInNames", None)
+                        # If verifyPeerCertByName is already set, keep its value and just remove the old field.
+                        if not tls_settings.get("verifyPeerCertByName") and names:
+                            # verifyPeerCertByName expects a string, not an array
+                            if isinstance(names, list) and len(names) > 0:
+                                tls_settings["verifyPeerCertByName"] = names[0]
+                            elif isinstance(names, str):
+                                tls_settings["verifyPeerCertByName"] = names
+                else:
+                    if tls_settings.get("verifyPeerCertByName"):
+                        names = tls_settings.pop("verifyPeerCertByName", None)
+                        # If verifyPeerCertInNames is already set, keep its value and just remove the new field.
+                        if not tls_settings.get("verifyPeerCertInNames") and names:
+                            # verifyPeerCertInNames expects a list
+                            if isinstance(names, str):
+                                tls_settings["verifyPeerCertInNames"] = [names]
+                            elif isinstance(names, list):
+                                tls_settings["verifyPeerCertInNames"] = names
+
+                # Update the stream with the modified settings
                 stream["tlsSettings"] = tls_settings
+
             reality_settings = stream.get("realitySettings")
             if isinstance(reality_settings, dict) and "settings" in reality_settings:
                 reality_settings = {**reality_settings}
                 reality_settings.pop("settings", None)
                 stream["realitySettings"] = reality_settings
+
+        if DEBUG:
+            with open("generated_config-debug.json", "w") as f:
+                f.write(config.to_json(indent=4))
 
         return config
