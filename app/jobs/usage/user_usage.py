@@ -23,8 +23,16 @@ from config import DISABLE_RECORDING_NODE_USAGE
 
 
 def _build_api_instances():
-    api_instances = {None: xray.api}
-    usage_coefficient = {None: 1}
+    api_instances = {}
+    usage_coefficient = {}
+
+    try:
+        if getattr(xray.core, "available", False) and getattr(xray.core, "started", False):
+            api_instances[None] = xray.api
+            usage_coefficient[None] = 1
+    except Exception:
+        # Skip master core if it's unavailable; still record from nodes
+        pass
 
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
@@ -35,8 +43,11 @@ def _build_api_instances():
 
 
 def _collect_usage_params(api_instances):
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
+    if not api_instances:
+        return {}
+
+    executor = ThreadPoolExecutor(max_workers=10)
+    futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
 
     api_params = {}
     for node_id, future in futures.items():
@@ -45,6 +56,16 @@ def _collect_usage_params(api_instances):
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
             api_params[node_id] = []
+            try:
+                future.cancel()
+            except Exception:
+                pass
+
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except TypeError:
+        executor.shutdown(wait=False)
+
     return api_params
 
 
@@ -376,6 +397,8 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
 
 def record_user_usages():
     api_instances, usage_coefficient = _build_api_instances()
+    if not api_instances:
+        return
     api_params = _collect_usage_params(api_instances)
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)

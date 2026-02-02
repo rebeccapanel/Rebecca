@@ -12,6 +12,8 @@ import {
 	CardHeader,
 	Collapse,
 	chakra,
+	Checkbox,
+	CheckboxGroup,
 	HStack,
 	IconButton,
 	Menu,
@@ -19,6 +21,7 @@ import {
 	MenuItem,
 	MenuList,
 	Skeleton,
+	SimpleGrid,
 	Stack,
 	Table,
 	type TableProps,
@@ -73,7 +76,12 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { Admin } from "types/Admin";
-import { AdminManagementPermission, AdminRole, AdminStatus } from "types/Admin";
+import {
+	AdminManagementPermission,
+	AdminRole,
+	AdminStatus,
+	UserPermissionToggle,
+} from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 import {
 	generateErrorMessage,
@@ -265,6 +273,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		disableAdmin,
 		enableAdmin,
 		updateAdmin,
+		bulkUpdateStandardPermissions,
 		openAdminDialog,
 		openAdminDetails,
 		adminInDetails,
@@ -324,6 +333,14 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		onClose: closeQuickPassModal,
 	} = useDisclosure();
 	const { onCopy, setValue: setClipboard } = useClipboard("");
+	const [isBulkPanelOpen, setBulkPanelOpen] = useState(false);
+	const [bulkPermissions, setBulkPermissions] = useState<UserPermissionToggle[]>([
+		UserPermissionToggle.Create,
+		UserPermissionToggle.Delete,
+		UserPermissionToggle.ResetUsage,
+		UserPermissionToggle.Revoke,
+	]);
+	const [isBulkUpdating, setBulkUpdating] = useState(false);
 
 	const currentAdminUsername = userData.username;
 	const hasFullAccess = userData.role === AdminRole.FullAccess;
@@ -348,6 +365,89 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			return canManageSudoAdmins;
 		}
 		return true;
+	};
+
+	const bulkPermissionOptions = useMemo(
+		() => [
+			{
+				key: UserPermissionToggle.Create,
+				label: t("admins.bulkPermissions.create", "Create users"),
+			},
+			{
+				key: UserPermissionToggle.Delete,
+				label: t("admins.bulkPermissions.delete", "Delete users"),
+			},
+			{
+				key: UserPermissionToggle.ResetUsage,
+				label: t("admins.bulkPermissions.resetUsage", "Reset usage"),
+			},
+			{
+				key: UserPermissionToggle.Revoke,
+				label: t("admins.bulkPermissions.revoke", "Revoke subscriptions"),
+			},
+			{
+				key: UserPermissionToggle.CreateOnHold,
+				label: t("admins.bulkPermissions.createOnHold", "Create on hold"),
+			},
+			{
+				key: UserPermissionToggle.AllowUnlimitedData,
+				label: t("admins.bulkPermissions.allowUnlimitedData", "Unlimited data"),
+			},
+			{
+				key: UserPermissionToggle.AllowUnlimitedExpire,
+				label: t("admins.bulkPermissions.allowUnlimitedExpire", "Unlimited expire"),
+			},
+			{
+				key: UserPermissionToggle.AllowNextPlan,
+				label: t("admins.bulkPermissions.allowNextPlan", "Next plan"),
+			},
+			{
+				key: UserPermissionToggle.AdvancedActions,
+				label: t("admins.bulkPermissions.advancedActions", "Advanced actions"),
+			},
+			{
+				key: UserPermissionToggle.SetFlow,
+				label: t("admins.bulkPermissions.setFlow", "Set flow"),
+			},
+			{
+				key: UserPermissionToggle.AllowCustomKey,
+				label: t("admins.bulkPermissions.allowCustomKey", "Custom key"),
+			},
+		],
+		[t],
+	);
+
+	const handleBulkPermissions = async (mode: "disable" | "restore") => {
+		if (!bulkPermissions.length) {
+			generateErrorMessage(
+				t("admins.bulkPermissions.selectAtLeastOne", "Select at least one permission."),
+				toast,
+			);
+			return;
+		}
+		setBulkUpdating(true);
+		try {
+			const result = await bulkUpdateStandardPermissions({
+				mode,
+				permissions: bulkPermissions,
+			});
+			const updatedCount = result?.updated ?? 0;
+			generateSuccessMessage(
+				t(
+					"admins.bulkPermissions.success",
+					"Updated permissions for {{count}} standard admins.",
+					{ count: updatedCount },
+				),
+				toast,
+			);
+		} catch (error) {
+			generateErrorMessage(
+				t("admins.bulkPermissions.error", "Failed to update standard admins."),
+				toast,
+			);
+		} finally {
+			setBulkUpdating(false);
+		}
 	};
 
 	const handleSort = (
@@ -1172,6 +1272,90 @@ export const AdminsTable: FC<TableProps> = (props) => {
 						</CardHeader>
 						<CardBody px={{ base: 3, md: 4 }} py={{ base: 3, md: 4 }}>
 							<Box w="full">
+								{canEditAdmins && (
+									<Box
+										borderWidth="1px"
+										borderRadius="xl"
+										borderColor="light-border"
+										bg="whiteAlpha.600"
+										_dark={{ borderColor: "whiteAlpha.200", bg: "whiteAlpha.100" }}
+										p={{ base: 3, md: 4 }}
+										mb={4}
+									>
+										<HStack justify="space-between" align="center" flexWrap="wrap">
+											<Stack spacing={0}>
+												<Text fontWeight="semibold">
+													{t(
+														"admins.bulkPermissions.title",
+														"Standard admin bulk permissions",
+													)}
+												</Text>
+												<Text
+													fontSize="sm"
+													color="gray.600"
+													_dark={{ color: "gray.400" }}
+												>
+													{t(
+														"admins.bulkPermissions.subtitle",
+														"Quickly disable or restore selected permissions for all standard admins.",
+													)}
+												</Text>
+											</Stack>
+											<Button
+												size="sm"
+												variant="outline"
+												leftIcon={<AdjustmentsHorizontalIcon />}
+												onClick={() => setBulkPanelOpen((prev) => !prev)}
+											>
+												{isBulkPanelOpen
+													? t("admins.bulkPermissions.hide", "Hide")
+													: t("admins.bulkPermissions.show", "Manage")}
+											</Button>
+										</HStack>
+										<Collapse in={isBulkPanelOpen} animateOpacity>
+											<Stack spacing={4} mt={4}>
+												<CheckboxGroup
+													value={bulkPermissions}
+													onChange={(values) =>
+														setBulkPermissions(values as UserPermissionToggle[])
+													}
+												>
+													<SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
+														{bulkPermissionOptions.map((option) => (
+															<Checkbox key={option.key} value={option.key}>
+																{option.label}
+															</Checkbox>
+														))}
+													</SimpleGrid>
+												</CheckboxGroup>
+												<HStack spacing={3} flexWrap="wrap">
+													<Button
+														size="sm"
+														colorScheme="red"
+														onClick={() => handleBulkPermissions("disable")}
+														isLoading={isBulkUpdating}
+													>
+														{t(
+															"admins.bulkPermissions.disable",
+															"Disable selected",
+														)}
+													</Button>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() => handleBulkPermissions("restore")}
+														isLoading={isBulkUpdating}
+													>
+														{t(
+															"admins.bulkPermissions.restore",
+															"Restore defaults",
+														)}
+													</Button>
+												</HStack>
+											</Stack>
+										</Collapse>
+									</Box>
+								)}
 								<Box
 									w="full"
 									borderWidth="1px"

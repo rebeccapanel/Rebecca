@@ -1,6 +1,6 @@
 import logging
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -21,6 +21,7 @@ from app.models.admin import (
     AdminRole,
     AdminStatus,
     Token,
+    UserPermission,
 )
 from app.db.models import Admin as DBAdmin, Node as DBNode, User as DBUser
 from app.utils import report, responses
@@ -39,6 +40,16 @@ class AdminsListResponse(BaseModel):
 
 class AdminDisablePayload(BaseModel):
     reason: str = Field(..., min_length=3, max_length=512, description="Reason shown to the disabled admin")
+
+
+class StandardAdminsBulkPermissionsPayload(BaseModel):
+    permissions: List[UserPermission] = Field(..., min_length=1)
+    mode: Literal["disable", "restore"] = "disable"
+
+
+class StandardAdminsBulkPermissionsResponse(BaseModel):
+    updated: int
+    mode: Literal["disable", "restore"]
 
 
 def get_client_ip(request: Request) -> str:
@@ -216,6 +227,31 @@ def get_admins(
             detail="You're not allowed to view admins.",
         )
     return crud.get_admins(db, offset, limit, username, sort)
+
+
+@router.post(
+    "/admin/permissions/standard/bulk",
+    response_model=StandardAdminsBulkPermissionsResponse,
+    responses={403: responses._403},
+)
+def bulk_update_standard_admin_permissions(
+    payload: StandardAdminsBulkPermissionsPayload,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Bulk update user permissions for all standard admins."""
+    if not (admin.has_full_access or admin.permissions.admin_management.allows(AdminManagementPermission.edit)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You're not allowed to manage other admins.",
+        )
+
+    updated = crud.bulk_update_standard_admin_permissions(
+        db,
+        payload.permissions,
+        mode=payload.mode,
+    )
+    return StandardAdminsBulkPermissionsResponse(updated=updated, mode=payload.mode)
 
 
 @router.post(

@@ -12,7 +12,7 @@ import re
 from urllib.parse import urlparse, unquote
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from sqlalchemy import and_, exists, func, or_, inspect
+from sqlalchemy import and_, case, exists, func, or_, inspect
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.sql.functions import coalesce
@@ -1668,19 +1668,30 @@ def adjust_all_users_expire(
 ) -> int:
     if delta_seconds == 0:
         return 0
-    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment).filter(
-        User.status == UserStatus.active, User.expire.isnot(None)
+    query = _build_user_bulk_query(
+        db, admin, service_id, service_without_assignment, eager_load=False
+    ).filter(User.status == UserStatus.active, User.expire.isnot(None))
+    now_ts = datetime.now(timezone.utc).timestamp()
+    new_expire = User.expire + delta_seconds
+    new_status = case(
+        (new_expire <= now_ts, UserStatus.expired),
+        else_=User.status,
     )
-    now = datetime.now(timezone.utc).timestamp()
-    count = 0
-    for dbuser in query.all():
-        dbuser.expire = (dbuser.expire or 0) + delta_seconds
-        _sync_user_status_from_expire(db, dbuser, now)
-        db.add(dbuser)
-        count += 1
-    if count:
+    last_change = case(
+        (new_expire <= now_ts, datetime.now(timezone.utc)),
+        else_=User.last_status_change,
+    )
+    affected = query.update(
+        {
+            User.expire: new_expire,
+            User.status: new_status,
+            User.last_status_change: last_change,
+        },
+        synchronize_session=False,
+    )
+    if affected:
         db.commit()
-    return count
+    return affected
 
 
 def _sync_user_status_from_usage(db: Session, dbuser: User) -> None:
@@ -1787,21 +1798,37 @@ def adjust_all_users_limit(
     """Increase or decrease data limits for users, optionally scoped by admin/service."""
     if delta_bytes == 0:
         return 0
-    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment).filter(
+    query = _build_user_bulk_query(
+        db, admin, service_id, service_without_assignment, eager_load=False
+    ).filter(
         User.status == UserStatus.active,
         User.data_limit.isnot(None),
         User.data_limit > 0,
     )
-    count = 0
-    for dbuser in query.all():
-        new_limit = max((dbuser.data_limit or 0) + delta_bytes, 0)
-        dbuser.data_limit = new_limit
-        _sync_user_status_from_usage(db, dbuser)
-        db.add(dbuser)
-        count += 1
-    if count:
+    new_limit = case(
+        (User.data_limit + delta_bytes < 0, 0),
+        else_=User.data_limit + delta_bytes,
+    )
+    used_traffic = coalesce(User.used_traffic, 0)
+    new_status = case(
+        (and_(new_limit > 0, used_traffic >= new_limit), UserStatus.limited),
+        else_=UserStatus.active,
+    )
+    last_change = case(
+        (new_status != User.status, datetime.now(timezone.utc)),
+        else_=User.last_status_change,
+    )
+    affected = query.update(
+        {
+            User.data_limit: new_limit,
+            User.status: new_status,
+            User.last_status_change: last_change,
+        },
+        synchronize_session=False,
+    )
+    if affected:
         db.commit()
-    return count
+    return affected
 
 
 def delete_users_by_status_age(
@@ -1813,14 +1840,13 @@ def delete_users_by_status_age(
     service_without_assignment: bool = False,
 ) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment).filter(
-        User.status.in_(statuses), User.last_status_change.isnot(None), User.last_status_change <= cutoff
-    )
-    candidates = query.all()
-    if not candidates:
-        return 0
-    remove_users(db, candidates)
-    return len(candidates)
+    query = _build_user_bulk_query(
+        db, admin, service_id, service_without_assignment, eager_load=False
+    ).filter(User.status.in_(statuses), User.last_status_change.isnot(None), User.last_status_change <= cutoff)
+    affected = query.update({User.status: UserStatus.deleted}, synchronize_session=False)
+    if affected:
+        db.commit()
+    return affected
 
 
 def disable_all_active_users(db: Session, admin: Optional[Admin] = None):
@@ -1875,27 +1901,41 @@ def bulk_update_user_status(
     service_id: Optional[int] = None,
     service_without_assignment: bool = False,
 ) -> int:
-    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment)
-    count = 0
-    for user in query.all():
-        if user.status == target_status:
-            continue
-        if target_status == UserStatus.active and _status_to_str(user.status) != UserStatus.active.value:
-            _ensure_active_user_capacity(db, user.admin, exclude_user_ids=(user.id,))
-        user.status = target_status
-        user.last_status_change = datetime.now(timezone.utc)
-        db.add(user)
-        count += 1
-    if count:
-        db.commit()
-        try:
-            from app.redis.cache import cache_user
+    query = _build_user_bulk_query(
+        db, admin, service_id, service_without_assignment, eager_load=False
+    ).filter(User.status != target_status)
 
-            for user in query.all():
-                cache_user(user)
-        except Exception as cache_err:  # pragma: no cover - best effort
-            _logger.debug("Failed to update cache after bulk status change: %s", cache_err)
-    return count
+    if target_status == UserStatus.active:
+        if admin:
+            required_slots = query.filter(User.status != UserStatus.active).count()
+            _ensure_active_user_capacity(db, admin, required_slots=required_slots)
+        else:
+            counts = (
+                query.filter(User.status != UserStatus.active)
+                .with_entities(User.admin_id, func.count(User.id))
+                .group_by(User.admin_id)
+                .all()
+            )
+            if counts:
+                admin_ids = [row[0] for row in counts if row[0] is not None]
+                admins = {
+                    a.id: a for a in db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
+                }
+                for admin_id, required_slots in counts:
+                    admin_obj = admins.get(admin_id)
+                    _ensure_active_user_capacity(db, admin_obj, required_slots=required_slots)
+
+    now = datetime.now(timezone.utc)
+    affected = query.update(
+        {
+            User.status: target_status,
+            User.last_status_change: now,
+        },
+        synchronize_session=False,
+    )
+    if affected:
+        db.commit()
+    return affected
 
 
 def autodelete_expired_users(db: Session, include_limited_users: bool = False) -> List[User]:

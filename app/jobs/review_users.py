@@ -199,8 +199,19 @@ def review():
                         else:
                             base_time = datetime.timestamp(user.created_at)
 
+                        pending_online = None
+                        try:
+                            if user.id is not None:
+                                _, pending_online = get_user_pending_usage_state(user.id)
+                        except Exception:
+                            pending_online = None
+
+                        effective_online = user.online_at
+                        if pending_online and (not effective_online or pending_online > effective_online):
+                            effective_online = pending_online
+
                         status = None
-                        if user.online_at and base_time <= datetime.timestamp(user.online_at):
+                        if effective_online and base_time <= datetime.timestamp(effective_online):
                             status = UserStatus.active
                         elif user.on_hold_timeout and (datetime.timestamp(user.on_hold_timeout) <= (now_ts)):
                             status = UserStatus.active

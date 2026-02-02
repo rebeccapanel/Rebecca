@@ -3,6 +3,8 @@ import type {
 	Admin,
 	AdminCreatePayload,
 	AdminUpdatePayload,
+	StandardAdminPermissionsBulkPayload,
+	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
 import { create } from "zustand";
 import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
@@ -38,6 +40,9 @@ type AdminsStore = {
 	resetUsage: (username: string) => Promise<void>;
 	disableAdmin: (username: string, reason: string) => Promise<void>;
 	enableAdmin: (username: string) => Promise<void>;
+	bulkUpdateStandardPermissions: (
+		payload: StandardAdminPermissionsBulkPayload,
+	) => Promise<StandardAdminPermissionsBulkResponse>;
 	openAdminDialog: (admin?: Admin) => void;
 	closeAdminDialog: () => void;
 	openAdminDetails: (admin: Admin) => void;
@@ -218,6 +223,17 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			method: "POST",
 		});
 		await get().fetchAdmins(undefined, { force: true });
+	},
+	async bulkUpdateStandardPermissions(payload) {
+		const response = await fetch<StandardAdminPermissionsBulkResponse>(
+			"/admin/permissions/standard/bulk",
+			{
+				method: "POST",
+				body: payload,
+			},
+		);
+		await get().fetchAdmins(undefined, { force: true });
+		return response;
 	},
 	openAdminDialog(admin) {
 		set({ isAdminDialogOpen: true, adminInDialog: admin || null });

@@ -16,6 +16,7 @@ from app.utils.credentials import (
     runtime_proxy_settings,
     PASSWORD_PROTOCOLS,
     UUID_PROTOCOLS,
+    normalize_flow_value,
 )
 from xray_api.types.account import Account
 from app.utils.jwt import create_subscription_token
@@ -36,12 +37,26 @@ USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.
 
 _skip_expensive_computations: ContextVar[bool] = ContextVar("skip_expensive_computations", default=False)
 
-ALLOWED_FLOW_VALUES = {
-    None,
-    "",
-    "xtls-rprx-vision",
-    "xtls-rprx-vision-udp443",
-}
+
+def _extract_flow_from_proxies(proxies: Optional[Dict[ProxyTypes, ProxySettings]]) -> Optional[str]:
+    if not proxies:
+        return None
+
+    def _get_flow(proxy_key: ProxyTypes) -> Optional[str]:
+        settings = proxies.get(proxy_key) or proxies.get(proxy_key.value)
+        if settings is None:
+            return None
+        flow_value = None
+        if hasattr(settings, "flow"):
+            flow_value = getattr(settings, "flow", None)
+        elif isinstance(settings, dict):
+            flow_value = settings.get("flow")
+        return normalize_flow_value(flow_value)
+
+    flow = _get_flow(ProxyTypes.VLESS)
+    if flow:
+        return flow
+    return _get_flow(ProxyTypes.Trojan)
 
 
 def _normalize_ip_limit(value) -> int:
@@ -207,14 +222,22 @@ class User(BaseModel):
         first = next(iter(self.proxies))
         return first if isinstance(first, ProxyTypes) else ProxyTypes(first)
 
+    @model_validator(mode="after")
+    def derive_flow_from_proxies(self):
+        # Backward compatibility: allow flow to be provided inside proxy settings (Marzban-style).
+        if not self.flow and self.proxies:
+            derived = _extract_flow_from_proxies(self.proxies)
+            if derived:
+                self.flow = derived
+        return self
+
     @field_validator("flow", mode="before")
     def validate_flow(cls, value):
         if value in (None, ""):
             return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if normalized in ALLOWED_FLOW_VALUES:
-                return normalized
+        normalized = normalize_flow_value(value)
+        if normalized:
+            return normalized
         raise ValueError("Unsupported flow value")
 
     @field_validator("telegram_id", mode="before")
@@ -264,7 +287,7 @@ class User(BaseModel):
 
         account_data = {"email": self._account_email()}
         runtime_key = credential_key or self.credential_key
-        if runtime_key and self.flow:
+        if runtime_key and self.flow and resolved_type in (ProxyTypes.VLESS, ProxyTypes.Trojan):
             proxy_data = runtime_proxy_settings(settings, resolved_type, runtime_key, flow=self.flow)
         elif runtime_key:
             proxy_data = runtime_proxy_settings(settings, resolved_type, runtime_key)
@@ -567,10 +590,9 @@ class UserServiceCreate(BaseModel):
     def validate_flow(cls, value):
         if value in (None, ""):
             return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if normalized in ALLOWED_FLOW_VALUES:
-                return normalized
+        normalized = normalize_flow_value(value)
+        if normalized:
+            return normalized
         raise ValueError("Unsupported flow value")
 
 

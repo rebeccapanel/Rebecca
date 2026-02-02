@@ -934,6 +934,13 @@ def perform_users_bulk_action(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
+    try:
+        from app.redis.cache import invalidate_user_cache
+
+        invalidate_user_cache()
+    except Exception:
+        pass
+
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)
     for node_id, node in list(xray.nodes.items()):

@@ -95,7 +95,7 @@ def _flow_supported_for_inbound(inbound: dict) -> bool:
         header_type = inbound.get("header_type", "")
     except Exception:
         return False
-    return network in ("tcp", "raw", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
+    return network in ("tcp", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
 
 
 def _build_runtime_accounts(

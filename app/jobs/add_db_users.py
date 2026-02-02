@@ -2,8 +2,22 @@ import sqlalchemy
 from app import xray
 from app.db import get_users, get_db, engine, User
 from app.models.user import UserResponse, UserStatus
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS
+from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
 from app.runtime import logger
+
+
+def _flow_supported_for_inbound(inbound: dict) -> bool:
+    """
+    XTLS flow is only supported on TCP/RAW/KCP transports with TLS/Reality
+    and non-HTTP headers. If inbound info is missing, treat it as unsupported.
+    """
+    try:
+        network = inbound.get("network", "tcp")
+        tls_type = inbound.get("tls", "none")
+        header_type = inbound.get("header_type", "")
+    except Exception:
+        return False
+    return network in ("tcp", "kcp") and tls_type in ("tls", "reality") and header_type != "http"
 
 
 def _add_user_accounts_to_api(dbuser):
@@ -31,10 +45,19 @@ def _add_user_accounts_to_api(dbuser):
                 account_to_add = resolved_proxy_type.account_model(email=email, id=str(existing_id))
             elif user.credential_key and resolved_proxy_type in UUID_PROTOCOLS:
                 try:
-                    proxy_settings = runtime_proxy_settings(
-                        settings_model, resolved_proxy_type, user.credential_key, flow=getattr(dbuser, "flow", None)
-                    )
-                    proxy_settings.pop("flow", None)
+                    user_flow = normalize_flow_value(getattr(dbuser, "flow", None))
+                    if user_flow and resolved_proxy_type == _ProxyTypes.VLESS:
+                        proxy_settings = runtime_proxy_settings(
+                            settings_model, resolved_proxy_type, user.credential_key, flow=user_flow
+                        )
+                    else:
+                        proxy_settings = runtime_proxy_settings(settings_model, resolved_proxy_type, user.credential_key)
+
+                    if proxy_settings.get("flow"):
+                        inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
+                        if not _flow_supported_for_inbound(inbound or {}):
+                            proxy_settings.pop("flow", None)
+
                     account_to_add = resolved_proxy_type.account_model(email=email, **proxy_settings)
                 except Exception:
                     account_to_add = None

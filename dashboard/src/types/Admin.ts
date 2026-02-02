@@ -114,3 +114,13 @@ export type AdminUpdatePayload = {
 	data_limit?: number | null;
 	users_limit?: number | null;
 };
+
+export type StandardAdminPermissionsBulkPayload = {
+	permissions: UserPermissionToggle[];
+	mode: "disable" | "restore";
+};
+
+export type StandardAdminPermissionsBulkResponse = {
+	updated: number;
+	mode: "disable" | "restore";
+};

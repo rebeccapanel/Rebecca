@@ -25,7 +25,7 @@ from app.db.models import (
     User,
     UserUsageResetLogs,
 )
-from app.models.admin import AdminRole, AdminStatus
+from app.models.admin import AdminRole, AdminStatus, UserPermission
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
 from app.models.user import UserStatus
 
@@ -292,6 +292,57 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     _sync_admin_services(db, dbadmin, admin.services)
     _attach_admin_services(db, [dbadmin])
     return dbadmin
+
+
+def bulk_update_standard_admin_permissions(
+    db: Session,
+    permissions: List[UserPermission],
+    *,
+    mode: str = "disable",
+) -> int:
+    """
+    Bulk update user permissions for all standard admins.
+
+    mode="disable": force selected permissions to False.
+    mode="restore": reset selected permissions to role defaults.
+    """
+    if mode not in {"disable", "restore"}:
+        raise ValueError("Unsupported bulk permission mode")
+    if not permissions:
+        return 0
+
+    targets = (
+        db.query(Admin)
+        .filter(Admin.status != AdminStatus.deleted)
+        .filter(Admin.role == AdminRole.standard)
+        .all()
+    )
+    if not targets:
+        return 0
+
+    default_users = ROLE_DEFAULT_PERMISSIONS[AdminRole.standard].users
+    updated = 0
+
+    for dbadmin in targets:
+        perms = _normalize_permissions_for_role(AdminRole.standard, None, dbadmin.permissions)
+        before = perms.model_dump()
+
+        for perm in permissions:
+            key = perm.value if isinstance(perm, UserPermission) else str(perm)
+            if not hasattr(perms.users, key):
+                continue
+            if mode == "disable":
+                setattr(perms.users, key, False)
+            else:
+                setattr(perms.users, key, getattr(default_users, key))
+
+        if perms.model_dump() != before:
+            dbadmin.permissions = perms.model_dump()
+            updated += 1
+
+    if updated:
+        db.commit()
+    return updated
 
 
 def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Admin:
