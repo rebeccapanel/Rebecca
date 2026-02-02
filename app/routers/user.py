@@ -832,6 +832,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Expiration dates extended"
         elif payload.action == AdvancedUserAction.reduce_expire:
@@ -841,6 +842,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Expiration dates shortened"
         elif payload.action == AdvancedUserAction.increase_traffic:
@@ -851,6 +853,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Data limits increased for users"
         elif payload.action == AdvancedUserAction.decrease_traffic:
@@ -861,6 +864,7 @@ def perform_users_bulk_action(
                 admin=target_admin,
                 service_id=payload.service_id,
                 service_without_assignment=service_filter_by_null,
+                status_scope=payload.scope,
             )
             detail = "Data limits decreased for users"
         elif payload.action == AdvancedUserAction.cleanup_status:

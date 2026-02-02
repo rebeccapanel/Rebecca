@@ -36,10 +36,18 @@ import { AdminRole } from "types/Admin";
 import type {
 	AdvancedUserActionPayload,
 	AdvancedUserActionStatus,
+	AdvancedUserActionScopeStatus,
 	AdvancedUserActionType,
 } from "types/User";
 
 const cleanupOptions: AdvancedUserActionStatus[] = ["expired", "limited"];
+const scopeStatusOptions: AdvancedUserActionScopeStatus[] = [
+	"active",
+	"on_hold",
+	"limited",
+	"expired",
+	"disabled",
+];
 type ServiceScopePayload = Partial<
 	Pick<AdvancedUserActionPayload, "service_id" | "service_id_is_null">
 >;
@@ -58,6 +66,9 @@ const AdvancedUserActions = () => {
 	const [selectedStatuses, setSelectedStatuses] = useState<
 		AdvancedUserActionStatus[]
 	>(["expired", "limited"]);
+	const [selectedScopeStatuses, setSelectedScopeStatuses] = useState<
+		AdvancedUserActionScopeStatus[]
+	>(["active"]);
 	const [isExtending, setIsExtending] = useState(false);
 	const [isReducing, setIsReducing] = useState(false);
 	const [isIncreasingTraffic, setIsIncreasingTraffic] = useState(false);
@@ -153,6 +164,16 @@ const AdvancedUserActions = () => {
 			);
 			return;
 		}
+		if (!selectedScopeStatuses.length) {
+			showToast(
+				t(
+					"filters.advancedActions.error.noScope",
+					"Select at least one status scope",
+				),
+				"warning",
+			);
+			return;
+		}
 		const setLoading =
 			action === "extend_expire" ? setIsExtending : setIsReducing;
 		setLoading(true);
@@ -161,6 +182,7 @@ const AdvancedUserActions = () => {
 			const payload: AdvancedUserActionPayload = {
 				action,
 				days: Math.floor(days),
+				scope: selectedScopeStatuses,
 				admin_username: targetAdminUsername,
 				...buildServiceScopePayload(),
 			};
@@ -191,6 +213,16 @@ const AdvancedUserActions = () => {
 			);
 			return;
 		}
+		if (!selectedScopeStatuses.length) {
+			showToast(
+				t(
+					"filters.advancedActions.error.noScope",
+					"Select at least one status scope",
+				),
+				"warning",
+			);
+			return;
+		}
 		const setLoading =
 			action === "increase_traffic"
 				? setIsIncreasingTraffic
@@ -201,6 +233,7 @@ const AdvancedUserActions = () => {
 			const payload: AdvancedUserActionPayload = {
 				action,
 				gigabytes: value,
+				scope: selectedScopeStatuses,
 				admin_username: targetAdminUsername,
 				...buildServiceScopePayload(),
 			};
@@ -304,6 +337,14 @@ const AdvancedUserActions = () => {
 
 	const toggleStatus = (status: AdvancedUserActionStatus) => {
 		setSelectedStatuses((prev) =>
+			prev.includes(status)
+				? prev.filter((item) => item !== status)
+				: [...prev, status],
+		);
+	};
+
+	const toggleScopeStatus = (status: AdvancedUserActionScopeStatus) => {
+		setSelectedScopeStatuses((prev) =>
 			prev.includes(status)
 				? prev.filter((item) => item !== status)
 				: [...prev, status],
@@ -491,6 +532,37 @@ const AdvancedUserActions = () => {
 									</Box>
 								</>
 							)}
+
+							<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+								<Stack spacing={2}>
+									<Text fontWeight="semibold">
+										{t(
+											"filters.advancedActions.scopeStatuses.title",
+											"Status scope",
+										)}
+									</Text>
+									<Text fontSize="sm" color="gray.500">
+										{t(
+											"filters.advancedActions.scopeStatuses.helper",
+											"Choose which user statuses are affected by expiration and traffic changes.",
+										)}
+									</Text>
+									<HStack spacing={3} flexWrap="wrap">
+										{scopeStatusOptions.map((status) => (
+											<Checkbox
+												key={status}
+												isChecked={selectedScopeStatuses.includes(status)}
+												onChange={() => toggleScopeStatus(status)}
+											>
+												{t(
+													`filters.advancedActions.scopeStatuses.${status}`,
+													status.replace("_", " "),
+												)}
+											</Checkbox>
+										))}
+									</HStack>
+								</Stack>
+							</Box>
 
 							<Stack spacing={4}>
 								<Box borderWidth="1px" borderRadius="md" px={4} py={4}>

@@ -173,6 +173,13 @@ export type UsersListResponse = {
 
 export type AdvancedUserActionStatus = "expired" | "limited";
 
+export type AdvancedUserActionScopeStatus =
+	| "active"
+	| "on_hold"
+	| "expired"
+	| "limited"
+	| "disabled";
+
 export type AdvancedUserActionType =
 	| "extend_expire"
 	| "reduce_expire"
@@ -188,6 +195,7 @@ export type AdvancedUserActionPayload = {
 	days?: number;
 	gigabytes?: number;
 	statuses?: AdvancedUserActionStatus[];
+	scope?: AdvancedUserActionScopeStatus[];
 	admin_username?: string | null;
 	service_id?: number;
 	service_id_is_null?: boolean;

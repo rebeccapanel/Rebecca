@@ -472,6 +472,28 @@ def _apply_advanced_user_filters(
     return query
 
 
+def _resolve_status_scope(
+    scope: Optional[List[Union[UserStatus, str]]],
+    *,
+    default_scope: Optional[List[UserStatus]] = None,
+) -> List[UserStatus]:
+    if not scope:
+        return list(default_scope or [])
+    resolved: List[UserStatus] = []
+    for status in scope:
+        if isinstance(status, UserStatus):
+            candidate = status
+        else:
+            try:
+                candidate = UserStatus(str(status))
+            except Exception:
+                continue
+        if candidate == UserStatus.deleted:
+            continue
+        resolved.append(candidate)
+    return resolved
+
+
 def _apply_search_filter(query: Query, search: Optional[str]) -> Query:
     if not search:
         return query
@@ -1780,30 +1802,56 @@ def adjust_all_users_expire(
     admin: Optional[Admin] = None,
     service_id: Optional[int] = None,
     service_without_assignment: bool = False,
+    status_scope: Optional[List[UserStatus]] = None,
 ) -> int:
     if delta_seconds == 0:
         return 0
-    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
-        User.status == UserStatus.active, User.expire.isnot(None)
-    )
-    now_ts = datetime.now(timezone.utc).timestamp()
-    new_expire = User.expire + delta_seconds
-    new_status = case(
-        (new_expire <= now_ts, UserStatus.expired),
-        else_=User.status,
-    )
-    last_change = case(
-        (new_expire <= now_ts, datetime.now(timezone.utc)),
-        else_=User.last_status_change,
-    )
-    affected = query.update(
-        {
-            User.expire: new_expire,
-            User.status: new_status,
-            User.last_status_change: last_change,
-        },
-        synchronize_session=False,
-    )
+    scope = _resolve_status_scope(status_scope, default_scope=[UserStatus.active])
+    affected = 0
+
+    expire_scope = [status for status in scope if status != UserStatus.on_hold]
+    if expire_scope:
+        query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+            User.status.in_(expire_scope),
+            User.expire.isnot(None),
+        )
+        now_dt = datetime.now(timezone.utc)
+        now_ts = now_dt.timestamp()
+        new_expire = User.expire + delta_seconds
+        new_status = case(
+            (User.status == UserStatus.disabled, UserStatus.disabled),
+            (User.status == UserStatus.limited, UserStatus.limited),
+            (new_expire <= now_ts, UserStatus.expired),
+            (User.status == UserStatus.expired, UserStatus.active),
+            else_=User.status,
+        )
+        last_change = case(
+            (new_status != User.status, now_dt),
+            else_=User.last_status_change,
+        )
+        affected += query.update(
+            {
+                User.expire: new_expire,
+                User.status: new_status,
+                User.last_status_change: last_change,
+            },
+            synchronize_session=False,
+        )
+
+    if UserStatus.on_hold in scope:
+        on_hold_query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+            User.status == UserStatus.on_hold,
+            User.on_hold_expire_duration.isnot(None),
+        )
+        new_duration = case(
+            (User.on_hold_expire_duration + delta_seconds < 0, 0),
+            else_=User.on_hold_expire_duration + delta_seconds,
+        )
+        affected += on_hold_query.update(
+            {User.on_hold_expire_duration: new_duration},
+            synchronize_session=False,
+        )
+
     if affected:
         db.commit()
     return affected
@@ -1909,21 +1957,29 @@ def adjust_all_users_limit(
     admin: Optional[Admin] = None,
     service_id: Optional[int] = None,
     service_without_assignment: bool = False,
+    status_scope: Optional[List[UserStatus]] = None,
 ) -> int:
     """Increase or decrease data limits for users, optionally scoped by admin/service."""
     if delta_bytes == 0:
         return 0
+    scope = _resolve_status_scope(status_scope, default_scope=[UserStatus.active])
     query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
-        User.status == UserStatus.active,
         User.data_limit.isnot(None),
         User.data_limit > 0,
     )
+    if scope:
+        query = query.filter(User.status.in_(scope))
+    else:
+        query = query.filter(User.status == UserStatus.active)
     new_limit = case(
         (User.data_limit + delta_bytes < 0, 0),
         else_=User.data_limit + delta_bytes,
     )
     used_traffic = coalesce(User.used_traffic, 0)
     new_status = case(
+        (User.status == UserStatus.disabled, UserStatus.disabled),
+        (User.status == UserStatus.on_hold, UserStatus.on_hold),
+        (User.status == UserStatus.expired, UserStatus.expired),
         (and_(new_limit > 0, used_traffic >= new_limit), UserStatus.limited),
         else_=UserStatus.active,
     )

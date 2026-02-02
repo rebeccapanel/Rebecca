@@ -128,6 +128,7 @@ class BulkUsersActionRequest(BaseModel):
     days: Optional[int] = None
     gigabytes: Optional[float] = None
     statuses: Optional[List[UserStatus]] = None
+    scope: Optional[List[UserStatus]] = None
     admin_username: Optional[str] = None
     service_id: Optional[int] = None
     target_service_id: Optional[int] = None
@@ -162,6 +163,20 @@ class BulkUsersActionRequest(BaseModel):
             if invalid:
                 raise ValueError("cleanup_status only accepts expired or limited")
             self.statuses = resolved_statuses
+
+        if self.scope:
+            cleaned = [status for status in self.scope if status != UserStatus.deleted]
+            if not cleaned:
+                raise ValueError("scope cannot be empty or include deleted")
+            # Preserve order while removing duplicates
+            deduped = []
+            seen = set()
+            for status in cleaned:
+                if status in seen:
+                    continue
+                seen.add(status)
+                deduped.append(status)
+            self.scope = deduped
 
         service_id = self.service_id
         if service_id is not None and service_id <= 0:

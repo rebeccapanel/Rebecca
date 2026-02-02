@@ -1,6 +1,7 @@
 import {
 	Box,
 	Button,
+	Checkbox,
 	Heading,
 	HStack,
 	NumberInput,
@@ -16,12 +17,21 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
 	AdvancedUserActionPayload,
+	AdvancedUserActionScopeStatus,
 	AdvancedUserActionType,
 } from "types/User";
 
 type Props = {
 	serviceId: number;
 };
+
+const scopeStatusOptions: AdvancedUserActionScopeStatus[] = [
+	"active",
+	"on_hold",
+	"limited",
+	"expired",
+	"disabled",
+];
 
 const ServiceUserActions = ({ serviceId }: Props) => {
 	const { t } = useTranslation();
@@ -33,6 +43,9 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 	const [days, setDays] = useState("");
 	const [gigabytes, setGigabytes] = useState("");
 	const [isLoading, setIsLoading] = useState<Record<string, boolean>>({});
+	const [selectedScopeStatuses, setSelectedScopeStatuses] = useState<
+		AdvancedUserActionScopeStatus[]
+	>(["active"]);
 
 	const setActionLoading = (key: string, value: boolean) =>
 		setIsLoading((prev) => ({ ...prev, [key]: value }));
@@ -94,7 +107,22 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 			});
 			return;
 		}
-		runAction(action, { days: Math.floor(value) });
+		if (!selectedScopeStatuses.length) {
+			toast({
+				title: t("services.userActions.title", "Service user actions"),
+				description: t(
+					"filters.advancedActions.error.noScope",
+					"Select at least one status scope",
+				),
+				status: "warning",
+				isClosable: true,
+			});
+			return;
+		}
+		runAction(action, {
+			days: Math.floor(value),
+			scope: selectedScopeStatuses,
+		});
 		setDays("");
 	};
 
@@ -112,8 +140,31 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 			});
 			return;
 		}
-		runAction(action, { gigabytes: value });
+		if (!selectedScopeStatuses.length) {
+			toast({
+				title: t("services.userActions.title", "Service user actions"),
+				description: t(
+					"filters.advancedActions.error.noScope",
+					"Select at least one status scope",
+				),
+				status: "warning",
+				isClosable: true,
+			});
+			return;
+		}
+		runAction(action, {
+			gigabytes: value,
+			scope: selectedScopeStatuses,
+		});
 		setGigabytes("");
+	};
+
+	const toggleScopeStatus = (status: AdvancedUserActionScopeStatus) => {
+		setSelectedScopeStatuses((prev) =>
+			prev.includes(status)
+				? prev.filter((item) => item !== status)
+				: [...prev, status],
+		);
 	};
 
 	return (
@@ -133,6 +184,37 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 				</Text>
 
 				<VStack align="stretch" spacing={4}>
+					<Box borderWidth="1px" borderRadius="md" p={3}>
+						<Stack spacing={2}>
+							<Text fontWeight="semibold">
+								{t(
+									"filters.advancedActions.scopeStatuses.title",
+									"Status scope",
+								)}
+							</Text>
+							<Text fontSize="sm" color="gray.500">
+								{t(
+									"filters.advancedActions.scopeStatuses.helper",
+									"Choose which user statuses are affected by expiration and traffic changes.",
+								)}
+							</Text>
+							<HStack spacing={3} flexWrap="wrap">
+								{scopeStatusOptions.map((status) => (
+									<Checkbox
+										key={status}
+										isChecked={selectedScopeStatuses.includes(status)}
+										onChange={() => toggleScopeStatus(status)}
+									>
+										{t(
+											`filters.advancedActions.scopeStatuses.${status}`,
+											status.replace("_", " "),
+										)}
+									</Checkbox>
+								))}
+							</HStack>
+						</Stack>
+					</Box>
+
 					<Box borderWidth="1px" borderRadius="md" p={3}>
 						<Stack spacing={2}>
 							<HStack spacing={2}>
