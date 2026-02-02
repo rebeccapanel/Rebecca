@@ -8,7 +8,7 @@ applies business rules, and keeps caches in sync.
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 
 from app.db import crud, Session, GetDB
@@ -27,6 +27,8 @@ from app.services.cache_adapter import (
     upsert_user_cache,
     invalidate_user_cache as _invalidate_user_cache,
 )
+from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
+from app.db.models import ServiceHostLink
 from app.db.crud.user import ONLINE_ACTIVE_WINDOW, OFFLINE_STALE_WINDOW, UPDATE_STALE_WINDOW, STATUS_FILTER_MAP
 
 
@@ -51,7 +53,7 @@ def _compute_subscription_links(
         return "", {}
 
 
-def _build_user_links(user: User) -> List[str]:
+def _build_user_links(user: User, link_context: Optional[dict] = None) -> List[str]:
     try:
         proxies: dict = {}
         for proxy in getattr(user, "proxies", []) or []:
@@ -82,19 +84,52 @@ def _build_user_links(user: User) -> List[str]:
             "used_traffic": getattr(user, "used_traffic", 0) or 0,
             "on_hold_expire_duration": getattr(user, "on_hold_expire_duration", None),
             "service_id": getattr(user, "service_id", None),
-            "service_host_orders": getattr(user, "service_host_orders", {}) or {},
+            "service_host_orders": {},
             "credential_key": getattr(user, "credential_key", None),
             "flow": getattr(user, "flow", None),
         }
-        return generate_v2ray_links(proxies, inbounds, extra_data, False) or []
+        service_id = getattr(user, "service_id", None)
+        if link_context and link_context.get("service_host_orders"):
+            extra_data["service_host_orders"] = link_context["service_host_orders"].get(service_id, {}) or {}
+        else:
+            extra_data["service_host_orders"] = getattr(user, "service_host_orders", {}) or {}
+
+        inbounds_by_tag = link_context.get("inbounds_by_tag") if link_context else None
+        host_map = None
+        if link_context and link_context.get("host_map_by_service") is not None:
+            host_map = link_context["host_map_by_service"].get(service_id)
+        force_refresh = link_context.get("force_refresh", True) if link_context else True
+
+        return (
+            generate_v2ray_links(
+                proxies,
+                inbounds,
+                extra_data,
+                False,
+                inbounds_by_tag=inbounds_by_tag,
+                host_map=host_map,
+                force_refresh=force_refresh,
+            )
+            or []
+        )
     except Exception as exc:
         logger.debug("Failed to generate config links for %s: %s", getattr(user, "username", "<unknown>"), exc)
         return []
 
 
-def _map_raw_to_list_item(raw: dict, include_links: bool = False) -> UserListItem:
+def _map_raw_to_list_item(
+    raw: dict,
+    include_links: bool = False,
+    admin_lookup: Optional[Dict[int, Admin]] = None,
+) -> UserListItem:
+    admin_obj = None
+    if admin_lookup:
+        admin_obj = admin_lookup.get(raw.get("admin_id"))
     subscription_url, subscription_urls = _compute_subscription_links(
-        raw.get("username", ""), raw.get("credential_key"), admin_id=raw.get("admin_id")
+        raw.get("username", ""),
+        raw.get("credential_key"),
+        admin=admin_obj,
+        admin_id=raw.get("admin_id"),
     )
     return UserListItem(
         username=raw.get("username"),
@@ -116,13 +151,15 @@ def _map_raw_to_list_item(raw: dict, include_links: bool = False) -> UserListIte
     )
 
 
-def _map_user_to_list_item(user: User, include_links: bool = False) -> UserListItem:
+def _map_user_to_list_item(
+    user: User, include_links: bool = False, link_context: Optional[dict] = None
+) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
         getattr(user, "username", ""), getattr(user, "credential_key", None), admin=getattr(user, "admin", None)
     )
     links: List[str] = []
     if include_links:
-        links = _build_user_links(user)
+        links = _build_user_links(user, link_context=link_context)
     return UserListItem(
         username=user.username,
         status=user.status,
@@ -143,6 +180,57 @@ def _map_user_to_list_item(user: User, include_links: bool = False) -> UserListI
     )
 
 
+def _build_admin_lookup(db: Session, users: List[dict]) -> Dict[int, Admin]:
+    admin_ids = {u.get("admin_id") for u in users if u.get("admin_id")}
+    if not admin_ids:
+        return {}
+    try:
+        admins = db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
+    except Exception:
+        return {}
+    lookup: Dict[int, Admin] = {}
+    for admin in admins:
+        if getattr(admin, "id", None) is not None:
+            lookup[int(admin.id)] = admin
+    return lookup
+
+
+def _build_links_context(db: Session, users: List[User]) -> dict:
+    service_ids = {getattr(u, "service_id", None) for u in users}
+    service_ids_for_query = {sid for sid in service_ids if sid is not None}
+
+    inbounds_by_tag = {}
+    try:
+        inbounds_by_tag = get_inbounds_by_tag_cached(db, force_refresh=False)
+    except Exception:
+        inbounds_by_tag = {}
+
+    host_map_by_service: Dict[Optional[int], Optional[dict]] = {}
+    for sid in service_ids:
+        try:
+            host_map_by_service[sid] = get_service_host_map_cached(sid, force_refresh=False)
+        except Exception:
+            host_map_by_service[sid] = None
+
+    service_host_orders: Dict[int, Dict[int, int]] = {}
+    if service_ids_for_query:
+        try:
+            links = db.query(ServiceHostLink).filter(ServiceHostLink.service_id.in_(service_ids_for_query)).all()
+            for link in links:
+                if link.service_id is None or link.host_id is None:
+                    continue
+                service_host_orders.setdefault(link.service_id, {})[link.host_id] = link.sort
+        except Exception:
+            service_host_orders = {}
+
+    return {
+        "inbounds_by_tag": inbounds_by_tag,
+        "host_map_by_service": host_map_by_service,
+        "service_host_orders": service_host_orders,
+        "force_refresh": False,
+    }
+
+
 def _apply_pending_usage_to_dict(user_dict: dict) -> None:
     try:
         uid = user_dict.get("id")
@@ -154,9 +242,14 @@ def _apply_pending_usage_to_dict(user_dict: dict) -> None:
             user_dict["lifetime_used_traffic"] = (user_dict.get("lifetime_used_traffic") or 0) + pending_total
         if pending_online:
             current_online = user_dict.get("online_at")
-            try:
-                current_dt = datetime.fromisoformat(current_online) if isinstance(current_online, str) else None
-            except Exception:
+            if isinstance(current_online, datetime):
+                current_dt = current_online
+            elif isinstance(current_online, str):
+                try:
+                    current_dt = datetime.fromisoformat(current_online)
+                except Exception:
+                    current_dt = None
+            else:
                 current_dt = None
             if not current_dt or pending_online > current_dt:
                 user_dict["online_at"] = pending_online.isoformat()
@@ -414,6 +507,24 @@ def get_users_list(
             active_total=active_total,
             include_links=include_links,
         )
+
+    # SQL-first path for list responses to avoid heavy Python-side filtering on large datasets.
+    return get_users_list_db_only(
+        db,
+        offset=offset,
+        limit=limit,
+        username=username,
+        search=search,
+        status=status,
+        sort=sort,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        dbadmin=dbadmin,
+        owners=owners,
+        users_limit=users_limit,
+        active_total=active_total,
+        include_links=False,
+    )
     db_closed = False
     dbadmin_in_use = dbadmin
 
@@ -667,24 +778,47 @@ def get_users_list_db_only(
     Fast-path DB-only users list for when Redis is unavailable/disabled.
     Mirrors the DB fallback of get_users_list but skips any Redis probing/warmup.
     """
-    users, count = crud.get_users(
-        db=db,
-        offset=offset,
-        limit=limit,
-        search=search,
-        usernames=username,
-        status=status,
-        sort=sort,
-        advanced_filters=advanced_filters,
-        service_id=service_id,
-        admin=dbadmin,
-        admins=owners,
-        return_with_count=True,
-    )
+    if include_links:
+        users, count = crud.get_users(
+            db=db,
+            offset=offset,
+            limit=limit,
+            search=search,
+            usernames=username,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            admin=dbadmin,
+            admins=owners,
+            return_with_count=True,
+            force_db=True,
+        )
 
-    for user in users:
-        _apply_pending_usage_to_model(user)
-    items = [_map_user_to_list_item(u, include_links=include_links) for u in users]
+        for user in users:
+            _apply_pending_usage_to_model(user)
+        link_context = _build_links_context(db, users)
+        items = [_map_user_to_list_item(u, include_links=include_links, link_context=link_context) for u in users]
+    else:
+        users, count = crud.get_users_list_rows(
+            db=db,
+            offset=offset,
+            limit=limit,
+            search=search,
+            usernames=username,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            admin=dbadmin,
+            admins=owners,
+            return_with_count=True,
+        )
+
+        for user in users:
+            _apply_pending_usage_to_dict(user)
+        admin_lookup = _build_admin_lookup(db, users)
+        items = [_map_raw_to_list_item(u, include_links=False, admin_lookup=admin_lookup) for u in users]
 
     if active_total is None and dbadmin:
         active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)

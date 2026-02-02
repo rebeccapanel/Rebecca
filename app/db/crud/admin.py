@@ -311,12 +311,7 @@ def bulk_update_standard_admin_permissions(
     if not permissions:
         return 0
 
-    targets = (
-        db.query(Admin)
-        .filter(Admin.status != AdminStatus.deleted)
-        .filter(Admin.role == AdminRole.standard)
-        .all()
-    )
+    targets = db.query(Admin).filter(Admin.status != AdminStatus.deleted).filter(Admin.role == AdminRole.standard).all()
     if not targets:
         return 0
 

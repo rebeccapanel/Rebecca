@@ -475,7 +475,7 @@ class ServiceRepository:
 
         from .usage import _get_usage_timeseries
 
-        return _get_usage_timeseries(query, start_aware, end_aware, tzinfo, granularity, {}, False)
+        return _get_usage_timeseries(self.db, query, start_aware, end_aware, tzinfo, granularity, {}, False)
 
     def admin_usage(
         self,

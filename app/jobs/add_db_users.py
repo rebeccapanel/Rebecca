@@ -51,7 +51,9 @@ def _add_user_accounts_to_api(dbuser):
                             settings_model, resolved_proxy_type, user.credential_key, flow=user_flow
                         )
                     else:
-                        proxy_settings = runtime_proxy_settings(settings_model, resolved_proxy_type, user.credential_key)
+                        proxy_settings = runtime_proxy_settings(
+                            settings_model, resolved_proxy_type, user.credential_key
+                        )
 
                     if proxy_settings.get("flow"):
                         inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})

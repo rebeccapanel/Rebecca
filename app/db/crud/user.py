@@ -472,6 +472,60 @@ def _apply_advanced_user_filters(
     return query
 
 
+def _apply_search_filter(query: Query, search: Optional[str]) -> Query:
+    if not search:
+        return query
+
+    like_pattern = f"%{search}%"
+    key_candidates, uuid_candidates = _derive_search_tokens(search)
+    config_uuids, config_passwords = _extract_config_identifiers(search)
+    fallback_uuids, fallback_passwords = _extract_config_fallback(search)
+    uuid_candidates.update(config_uuids)
+    uuid_candidates.update(fallback_uuids)
+    password_candidates = set(config_passwords)
+    password_candidates.update(fallback_passwords)
+    for candidate in list(uuid_candidates):
+        for proxy_type in UUID_PROTOCOLS:
+            try:
+                key_candidates.add(uuid_to_key(candidate, proxy_type))
+            except Exception:
+                continue
+    extracted_username, extracted_key = _extract_subscription_identifiers(search)
+    if extracted_key:
+        cleaned_key = extracted_key.replace("-", "").lower()
+        if cleaned_key:
+            key_candidates.add(cleaned_key)
+        key_candidates.add(extracted_key)
+        key_candidates.add(extracted_key.lower())
+
+    search_clauses = [
+        User.username.ilike(like_pattern),
+        User.note.ilike(like_pattern),
+        User.credential_key.ilike(like_pattern),
+        User.telegram_id.ilike(like_pattern),
+        User.contact_number.ilike(like_pattern),
+    ]
+    if extracted_username:
+        search_clauses.append(func.lower(User.username) == extracted_username.lower())
+    if key_candidates:
+        search_clauses.append(User.credential_key.in_(key_candidates))
+    if uuid_candidates:
+        proxy_exists = exists().where(
+            and_(Proxy.user_id == User.id, Proxy.settings["id"].as_string().in_(uuid_candidates))
+        )
+        search_clauses.append(proxy_exists)
+    if password_candidates:
+        password_exists = exists().where(
+            and_(Proxy.user_id == User.id, Proxy.settings["password"].as_string().in_(password_candidates))
+        )
+        search_clauses.append(password_exists)
+
+    if search_clauses:
+        query = query.filter(or_(*search_clauses))
+
+    return query
+
+
 def _filter_users_in_memory(
     users: List[User],
     usernames: Optional[List[str]] = None,
@@ -665,90 +719,93 @@ def get_users(
     service_id: Optional[int] = None,
     reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
     return_with_count: bool = False,
+    force_db: bool = False,
 ) -> Union[List[User], Tuple[List[User], int]]:
     """Retrieves users based on various filters and options. Uses Redis cache if available."""
     # Ensure deterministic ordering (especially for Redis-sourced lists) so pagination is stable
     effective_sort = sort if sort else [UsersSortingOptions["-created_at"]]
 
     # Try to get from Redis cache first
-    try:
-        from app.redis.cache import get_all_users_from_cache
-        from app.redis.client import get_redis
-        from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
+    if not force_db:
+        try:
+            from app.redis.cache import get_all_users_from_cache
+            from app.redis.client import get_redis
+            from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
 
-        if REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis():
-            # Get all users from Redis (this is fast, just deserializes basic data)
-            all_users = get_all_users_from_cache(db)
-            # If aggregated list missing, ensure it's warmed for next calls
-            try:
-                from app.redis.cache import REDIS_KEY_USER_LIST_ALL, get_redis, USER_CACHE_TTL, _serialize_user
+            if REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis():
+                # Get all users from Redis (this is fast, just deserializes basic data)
+                all_users = get_all_users_from_cache(db)
+                # If aggregated list missing, ensure it's warmed for next calls
+                try:
+                    from app.redis.cache import REDIS_KEY_USER_LIST_ALL, get_redis, USER_CACHE_TTL, _serialize_user
 
-                redis_client = get_redis()
-                if redis_client and all_users:
-                    redis_client.setex(
-                        REDIS_KEY_USER_LIST_ALL,
-                        USER_CACHE_TTL,
-                        json.dumps([_serialize_user(u) for u in all_users]),
+                    redis_client = get_redis()
+                    if redis_client and all_users:
+                        redis_client.setex(
+                            REDIS_KEY_USER_LIST_ALL,
+                            USER_CACHE_TTL,
+                            json.dumps([_serialize_user(u) for u in all_users]),
+                        )
+                except Exception:
+                    pass
+
+                if all_users:
+                    # Filter in memory (fast operation)
+                    filtered_users = _filter_users_in_memory(
+                        all_users,
+                        usernames=usernames,
+                        search=search,
+                        status=status,
+                        admin=admin,
+                        admins=admins,
+                        advanced_filters=advanced_filters,
+                        service_id=service_id,
+                        reset_strategy=reset_strategy,
                     )
-            except Exception:
-                pass
 
-            if all_users:
-                # Filter in memory (fast operation)
-                filtered_users = _filter_users_in_memory(
-                    all_users,
-                    usernames=usernames,
-                    search=search,
-                    status=status,
-                    admin=admin,
-                    admins=admins,
-                    advanced_filters=advanced_filters,
-                    service_id=service_id,
-                    reset_strategy=reset_strategy,
-                )
+                    # Sort (fast operation on filtered list)
+                    if effective_sort:
+                        for sort_opt in reversed(effective_sort):  # Apply sorts in reverse order
+                            sort_str = str(sort_opt.value).lower()
+                            reverse = "desc" in sort_str
 
-                # Sort (fast operation on filtered list)
-                if effective_sort:
-                    for sort_opt in reversed(effective_sort):  # Apply sorts in reverse order
-                        sort_str = str(sort_opt.value).lower()
-                        reverse = "desc" in sort_str
+                            if "username" in sort_str:
+                                filtered_users.sort(key=lambda u: (u.username or "").lower(), reverse=reverse)
+                            elif "created_at" in sort_str:
+                                filtered_users.sort(
+                                    key=lambda u: u.created_at or datetime.min.replace(tzinfo=timezone.utc),
+                                    reverse=reverse,
+                                )
+                            elif "used_traffic" in sort_str:
+                                filtered_users.sort(key=lambda u: getattr(u, "used_traffic", 0) or 0, reverse=reverse)
+                            elif "data_limit" in sort_str:
+                                filtered_users.sort(key=lambda u: u.data_limit or 0, reverse=reverse)
+                            elif "expire" in sort_str:
+                                filtered_users.sort(
+                                    key=lambda u: u.expire or datetime.max.replace(tzinfo=timezone.utc)
+                                    if u.expire
+                                    else datetime.min.replace(tzinfo=timezone.utc),
+                                    reverse=reverse,
+                                )
 
-                        if "username" in sort_str:
-                            filtered_users.sort(key=lambda u: (u.username or "").lower(), reverse=reverse)
-                        elif "created_at" in sort_str:
-                            filtered_users.sort(
-                                key=lambda u: u.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=reverse
-                            )
-                        elif "used_traffic" in sort_str:
-                            filtered_users.sort(key=lambda u: getattr(u, "used_traffic", 0) or 0, reverse=reverse)
-                        elif "data_limit" in sort_str:
-                            filtered_users.sort(key=lambda u: u.data_limit or 0, reverse=reverse)
-                        elif "expire" in sort_str:
-                            filtered_users.sort(
-                                key=lambda u: u.expire or datetime.max.replace(tzinfo=timezone.utc)
-                                if u.expire
-                                else datetime.min.replace(tzinfo=timezone.utc),
-                                reverse=reverse,
-                            )
+                    # Get count before pagination (for return_with_count)
+                    count = len(filtered_users) if return_with_count else None
 
-                # Get count before pagination (for return_with_count)
-                count = len(filtered_users) if return_with_count else None
+                    # Pagination BEFORE loading relationships (critical for performance)
+                    if offset:
+                        filtered_users = filtered_users[offset:]
+                    if limit:
+                        filtered_users = filtered_users[:limit]
 
-                # Pagination BEFORE loading relationships (critical for performance)
-                if offset:
-                    filtered_users = filtered_users[offset:]
-                if limit:
-                    filtered_users = filtered_users[:limit]
+                    # Redis-first path: return cached users directly (avoid DB round-trips).
+                    final_users = filtered_users or []
 
-                # Redis-first path: return cached users directly (avoid DB round-trips).
-                final_users = filtered_users or []
-
-                if return_with_count:
-                    return final_users, count
-                return final_users
-    except Exception as e:
-        _logger.warning(f"Failed to get users from Redis cache, falling back to DB: {e}")
-        # Ensure we continue to DB fallback even if Redis fails
+                    if return_with_count:
+                        return final_users, count
+                    return final_users
+        except Exception as e:
+            _logger.warning(f"Failed to get users from Redis cache, falling back to DB: {e}")
+            # Ensure we continue to DB fallback even if Redis fails
 
     # Fallback to direct DB query
     try:
@@ -759,51 +816,7 @@ def get_users(
             datetime.now(timezone.utc),
         )
 
-        if search:
-            like_pattern = f"%{search}%"
-            key_candidates, uuid_candidates = _derive_search_tokens(search)
-            config_uuids, config_passwords = _extract_config_identifiers(search)
-            fallback_uuids, fallback_passwords = _extract_config_fallback(search)
-            uuid_candidates.update(config_uuids)
-            uuid_candidates.update(fallback_uuids)
-            password_candidates = set(config_passwords)
-            password_candidates.update(fallback_passwords)
-            for candidate in list(uuid_candidates):
-                for proxy_type in UUID_PROTOCOLS:
-                    try:
-                        key_candidates.add(uuid_to_key(candidate, proxy_type))
-                    except Exception:
-                        continue
-            extracted_username, extracted_key = _extract_subscription_identifiers(search)
-            if extracted_key:
-                cleaned_key = extracted_key.replace("-", "").lower()
-                if cleaned_key:
-                    key_candidates.add(cleaned_key)
-                key_candidates.add(extracted_key)
-                key_candidates.add(extracted_key.lower())
-            search_clauses = [
-                User.username.ilike(like_pattern),
-                User.note.ilike(like_pattern),
-                User.credential_key.ilike(like_pattern),
-                User.telegram_id.ilike(like_pattern),
-                User.contact_number.ilike(like_pattern),
-            ]
-            if extracted_username:
-                search_clauses.append(func.lower(User.username) == extracted_username.lower())
-            if key_candidates:
-                search_clauses.append(User.credential_key.in_(key_candidates))
-            if uuid_candidates:
-                proxy_exists = exists().where(
-                    and_(Proxy.user_id == User.id, Proxy.settings["id"].as_string().in_(uuid_candidates))
-                )
-                search_clauses.append(proxy_exists)
-            if password_candidates:
-                password_exists = exists().where(
-                    and_(Proxy.user_id == User.id, Proxy.settings["password"].as_string().in_(password_candidates))
-                )
-                search_clauses.append(password_exists)
-            if search_clauses:
-                query = query.filter(or_(*search_clauses))
+        query = _apply_search_filter(query, search)
 
         if usernames:
             query = query.filter(User.username.in_(usernames))
@@ -873,6 +886,123 @@ def get_users(
         return []
 
 
+def get_users_list_rows(
+    db: Session,
+    offset: Optional[int] = None,
+    limit: Optional[int] = None,
+    usernames: Optional[List[str]] = None,
+    search: Optional[str] = None,
+    status: Optional[Union[UserStatus, list]] = None,
+    sort: Optional[List[UsersSortingOptions]] = None,
+    admin: Optional[Admin] = None,
+    admins: Optional[List[str]] = None,
+    advanced_filters: Optional[List[str]] = None,
+    service_id: Optional[int] = None,
+    reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+    return_with_count: bool = False,
+) -> Union[List[Dict[str, object]], Tuple[List[Dict[str, object]], int]]:
+    """Retrieve lightweight user rows for list endpoints with SQL-side filtering/sorting."""
+    effective_sort = sort if sort else [UsersSortingOptions["-created_at"]]
+    now = datetime.now(timezone.utc)
+
+    reseted_usage_subq = (
+        db.query(
+            UserUsageResetLogs.user_id.label("user_id"),
+            func.sum(UserUsageResetLogs.used_traffic_at_reset).label("reseted_usage"),
+        )
+        .group_by(UserUsageResetLogs.user_id)
+        .subquery()
+    )
+    lifetime_used_expr = (coalesce(User.used_traffic, 0) + coalesce(reseted_usage_subq.c.reseted_usage, 0)).label(
+        "lifetime_used_traffic"
+    )
+
+    query = (
+        db.query(
+            User.id.label("id"),
+            User.username.label("username"),
+            User.status.label("status"),
+            coalesce(User.used_traffic, 0).label("used_traffic"),
+            lifetime_used_expr,
+            User.created_at.label("created_at"),
+            User.expire.label("expire"),
+            User.data_limit.label("data_limit"),
+            User.data_limit_reset_strategy.label("data_limit_reset_strategy"),
+            User.online_at.label("online_at"),
+            User.service_id.label("service_id"),
+            Service.name.label("service_name"),
+            User.admin_id.label("admin_id"),
+            Admin.username.label("admin_username"),
+            User.credential_key.label("credential_key"),
+        )
+        .select_from(User)
+        .outerjoin(reseted_usage_subq, reseted_usage_subq.c.user_id == User.id)
+        .outerjoin(Admin, User.admin_id == Admin.id)
+        .outerjoin(Service, User.service_id == Service.id)
+        .filter(User.status != UserStatus.deleted)
+    )
+
+    query = _apply_advanced_user_filters(query, advanced_filters, now)
+    query = _apply_search_filter(query, search)
+
+    if usernames:
+        query = query.filter(User.username.in_(usernames))
+
+    if status:
+        if isinstance(status, list):
+            query = query.filter(User.status.in_(status))
+        else:
+            query = query.filter(User.status == status)
+
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
+
+    if reset_strategy:
+        if isinstance(reset_strategy, list):
+            query = query.filter(User.data_limit_reset_strategy.in_(reset_strategy))
+        else:
+            query = query.filter(User.data_limit_reset_strategy == reset_strategy)
+
+    if admin and hasattr(admin, "id") and admin.id is not None:
+        query = query.filter(User.admin_id == admin.id)
+
+    if admins:
+        query = query.filter(Admin.username.in_(admins))
+
+    count = None
+    if return_with_count:
+        count = query.with_entities(func.count(User.id)).scalar() or 0
+
+    if effective_sort:
+        query = query.order_by(*(opt.value for opt in effective_sort))
+
+    if offset:
+        query = query.offset(offset)
+    if limit:
+        query = query.limit(limit)
+
+    rows = query.all()
+    results: List[Dict[str, object]] = []
+    for row in rows:
+        if hasattr(row, "_mapping"):
+            data = dict(row._mapping)
+        elif hasattr(row, "_asdict"):
+            data = dict(row._asdict())
+        else:
+            data = dict(row)
+        status_value = data.get("status")
+        if hasattr(status_value, "value"):
+            data["status"] = status_value.value
+        strategy_value = data.get("data_limit_reset_strategy")
+        if hasattr(strategy_value, "value"):
+            data["data_limit_reset_strategy"] = strategy_value.value
+        results.append(data)
+
+    if return_with_count:
+        return results, count or 0
+    return results
+
+
 def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None) -> int:
     """Retrieves the count of users based on status and admin filters."""
     # Use optimized count query: only select User.id for faster counting
@@ -908,22 +1038,7 @@ def _build_filtered_users_query_for_aggregation(
         datetime.now(timezone.utc),
     )
 
-    if search:
-        like_pattern = f"%{search}%"
-        key_candidates, uuid_candidates = _derive_search_tokens(search)
-        search_clauses = [
-            User.username.ilike(like_pattern),
-            User.note.ilike(like_pattern),
-            User.credential_key.ilike(like_pattern),
-        ]
-        if key_candidates:
-            search_clauses.append(User.credential_key.in_(key_candidates))
-        if uuid_candidates:
-            proxy_exists = exists().where(
-                and_(Proxy.user_id == User.id, Proxy.settings["id"].as_string().in_(uuid_candidates))
-            )
-            search_clauses.append(proxy_exists)
-        query = query.filter(or_(*search_clauses))
+    query = _apply_search_filter(query, search)
 
     if usernames:
         query = query.filter(User.username.in_(usernames))
@@ -1668,9 +1783,9 @@ def adjust_all_users_expire(
 ) -> int:
     if delta_seconds == 0:
         return 0
-    query = _build_user_bulk_query(
-        db, admin, service_id, service_without_assignment, eager_load=False
-    ).filter(User.status == UserStatus.active, User.expire.isnot(None))
+    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+        User.status == UserStatus.active, User.expire.isnot(None)
+    )
     now_ts = datetime.now(timezone.utc).timestamp()
     new_expire = User.expire + delta_seconds
     new_status = case(
@@ -1798,9 +1913,7 @@ def adjust_all_users_limit(
     """Increase or decrease data limits for users, optionally scoped by admin/service."""
     if delta_bytes == 0:
         return 0
-    query = _build_user_bulk_query(
-        db, admin, service_id, service_without_assignment, eager_load=False
-    ).filter(
+    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
         User.status == UserStatus.active,
         User.data_limit.isnot(None),
         User.data_limit > 0,
@@ -1840,9 +1953,9 @@ def delete_users_by_status_age(
     service_without_assignment: bool = False,
 ) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    query = _build_user_bulk_query(
-        db, admin, service_id, service_without_assignment, eager_load=False
-    ).filter(User.status.in_(statuses), User.last_status_change.isnot(None), User.last_status_change <= cutoff)
+    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+        User.status.in_(statuses), User.last_status_change.isnot(None), User.last_status_change <= cutoff
+    )
     affected = query.update({User.status: UserStatus.deleted}, synchronize_session=False)
     if affected:
         db.commit()
@@ -1901,9 +2014,9 @@ def bulk_update_user_status(
     service_id: Optional[int] = None,
     service_without_assignment: bool = False,
 ) -> int:
-    query = _build_user_bulk_query(
-        db, admin, service_id, service_without_assignment, eager_load=False
-    ).filter(User.status != target_status)
+    query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+        User.status != target_status
+    )
 
     if target_status == UserStatus.active:
         if admin:
@@ -1918,9 +2031,7 @@ def bulk_update_user_status(
             )
             if counts:
                 admin_ids = [row[0] for row in counts if row[0] is not None]
-                admins = {
-                    a.id: a for a in db.query(Admin).filter(Admin.id.in_(admin_ids)).all()
-                }
+                admins = {a.id: a for a in db.query(Admin).filter(Admin.id.in_(admin_ids)).all()}
                 for admin_id, required_slots in counts:
                     admin_obj = admins.get(admin_id)
                     _ensure_active_user_capacity(db, admin_obj, required_slots=required_slots)

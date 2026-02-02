@@ -160,6 +160,7 @@ def get_xray_version():
     try:
         # Try to use the already-running core instance from runtime
         from app.reb_node.state import core
+
         return core.version if core.available else None
     except Exception:
         return None
@@ -188,8 +189,8 @@ def is_xray_version_at_least(target_version: str) -> bool:
 
     try:
         # Parse versions into tuples of integers for comparison
-        current_parts = [int(x) for x in current_version.split('.')]
-        target_parts = [int(x) for x in target_version.split('.')]
+        current_parts = [int(x) for x in current_version.split(".")]
+        target_parts = [int(x) for x in target_version.split(".")]
 
         # Pad shorter version with zeros for comparison
         max_len = max(len(current_parts), len(target_parts))

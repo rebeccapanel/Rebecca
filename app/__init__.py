@@ -23,7 +23,7 @@ from app import runtime
 from app.db import GetDB, crud
 from app.utils.system import register_scheduler_jobs
 
-__version__ = "0.0.32"
+__version__ = "0.0.33"
 
 IS_RUNNING_TESTS = "PYTEST_CURRENT_TEST" in os.environ
 IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
