@@ -16,12 +16,12 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	Select,
 	SimpleGrid,
 	Stack,
 	Switch,
 	Tag,
 	Text,
-	Textarea,
 	Tooltip,
 	useClipboard,
 	useToast,
@@ -118,16 +118,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			? null
 			: Math.round(value * BYTES_IN_GB);
 
-	const formatConfigForInput = useCallback((value?: unknown) => {
-		if (!value) return "";
-		if (typeof value === "string") return value;
-		try {
-			return JSON.stringify(value, null, 2);
-		} catch (err) {
-			return "";
-		}
-	}, []);
-
 	const baseDefaults = isAddMode
 		? { ...getNodeDefaultValues(), add_as_new_host: false }
 		: {
@@ -135,18 +125,12 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 				...node,
 				add_as_new_host: false,
 			};
-	const baseConfigText = formatConfigForInput(baseDefaults.xray_config);
-	const baseSingConfigText = formatConfigForInput(baseDefaults.sing_config);
-	const baseHystConfigText = formatConfigForInput(baseDefaults.hysteria_config);
 
 	const form = useForm({
 		resolver: zodResolver(NodeSchema),
 		defaultValues: {
 			...baseDefaults,
 			data_limit: formatDataLimitForInput(baseDefaults.data_limit ?? null),
-			xray_config: baseConfigText,
-			sing_config: baseSingConfigText,
-			hysteria_config: baseHystConfigText,
 		},
 	});
 
@@ -154,6 +138,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 	const { onCopy: copyNodeCertificate, hasCopied: nodeCertificateCopied } =
 		useClipboard(nodeCertificateValue);
 	const useNobetci = form.watch("use_nobetci");
+	const proxyEnabled = form.watch("proxy_enabled");
 
 	useEffect(() => {
 		if (!allowNobetci || !useNobetci) {
@@ -184,6 +169,16 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 	}, [panelSettings, form]);
 
 	useEffect(() => {
+		if (!proxyEnabled) {
+			return;
+		}
+		const currentType = form.getValues("proxy_type");
+		if (!currentType) {
+			form.setValue("proxy_type", "http");
+		}
+	}, [proxyEnabled, form]);
+
+	useEffect(() => {
 		if (isOpen) {
 			const defaults = isAddMode
 				? { ...getNodeDefaultValues(), add_as_new_host: false }
@@ -195,9 +190,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			form.reset({
 				...defaults,
 				data_limit: formatDataLimitForInput(defaults.data_limit ?? null),
-				xray_config: formatConfigForInput(defaults.xray_config),
-				sing_config: formatConfigForInput(defaults.sing_config),
-				hysteria_config: formatConfigForInput(defaults.hysteria_config),
 			});
 			setShowCertificate(!isAddMode && !!node?.node_certificate);
 		}
@@ -207,7 +199,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		node,
 		form,
 		formatDataLimitForInput,
-		formatConfigForInput,
 	]);
 
 	useEffect(() => {
@@ -465,69 +456,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									{t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
 								</Text>
 							</FormControl>
-							<FormControl
-								isInvalid={Boolean(form.formState?.errors?.xray_config)}
-							>
-								<FormLabel>
-									{t("nodes.xrayConfig", "Node Xray config (JSON, optional)")}
-								</FormLabel>
-								<Textarea
-									minH="160px"
-									fontFamily="mono"
-									placeholder={t(
-										"nodes.xrayConfigPlaceholder",
-										"Leave empty to use the master config for this node",
-									)}
-									{...form.register("xray_config")}
-								/>
-								<FormErrorMessage>
-									{getInputError(form.formState?.errors?.xray_config)}
-								</FormErrorMessage>
-							</FormControl>
-							<FormControl
-								isInvalid={Boolean(form.formState?.errors?.sing_config)}
-							>
-								<FormLabel>
-									{t(
-										"nodes.singConfig",
-										"Node Sing-box config (JSON, optional)",
-									)}
-								</FormLabel>
-								<Textarea
-									minH="160px"
-									fontFamily="mono"
-									placeholder={t(
-										"nodes.singConfigPlaceholder",
-										"Leave empty to use the master config for this node",
-									)}
-									{...form.register("sing_config")}
-								/>
-								<FormErrorMessage>
-									{getInputError(form.formState?.errors?.sing_config)}
-								</FormErrorMessage>
-							</FormControl>
-							<FormControl
-								isInvalid={Boolean(form.formState?.errors?.hysteria_config)}
-							>
-								<FormLabel>
-									{t(
-										"nodes.hysteriaConfig",
-										"Hysteria config (JSON, optional)",
-									)}
-								</FormLabel>
-								<Textarea
-									minH="160px"
-									fontFamily="mono"
-									placeholder={t(
-										"nodes.hysteriaConfigPlaceholder",
-										"Leave empty to use the master config for this node",
-									)}
-									{...form.register("hysteria_config")}
-								/>
-								<FormErrorMessage>
-									{getInputError(form.formState?.errors?.hysteria_config)}
-								</FormErrorMessage>
-							</FormControl>
 							{allowNobetci && (
 								<>
 									<FormControl display="flex" alignItems="center">
@@ -605,6 +533,118 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</Collapse>
 								</>
 							)}
+							<FormControl display="flex" alignItems="center">
+								<FormLabel mb={0}>
+									{t("nodes.useProxy", "Enable proxy for node connection")}
+								</FormLabel>
+								<Controller
+									control={form.control}
+									name="proxy_enabled"
+									render={({ field }) => (
+										<Switch
+											isChecked={Boolean(field.value)}
+											onChange={(event) =>
+												field.onChange(event.target.checked)
+											}
+										/>
+									)}
+								/>
+							</FormControl>
+							<Collapse in={Boolean(proxyEnabled)} animateOpacity>
+								<Stack spacing={3} mt={2}>
+									<FormControl
+										isInvalid={!!getInputError(form.formState?.errors?.proxy_type)}
+									>
+										<FormLabel>
+											{t("nodes.proxyType", "Proxy type")}
+										</FormLabel>
+										<Select
+											size="sm"
+											placeholder={t(
+												"nodes.proxyTypePlaceholder",
+												"Select proxy type",
+											)}
+											{...form.register("proxy_type")}
+										>
+											<option value="http">HTTP</option>
+											<option value="socks5">SOCKS5</option>
+										</Select>
+										<FormErrorMessage>
+											{getInputError(form.formState?.errors?.proxy_type)}
+										</FormErrorMessage>
+									</FormControl>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<Input
+												label={t("nodes.proxyHost", "Proxy host")}
+												size="sm"
+												placeholder="proxy.example.com"
+												{...form.register("proxy_host")}
+												error={getInputError(
+													form.formState?.errors?.proxy_host,
+												)}
+											/>
+										</FormControl>
+										<FormControl>
+											<Input
+												label={t("nodes.proxyPort", "Proxy port")}
+												size="sm"
+												type="number"
+												min={1}
+												max={65535}
+												placeholder="8080"
+												{...form.register("proxy_port", {
+													setValueAs: (value) => {
+														if (
+															value === "" ||
+															value === null ||
+															value === undefined
+														) {
+															return null;
+														}
+														const parsed = Number(value);
+														return Number.isFinite(parsed) ? parsed : Number.NaN;
+													},
+												})}
+												error={getInputError(
+													form.formState?.errors?.proxy_port,
+												)}
+											/>
+										</FormControl>
+									</SimpleGrid>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<Input
+												label={t("nodes.proxyUsername", "Proxy username")}
+												size="sm"
+												placeholder="user"
+												{...form.register("proxy_username")}
+												error={getInputError(
+													form.formState?.errors?.proxy_username,
+												)}
+											/>
+										</FormControl>
+										<FormControl>
+											<Input
+												label={t("nodes.proxyPassword", "Proxy password")}
+												size="sm"
+												type="password"
+												placeholder="••••••••"
+												{...form.register("proxy_password")}
+												error={getInputError(
+													form.formState?.errors?.proxy_password,
+												)}
+											/>
+										</FormControl>
+									</SimpleGrid>
+									<Text fontSize="xs" color="gray.500">
+										{t(
+											"nodes.proxyHint",
+											"Applies only to master-to-node communication.",
+										)}
+									</Text>
+								</Stack>
+							</Collapse>
 						</Stack>
 
 						{isAddMode && (

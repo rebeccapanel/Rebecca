@@ -84,6 +84,16 @@ export const NodeSchema = z.object({
 	use_nobetci: z.boolean().optional(),
 	access_insights_enabled: z.boolean().optional(),
 	nobetci_port: z.number().nullable().optional(),
+	proxy_enabled: z.boolean().optional(),
+	proxy_type: z.enum(["http", "socks5"]).nullable().optional(),
+	proxy_host: z.string().nullable().optional(),
+	proxy_port: z
+		.number()
+		.nullable()
+		.optional()
+		.or(z.string().transform((v) => parseFloat(v))),
+	proxy_username: z.string().nullable().optional(),
+	proxy_password: z.string().nullable().optional(),
 	certificate: z.string().optional(),
 	certificate_key: z.string().optional(),
 	certificate_token: z.string().optional(),
@@ -94,6 +104,40 @@ export const NodeSchema = z.object({
 	xray_config: configSchema,
 	sing_config: configSchema,
 	hysteria_config: configSchema,
+}).superRefine((value, ctx) => {
+	if (!value.proxy_enabled) {
+		return;
+	}
+
+	if (!value.proxy_type) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["proxy_type"],
+			message: "Proxy type is required",
+		});
+	}
+
+	if (!value.proxy_host) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["proxy_host"],
+			message: "Proxy host is required",
+		});
+	}
+
+	if (
+		value.proxy_port === null ||
+		value.proxy_port === undefined ||
+		Number.isNaN(value.proxy_port) ||
+		value.proxy_port < 1 ||
+		value.proxy_port > 65535
+	) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["proxy_port"],
+			message: "Proxy port must be between 1 and 65535",
+		});
+	}
 });
 
 export type NodeType = z.infer<typeof NodeSchema>;
@@ -112,6 +156,12 @@ export const getNodeDefaultValues = (): NodeType => ({
 	use_nobetci: false,
 	access_insights_enabled: false,
 	nobetci_port: null,
+	proxy_enabled: false,
+	proxy_type: null,
+	proxy_host: null,
+	proxy_port: null,
+	proxy_username: null,
+	proxy_password: null,
 	xray_config: null,
 	sing_config: null,
 	hysteria_config: null,

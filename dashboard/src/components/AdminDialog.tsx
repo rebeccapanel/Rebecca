@@ -6,6 +6,7 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
+	Icon,
 	IconButton,
 	Input,
 	InputGroup,
@@ -27,6 +28,7 @@ import {
 	TabPanels,
 	Tabs,
 	Text,
+	useDisclosure,
 	useToast,
 	VStack,
 	Badge,
@@ -38,11 +40,15 @@ import {
 } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
+import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import { fetch } from "service/http";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { type ElementType, type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import type { IconType } from "react-icons";
+import { GiTronArrow } from "react-icons/gi";
+import { SiTether, SiTon } from "react-icons/si";
 import type {
 	AdminCreatePayload,
 	AdminPermissions,
@@ -50,6 +56,8 @@ import type {
 } from "types/Admin";
 import { AdminRole, AdminStatus } from "types/Admin";
 import type { ServiceSummary } from "types/Service";
+import { getAdminExpire, setAdminExpire as setAdminExpireStorage } from "utils/adminExpireStorage";
+import { relativeExpiryDate } from "utils/dateFormatter";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -57,8 +65,42 @@ import {
 import { z } from "zod";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
+import { DateTimePicker } from "./DateTimePicker";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
+const iconAs = (icon: IconType) => icon as unknown as ElementType;
+
+type DonationWallet = {
+	key: string;
+	label: string;
+	address: string;
+	icon: IconType;
+	color: string;
+};
+
+const DONATION_WALLETS: DonationWallet[] = [
+	{
+		key: "trx",
+		label: "TRX",
+		address: "TAZSGTDrFwgFWUFUpvMW2uMZHpy365ETYE",
+		icon: GiTronArrow,
+		color: "red.500",
+	},
+	{
+		key: "ton",
+		label: "TON",
+		address: "UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa",
+		icon: SiTon,
+		color: "blue.500",
+	},
+	{
+		key: "usdt",
+		label: "USDT (BEP20)",
+		address: "0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D",
+		icon: SiTether,
+		color: "green.500",
+	},
+];
 
 const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Standard]: {
@@ -282,6 +324,11 @@ export const AdminDialog: FC = () => {
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
 	const toast = useToast();
 	const {
+		isOpen: isDonateDialogOpen,
+		onOpen: openDonateDialog,
+		onClose: closeDonateDialog,
+	} = useDisclosure();
+	const {
 		admins,
 		adminInDialog: adminFromStore,
 		isAdminDialogOpen: isOpen,
@@ -413,6 +460,16 @@ export const AdminDialog: FC = () => {
 	const [showPassword, setShowPassword] = useState(false);
 	const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
+	const [adminExpireDate, setAdminExpireDate] = useState<Date | null>(null);
+	const adminExpireUnix = useMemo(
+		() =>
+			adminExpireDate ? dayjs(adminExpireDate).utc().unix() : null,
+		[adminExpireDate],
+	);
+	const adminExpireInfo = useMemo(
+		() => relativeExpiryDate(adminExpireUnix ?? null),
+		[adminExpireUnix],
+	);
 	const [serviceSearch, setServiceSearch] = useState("");
 	const filteredServices = useMemo(() => {
 		const query = serviceSearch.trim().toLowerCase();
@@ -511,6 +568,21 @@ export const AdminDialog: FC = () => {
 		register("permissions");
 		register("services");
 	}, [register]);
+
+	useEffect(() => {
+		if (!isOpen) {
+			setAdminExpireDate(null);
+			return;
+		}
+		if (admin?.username) {
+			const stored = getAdminExpire(admin.username);
+			setAdminExpireDate(
+				typeof stored === "number" ? dayjs.unix(stored).toDate() : null,
+			);
+			return;
+		}
+		setAdminExpireDate(null);
+	}, [admin?.username, isOpen]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -626,6 +698,9 @@ export const AdminDialog: FC = () => {
 			}
 		}
 		try {
+			const expireValue = adminExpireDate
+				? dayjs(adminExpireDate).utc().unix()
+				: null;
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
@@ -644,6 +719,7 @@ export const AdminDialog: FC = () => {
 						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
+				setAdminExpireStorage(createdAdmin.username, expireValue);
 				const requestedServices = values.services ?? [];
 				let shouldFetch = true;
 				let serviceSyncError: unknown = null;
@@ -694,6 +770,7 @@ export const AdminDialog: FC = () => {
 					payload.password = values.password;
 				}
 				await updateAdmin(admin.username, payload);
+				setAdminExpireStorage(admin.username, expireValue);
 				generateSuccessMessage(
 					t("admins.updateSuccess", "Admin updated"),
 					toast,
@@ -927,6 +1004,45 @@ export const AdminDialog: FC = () => {
 					</Text>
 				</FormControl>
 			</SimpleGrid>
+			<VStack align={isRTL ? "flex-end" : "flex-start"} spacing={1}>
+				<Button size="sm" variant="outline" onClick={openDonateDialog}>
+					{t("common.comingSoon", "Coming soon")}
+				</Button>
+				<Text
+					fontSize="xs"
+					color="gray.500"
+					textAlign={isRTL ? "right" : "left"}
+				>
+					{t(
+						"admins.expireDonateHint",
+						"Support the release by donating.",
+					)}
+				</Text>
+			</VStack>
+			<FormControl>
+				<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
+				<DateTimePicker
+					value={adminExpireDate}
+					onChange={setAdminExpireDate}
+					placeholder={t(
+						"expires.selectDate",
+						"Select expiration date",
+					)}
+					minDate={new Date()}
+				/>
+				{adminExpireUnix && adminExpireInfo.time ? (
+					<FormHelperText>
+						{t(adminExpireInfo.status, { time: adminExpireInfo.time })}
+					</FormHelperText>
+				) : (
+					<FormHelperText>
+						{t(
+							"admins.expireVisualOnly",
+							"This setting is visual only for now.",
+						)}
+					</FormHelperText>
+				)}
+			</FormControl>
 			<FormControl>
 				<FormLabel>{t("services", "Services")}</FormLabel>
 				<VStack align="stretch" spacing={3}>
@@ -1097,6 +1213,62 @@ export const AdminDialog: FC = () => {
 									: t("save", "Save")}
 							</Button>
 						</HStack>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
+			<Modal isOpen={isDonateDialogOpen} onClose={closeDonateDialog} isCentered>
+				<ModalOverlay />
+				<ModalContent dir={isRTL ? "rtl" : "ltr"}>
+					<ModalHeader>{t("common.comingSoon", "Coming soon")}</ModalHeader>
+					<ModalCloseButton />
+					<ModalBody>
+						<VStack align="stretch" spacing={4}>
+							<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+								{t(
+									"admins.expireDonateDescription",
+									"If you'd like, you can donate to speed up development.",
+								)}
+							</Text>
+							<Text fontWeight="semibold">
+								{t("admins.expireWalletsLabel", "Wallets")}
+							</Text>
+							<VStack align="stretch" spacing={3}>
+								{DONATION_WALLETS.map((wallet) => (
+									<Box
+										key={wallet.key}
+										borderWidth="1px"
+										borderRadius="md"
+										p={3}
+										_dark={{ borderColor: "whiteAlpha.300" }}
+									>
+										<HStack spacing={3} align="flex-start">
+											<Icon
+												as={iconAs(wallet.icon)}
+												color={wallet.color}
+												boxSize={5}
+											/>
+											<VStack align="flex-start" spacing={1} w="full">
+												<Text fontWeight="semibold">{wallet.label}</Text>
+												<Text
+													fontFamily="mono"
+													fontSize="xs"
+													color="gray.600"
+													_dark={{ color: "gray.400" }}
+													dir="ltr"
+													sx={{ unicodeBidi: "isolate" }}
+													wordBreak="break-all"
+												>
+													{wallet.address}
+												</Text>
+											</VStack>
+										</HStack>
+									</Box>
+								))}
+							</VStack>
+						</VStack>
+					</ModalBody>
+					<ModalFooter>
+						<Button onClick={closeDonateDialog}>{t("close")}</Button>
 					</ModalFooter>
 				</ModalContent>
 			</Modal>

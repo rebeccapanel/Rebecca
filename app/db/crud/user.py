@@ -804,9 +804,11 @@ def get_users(
                                 filtered_users.sort(key=lambda u: u.data_limit or 0, reverse=reverse)
                             elif "expire" in sort_str:
                                 filtered_users.sort(
-                                    key=lambda u: u.expire or datetime.max.replace(tzinfo=timezone.utc)
-                                    if u.expire
-                                    else datetime.min.replace(tzinfo=timezone.utc),
+                                    key=lambda u: (
+                                        u.expire or datetime.max.replace(tzinfo=timezone.utc)
+                                        if u.expire
+                                        else datetime.min.replace(tzinfo=timezone.utc)
+                                    ),
                                     reverse=reverse,
                                 )
 
@@ -1839,7 +1841,9 @@ def adjust_all_users_expire(
         )
 
     if UserStatus.on_hold in scope:
-        on_hold_query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+        on_hold_query = _build_user_bulk_query(
+            db, admin, service_id, service_without_assignment, eager_load=False
+        ).filter(
             User.status == UserStatus.on_hold,
             User.on_hold_expire_duration.isnot(None),
         )

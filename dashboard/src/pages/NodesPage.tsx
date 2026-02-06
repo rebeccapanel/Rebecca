@@ -27,6 +27,11 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	Popover,
+	PopoverArrow,
+	PopoverBody,
+	PopoverContent,
+	PopoverTrigger,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -1429,14 +1434,27 @@ export const NodesPage: FC = () => {
 							);
 							const statusDisplay =
 								status === "error" && node.message ? (
-									<Tooltip
-										label={node.message}
-										hasArrow
+									<Popover
+										trigger="hover"
 										placement="top"
-										openDelay={300}
+										openDelay={250}
+										closeDelay={150}
+										isLazy
+										closeOnBlur={false}
 									>
-										<Box as="span">{statusBadge}</Box>
-									</Tooltip>
+										<PopoverTrigger>
+											<Box as="span">{statusBadge}</Box>
+										</PopoverTrigger>
+										<PopoverContent
+											maxW="360px"
+											px={2}
+											py={1}
+											fontSize="sm"
+										>
+											<PopoverArrow />
+											<PopoverBody>{node.message}</PopoverBody>
+										</PopoverContent>
+									</Popover>
 								) : (
 									statusBadge
 								);

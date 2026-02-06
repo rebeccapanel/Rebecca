@@ -884,7 +884,13 @@ class V2rayJsonConfig(str):
             dialer_settings["noises"] = V2rayJsonConfig.make_noises(noises)
 
         if dialer_settings:
-            return {"tag": "dialer", "protocol": "freedom", "settings": dialer_settings}
+            dialer_settings.setdefault("domainStrategy", "AsIs")
+            return {
+                "tag": "fragment",
+                "protocol": "freedom",
+                "settings": dialer_settings,
+                "streamSettings": {"sockopt": {"tcpKeepAliveIdle": 100, "tcpNoDelay": True}},
+            }
 
         return None
 
@@ -960,7 +966,11 @@ class V2rayJsonConfig(str):
             tls_settings = None
 
         if dialer_proxy:
-            sockopt = {"dialerProxy": dialer_proxy}
+            sockopt = {
+                "dialerProxy": dialer_proxy,
+                "tcpKeepAliveIdle": 100,
+                "tcpNoDelay": True,
+            }
         else:
             sockopt = None
 

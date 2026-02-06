@@ -27,16 +27,30 @@ def core_health_check():
 
     # nodes' core
     for node_id, node in list(xray.nodes.items()):
-        if node.connected:
+        connected, started = node.refresh_health(force=True)
+        if connected:
             try:
-                assert node.started
+                assert started
                 node.api.get_sys_stats(timeout=40)
+                try:
+                    with GetDB() as db:
+                        dbnode = crud.get_node_by_id(db, node_id)
+                        if dbnode and dbnode.status not in (NodeStatus.disabled, NodeStatus.limited):
+                            if dbnode.status != NodeStatus.connected:
+                                crud.update_node_status(
+                                    db,
+                                    dbnode,
+                                    NodeStatus.connected,
+                                    version=dbnode.xray_version,
+                                )
+                except Exception:
+                    pass
             except (ConnectionError, xray_exc.XrayError, AssertionError):
                 if not config:
                     config = xray.config.include_db_users()
                 xray.operations.restart_node(node_id, config)
 
-        if not node.connected:
+        if not connected:
             if not config:
                 config = xray.config.include_db_users()
             xray.operations.connect_node(node_id, config)

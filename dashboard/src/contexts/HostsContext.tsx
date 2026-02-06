@@ -31,6 +31,7 @@ type HostsStore = {
 	hosts: HostsSchema;
 	fetchHosts: () => void;
 	setHosts: (hosts: Partial<HostsSchema>) => Promise<void>;
+	setHostStatus: (hostId: number, isDisabled: boolean) => Promise<void>;
 };
 export const useHosts = create<HostsStore>((set) => ({
 	isLoading: false,
@@ -52,6 +53,15 @@ export const useHosts = create<HostsStore>((set) => ({
 	setHosts: (body) => {
 		set({ isPostLoading: true });
 		return fetch("/hosts", { method: "PUT", body }).finally(() => {
+			set({ isPostLoading: false });
+		});
+	},
+	setHostStatus: (hostId, isDisabled) => {
+		set({ isPostLoading: true });
+		return fetch(`/hosts/${hostId}/status`, {
+			method: "PUT",
+			body: { is_disabled: isDisabled },
+		}).finally(() => {
 			set({ isPostLoading: false });
 		});
 	},

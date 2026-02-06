@@ -69,6 +69,7 @@ import useGetUser from "hooks/useGetUser";
 import {
 	cloneElement,
 	type FC,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -82,6 +83,8 @@ import {
 	AdminStatus,
 	UserPermissionToggle,
 } from "types/Admin";
+import { getAdminExpireMap } from "utils/adminExpireStorage";
+import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
 	generateErrorMessage,
@@ -278,6 +281,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
+	const adminExpireMap = useMemo(
+		() => getAdminExpireMap(),
+		[admins, total],
+	);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
@@ -772,6 +779,81 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const cellAlign = isRTL ? "right" : "left";
 	const actionsAlign = isRTL ? "left" : "right";
 	const isFiltered = admins.length !== total;
+	const renderRelativeText = useCallback(
+		(key: "expires" | "expired", time: string) => {
+			const raw = t(key);
+			const [before = "", after = ""] = raw.split("{{time}}");
+			const timeNode = time ? (
+				<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }} key="time">
+					{time}
+				</Box>
+			) : null;
+
+			const nodes: JSX.Element[] = [];
+			if (!isRTL) {
+				if (before) {
+					nodes.push(
+						<Text as="span" key="before">
+							{before}
+						</Text>,
+					);
+				}
+				if (timeNode) {
+					nodes.push(timeNode);
+				}
+				if (after) {
+					nodes.push(
+						<Text as="span" key="after">
+							{after}
+						</Text>,
+					);
+				}
+			} else {
+				if (timeNode) {
+					nodes.push(timeNode);
+				}
+				if (after) {
+					nodes.push(
+						<Text as="span" key="after">
+							{after}
+						</Text>,
+					);
+				}
+				if (before) {
+					nodes.push(
+						<Text as="span" key="before">
+							{before}
+						</Text>,
+					);
+				}
+			}
+			return nodes;
+		},
+		[isRTL, t],
+	);
+	const renderAdminExpire = useCallback(
+		(expireAt?: number | null) => {
+			if (expireAt === null || expireAt === undefined) {
+				return (
+					<Text fontSize="xs" color="gray.400" _dark={{ color: "gray.500" }}>
+						{t("admins.expireNotSet", "No expiry set")}
+					</Text>
+				);
+			}
+			const info = relativeExpiryDate(expireAt);
+			if (!info.time) {
+				return null;
+			}
+			return (
+				<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
+					{info.status === "expires"
+						? renderRelativeText("expires", info.time)
+						: renderRelativeText("expired", info.time)}
+				</Text>
+			);
+		},
+		[renderRelativeText, t],
+	);
 
 	const { className, sx, ...restProps } = props;
 	const normalizedSx = Array.isArray(sx)
@@ -899,6 +981,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 							admin.status === AdminStatus.Disabled &&
 							!hasLimitDisabledReason;
 						const showDeleteAction = canChangeStatus;
+						const adminExpireAt = adminExpireMap[admin.username];
 
 						return (
 							<Box
@@ -937,7 +1020,13 @@ export const AdminsTable: FC<TableProps> = (props) => {
 												{usageLabel}
 											</Text>
 										</Stack>
-										<AdminStatusBadge status={admin.status} />
+										<Stack
+											spacing={1}
+											align={isRTL ? "flex-end" : "flex-start"}
+										>
+											<AdminStatusBadge status={admin.status} />
+											{renderAdminExpire(adminExpireAt)}
+										</Stack>
 									</HStack>
 									<Collapse in={isExpanded} animateOpacity>
 										<Stack spacing={3} pt={1}>
@@ -1580,6 +1669,8 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																admin.status === AdminStatus.Disabled &&
 																!hasLimitDisabledReason;
 															const showDeleteAction = canChangeStatus;
+															const adminExpireAt =
+																adminExpireMap[admin.username];
 
 															const cells = {
 																username: (
@@ -1683,6 +1774,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																			maxW="full"
 																		>
 																			<AdminStatusBadge status={admin.status} />
+																			{renderAdminExpire(adminExpireAt)}
 																			{admin.status === AdminStatus.Disabled &&
 																				disabledReasonLabel && (
 																					<Text

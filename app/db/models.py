@@ -583,6 +583,12 @@ class Node(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     nobetci_port = Column(Integer, nullable=True, default=None)
+    proxy_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    proxy_type = Column(String(16), nullable=True, default=None)
+    proxy_host = Column(String(255), nullable=True, default=None)
+    proxy_port = Column(Integer, nullable=True, default=None)
+    proxy_username = Column(String(255), nullable=True, default=None)
+    proxy_password = Column(String(255), nullable=True, default=None)
     certificate = Column(Text, nullable=True)  # Node-specific certificate (PEM format)
     certificate_key = Column(Text, nullable=True)  # Node-specific certificate key (PEM format)
 

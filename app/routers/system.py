@@ -13,12 +13,13 @@ from typing import Dict, List, Union
 import commentjson
 import psutil
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func
 
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
-from app.db.models import Admin as AdminModel, System as SystemModel
+from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost
 from app.models.admin import Admin, AdminRole, AdminStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import (
@@ -778,6 +779,10 @@ def _ensure_hosts_permission(admin: Admin) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
 
 
+class HostStatusPayload(BaseModel):
+    is_disabled: bool
+
+
 @router.get("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
 def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.require_active)):
     """Get a list of proxy hosts grouped by inbound tag."""
@@ -801,6 +806,34 @@ def get_hosts(db: Session = Depends(get_db), admin: Admin = Depends(Admin.requir
             hosts_dict[tag] = []
 
     return hosts_dict
+
+
+@router.put(
+    "/hosts/{host_id}/status",
+    response_model=ProxyHost,
+    responses={403: responses._403, 404: responses._404},
+)
+def update_host_status(
+    host_id: int,
+    payload: HostStatusPayload,
+    bg: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.require_active),
+):
+    """Quickly enable/disable a host without full host refresh."""
+    _ensure_hosts_permission(admin)
+    host = db.query(DbProxyHost).filter(DbProxyHost.id == host_id).first()
+    if not host:
+        raise HTTPException(status_code=404, detail="Host not found")
+
+    host.is_disabled = bool(payload.is_disabled)
+    db.commit()
+    db.refresh(host)
+
+    # Update host cache asynchronously to keep subscriptions up to date.
+    bg.add_task(xray.hosts.update)
+
+    return ProxyHost.model_validate(host)
 
 
 @router.put("/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403})
