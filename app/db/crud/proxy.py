@@ -327,12 +327,23 @@ def update_hosts(
     modified_hosts: List[ProxyHostModify],
     kept_ids: Optional[Set[int]] = None,
 ) -> Tuple[List[ProxyHost], List[User]]:
+    return _update_hosts(db, inbound_tag, modified_hosts, kept_ids=kept_ids, refresh_users=True)
+
+
+def _update_hosts(
+    db: Session,
+    inbound_tag: str,
+    modified_hosts: List[ProxyHostModify],
+    kept_ids: Optional[Set[int]] = None,
+    *,
+    refresh_users: bool = True,
+) -> Tuple[List[ProxyHost], List[User]]:
     hosts, affected_services = ProxyInboundRepository(db).bulk_replace_hosts(
         inbound_tag, modified_hosts, kept_ids=kept_ids
     )
 
     users_to_refresh: Dict[int, User] = {}
-    if affected_services:
+    if refresh_users and affected_services:
         from .other import ServiceRepository
 
         repo = ServiceRepository(db)
@@ -345,6 +356,16 @@ def update_hosts(
 
     db.commit()
     return hosts, list(users_to_refresh.values())
+
+
+def update_hosts_simple(
+    db: Session,
+    inbound_tag: str,
+    modified_hosts: List[ProxyHostModify],
+    kept_ids: Optional[Set[int]] = None,
+) -> List[ProxyHost]:
+    hosts, _ = _update_hosts(db, inbound_tag, modified_hosts, kept_ids=kept_ids, refresh_users=False)
+    return hosts
 
 
 def delete_inbound(db: Session, inbound_tag: str) -> bool:

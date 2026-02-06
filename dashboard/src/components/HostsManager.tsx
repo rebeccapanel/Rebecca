@@ -103,12 +103,6 @@ type HostData = {
 	use_sni_as_host: boolean;
 };
 
-type FragmentParts = {
-	method: string;
-	length: string;
-	interval: string;
-};
-
 const EMPTY_HOST_DATA: HostData = {
 	id: null,
 	remark: "",
@@ -258,33 +252,6 @@ const safeSortValue = (value: number | null | undefined) =>
 
 const normalizeString = (value: string | null | undefined) =>
 	(value ?? "").trim();
-
-const parseFragmentSetting = (
-	value: string | null | undefined,
-): FragmentParts => {
-	if (!value) {
-		return { method: "", length: "", interval: "" };
-	}
-	const parts = value.split(",");
-	const length = (parts[0] ?? "").trim();
-	const interval = (parts[1] ?? "").trim();
-	const method = parts.slice(2).join(",").trim();
-	return {
-		method,
-		length,
-		interval,
-	};
-};
-
-const buildFragmentSetting = (parts: FragmentParts): string => {
-	const length = parts.length.trim();
-	const interval = parts.interval.trim();
-	const method = parts.method.trim();
-	if (!length && !interval && !method) {
-		return "";
-	}
-	return [length, interval, method].join(",");
-};
 
 const normalizeBoolean = (
 	value: boolean | null | undefined,
@@ -820,17 +787,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	deleting,
 }) => {
 	const { t } = useTranslation();
-	const toast = useToast();
 	const [jsonData, setJsonData] = useState<Record<string, unknown> | null>(
 		null,
 	);
 	const [jsonError, setJsonError] = useState<string | null>(null);
-	const [fragmentMethod, setFragmentMethod] = useState("");
-	const [fragmentLength, setFragmentLength] = useState("");
-	const [fragmentInterval, setFragmentInterval] = useState("");
-	const [fragmentSource, setFragmentSource] = useState("");
-	const [fragmentDest, setFragmentDest] = useState("");
-	const fragmentSyncRef = useRef(false);
 	const updatingFromJsonRef = useRef(false);
 	const resolvedHost = host ?? {
 		uid: "",
@@ -846,173 +806,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				...host.data,
 			}
 		: null;
-	const fragmentMethodValue = fragmentMethod.trim();
-	const fragmentLengthValue = fragmentLength.trim();
-	const fragmentIntervalValue = fragmentInterval.trim();
-	const fragmentIncomplete =
-		Boolean(
-			fragmentMethodValue || fragmentLengthValue || fragmentIntervalValue,
-		) &&
-		(!fragmentMethodValue || !fragmentLengthValue || !fragmentIntervalValue);
-
-	const commitFragmentSetting = useCallback(
-		(nextParts: FragmentParts) => {
-			if (!host) {
-				return;
-			}
-			const nextSetting = buildFragmentSetting(nextParts);
-			fragmentSyncRef.current = true;
-			onChange(host.uid, "fragment_setting", nextSetting);
-		},
-		[host, onChange],
-	);
-
-	const handleFragmentApply = useCallback(() => {
-		const sourceText = fragmentSource;
-		if (!sourceText.trim()) {
-			setFragmentDest(
-				t("hostsDialog.fragment.sourceEmpty", "Source config is empty!"),
-			);
-			return;
-		}
-		let sourceObject: Record<string, any>;
-		try {
-			sourceObject = JSON.parse(sourceText);
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
-			setFragmentDest(
-				t(
-					"hostsDialog.fragment.parseError",
-					"Failed to parse Source Config , Error: \n\n{{error}}",
-					{ error: message },
-				),
-			);
-			return;
-		}
-
-		if (!sourceObject || typeof sourceObject !== "object") {
-			setFragmentDest(
-				t(
-					"hostsDialog.fragment.invalidSource",
-					"Source config is invalid.",
-				),
-			);
-			return;
-		}
-
-		const methodValue = fragmentMethod.trim();
-		const lengthValue = fragmentLength.trim();
-		const intervalValue = fragmentInterval.trim();
-		if (!methodValue || !lengthValue || !intervalValue) {
-			setFragmentDest(
-				t(
-					"hostsDialog.fragment.missingFields",
-					"Fragment method, length, and interval are required.",
-				),
-			);
-			return;
-		}
-
-		const outbounds = Array.isArray(sourceObject.outbounds)
-			? sourceObject.outbounds
-			: null;
-		if (!outbounds) {
-			setFragmentDest(
-				t(
-					"hostsDialog.fragment.noOutbounds",
-					"Source config has no outbounds array.",
-				),
-			);
-			return;
-		}
-
-		const proxyOutbound = outbounds.find((item) => item?.tag === "proxy");
-		if (!proxyOutbound) {
-			setFragmentDest(
-				t(
-					"hostsDialog.fragment.noProxy",
-					"Can not find the outbound with proxy tag.",
-				),
-			);
-			return;
-		}
-
-		const proxyStreamSettings = { ...(proxyOutbound.streamSettings ?? {}) };
-		const proxySockopt = { ...(proxyStreamSettings.sockopt ?? {}) };
-		proxySockopt.dialerProxy = "fragment";
-		proxySockopt.tcpKeepAliveIdle = 100;
-		proxySockopt.tcpNoDelay = true;
-		proxyStreamSettings.sockopt = proxySockopt;
-
-		const proxyClone = {
-			...proxyOutbound,
-			streamSettings: proxyStreamSettings,
-		};
-
-		const fragmentOutbound = {
-			tag: "fragment",
-			protocol: "freedom",
-			settings: {
-					domainStrategy: "AsIs",
-					fragment: {
-						packets: methodValue,
-						length: lengthValue,
-						interval: intervalValue,
-					},
-				},
-			streamSettings: {
-				sockopt: {
-					tcpKeepAliveIdle: 100,
-					tcpNoDelay: true,
-				},
-			},
-		};
-
-		const destObject = {
-			...sourceObject,
-			outbounds: [
-				proxyClone,
-				fragmentOutbound,
-				...outbounds.filter(
-					(item) => item?.tag !== "fragment" && item?.tag !== "proxy",
-				),
-			],
-		};
-
-		setFragmentDest(JSON.stringify(destObject, null, 4));
-	}, [
-		fragmentSource,
-		fragmentMethod,
-		fragmentLength,
-		fragmentInterval,
-		t,
-	]);
-
-	const handleFragmentCopy = useCallback(async () => {
-		if (!fragmentDest) {
-			return;
-		}
-		try {
-			await navigator.clipboard.writeText(fragmentDest);
-			toast({
-				title: t("usersTable.copied"),
-				status: "success",
-				duration: 1500,
-				isClosable: true,
-				position: "top",
-			});
-		} catch {
-			toast({
-				title: t("hostsDialog.fragment.copyFailed", "Copy failed."),
-				status: "error",
-				duration: 2000,
-				isClosable: true,
-				position: "top",
-			});
-		}
-	}, [fragmentDest, toast, t]);
-
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonData(null);
@@ -1026,33 +819,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 		setJsonData(hostPayload);
 		setJsonError(null);
 	}, [hostPayload]);
-
-	useEffect(() => {
-		if (!host) {
-			setFragmentMethod("");
-			setFragmentLength("");
-			setFragmentInterval("");
-			setFragmentSource("");
-			setFragmentDest("");
-			return;
-		}
-		if (fragmentSyncRef.current) {
-			fragmentSyncRef.current = false;
-			return;
-		}
-		const parsed = parseFragmentSetting(host.data.fragment_setting);
-		setFragmentMethod(parsed.method);
-		setFragmentLength(parsed.length);
-		setFragmentInterval(parsed.interval);
-	}, [host, host?.data.fragment_setting]);
-
-	useEffect(() => {
-		if (!host) {
-			return;
-		}
-		setFragmentSource("");
-		setFragmentDest("");
-	}, [host?.uid]);
 
 	const coerceHostValue = <Key extends keyof HostData>(
 		key: Key,
@@ -1370,64 +1136,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							</CardHeader>
 							<CardBody pt={0}>
 								<VStack align="stretch" spacing={4}>
-									<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.fragment.method")}</FormLabel>
-											<Input
-												placeholder="tlshello"
-												value={fragmentMethod}
-												onChange={(event) => {
-													const next = event.target.value;
-													setFragmentMethod(next);
-													commitFragmentSetting({
-														method: next,
-														length: fragmentLength,
-														interval: fragmentInterval,
-													});
-												}}
-											/>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.fragment.length")}</FormLabel>
-											<Input
-												placeholder="100-200"
-												value={fragmentLength}
-												onChange={(event) => {
-													const next = event.target.value;
-													setFragmentLength(next);
-													commitFragmentSetting({
-														method: fragmentMethod,
-														length: next,
-														interval: fragmentInterval,
-													});
-												}}
-											/>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.fragment.interval")}</FormLabel>
-											<Input
-												placeholder="10-20"
-												value={fragmentInterval}
-												onChange={(event) => {
-													const next = event.target.value;
-													setFragmentInterval(next);
-													commitFragmentSetting({
-														method: fragmentMethod,
-														length: fragmentLength,
-														interval: next,
-													});
-												}}
-											/>
-										</FormControl>
-									</SimpleGrid>
-									{fragmentIncomplete && (
-										<Text fontSize="xs" color="orange.500">
-											{t(
-												"hostsDialog.fragment.incomplete",
-												"Fill method, length, and interval to enable fragment.",
-											)}
-										</Text>
-									)}
 									<FormControl>
 										<FormLabel>{t("hostsDialog.noise")}</FormLabel>
 										<Input
@@ -1441,76 +1149,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											}
 										/>
 									</FormControl>
-									<Box
-										borderWidth="1px"
-										borderRadius="md"
-										p={3}
-										bg="blackAlpha.50"
-										_dark={{ bg: "whiteAlpha.50", borderColor: "gray.700" }}
-									>
-										<Text fontWeight="semibold" fontSize="sm" mb={2}>
-											{t(
-												"hostsDialog.fragment.builderTitle",
-												"Fragment helper",
-											)}
-										</Text>
-										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl>
-												<FormLabel>
-													{t(
-														"hostsDialog.fragment.sourceConfig",
-														"Source config",
-													)}
-												</FormLabel>
-												<Textarea
-													value={fragmentSource}
-													onChange={(event) =>
-														setFragmentSource(event.target.value)
-													}
-													fontFamily="mono"
-													fontSize="xs"
-													minH="140px"
-													dir="ltr"
-												/>
-											</FormControl>
-											<FormControl>
-												<FormLabel>
-													{t(
-														"hostsDialog.fragment.destConfig",
-														"Result config",
-													)}
-												</FormLabel>
-												<Textarea
-													value={fragmentDest}
-													onChange={(event) =>
-														setFragmentDest(event.target.value)
-													}
-													fontFamily="mono"
-													fontSize="xs"
-													minH="140px"
-													dir="ltr"
-												/>
-											</FormControl>
-										</SimpleGrid>
-										<HStack justify="flex-end" pt={3}>
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={handleFragmentApply}
-												isDisabled={!fragmentSource.trim()}
-											>
-												{t("hostsDialog.apply", "Apply")}
-											</Button>
-											<Button
-												size="sm"
-												colorScheme="primary"
-												onClick={handleFragmentCopy}
-												isDisabled={!fragmentDest}
-											>
-												{t("userDialog.links.copy", "Copy")}
-											</Button>
-										</HStack>
-									</Box>
 									<Stack direction={{ base: "column", md: "row" }} spacing={4}>
 										<Checkbox
 											isChecked={host.data.allowinsecure}
@@ -1602,7 +1240,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							size="sm"
 							colorScheme="primary"
 							onClick={() => onSave(host.uid)}
-							isDisabled={!dirty || fragmentIncomplete}
+							isDisabled={!dirty}
 							isLoading={saving}
 						>
 							{t("hostsPage.save")}

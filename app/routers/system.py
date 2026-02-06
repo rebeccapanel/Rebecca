@@ -85,6 +85,16 @@ def _queue_xray_restart(bg: BackgroundTasks) -> None:
     bg.add_task(_restart)
 
 
+def _queue_hosts_cache_refresh(bg: BackgroundTasks) -> None:
+    def _refresh() -> None:
+        try:
+            xray.hosts.update()
+        except Exception as exc:  # pragma: no cover - best effort background task
+            logger.error("Failed to refresh hosts cache: %s", exc)
+
+    bg.add_task(_refresh)
+
+
 @router.get("/system", response_model=SystemStats)
 def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin.get_current)):
     """Fetch system stats including CPU and user metrics."""
@@ -831,7 +841,11 @@ def update_host_status(
     db.refresh(host)
 
     # Update host cache asynchronously to keep subscriptions up to date.
-    bg.add_task(xray.hosts.update)
+    try:
+        xray.invalidate_service_hosts_cache()
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.warning("Failed to invalidate service hosts cache: %s", exc)
+    _queue_hosts_cache_refresh(bg)
 
     return ProxyHost.model_validate(host)
 
@@ -857,40 +871,14 @@ def modify_hosts(
             if host.id is not None:
                 all_kept_ids.add(host.id)
 
-    users_to_refresh: Dict[int, object] = {}
     for inbound_tag, hosts in modified_hosts.items():
-        _, refreshed_users = crud.update_hosts(db, inbound_tag, hosts, kept_ids=all_kept_ids)
-        for user in refreshed_users:
-            if user.id is not None:
-                users_to_refresh[user.id] = user
+        crud.update_hosts_simple(db, inbound_tag, hosts, kept_ids=all_kept_ids)
 
-    # Schedule slower side-effects in background to reduce response latency
-    bg.add_task(xray.hosts.update)
-
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-
-        def _refresh_redis_caches():
-            try:
-                from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-                from app.reb_node.state import rebuild_service_hosts_cache
-                from app.redis.cache import cache_service_host_map
-                from app.reb_node import state as xray_state
-
-                invalidate_service_host_map_cache()
-                invalidate_inbounds_cache()
-                rebuild_service_hosts_cache()
-                for service_id, host_map in xray_state.service_hosts_cache.items():
-                    if host_map:
-                        cache_service_host_map(service_id, host_map)
-            except Exception:
-                pass
-
-        bg.add_task(_refresh_redis_caches)
-
-    for user in users_to_refresh.values():
-        bg.add_task(xray.operations.update_user, dbuser=user)
+    try:
+        xray.invalidate_service_hosts_cache()
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.warning("Failed to invalidate service hosts cache: %s", exc)
+    _queue_hosts_cache_refresh(bg)
 
     return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
 

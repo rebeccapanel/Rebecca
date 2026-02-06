@@ -94,6 +94,20 @@ export function AppLayout() {
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
 	const tabContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const navContainerRef = useRef<HTMLDivElement | null>(null);
+	const navDragRef = useRef<{
+		active: boolean;
+		moved: boolean;
+		startX: number;
+		startY: number;
+		pointerId: number | null;
+	}>({
+		active: false,
+		moved: false,
+		startX: 0,
+		startY: 0,
+		pointerId: null,
+	});
+	const suppressNavClickUntil = useRef(0);
 	const [activeSelector, setActiveSelector] = useState({
 		x: 0,
 		y: 0,
@@ -101,6 +115,8 @@ export function AppLayout() {
 		height: 0,
 		visible: false,
 	});
+	const [previewTabKey, setPreviewTabKey] = useState<string | null>(null);
+	const [isNavDragging, setIsNavDragging] = useState(false);
 	const languagePlacement =
 		useBreakpointValue<PlacementWithLogical>({
 			base: "bottom-start",
@@ -294,36 +310,127 @@ export function AppLayout() {
 		return activeItem?.key ?? null;
 	}, [bottomNavItems, location.pathname]);
 
+	const navKeyAtPoint = (clientX: number, clientY: number) => {
+		for (const item of bottomNavItems) {
+			const node = tabContentRefs.current[item.key];
+			if (!node) continue;
+			const rect = node.getBoundingClientRect();
+			if (
+				clientX >= rect.left &&
+				clientX <= rect.right &&
+				clientY >= rect.top &&
+				clientY <= rect.bottom
+			) {
+				return item.key;
+			}
+		}
+		return null;
+	};
+
 	const updateActiveSelector = () => {
 		if (!isMobile) return;
 		const container = navContainerRef.current;
-		if (!container || !activeTabKey) {
+		const targetKey = previewTabKey ?? activeTabKey;
+		if (!container || !targetKey) {
 			setActiveSelector((prev) => ({ ...prev, visible: false }));
 			return;
 		}
-		const target = tabContentRefs.current[activeTabKey];
+		const target = tabContentRefs.current[targetKey];
 		if (!target) return;
 		const containerRect = container.getBoundingClientRect();
 		const targetRect = target.getBoundingClientRect();
+		const insetX = 2;
+		const insetY = 2;
 		setActiveSelector({
-			x: targetRect.left - containerRect.left,
-			y: targetRect.top - containerRect.top,
-			width: targetRect.width,
-			height: targetRect.height,
+			x: Math.round(targetRect.left - containerRect.left + insetX),
+			y: Math.round(targetRect.top - containerRect.top + insetY),
+			width: Math.max(0, Math.round(targetRect.width - insetX * 2)),
+			height: Math.max(0, Math.round(targetRect.height - insetY * 2)),
 			visible: true,
 		});
 	};
 
 	useLayoutEffect(() => {
 		updateActiveSelector();
-	}, [activeTabKey, isMobile, i18n.language]);
+	}, [activeTabKey, isMobile, i18n.language, previewTabKey]);
 
 	useEffect(() => {
 		if (!isMobile) return;
 		const handleResize = () => updateActiveSelector();
 		window.addEventListener("resize", handleResize);
 		return () => window.removeEventListener("resize", handleResize);
-	}, [isMobile, activeTabKey]);
+	}, [isMobile, activeTabKey, previewTabKey]);
+
+	const handleNavPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+		if (!isMobile) return;
+		const key = navKeyAtPoint(event.clientX, event.clientY);
+		if (!key) return;
+		navDragRef.current.active = true;
+		navDragRef.current.moved = false;
+		navDragRef.current.startX = event.clientX;
+		navDragRef.current.startY = event.clientY;
+		navDragRef.current.pointerId = event.pointerId;
+		setPreviewTabKey(key);
+		setIsNavDragging(true);
+		event.currentTarget.setPointerCapture?.(event.pointerId);
+	};
+
+	const handleNavPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+		if (!navDragRef.current.active) return;
+		const dx = event.clientX - navDragRef.current.startX;
+		const dy = event.clientY - navDragRef.current.startY;
+		if (!navDragRef.current.moved && Math.hypot(dx, dy) < 6) {
+			return;
+		}
+		navDragRef.current.moved = true;
+		const key = navKeyAtPoint(event.clientX, event.clientY);
+		if (key && key !== previewTabKey) {
+			setPreviewTabKey(key);
+		}
+	};
+
+	const finalizeNavDrag = () => {
+		if (!navDragRef.current.active) return;
+		const key = previewTabKey;
+		const moved = navDragRef.current.moved;
+		navDragRef.current.active = false;
+		navDragRef.current.moved = false;
+		navDragRef.current.pointerId = null;
+		setIsNavDragging(false);
+		setPreviewTabKey(null);
+		if (moved) {
+			suppressNavClickUntil.current = Date.now() + 400;
+		}
+		if (key && key !== activeTabKey) {
+			const target = bottomNavItems.find((item) => item.key === key);
+			if (target) {
+				navigate(target.to);
+			}
+		}
+	};
+
+	const handleNavPointerUp = () => {
+		finalizeNavDrag();
+	};
+
+	const handleNavPointerCancel = () => {
+		if (!navDragRef.current.active) return;
+		navDragRef.current.active = false;
+		navDragRef.current.moved = false;
+		navDragRef.current.pointerId = null;
+		setIsNavDragging(false);
+		setPreviewTabKey(null);
+	};
+
+	const handleNavClick = (to: string) => {
+		if (Date.now() < suppressNavClickUntil.current) {
+			return;
+		}
+		if (navDragRef.current.active || isNavDragging) {
+			return;
+		}
+		navigate(to);
+	};
 
 	const clearAccountHoldTimer = () => {
 		if (accountHoldTimeout.current) {
@@ -767,7 +874,12 @@ export function AppLayout() {
 									justify="space-between"
 									position="relative"
 									align="center"
+									spacing={1}
 									ref={navContainerRef}
+									onPointerDown={handleNavPointerDown}
+									onPointerMove={handleNavPointerMove}
+									onPointerUp={handleNavPointerUp}
+									onPointerCancel={handleNavPointerCancel}
 								>
 									<Box
 										position="absolute"
@@ -775,13 +887,26 @@ export function AppLayout() {
 										left="0"
 										width={`${activeSelector.width}px`}
 										height={`${activeSelector.height}px`}
-										transform={`translate3d(${activeSelector.x}px, ${activeSelector.y}px, 0)`}
 										transition="transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1), width 220ms, height 220ms, opacity 160ms"
 										opacity={activeSelector.visible ? 1 : 0}
-										borderRadius="22px"
+										borderRadius="24px"
 										bg={activePillBg}
 										boxShadow={activePillShadow}
 										filter="blur(0.15px)"
+										willChange="transform, width, height, opacity"
+										transformOrigin="center"
+										transitionProperty="transform, width, height, opacity, box-shadow, filter"
+										transitionDuration={isNavDragging ? "120ms" : "220ms"}
+										transitionTimingFunction={
+											isNavDragging ? "ease-out" : "cubic-bezier(0.2, 0.9, 0.2, 1)"
+										}
+										boxShadow={
+											isNavDragging
+												? "0 12px 22px rgba(0, 0, 0, 0.18)"
+												: activePillShadow
+										}
+										filter={isNavDragging ? "blur(0.3px)" : "blur(0.15px)"}
+										transform={`${isNavDragging ? "scale(1.04)" : "scale(1)"} translate3d(${activeSelector.x}px, ${activeSelector.y}px, 0)`}
 										zIndex={0}
 										pointerEvents="none"
 									/>
@@ -807,9 +932,6 @@ export function AppLayout() {
 													justifyContent="center"
 													px="3"
 													py="1.5"
-													ref={(node) => {
-														tabContentRefs.current[item.key] = node;
-													}}
 												>
 													<VStack spacing={1} align="center" position="relative" zIndex={1}>
 														<Box
@@ -852,10 +974,13 @@ export function AppLayout() {
 															<Button
 																variant="ghost"
 																size="sm"
+																ref={(node) => {
+																	tabContentRefs.current[item.key] = node;
+																}}
 																onClick={() => {
 																	if (accountHoldOpened.current) return;
 																	handleAccountMenuClose();
-																	navigate(item.to);
+																	handleNavClick(item.to);
 																}}
 																onPointerDown={(event) => {
 																	if (event.pointerType === "mouse") return;
@@ -881,7 +1006,7 @@ export function AppLayout() {
 															}}
 															flex="1"
 															minW="0"
-															minH="44px"
+															minH="48px"
 															position="relative"
 															zIndex={1}
 															sx={{ touchAction: "manipulation" }}
@@ -957,12 +1082,15 @@ export function AppLayout() {
 												key={item.key}
 												variant="ghost"
 												size="sm"
-												onClick={() => navigate(item.to)}
+												ref={(node) => {
+													tabContentRefs.current[item.key] = node;
+												}}
+												onClick={() => handleNavClick(item.to)}
 												color={isActive ? "primary.500" : "gray.600"}
 											_dark={{ color: isActive ? "primary.300" : "gray.300" }}
 											flex="1"
 											minW="0"
-											minH="44px"
+											minH="48px"
 											position="relative"
 											zIndex={1}
 											userSelect="none"
