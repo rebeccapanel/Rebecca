@@ -40,6 +40,7 @@ import { useAppleEmoji } from "hooks/useAppleEmoji";
 import useGetUser from "hooks/useGetUser";
 import {
 	type MouseEvent as ReactMouseEvent,
+	type PointerEvent as ReactPointerEvent,
 	useMemo,
 	useRef,
 	useState,
@@ -92,7 +93,7 @@ export function AppLayout() {
 	const accountHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const accountHoldOpened = useRef(false);
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
-	const tabContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
+	const tabContentRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 	const navContainerRef = useRef<HTMLDivElement | null>(null);
 	const navDragRef = useRef<{
 		active: boolean;
@@ -891,8 +892,6 @@ export function AppLayout() {
 										opacity={activeSelector.visible ? 1 : 0}
 										borderRadius="24px"
 										bg={activePillBg}
-										boxShadow={activePillShadow}
-										filter="blur(0.15px)"
 										willChange="transform, width, height, opacity"
 										transformOrigin="center"
 										transitionProperty="transform, width, height, opacity, box-shadow, filter"
