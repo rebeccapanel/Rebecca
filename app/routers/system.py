@@ -871,10 +871,7 @@ def update_host_status(
         affected_service_ids.update(
             service_id
             for (service_id,) in (
-                db.query(ServiceHostLink.service_id)
-                .filter(ServiceHostLink.host_id == host_id)
-                .distinct()
-                .all()
+                db.query(ServiceHostLink.service_id).filter(ServiceHostLink.host_id == host_id).distinct().all()
             )
             if service_id is not None
         )

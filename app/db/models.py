@@ -281,6 +281,41 @@ class User(Base):
         from app.runtime import xray  # lazy import to avoid circular dependency
 
         _ = {}
+        if self.service_id is not None:
+            try:
+                from app.services.data_access import get_service_host_map_cached
+
+                host_map = get_service_host_map_cached(self.service_id, force_refresh=True)
+            except Exception:
+                host_map = {}
+            allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
+            if not allowed_tags:
+                try:
+                    from app.db import GetDB
+                    from app.db import models as db_models
+
+                    with GetDB() as db:
+                        rows = (
+                            db.query(db_models.ProxyHost.inbound_tag)
+                            .join(
+                                db_models.ServiceHostLink,
+                                db_models.ServiceHostLink.host_id == db_models.ProxyHost.id,
+                            )
+                            .filter(db_models.ServiceHostLink.service_id == self.service_id)
+                            .filter(~db_models.ProxyHost.is_disabled.is_(True))
+                            .distinct()
+                            .all()
+                        )
+                    allowed_tags = {row[0] for row in rows if row and row[0]}
+                except Exception:
+                    pass
+            for proxy in self.proxies:
+                _[proxy.type] = []
+                for inbound in xray.config.inbounds_by_protocol.get(proxy.type, []):
+                    if inbound["tag"] in allowed_tags:
+                        _[proxy.type].append(inbound["tag"])
+            return _
+
         for proxy in self.proxies:
             _[proxy.type] = []
             excluded_tags = [i.tag for i in proxy.excluded_inbounds]

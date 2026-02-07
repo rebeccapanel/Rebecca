@@ -204,17 +204,12 @@ class ServiceRepository:
                 proxy.excluded_inbounds = inbound_objs
             else:
                 self.db.execute(
-                    delete(excluded_inbounds_association).where(
-                        excluded_inbounds_association.c.proxy_id == proxy.id
-                    )
+                    delete(excluded_inbounds_association).where(excluded_inbounds_association.c.proxy_id == proxy.id)
                 )
                 if excluded_tags:
                     self.db.execute(
                         excluded_inbounds_association.insert(),
-                        [
-                            {"proxy_id": proxy.id, "inbound_tag": tag}
-                            for tag in excluded_tags
-                        ],
+                        [{"proxy_id": proxy.id, "inbound_tag": tag} for tag in excluded_tags],
                     )
                 set_committed_value(proxy, "excluded_inbounds", inbound_objs)
 
