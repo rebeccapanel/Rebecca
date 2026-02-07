@@ -6,8 +6,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.attributes import set_committed_value
 from app.db.models import (
     Admin,
     AdminServiceLink,
@@ -17,6 +18,7 @@ from app.db.models import (
     Service,
     ServiceHostLink,
     User,
+    excluded_inbounds_association,
 )
 from app.models.admin import AdminRole, AdminStatus
 from app.utils.credentials import (
@@ -197,7 +199,24 @@ class ServiceRepository:
 
             available_tags = {inbound["tag"] for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])}
             excluded_tags = sorted(available_tags - set(allowed_tags))
-            proxy.excluded_inbounds = [get_or_create_inbound(self.db, tag) for tag in excluded_tags]
+            inbound_objs = [get_or_create_inbound(self.db, tag) for tag in excluded_tags]
+            if proxy.id is None:
+                proxy.excluded_inbounds = inbound_objs
+            else:
+                self.db.execute(
+                    delete(excluded_inbounds_association).where(
+                        excluded_inbounds_association.c.proxy_id == proxy.id
+                    )
+                )
+                if excluded_tags:
+                    self.db.execute(
+                        excluded_inbounds_association.insert(),
+                        [
+                            {"proxy_id": proxy.id, "inbound_tag": tag}
+                            for tag in excluded_tags
+                        ],
+                    )
+                set_committed_value(proxy, "excluded_inbounds", inbound_objs)
 
         dbuser.service = service
         dbuser.edit_at = datetime.now(timezone.utc)
@@ -214,6 +233,16 @@ class ServiceRepository:
             self.apply_service_to_user(user, service, allowed_inbounds)
             updated_users.append(user)
         self.db.flush()
+        # Ensure cached users don't keep stale excluded_inbounds after host/service changes.
+        try:
+            from app.redis.cache import invalidate_user_cache
+
+            for user in updated_users:
+                if user.id is None or not user.username:
+                    continue
+                invalidate_user_cache(username=user.username, user_id=user.id)
+        except Exception:
+            pass
         return updated_users
 
     def get_allowed_inbounds(self, service: Service) -> Dict[ProxyTypes, Set[str]]:

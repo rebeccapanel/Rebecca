@@ -19,7 +19,7 @@ from sqlalchemy import func
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
-from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost
+from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost, ServiceHostLink
 from app.models.admin import Admin, AdminRole, AdminStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import (
@@ -91,6 +91,32 @@ def _queue_hosts_cache_refresh(bg: BackgroundTasks) -> None:
             xray.hosts.update()
         except Exception as exc:  # pragma: no cover - best effort background task
             logger.error("Failed to refresh hosts cache: %s", exc)
+
+    bg.add_task(_refresh)
+
+
+def _queue_service_users_refresh(bg: BackgroundTasks, service_ids: set[int]) -> None:
+    if not service_ids:
+        return
+
+    def _refresh() -> None:
+        try:
+            from app.db import GetDB, crud
+            from app.services.data_access import get_service_allowed_inbounds_cached
+            from app.runtime import xray as runtime_xray
+
+            with GetDB() as db:
+                for service_id in sorted(service_ids):
+                    service = crud.get_service(db, service_id)
+                    if not service:
+                        continue
+                    allowed = get_service_allowed_inbounds_cached(db, service)
+                    users_to_update = crud.refresh_service_users(db, service, allowed)
+                    db.commit()
+                    for dbuser in users_to_update:
+                        runtime_xray.operations.update_user(dbuser=dbuser)
+        except Exception as exc:  # pragma: no cover - best effort background task
+            logger.warning("Failed to refresh service users after host update: %s", exc)
 
     bg.add_task(_refresh)
 
@@ -840,12 +866,28 @@ def update_host_status(
     db.commit()
     db.refresh(host)
 
+    affected_service_ids: set[int] = set()
+    try:
+        affected_service_ids.update(
+            service_id
+            for (service_id,) in (
+                db.query(ServiceHostLink.service_id)
+                .filter(ServiceHostLink.host_id == host_id)
+                .distinct()
+                .all()
+            )
+            if service_id is not None
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to resolve service links for host %s: %s", host_id, exc)
+
     # Update host cache asynchronously to keep subscriptions up to date.
     try:
         xray.invalidate_service_hosts_cache()
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("Failed to invalidate service hosts cache: %s", exc)
     _queue_hosts_cache_refresh(bg)
+    _queue_service_users_refresh(bg, affected_service_ids)
 
     return ProxyHost.model_validate(host)
 
@@ -874,11 +916,30 @@ def modify_hosts(
     for inbound_tag, hosts in modified_hosts.items():
         crud.update_hosts_simple(db, inbound_tag, hosts, kept_ids=all_kept_ids)
 
+    affected_service_ids: set[int] = set()
+    try:
+        inbound_tags = list(modified_hosts.keys())
+        if inbound_tags:
+            affected_service_ids.update(
+                service_id
+                for (service_id,) in (
+                    db.query(ServiceHostLink.service_id)
+                    .join(DbProxyHost, ServiceHostLink.host_id == DbProxyHost.id)
+                    .filter(DbProxyHost.inbound_tag.in_(inbound_tags))
+                    .distinct()
+                    .all()
+                )
+                if service_id is not None
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to resolve affected services for host update: %s", exc)
+
     try:
         xray.invalidate_service_hosts_cache()
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("Failed to invalidate service hosts cache: %s", exc)
     _queue_hosts_cache_refresh(bg)
+    _queue_service_users_refresh(bg, affected_service_ids)
 
     return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
 
