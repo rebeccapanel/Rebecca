@@ -5,8 +5,6 @@ import warnings
 from pathlib import Path
 
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
-
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -53,6 +51,8 @@ else:
         docs_url="/docs" if DOCS else None,
         redoc_url="/redoc" if DOCS else None,
     )
+
+    from apscheduler.schedulers.background import BackgroundScheduler
 
     scheduler = BackgroundScheduler({"apscheduler.job_defaults.max_instances": 20}, timezone="UTC")
     runtime.scheduler = scheduler

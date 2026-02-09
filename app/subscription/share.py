@@ -267,6 +267,12 @@ def setup_format_variables(extra_data: dict) -> dict:
     return format_variables
 
 
+def _host_map_has_hosts(host_map: dict | None) -> bool:
+    if not host_map:
+        return False
+    return any(hosts for hosts in host_map.values())
+
+
 def process_inbounds_and_tags(
     inbounds: dict,
     proxies: dict,
@@ -401,6 +407,15 @@ def process_inbounds_and_tags(
                     host_map = combined_host_map
             except Exception:
                 pass
+        elif not service_ids and not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+            try:
+                host_map = get_service_host_map_cached(service_id, force_refresh=True)
+            except Exception:
+                pass
+
+    if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+        if not _host_map_has_hosts(host_map):
+            _refresh_inbounds_state()
 
     if service_ids:
         allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}

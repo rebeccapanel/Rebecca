@@ -15,7 +15,7 @@ from typing import Union
 import commentjson
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
-from sqlalchemy import func
+from sqlalchemy import func, literal
 
 from app.db import GetDB
 from app.db import models as db_models
@@ -655,25 +655,24 @@ class XRayConfig(dict):
         config._migrate_deprecated_configs()
 
         with GetDB() as db:
-            query = (
+            base_columns = (
+                db_models.User.id,
+                db_models.User.username,
+                db_models.User.credential_key,
+                db_models.User.flow,
+                db_models.User.service_id,
+                func.lower(db_models.Proxy.type).label("type"),
+                db_models.Proxy.settings,
+            )
+
+            service_query = (
                 db.query(
-                    db_models.User.id,
-                    db_models.User.username,
-                    db_models.User.credential_key,
-                    db_models.User.flow,
-                    db_models.User.service_id,
-                    func.lower(db_models.Proxy.type).label("type"),
-                    db_models.Proxy.settings,
-                    func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label(
-                        "excluded_inbound_tags"
-                    ),
+                    *base_columns,
+                    literal(None).label("excluded_inbound_tags"),
                 )
                 .join(db_models.Proxy, db_models.User.id == db_models.Proxy.user_id)
-                .outerjoin(
-                    db_models.excluded_inbounds_association,
-                    db_models.Proxy.id == db_models.excluded_inbounds_association.c.proxy_id,
-                )
                 .filter(db_models.User.status.in_([UserStatus.active, UserStatus.on_hold]))
+                .filter(db_models.User.service_id.isnot(None))
                 .group_by(
                     func.lower(db_models.Proxy.type),
                     db_models.User.id,
@@ -684,7 +683,32 @@ class XRayConfig(dict):
                     db_models.Proxy.settings,
                 )
             )
-            result = query.all()
+
+            no_service_query = (
+                db.query(
+                    *base_columns,
+                    func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label(
+                        "excluded_inbound_tags"
+                    ),
+                )
+                .join(db_models.Proxy, db_models.User.id == db_models.Proxy.user_id)
+                .outerjoin(
+                    db_models.excluded_inbounds_association,
+                    db_models.Proxy.id == db_models.excluded_inbounds_association.c.proxy_id,
+                )
+                .filter(db_models.User.status.in_([UserStatus.active, UserStatus.on_hold]))
+                .filter(db_models.User.service_id.is_(None))
+                .group_by(
+                    func.lower(db_models.Proxy.type),
+                    db_models.User.id,
+                    db_models.User.username,
+                    db_models.User.credential_key,
+                    db_models.User.flow,
+                    db_models.User.service_id,
+                    db_models.Proxy.settings,
+                )
+            )
+            result = list(service_query.all()) + list(no_service_query.all())
 
             grouped_data = defaultdict(list)
             service_allowed_cache: dict[int, set[str]] = {}

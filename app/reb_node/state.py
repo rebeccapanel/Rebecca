@@ -1,3 +1,4 @@
+import logging
 from random import randint
 import threading
 import time
@@ -5,6 +6,8 @@ from typing import TYPE_CHECKING, Dict, Optional, Sequence
 
 from app.db import GetDB, crud
 from app.db import models as db_models
+from pymysql.err import OperationalError as PyMySQLOperationalError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload
 from app.models.proxy import ProxyHostSecurity
 from app.utils.store import DictStorage
@@ -15,7 +18,6 @@ from app.reb_node.node import XRayNode
 from config import XRAY_ASSETS_PATH, XRAY_EXECUTABLE_PATH
 from xray_api import XRay as XRayAPI
 from xray_api import exceptions, types
-from xray_api import exceptions as exc
 
 core = XRayCore(XRAY_EXECUTABLE_PATH, XRAY_ASSETS_PATH)
 
@@ -53,6 +55,18 @@ def _empty_host_map() -> Dict[str, list]:
     return {tag: [] for tag in config.inbounds_by_tag.keys()}
 
 
+def _is_retryable_db_error(err: Exception) -> bool:
+    if isinstance(err, OperationalError):
+        orig_error = err.orig if hasattr(err, "orig") else None
+        if orig_error and getattr(orig_error, "args", None):
+            error_code = orig_error.args[0]
+            return error_code in (1205, 1213)
+    elif isinstance(err, PyMySQLOperationalError):
+        if err.args and err.args[0] in (1205, 1213):
+            return True
+    return False
+
+
 def _host_to_dict(host: "ProxyHost", service_ids: Optional[Sequence[int]] = None) -> dict:
     return {
         "remark": host.remark,
@@ -85,54 +99,87 @@ def rebuild_service_hosts_cache() -> None:
     Populate service_hosts_cache for all service_ids with deterministic ordering.
     Also updates Redis cache.
     """
-    global service_hosts_cache_ts
+    global service_hosts_cache_ts, config
     with _hosts_cache_lock:
-        base_map = _empty_host_map()
-        cache: Dict[Optional[int], Dict[str, list]] = {None: {k: [] for k in base_map}}
-
         inbound_tags = set(config.inbounds_by_tag.keys())
-        host_dicts = []
-        with GetDB() as db:
-            hosts = (
-                db.query(db_models.ProxyHost)
-                .options(joinedload(db_models.ProxyHost.service_links).joinedload(db_models.ServiceHostLink.service))
-                .filter(db_models.ProxyHost.inbound_tag.in_(inbound_tags))
-                .all()
-            )
-            valid_host_ids = {h.id for h in hosts if h.id is not None}
-            # Remove service links pointing to invalid hosts
-            if valid_host_ids:
-                db.query(db_models.ServiceHostLink).filter(
-                    ~db_models.ServiceHostLink.host_id.in_(valid_host_ids)
-                ).delete(synchronize_session=False)
-            else:
-                db.query(db_models.ServiceHostLink).delete(synchronize_session=False)
-            # Remove exclude_inbounds_association entries for deleted inbounds
-            db.execute(
-                db_models.excluded_inbounds_association.delete().where(
-                    db_models.excluded_inbounds_association.c.inbound_tag.notin_(inbound_tags)
-                )
-            )
+        if not inbound_tags:
+            try:
+                with GetDB() as db:
+                    raw_config = crud.get_xray_config(db)
+                refreshed_config = XRayConfig(raw_config, api_port=config.api_port)
+                config = refreshed_config
+                inbound_tags = set(config.inbounds_by_tag.keys())
+            except Exception:
+                pass
 
-            for host in hosts:
-                if host.is_disabled:
+        max_retries = 3
+        attempt = 0
+        while True:
+            base_map = _empty_host_map()
+            cache: Dict[Optional[int], Dict[str, list]] = {None: {k: [] for k in base_map}}
+
+            host_dicts = []
+            try:
+                with GetDB() as db:
+                    hosts = (
+                        db.query(db_models.ProxyHost)
+                        .options(
+                            joinedload(db_models.ProxyHost.service_links).joinedload(db_models.ServiceHostLink.service)
+                        )
+                        .filter(db_models.ProxyHost.inbound_tag.in_(inbound_tags))
+                        .all()
+                    )
+                    valid_host_ids = {h.id for h in hosts if h.id is not None}
+                    # Remove service links pointing to invalid hosts
+                    if valid_host_ids:
+                        db.query(db_models.ServiceHostLink).filter(
+                            ~db_models.ServiceHostLink.host_id.in_(valid_host_ids)
+                        ).delete(synchronize_session=False)
+                    else:
+                        db.query(db_models.ServiceHostLink).delete(synchronize_session=False)
+                    # Remove exclude_inbounds_association entries for deleted inbounds
+                    if inbound_tags:
+                        db.execute(
+                            db_models.excluded_inbounds_association.delete().where(
+                                db_models.excluded_inbounds_association.c.inbound_tag.notin_(inbound_tags)
+                            )
+                        )
+                    else:
+                        db.execute(db_models.excluded_inbounds_association.delete())
+
+                    for host in hosts:
+                        if host.is_disabled:
+                            continue
+                        if host.inbound_tag not in inbound_tags:
+                            continue
+
+                        service_ids = [
+                            link.service_id
+                            for link in getattr(host, "service_links", [])
+                            if link.service_id is not None
+                        ]
+                        host_dict = _host_to_dict(host, service_ids)
+                        host_dicts.append(host_dict)
+                        # Always include global (None) plus any linked services so "No service"
+                        # users still see all active hosts.
+                        target_service_ids = (service_ids or []) + [None]
+
+                        for service_id in target_service_ids:
+                            host_map = cache.setdefault(service_id, {k: [] for k in base_map})
+                            host_map.setdefault(host.inbound_tag, []).append(host_dict)
+                    db.commit()
+                break
+            except (OperationalError, PyMySQLOperationalError) as err:
+                if _is_retryable_db_error(err) and attempt < max_retries - 1:
+                    attempt += 1
+                    logger = logging.getLogger("uvicorn.error")
+                    logger.warning(
+                        "Deadlock/lock wait detected while rebuilding service hosts cache; "
+                        f"retrying ({attempt}/{max_retries})..."
+                    )
+                    time.sleep(0.1 * attempt)
                     continue
-                if host.inbound_tag not in inbound_tags:
-                    continue
-
-                service_ids = [
-                    link.service_id for link in getattr(host, "service_links", []) if link.service_id is not None
-                ]
-                host_dict = _host_to_dict(host, service_ids)
-                host_dicts.append(host_dict)
-                # Always include global (None) plus any linked services so "No service"
-                # users still see all active hosts.
-                target_service_ids = (service_ids or []) + [None]
-
-                for service_id in target_service_ids:
-                    host_map = cache.setdefault(service_id, {k: [] for k in base_map})
-                    host_map.setdefault(host.inbound_tag, []).append(host_dict)
-            db.commit()
+                raise
 
         for host_map in cache.values():
             for tag in config.inbounds_by_tag.keys():
@@ -153,8 +200,6 @@ def rebuild_service_hosts_cache() -> None:
                 for service_id, host_map in cache.items():
                     cache_service_host_map(service_id, host_map)
             except Exception as e:
-                import logging
-
                 logger = logging.getLogger("uvicorn.error")
                 logger.warning(f"Failed to update Redis cache for service hosts: {e}")
 

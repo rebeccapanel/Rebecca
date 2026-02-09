@@ -271,6 +271,8 @@ class User(Base):
 
     @property
     def excluded_inbounds(self):
+        if self.service_id is not None:
+            return {proxy.type: [] for proxy in self.proxies}
         _ = {}
         for proxy in self.proxies:
             _[proxy.type] = [i.tag for i in proxy.excluded_inbounds]
