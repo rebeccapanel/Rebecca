@@ -151,16 +151,12 @@ export function AppLayout() {
 		"inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 -14px 28px rgba(255, 255, 255, 0.07), inset 0 12px 28px rgba(0, 0, 0, 0.28)",
 	);
 	const activePillBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.32)",
-		"rgba(255, 255, 255, 0.16)",
-	);
-	const activePillBorder = useColorModeValue(
-		"rgba(255, 255, 255, 0.6)",
-		"rgba(255, 255, 255, 0.22)",
+		"rgba(255, 255, 255, 0.18)",
+		"rgba(255, 255, 255, 0.08)",
 	);
 	const activePillShadow = useColorModeValue(
-		"0 10px 22px rgba(15, 23, 42, 0.18)",
-		"0 10px 22px rgba(0, 0, 0, 0.4)",
+		"0 6px 14px rgba(15, 23, 42, 0.1)",
+		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
 
 	const roleLabel = useMemo(() => {
@@ -807,6 +803,7 @@ export function AppLayout() {
 								borderWidth="1px"
 								backdropFilter="blur(20px) saturate(1.35)"
 								borderRadius="26px"
+								clipPath="inset(0 round 26px)"
 								px="3"
 								pt="2"
 								pb="calc(env(safe-area-inset-bottom) + 6px)"
@@ -816,6 +813,7 @@ export function AppLayout() {
 									WebkitBackdropFilter: "blur(20px) saturate(1.35)",
 									position: "relative",
 									overflow: "hidden",
+									isolation: "isolate",
 									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
 										backgroundColor: glassPanelFallbackBg,
 									},
@@ -823,6 +821,7 @@ export function AppLayout() {
 										content: '""',
 										position: "absolute",
 										inset: "-40%",
+										borderRadius: "inherit",
 										background: glassPanelRefraction,
 										filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
 										mixBlendMode: "screen",
@@ -881,8 +880,6 @@ export function AppLayout() {
 														inset="0"
 														borderRadius="999px"
 														bg={activePillBg}
-														borderWidth="1px"
-														borderColor={activePillBorder}
 														boxShadow={activePillShadow}
 														backdropFilter="blur(12px) saturate(1.35)"
 														sx={{
