@@ -130,24 +130,6 @@ def rebuild_service_hosts_cache() -> None:
                         .filter(db_models.ProxyHost.inbound_tag.in_(inbound_tags))
                         .all()
                     )
-                    valid_host_ids = {h.id for h in hosts if h.id is not None}
-                    # Remove service links pointing to invalid hosts
-                    if valid_host_ids:
-                        db.query(db_models.ServiceHostLink).filter(
-                            ~db_models.ServiceHostLink.host_id.in_(valid_host_ids)
-                        ).delete(synchronize_session=False)
-                    else:
-                        db.query(db_models.ServiceHostLink).delete(synchronize_session=False)
-                    # Remove exclude_inbounds_association entries for deleted inbounds
-                    if inbound_tags:
-                        db.execute(
-                            db_models.excluded_inbounds_association.delete().where(
-                                db_models.excluded_inbounds_association.c.inbound_tag.notin_(inbound_tags)
-                            )
-                        )
-                    else:
-                        db.execute(db_models.excluded_inbounds_association.delete())
-
                     for host in hosts:
                         if host.is_disabled:
                             continue
@@ -168,7 +150,6 @@ def rebuild_service_hosts_cache() -> None:
                         for service_id in target_service_ids:
                             host_map = cache.setdefault(service_id, {k: [] for k in base_map})
                             host_map.setdefault(host.inbound_tag, []).append(host_dict)
-                    db.commit()
                 break
             except (OperationalError, PyMySQLOperationalError) as err:
                 if _is_retryable_db_error(err) and attempt < max_retries - 1:

@@ -1,5 +1,11 @@
 import {
 	Alert,
+	AlertDialog,
+	AlertDialogBody,
+	AlertDialogContent,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogOverlay,
 	AlertIcon,
 	Box,
 	Button,
@@ -24,7 +30,7 @@ import {
 } from "@chakra-ui/react";
 import { PencilIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import {
@@ -52,9 +58,11 @@ export const InboundsManager: FC = () => {
 		search: "",
 	});
 	const [selected, setSelected] = useState<RawInbound | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<RawInbound | null>(null);
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
 	const isDesktop = useBreakpointValue({ base: false, md: true });
+	const cancelRef = useRef<HTMLButtonElement | null>(null);
 
 	const loadInbounds = useCallback(() => {
 		setIsLoading(true);
@@ -171,16 +179,17 @@ export const InboundsManager: FC = () => {
 		}
 	};
 
-	const handleDelete = async (inbound: RawInbound) => {
-		const confirmMessage = t("inbounds.confirmDelete", {
-			tag: inbound.tag,
-		});
-		if (!window.confirm(confirmMessage)) {
+	const handleDelete = (inbound: RawInbound) => {
+		setDeleteTarget(inbound);
+	};
+
+	const confirmDelete = async () => {
+		if (!deleteTarget) {
 			return;
 		}
 		setIsMutating(true);
 		try {
-			await fetch(`/inbounds/${encodeURIComponent(inbound.tag)}`, {
+			await fetch(`/inbounds/${encodeURIComponent(deleteTarget.tag)}`, {
 				method: "DELETE",
 			});
 			toast({
@@ -214,6 +223,7 @@ export const InboundsManager: FC = () => {
 			});
 		} finally {
 			setIsMutating(false);
+			setDeleteTarget(null);
 		}
 	};
 
@@ -422,6 +432,42 @@ export const InboundsManager: FC = () => {
 				onClose={onClose}
 				onSubmit={handleSubmit}
 			/>
+
+			<AlertDialog
+				isOpen={Boolean(deleteTarget)}
+				leastDestructiveRef={cancelRef}
+				onClose={() => setDeleteTarget(null)}
+			>
+				<AlertDialogOverlay>
+					<AlertDialogContent>
+						<AlertDialogHeader fontSize="lg" fontWeight="bold">
+							{t("inbounds.deleteTitle", "Delete inbound")}
+						</AlertDialogHeader>
+						<AlertDialogBody>
+							{t("inbounds.confirmDelete", {
+								tag: deleteTarget?.tag ?? "",
+							})}
+						</AlertDialogBody>
+						<AlertDialogFooter>
+							<Button
+								ref={cancelRef}
+								onClick={() => setDeleteTarget(null)}
+								isDisabled={isMutating}
+							>
+								{t("inbounds.deleteCancel", "Cancel")}
+							</Button>
+							<Button
+								colorScheme="red"
+								onClick={confirmDelete}
+								ml={3}
+								isLoading={isMutating}
+							>
+								{t("inbounds.deleteConfirm", "Delete")}
+							</Button>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialogOverlay>
+			</AlertDialog>
 		</Stack>
 	);
 };

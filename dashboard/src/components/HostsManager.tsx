@@ -771,6 +771,8 @@ type HostDetailModalProps = {
 	onDelete: (uid: string) => void;
 	saving: boolean;
 	deleting: boolean;
+	mode?: "edit" | "clone";
+	onClone?: (uid: string) => void;
 };
 
 const HostDetailModal: FC<HostDetailModalProps> = ({
@@ -785,6 +787,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	onDelete,
 	saving,
 	deleting,
+	mode = "edit",
+	onClone,
 }) => {
 	const { t } = useTranslation();
 	const [jsonData, setJsonData] = useState<Record<string, unknown> | null>(
@@ -799,7 +803,19 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 		data: EMPTY_HOST_DATA,
 		original: EMPTY_HOST_DATA,
 	};
+	const isCloneMode = mode === "clone";
 	const dirty = host ? isHostDirty(host) : false;
+	const canSubmit = host
+		? Boolean(
+				host.inboundTag &&
+					host.data.remark.trim() &&
+					host.data.address.trim(),
+			)
+		: false;
+	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
+	const primaryLabel = isCloneMode
+		? t("hostsPage.clone.submit")
+		: t("hostsPage.save");
 	const hostPayload = host
 		? {
 				inboundTag: host.inboundTag,
@@ -918,8 +934,19 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				<ModalHeader pb={1}>
 					<VStack align="stretch" spacing={1}>
 						<Text fontWeight="semibold" fontSize="lg">
-							{host.data.remark || t("hostsPage.untitledHost")}
+							{isCloneMode
+								? t("hostsPage.clone.title")
+								: host.data.remark || t("hostsPage.untitledHost")}
 						</Text>
+						{isCloneMode && (
+							<Text
+								fontSize="sm"
+								color="gray.500"
+								_dark={{ color: "gray.300" }}
+							>
+								{t("hostsPage.clone.description")}
+							</Text>
+						)}
 					</VStack>
 				</ModalHeader>
 				<ModalBody>
@@ -1217,17 +1244,33 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 					</Tabs>
 				</ModalBody>
 				<ModalFooter justifyContent="space-between">
-					<Button
-						size="sm"
-						variant="ghost"
-						colorScheme="red"
-						leftIcon={<DeleteIcon />}
-						onClick={() => onDelete(host.uid)}
-						isLoading={deleting}
-					>
-						{t("hostsPage.delete")}
-					</Button>
+					{isCloneMode ? (
+						<Button size="sm" variant="ghost" onClick={onClose}>
+							{t("hostsPage.cancel")}
+						</Button>
+					) : (
+						<Button
+							size="sm"
+							variant="ghost"
+							colorScheme="red"
+							leftIcon={<DeleteIcon />}
+							onClick={() => onDelete(host.uid)}
+							isLoading={deleting}
+						>
+							{t("hostsPage.delete")}
+						</Button>
+					)}
 					<HStack spacing={3}>
+						{!isCloneMode && onClone && (
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => onClone(host.uid)}
+								isDisabled={saving || deleting}
+							>
+								{t("hostsPage.clone")}
+							</Button>
+						)}
 						<Button
 							size="sm"
 							variant="outline"
@@ -1240,10 +1283,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							size="sm"
 							colorScheme="primary"
 							onClick={() => onSave(host.uid)}
-							isDisabled={!dirty}
+							isDisabled={primaryDisabled}
 							isLoading={saving}
 						>
-							{t("hostsPage.save")}
+							{primaryLabel}
 						</Button>
 					</HStack>
 				</ModalFooter>
@@ -1513,6 +1556,7 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
+	const [cloneHost, setCloneHost] = useState<HostState | null>(null);
 	// Disabled hosts are hidden by default.
 	const [includeDisabled, setIncludeDisabled] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -1910,6 +1954,115 @@ export const HostsManager: FC = () => {
 		);
 	};
 
+	const openCloneModal = useCallback((uid: string) => {
+		const source = hostItemsRef.current.find((item) => item.uid === uid);
+		if (!source) return;
+		const baseData = { ...cloneHostData(source.data), id: null };
+		const cloneState: HostState = {
+			uid: createUid(),
+			inboundTag: source.inboundTag,
+			initialInboundTag: source.inboundTag,
+			data: cloneHostData(baseData),
+			original: cloneHostData(baseData),
+		};
+		setSelectedHostUid(null);
+		setCloneHost(cloneState);
+	}, []);
+
+	const updateCloneHost = <Key extends keyof HostData>(
+		uid: string,
+		key: Key,
+		value: HostData[Key],
+	) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid
+				? { ...prev, data: { ...prev.data, [key]: value } }
+				: prev,
+		);
+	};
+
+	const updateCloneInbound = (uid: string, inboundTag: string) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid ? { ...prev, inboundTag } : prev,
+		);
+	};
+
+	const resetCloneHost = (uid: string) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid
+				? {
+						...prev,
+						inboundTag: prev.initialInboundTag,
+						data: cloneHostData(prev.original),
+					}
+				: prev,
+		);
+	};
+
+	const addCloneHost = async (uid: string) => {
+		if (!cloneHost || cloneHost.uid !== uid) return;
+		const remark = cloneHost.data.remark.trim();
+		const address = cloneHost.data.address.trim();
+		if (!cloneHost.inboundTag || !remark || !address) {
+			toast({
+				title: t("hostsPage.clone.error"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+			return;
+		}
+
+		const previousHosts = hostItemsRef.current;
+		const nextSort = previousHosts.length
+			? Math.max(...previousHosts.map((host) => host.data.sort)) + 1
+			: 0;
+		const sortValue = Number.isFinite(cloneHost.data.sort)
+			? cloneHost.data.sort
+			: nextSort;
+
+		const newData: HostData = {
+			...cloneHostData(cloneHost.data),
+			id: null,
+			remark,
+			address,
+			sort: sortValue,
+		};
+		const newHost: HostState = {
+			uid: createUid(),
+			inboundTag: cloneHost.inboundTag,
+			initialInboundTag: cloneHost.inboundTag,
+			data: cloneHostData(newData),
+			original: cloneHostData(newData),
+		};
+
+		setSavingHostUid(uid);
+		try {
+			const nextHosts = sortHosts([...previousHosts, newHost]);
+			applyHostItems(nextHosts);
+			const payload = buildInboundPayload(nextHosts, [cloneHost.inboundTag]);
+			await setHosts(payload);
+			await fetchHosts();
+			toast({
+				title: t("hostsPage.clone.created"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+			setCloneHost(null);
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.clone.error"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setSavingHostUid(null);
+		}
+	};
+
 	const toggleActive = async (uid: string, isActive: boolean) => {
 		if (isPostLoading) {
 			return;
@@ -2283,12 +2436,30 @@ export const HostsManager: FC = () => {
 				onSave={saveHost}
 				onReset={resetHost}
 				onDelete={handleDeleteHost}
+				onClone={openCloneModal}
 				saving={
 					!!selectedHost && savingHostUid === selectedHost.uid && isPostLoading
 				}
 				deleting={
 					!!selectedHost && deletingUid === selectedHost.uid && isPostLoading
 				}
+			/>
+
+			<HostDetailModal
+				host={cloneHost}
+				inboundOptions={inboundOptions}
+				isOpen={Boolean(cloneHost)}
+				onClose={() => setCloneHost(null)}
+				onChange={updateCloneHost}
+				onChangeInbound={updateCloneInbound}
+				onSave={addCloneHost}
+				onReset={resetCloneHost}
+				onDelete={() => {}}
+				mode="clone"
+				saving={
+					!!cloneHost && savingHostUid === cloneHost.uid && isPostLoading
+				}
+				deleting={false}
 			/>
 
 			<AlertDialog
