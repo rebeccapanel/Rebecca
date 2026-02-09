@@ -8,8 +8,13 @@ from config import JOB_CORE_HEALTH_CHECK_INTERVAL
 from xray_api import exc as xray_exc
 
 
+_AUTO_RECONNECT_COOLDOWN_SECONDS = max(30, JOB_CORE_HEALTH_CHECK_INTERVAL * 3)
+_last_auto_reconnect_attempt: dict[int, float] = {}
+
+
 def core_health_check():
     config = None
+    now = time.time()
 
     # main core: only attempt to (re)start when binary is available
     if xray.core.available:
@@ -26,8 +31,33 @@ def core_health_check():
                 config = None
 
     # nodes' core
+    node_status_map: dict[int, NodeStatus] = {}
+    try:
+        with GetDB() as db:
+            for dbnode in crud.get_nodes(db):
+                if dbnode.id is not None:
+                    node_status_map[int(dbnode.id)] = dbnode.status
+    except Exception:
+        node_status_map = {}
+
     for node_id, node in list(xray.nodes.items()):
         connected, started = node.refresh_health(force=True)
+        dbnode_status = node_status_map.get(node_id)
+
+        if dbnode_status in (NodeStatus.disabled, NodeStatus.limited):
+            _last_auto_reconnect_attempt.pop(node_id, None)
+            continue
+
+        if dbnode_status == NodeStatus.error and not (connected and started):
+            last_attempt = _last_auto_reconnect_attempt.get(node_id, 0)
+            if now - last_attempt >= _AUTO_RECONNECT_COOLDOWN_SECONDS:
+                if not config:
+                    config = xray.config.include_db_users()
+                _last_auto_reconnect_attempt[node_id] = now
+                xray.operations.connect_node(node_id, config, force=True)
+            continue
+
+        _last_auto_reconnect_attempt.pop(node_id, None)
         if connected:
             try:
                 assert started

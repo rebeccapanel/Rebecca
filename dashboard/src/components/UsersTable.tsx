@@ -277,12 +277,14 @@ const UsageMeter: FC<UsageMeterProps> = ({
 				dir={isRTL ? "rtl" : "ltr"}
 			>
 				<Text>
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{usedLabel}
-					</chakra.span>{" "}
-					/{" "}
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{totalLabel}
+					<chakra.span className="rb-usage-pair">
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{usedLabel}
+						</chakra.span>{" "}
+						/{" "}
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{totalLabel}
+						</chakra.span>
 					</chakra.span>
 					{resetLabel ? ` · ${resetLabel}` : ""}
 				</Text>
@@ -1461,11 +1463,11 @@ const MobileUserCard: FC<UserCardProps> = ({
 			className="rb-usage-pair"
 		>
 			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{totalLabel}
+				{usedLabel}
 			</chakra.span>
 			{" / "}
 			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{usedLabel}
+				{totalLabel}
 			</chakra.span>
 		</Text>
 	);

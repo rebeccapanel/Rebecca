@@ -351,9 +351,10 @@ const HistoryPreview: FC<{
 
 const MetricBadge: FC<{
 	label: string;
-	value: string;
+	value: ReactNode;
 	colorScheme?: string;
-}> = ({ label, value, colorScheme = "gray" }) => {
+	valueClassName?: string;
+}> = ({ label, value, colorScheme = "gray", valueClassName }) => {
 	const borderColor = useColorModeValue("gray.200", "gray.700");
 	const bg = useColorModeValue("white", "gray.900");
 	const valueColor = useColorModeValue(
@@ -370,15 +371,19 @@ const MetricBadge: FC<{
 			borderColor={borderColor}
 			bg={bg}
 			_dark={{ bg: "gray.800", borderColor: "gray.700" }}
-		>
-			<Text fontSize="xs" color="gray.500">
-				{label}
-			</Text>
-			<Text fontWeight="semibold" color={valueColor}>
-				{value}
-			</Text>
-		</Box>
-	);
+	>
+		<Text fontSize="xs" color="gray.500">
+			{label}
+		</Text>
+		<Text fontWeight="semibold" color={valueColor}>
+			{valueClassName ? (
+				<chakra.span className={valueClassName}>{value}</chakra.span>
+			) : (
+				value
+			)}
+		</Text>
+	</Box>
+);
 };
 
 const SystemOverviewCard: FC<{
@@ -509,14 +514,17 @@ const SystemOverviewCard: FC<{
 					<MetricBadge
 						label={t("memoryUsage")}
 						value={`${formatBytes(data.memory.current)} / ${formatBytes(data.memory.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 					<MetricBadge
 						label={t("swapUsage")}
 						value={`${formatBytes(data.swap.current)} / ${formatBytes(data.swap.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 					<MetricBadge
 						label={t("diskUsage")}
 						value={`${formatBytes(data.disk.current)} / ${formatBytes(data.disk.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 				</SimpleGrid>
 				<Stack
@@ -911,6 +919,9 @@ const RedisUsageCard: FC<{
 										? `${formatBytes(data.memory_used)} / ${formatBytes(data.memory_total)}`
 										: formatBytes(data.memory_used)
 								}
+								valueClassName={
+									data.memory_percent > 0 ? "rb-usage-pair" : undefined
+								}
 								colorScheme="purple"
 							/>
 							{data.version && (
@@ -953,6 +964,7 @@ const RedisUsageCard: FC<{
 							<MetricBadge
 								label={t("redis.cacheHits", "Cache Hits/Misses")}
 								value={`${formatNumberValue(data.hits)} / ${formatNumberValue(data.misses)}`}
+								valueClassName="rb-usage-pair"
 								colorScheme="blue"
 							/>
 						</SimpleGrid>
