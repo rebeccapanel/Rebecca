@@ -284,13 +284,28 @@ class User(Base):
 
         _ = {}
         if self.service_id is not None:
+            allowed_tags = set()
             try:
-                from app.services.data_access import get_service_host_map_cached
-
-                host_map = get_service_host_map_cached(self.service_id, force_refresh=True)
+                service = getattr(self, "service", None)
+                host_links = getattr(service, "host_links", None) if service else None
+                if host_links is not None:
+                    for link in host_links:
+                        host = getattr(link, "host", None)
+                        if not host or getattr(host, "is_disabled", False):
+                            continue
+                        if getattr(host, "inbound_tag", None):
+                            allowed_tags.add(host.inbound_tag)
             except Exception:
-                host_map = {}
-            allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
+                pass
+
+            if not allowed_tags:
+                try:
+                    from app.services.data_access import get_service_host_map_cached
+
+                    host_map = get_service_host_map_cached(self.service_id, force_refresh=True)
+                except Exception:
+                    host_map = {}
+                allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
             if not allowed_tags:
                 try:
                     from app.db import GetDB
@@ -312,18 +327,22 @@ class User(Base):
                 except Exception:
                     pass
             for proxy in self.proxies:
-                _[proxy.type] = []
-                for inbound in xray.config.inbounds_by_protocol.get(proxy.type, []):
+                proxy_key = proxy.type
+                proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
+                _[proxy_key] = []
+                for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
                     if inbound["tag"] in allowed_tags:
-                        _[proxy.type].append(inbound["tag"])
+                        _[proxy_key].append(inbound["tag"])
             return _
 
         for proxy in self.proxies:
-            _[proxy.type] = []
+            proxy_key = proxy.type
+            proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
+            _[proxy_key] = []
             excluded_tags = [i.tag for i in proxy.excluded_inbounds]
-            for inbound in xray.config.inbounds_by_protocol.get(proxy.type, []):
+            for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
                 if inbound["tag"] not in excluded_tags:
-                    _[proxy.type].append(inbound["tag"])
+                    _[proxy_key].append(inbound["tag"])
 
         return _
 

@@ -18,6 +18,7 @@ from app.reb_node.node import XRayNode
 from config import XRAY_ASSETS_PATH, XRAY_EXECUTABLE_PATH
 from xray_api import XRay as XRayAPI
 from xray_api import exceptions, types
+from xray_api import exceptions as exc  # noqa: F401
 
 core = XRayCore(XRAY_EXECUTABLE_PATH, XRAY_ASSETS_PATH)
 
