@@ -133,6 +133,7 @@ type SummaryStatProps = {
 	value: string | number;
 	helper?: string;
 	accentColor?: string;
+	isMobile?: boolean;
 };
 
 const getResetStrategy = (strategy: string): string => {
@@ -148,35 +149,87 @@ const SummaryStat: FC<SummaryStatProps> = ({
 	value,
 	helper,
 	accentColor = "primary.500",
-}) => (
-	<Box
-		borderWidth="1px"
-		borderColor="light-border"
-		borderRadius="xl"
-		p={4}
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-	>
-		<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-			{label}
-		</Text>
-		<Text
-			mt={1}
-			fontWeight="bold"
-			fontSize="2xl"
-			color={accentColor}
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
+	isMobile = false,
+}) => {
+	const glassBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.76)",
+		"rgba(16, 20, 28, 0.72)",
+	);
+	const glassBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.48)",
+		"rgba(255, 255, 255, 0.14)",
+	);
+	const glassShadow = useColorModeValue(
+		"0 18px 36px -24px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.65)",
+		"0 16px 32px -22px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	);
+	const baseBorder = useColorModeValue("light-border", "whiteAlpha.200");
+	return (
+		<Box
+			borderWidth="1px"
+			borderColor={isMobile ? glassBorder : baseBorder}
+			borderRadius="xl"
+			p={4}
+			bg={isMobile ? glassBg : "surface.light"}
+			backdropFilter={isMobile ? "saturate(175%) blur(16px)" : undefined}
+			sx={
+				isMobile
+					? { WebkitBackdropFilter: "saturate(175%) blur(16px)" }
+					: undefined
+			}
+			boxShadow={isMobile ? glassShadow : undefined}
+			transform={isMobile ? "translateY(-1px)" : undefined}
+			transition="transform 0.2s ease, box-shadow 0.2s ease"
+			position="relative"
+			overflow="hidden"
+			_dark={
+				isMobile
+					? {
+							bg: glassBg,
+							borderColor: glassBorder,
+						}
+					: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+			}
+			_before={
+				isMobile
+					? {
+							content: '""',
+							position: "absolute",
+							inset: "0",
+							background:
+								"linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0))",
+							opacity: 0.6,
+							pointerEvents: "none",
+						}
+					: undefined
+			}
 		>
-			{value}
-		</Text>
-		{helper ? (
-			<Text mt={1} fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
-				{helper}
+			<Text fontSize="sm" color="gray.700" _dark={{ color: "gray.300" }}>
+				{label}
 			</Text>
-		) : null}
-	</Box>
-);
+			<Text
+				mt={1}
+				fontWeight="bold"
+				fontSize="2xl"
+				color={accentColor}
+				dir="ltr"
+				sx={{ unicodeBidi: "isolate" }}
+			>
+				{value}
+			</Text>
+			{helper ? (
+				<Text
+					mt={1}
+					fontSize="xs"
+					color="gray.600"
+					_dark={{ color: "gray.400" }}
+				>
+					{helper}
+				</Text>
+			) : null}
+		</Box>
+	);
+};
 
 const UsageMeter: FC<UsageMeterProps> = ({
 	used,
@@ -1102,7 +1155,11 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							{!isDesktop && !(isMobile && hasSearchQuery) && (
 								<SimpleGrid columns={{ base: 2 }} gap={3}>
 									{summaryItems.map((item, idx) => (
-										<SummaryStat key={`${item.label}-${idx}`} {...item} />
+										<SummaryStat
+											key={`${item.label}-${idx}`}
+											{...item}
+											isMobile={isMobile}
+										/>
 									))}
 								</SimpleGrid>
 							)}

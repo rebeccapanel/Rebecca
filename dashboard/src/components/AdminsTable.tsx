@@ -230,30 +230,56 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 const formatCount = (value: number | null | undefined, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value ?? 0);
 
-const RoleChip: FC<{ label: string; value: number; color: string }> = ({
-	label,
-	value,
-	color,
-}) => (
-	<HStack
-		spacing={2}
-		borderWidth="1px"
-		borderColor="light-border"
-		borderRadius="full"
-		px={3}
-		py={2}
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-		opacity={value === 0 ? 0.65 : 1}
-	>
-		<Text fontSize="sm" color={color} fontWeight="semibold">
-			{label}
-		</Text>
-		<Text fontSize="sm" fontWeight="bold" color={color} dir="ltr">
-			{value}
-		</Text>
-	</HStack>
-);
+const RoleChip: FC<{
+	label: string;
+	value: number;
+	color: string;
+	isMobile?: boolean;
+}> = ({ label, value, color, isMobile = false }) => {
+	const chipBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.7)",
+		"rgba(18, 22, 30, 0.6)",
+	);
+	const chipBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.5)",
+		"rgba(255, 255, 255, 0.18)",
+	);
+	const chipShadow = useColorModeValue(
+		"0 8px 18px -14px rgba(15, 23, 42, 0.45)",
+		"0 8px 18px -14px rgba(0, 0, 0, 0.55)",
+	);
+	return (
+		<HStack
+			spacing={2}
+			borderWidth="1px"
+			borderColor={isMobile ? chipBorder : "light-border"}
+			borderRadius="full"
+			px={3}
+			py={2}
+			bg={isMobile ? chipBg : "surface.light"}
+			backdropFilter={isMobile ? "saturate(160%) blur(12px)" : undefined}
+			sx={
+				isMobile
+					? { WebkitBackdropFilter: "saturate(160%) blur(12px)" }
+					: undefined
+			}
+			boxShadow={isMobile ? chipShadow : undefined}
+			_dark={
+				isMobile
+					? { bg: chipBg, borderColor: chipBorder }
+					: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+			}
+			opacity={value === 0 ? 0.65 : 1}
+		>
+			<Text fontSize="sm" color={color} fontWeight="semibold">
+				{label}
+			</Text>
+			<Text fontSize="sm" fontWeight="bold" color={color} dir="ltr">
+				{value}
+			</Text>
+		</HStack>
+	);
+};
 export const AdminsTable: FC<TableProps> = (props) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
@@ -264,6 +290,22 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
+	const summaryGlassBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.78)",
+		"rgba(16, 20, 28, 0.72)",
+	);
+	const summaryGlassBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.45)",
+		"rgba(255, 255, 255, 0.16)",
+	);
+	const summaryGlassShadow = useColorModeValue(
+		"0 18px 36px -24px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+		"0 16px 32px -22px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	);
+	const summaryDividerColor = useColorModeValue(
+		"rgba(255, 255, 255, 0.35)",
+		"rgba(255, 255, 255, 0.12)",
+	);
 	const {
 		admins,
 		loading,
@@ -880,6 +922,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		sx: { ...baseTableSx, ...(normalizedSx || {}) },
 	};
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
+	const isMobileSummary = !isDesktop;
 	const isSearching =
 		typeof filters.search === "string" && filters.search.trim().length > 0;
 	const hideSummaryCard = !isDesktop && isSearching;
@@ -1211,14 +1254,44 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				<Collapse in={!hideSummaryCard} animateOpacity>
 					<Card
 						borderWidth="1px"
-						borderColor="light-border"
-						bg="surface.light"
-						_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+						borderColor={isMobileSummary ? summaryGlassBorder : "light-border"}
+						bg={isMobileSummary ? summaryGlassBg : "surface.light"}
+						position="relative"
+						overflow="hidden"
+						boxShadow={isMobileSummary ? summaryGlassShadow : undefined}
+						backdropFilter={
+							isMobileSummary ? "saturate(170%) blur(16px)" : undefined
+						}
+						sx={
+							isMobileSummary
+								? {
+										WebkitBackdropFilter: "saturate(170%) blur(16px)",
+										"&::before": {
+											content: '""',
+											position: "absolute",
+											inset: "0",
+											background:
+												"linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0))",
+											opacity: 0.6,
+											pointerEvents: "none",
+										},
+									}
+								: undefined
+						}
+						_dark={
+							isMobileSummary
+								? { bg: summaryGlassBg, borderColor: summaryGlassBorder }
+								: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+						}
 					>
 						<CardHeader
 							borderBottomWidth="1px"
-							borderColor="light-border"
-							_dark={{ borderColor: "whiteAlpha.200" }}
+							borderColor={isMobileSummary ? summaryDividerColor : "light-border"}
+							_dark={
+								isMobileSummary
+									? { borderColor: summaryDividerColor }
+									: { borderColor: "whiteAlpha.200" }
+							}
 							pb={3}
 						>
 							<HStack
@@ -1273,21 +1346,25 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										label={t("admins.roles.fullAccess", "Full access")}
 										value={summaryData.rolesActive.fullAccessCount}
 										color="yellow.500"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.sudo", "Sudo")}
 										value={summaryData.rolesActive.sudoCount}
 										color="purple.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.reseller", "Reseller")}
 										value={summaryData.rolesActive.resellerCount}
 										color="blue.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.standard", "Standard")}
 										value={summaryData.rolesActive.standardCount}
 										color="gray.500"
+										isMobile={isMobileSummary}
 									/>
 								</HStack>
 								<HStack spacing={3} flexWrap="wrap" align="center">
@@ -1296,21 +1373,25 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										label={t("admins.roles.fullAccess", "Full access")}
 										value={summaryData.rolesDisabled.fullAccessCount}
 										color="yellow.500"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.sudo", "Sudo")}
 										value={summaryData.rolesDisabled.sudoCount}
 										color="purple.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.reseller", "Reseller")}
 										value={summaryData.rolesDisabled.resellerCount}
 										color="blue.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.standard", "Standard")}
 										value={summaryData.rolesDisabled.standardCount}
 										color="gray.500"
+										isMobile={isMobileSummary}
 									/>
 								</HStack>
 							</Stack>

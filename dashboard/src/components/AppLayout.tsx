@@ -22,6 +22,7 @@ import {
 	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
+	shouldForwardProp,
 	VStack,
 	type PlacementWithLogical,
 } from "@chakra-ui/react";
@@ -45,8 +46,8 @@ import {
 	useRef,
 	useState,
 	useEffect,
-	useLayoutEffect,
 } from "react";
+import { LayoutGroup, isValidMotionProp, motion } from "framer-motion";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -73,6 +74,10 @@ const UsersIcon = chakra(UserGroupIcon, iconProps);
 const AdminsIcon = chakra(ShieldCheckIcon, iconProps);
 const ShareIcon = chakra(ArrowUpOnSquareIcon, iconProps);
 
+const MotionBox = chakra(motion.div, {
+	shouldForwardProp: (prop) => isValidMotionProp(prop) || shouldForwardProp(prop),
+});
+
 export function AppLayout() {
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const isMobile = useBreakpointValue({ base: true, md: false });
@@ -94,7 +99,6 @@ export function AppLayout() {
 	const accountHoldOpened = useRef(false);
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
 	const tabContentRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-	const navContainerRef = useRef<HTMLDivElement | null>(null);
 	const navDragRef = useRef<{
 		active: boolean;
 		moved: boolean;
@@ -109,13 +113,6 @@ export function AppLayout() {
 		pointerId: null,
 	});
 	const suppressNavClickUntil = useRef(0);
-	const [activeSelector, setActiveSelector] = useState({
-		x: 0,
-		y: 0,
-		width: 0,
-		height: 0,
-		visible: false,
-	});
 	const [previewTabKey, setPreviewTabKey] = useState<string | null>(null);
 	const [isNavDragging, setIsNavDragging] = useState(false);
 	const languagePlacement =
@@ -154,12 +151,16 @@ export function AppLayout() {
 		"inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 -14px 28px rgba(255, 255, 255, 0.07), inset 0 12px 28px rgba(0, 0, 0, 0.28)",
 	);
 	const activePillBg = useColorModeValue(
-		"rgba(0, 0, 0, 0.14)",
-		"rgba(255, 255, 255, 0.12)",
+		"rgba(255, 255, 255, 0.32)",
+		"rgba(255, 255, 255, 0.16)",
+	);
+	const activePillBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.6)",
+		"rgba(255, 255, 255, 0.22)",
 	);
 	const activePillShadow = useColorModeValue(
-		"0 6px 18px rgba(0, 0, 0, 0.16)",
-		"0 6px 18px rgba(0, 0, 0, 0.16)",
+		"0 10px 22px rgba(15, 23, 42, 0.18)",
+		"0 10px 22px rgba(0, 0, 0, 0.4)",
 	);
 
 	const roleLabel = useMemo(() => {
@@ -310,6 +311,7 @@ export function AppLayout() {
 		const activeItem = bottomNavItems.find((item) => resolveActive(item.to));
 		return activeItem?.key ?? null;
 	}, [bottomNavItems, location.pathname]);
+	const selectedTabKey = previewTabKey ?? activeTabKey;
 
 	const navKeyAtPoint = (clientX: number, clientY: number) => {
 		for (const item of bottomNavItems) {
@@ -327,40 +329,6 @@ export function AppLayout() {
 		}
 		return null;
 	};
-
-	const updateActiveSelector = () => {
-		if (!isMobile) return;
-		const container = navContainerRef.current;
-		const targetKey = previewTabKey ?? activeTabKey;
-		if (!container || !targetKey) {
-			setActiveSelector((prev) => ({ ...prev, visible: false }));
-			return;
-		}
-		const target = tabContentRefs.current[targetKey];
-		if (!target) return;
-		const containerRect = container.getBoundingClientRect();
-		const targetRect = target.getBoundingClientRect();
-		const insetX = 2;
-		const insetY = 2;
-		setActiveSelector({
-			x: Math.round(targetRect.left - containerRect.left + insetX),
-			y: Math.round(targetRect.top - containerRect.top + insetY),
-			width: Math.max(0, Math.round(targetRect.width - insetX * 2)),
-			height: Math.max(0, Math.round(targetRect.height - insetY * 2)),
-			visible: true,
-		});
-	};
-
-	useLayoutEffect(() => {
-		updateActiveSelector();
-	}, [activeTabKey, isMobile, i18n.language, previewTabKey]);
-
-	useEffect(() => {
-		if (!isMobile) return;
-		const handleResize = () => updateActiveSelector();
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
-	}, [isMobile, activeTabKey, previewTabKey]);
 
 	const handleNavPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (!isMobile) return;
@@ -871,46 +839,20 @@ export function AppLayout() {
 									},
 								}}
 							>
-								<HStack
-									justify="space-between"
-									position="relative"
-									align="center"
-									spacing={1}
-									ref={navContainerRef}
-									onPointerDown={handleNavPointerDown}
-									onPointerMove={handleNavPointerMove}
-									onPointerUp={handleNavPointerUp}
-									onPointerCancel={handleNavPointerCancel}
-								>
-									<Box
-										position="absolute"
-										top="0"
-										left="0"
-										width={`${activeSelector.width}px`}
-										height={`${activeSelector.height}px`}
-										transition="transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1), width 220ms, height 220ms, opacity 160ms"
-										opacity={activeSelector.visible ? 1 : 0}
-										borderRadius="24px"
-										bg={activePillBg}
-										willChange="transform, width, height, opacity"
-										transformOrigin="center"
-										transitionProperty="transform, width, height, opacity, box-shadow, filter"
-										transitionDuration={isNavDragging ? "120ms" : "220ms"}
-										transitionTimingFunction={
-											isNavDragging ? "ease-out" : "cubic-bezier(0.2, 0.9, 0.2, 1)"
-										}
-										boxShadow={
-											isNavDragging
-												? "0 12px 22px rgba(0, 0, 0, 0.18)"
-												: activePillShadow
-										}
-										filter={isNavDragging ? "blur(0.3px)" : "blur(0.15px)"}
-										transform={`${isNavDragging ? "scale(1.04)" : "scale(1)"} translate3d(${activeSelector.x}px, ${activeSelector.y}px, 0)`}
-										zIndex={0}
-										pointerEvents="none"
-									/>
-									{bottomNavItems.map((item) => {
+								<LayoutGroup id="bottom-nav">
+									<HStack
+										justify="space-between"
+										position="relative"
+										align="center"
+										spacing={1}
+										onPointerDown={handleNavPointerDown}
+										onPointerMove={handleNavPointerMove}
+										onPointerUp={handleNavPointerUp}
+										onPointerCancel={handleNavPointerCancel}
+									>
+										{bottomNavItems.map((item) => {
 										const isActive = resolveActive(item.to);
+										const isSelected = selectedTabKey === item.key;
 										const icon =
 											item.key === "dashboard" ? (
 												<HomeIcon />
@@ -921,41 +863,74 @@ export function AppLayout() {
 											) : (
 												<UserIcon />
 											);
-										const iconStack = (
-											<Box position="relative" w="full" display="flex" justifyContent="center">
+										const navContent = (
+											<Box
+												position="relative"
+												display="inline-flex"
+												flexDirection="column"
+												alignItems="center"
+												justifyContent="center"
+												px="3"
+												py="1.5"
+												maxW="100%"
+											>
+												{isSelected && (
+													<MotionBox
+														layoutId="bottom-nav-pill"
+														position="absolute"
+														inset="0"
+														borderRadius="999px"
+														bg={activePillBg}
+														borderWidth="1px"
+														borderColor={activePillBorder}
+														boxShadow={activePillShadow}
+														backdropFilter="blur(12px) saturate(1.35)"
+														sx={{
+															WebkitBackdropFilter:
+																"blur(12px) saturate(1.35)",
+														}}
+														style={{
+															filter: isNavDragging
+																? "blur(0.3px)"
+																: "blur(0.15px)",
+														}}
+														animate={{
+															scale: isNavDragging ? 1.04 : 1,
+															transition: {
+																type: "spring",
+																stiffness: 520,
+																damping: 42,
+															},
+														}}
+														zIndex={0}
+														pointerEvents="none"
+													/>
+												)}
 												<Box
 													position="relative"
-													display="inline-flex"
-													flexDirection="column"
-													alignItems="center"
-													justifyContent="center"
-													px="3"
-													py="1.5"
+													zIndex={1}
+													w="8"
+													h="8"
+													display="grid"
+													placeItems="center"
 												>
-													<VStack spacing={1} align="center" position="relative" zIndex={1}>
-														<Box
-															position="relative"
-															w="8"
-															h="8"
-															display="grid"
-															placeItems="center"
-														>
-															<Box position="relative" zIndex={1}>
-																{icon}
-															</Box>
-														</Box>
-														<Text
-															fontSize="9px"
-															lineHeight="1"
-															fontWeight="medium"
-															textAlign="center"
-															noOfLines={1}
-															maxW="64px"
-														>
-															{item.label}
-														</Text>
-													</VStack>
+													<Box position="relative" zIndex={1}>
+														{icon}
+													</Box>
 												</Box>
+												<Text
+													position="relative"
+													zIndex={1}
+													fontSize="10px"
+													lineHeight="1.1"
+													fontWeight="semibold"
+													textAlign="center"
+													noOfLines={2}
+													maxW="96px"
+													px="1"
+												>
+													{item.label}
+												</Text>
 											</Box>
 										);
 
@@ -1006,15 +981,17 @@ export function AppLayout() {
 															flex="1"
 															minW="0"
 															minH="48px"
+															h="auto"
+															px="0"
 															position="relative"
 															zIndex={1}
 															sx={{ touchAction: "manipulation" }}
 															userSelect="none"
-															_hover={{ bg: "transparent" }}
-															_active={{ bg: "transparent" }}
-															_focus={{ bg: "transparent" }}
+																_hover={{ bg: "transparent" }}
+																_active={{ bg: "transparent" }}
+																_focus={{ bg: "transparent" }}
 															>
-																{iconStack}
+																{navContent}
 															</Button>
 														</PopoverTrigger>
 														<PopoverContent
@@ -1090,6 +1067,8 @@ export function AppLayout() {
 											flex="1"
 											minW="0"
 											minH="48px"
+											h="auto"
+											px="0"
 											position="relative"
 											zIndex={1}
 											userSelect="none"
@@ -1097,11 +1076,12 @@ export function AppLayout() {
 											_active={{ bg: "transparent" }}
 											_focus={{ bg: "transparent" }}
 											>
-												{iconStack}
+												{navContent}
 											</Button>
 										);
 									})}
-								</HStack>
+									</HStack>
+								</LayoutGroup>
 							</Box>
 						</Box>
 					</>
