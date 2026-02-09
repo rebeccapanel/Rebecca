@@ -410,6 +410,15 @@ class XRayConfig(dict):
                 "is_fallback": False,
             }
 
+            if inbound["protocol"] == "vless":
+                inbound_settings = inbound.get("settings") or {}
+                if isinstance(inbound_settings, dict):
+                    encryption = inbound_settings.get("encryption")
+                    if isinstance(encryption, str):
+                        encryption = encryption.strip()
+                    if encryption:
+                        settings["encryption"] = encryption
+
             # port settings
             try:
                 settings["port"] = inbound["port"]

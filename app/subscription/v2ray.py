@@ -83,7 +83,7 @@ class V2rayShareLink(str):
             )
 
         elif inbound["protocol"] == "vless":
-            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
+            selected_auth = inbound.get("encryption") or "none"
             link = self.vless(
                 remark=remark,
                 address=address_formatted,
@@ -1005,7 +1005,7 @@ class V2rayJsonConfig(str):
             outbound["settings"] = self.vmess_config(address=address, port=port, id=settings["id"])
 
         elif inbound["protocol"] == "vless":
-            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
+            selected_auth = inbound.get("encryption") or "none"
             if net in ("tcp", "raw", "kcp") and headers != "http" and tls in ("tls", "reality"):
                 flow = settings.get("flow", "")
             else:
