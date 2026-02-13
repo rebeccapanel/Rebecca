@@ -401,13 +401,36 @@ export function AppLayout() {
 		return items;
 	}, [t, sectionAccess, hasSettingsMenu]);
 
-	const isSettingsRoute = useMemo(
+	const activeSettingsItem = useMemo(
 		() =>
-			settingsMenuItems.some((item) => {
+			settingsMenuItems.find((item) => {
 				if (item.to === "/") return location.pathname === "/";
 				return location.pathname.startsWith(item.to);
 			}),
 		[settingsMenuItems, location.pathname],
+	);
+	const isSettingsRoute = Boolean(activeSettingsItem);
+	const activeSettingsKey = activeSettingsItem?.key ?? null;
+	const SettingsNavIcon = activeSettingsItem?.icon ?? SettingsIcon;
+	const popoverViewportPadding = 12;
+	const popoverModifiers = useMemo(
+		() => [
+			{
+				name: "preventOverflow",
+				options: {
+					boundary: "viewport",
+					padding: popoverViewportPadding,
+				},
+			},
+			{
+				name: "flip",
+				options: {
+					boundary: "viewport",
+					padding: popoverViewportPadding,
+				},
+			},
+		],
+		[popoverViewportPadding],
 	);
 
 	const resolveActive = useCallback(
@@ -504,8 +527,7 @@ export function AppLayout() {
 		const target = bottomNavItems.find((item) => item.key === key);
 		if (!target) return;
 		if (target.key === "settings") {
-			accountMenu.onClose();
-			settingsMenu.onOpen();
+			openSettingsMenu();
 			return;
 		}
 		if (key !== activeTabKey && target.to) {
@@ -558,7 +580,7 @@ export function AppLayout() {
 		accountHoldOpened.current = false;
 		accountHoldTimeout.current = window.setTimeout(() => {
 			accountHoldOpened.current = true;
-			settingsMenu.onClose();
+			handleSettingsMenuClose();
 			accountMenu.onOpen();
 		}, 560);
 	};
@@ -596,8 +618,7 @@ export function AppLayout() {
 		settingsHoldOpened.current = false;
 		settingsHoldTimeout.current = window.setTimeout(() => {
 			settingsHoldOpened.current = true;
-			accountMenu.onClose();
-			settingsMenu.onOpen();
+			openSettingsMenu();
 		}, 560);
 	};
 
@@ -619,6 +640,15 @@ export function AppLayout() {
 	const handleSettingsMenuClose = () => {
 		settingsHoldOpened.current = false;
 		settingsMenu.onClose();
+		if (previewTabKeyRef.current === "settings") {
+			setPreviewTabKeySafe(null);
+		}
+	};
+
+	const openSettingsMenu = () => {
+		accountMenu.onClose();
+		settingsMenu.onOpen();
+		setPreviewTabKeySafe("settings");
 	};
 
 	const handleSettingsMenuToggle = () => {
@@ -627,8 +657,7 @@ export function AppLayout() {
 			handleSettingsMenuClose();
 			return;
 		}
-		accountMenu.onClose();
-		settingsMenu.onOpen();
+		openSettingsMenu();
 	};
 
 	const settingsDefaultTabByPath: Record<string, string> = {
@@ -1070,6 +1099,11 @@ export function AppLayout() {
 									{bottomNavItems.map((item) => {
 										const isActive = resolveActive(item);
 										const isSelected = selectedTabKey === item.key;
+										const isSettingsItem = item.key === "settings";
+										const settingsLabel =
+											isSettingsItem && activeSettingsItem?.label
+												? activeSettingsItem.label
+												: item.label;
 										const icon =
 											item.key === "dashboard" ? (
 												<HomeIcon />
@@ -1078,58 +1112,67 @@ export function AppLayout() {
 											) : item.key === "admins" ? (
 												<AdminsIcon />
 											) : item.key === "settings" ? (
-												<SettingsIcon />
+												<SettingsNavIcon />
 											) : (
 												<UserIcon />
 											);
 										const navContent = (
 											<Box
-												position="relative"
-												display="inline-flex"
-												flexDirection="column"
-												alignItems="center"
+												w="full"
+												display="flex"
 												justifyContent="center"
-												px="3"
-												py="1.5"
-												maxW="100%"
+												minW="0"
 											>
-												{isSelected && (
-													<Box
-														position="absolute"
-														inset="0"
-														borderRadius="999px"
-														bg={activePillBg}
-														boxShadow={activePillShadow}
-														transition="opacity 0.12s ease-out"
-														zIndex={0}
-														pointerEvents="none"
-													/>
-												)}
 												<Box
 													position="relative"
-													zIndex={1}
-													w="8"
-													h="8"
-													display="grid"
-													placeItems="center"
+													display="inline-flex"
+													flexDirection="column"
+													alignItems="center"
+													justifyContent="center"
+													px="3"
+													py="1.5"
+													maxW="100%"
+													w="fit-content"
 												>
-													<Box position="relative" zIndex={1}>
-														{icon}
+													{isSelected && (
+														<Box
+															position="absolute"
+															inset="0"
+															borderRadius="999px"
+															bg={activePillBg}
+															boxShadow={activePillShadow}
+															transition="opacity 0.12s ease-out"
+															zIndex={0}
+															pointerEvents="none"
+														/>
+													)}
+													<Box
+														position="relative"
+														zIndex={1}
+														w="8"
+														h="8"
+														display="grid"
+														placeItems="center"
+													>
+														<Box position="relative" zIndex={1}>
+															{icon}
+														</Box>
 													</Box>
+													<Text
+														position="relative"
+														zIndex={1}
+														fontSize="10px"
+														lineHeight="1.1"
+														fontWeight="semibold"
+														textAlign="center"
+														noOfLines={2}
+														maxW="100%"
+														overflowWrap="anywhere"
+														px="1"
+													>
+														{settingsLabel}
+													</Text>
 												</Box>
-												<Text
-													position="relative"
-													zIndex={1}
-													fontSize="10px"
-													lineHeight="1.1"
-													fontWeight="semibold"
-													textAlign="center"
-													noOfLines={2}
-													maxW="96px"
-													px="1"
-												>
-													{item.label}
-												</Text>
 											</Box>
 										);
 
@@ -1142,6 +1185,8 @@ export function AppLayout() {
 													placement="top"
 													gutter={12}
 													closeOnBlur
+													modifiers={popoverModifiers}
+													strategy="fixed"
 												>
 													<PopoverTrigger>
 														<Button
@@ -1195,47 +1240,54 @@ export function AppLayout() {
 															{navContent}
 														</Button>
 													</PopoverTrigger>
-													<PopoverContent
-														w="210px"
-														borderRadius="18px"
-														bg={glassPanelBg}
-														borderColor={glassPanelBorder}
-														borderWidth="1px"
-														boxShadow={glassPanelShadow}
-														backdropFilter="blur(18px) saturate(1.3)"
-														sx={{
-															WebkitBackdropFilter: "blur(18px) saturate(1.3)",
-															position: "relative",
-															overflow: "hidden",
-															"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
-																{
-																	backgroundColor: glassPanelFallbackBg,
+													<Portal>
+														<PopoverContent
+															w="min(210px, calc(100vw - 24px))"
+															maxW="calc(100vw - 24px)"
+															maxH="calc(100vh - 160px)"
+															overflowY="auto"
+															borderRadius="18px"
+															bg={glassPanelBg}
+															borderColor={glassPanelBorder}
+															borderWidth="1px"
+															boxShadow={glassPanelShadow}
+															backdropFilter="blur(18px) saturate(1.3)"
+															sx={{
+																WebkitBackdropFilter:
+																	"blur(18px) saturate(1.3)",
+																position: "relative",
+																overflow: "hidden",
+																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																	{
+																		backgroundColor: glassPanelFallbackBg,
+																	},
+																"&::before": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "-40%",
+																	background: glassPanelRefraction,
+																	filter:
+																		"blur(0.2px) contrast(1.15) saturate(1.1)",
+																	mixBlendMode: "screen",
+																	opacity: 0.7,
+																	pointerEvents: "none",
 																},
-															"&::before": {
-																content: '""',
-																position: "absolute",
-																inset: "-40%",
-																background: glassPanelRefraction,
-																filter:
-																	"blur(0.2px) contrast(1.15) saturate(1.1)",
-																mixBlendMode: "screen",
-																opacity: 0.7,
-																pointerEvents: "none",
-															},
-															"&::after": {
-																content: '""',
-																position: "absolute",
-																inset: "0",
-																borderRadius: "inherit",
-																boxShadow: glassPanelInnerShadow,
-																pointerEvents: "none",
-															},
-														}}
-													>
-														<PopoverBody position="relative" zIndex={1} p="2">
-															<VStack align="stretch" spacing={1}>
+																"&::after": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "0",
+																	borderRadius: "inherit",
+																	boxShadow: glassPanelInnerShadow,
+																	pointerEvents: "none",
+																},
+															}}
+														>
+															<PopoverBody position="relative" zIndex={1} p="2">
+																<VStack align="stretch" spacing={1}>
 																{settingsMenuItems.map((entry) => {
 																	const ItemIcon = entry.icon;
+																	const isSelected =
+																		activeSettingsKey === entry.key;
 																	return (
 																		<Button
 																			key={entry.key}
@@ -1246,9 +1298,21 @@ export function AppLayout() {
 																			leftIcon={
 																				ItemIcon ? <ItemIcon /> : undefined
 																			}
-																			_hover={{ bg: menuHover }}
+																			bg={isSelected ? menuHover : "transparent"}
+																			fontWeight={
+																				isSelected ? "semibold" : "normal"
+																			}
+																			aria-current={
+																				isSelected ? "page" : undefined
+																			}
+																			_hover={{
+																				bg:
+																					isSelected || activeSettingsKey
+																						? menuHover
+																						: "transparent",
+																			}}
 																			_active={{ bg: menuHover }}
-																			_focus={{ bg: menuHover }}
+																			_focusVisible={{ boxShadow: "outline" }}
 																			onClick={() => {
 																				handleSettingsMenuClose();
 																				navigateToSettingsItem(entry.to);
@@ -1258,9 +1322,10 @@ export function AppLayout() {
 																		</Button>
 																	);
 																})}
-															</VStack>
-														</PopoverBody>
-													</PopoverContent>
+																</VStack>
+															</PopoverBody>
+														</PopoverContent>
+													</Portal>
 												</Popover>
 											);
 										}
@@ -1274,6 +1339,8 @@ export function AppLayout() {
 													placement="top"
 													gutter={12}
 													closeOnBlur
+													modifiers={popoverModifiers}
+													strategy="fixed"
 												>
 													<PopoverTrigger>
 														<Button
@@ -1328,63 +1395,69 @@ export function AppLayout() {
 															{navContent}
 														</Button>
 													</PopoverTrigger>
-													<PopoverContent
-														w="180px"
-														borderRadius="18px"
-														bg={glassPanelBg}
-														borderColor={glassPanelBorder}
-														borderWidth="1px"
-														boxShadow={glassPanelShadow}
-														backdropFilter="blur(18px) saturate(1.3)"
-														sx={{
-															WebkitBackdropFilter: "blur(18px) saturate(1.3)",
-															position: "relative",
-															overflow: "hidden",
-															"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
-																{
-																	backgroundColor: glassPanelFallbackBg,
+													<Portal>
+														<PopoverContent
+															w="min(180px, calc(100vw - 24px))"
+															maxW="calc(100vw - 24px)"
+															maxH="calc(100vh - 160px)"
+															overflowY="auto"
+															borderRadius="18px"
+															bg={glassPanelBg}
+															borderColor={glassPanelBorder}
+															borderWidth="1px"
+															boxShadow={glassPanelShadow}
+															backdropFilter="blur(18px) saturate(1.3)"
+															sx={{
+																WebkitBackdropFilter:
+																	"blur(18px) saturate(1.3)",
+																position: "relative",
+																overflow: "hidden",
+																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																	{
+																		backgroundColor: glassPanelFallbackBg,
+																	},
+																"&::before": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "-40%",
+																	background: glassPanelRefraction,
+																	filter:
+																		"blur(0.2px) contrast(1.15) saturate(1.1)",
+																	mixBlendMode: "screen",
+																	opacity: 0.7,
+																	pointerEvents: "none",
 																},
-															"&::before": {
-																content: '""',
-																position: "absolute",
-																inset: "-40%",
-																background: glassPanelRefraction,
-																filter:
-																	"blur(0.2px) contrast(1.15) saturate(1.1)",
-																mixBlendMode: "screen",
-																opacity: 0.7,
-																pointerEvents: "none",
-															},
-															"&::after": {
-																content: '""',
-																position: "absolute",
-																inset: "0",
-																borderRadius: "inherit",
-																boxShadow: glassPanelInnerShadow,
-																pointerEvents: "none",
-															},
-														}}
-													>
-														<PopoverBody position="relative" zIndex={1} p="2">
-															<Button
-																variant="ghost"
-																size="sm"
-																w="full"
-																justifyContent="flex-start"
-																leftIcon={<LogoutIcon />}
-																color="red.500"
-																_hover={{ bg: menuHover }}
-																_active={{ bg: menuHover }}
-																_focus={{ bg: menuHover }}
-																onClick={() => {
-																	handleAccountMenuClose();
-																	navigate("/login");
-																}}
-															>
-																{t("header.logout", "Log out")}
-															</Button>
-														</PopoverBody>
-													</PopoverContent>
+																"&::after": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "0",
+																	borderRadius: "inherit",
+																	boxShadow: glassPanelInnerShadow,
+																	pointerEvents: "none",
+																},
+															}}
+														>
+															<PopoverBody position="relative" zIndex={1} p="2">
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	w="full"
+																	justifyContent="flex-start"
+																	leftIcon={<LogoutIcon />}
+																	color="red.500"
+																	_hover={{ bg: menuHover }}
+																	_active={{ bg: menuHover }}
+																	_focus={{ bg: menuHover }}
+																	onClick={() => {
+																		handleAccountMenuClose();
+																		navigate("/login");
+																	}}
+																>
+																	{t("header.logout", "Log out")}
+																</Button>
+															</PopoverBody>
+														</PopoverContent>
+													</Portal>
 												</Popover>
 											);
 										}
