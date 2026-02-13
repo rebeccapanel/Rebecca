@@ -12,6 +12,8 @@ import {
 import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
+import { fetchInbounds } from "contexts/DashboardContext";
+import { useHosts } from "contexts/HostsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,8 +21,12 @@ import { useTranslation } from "react-i18next";
 export const HostsPage: FC = () => {
 	const { t } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
+	const { fetchHosts } = useHosts();
 	const [activeTab, setActiveTab] = useState<number>(0);
 	const tabKeys = useMemo(() => ["inbounds", "hosts"], []);
+	const hostsTabIndex = 1;
+	const canManageHosts =
+		getUserIsSuccess && Boolean(userData.permissions?.sections.hosts);
 	const splitHash = useCallback(() => {
 		const hash = window.location.hash || "";
 		const idx = hash.indexOf("#", 1);
@@ -47,15 +53,23 @@ export const HostsPage: FC = () => {
 		return () => window.removeEventListener("hashchange", syncFromHash);
 	}, [splitHash, tabKeys]);
 
+	useEffect(() => {
+		if (activeTab !== hostsTabIndex) {
+			return;
+		}
+		if (!canManageHosts) {
+			return;
+		}
+		fetchInbounds();
+		fetchHosts();
+	}, [activeTab, canManageHosts, fetchHosts]);
+
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
 		const key = tabKeys[index] || "";
 		const { base } = splitHash();
 		window.location.hash = `${base || "#"}#${key}`;
 	};
-	const canManageHosts =
-		getUserIsSuccess && Boolean(userData.permissions?.sections.hosts);
-
 	if (!canManageHosts) {
 		return (
 			<VStack spacing={4} align="stretch">

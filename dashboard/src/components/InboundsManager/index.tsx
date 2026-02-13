@@ -65,8 +65,10 @@ export const InboundsManager: FC = () => {
 		search: "",
 	});
 	const [selected, setSelected] = useState<RawInbound | null>(null);
+	const [cloneTarget, setCloneTarget] = useState<RawInbound | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<RawInbound | null>(null);
 	const { isOpen, onOpen, onClose } = useDisclosure();
+	const cloneDrawer = useDisclosure();
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
 	const isDesktop = useBreakpointValue({ base: false, md: true });
 	const cancelRef = useRef<HTMLButtonElement | null>(null);
@@ -114,19 +116,28 @@ export const InboundsManager: FC = () => {
 		onOpen();
 	};
 
-	const handleSubmit = async (values: InboundFormValues) => {
+	const submitInbound = async (
+		values: InboundFormValues,
+		options: {
+			mode: "create" | "edit";
+			initial?: RawInbound | null;
+			onSuccess: () => void;
+		},
+	) => {
+		const { mode, initial, onSuccess } = options;
 		setIsMutating(true);
 		try {
 			const normalizedTag = (values.tag || "").trim().toLowerCase();
+			const isEditMode = mode === "edit";
 			const tagExists = inbounds.some(
 				(inb) =>
 					(inb.tag || "").trim().toLowerCase() === normalizedTag &&
-					(drawerMode === "create" || inb.tag !== selected?.tag),
+					(!isEditMode || inb.tag !== initial?.tag),
 			);
 			const portExists = inbounds.some(
 				(inb) =>
 					inb.port?.toString() === values.port &&
-					(drawerMode === "create" || inb.tag !== selected?.tag),
+					(!isEditMode || inb.tag !== initial?.tag),
 			);
 			if (tagExists) {
 				throw new Error(
@@ -139,25 +150,25 @@ export const InboundsManager: FC = () => {
 				);
 			}
 
-			const payload = buildInboundPayload(values, { initial: selected });
+			const payload = buildInboundPayload(values, { initial: initial ?? null });
 			const url =
-				drawerMode === "create"
+				mode === "create"
 					? "/inbounds"
 					: `/inbounds/${encodeURIComponent(payload.tag)}`;
 			await fetch(url, {
-				method: drawerMode === "create" ? "POST" : "PUT",
+				method: mode === "create" ? "POST" : "PUT",
 				body: payload,
 			});
 			toast({
 				status: "success",
 				title:
-					drawerMode === "create"
+					mode === "create"
 						? t("inbounds.success.created", "Inbound created")
 						: t("inbounds.success.updated", "Inbound updated"),
 			});
 			refreshInboundsStore();
 			await loadInbounds();
-			onClose();
+			onSuccess();
 		} catch (err: unknown) {
 			let description: string | undefined;
 			if (
@@ -186,6 +197,25 @@ export const InboundsManager: FC = () => {
 		}
 	};
 
+	const handleSubmit = (values: InboundFormValues) =>
+		submitInbound(values, {
+			mode: drawerMode,
+			initial: selected,
+			onSuccess: () => {
+				onClose();
+			},
+		});
+
+	const handleCloneSubmit = (values: InboundFormValues) =>
+		submitInbound(values, {
+			mode: "create",
+			initial: cloneTarget,
+			onSuccess: () => {
+				cloneDrawer.onClose();
+				setCloneTarget(null);
+			},
+		});
+
 	const handleDelete = (inbound: RawInbound) => {
 		setDeleteTarget(inbound);
 	};
@@ -205,6 +235,14 @@ export const InboundsManager: FC = () => {
 			});
 			refreshInboundsStore();
 			await loadInbounds();
+			if (selected?.tag === deleteTarget.tag) {
+				setSelected(null);
+				onClose();
+			}
+			if (cloneTarget?.tag === deleteTarget.tag) {
+				setCloneTarget(null);
+				cloneDrawer.onClose();
+			}
 		} catch (err: unknown) {
 			let description: string | undefined;
 			if (
@@ -233,6 +271,36 @@ export const InboundsManager: FC = () => {
 			setDeleteTarget(null);
 		}
 	};
+
+	const openClone = useCallback(
+		(inbound: RawInbound) => {
+			const trimmedTag = (inbound.tag || "").trim();
+			const tagMatch = trimmedTag.match(/^(.*?)(?:-(\d+))$/);
+			let nextTag = trimmedTag;
+			if (tagMatch?.[1]) {
+				const base = tagMatch[1];
+				const num = Number(tagMatch[2]);
+				nextTag = Number.isFinite(num) ? `${base}-${num + 1}` : `${base}-1`;
+			} else if (trimmedTag) {
+				nextTag = `${trimmedTag}-1`;
+			}
+
+			const portNumber =
+				typeof inbound.port === "string" ? Number(inbound.port) : inbound.port;
+			const nextPort = Number.isFinite(portNumber)
+				? portNumber + 1
+				: inbound.port;
+
+			setCloneTarget({
+				...inbound,
+				tag: nextTag,
+				port: nextPort,
+			});
+			cloneDrawer.onOpen();
+			onClose();
+		},
+		[cloneDrawer, onClose],
+	);
 
 	return (
 		<Stack spacing={4}>
@@ -438,6 +506,21 @@ export const InboundsManager: FC = () => {
 				existingInbounds={inbounds}
 				onClose={onClose}
 				onSubmit={handleSubmit}
+				onDelete={selected ? () => handleDelete(selected) : undefined}
+				onClone={selected ? () => openClone(selected) : undefined}
+				isDeleting={isMutating && Boolean(deleteTarget)}
+			/>
+			<InboundFormModal
+				isOpen={cloneDrawer.isOpen}
+				mode="clone"
+				initialValue={cloneTarget}
+				isSubmitting={isMutating}
+				existingInbounds={inbounds}
+				onClose={() => {
+					cloneDrawer.onClose();
+					setCloneTarget(null);
+				}}
+				onSubmit={handleCloneSubmit}
 			/>
 
 			<AlertDialog

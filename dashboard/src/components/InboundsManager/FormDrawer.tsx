@@ -92,12 +92,15 @@ import {
 
 type Props = {
 	isOpen: boolean;
-	mode: "create" | "edit";
+	mode: "create" | "edit" | "clone";
 	initialValue: RawInbound | null;
 	isSubmitting: boolean;
 	existingInbounds: RawInbound[];
 	onClose: () => void;
 	onSubmit: (values: InboundFormValues) => Promise<void>;
+	onDelete?: () => void;
+	onClone?: () => void;
+	isDeleting?: boolean;
 };
 
 const Input = forwardRef<HTMLInputElement, InputProps>((props, ref) => (
@@ -239,6 +242,9 @@ export const InboundFormModal: FC<Props> = ({
 	existingInbounds,
 	onClose,
 	onSubmit,
+	onDelete,
+	onClone,
+	isDeleting,
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -247,7 +253,7 @@ export const InboundFormModal: FC<Props> = ({
 	);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
-	const [jsonData, setJsonData] = useState<RawInbound | null>(null);
+	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
 	const updatingFromJsonRef = useRef(false);
 
@@ -318,6 +324,8 @@ export const InboundFormModal: FC<Props> = ({
 	const vlessSelectedAuth =
 		useWatch({ control, name: "vlessSelectedAuth" }) || "";
 	const formValues = useWatch({ control }) as InboundFormValues;
+	const isCloneMode = mode === "clone";
+	const isEditMode = mode === "edit";
 
 	useEffect(() => {
 		if (updatingFromJsonRef.current) {
@@ -327,7 +335,8 @@ export const InboundFormModal: FC<Props> = ({
 		const updatedJson = buildInboundPayload(formValues, {
 			initial: initialValue,
 		});
-		setJsonData(updatedJson);
+		const formatted = JSON.stringify(updatedJson ?? {}, null, 2);
+		setJsonText((prev) => (prev === formatted ? prev : formatted));
 		setJsonError(null);
 	}, [formValues, initialValue]);
 	const socksAuth =
@@ -399,6 +408,14 @@ export const InboundFormModal: FC<Props> = ({
 		const unique = Array.from(new Set(labels));
 		return unique.map((label) => ({ label, value: label }));
 	}, [defaultVlessAuthLabels, vlessAuthOptions]);
+	const visibleProtocolOptions = useMemo(() => {
+		if (isEditMode) {
+			return protocolOptions;
+		}
+		return protocolOptions.filter(
+			(option) => option !== "http" && option !== "socks",
+		);
+	}, [isEditMode]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -407,7 +424,7 @@ export const InboundFormModal: FC<Props> = ({
 			: createDefaultInboundForm();
 		reset(formValues);
 		const json = buildInboundPayload(formValues, { initial: initialValue });
-		setJsonData(json);
+		setJsonText(JSON.stringify(json ?? {}, null, 2));
 		setJsonError(null);
 		updatingFromJsonRef.current = false;
 		setPortWarning(null);
@@ -473,7 +490,7 @@ export const InboundFormModal: FC<Props> = ({
 	// Validation against existing inbounds
 	useEffect(() => {
 		const trimmedTag = (tagValue || "").trim();
-		if (mode === "edit") {
+		if (isEditMode) {
 			setTagError(null);
 			setPortError(null);
 			return;
@@ -499,7 +516,7 @@ export const InboundFormModal: FC<Props> = ({
 		} else {
 			setPortError(null);
 		}
-	}, [existingInbounds, mode, portValue, tagValue, t]);
+	}, [existingInbounds, portValue, tagValue, t, isEditMode]);
 
 	const renderSockoptNumberInput = useCallback(
 		(name: keyof SockoptFormValues, label: string) => (
@@ -677,6 +694,7 @@ export const InboundFormModal: FC<Props> = ({
 
 	const handleJsonEditorChange = useCallback(
 		(value: string) => {
+			setJsonText(value);
 			try {
 				const parsed = JSON.parse(value);
 				if (!parsed || typeof parsed !== "object") {
@@ -685,7 +703,6 @@ export const InboundFormModal: FC<Props> = ({
 				const mapped = rawInboundToFormValues(parsed as RawInbound);
 				updatingFromJsonRef.current = true;
 				reset(mapped);
-				setJsonData(parsed as RawInbound);
 				setJsonError(null);
 			} catch (error) {
 				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
@@ -854,7 +871,9 @@ export const InboundFormModal: FC<Props> = ({
 				<ModalHeader>
 					{mode === "create"
 						? t("inbounds.add", "Add inbound")
-						: t("inbounds.edit", "Edit inbound")}
+						: mode === "clone"
+							? t("inbounds.cloneTitle", "Clone inbound")
+							: t("inbounds.edit", "Edit inbound")}
 				</ModalHeader>
 				<ModalCloseButton />
 				<ModalBody>
@@ -883,7 +902,7 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel>{t("inbounds.tag", "Tag")}</FormLabel>
 												<Input
 													{...register("tag", { required: true })}
-													isDisabled={mode === "edit"}
+													isDisabled={isEditMode}
 												/>
 												{tagError && (
 													<Text fontSize="xs" color="red.500" mt={1}>
@@ -947,7 +966,7 @@ export const InboundFormModal: FC<Props> = ({
 													{...register("protocol", { required: true })}
 													isDisabled={mode === "edit"}
 												>
-													{protocolOptions.map((option) => (
+													{visibleProtocolOptions.map((option) => (
 														<option key={option} value={option}>
 															{option.toUpperCase()}
 														</option>
@@ -2749,7 +2768,7 @@ export const InboundFormModal: FC<Props> = ({
 									)}
 									<Box height="420px">
 										<JsonEditor
-											json={jsonData ?? {}}
+											json={jsonText}
 											onChange={handleJsonEditorChange}
 										/>
 									</Box>
@@ -2758,20 +2777,64 @@ export const InboundFormModal: FC<Props> = ({
 						</TabPanels>
 					</Tabs>
 				</ModalBody>
-				<ModalFooter>
-					<Button variant="ghost" mr={3} onClick={onClose}>
-						{t("hostsPage.cancel", "Cancel")}
-					</Button>
-					<Button
-						colorScheme="primary"
-						isLoading={isSubmitting}
-						isDisabled={hasBlockingErrorsWithJson}
-						onClick={handleSubmit(submitForm)}
-					>
-						{mode === "create"
-							? t("common.create", "Create")
-							: t("common.save", "Save")}
-					</Button>
+				<ModalFooter
+					justifyContent={isEditMode && onDelete ? "space-between" : "flex-end"}
+				>
+					{isEditMode && onDelete && (
+						<HStack spacing={3}>
+							<Button
+								variant="ghost"
+								colorScheme="red"
+								onClick={onDelete}
+								isLoading={isDeleting}
+								isDisabled={isSubmitting}
+							>
+								{t("common.delete", "Delete")}
+							</Button>
+							{onClone && (
+								<Button
+									variant="outline"
+									onClick={onClone}
+									isDisabled={isSubmitting}
+								>
+									{t("inbounds.clone", "Clone")}
+								</Button>
+							)}
+						</HStack>
+					)}
+					<HStack spacing={3}>
+						{isEditMode ? (
+							<>
+								<Button variant="ghost" onClick={onClose}>
+									{t("hostsPage.cancel", "Cancel")}
+								</Button>
+								<Button
+									colorScheme="primary"
+									isLoading={isSubmitting}
+									isDisabled={hasBlockingErrorsWithJson}
+									onClick={handleSubmit(submitForm)}
+								>
+									{t("common.save", "Save")}
+								</Button>
+							</>
+						) : (
+							<>
+								<Button variant="ghost" onClick={onClose}>
+									{t("hostsPage.cancel", "Cancel")}
+								</Button>
+								<Button
+									colorScheme="primary"
+									isLoading={isSubmitting}
+									isDisabled={hasBlockingErrorsWithJson}
+									onClick={handleSubmit(submitForm)}
+								>
+									{isCloneMode
+										? t("inbounds.cloneSubmit", "Create clone")
+										: t("common.create", "Create")}
+								</Button>
+							</>
+						)}
+					</HStack>
 				</ModalFooter>
 			</ModalContent>
 		</Modal>

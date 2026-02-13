@@ -32,6 +32,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			latestOnChangeRef.current(value);
 		}, []);
 
+		// biome-ignore lint/correctness/useExhaustiveDependencies: create editor once
 		useEffect(() => {
 			if (!jsonEditorContainer.current) {
 				return;
@@ -82,9 +83,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				editor.destroy();
 				jsonEditorRef.current = null;
 			};
-			// We intentionally create the editor only once.
-			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [colorMode, handleChangeText, json, mode]);
+		}, []);
 
 		useEffect(() => {
 			const editor = jsonEditorRef.current;

@@ -827,9 +827,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	onClone,
 }) => {
 	const { t } = useTranslation();
-	const [jsonData, setJsonData] = useState<Record<string, unknown> | null>(
-		null,
-	);
+	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
 	const updatingFromJsonRef = useRef(false);
 	const _resolvedHost = host ?? {
@@ -850,15 +848,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	const primaryLabel = isCloneMode
 		? t("hostsPage.clone.submit")
 		: t("hostsPage.save");
-	const hostPayload = host
-		? {
-				inboundTag: host.inboundTag,
-				...host.data,
-			}
-		: null;
+	const hostPayload = useMemo(() => {
+		if (!host) {
+			return null;
+		}
+		return {
+			inboundTag: host.inboundTag,
+			...host.data,
+		};
+	}, [host]);
 	useEffect(() => {
 		if (!hostPayload) {
-			setJsonData(null);
+			setJsonText("");
 			setJsonError(null);
 			return;
 		}
@@ -866,7 +867,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 			updatingFromJsonRef.current = false;
 			return;
 		}
-		setJsonData(hostPayload);
+		const formatted = JSON.stringify(hostPayload, null, 2);
+		setJsonText((prev) => (prev === formatted ? prev : formatted));
 		setJsonError(null);
 	}, [hostPayload]);
 
@@ -875,6 +877,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 			if (!host) {
 				return;
 			}
+			setJsonText(value);
 			try {
 				const parsed = JSON.parse(value);
 				if (!parsed || typeof parsed !== "object") {
@@ -901,7 +904,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 					}
 				});
 
-				setJsonData(parsed as Record<string, unknown>);
 				setJsonError(null);
 			} catch (error) {
 				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
@@ -1246,7 +1248,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={3}>
 									<JsonEditor
-										json={jsonData ?? hostPayload}
+										json={jsonText}
 										onChange={handleJsonEditorChange}
 									/>
 									{jsonError && (

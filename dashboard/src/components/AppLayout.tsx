@@ -412,25 +412,24 @@ export function AppLayout() {
 	const isSettingsRoute = Boolean(activeSettingsItem);
 	const activeSettingsKey = activeSettingsItem?.key ?? null;
 	const SettingsNavIcon = activeSettingsItem?.icon ?? SettingsIcon;
-	const popoverViewportPadding = 12;
 	const popoverModifiers = useMemo(
 		() => [
 			{
 				name: "preventOverflow",
 				options: {
 					boundary: "viewport",
-					padding: popoverViewportPadding,
+					padding: 12,
 				},
 			},
 			{
 				name: "flip",
 				options: {
 					boundary: "viewport",
-					padding: popoverViewportPadding,
+					padding: 12,
 				},
 			},
 		],
-		[popoverViewportPadding],
+		[],
 	);
 
 	const resolveActive = useCallback(
@@ -1284,44 +1283,46 @@ export function AppLayout() {
 														>
 															<PopoverBody position="relative" zIndex={1} p="2">
 																<VStack align="stretch" spacing={1}>
-																{settingsMenuItems.map((entry) => {
-																	const ItemIcon = entry.icon;
-																	const isSelected =
-																		activeSettingsKey === entry.key;
-																	return (
-																		<Button
-																			key={entry.key}
-																			variant="ghost"
-																			size="sm"
-																			w="full"
-																			justifyContent="flex-start"
-																			leftIcon={
-																				ItemIcon ? <ItemIcon /> : undefined
-																			}
-																			bg={isSelected ? menuHover : "transparent"}
-																			fontWeight={
-																				isSelected ? "semibold" : "normal"
-																			}
-																			aria-current={
-																				isSelected ? "page" : undefined
-																			}
-																			_hover={{
-																				bg:
-																					isSelected || activeSettingsKey
-																						? menuHover
-																						: "transparent",
-																			}}
-																			_active={{ bg: menuHover }}
-																			_focusVisible={{ boxShadow: "outline" }}
-																			onClick={() => {
-																				handleSettingsMenuClose();
-																				navigateToSettingsItem(entry.to);
-																			}}
-																		>
-																			{entry.label}
-																		</Button>
-																	);
-																})}
+																	{settingsMenuItems.map((entry) => {
+																		const ItemIcon = entry.icon;
+																		const isSelected =
+																			activeSettingsKey === entry.key;
+																		return (
+																			<Button
+																				key={entry.key}
+																				variant="ghost"
+																				size="sm"
+																				w="full"
+																				justifyContent="flex-start"
+																				leftIcon={
+																					ItemIcon ? <ItemIcon /> : undefined
+																				}
+																				bg={
+																					isSelected ? menuHover : "transparent"
+																				}
+																				fontWeight={
+																					isSelected ? "semibold" : "normal"
+																				}
+																				aria-current={
+																					isSelected ? "page" : undefined
+																				}
+																				_hover={{
+																					bg:
+																						isSelected || activeSettingsKey
+																							? menuHover
+																							: "transparent",
+																				}}
+																				_active={{ bg: menuHover }}
+																				_focusVisible={{ boxShadow: "outline" }}
+																				onClick={() => {
+																					handleSettingsMenuClose();
+																					navigateToSettingsItem(entry.to);
+																				}}
+																			>
+																				{entry.label}
+																			</Button>
+																		);
+																	})}
 																</VStack>
 															</PopoverBody>
 														</PopoverContent>
