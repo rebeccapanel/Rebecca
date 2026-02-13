@@ -33,6 +33,22 @@ def string_to_temp_file(content: str):
     return file
 
 
+def _normalize_certificate_fields(certificate: dict) -> dict:
+    if not isinstance(certificate, dict):
+        return {}
+    if "certificateFile" not in certificate:
+        for key in ("certFile", "certfile"):
+            if key in certificate:
+                certificate["certificateFile"] = certificate.pop(key)
+                break
+    if "keyFile" not in certificate:
+        for key in ("keyfile",):
+            if key in certificate:
+                certificate["keyFile"] = certificate.pop(key)
+                break
+    return certificate
+
+
 class SANIgnoringAdaptor(HTTPAdapter):
     def init_poolmanager(self, connections, maxsize, block=False):
         self.poolmanager = PoolManager(num_pools=connections, maxsize=maxsize, block=block, assert_hostname=False)
@@ -248,15 +264,20 @@ class ReSTXRayNode:
             tlsSettings = streamSettings.get("tlsSettings") or {}
             certificates = tlsSettings.get("certificates") or []
             for certificate in certificates:
-                if certificate.get("certificateFile"):
-                    with open(certificate["certificateFile"]) as file:
+                if not isinstance(certificate, dict):
+                    continue
+                certificate = _normalize_certificate_fields(certificate)
+                cert_path = certificate.get("certificateFile")
+                if isinstance(cert_path, str) and cert_path.strip():
+                    with open(cert_path) as file:
                         certificate["certificate"] = [line.strip() for line in file.readlines()]
-                        del certificate["certificateFile"]
+                        certificate.pop("certificateFile", None)
 
-                if certificate.get("keyFile"):
-                    with open(certificate["keyFile"]) as file:
+                key_path = certificate.get("keyFile")
+                if isinstance(key_path, str) and key_path.strip():
+                    with open(key_path) as file:
                         certificate["key"] = [line.strip() for line in file.readlines()]
-                        del certificate["keyFile"]
+                        certificate.pop("keyFile", None)
 
         return config
 
@@ -318,18 +339,35 @@ class ReSTXRayNode:
         if not force and self._health_ttl > 0:
             with self._health_lock:
                 if now - self._health_cache["checked_at"] < self._health_ttl:
+                    if not self._session_id:
+                        if self._health_cache["connected"] or self._health_cache["started"]:
+                            self._health_cache.update(
+                                {
+                                    "checked_at": now,
+                                    "connected": False,
+                                    "started": False,
+                                }
+                            )
+                        self._api = None
+                        self._started = False
+                        return False, False
                     return self._health_cache["connected"], self._health_cache["started"]
+
+        if not self._session_id:
+            self._set_health_cache(False, False)
+            self._api = None
+            self._started = False
+            return False, False
 
         connected = False
         started = False
-        if self._session_id:
-            try:
-                res = self.make_request("/", timeout=20)
-                connected = True
-                started = bool(res.get("started", False))
-            except NodeAPIError:
-                connected = False
-                started = False
+        try:
+            res = self.make_request("/", timeout=20)
+            connected = True
+            started = bool(res.get("started", False))
+        except NodeAPIError:
+            connected = False
+            started = False
 
         with self._health_lock:
             self._health_cache.update(
@@ -339,6 +377,15 @@ class ReSTXRayNode:
                     "started": started,
                 }
             )
+        if not connected:
+            self._session_id = None
+            self._api = None
+            self._started = False
+        elif not started:
+            self._api = None
+            self._started = False
+        else:
+            self._started = True
         return connected, started
 
     def _set_health_cache(self, connected: bool, started: bool):
@@ -374,6 +421,12 @@ class ReSTXRayNode:
                     detail = data.get("detail") if isinstance(data, dict) else None
                     if detail is None:
                         detail = res.text or "Unexpected response from node"
+                    detail_text = detail.lower() if isinstance(detail, str) else ""
+                    if res.status_code in (401, 403) or ("session" in detail_text):
+                        self._session_id = None
+                        self._api = None
+                        self._started = False
+                        self._set_health_cache(False, False)
                     raise NodeAPIError(res.status_code, detail)
                 except NodeAPIError:
                     raise
@@ -382,9 +435,17 @@ class ReSTXRayNode:
                     if attempt == 0:
                         self._reset_session()
                         continue
+                    self._session_id = None
+                    self._api = None
+                    self._started = False
+                    self._set_health_cache(False, False)
                     raise NodeAPIError(0, str(exc))
                 except Exception as exc:
                     last_exc = exc
+                    self._session_id = None
+                    self._api = None
+                    self._started = False
+                    self._set_health_cache(False, False)
                     raise NodeAPIError(0, str(exc))
                 finally:
                     if res is not None:
@@ -456,9 +517,12 @@ class ReSTXRayNode:
     def disconnect(self):
         self.make_request("/disconnect", timeout=60)
         self._session_id = None
+        self._api = None
+        self._started = False
         self._set_health_cache(False, False)
 
     def get_version(self):
+        self._ensure_connected()
         res = self.make_request("/", timeout=60)
         node_version = res.get("node_version")
         if node_version:
@@ -466,8 +530,7 @@ class ReSTXRayNode:
         return res.get("core_version")
 
     def start(self, config: XRayConfig):
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
 
         config = self._prepare_config(config)
         json_config = config.to_json()
@@ -493,8 +556,7 @@ class ReSTXRayNode:
         return res
 
     def stop(self):
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
 
         self.make_request("/stop", timeout=100)
         self._api = None
@@ -502,8 +564,7 @@ class ReSTXRayNode:
         self._set_health_cache(True, False)
 
     def restart(self, config: XRayConfig):
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
 
         config = self._prepare_config(config)
         json_config = config.to_json()
@@ -572,18 +633,17 @@ class ReSTXRayNode:
 
     def update_core(self, version: str):
         # node REST service new endpoint
+        self._ensure_connected()
         self.make_request("/update_core", timeout=300, version=version)
 
     def restart_host_service(self):
         """Ask the remote node to restart its Rebecca services via maintenance API."""
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
         return self.make_request("/maintenance/restart", timeout=300)
 
     def update_host_service(self):
         """Ask the remote node to run the Rebecca-node update workflow via maintenance API."""
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
         return self.make_request("/maintenance/update", timeout=900)
 
     def update_geo(self, files: list[dict]):
@@ -591,9 +651,16 @@ class ReSTXRayNode:
         Push geo assets to node via its REST endpoint.
         files: list of {"name": "...", "url": "..."}
         """
-        if not self.connected:
-            self.connect()
+        self._ensure_connected()
         self.make_request("/update_geo", timeout=300, files=files)
+
+    def _ensure_connected(self):
+        try:
+            connected, _ = self.refresh_health(force=True)
+        except Exception:
+            connected = False
+        if not connected:
+            self.connect()
 
 
 class XRayNode:

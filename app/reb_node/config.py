@@ -41,6 +41,22 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
     return a
 
 
+def _normalize_certificate_fields(certificate: dict) -> dict:
+    if not isinstance(certificate, dict):
+        return {}
+    if "certificateFile" not in certificate:
+        for key in ("certFile", "certfile"):
+            if key in certificate:
+                certificate["certificateFile"] = certificate.pop(key)
+                break
+    if "keyFile" not in certificate:
+        for key in ("keyfile",):
+            if key in certificate:
+                certificate["keyFile"] = certificate.pop(key)
+                break
+    return certificate
+
+
 def _derive_reality_public_key_python(private_key: str) -> str:
     """
     Derive the public key for a Reality inbound using pure Python (X25519).
@@ -471,8 +487,12 @@ class XRayConfig(dict):
                     if isinstance(alpn, str) and alpn.strip():
                         settings["alpn"] = alpn.strip()
                     for certificate in tls_settings.get("certificates", []):
-                        if certificate.get("certificateFile", None):
-                            with open(certificate["certificateFile"], "rb") as file:
+                        if not isinstance(certificate, dict):
+                            continue
+                        certificate = _normalize_certificate_fields(certificate)
+                        cert_path = certificate.get("certificateFile", None)
+                        if isinstance(cert_path, str) and cert_path.strip():
+                            with open(cert_path, "rb") as file:
                                 cert = file.read()
                                 settings["sni"].extend(get_cert_SANs(cert))
 
