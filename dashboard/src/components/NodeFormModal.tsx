@@ -193,13 +193,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			});
 			setShowCertificate(!isAddMode && !!node?.node_certificate);
 		}
-	}, [
-		isOpen,
-		isAddMode,
-		node,
-		form,
-		formatDataLimitForInput,
-	]);
+	}, [isOpen, isAddMode, node, form, formatDataLimitForInput]);
 
 	useEffect(() => {
 		if (!isAddMode && node && isOpen) {
@@ -543,9 +537,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									render={({ field }) => (
 										<Switch
 											isChecked={Boolean(field.value)}
-											onChange={(event) =>
-												field.onChange(event.target.checked)
-											}
+											onChange={(event) => field.onChange(event.target.checked)}
 										/>
 									)}
 								/>
@@ -553,11 +545,11 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 							<Collapse in={Boolean(proxyEnabled)} animateOpacity>
 								<Stack spacing={3} mt={2}>
 									<FormControl
-										isInvalid={!!getInputError(form.formState?.errors?.proxy_type)}
+										isInvalid={
+											!!getInputError(form.formState?.errors?.proxy_type)
+										}
 									>
-										<FormLabel>
-											{t("nodes.proxyType", "Proxy type")}
-										</FormLabel>
+										<FormLabel>{t("nodes.proxyType", "Proxy type")}</FormLabel>
 										<Select
 											size="sm"
 											placeholder={t(
@@ -603,7 +595,9 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 															return null;
 														}
 														const parsed = Number(value);
-														return Number.isFinite(parsed) ? parsed : Number.NaN;
+														return Number.isFinite(parsed)
+															? parsed
+															: Number.NaN;
 													},
 												})}
 												error={getInputError(

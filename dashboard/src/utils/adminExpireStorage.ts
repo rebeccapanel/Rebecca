@@ -8,7 +8,7 @@ const getStorage = (): Storage | null => {
 	}
 	try {
 		return window.localStorage;
-	} catch (error) {
+	} catch (_error) {
 		return null;
 	}
 };
@@ -38,7 +38,7 @@ export const readAdminExpireMap = (): AdminExpireMap => {
 			return {};
 		}
 		return sanitizeExpireMap(JSON.parse(raw));
-	} catch (error) {
+	} catch (_error) {
 		return {};
 	}
 };
@@ -60,14 +60,18 @@ export const setAdminExpire = (username: string, expireAt: number | null) => {
 		return;
 	}
 	const map = readAdminExpireMap();
-	if (expireAt === null || expireAt === undefined || !Number.isFinite(expireAt)) {
+	if (
+		expireAt === null ||
+		expireAt === undefined ||
+		!Number.isFinite(expireAt)
+	) {
 		delete map[username];
 	} else {
 		map[username] = expireAt;
 	}
 	try {
 		storage.setItem(STORAGE_KEY, JSON.stringify(map));
-	} catch (error) {
+	} catch (_error) {
 		// Ignore storage write errors.
 	}
 };

@@ -13,6 +13,7 @@ import {
 	MenuButton,
 	MenuItem,
 	MenuList,
+	type PlacementWithLogical,
 	Popover,
 	PopoverBody,
 	PopoverContent,
@@ -23,10 +24,10 @@ import {
 	useColorModeValue,
 	useDisclosure,
 	VStack,
-	type PlacementWithLogical,
 } from "@chakra-ui/react";
 import {
 	ArrowLeftOnRectangleIcon,
+	ArrowUpOnSquareIcon,
 	Bars3Icon,
 	CheckIcon,
 	Cog6ToothIcon,
@@ -39,17 +40,17 @@ import {
 	UserCircleIcon,
 	UserGroupIcon,
 } from "@heroicons/react/24/outline";
-import { ArrowUpOnSquareIcon } from "@heroicons/react/24/outline";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ElementType,
 	type MouseEvent as ReactMouseEvent,
 	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	useEffect,
 } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
@@ -57,8 +58,8 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
-import { HeaderCalendar } from "./HeaderCalendar";
 import { GitHubStars } from "./GitHubStars";
+import { HeaderCalendar } from "./HeaderCalendar";
 import ThemeSelector from "./ThemeSelector";
 
 const iconProps = {
@@ -118,7 +119,9 @@ export function AppLayout() {
 	const accountHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const accountHoldOpened = useRef(false);
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
-	const settingsHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const settingsHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 	const settingsHoldOpened = useRef(false);
 	const settingsHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
 	const tabContentRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -378,7 +381,11 @@ export function AppLayout() {
 			});
 		}
 		items.push({ key: "users", label: t("nav.users", "Users"), to: "/users" });
-		items.push({ key: "dashboard", label: t("nav.dashboard", "Dashboard"), to: "/" });
+		items.push({
+			key: "dashboard",
+			label: t("nav.dashboard", "Dashboard"),
+			to: "/",
+		});
 		items.push({
 			key: "myaccount",
 			label: t("nav.myaccount", "My account"),
@@ -403,17 +410,20 @@ export function AppLayout() {
 		[settingsMenuItems, location.pathname],
 	);
 
-	const resolveActive = (item: BottomNavItem) => {
-		if (item.key === "settings") return isSettingsRoute;
-		if (!item.to) return false;
-		if (item.to === "/") return location.pathname === "/";
-		return location.pathname.startsWith(item.to);
-	};
+	const resolveActive = useCallback(
+		(item: BottomNavItem) => {
+			if (item.key === "settings") return isSettingsRoute;
+			if (!item.to) return false;
+			if (item.to === "/") return location.pathname === "/";
+			return location.pathname.startsWith(item.to);
+		},
+		[isSettingsRoute, location.pathname],
+	);
 
 	const activeTabKey = useMemo(() => {
 		const activeItem = bottomNavItems.find((item) => resolveActive(item));
 		return activeItem?.key ?? null;
-	}, [bottomNavItems, location.pathname, isSettingsRoute]);
+	}, [bottomNavItems, resolveActive]);
 	const selectedTabKey = previewTabKey ?? activeTabKey;
 
 	const navKeyAtPoint = (clientX: number, clientY: number) => {
@@ -969,7 +979,11 @@ export function AppLayout() {
 										<Text fontWeight="semibold" fontSize="sm">
 											{t("pwa.ios.title", "Add to Home Screen")}
 										</Text>
-										<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.300" }}>
+										<Text
+											fontSize="xs"
+											color="gray.600"
+											_dark={{ color: "gray.300" }}
+										>
 											{t(
 												"pwa.ios.body",
 												"Tap Share and then Add to Home Screen for a faster app-like experience.",
@@ -1017,9 +1031,10 @@ export function AppLayout() {
 									position: "relative",
 									overflow: "hidden",
 									isolation: "isolate",
-									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
-										backgroundColor: glassPanelFallbackBg,
-									},
+									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+										{
+											backgroundColor: glassPanelFallbackBg,
+										},
 									"&::before": {
 										content: '""',
 										position: "absolute",
@@ -1149,7 +1164,10 @@ export function AppLayout() {
 															}}
 															onPointerMove={(event) => {
 																if (event.pointerType === "mouse") return;
-																handleSettingsHoldMove(event.clientX, event.clientY);
+																handleSettingsHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
 															}}
 															onPointerUp={handleSettingsHoldEnd}
 															onPointerCancel={handleSettingsHoldEnd}
@@ -1189,15 +1207,17 @@ export function AppLayout() {
 															WebkitBackdropFilter: "blur(18px) saturate(1.3)",
 															position: "relative",
 															overflow: "hidden",
-															"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
-																backgroundColor: glassPanelFallbackBg,
-															},
+															"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																{
+																	backgroundColor: glassPanelFallbackBg,
+																},
 															"&::before": {
 																content: '""',
 																position: "absolute",
 																inset: "-40%",
 																background: glassPanelRefraction,
-																filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
+																filter:
+																	"blur(0.2px) contrast(1.15) saturate(1.1)",
 																mixBlendMode: "screen",
 																opacity: 0.7,
 																pointerEvents: "none",
@@ -1223,7 +1243,9 @@ export function AppLayout() {
 																			size="sm"
 																			w="full"
 																			justifyContent="flex-start"
-																			leftIcon={ItemIcon ? <ItemIcon /> : undefined}
+																			leftIcon={
+																				ItemIcon ? <ItemIcon /> : undefined
+																			}
 																			_hover={{ bg: menuHover }}
 																			_active={{ bg: menuHover }}
 																			_focus={{ bg: menuHover }}
@@ -1245,45 +1267,48 @@ export function AppLayout() {
 
 										if (item.key === "myaccount") {
 											return (
-													<Popover
-														key={item.key}
-														isOpen={accountMenu.isOpen}
-														onClose={handleAccountMenuClose}
-														placement="top"
-														gutter={12}
-														closeOnBlur
-													>
-														<PopoverTrigger>
-															<Button
-																variant="ghost"
-																size="sm"
-																ref={(node) => {
-																	tabContentRefs.current[item.key] = node;
-																}}
-																onClick={() => {
-																	if (accountHoldOpened.current) return;
-																	handleAccountMenuClose();
-																	handleNavClick(item.to);
-																}}
-																onPointerDown={(event) => {
-																	if (event.pointerType === "mouse") return;
-																	accountHoldStartPoint.current = {
-																		x: event.clientX,
-																		y: event.clientY,
-																	};
-																	handleAccountHoldStart();
-																}}
-																onPointerMove={(event) => {
-																	if (event.pointerType === "mouse") return;
-																	handleAccountHoldMove(event.clientX, event.clientY);
-																}}
-																onPointerUp={handleAccountHoldEnd}
-																onPointerCancel={handleAccountHoldEnd}
-																onPointerLeave={handleAccountHoldEnd}
-																onContextMenu={(event) => {
-																	if (isMobile) event.preventDefault();
-																}}
-																color={isActive ? "primary.500" : "gray.600"}
+												<Popover
+													key={item.key}
+													isOpen={accountMenu.isOpen}
+													onClose={handleAccountMenuClose}
+													placement="top"
+													gutter={12}
+													closeOnBlur
+												>
+													<PopoverTrigger>
+														<Button
+															variant="ghost"
+															size="sm"
+															ref={(node) => {
+																tabContentRefs.current[item.key] = node;
+															}}
+															onClick={() => {
+																if (accountHoldOpened.current) return;
+																handleAccountMenuClose();
+																handleNavClick(item.to);
+															}}
+															onPointerDown={(event) => {
+																if (event.pointerType === "mouse") return;
+																accountHoldStartPoint.current = {
+																	x: event.clientX,
+																	y: event.clientY,
+																};
+																handleAccountHoldStart();
+															}}
+															onPointerMove={(event) => {
+																if (event.pointerType === "mouse") return;
+																handleAccountHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
+															}}
+															onPointerUp={handleAccountHoldEnd}
+															onPointerCancel={handleAccountHoldEnd}
+															onPointerLeave={handleAccountHoldEnd}
+															onContextMenu={(event) => {
+																if (isMobile) event.preventDefault();
+															}}
+															color={isActive ? "primary.500" : "gray.600"}
 															_dark={{
 																color: isActive ? "primary.300" : "gray.300",
 															}}
@@ -1296,40 +1321,42 @@ export function AppLayout() {
 															zIndex={1}
 															sx={{ touchAction: "manipulation" }}
 															userSelect="none"
-																_hover={{ bg: "transparent" }}
-																_active={{ bg: "transparent" }}
-																_focus={{ bg: "transparent" }}
-															>
-																{navContent}
-															</Button>
-														</PopoverTrigger>
-														<PopoverContent
+															_hover={{ bg: "transparent" }}
+															_active={{ bg: "transparent" }}
+															_focus={{ bg: "transparent" }}
+														>
+															{navContent}
+														</Button>
+													</PopoverTrigger>
+													<PopoverContent
 														w="180px"
-															borderRadius="18px"
-															bg={glassPanelBg}
-															borderColor={glassPanelBorder}
-															borderWidth="1px"
-															boxShadow={glassPanelShadow}
-															backdropFilter="blur(18px) saturate(1.3)"
-															sx={{
-																WebkitBackdropFilter: "blur(18px) saturate(1.3)",
-																position: "relative",
-																overflow: "hidden",
-																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
+														borderRadius="18px"
+														bg={glassPanelBg}
+														borderColor={glassPanelBorder}
+														borderWidth="1px"
+														boxShadow={glassPanelShadow}
+														backdropFilter="blur(18px) saturate(1.3)"
+														sx={{
+															WebkitBackdropFilter: "blur(18px) saturate(1.3)",
+															position: "relative",
+															overflow: "hidden",
+															"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																{
 																	backgroundColor: glassPanelFallbackBg,
 																},
-																"&::before": {
-																	content: '""',
-																	position: "absolute",
-																	inset: "-40%",
-																	background: glassPanelRefraction,
-																	filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
-																	mixBlendMode: "screen",
-																	opacity: 0.7,
-																	pointerEvents: "none",
-																},
-																"&::after": {
-																	content: '""',
+															"&::before": {
+																content: '""',
+																position: "absolute",
+																inset: "-40%",
+																background: glassPanelRefraction,
+																filter:
+																	"blur(0.2px) contrast(1.15) saturate(1.1)",
+																mixBlendMode: "screen",
+																opacity: 0.7,
+																pointerEvents: "none",
+															},
+															"&::after": {
+																content: '""',
 																position: "absolute",
 																inset: "0",
 																borderRadius: "inherit",

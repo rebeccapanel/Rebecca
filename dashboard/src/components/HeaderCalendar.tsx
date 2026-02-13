@@ -4,12 +4,12 @@ import {
 	Button,
 	chakra,
 	HStack,
+	IconButton,
 	Popover,
 	PopoverArrow,
 	PopoverBody,
 	PopoverContent,
 	PopoverTrigger,
-	IconButton,
 	SimpleGrid,
 	Stack,
 	Text,
@@ -30,6 +30,13 @@ const Sparkles = chakra(SparklesIcon, { baseStyle: { w: 4, h: 4 } });
 const ChevronLeft = chakra(ChevronLeftIcon, { baseStyle: { w: 4, h: 4 } });
 const ChevronRight = chakra(ChevronRightIcon, { baseStyle: { w: 4, h: 4 } });
 
+const createStableKey = () => {
+	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+		return crypto.randomUUID();
+	}
+	return Math.random().toString(36).slice(2);
+};
+
 type CalendarDay = {
 	date: Date;
 	label: string;
@@ -49,7 +56,9 @@ const buildMonthDays = (
 	const monthFormatter = new Intl.DateTimeFormat(numericLocale, {
 		month: "numeric",
 	});
-	const dayFormatter = new Intl.DateTimeFormat(numericLocale, { day: "numeric" });
+	const dayFormatter = new Intl.DateTimeFormat(numericLocale, {
+		day: "numeric",
+	});
 	const monthId = monthFormatter.format(baseDate);
 	const monthLabel = new Intl.DateTimeFormat(displayLocale, {
 		month: "long",
@@ -109,7 +118,7 @@ export const HeaderCalendar: FC = () => {
 
 	useEffect(() => {
 		setDisplayDate(new Date());
-	}, [i18n.language]);
+	}, []);
 
 	const formattedDate = useMemo(
 		() =>
@@ -138,6 +147,10 @@ export const HeaderCalendar: FC = () => {
 	);
 
 	const emptySlots = days.length ? days[0].weekday : 0;
+	const emptySlotKeys = useMemo(
+		() => Array.from({ length: emptySlots }, () => createStableKey()),
+		[emptySlots],
+	);
 	const weekendDays = isPersian ? [5] : [0];
 	const prevIcon = isRTL ? <ChevronRight /> : <ChevronLeft />;
 	const nextIcon = isRTL ? <ChevronLeft /> : <ChevronRight />;
@@ -162,63 +175,62 @@ export const HeaderCalendar: FC = () => {
 					leftIcon={<CalendarIcon />}
 					px={3}
 				>
-					<Text
-						noOfLines={1}
-						maxW="320px"
-						fontWeight="semibold"
-						fontSize="sm"
-					>
+					<Text noOfLines={1} maxW="320px" fontWeight="semibold" fontSize="sm">
 						{formattedDate}
 					</Text>
 				</Button>
 			</PopoverTrigger>
-				<PopoverContent
-					w="fit-content"
-					minW="260px"
-					borderColor={border}
-					boxShadow="lg"
-				>
-					<PopoverArrow />
-					<PopoverBody>
-						<Stack spacing={3}>
-							<HStack justify="space-between" align="center" dir={isRTL ? "rtl" : "ltr"}>
-								<HStack spacing={2}>
-									<IconButton
-										size="xs"
-										variant="ghost"
-										aria-label="Previous month"
-										icon={prevIcon}
-										onClick={() => {
-											const next = new Date(displayDate);
-											next.setMonth(displayDate.getMonth() - 1);
-											setDisplayDate(next);
-										}}
-									/>
-									<Text fontWeight="semibold">{monthLabel}</Text>
-									{isChristmas && (
-										<Badge
-											colorScheme="red"
-											display="inline-flex"
-											alignItems="center"
-											gap={1}
-										>
-											<Sparkles />
-											{t("season.christmas", "Christmas mode")}
-										</Badge>
-									)}
-									<IconButton
-										size="xs"
-										variant="ghost"
-										aria-label="Next month"
-										icon={nextIcon}
-										onClick={() => {
-											const next = new Date(displayDate);
-											next.setMonth(displayDate.getMonth() + 1);
-											setDisplayDate(next);
-										}}
-									/>
-								</HStack>
+			<PopoverContent
+				w="fit-content"
+				minW="260px"
+				borderColor={border}
+				boxShadow="lg"
+			>
+				<PopoverArrow />
+				<PopoverBody>
+					<Stack spacing={3}>
+						<HStack
+							justify="space-between"
+							align="center"
+							dir={isRTL ? "rtl" : "ltr"}
+						>
+							<HStack spacing={2}>
+								<IconButton
+									size="xs"
+									variant="ghost"
+									aria-label="Previous month"
+									icon={prevIcon}
+									onClick={() => {
+										const next = new Date(displayDate);
+										next.setMonth(displayDate.getMonth() - 1);
+										setDisplayDate(next);
+									}}
+								/>
+								<Text fontWeight="semibold">{monthLabel}</Text>
+								{isChristmas && (
+									<Badge
+										colorScheme="red"
+										display="inline-flex"
+										alignItems="center"
+										gap={1}
+									>
+										<Sparkles />
+										{t("season.christmas", "Christmas mode")}
+									</Badge>
+								)}
+								<IconButton
+									size="xs"
+									variant="ghost"
+									aria-label="Next month"
+									icon={nextIcon}
+									onClick={() => {
+										const next = new Date(displayDate);
+										next.setMonth(displayDate.getMonth() + 1);
+										setDisplayDate(next);
+									}}
+								/>
 							</HStack>
+						</HStack>
 						<SimpleGrid columns={7} spacing={1}>
 							{weekdayLabels.map((label) => (
 								<Text
@@ -232,8 +244,8 @@ export const HeaderCalendar: FC = () => {
 									{label}
 								</Text>
 							))}
-							{Array.from({ length: emptySlots }).map((_, idx) => (
-								<Box key={`empty-${idx}`} />
+							{emptySlotKeys.map((key) => (
+								<Box key={key} />
 							))}
 							{days.map((day) => {
 								const isHoliday = weekendDays.includes(day.weekday);
@@ -247,7 +259,9 @@ export const HeaderCalendar: FC = () => {
 										borderWidth={day.isToday ? "1px" : "0px"}
 										borderColor={day.isToday ? highlight : "transparent"}
 										bg={day.isToday ? badgeBg : "transparent"}
-										fontWeight={day.isToday || isHoliday ? "semibold" : "normal"}
+										fontWeight={
+											day.isToday || isHoliday ? "semibold" : "normal"
+										}
 										color={isHoliday ? "red.500" : undefined}
 									>
 										<Text>{day.label}</Text>

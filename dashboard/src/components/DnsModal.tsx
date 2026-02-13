@@ -140,7 +140,7 @@ export const DnsModal: FC<DnsModalProps> = ({
 				finalQuery: DEFAULT_DNS_SERVER.finalQuery ?? false,
 			});
 		}
-	}, [isOpen, currentDnsData, dnsIndex, modalForm]);
+	}, [isOpen, currentDnsData, modalForm, isEdit]);
 
 	const handleSubmit = modalForm.handleSubmit((data) => {
 		const portValue = Number.parseInt(data.port, 10);
@@ -180,9 +180,9 @@ export const DnsModal: FC<DnsModalProps> = ({
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
 			<ModalContent mx="3">
 				<ModalHeader pt={6}>
-							<Text fontWeight="semibold" fontSize="lg">
-								{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
-							</Text>
+					<Text fontWeight="semibold" fontSize="lg">
+						{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
+					</Text>
 				</ModalHeader>
 				<ModalCloseButton mt={3} />
 				<ModalBody>
@@ -250,52 +250,40 @@ export const DnsModal: FC<DnsModalProps> = ({
 							</FormControl>
 							<Divider />
 							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>
-									{t("pages.xray.dns.skipFallback")}
-								</FormLabel>
+								<FormLabel mb={0}>{t("pages.xray.dns.skipFallback")}</FormLabel>
 								<Controller
 									name="skipFallback"
 									control={modalForm.control}
 									render={({ field }) => (
 										<Switch
 											isChecked={field.value}
-											onChange={(event) =>
-												field.onChange(event.target.checked)
-											}
+											onChange={(event) => field.onChange(event.target.checked)}
 										/>
 									)}
 								/>
 							</FormControl>
 							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>
-									{t("pages.xray.dns.disableCache")}
-								</FormLabel>
+								<FormLabel mb={0}>{t("pages.xray.dns.disableCache")}</FormLabel>
 								<Controller
 									name="disableCache"
 									control={modalForm.control}
 									render={({ field }) => (
 										<Switch
 											isChecked={field.value}
-											onChange={(event) =>
-												field.onChange(event.target.checked)
-											}
+											onChange={(event) => field.onChange(event.target.checked)}
 										/>
 									)}
 								/>
 							</FormControl>
 							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>
-									{t("pages.xray.dns.finalQuery")}
-								</FormLabel>
+								<FormLabel mb={0}>{t("pages.xray.dns.finalQuery")}</FormLabel>
 								<Controller
 									name="finalQuery"
 									control={modalForm.control}
 									render={({ field }) => (
 										<Switch
 											isChecked={field.value}
-											onChange={(event) =>
-												field.onChange(event.target.checked)
-											}
+											onChange={(event) => field.onChange(event.target.checked)}
 										/>
 									)}
 								/>

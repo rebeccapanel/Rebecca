@@ -1,6 +1,8 @@
 import {
+	Badge,
 	Box,
 	Button,
+	Checkbox,
 	FormControl,
 	FormErrorMessage,
 	FormHelperText,
@@ -18,7 +20,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	Checkbox,
 	Radio,
 	RadioGroup,
 	SimpleGrid,
@@ -31,7 +32,6 @@ import {
 	useDisclosure,
 	useToast,
 	VStack,
-	Badge,
 } from "@chakra-ui/react";
 import {
 	EyeIcon,
@@ -42,13 +42,20 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
-import { fetch } from "service/http";
-import { type ElementType, type FC, useCallback, useEffect, useMemo, useState } from "react";
+import {
+	type ElementType,
+	type FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { IconType } from "react-icons";
 import { GiTronArrow } from "react-icons/gi";
 import { SiTether, SiTon } from "react-icons/si";
+import { fetch } from "service/http";
 import type {
 	AdminCreatePayload,
 	AdminPermissions,
@@ -56,7 +63,10 @@ import type {
 } from "types/Admin";
 import { AdminRole, AdminStatus } from "types/Admin";
 import type { ServiceSummary } from "types/Service";
-import { getAdminExpire, setAdminExpire as setAdminExpireStorage } from "utils/adminExpireStorage";
+import {
+	getAdminExpire,
+	setAdminExpire as setAdminExpireStorage,
+} from "utils/adminExpireStorage";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import {
 	generateErrorMessage,
@@ -418,9 +428,9 @@ export const AdminDialog: FC = () => {
 					.trim()
 					.optional()
 					.transform((value) => (value === "" ? undefined : value)),
-		permissions: adminPermissionsSchema,
-		services: z.array(z.number()).optional(),
-	})
+				permissions: adminPermissionsSchema,
+				services: z.array(z.number()).optional(),
+			})
 			.superRefine((values, ctx) => {
 				if (mode === "create" && !values.password) {
 					ctx.addIssue({
@@ -462,8 +472,7 @@ export const AdminDialog: FC = () => {
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
 	const [adminExpireDate, setAdminExpireDate] = useState<Date | null>(null);
 	const adminExpireUnix = useMemo(
-		() =>
-			adminExpireDate ? dayjs(adminExpireDate).utc().unix() : null,
+		() => (adminExpireDate ? dayjs(adminExpireDate).utc().unix() : null),
 		[adminExpireDate],
 	);
 	const adminExpireInfo = useMemo(
@@ -526,7 +535,9 @@ export const AdminDialog: FC = () => {
 		const hasAllSelected =
 			selectedServices.length === serviceOptions.length &&
 			serviceOptions.length > 0;
-		const next = hasAllSelected ? [] : serviceOptions.map((service) => service.id);
+		const next = hasAllSelected
+			? []
+			: serviceOptions.map((service) => service.id);
 		setValue("services", next, { shouldDirty: true, shouldValidate: true });
 	};
 
@@ -1013,10 +1024,7 @@ export const AdminDialog: FC = () => {
 					color="gray.500"
 					textAlign={isRTL ? "right" : "left"}
 				>
-					{t(
-						"admins.expireDonateHint",
-						"Support the release by donating.",
-					)}
+					{t("admins.expireDonateHint", "Support the release by donating.")}
 				</Text>
 			</VStack>
 			<FormControl>
@@ -1024,10 +1032,7 @@ export const AdminDialog: FC = () => {
 				<DateTimePicker
 					value={adminExpireDate}
 					onChange={setAdminExpireDate}
-					placeholder={t(
-						"expires.selectDate",
-						"Select expiration date",
-					)}
+					placeholder={t("expires.selectDate", "Select expiration date")}
 					minDate={new Date()}
 				/>
 				{adminExpireUnix && adminExpireInfo.time ? (
@@ -1081,7 +1086,10 @@ export const AdminDialog: FC = () => {
 							</Text>
 						) : filteredServices.length === 0 ? (
 							<Text fontSize="sm" color="gray.500">
-								{t("admins.noServicesMatching", "No services match your search")}
+								{t(
+									"admins.noServicesMatching",
+									"No services match your search",
+								)}
 							</Text>
 						) : (
 							filteredServices.map((service) => {
@@ -1111,7 +1119,11 @@ export const AdminDialog: FC = () => {
 										role="button"
 										tabIndex={0}
 									>
-										<HStack justify="space-between" align="flex-start" spacing={3}>
+										<HStack
+											justify="space-between"
+											align="flex-start"
+											spacing={3}
+										>
 											<VStack align="flex-start" spacing={1}>
 												<Text fontWeight="medium">{service.name}</Text>
 												<Text fontSize="xs" color="gray.500">
@@ -1223,7 +1235,11 @@ export const AdminDialog: FC = () => {
 					<ModalCloseButton />
 					<ModalBody>
 						<VStack align="stretch" spacing={4}>
-							<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
+							<Text
+								fontSize="sm"
+								color="gray.600"
+								_dark={{ color: "gray.400" }}
+							>
 								{t(
 									"admins.expireDonateDescription",
 									"If you'd like, you can donate to speed up development.",

@@ -551,7 +551,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	const createModal = useDisclosure();
 	const importModal = useDisclosure();
 	const themeMenu = useDisclosure();
-	const isRTL = i18n.language === "fa";
+	const _isRTL = i18n.language === "fa";
 	const popoverBg = useColorModeValue("surface.light", "surface.dark");
 	const popoverHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	const popoverBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");

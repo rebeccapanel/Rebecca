@@ -35,8 +35,8 @@ import { useTranslation } from "react-i18next";
 import { AdminRole } from "types/Admin";
 import type {
 	AdvancedUserActionPayload,
-	AdvancedUserActionStatus,
 	AdvancedUserActionScopeStatus,
+	AdvancedUserActionStatus,
 	AdvancedUserActionType,
 } from "types/User";
 

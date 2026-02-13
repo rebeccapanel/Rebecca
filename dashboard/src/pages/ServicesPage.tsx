@@ -64,7 +64,11 @@ import {
 } from "@heroicons/react/24/outline";
 import { Input } from "components/Input";
 import { useAdminsStore } from "contexts/AdminsContext";
-import { fetchInbounds, type Inbounds, useDashboard } from "contexts/DashboardContext";
+import {
+	fetchInbounds,
+	type Inbounds,
+	useDashboard,
+} from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import { motion } from "framer-motion";
@@ -295,10 +299,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			refreshHosts();
 			toast({
 				status: "success",
-				title: t(
-					"services.autoInbound.created",
-					"Auto inbound created",
-				),
+				title: t("services.autoInbound.created", "Auto inbound created"),
 			});
 		} catch (error: any) {
 			toast({
@@ -328,10 +329,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			refreshHosts();
 			toast({
 				status: "success",
-				title: t(
-					"services.autoInbound.deleted",
-					"Auto inbound removed",
-				),
+				title: t("services.autoInbound.deleted", "Auto inbound removed"),
 			});
 		} catch (error: any) {
 			toast({
@@ -482,10 +480,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 								<Flex align="center" justify="space-between" gap={3}>
 									<Box>
 										<Text fontSize="sm" color="gray.500">
-											{t(
-												"services.autoInbound.tagLabel",
-												"Inbound tag",
-											)}
+											{t("services.autoInbound.tagLabel", "Inbound tag")}
 										</Text>
 										<Text fontFamily="mono" fontSize="sm">
 											{autoInboundTag ??
@@ -497,14 +492,8 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									</Box>
 									<Badge colorScheme={autoInboundExists ? "green" : "gray"}>
 										{autoInboundExists
-											? t(
-													"services.autoInbound.statusCreated",
-													"Created",
-												)
-											: t(
-													"services.autoInbound.statusMissing",
-													"Not created",
-												)}
+											? t("services.autoInbound.statusCreated", "Created")
+											: t("services.autoInbound.statusMissing", "Not created")}
 									</Badge>
 								</Flex>
 								<HStack spacing={2} flexWrap="wrap">
@@ -519,10 +508,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										}
 										isLoading={autoInboundBusy}
 									>
-										{t(
-											"services.autoInbound.create",
-											"Create inbound",
-										)}
+										{t("services.autoInbound.create", "Create inbound")}
 									</Button>
 									<Button
 										size="sm"
@@ -537,10 +523,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										}
 										isLoading={autoInboundBusy}
 									>
-										{t(
-											"services.autoInbound.delete",
-											"Delete inbound",
-										)}
+										{t("services.autoInbound.delete", "Delete inbound")}
 									</Button>
 								</HStack>
 								<Text fontSize="sm" color="gray.500">
@@ -1314,14 +1297,14 @@ const ServicesPage: FC = () => {
 								{servicesStore.services.map(renderServiceAccordionItem)}
 							</Accordion>
 							<Box display={{ base: "none", md: "block" }} overflowX="auto">
-									<Table variant="simple">
-										<Thead>
-											<Tr>
-												<Th>{t("services.columns.id", "ID")}</Th>
-												<Th>{t("services.columns.name", "Name")}</Th>
-												<Th>{t("services.columns.hosts", "Hosts")}</Th>
-												<Th>{t("services.columns.users", "Users")}</Th>
-												<Th>{t("services.columns.usage", "Usage")}</Th>
+								<Table variant="simple">
+									<Thead>
+										<Tr>
+											<Th>{t("services.columns.id", "ID")}</Th>
+											<Th>{t("services.columns.name", "Name")}</Th>
+											<Th>{t("services.columns.hosts", "Hosts")}</Th>
+											<Th>{t("services.columns.users", "Users")}</Th>
+											<Th>{t("services.columns.usage", "Usage")}</Th>
 											<Th>{t("services.columns.lifetime", "Lifetime")}</Th>
 											<Th>{t("services.columns.actions", "Actions")}</Th>
 										</Tr>

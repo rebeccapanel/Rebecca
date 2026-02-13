@@ -84,7 +84,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			};
 			// We intentionally create the editor only once.
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, []);
+		}, [colorMode, handleChangeText, json, mode]);
 
 		useEffect(() => {
 			const editor = jsonEditorRef.current;

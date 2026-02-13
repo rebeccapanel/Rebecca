@@ -30,7 +30,14 @@ import {
 } from "@chakra-ui/react";
 import { PencilIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
-import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import {

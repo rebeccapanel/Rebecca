@@ -10,27 +10,19 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
-	Collapse,
-	chakra,
 	Checkbox,
 	CheckboxGroup,
+	Collapse,
+	chakra,
 	HStack,
 	IconButton,
+	Input,
+	InputGroup,
+	InputRightElement,
 	Menu,
 	MenuButton,
 	MenuItem,
 	MenuList,
-	Skeleton,
-	SimpleGrid,
-	Stack,
-	Table,
-	type TableProps,
-	Tbody,
-	Td,
-	Text,
-	Input,
-	InputGroup,
-	InputRightElement,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -38,15 +30,23 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	SimpleGrid,
+	Skeleton,
+	Stack,
+	Table,
+	type TableProps,
+	Tbody,
+	Td,
+	Text,
 	Textarea,
 	Th,
 	Thead,
 	Tooltip,
 	Tr,
 	useBreakpointValue,
+	useClipboard,
 	useColorModeValue,
 	useDisclosure,
-	useClipboard,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -57,8 +57,8 @@ import {
 	ChevronDownIcon,
 	KeyIcon,
 	PencilIcon,
-	PlusCircleIcon,
 	PlayIcon,
+	PlusCircleIcon,
 	TrashIcon,
 	XCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -110,6 +110,13 @@ const EnableIcon = chakra(PlayIcon, iconProps);
 const DeleteIcon = chakra(TrashIcon, iconProps);
 const QuickPassIcon = chakra(KeyIcon, iconProps);
 const AddDataIcon = chakra(PlusCircleIcon, iconProps);
+
+const createStableKey = () => {
+	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+		return crypto.randomUUID();
+	}
+	return Math.random().toString(36).slice(2);
+};
 
 const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 	const { t } = useTranslation();
@@ -323,10 +330,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
-	const adminExpireMap = useMemo(
-		() => getAdminExpireMap(),
-		[admins, total],
-	);
+	const adminExpireMap = useMemo(() => getAdminExpireMap(), []);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
@@ -383,7 +387,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	} = useDisclosure();
 	const { onCopy, setValue: setClipboard } = useClipboard("");
 	const [isBulkPanelOpen, setBulkPanelOpen] = useState(false);
-	const [bulkPermissions, setBulkPermissions] = useState<UserPermissionToggle[]>([
+	const [bulkPermissions, setBulkPermissions] = useState<
+		UserPermissionToggle[]
+	>([
 		UserPermissionToggle.Create,
 		UserPermissionToggle.Delete,
 		UserPermissionToggle.ResetUsage,
@@ -444,7 +450,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			},
 			{
 				key: UserPermissionToggle.AllowUnlimitedExpire,
-				label: t("admins.bulkPermissions.allowUnlimitedExpire", "Unlimited expire"),
+				label: t(
+					"admins.bulkPermissions.allowUnlimitedExpire",
+					"Unlimited expire",
+				),
 			},
 			{
 				key: UserPermissionToggle.AllowNextPlan,
@@ -469,7 +478,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const handleBulkPermissions = async (mode: "disable" | "restore") => {
 		if (!bulkPermissions.length) {
 			generateErrorMessage(
-				t("admins.bulkPermissions.selectAtLeastOne", "Select at least one permission."),
+				t(
+					"admins.bulkPermissions.selectAtLeastOne",
+					"Select at least one permission.",
+				),
 				toast,
 			);
 			return;
@@ -489,7 +501,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				),
 				toast,
 			);
-		} catch (error) {
+		} catch (_error) {
 			generateErrorMessage(
 				t("admins.bulkPermissions.error", "Failed to update standard admins."),
 				toast,
@@ -571,8 +583,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		closePermissionsModal();
 	};
 
-	const closeContextMenu = () =>
+	const closeContextMenu = useCallback(() => {
 		setContextMenu({ visible: false, x: 0, y: 0, admin: null });
+	}, []);
 	const handleCloseQuickPass = () => {
 		setQuickPassInfo(null);
 		closeQuickPassModal();
@@ -614,7 +627,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("scroll", handleScroll, true);
 		};
-	}, [contextMenu.visible]);
+	}, [contextMenu.visible, closeContextMenu]);
 
 	useEffect(() => {
 		if (!contextMenu.visible) return;
@@ -657,8 +670,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			return;
 		}
 		const canManage = canManageAdminAccount(admin);
-		const canChangeStatus = canManage && admin.username !== currentAdminUsername;
-		const showDisable = canChangeStatus && admin.status !== AdminStatus.Disabled;
+		const canChangeStatus =
+			canManage && admin.username !== currentAdminUsername;
+		const showDisable =
+			canChangeStatus && admin.status !== AdminStatus.Disabled;
 		const showEnable = canChangeStatus && admin.status === AdminStatus.Disabled;
 		const showDelete = canChangeStatus;
 		const hasActions = canManage || showDisable || showEnable || showDelete;
@@ -972,12 +987,18 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		};
 	}, [admins, total]);
 
+	const skeletonCount = filters.limit || 5;
+	const skeletonKeys = useMemo(
+		() => Array.from({ length: skeletonCount }, () => createStableKey()),
+		[skeletonCount],
+	);
+
 	const mobileList = (
 		<VStack spacing={3} align="stretch">
 			{loading
-				? Array.from({ length: filters.limit || 5 }, (_, idx) => (
+				? skeletonKeys.map((key) => (
 						<Box
-							key={`skeleton-mobile-${idx}`}
+							key={key}
 							borderWidth="1px"
 							borderColor="light-border"
 							bg="surface.light"
@@ -1286,7 +1307,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 					>
 						<CardHeader
 							borderBottomWidth="1px"
-							borderColor={isMobileSummary ? summaryDividerColor : "light-border"}
+							borderColor={
+								isMobileSummary ? summaryDividerColor : "light-border"
+							}
 							_dark={
 								isMobileSummary
 									? { borderColor: summaryDividerColor }
@@ -1448,11 +1471,18 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										borderRadius="xl"
 										borderColor="light-border"
 										bg="whiteAlpha.600"
-										_dark={{ borderColor: "whiteAlpha.200", bg: "whiteAlpha.100" }}
+										_dark={{
+											borderColor: "whiteAlpha.200",
+											bg: "whiteAlpha.100",
+										}}
 										p={{ base: 3, md: 4 }}
 										mb={4}
 									>
-										<HStack justify="space-between" align="center" flexWrap="wrap">
+										<HStack
+											justify="space-between"
+											align="center"
+											flexWrap="wrap"
+										>
 											<Stack spacing={0}>
 												<Text fontWeight="semibold">
 													{t(
@@ -1661,63 +1691,47 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											</Thead>
 											<Tbody>
 												{loading
-													? Array.from(
-															{ length: filters.limit || 5 },
-															(_, idx) => {
-																const cells = {
-																	username: (
-																		<Td
-																			key={`skeleton-username-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="60%" />
-																		</Td>
-																	),
-																	status: (
-																		<Td
-																			key={`skeleton-status-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="80px" />
-																		</Td>
-																	),
-																	users_count: (
-																		<Td
-																			key={`skeleton-users-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="14px" width="70px" />
-																		</Td>
-																	),
-																	data: (
-																		<Td
-																			key={`skeleton-data-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="120px" />
-																		</Td>
-																	),
-																	actions: (
-																		<Td
-																			key={`skeleton-actions-${idx}`}
-																			textAlign={actionsAlign}
-																		>
-																			<HStack spacing={2} justify="flex-start">
-																				<Skeleton height="16px" width="32px" />
-																				<Skeleton height="16px" width="32px" />
-																			</HStack>
-																		</Td>
-																	),
-																} as const;
-																return (
-																	<Tr key={`skeleton-${idx}`}>
-																		{columnsToRender.map((key) =>
-																			cloneElement(cells[key], { key }),
-																		)}
-																	</Tr>
-																);
-															},
-														)
+													? skeletonKeys.map((rowKey) => {
+															const cells = {
+																username: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="60%" />
+																	</Td>
+																),
+																status: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="80px" />
+																	</Td>
+																),
+																users_count: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="14px" width="70px" />
+																	</Td>
+																),
+																data: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="120px" />
+																	</Td>
+																),
+																actions: (
+																	<Td textAlign={actionsAlign}>
+																		<HStack spacing={2} justify="flex-start">
+																			<Skeleton height="16px" width="32px" />
+																			<Skeleton height="16px" width="32px" />
+																		</HStack>
+																	</Td>
+																),
+															} as const;
+															return (
+																<Tr key={`skeleton-${rowKey}`}>
+																	{columnsToRender.map((key) =>
+																		cloneElement(cells[key], {
+																			key: `${rowKey}-${key}`,
+																		}),
+																	)}
+																</Tr>
+															);
+														})
 													: admins.map((admin, index) => {
 															const isSelected =
 																adminInDetails?.username === admin.username;
@@ -2112,143 +2126,145 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				</Box>
 			</Stack>
 
-			{contextMenu.visible && contextMenu.admin && (() => {
-				const ctxAdmin = contextMenu.admin;
-				const canManage = canManageAdminAccount(ctxAdmin);
-				const canChangeStatus =
-					canManage && ctxAdmin.username !== currentAdminUsername;
-				const showDisable =
-					canChangeStatus && ctxAdmin.status !== AdminStatus.Disabled;
-				const showEnable =
-					canChangeStatus && ctxAdmin.status === AdminStatus.Disabled;
-				const showDelete = canChangeStatus;
-				const showAddTraffic =
-					canManage &&
-					ctxAdmin.data_limit !== null &&
-					ctxAdmin.data_limit !== 0 &&
-					ctxAdmin.data_limit !== undefined;
-				return (
-				<Box
-					position="fixed"
-					top={contextMenu.y}
-					left={contextMenu.x}
-					bg={dialogBg}
-					borderWidth="1px"
-					borderColor={dialogBorderColor}
-					borderRadius="md"
-					boxShadow="lg"
-					zIndex={1500}
-					minW="220px"
-					onClick={(e) => e.stopPropagation()}
-					onContextMenu={(e) => {
-						e.preventDefault();
-						closeContextMenu();
-					}}
-					ref={contextMenuRef}
-				>
-					<Stack spacing={1} p={2}>
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<PencilIcon width={16} />}
-								onClick={() => {
-									openAdminDialog(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("admins.editAction", "Edit")}
-							</Button>
-						)}
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<ResetIcon />}
-								onClick={() => handleContextReset(ctxAdmin)}
-								isLoading={contextAction === "reset"}
-							>
-								{t("admins.resetUsage", "Reset usage")}
-							</Button>
-						)}
-						{showEnable && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<EnableIcon />}
-								onClick={() => {
-									handleEnableAdmin(ctxAdmin);
-									closeContextMenu();
-								}}
-								isLoading={
-									actionState?.type === "enableAdmin" &&
-									actionState?.username === ctxAdmin.username
-								}
-							>
-								{t("admins.enableAdmin", "Enable admin")}
-							</Button>
-						)}
-						{showDisable && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<DisableIcon />}
-								onClick={() => {
-									startDisableAdmin(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("admins.disableAdmin", "Disable admin")}
-							</Button>
-						)}
-						{showAddTraffic && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<AddDataIcon />}
-								onClick={() => handleAddDataLimit(ctxAdmin, 500)}
-								isLoading={contextAction === "addData"}
-							>
-								{t("admins.add500Gb", "Add 500 GB")}
-							</Button>
-						)}
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<QuickPassIcon />}
-								onClick={() => handleQuickPassword(ctxAdmin)}
-								isLoading={contextAction === "quickPassword"}
-							>
-								{t("admins.quickPassword", "Generate new password")}
-							</Button>
-						)}
-						{showDelete && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								colorScheme="red"
-								leftIcon={<DeleteIcon />}
-								onClick={() => {
-									startDeleteDialog(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("delete", "Delete")}
-							</Button>
-						)}
-					</Stack>
-				</Box>
-				);
-			})()}
+			{contextMenu.visible &&
+				contextMenu.admin &&
+				(() => {
+					const ctxAdmin = contextMenu.admin;
+					const canManage = canManageAdminAccount(ctxAdmin);
+					const canChangeStatus =
+						canManage && ctxAdmin.username !== currentAdminUsername;
+					const showDisable =
+						canChangeStatus && ctxAdmin.status !== AdminStatus.Disabled;
+					const showEnable =
+						canChangeStatus && ctxAdmin.status === AdminStatus.Disabled;
+					const showDelete = canChangeStatus;
+					const showAddTraffic =
+						canManage &&
+						ctxAdmin.data_limit !== null &&
+						ctxAdmin.data_limit !== 0 &&
+						ctxAdmin.data_limit !== undefined;
+					return (
+						<Box
+							position="fixed"
+							top={contextMenu.y}
+							left={contextMenu.x}
+							bg={dialogBg}
+							borderWidth="1px"
+							borderColor={dialogBorderColor}
+							borderRadius="md"
+							boxShadow="lg"
+							zIndex={1500}
+							minW="220px"
+							onClick={(e) => e.stopPropagation()}
+							onContextMenu={(e) => {
+								e.preventDefault();
+								closeContextMenu();
+							}}
+							ref={contextMenuRef}
+						>
+							<Stack spacing={1} p={2}>
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<PencilIcon width={16} />}
+										onClick={() => {
+											openAdminDialog(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("admins.editAction", "Edit")}
+									</Button>
+								)}
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<ResetIcon />}
+										onClick={() => handleContextReset(ctxAdmin)}
+										isLoading={contextAction === "reset"}
+									>
+										{t("admins.resetUsage", "Reset usage")}
+									</Button>
+								)}
+								{showEnable && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<EnableIcon />}
+										onClick={() => {
+											handleEnableAdmin(ctxAdmin);
+											closeContextMenu();
+										}}
+										isLoading={
+											actionState?.type === "enableAdmin" &&
+											actionState?.username === ctxAdmin.username
+										}
+									>
+										{t("admins.enableAdmin", "Enable admin")}
+									</Button>
+								)}
+								{showDisable && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<DisableIcon />}
+										onClick={() => {
+											startDisableAdmin(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("admins.disableAdmin", "Disable admin")}
+									</Button>
+								)}
+								{showAddTraffic && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<AddDataIcon />}
+										onClick={() => handleAddDataLimit(ctxAdmin, 500)}
+										isLoading={contextAction === "addData"}
+									>
+										{t("admins.add500Gb", "Add 500 GB")}
+									</Button>
+								)}
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<QuickPassIcon />}
+										onClick={() => handleQuickPassword(ctxAdmin)}
+										isLoading={contextAction === "quickPassword"}
+									>
+										{t("admins.quickPassword", "Generate new password")}
+									</Button>
+								)}
+								{showDelete && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										colorScheme="red"
+										leftIcon={<DeleteIcon />}
+										onClick={() => {
+											startDeleteDialog(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("delete", "Delete")}
+									</Button>
+								)}
+							</Stack>
+						</Box>
+					);
+				})()}
 
 			<Modal isOpen={isQuickPassOpen} onClose={handleCloseQuickPass} isCentered>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>
-					{t("admins.quickPasswordModal.title", "New credentials")}
-				</ModalHeader>
-				<ModalCloseButton />
+				<ModalOverlay />
+				<ModalContent>
+					<ModalHeader>
+						{t("admins.quickPasswordModal.title", "New credentials")}
+					</ModalHeader>
+					<ModalCloseButton />
 					<ModalBody>
 						<Stack spacing={3}>
 							<Box>
@@ -2293,10 +2309,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 						</Stack>
 					</ModalBody>
 					<ModalFooter>
-					<Button onClick={handleCloseQuickPass}>{t("close")}</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+						<Button onClick={handleCloseQuickPass}>{t("close")}</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
 
 			<AlertDialog
 				isOpen={isDeleteDialogOpen}

@@ -13,27 +13,27 @@ import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useEffect, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export const HostsPage: FC = () => {
 	const { t } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const [activeTab, setActiveTab] = useState<number>(0);
-	const tabKeys = ["inbounds", "hosts"];
-	const splitHash = () => {
+	const tabKeys = useMemo(() => ["inbounds", "hosts"], []);
+	const splitHash = useCallback(() => {
 		const hash = window.location.hash || "";
 		const idx = hash.indexOf("#", 1);
 		return {
 			base: idx >= 0 ? hash.slice(0, idx) : hash,
 			tab: idx >= 0 ? hash.slice(idx + 1) : "",
 		};
-	};
+	}, []);
 
 	useEffect(() => {
 		const syncFromHash = () => {
 			const { tab } = splitHash();
-			const idx = tabKeys.findIndex((key) => key === tab.toLowerCase());
+			const idx = tabKeys.indexOf(tab.toLowerCase());
 			if (idx >= 0) {
 				setActiveTab(idx);
 			} else {
@@ -45,8 +45,7 @@ export const HostsPage: FC = () => {
 		syncFromHash();
 		window.addEventListener("hashchange", syncFromHash);
 		return () => window.removeEventListener("hashchange", syncFromHash);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [splitHash, tabKeys]);
 
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);

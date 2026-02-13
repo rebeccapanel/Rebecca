@@ -20,14 +20,14 @@ import {
 } from "@heroicons/react/24/outline";
 import SlickSlider from "components/common/SlickSlider";
 import { QRCodeCanvas } from "qrcode.react";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { type FC, useEffect, useMemo, useState } from "react";
+import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import "slick-carousel/slick/slick-theme.css";
 import "slick-carousel/slick/slick.css";
+import { getConfigLabelFromLink } from "utils/configLabel";
 import { useDashboard } from "../contexts/DashboardContext";
 import { Icon } from "./Icon";
-import { getConfigLabelFromLink } from "utils/configLabel";
 
 const QRCode = chakra(QRCodeCanvas);
 const NextIcon = chakra(ChevronRightIcon, {
@@ -69,7 +69,9 @@ export const QRCodeDialog: FC = () => {
 	const isOpen = QRcodeLinks !== null;
 	const [index, setIndex] = useState(0);
 	const [copiedSub, setCopiedSub] = useState(false);
-	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(null);
+	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(
+		null,
+	);
 	const [configAnimIndex, setConfigAnimIndex] = useState<number | null>(null);
 	const [subAnimSeed, setSubAnimSeed] = useState(0);
 	const [configAnimSeed, setConfigAnimSeed] = useState(0);
@@ -103,7 +105,7 @@ export const QRCodeDialog: FC = () => {
 		if (isOpen) {
 			setIndex(0);
 		}
-	}, [isOpen, QRcodeLinks?.length]);
+	}, [isOpen]);
 
 	useEffect(() => {
 		if (index >= configItems.length && configItems.length > 0) {
@@ -162,11 +164,7 @@ export const QRCodeDialog: FC = () => {
 					>
 						{subscribeUrl && (
 							<VStack spacing={2}>
-								<Text
-									display="block"
-									textAlign="center"
-									fontWeight="semibold"
-								>
+								<Text display="block" textAlign="center" fontWeight="semibold">
 									{t("qrcodeDialog.sublink")}
 								</Text>
 								{copiedSub && (
@@ -290,8 +288,7 @@ export const QRCodeDialog: FC = () => {
 													role="button"
 													aria-label={t("userDialog.links.copy", "Copy")}
 													animation={
-														configAnimIndex === itemIndex &&
-														configAnimSeed > 0
+														configAnimIndex === itemIndex && configAnimSeed > 0
 															? `${clickPulse} 260ms ease-in-out`
 															: "none"
 													}

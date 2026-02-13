@@ -3,8 +3,7 @@ const NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-admins-per-page";
 const NUM_PER_PAGE_DEFAULT = 10;
 
 const readPerPage = (key: string) => {
-	const value =
-		localStorage.getItem(key) || NUM_PER_PAGE_DEFAULT.toString(); // catches `null`
+	const value = localStorage.getItem(key) || NUM_PER_PAGE_DEFAULT.toString(); // catches `null`
 	return parseInt(value, 10) || NUM_PER_PAGE_DEFAULT; // catches NaN
 };
 

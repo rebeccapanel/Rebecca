@@ -107,9 +107,7 @@ const HistoryModal: FC<{
 		const extractLatest = (entries: Array<{ timestamp: number }>) =>
 			entries.length ? entries[entries.length - 1].timestamp : null;
 		if (payload.type === "network") {
-			return (
-				extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
-			);
+			return extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000);
 		}
 		if (payload.type === "panel") {
 			return (
@@ -118,16 +116,16 @@ const HistoryModal: FC<{
 				Math.floor(Date.now() / 1000)
 			);
 		}
-		return (
-			extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
-		);
+		return extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000);
 	}, [payload]);
 	const cutoff = latestTimestamp - intervalSeconds;
 	const filteredStandardEntries = useMemo(() => {
 		if (!payload || payload.type === "network" || payload.type === "panel") {
 			return [];
 		}
-		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.entries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
@@ -136,21 +134,27 @@ const HistoryModal: FC<{
 		if (!payload || payload.type !== "network") {
 			return [];
 		}
-		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.entries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelCpu = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		const entries = payload.cpuEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.cpuEntries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelMemory = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		const entries = payload.memoryEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.memoryEntries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
@@ -371,19 +375,19 @@ const MetricBadge: FC<{
 			borderColor={borderColor}
 			bg={bg}
 			_dark={{ bg: "gray.800", borderColor: "gray.700" }}
-	>
-		<Text fontSize="xs" color="gray.500">
-			{label}
-		</Text>
-		<Text fontWeight="semibold" color={valueColor}>
-			{valueClassName ? (
-				<chakra.span className={valueClassName}>{value}</chakra.span>
-			) : (
-				value
-			)}
-		</Text>
-	</Box>
-);
+		>
+			<Text fontSize="xs" color="gray.500">
+				{label}
+			</Text>
+			<Text fontWeight="semibold" color={valueColor}>
+				{valueClassName ? (
+					<chakra.span className={valueClassName}>{value}</chakra.span>
+				) : (
+					value
+				)}
+			</Text>
+		</Box>
+	);
 };
 
 const SystemOverviewCard: FC<{
