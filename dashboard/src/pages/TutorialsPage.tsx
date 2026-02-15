@@ -740,11 +740,11 @@ const TutorialsPage: FC = () => {
 		// reset expanded and active on tab change
 		setExpandedGroups(new Set());
 		if (menuItems.length) {
-			setActiveId(menuItems[0].id);
+			setActiveId(firstMenuId ?? null);
 		} else {
 			setActiveId(null);
 		}
-	}, [menuItems.length, menuItems[0].id]);
+	}, [menuItems.length, firstMenuId]);
 
 	const setExpandedFor = useCallback((id?: string) => {
 		setExpandedGroups((prev) => {
