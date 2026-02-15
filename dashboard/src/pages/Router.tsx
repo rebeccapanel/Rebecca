@@ -12,10 +12,10 @@ import { Login } from "./Login";
 import MyAccountPage from "./MyAccountPage";
 import { NodesPage } from "./NodesPage";
 import ServicesPage from "./ServicesPage";
+import TutorialsPage from "./TutorialsPage";
 import UsagePage from "./UsagePage";
 import { UsersPage } from "./UsersPage";
 import { XrayLogsPage } from "./XrayLogsPage";
-import TutorialsPage from "./TutorialsPage";
 
 const fetchAdminLoader = async () => {
 	try {

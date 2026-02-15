@@ -9,12 +9,12 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
+	BookOpenIcon,
 	ChartPieIcon,
 	ChevronDownIcon,
 	Cog6ToothIcon,
 	GlobeAltIcon,
 	HomeIcon,
-	BookOpenIcon,
 	ServerIcon,
 	ShieldCheckIcon,
 	Square3Stack3DIcon,
@@ -38,11 +38,11 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
 import { pickLocalizedAd } from "utils/ads";
 import {
-	TUTORIALS_UPDATED_EVENT,
 	getTutorialAssetUrl,
 	isTutorialUpdated,
 	normalizeTutorialLang,
 	readTutorialStorage,
+	TUTORIALS_UPDATED_EVENT,
 	writeTutorialStorage,
 } from "utils/tutorialUpdates";
 import { AdvertisementCard } from "./AdvertisementCard";
@@ -236,10 +236,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		"/xray-settings": "basic",
 	};
 
-	const handleNavClick = (
-		event?: ReactMouseEvent,
-		targetUrl?: string,
-	) => {
+	const handleNavClick = (event?: ReactMouseEvent, targetUrl?: string) => {
 		if (inDrawer && onRequestExpand) {
 			onRequestExpand();
 		}
@@ -443,9 +440,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 															<NavLink
 																key={subItem.url}
 																to={subItem.url}
-																onClick={(e) =>
-																	handleNavClick(e, subItem.url)
-																}
+																onClick={(e) => handleNavClick(e, subItem.url)}
 															>
 																<HStack
 																	spacing={3}

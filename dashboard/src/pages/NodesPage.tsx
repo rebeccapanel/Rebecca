@@ -11,10 +11,10 @@ import {
 	Box,
 	Button,
 	ButtonGroup,
+	Collapse,
 	chakra,
 	Divider,
 	HStack,
-	Collapse,
 	IconButton,
 	Input,
 	InputGroup,
@@ -27,6 +27,11 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	Popover,
+	PopoverArrow,
+	PopoverBody,
+	PopoverContent,
+	PopoverTrigger,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -1023,7 +1028,9 @@ export const NodesPage: FC = () => {
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
 					{coreStats?.started
 						? t("nodes.masterStartedAt", {
-								date: dayjs(coreStats.started).local().format("YYYY-MM-DD HH:mm"),
+								date: dayjs(coreStats.started)
+									.local()
+									.format("YYYY-MM-DD HH:mm"),
 							})
 						: t("nodes.masterStartedUnknown", "Start time unavailable")}
 				</Text>
@@ -1098,7 +1105,9 @@ export const NodesPage: FC = () => {
 					size="sm"
 					onClick={handleMasterLimitSave}
 					isDisabled={
-						!hasMasterLimitChanged || masterLimitInvalid || isUpdatingMasterLimit
+						!hasMasterLimitChanged ||
+						masterLimitInvalid ||
+						isUpdatingMasterLimit
 					}
 					isLoading={isUpdatingMasterLimit}
 				>
@@ -1122,7 +1131,11 @@ export const NodesPage: FC = () => {
 					)}
 				</Text>
 			)}
-			<Stack direction={{ base: "column", sm: "row" }} spacing={2} flexWrap="wrap">
+			<Stack
+				direction={{ base: "column", sm: "row" }}
+				spacing={2}
+				flexWrap="wrap"
+			>
 				<Button
 					size="sm"
 					variant="outline"
@@ -1389,7 +1402,10 @@ export const NodesPage: FC = () => {
 										</VStack>
 										<NodeModalStatusBadge status={masterStatus} compact />
 									</HStack>
-									<Collapse in={Boolean(expandedNodeKeys.master)} animateOpacity>
+									<Collapse
+										in={Boolean(expandedNodeKeys.master)}
+										animateOpacity
+									>
 										<Box pt={4}>
 											<Divider mb={4} />
 											{masterContent}
@@ -1429,14 +1445,22 @@ export const NodesPage: FC = () => {
 							);
 							const statusDisplay =
 								status === "error" && node.message ? (
-									<Tooltip
-										label={node.message}
-										hasArrow
+									<Popover
+										trigger="hover"
 										placement="top"
-										openDelay={300}
+										openDelay={250}
+										closeDelay={150}
+										isLazy
+										closeOnBlur={false}
 									>
-										<Box as="span">{statusBadge}</Box>
-									</Tooltip>
+										<PopoverTrigger>
+											<Box as="span">{statusBadge}</Box>
+										</PopoverTrigger>
+										<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
+											<PopoverArrow />
+											<PopoverBody>{node.message}</PopoverBody>
+										</PopoverContent>
+									</Popover>
 								) : (
 									statusBadge
 								);
@@ -1538,10 +1562,7 @@ export const NodesPage: FC = () => {
 												isLoading={isUpdatingMaintenance}
 												isDisabled={!nodeId}
 											>
-												{t(
-													"nodes.updateServiceAction",
-													"Update node service",
-												)}
+												{t("nodes.updateServiceAction", "Update node service")}
 											</Button>
 											<Button
 												size="xs"
@@ -1696,7 +1717,11 @@ export const NodesPage: FC = () => {
 										flexWrap="wrap"
 										gap={2}
 									>
-										<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+										<Text
+											fontSize="xs"
+											color="gray.500"
+											_dark={{ color: "gray.400" }}
+										>
 											{t("nodes.id", "ID")}: {node.id ?? "-"}
 										</Text>
 										<ButtonGroup size="sm" variant="ghost">

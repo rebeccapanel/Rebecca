@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import string
 from collections import defaultdict
@@ -266,6 +267,12 @@ def setup_format_variables(extra_data: dict) -> dict:
     return format_variables
 
 
+def _host_map_has_hosts(host_map: dict | None) -> bool:
+    if not host_map:
+        return False
+    return any(hosts for hosts in host_map.values())
+
+
 def process_inbounds_and_tags(
     inbounds: dict,
     proxies: dict,
@@ -291,9 +298,16 @@ def process_inbounds_and_tags(
     from app.reb_node.config import XRayConfig
 
     service_id = extra_data.get("service_id")
+    service_ids: List[int] = []
+    if isinstance(service_id, (list, tuple, set)):
+        service_ids = [sid for sid in service_id if sid is not None]
+    elif service_id is not None:
+        service_ids = [service_id]
 
     from app.services.data_access import get_inbounds_by_tag_cached
     from config import REDIS_ENABLED
+
+    logger = logging.getLogger(__name__)
 
     if inbounds_by_tag is None:
         inbounds_by_tag = {}
@@ -322,14 +336,118 @@ def process_inbounds_and_tags(
         host_map = {}
         if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
             try:
-                host_map = get_service_host_map_cached(service_id, force_refresh=force_refresh)
+                if service_ids:
+                    combined_host_map: dict = {}
+                    for sid in service_ids:
+                        sid_map = get_service_host_map_cached(sid, force_refresh=force_refresh)
+                        if sid_map:
+                            for tag, hosts in sid_map.items():
+                                combined_host_map.setdefault(tag, []).extend(hosts or [])
+                    host_map = combined_host_map
+                else:
+                    host_map = get_service_host_map_cached(service_id, force_refresh=force_refresh)
             except Exception:
                 host_map = {}
+            if service_ids and not host_map and not force_refresh:
+                try:
+                    combined_host_map = {}
+                    for sid in service_ids:
+                        sid_map = get_service_host_map_cached(sid, force_refresh=True)
+                        if sid_map:
+                            for tag, hosts in sid_map.items():
+                                combined_host_map.setdefault(tag, []).extend(hosts or [])
+                    host_map = combined_host_map
+                except Exception:
+                    host_map = host_map or {}
     inbound_index = {tag: index for index, tag in enumerate(inbounds_by_tag.keys())}
 
     service_host_orders = (extra_data or {}).get("service_host_orders") or {}
     if service_host_orders:
         service_host_orders = {int(k): v for k, v in service_host_orders.items()}
+
+    refreshed_inbounds = False
+
+    def _refresh_inbounds_state() -> None:
+        nonlocal inbounds_by_tag, inbound_index, host_map, refreshed_inbounds
+        if refreshed_inbounds:
+            return
+        refreshed_inbounds = True
+        try:
+            from app.redis.cache import invalidate_inbounds_cache, invalidate_service_host_map_cache
+
+            invalidate_inbounds_cache()
+            invalidate_service_host_map_cache()
+        except Exception:
+            pass
+        try:
+            xray.invalidate_service_hosts_cache()
+        except Exception:
+            pass
+        try:
+            xray.hosts.update()
+        except Exception:
+            pass
+        try:
+            with GetDB() as db:
+                raw_config = crud.get_xray_config(db)
+                xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
+            inbounds_by_tag = getattr(xray_config, "inbounds_by_tag", {}) or {}
+        except Exception:
+            inbounds_by_tag = getattr(getattr(xray, "config", None), "inbounds_by_tag", {}) or {}
+        inbound_index = {tag: index for index, tag in enumerate(inbounds_by_tag.keys())}
+        if service_ids and not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+            try:
+                combined_host_map: dict = {}
+                for sid in service_ids:
+                    sid_map = get_service_host_map_cached(sid, force_refresh=True)
+                    if sid_map:
+                        for tag, hosts in sid_map.items():
+                            combined_host_map.setdefault(tag, []).extend(hosts or [])
+                if combined_host_map:
+                    host_map = combined_host_map
+            except Exception:
+                pass
+        elif not service_ids and not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+            try:
+                host_map = get_service_host_map_cached(service_id, force_refresh=True)
+            except Exception:
+                pass
+
+    if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
+        if not _host_map_has_hosts(host_map):
+            _refresh_inbounds_state()
+
+    if service_ids:
+        allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
+        if inbounds:
+            requested_tags = {tag for tags in inbounds.values() for tag in tags}
+            if requested_tags and not requested_tags.issubset(allowed_tags):
+                _refresh_inbounds_state()
+                allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
+        service_inbounds: dict = {proxy_key: [] for proxy_key in proxies.keys()}
+        for tag in allowed_tags:
+            inbound = inbounds_by_tag.get(tag)
+            if not inbound:
+                _refresh_inbounds_state()
+                inbound = inbounds_by_tag.get(tag)
+            if not inbound:
+                host_ids = [h.get("id") for h in (host_map.get(tag) or [])]
+                logger.debug(
+                    "Inbound tag not found in runtime config for subscription: user=%s service_id=%s inbound_tag=%s host_ids=%s",
+                    extra_data.get("username"),
+                    service_ids,
+                    tag,
+                    host_ids,
+                )
+                continue
+            protocol = inbound.get("protocol")
+            if not protocol:
+                continue
+            for proxy_key in proxies.keys():
+                proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
+                if proxy_key_str == protocol:
+                    service_inbounds[proxy_key].append(tag)
+        inbounds = service_inbounds
 
     host_entries = []
     for protocol, tags in inbounds.items():
@@ -340,7 +458,18 @@ def process_inbounds_and_tags(
         for tag in tags:
             inbound = inbounds_by_tag.get(tag)
             if not inbound:
-                continue
+                _refresh_inbounds_state()
+                inbound = inbounds_by_tag.get(tag)
+                if not inbound:
+                    host_ids = [h.get("id") for h in (host_map.get(tag) or [])]
+                    logger.debug(
+                        "Inbound tag not found in runtime config for subscription: user=%s service_id=%s inbound_tag=%s host_ids=%s",
+                        extra_data.get("username"),
+                        service_ids or service_id,
+                        tag,
+                        host_ids,
+                    )
+                    continue
 
             # Get host list for this tag from host_map
             host_list = host_map.get(tag, []) if host_map else []

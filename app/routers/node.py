@@ -195,8 +195,11 @@ def add_node(
 
     bg.add_task(xray.operations.connect_node, node_id=dbnode.id)
     bg.add_task(add_host_if_needed, new_node, db)
-
-    report.node_created(dbnode, admin)
+    bg.add_task(
+        report.node_created,
+        NodeResponse.model_validate(dbnode),
+        getattr(admin, "username", str(admin)),
+    )
 
     logger.info(f'New node "{dbnode.name}" added')
     default_cert = crud.get_tls_certificate(db).certificate
@@ -352,9 +355,9 @@ def modify_node(
     updated_node_resp = NodeResponse.model_validate(updated_node)
 
     if modified_node.status is not None and updated_node_resp.status != previous_status:
-        report.node_status_change(updated_node_resp, previous_status=previous_status)
+        bg.add_task(report.node_status_change, updated_node_resp, previous_status=previous_status)
 
-    xray.operations.remove_node(updated_node.id)
+    bg.add_task(xray.operations.remove_node, updated_node.id)
     if updated_node.status not in {NodeStatus.disabled, NodeStatus.limited}:
         bg.add_task(xray.operations.connect_node, node_id=updated_node.id)
 

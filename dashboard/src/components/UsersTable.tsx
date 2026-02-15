@@ -1,11 +1,3 @@
-import React, {
-	type ChangeEvent,
-	type FC,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
 import {
 	Box,
 	Button,
@@ -56,14 +48,23 @@ import classNames from "classnames";
 import { resetStrategy, statusColors } from "constants/UserSettings";
 import { type FilterType, useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
+import React, {
+	type ChangeEvent,
+	type FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
+import { fetch } from "service/http";
 import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import type { User, UserListItem } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
-import { fetch } from "service/http";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
@@ -71,6 +72,13 @@ import { StatusBadge } from "./StatusBadge";
 type TranslateFn = (key: string, defaultValue?: string) => string;
 
 const EmptySectionIcon = chakra(AddFileIcon);
+
+const createStableKey = () => {
+	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+		return crypto.randomUUID();
+	}
+	return Math.random().toString(36).slice(2);
+};
 
 const iconProps = {
 	baseStyle: {
@@ -133,6 +141,7 @@ type SummaryStatProps = {
 	value: string | number;
 	helper?: string;
 	accentColor?: string;
+	isMobile?: boolean;
 };
 
 const getResetStrategy = (strategy: string): string => {
@@ -148,35 +157,87 @@ const SummaryStat: FC<SummaryStatProps> = ({
 	value,
 	helper,
 	accentColor = "primary.500",
-}) => (
-	<Box
-		borderWidth="1px"
-		borderColor="light-border"
-		borderRadius="xl"
-		p={4}
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-	>
-		<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-			{label}
-		</Text>
-		<Text
-			mt={1}
-			fontWeight="bold"
-			fontSize="2xl"
-			color={accentColor}
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
+	isMobile = false,
+}) => {
+	const glassBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.76)",
+		"rgba(16, 20, 28, 0.72)",
+	);
+	const glassBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.48)",
+		"rgba(255, 255, 255, 0.14)",
+	);
+	const glassShadow = useColorModeValue(
+		"0 18px 36px -24px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.65)",
+		"0 16px 32px -22px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	);
+	const baseBorder = useColorModeValue("light-border", "whiteAlpha.200");
+	return (
+		<Box
+			borderWidth="1px"
+			borderColor={isMobile ? glassBorder : baseBorder}
+			borderRadius="xl"
+			p={4}
+			bg={isMobile ? glassBg : "surface.light"}
+			backdropFilter={isMobile ? "saturate(175%) blur(16px)" : undefined}
+			sx={
+				isMobile
+					? { WebkitBackdropFilter: "saturate(175%) blur(16px)" }
+					: undefined
+			}
+			boxShadow={isMobile ? glassShadow : undefined}
+			transform={isMobile ? "translateY(-1px)" : undefined}
+			transition="transform 0.2s ease, box-shadow 0.2s ease"
+			position="relative"
+			overflow="hidden"
+			_dark={
+				isMobile
+					? {
+							bg: glassBg,
+							borderColor: glassBorder,
+						}
+					: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+			}
+			_before={
+				isMobile
+					? {
+							content: '""',
+							position: "absolute",
+							inset: "0",
+							background:
+								"linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0))",
+							opacity: 0.6,
+							pointerEvents: "none",
+						}
+					: undefined
+			}
 		>
-			{value}
-		</Text>
-		{helper ? (
-			<Text mt={1} fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
-				{helper}
+			<Text fontSize="sm" color="gray.700" _dark={{ color: "gray.300" }}>
+				{label}
 			</Text>
-		) : null}
-	</Box>
-);
+			<Text
+				mt={1}
+				fontWeight="bold"
+				fontSize="2xl"
+				color={accentColor}
+				dir="ltr"
+				sx={{ unicodeBidi: "isolate" }}
+			>
+				{value}
+			</Text>
+			{helper ? (
+				<Text
+					mt={1}
+					fontSize="xs"
+					color="gray.600"
+					_dark={{ color: "gray.400" }}
+				>
+					{helper}
+				</Text>
+			) : null}
+		</Box>
+	);
+};
 
 const UsageMeter: FC<UsageMeterProps> = ({
 	used,
@@ -195,7 +256,7 @@ const UsageMeter: FC<UsageMeterProps> = ({
 		!isUnlimited &&
 		dataLimitResetStrategy &&
 		dataLimitResetStrategy !== "no_reset"
-			? t("userDialog.resetStrategy" + getResetStrategy(dataLimitResetStrategy))
+			? t(`userDialog.resetStrategy${getResetStrategy(dataLimitResetStrategy)}`)
 			: undefined;
 	const colorScheme = statusColors[status]?.bandWidthColor ?? "primary";
 	const reached = !isUnlimited && percentage >= 100;
@@ -224,12 +285,14 @@ const UsageMeter: FC<UsageMeterProps> = ({
 				dir={isRTL ? "rtl" : "ltr"}
 			>
 				<Text>
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{usedLabel}
-					</chakra.span>{" "}
-					/{" "}
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{totalLabel}
+					<chakra.span className="rb-usage-pair">
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{usedLabel}
+						</chakra.span>{" "}
+						/{" "}
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{totalLabel}
+						</chakra.span>
 					</chakra.span>
 					{resetLabel ? ` · ${resetLabel}` : ""}
 				</Text>
@@ -264,14 +327,14 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		filters,
 		users: usersResponse,
 		onEditingUser,
-	onFilterChange,
-	loading,
-	isUserLimitReached,
-	onDeletingUser,
-	resetDataUsage,
-	revokeSubscription,
-	refetchUsers,
-} = useDashboard();
+		onFilterChange,
+		loading,
+		isUserLimitReached,
+		onDeletingUser,
+		resetDataUsage,
+		revokeSubscription,
+		refetchUsers,
+	} = useDashboard();
 
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
@@ -301,6 +364,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const disabledReason = userData.disabled_reason;
 
 	const rowsToRender = filters.limit || 10;
+	const skeletonKeys = useMemo(
+		() => Array.from({ length: rowsToRender }, () => createStableKey()),
+		[rowsToRender],
+	);
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
@@ -362,8 +429,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		});
 	};
 
-	const closeContextMenu = () =>
+	const closeContextMenu = useCallback(() => {
 		setContextMenu({ visible: false, x: 0, y: 0, user: null });
+	}, []);
 
 	useEffect(() => {
 		if (!contextMenu.visible) return;
@@ -401,7 +469,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("scroll", handleScroll, true);
 		};
-	}, [contextMenu.visible]);
+	}, [contextMenu.visible, closeContextMenu]);
 
 	useEffect(() => {
 		if (!contextMenu.visible) return;
@@ -425,7 +493,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		if (nextX !== contextMenu.x || nextY !== contextMenu.y) {
 			setContextMenu((prev) => ({ ...prev, x: nextX, y: nextY }));
 		}
-	}, [contextMenu, menuSize.w, menuSize.h, contextMenuRef]);
+	}, [contextMenu, menuSize.w, menuSize.h]);
 
 	const handleRowContextMenu = (
 		event: React.MouseEvent,
@@ -786,7 +854,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			</Thead>
 			<Tbody>
 				{loading
-					? Array.from({ length: rowsToRender }, (_, idx) => {
+					? skeletonKeys.map((rowKey) => {
 							const cells = {
 								username: (
 									<Td textAlign={cellAlign}>
@@ -828,9 +896,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								),
 							};
 							return (
-								<Tr key={`skeleton-desktop-${idx}`}>
+								<Tr key={`skeleton-desktop-${rowKey}`}>
 									{columnsToRender.map((key) => (
-										<React.Fragment key={`${key}-skeleton-${idx}`}>
+										<React.Fragment key={`${rowKey}-${key}`}>
 											{cells[key]}
 										</React.Fragment>
 									))}
@@ -973,9 +1041,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			{hideMobileCardsDuringSearch
 				? null
 				: loading
-					? Array.from({ length: rowsToRender }, (_, idx) => (
+					? skeletonKeys.map((key) => (
 							<Box
-								key={`skeleton-mobile-${idx}`}
+								key={key}
 								borderWidth="1px"
 								borderColor="light-border"
 								bg="surface.light"
@@ -1102,7 +1170,11 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							{!isDesktop && !(isMobile && hasSearchQuery) && (
 								<SimpleGrid columns={{ base: 2 }} gap={3}>
 									{summaryItems.map((item, idx) => (
-										<SummaryStat key={`${item.label}-${idx}`} {...item} />
+										<SummaryStat
+											key={`${item.label}-${idx}`}
+											{...item}
+											isMobile={isMobile}
+										/>
 									))}
 								</SimpleGrid>
 							)}
@@ -1169,108 +1241,108 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 					position="fixed"
 					top={contextMenu.y}
 					left={contextMenu.x}
-				bg={dialogBg}
-				borderWidth="1px"
-				borderColor={dialogBorderColor}
-				borderRadius="md"
-				boxShadow="lg"
-				zIndex={1500}
-				minW="220px"
-				onClick={(e) => e.stopPropagation()}
-				onContextMenu={(e) => {
-					e.preventDefault();
-					closeContextMenu();
-				}}
-				ref={contextMenuRef}
-			>
+					bg={dialogBg}
+					borderWidth="1px"
+					borderColor={dialogBorderColor}
+					borderRadius="md"
+					boxShadow="lg"
+					zIndex={1500}
+					minW="220px"
+					onClick={(e) => e.stopPropagation()}
+					onContextMenu={(e) => {
+						e.preventDefault();
+						closeContextMenu();
+					}}
+					ref={contextMenuRef}
+				>
 					<Stack spacing={1} p={2}>
-					{canCreateUsers && (
-						<Button
-							variant="ghost"
-							justifyContent="flex-start"
-							leftIcon={<EditIcon />}
-							onClick={() => {
-								onEditingUser(contextMenu.user!);
-								closeContextMenu();
-							}}
-						>
-							{t("userDialog.editUser", "Edit user")}
-						</Button>
-					)}
-					{canCreateUsers && contextMenu.user.status !== "disabled" && (
-						<Button
-							variant="ghost"
-							justifyContent="flex-start"
-							leftIcon={<RevokeIcon />}
-							onClick={() => handleDisableUser(contextMenu.user!)}
-							isLoading={contextAction === "disable"}
-						>
-							{t("usersTable.disableUser", "Disable user")}
-						</Button>
-					)}
-				{canResetUsage && (
-					<Button
-						variant="ghost"
-						justifyContent="flex-start"
-						leftIcon={<ResetIcon />}
-						onClick={() => handleResetUsage(contextMenu.user!)}
-						isLoading={contextAction === "reset"}
-					>
-						{t("usersTable.resetUsage", "Reset usage")}
-					</Button>
-				)}
-				{canRevokeSub && (
-					<Button
-						variant="ghost"
-						justifyContent="flex-start"
-						leftIcon={<RevokeIcon />}
-						onClick={() => handleRevokeSub(contextMenu.user!)}
-						isLoading={contextAction === "revoke"}
-					>
-						{t("usersTable.revokeSub", "Revoke subscription")}
-					</Button>
-				)}
-				{canCreateUsers &&
-					contextMenu.user.data_limit !== null &&
-					contextMenu.user.data_limit !== 0 && (
-						<Button
-							variant="ghost"
-							justifyContent="flex-start"
-							leftIcon={<TrafficIcon />}
-							onClick={() => handleAdjustTraffic(contextMenu.user!, 10)}
-							isLoading={contextAction === "traffic"}
-						>
-							{t("usersTable.add10Gb", "Add 10 GB")}
-						</Button>
-					)}
-				{canCreateUsers &&
-					contextMenu.user.expire !== null &&
-					contextMenu.user.expire !== 0 &&
-					contextMenu.user.expire !== undefined && (
-						<Button
-							variant="ghost"
-							justifyContent="flex-start"
-							leftIcon={<ExtendIcon />}
-							onClick={() => handleExtendExpire(contextMenu.user!, 30)}
-							isLoading={contextAction === "expire"}
-						>
-							{t("usersTable.add30Days", "Add 30 days")}
-						</Button>
-					)}
-				{canDeleteUsers && (
-					<Button
-						variant="ghost"
-						justifyContent="flex-start"
-						colorScheme="red"
-						leftIcon={<DeleteIcon />}
-						onClick={() => {
-							onDeletingUser(contextMenu.user!);
-							closeContextMenu();
-						}}
-					>
-						{t("deleteUser.title", "Delete user")}
-					</Button>
-				)}
+						{canCreateUsers && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<EditIcon />}
+								onClick={() => {
+									onEditingUser(contextMenu.user!);
+									closeContextMenu();
+								}}
+							>
+								{t("userDialog.editUser", "Edit user")}
+							</Button>
+						)}
+						{canCreateUsers && contextMenu.user.status !== "disabled" && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<RevokeIcon />}
+								onClick={() => handleDisableUser(contextMenu.user!)}
+								isLoading={contextAction === "disable"}
+							>
+								{t("usersTable.disableUser", "Disable user")}
+							</Button>
+						)}
+						{canResetUsage && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<ResetIcon />}
+								onClick={() => handleResetUsage(contextMenu.user!)}
+								isLoading={contextAction === "reset"}
+							>
+								{t("usersTable.resetUsage", "Reset usage")}
+							</Button>
+						)}
+						{canRevokeSub && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<RevokeIcon />}
+								onClick={() => handleRevokeSub(contextMenu.user!)}
+								isLoading={contextAction === "revoke"}
+							>
+								{t("usersTable.revokeSub", "Revoke subscription")}
+							</Button>
+						)}
+						{canCreateUsers &&
+							contextMenu.user.data_limit !== null &&
+							contextMenu.user.data_limit !== 0 && (
+								<Button
+									variant="ghost"
+									justifyContent="flex-start"
+									leftIcon={<TrafficIcon />}
+									onClick={() => handleAdjustTraffic(contextMenu.user!, 10)}
+									isLoading={contextAction === "traffic"}
+								>
+									{t("usersTable.add10Gb", "Add 10 GB")}
+								</Button>
+							)}
+						{canCreateUsers &&
+							contextMenu.user.expire !== null &&
+							contextMenu.user.expire !== 0 &&
+							contextMenu.user.expire !== undefined && (
+								<Button
+									variant="ghost"
+									justifyContent="flex-start"
+									leftIcon={<ExtendIcon />}
+									onClick={() => handleExtendExpire(contextMenu.user!, 30)}
+									isLoading={contextAction === "expire"}
+								>
+									{t("usersTable.add30Days", "Add 30 days")}
+								</Button>
+							)}
+						{canDeleteUsers && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								colorScheme="red"
+								leftIcon={<DeleteIcon />}
+								onClick={() => {
+									onDeletingUser(contextMenu.user!);
+									closeContextMenu();
+								}}
+							>
+								{t("deleteUser.title", "Delete user")}
+							</Button>
+						)}
 					</Stack>
 				</Box>
 			)}
@@ -1287,7 +1359,7 @@ type UserCardProps = {
 	t: TranslateFn;
 };
 
-const UserCard: FC<UserCardProps> = ({
+const _UserCard: FC<UserCardProps> = ({
 	user,
 	onEdit,
 	canEdit,
@@ -1404,11 +1476,11 @@ const MobileUserCard: FC<UserCardProps> = ({
 			className="rb-usage-pair"
 		>
 			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{totalLabel}
+				{usedLabel}
 			</chakra.span>
 			{" / "}
 			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{usedLabel}
+				{totalLabel}
 			</chakra.span>
 		</Text>
 	);
@@ -1757,4 +1829,3 @@ const EmptySection: FC<EmptySectionProps> = ({
 		</Box>
 	);
 };
-

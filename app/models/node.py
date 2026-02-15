@@ -4,7 +4,7 @@ from typing import Optional
 from ipaddress import ip_address
 from re import match
 
-from pydantic import ConfigDict, BaseModel, Field, field_validator
+from pydantic import ConfigDict, BaseModel, Field, field_validator, model_validator
 
 
 class NodeStatus(str, Enum):
@@ -18,6 +18,11 @@ class NodeStatus(str, Enum):
 class GeoMode(str, Enum):
     default = "default"
     custom = "custom"
+
+
+class NodeProxyType(str, Enum):
+    http = "http"
+    socks5 = "socks5"
 
 
 class NodeSettings(BaseModel):
@@ -60,6 +65,29 @@ class Node(BaseModel):
         le=65535,
         description="Port to use when Nobetci integration is enabled",
     )
+    proxy_enabled: bool = False
+    proxy_type: Optional[NodeProxyType] = Field(
+        None,
+        description="Proxy protocol used for master-node communication",
+    )
+    proxy_host: Optional[str] = Field(
+        None,
+        description="Proxy host for master-node communication",
+    )
+    proxy_port: Optional[int] = Field(
+        None,
+        ge=1,
+        le=65535,
+        description="Proxy port for master-node communication",
+    )
+    proxy_username: Optional[str] = Field(
+        None,
+        description="Proxy username for master-node communication",
+    )
+    proxy_password: Optional[str] = Field(
+        None,
+        description="Proxy password for master-node communication",
+    )
 
     @field_validator("address")
     @classmethod
@@ -88,6 +116,17 @@ class NodeCreate(Node):
         }
     )
 
+    @model_validator(mode="after")
+    def validate_proxy_settings(self):
+        if self.proxy_enabled:
+            if not self.proxy_type:
+                raise ValueError("Proxy type is required when proxy is enabled")
+            if not self.proxy_host:
+                raise ValueError("Proxy host is required when proxy is enabled")
+            if not self.proxy_port:
+                raise ValueError("Proxy port is required when proxy is enabled")
+        return self
+
 
 class NodeModify(Node):
     name: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
@@ -100,6 +139,17 @@ class NodeModify(Node):
     data_limit: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     use_nobetci: Optional[bool] = Field(default=None, json_schema_extra={"nullable": True})
     nobetci_port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
+    proxy_enabled: Optional[bool] = Field(default=None, json_schema_extra={"nullable": True})
+    proxy_type: Optional[NodeProxyType] = Field(default=None, json_schema_extra={"nullable": True})
+    proxy_host: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    proxy_port: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        json_schema_extra={"nullable": True},
+    )
+    proxy_username: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
+    proxy_password: Optional[str] = Field(default=None, json_schema_extra={"nullable": True})
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -113,6 +163,17 @@ class NodeModify(Node):
             }
         }
     )
+
+    @model_validator(mode="after")
+    def validate_proxy_settings(self):
+        if self.proxy_enabled:
+            if not self.proxy_type:
+                raise ValueError("Proxy type is required when proxy is enabled")
+            if not self.proxy_host:
+                raise ValueError("Proxy host is required when proxy is enabled")
+            if not self.proxy_port:
+                raise ValueError("Proxy port is required when proxy is enabled")
+        return self
 
 
 class NodeResponse(Node):

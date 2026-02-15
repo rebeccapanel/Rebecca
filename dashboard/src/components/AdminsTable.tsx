@@ -10,27 +10,19 @@ import {
 	Card,
 	CardBody,
 	CardHeader,
-	Collapse,
-	chakra,
 	Checkbox,
 	CheckboxGroup,
+	Collapse,
+	chakra,
 	HStack,
 	IconButton,
+	Input,
+	InputGroup,
+	InputRightElement,
 	Menu,
 	MenuButton,
 	MenuItem,
 	MenuList,
-	Skeleton,
-	SimpleGrid,
-	Stack,
-	Table,
-	type TableProps,
-	Tbody,
-	Td,
-	Text,
-	Input,
-	InputGroup,
-	InputRightElement,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -38,15 +30,23 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
+	SimpleGrid,
+	Skeleton,
+	Stack,
+	Table,
+	type TableProps,
+	Tbody,
+	Td,
+	Text,
 	Textarea,
 	Th,
 	Thead,
 	Tooltip,
 	Tr,
 	useBreakpointValue,
+	useClipboard,
 	useColorModeValue,
 	useDisclosure,
-	useClipboard,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -57,8 +57,8 @@ import {
 	ChevronDownIcon,
 	KeyIcon,
 	PencilIcon,
-	PlusCircleIcon,
 	PlayIcon,
+	PlusCircleIcon,
 	TrashIcon,
 	XCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -69,6 +69,7 @@ import useGetUser from "hooks/useGetUser";
 import {
 	cloneElement,
 	type FC,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -82,6 +83,8 @@ import {
 	AdminStatus,
 	UserPermissionToggle,
 } from "types/Admin";
+import { getAdminExpireMap } from "utils/adminExpireStorage";
+import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
 	generateErrorMessage,
@@ -107,6 +110,13 @@ const EnableIcon = chakra(PlayIcon, iconProps);
 const DeleteIcon = chakra(TrashIcon, iconProps);
 const QuickPassIcon = chakra(KeyIcon, iconProps);
 const AddDataIcon = chakra(PlusCircleIcon, iconProps);
+
+const createStableKey = () => {
+	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+		return crypto.randomUUID();
+	}
+	return Math.random().toString(36).slice(2);
+};
 
 const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 	const { t } = useTranslation();
@@ -227,30 +237,56 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 const formatCount = (value: number | null | undefined, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value ?? 0);
 
-const RoleChip: FC<{ label: string; value: number; color: string }> = ({
-	label,
-	value,
-	color,
-}) => (
-	<HStack
-		spacing={2}
-		borderWidth="1px"
-		borderColor="light-border"
-		borderRadius="full"
-		px={3}
-		py={2}
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-		opacity={value === 0 ? 0.65 : 1}
-	>
-		<Text fontSize="sm" color={color} fontWeight="semibold">
-			{label}
-		</Text>
-		<Text fontSize="sm" fontWeight="bold" color={color} dir="ltr">
-			{value}
-		</Text>
-	</HStack>
-);
+const RoleChip: FC<{
+	label: string;
+	value: number;
+	color: string;
+	isMobile?: boolean;
+}> = ({ label, value, color, isMobile = false }) => {
+	const chipBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.7)",
+		"rgba(18, 22, 30, 0.6)",
+	);
+	const chipBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.5)",
+		"rgba(255, 255, 255, 0.18)",
+	);
+	const chipShadow = useColorModeValue(
+		"0 8px 18px -14px rgba(15, 23, 42, 0.45)",
+		"0 8px 18px -14px rgba(0, 0, 0, 0.55)",
+	);
+	return (
+		<HStack
+			spacing={2}
+			borderWidth="1px"
+			borderColor={isMobile ? chipBorder : "light-border"}
+			borderRadius="full"
+			px={3}
+			py={2}
+			bg={isMobile ? chipBg : "surface.light"}
+			backdropFilter={isMobile ? "saturate(160%) blur(12px)" : undefined}
+			sx={
+				isMobile
+					? { WebkitBackdropFilter: "saturate(160%) blur(12px)" }
+					: undefined
+			}
+			boxShadow={isMobile ? chipShadow : undefined}
+			_dark={
+				isMobile
+					? { bg: chipBg, borderColor: chipBorder }
+					: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+			}
+			opacity={value === 0 ? 0.65 : 1}
+		>
+			<Text fontSize="sm" color={color} fontWeight="semibold">
+				{label}
+			</Text>
+			<Text fontSize="sm" fontWeight="bold" color={color} dir="ltr">
+				{value}
+			</Text>
+		</HStack>
+	);
+};
 export const AdminsTable: FC<TableProps> = (props) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
@@ -261,6 +297,22 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
+	const summaryGlassBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.78)",
+		"rgba(16, 20, 28, 0.72)",
+	);
+	const summaryGlassBorder = useColorModeValue(
+		"rgba(255, 255, 255, 0.45)",
+		"rgba(255, 255, 255, 0.16)",
+	);
+	const summaryGlassShadow = useColorModeValue(
+		"0 18px 36px -24px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+		"0 16px 32px -22px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
+	);
+	const summaryDividerColor = useColorModeValue(
+		"rgba(255, 255, 255, 0.35)",
+		"rgba(255, 255, 255, 0.12)",
+	);
 	const {
 		admins,
 		loading,
@@ -278,6 +330,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
+	const adminExpireMap = useMemo(() => getAdminExpireMap(), []);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
@@ -334,7 +387,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	} = useDisclosure();
 	const { onCopy, setValue: setClipboard } = useClipboard("");
 	const [isBulkPanelOpen, setBulkPanelOpen] = useState(false);
-	const [bulkPermissions, setBulkPermissions] = useState<UserPermissionToggle[]>([
+	const [bulkPermissions, setBulkPermissions] = useState<
+		UserPermissionToggle[]
+	>([
 		UserPermissionToggle.Create,
 		UserPermissionToggle.Delete,
 		UserPermissionToggle.ResetUsage,
@@ -395,7 +450,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			},
 			{
 				key: UserPermissionToggle.AllowUnlimitedExpire,
-				label: t("admins.bulkPermissions.allowUnlimitedExpire", "Unlimited expire"),
+				label: t(
+					"admins.bulkPermissions.allowUnlimitedExpire",
+					"Unlimited expire",
+				),
 			},
 			{
 				key: UserPermissionToggle.AllowNextPlan,
@@ -420,7 +478,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const handleBulkPermissions = async (mode: "disable" | "restore") => {
 		if (!bulkPermissions.length) {
 			generateErrorMessage(
-				t("admins.bulkPermissions.selectAtLeastOne", "Select at least one permission."),
+				t(
+					"admins.bulkPermissions.selectAtLeastOne",
+					"Select at least one permission.",
+				),
 				toast,
 			);
 			return;
@@ -440,7 +501,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				),
 				toast,
 			);
-		} catch (error) {
+		} catch (_error) {
 			generateErrorMessage(
 				t("admins.bulkPermissions.error", "Failed to update standard admins."),
 				toast,
@@ -522,8 +583,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		closePermissionsModal();
 	};
 
-	const closeContextMenu = () =>
+	const closeContextMenu = useCallback(() => {
 		setContextMenu({ visible: false, x: 0, y: 0, admin: null });
+	}, []);
 	const handleCloseQuickPass = () => {
 		setQuickPassInfo(null);
 		closeQuickPassModal();
@@ -565,7 +627,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("scroll", handleScroll, true);
 		};
-	}, [contextMenu.visible]);
+	}, [contextMenu.visible, closeContextMenu]);
 
 	useEffect(() => {
 		if (!contextMenu.visible) return;
@@ -608,8 +670,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			return;
 		}
 		const canManage = canManageAdminAccount(admin);
-		const canChangeStatus = canManage && admin.username !== currentAdminUsername;
-		const showDisable = canChangeStatus && admin.status !== AdminStatus.Disabled;
+		const canChangeStatus =
+			canManage && admin.username !== currentAdminUsername;
+		const showDisable =
+			canChangeStatus && admin.status !== AdminStatus.Disabled;
 		const showEnable = canChangeStatus && admin.status === AdminStatus.Disabled;
 		const showDelete = canChangeStatus;
 		const hasActions = canManage || showDisable || showEnable || showDelete;
@@ -772,6 +836,81 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const cellAlign = isRTL ? "right" : "left";
 	const actionsAlign = isRTL ? "left" : "right";
 	const isFiltered = admins.length !== total;
+	const renderRelativeText = useCallback(
+		(key: "expires" | "expired", time: string) => {
+			const raw = t(key);
+			const [before = "", after = ""] = raw.split("{{time}}");
+			const timeNode = time ? (
+				<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }} key="time">
+					{time}
+				</Box>
+			) : null;
+
+			const nodes: JSX.Element[] = [];
+			if (!isRTL) {
+				if (before) {
+					nodes.push(
+						<Text as="span" key="before">
+							{before}
+						</Text>,
+					);
+				}
+				if (timeNode) {
+					nodes.push(timeNode);
+				}
+				if (after) {
+					nodes.push(
+						<Text as="span" key="after">
+							{after}
+						</Text>,
+					);
+				}
+			} else {
+				if (timeNode) {
+					nodes.push(timeNode);
+				}
+				if (after) {
+					nodes.push(
+						<Text as="span" key="after">
+							{after}
+						</Text>,
+					);
+				}
+				if (before) {
+					nodes.push(
+						<Text as="span" key="before">
+							{before}
+						</Text>,
+					);
+				}
+			}
+			return nodes;
+		},
+		[isRTL, t],
+	);
+	const renderAdminExpire = useCallback(
+		(expireAt?: number | null) => {
+			if (expireAt === null || expireAt === undefined) {
+				return (
+					<Text fontSize="xs" color="gray.400" _dark={{ color: "gray.500" }}>
+						{t("admins.expireNotSet", "No expiry set")}
+					</Text>
+				);
+			}
+			const info = relativeExpiryDate(expireAt);
+			if (!info.time) {
+				return null;
+			}
+			return (
+				<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
+					{info.status === "expires"
+						? renderRelativeText("expires", info.time)
+						: renderRelativeText("expired", info.time)}
+				</Text>
+			);
+		},
+		[renderRelativeText, t],
+	);
 
 	const { className, sx, ...restProps } = props;
 	const normalizedSx = Array.isArray(sx)
@@ -798,6 +937,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		sx: { ...baseTableSx, ...(normalizedSx || {}) },
 	};
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
+	const isMobileSummary = !isDesktop;
 	const isSearching =
 		typeof filters.search === "string" && filters.search.trim().length > 0;
 	const hideSummaryCard = !isDesktop && isSearching;
@@ -847,12 +987,18 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		};
 	}, [admins, total]);
 
+	const skeletonCount = filters.limit || 5;
+	const skeletonKeys = useMemo(
+		() => Array.from({ length: skeletonCount }, () => createStableKey()),
+		[skeletonCount],
+	);
+
 	const mobileList = (
 		<VStack spacing={3} align="stretch">
 			{loading
-				? Array.from({ length: filters.limit || 5 }, (_, idx) => (
+				? skeletonKeys.map((key) => (
 						<Box
-							key={`skeleton-mobile-${idx}`}
+							key={key}
 							borderWidth="1px"
 							borderColor="light-border"
 							bg="surface.light"
@@ -899,6 +1045,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 							admin.status === AdminStatus.Disabled &&
 							!hasLimitDisabledReason;
 						const showDeleteAction = canChangeStatus;
+						const adminExpireAt = adminExpireMap[admin.username];
 
 						return (
 							<Box
@@ -937,7 +1084,13 @@ export const AdminsTable: FC<TableProps> = (props) => {
 												{usageLabel}
 											</Text>
 										</Stack>
-										<AdminStatusBadge status={admin.status} />
+										<Stack
+											spacing={1}
+											align={isRTL ? "flex-end" : "flex-start"}
+										>
+											<AdminStatusBadge status={admin.status} />
+											{renderAdminExpire(adminExpireAt)}
+										</Stack>
 									</HStack>
 									<Collapse in={isExpanded} animateOpacity>
 										<Stack spacing={3} pt={1}>
@@ -1122,14 +1275,46 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				<Collapse in={!hideSummaryCard} animateOpacity>
 					<Card
 						borderWidth="1px"
-						borderColor="light-border"
-						bg="surface.light"
-						_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+						borderColor={isMobileSummary ? summaryGlassBorder : "light-border"}
+						bg={isMobileSummary ? summaryGlassBg : "surface.light"}
+						position="relative"
+						overflow="hidden"
+						boxShadow={isMobileSummary ? summaryGlassShadow : undefined}
+						backdropFilter={
+							isMobileSummary ? "saturate(170%) blur(16px)" : undefined
+						}
+						sx={
+							isMobileSummary
+								? {
+										WebkitBackdropFilter: "saturate(170%) blur(16px)",
+										"&::before": {
+											content: '""',
+											position: "absolute",
+											inset: "0",
+											background:
+												"linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0))",
+											opacity: 0.6,
+											pointerEvents: "none",
+										},
+									}
+								: undefined
+						}
+						_dark={
+							isMobileSummary
+								? { bg: summaryGlassBg, borderColor: summaryGlassBorder }
+								: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
+						}
 					>
 						<CardHeader
 							borderBottomWidth="1px"
-							borderColor="light-border"
-							_dark={{ borderColor: "whiteAlpha.200" }}
+							borderColor={
+								isMobileSummary ? summaryDividerColor : "light-border"
+							}
+							_dark={
+								isMobileSummary
+									? { borderColor: summaryDividerColor }
+									: { borderColor: "whiteAlpha.200" }
+							}
 							pb={3}
 						>
 							<HStack
@@ -1184,21 +1369,25 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										label={t("admins.roles.fullAccess", "Full access")}
 										value={summaryData.rolesActive.fullAccessCount}
 										color="yellow.500"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.sudo", "Sudo")}
 										value={summaryData.rolesActive.sudoCount}
 										color="purple.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.reseller", "Reseller")}
 										value={summaryData.rolesActive.resellerCount}
 										color="blue.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.standard", "Standard")}
 										value={summaryData.rolesActive.standardCount}
 										color="gray.500"
+										isMobile={isMobileSummary}
 									/>
 								</HStack>
 								<HStack spacing={3} flexWrap="wrap" align="center">
@@ -1207,21 +1396,25 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										label={t("admins.roles.fullAccess", "Full access")}
 										value={summaryData.rolesDisabled.fullAccessCount}
 										color="yellow.500"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.sudo", "Sudo")}
 										value={summaryData.rolesDisabled.sudoCount}
 										color="purple.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.reseller", "Reseller")}
 										value={summaryData.rolesDisabled.resellerCount}
 										color="blue.400"
+										isMobile={isMobileSummary}
 									/>
 									<RoleChip
 										label={t("admins.roles.standard", "Standard")}
 										value={summaryData.rolesDisabled.standardCount}
 										color="gray.500"
+										isMobile={isMobileSummary}
 									/>
 								</HStack>
 							</Stack>
@@ -1278,11 +1471,18 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										borderRadius="xl"
 										borderColor="light-border"
 										bg="whiteAlpha.600"
-										_dark={{ borderColor: "whiteAlpha.200", bg: "whiteAlpha.100" }}
+										_dark={{
+											borderColor: "whiteAlpha.200",
+											bg: "whiteAlpha.100",
+										}}
 										p={{ base: 3, md: 4 }}
 										mb={4}
 									>
-										<HStack justify="space-between" align="center" flexWrap="wrap">
+										<HStack
+											justify="space-between"
+											align="center"
+											flexWrap="wrap"
+										>
 											<Stack spacing={0}>
 												<Text fontWeight="semibold">
 													{t(
@@ -1491,63 +1691,47 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											</Thead>
 											<Tbody>
 												{loading
-													? Array.from(
-															{ length: filters.limit || 5 },
-															(_, idx) => {
-																const cells = {
-																	username: (
-																		<Td
-																			key={`skeleton-username-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="60%" />
-																		</Td>
-																	),
-																	status: (
-																		<Td
-																			key={`skeleton-status-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="80px" />
-																		</Td>
-																	),
-																	users_count: (
-																		<Td
-																			key={`skeleton-users-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="14px" width="70px" />
-																		</Td>
-																	),
-																	data: (
-																		<Td
-																			key={`skeleton-data-${idx}`}
-																			textAlign={cellAlign}
-																		>
-																			<Skeleton height="16px" width="120px" />
-																		</Td>
-																	),
-																	actions: (
-																		<Td
-																			key={`skeleton-actions-${idx}`}
-																			textAlign={actionsAlign}
-																		>
-																			<HStack spacing={2} justify="flex-start">
-																				<Skeleton height="16px" width="32px" />
-																				<Skeleton height="16px" width="32px" />
-																			</HStack>
-																		</Td>
-																	),
-																} as const;
-																return (
-																	<Tr key={`skeleton-${idx}`}>
-																		{columnsToRender.map((key) =>
-																			cloneElement(cells[key], { key }),
-																		)}
-																	</Tr>
-																);
-															},
-														)
+													? skeletonKeys.map((rowKey) => {
+															const cells = {
+																username: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="60%" />
+																	</Td>
+																),
+																status: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="80px" />
+																	</Td>
+																),
+																users_count: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="14px" width="70px" />
+																	</Td>
+																),
+																data: (
+																	<Td textAlign={cellAlign}>
+																		<Skeleton height="16px" width="120px" />
+																	</Td>
+																),
+																actions: (
+																	<Td textAlign={actionsAlign}>
+																		<HStack spacing={2} justify="flex-start">
+																			<Skeleton height="16px" width="32px" />
+																			<Skeleton height="16px" width="32px" />
+																		</HStack>
+																	</Td>
+																),
+															} as const;
+															return (
+																<Tr key={`skeleton-${rowKey}`}>
+																	{columnsToRender.map((key) =>
+																		cloneElement(cells[key], {
+																			key: `${rowKey}-${key}`,
+																		}),
+																	)}
+																</Tr>
+															);
+														})
 													: admins.map((admin, index) => {
 															const isSelected =
 																adminInDetails?.username === admin.username;
@@ -1580,6 +1764,8 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																admin.status === AdminStatus.Disabled &&
 																!hasLimitDisabledReason;
 															const showDeleteAction = canChangeStatus;
+															const adminExpireAt =
+																adminExpireMap[admin.username];
 
 															const cells = {
 																username: (
@@ -1683,6 +1869,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																			maxW="full"
 																		>
 																			<AdminStatusBadge status={admin.status} />
+																			{renderAdminExpire(adminExpireAt)}
 																			{admin.status === AdminStatus.Disabled &&
 																				disabledReasonLabel && (
 																					<Text
@@ -1939,143 +2126,145 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				</Box>
 			</Stack>
 
-			{contextMenu.visible && contextMenu.admin && (() => {
-				const ctxAdmin = contextMenu.admin;
-				const canManage = canManageAdminAccount(ctxAdmin);
-				const canChangeStatus =
-					canManage && ctxAdmin.username !== currentAdminUsername;
-				const showDisable =
-					canChangeStatus && ctxAdmin.status !== AdminStatus.Disabled;
-				const showEnable =
-					canChangeStatus && ctxAdmin.status === AdminStatus.Disabled;
-				const showDelete = canChangeStatus;
-				const showAddTraffic =
-					canManage &&
-					ctxAdmin.data_limit !== null &&
-					ctxAdmin.data_limit !== 0 &&
-					ctxAdmin.data_limit !== undefined;
-				return (
-				<Box
-					position="fixed"
-					top={contextMenu.y}
-					left={contextMenu.x}
-					bg={dialogBg}
-					borderWidth="1px"
-					borderColor={dialogBorderColor}
-					borderRadius="md"
-					boxShadow="lg"
-					zIndex={1500}
-					minW="220px"
-					onClick={(e) => e.stopPropagation()}
-					onContextMenu={(e) => {
-						e.preventDefault();
-						closeContextMenu();
-					}}
-					ref={contextMenuRef}
-				>
-					<Stack spacing={1} p={2}>
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<PencilIcon width={16} />}
-								onClick={() => {
-									openAdminDialog(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("admins.editAction", "Edit")}
-							</Button>
-						)}
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<ResetIcon />}
-								onClick={() => handleContextReset(ctxAdmin)}
-								isLoading={contextAction === "reset"}
-							>
-								{t("admins.resetUsage", "Reset usage")}
-							</Button>
-						)}
-						{showEnable && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<EnableIcon />}
-								onClick={() => {
-									handleEnableAdmin(ctxAdmin);
-									closeContextMenu();
-								}}
-								isLoading={
-									actionState?.type === "enableAdmin" &&
-									actionState?.username === ctxAdmin.username
-								}
-							>
-								{t("admins.enableAdmin", "Enable admin")}
-							</Button>
-						)}
-						{showDisable && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<DisableIcon />}
-								onClick={() => {
-									startDisableAdmin(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("admins.disableAdmin", "Disable admin")}
-							</Button>
-						)}
-						{showAddTraffic && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<AddDataIcon />}
-								onClick={() => handleAddDataLimit(ctxAdmin, 500)}
-								isLoading={contextAction === "addData"}
-							>
-								{t("admins.add500Gb", "Add 500 GB")}
-							</Button>
-						)}
-						{canManage && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<QuickPassIcon />}
-								onClick={() => handleQuickPassword(ctxAdmin)}
-								isLoading={contextAction === "quickPassword"}
-							>
-								{t("admins.quickPassword", "Generate new password")}
-							</Button>
-						)}
-						{showDelete && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								colorScheme="red"
-								leftIcon={<DeleteIcon />}
-								onClick={() => {
-									startDeleteDialog(ctxAdmin);
-									closeContextMenu();
-								}}
-							>
-								{t("delete", "Delete")}
-							</Button>
-						)}
-					</Stack>
-				</Box>
-				);
-			})()}
+			{contextMenu.visible &&
+				contextMenu.admin &&
+				(() => {
+					const ctxAdmin = contextMenu.admin;
+					const canManage = canManageAdminAccount(ctxAdmin);
+					const canChangeStatus =
+						canManage && ctxAdmin.username !== currentAdminUsername;
+					const showDisable =
+						canChangeStatus && ctxAdmin.status !== AdminStatus.Disabled;
+					const showEnable =
+						canChangeStatus && ctxAdmin.status === AdminStatus.Disabled;
+					const showDelete = canChangeStatus;
+					const showAddTraffic =
+						canManage &&
+						ctxAdmin.data_limit !== null &&
+						ctxAdmin.data_limit !== 0 &&
+						ctxAdmin.data_limit !== undefined;
+					return (
+						<Box
+							position="fixed"
+							top={contextMenu.y}
+							left={contextMenu.x}
+							bg={dialogBg}
+							borderWidth="1px"
+							borderColor={dialogBorderColor}
+							borderRadius="md"
+							boxShadow="lg"
+							zIndex={1500}
+							minW="220px"
+							onClick={(e) => e.stopPropagation()}
+							onContextMenu={(e) => {
+								e.preventDefault();
+								closeContextMenu();
+							}}
+							ref={contextMenuRef}
+						>
+							<Stack spacing={1} p={2}>
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<PencilIcon width={16} />}
+										onClick={() => {
+											openAdminDialog(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("admins.editAction", "Edit")}
+									</Button>
+								)}
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<ResetIcon />}
+										onClick={() => handleContextReset(ctxAdmin)}
+										isLoading={contextAction === "reset"}
+									>
+										{t("admins.resetUsage", "Reset usage")}
+									</Button>
+								)}
+								{showEnable && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<EnableIcon />}
+										onClick={() => {
+											handleEnableAdmin(ctxAdmin);
+											closeContextMenu();
+										}}
+										isLoading={
+											actionState?.type === "enableAdmin" &&
+											actionState?.username === ctxAdmin.username
+										}
+									>
+										{t("admins.enableAdmin", "Enable admin")}
+									</Button>
+								)}
+								{showDisable && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<DisableIcon />}
+										onClick={() => {
+											startDisableAdmin(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("admins.disableAdmin", "Disable admin")}
+									</Button>
+								)}
+								{showAddTraffic && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<AddDataIcon />}
+										onClick={() => handleAddDataLimit(ctxAdmin, 500)}
+										isLoading={contextAction === "addData"}
+									>
+										{t("admins.add500Gb", "Add 500 GB")}
+									</Button>
+								)}
+								{canManage && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										leftIcon={<QuickPassIcon />}
+										onClick={() => handleQuickPassword(ctxAdmin)}
+										isLoading={contextAction === "quickPassword"}
+									>
+										{t("admins.quickPassword", "Generate new password")}
+									</Button>
+								)}
+								{showDelete && (
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										colorScheme="red"
+										leftIcon={<DeleteIcon />}
+										onClick={() => {
+											startDeleteDialog(ctxAdmin);
+											closeContextMenu();
+										}}
+									>
+										{t("delete", "Delete")}
+									</Button>
+								)}
+							</Stack>
+						</Box>
+					);
+				})()}
 
 			<Modal isOpen={isQuickPassOpen} onClose={handleCloseQuickPass} isCentered>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>
-					{t("admins.quickPasswordModal.title", "New credentials")}
-				</ModalHeader>
-				<ModalCloseButton />
+				<ModalOverlay />
+				<ModalContent>
+					<ModalHeader>
+						{t("admins.quickPasswordModal.title", "New credentials")}
+					</ModalHeader>
+					<ModalCloseButton />
 					<ModalBody>
 						<Stack spacing={3}>
 							<Box>
@@ -2120,10 +2309,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 						</Stack>
 					</ModalBody>
 					<ModalFooter>
-					<Button onClick={handleCloseQuickPass}>{t("close")}</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+						<Button onClick={handleCloseQuickPass}>{t("close")}</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
 
 			<AlertDialog
 				isOpen={isDeleteDialogOpen}

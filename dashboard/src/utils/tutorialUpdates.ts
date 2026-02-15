@@ -73,7 +73,8 @@ export const writeTutorialStorage = (
 export const isTutorialUpdated = (
 	currentUpdated?: string | null,
 	storedUpdated?: string | null,
-) => Boolean(currentUpdated && storedUpdated && currentUpdated !== storedUpdated);
+) =>
+	Boolean(currentUpdated && storedUpdated && currentUpdated !== storedUpdated);
 
 export const acknowledgeTutorialIds = (
 	lang: string,

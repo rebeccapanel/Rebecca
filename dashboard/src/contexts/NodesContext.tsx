@@ -14,7 +14,7 @@ const configSchema = z
 				if (!trimmed) return null;
 				try {
 					return JSON.parse(trimmed);
-				} catch (err) {
+				} catch (_err) {
 					ctx.addIssue({
 						code: z.ZodIssueCode.custom,
 						message: "Invalid JSON for Xray config",
@@ -27,74 +27,122 @@ const configSchema = z
 	])
 	.nullish();
 
-export const NodeSchema = z.object({
-	name: z.string().min(1),
-	address: z
-		.string()
-		.min(1)
-		.refine((val) => {
-			// Allow IPv4, IPv6, or domain
-			const ipv4Regex =
-				/^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
-			const ipv6Regex =
-				/^\s*(?:(?:(?:[0-9a-f]{1,4}:){7}(?:[0-9a-f]{1,4}|:))|(?:(?:[0-9a-f]{1,4}:){6}(?::[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(?:(?:[0-9a-f]{1,4}:){5}(?:(?:(?::[0-9a-f]{1,4}){1,2})|:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(?:(?:[0-9a-f]{1,4}:){4}(?:(?:(?::[0-9a-f]{1,4}){1,3})|(?:(?::[0-9a-f]{1,4})?:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:){3}(?:(?::[0-9a-f]{1,4}){1,4})|(?:(?::[0-9a-f]{1,4}){0,2}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:){2}(?:(?::[0-9a-f]{1,4}){1,5})|(?:(?::[0-9a-f]{1,4}){0,3}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:)(?:(?::[0-9a-f]{1,4}){1,6})|(?:(?::[0-9a-f]{1,4}){0,4}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?::(?:(?::[0-9a-f]{1,4}){1,7}|(?:(?::[0-9a-f]{1,4}){0,5}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(?:%.+)?\s*$/;
-			const domainRegex =
-				/^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-			return (
-				ipv4Regex.test(val) || ipv6Regex.test(val) || domainRegex.test(val)
-			);
-		}, "Invalid IP address or domain"),
-	port: z
-		.number()
-		.min(1)
-		.or(z.string().transform((v) => parseFloat(v))),
-	api_port: z
-		.number()
-		.min(1)
-		.or(z.string().transform((v) => parseFloat(v))),
-	xray_version: z.string().nullable().optional(),
-	node_service_version: z.string().nullable().optional(),
-	id: z.number().nullable().optional(),
-	status: z
-		.enum(["connected", "connecting", "error", "disabled", "limited"])
-		.nullable()
-		.optional(),
-	message: z.string().nullable().optional(),
-	add_as_new_host: z.boolean().optional(),
-	usage_coefficient: z.number().or(z.string().transform((v) => parseFloat(v))),
-	data_limit: z
-		.number()
-		.nullable()
-		.optional()
-		.or(
-			z
-				.string()
-				.transform((v) => {
-					if (v === "" || v === null || v === undefined) {
-						return null;
-					}
-					const parsed = parseFloat(v);
-					return Number.isFinite(parsed) ? parsed : null;
-				})
-				.nullable()
-				.optional(),
-		),
-	uplink: z.number().nullable().optional(),
-	downlink: z.number().nullable().optional(),
-	use_nobetci: z.boolean().optional(),
-	access_insights_enabled: z.boolean().optional(),
-	nobetci_port: z.number().nullable().optional(),
-	certificate: z.string().optional(),
-	certificate_key: z.string().optional(),
-	certificate_token: z.string().optional(),
-	has_custom_certificate: z.boolean().optional(),
-	uses_default_certificate: z.boolean().optional(),
-	certificate_public_key: z.string().nullable().optional(),
-	node_certificate: z.string().nullable().optional(),
-	xray_config: configSchema,
-	sing_config: configSchema,
-	hysteria_config: configSchema,
-});
+export const NodeSchema = z
+	.object({
+		name: z.string().min(1),
+		address: z
+			.string()
+			.min(1)
+			.refine((val) => {
+				// Allow IPv4, IPv6, or domain
+				const ipv4Regex =
+					/^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+				const ipv6Regex =
+					/^\s*(?:(?:(?:[0-9a-f]{1,4}:){7}(?:[0-9a-f]{1,4}|:))|(?:(?:[0-9a-f]{1,4}:){6}(?::[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(?:(?:[0-9a-f]{1,4}:){5}(?:(?:(?::[0-9a-f]{1,4}){1,2})|:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(?:(?:[0-9a-f]{1,4}:){4}(?:(?:(?::[0-9a-f]{1,4}){1,3})|(?:(?::[0-9a-f]{1,4})?:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:){3}(?:(?::[0-9a-f]{1,4}){1,4})|(?:(?::[0-9a-f]{1,4}){0,2}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:){2}(?:(?::[0-9a-f]{1,4}){1,5})|(?:(?::[0-9a-f]{1,4}){0,3}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?:(?:(?:[0-9a-f]{1,4}:)(?:(?::[0-9a-f]{1,4}){1,6})|(?:(?::[0-9a-f]{1,4}){0,4}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(?::(?:(?::[0-9a-f]{1,4}){1,7}|(?:(?::[0-9a-f]{1,4}){0,5}:(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(?:%.+)?\s*$/;
+				const domainRegex =
+					/^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+				return (
+					ipv4Regex.test(val) || ipv6Regex.test(val) || domainRegex.test(val)
+				);
+			}, "Invalid IP address or domain"),
+		port: z
+			.number()
+			.min(1)
+			.or(z.string().transform((v) => parseFloat(v))),
+		api_port: z
+			.number()
+			.min(1)
+			.or(z.string().transform((v) => parseFloat(v))),
+		xray_version: z.string().nullable().optional(),
+		node_service_version: z.string().nullable().optional(),
+		id: z.number().nullable().optional(),
+		status: z
+			.enum(["connected", "connecting", "error", "disabled", "limited"])
+			.nullable()
+			.optional(),
+		message: z.string().nullable().optional(),
+		add_as_new_host: z.boolean().optional(),
+		usage_coefficient: z
+			.number()
+			.or(z.string().transform((v) => parseFloat(v))),
+		data_limit: z
+			.number()
+			.nullable()
+			.optional()
+			.or(
+				z
+					.string()
+					.transform((v) => {
+						if (v === "" || v === null || v === undefined) {
+							return null;
+						}
+						const parsed = parseFloat(v);
+						return Number.isFinite(parsed) ? parsed : null;
+					})
+					.nullable()
+					.optional(),
+			),
+		uplink: z.number().nullable().optional(),
+		downlink: z.number().nullable().optional(),
+		use_nobetci: z.boolean().optional(),
+		access_insights_enabled: z.boolean().optional(),
+		nobetci_port: z.number().nullable().optional(),
+		proxy_enabled: z.boolean().optional(),
+		proxy_type: z.enum(["http", "socks5"]).nullable().optional(),
+		proxy_host: z.string().nullable().optional(),
+		proxy_port: z
+			.number()
+			.nullable()
+			.optional()
+			.or(z.string().transform((v) => parseFloat(v))),
+		proxy_username: z.string().nullable().optional(),
+		proxy_password: z.string().nullable().optional(),
+		certificate: z.string().optional(),
+		certificate_key: z.string().optional(),
+		certificate_token: z.string().optional(),
+		has_custom_certificate: z.boolean().optional(),
+		uses_default_certificate: z.boolean().optional(),
+		certificate_public_key: z.string().nullable().optional(),
+		node_certificate: z.string().nullable().optional(),
+		xray_config: configSchema,
+		sing_config: configSchema,
+		hysteria_config: configSchema,
+	})
+	.superRefine((value, ctx) => {
+		if (!value.proxy_enabled) {
+			return;
+		}
+
+		if (!value.proxy_type) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["proxy_type"],
+				message: "Proxy type is required",
+			});
+		}
+
+		if (!value.proxy_host) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["proxy_host"],
+				message: "Proxy host is required",
+			});
+		}
+
+		if (
+			value.proxy_port === null ||
+			value.proxy_port === undefined ||
+			Number.isNaN(value.proxy_port) ||
+			value.proxy_port < 1 ||
+			value.proxy_port > 65535
+		) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["proxy_port"],
+				message: "Proxy port must be between 1 and 65535",
+			});
+		}
+	});
 
 export type NodeType = z.infer<typeof NodeSchema>;
 
@@ -112,6 +160,12 @@ export const getNodeDefaultValues = (): NodeType => ({
 	use_nobetci: false,
 	access_insights_enabled: false,
 	nobetci_port: null,
+	proxy_enabled: false,
+	proxy_type: null,
+	proxy_host: null,
+	proxy_port: null,
+	proxy_username: null,
+	proxy_password: null,
 	xray_config: null,
 	sing_config: null,
 	hysteria_config: null,

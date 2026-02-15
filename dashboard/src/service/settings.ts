@@ -144,9 +144,10 @@ export const updatePanelSettings = async (
 	});
 };
 
-export const getSubscriptionSettings = async (): Promise<SubscriptionSettingsBundle> => {
-	return apiFetch("/settings/subscriptions");
-};
+export const getSubscriptionSettings =
+	async (): Promise<SubscriptionSettingsBundle> => {
+		return apiFetch("/settings/subscriptions");
+	};
 
 export const updateSubscriptionSettings = async (
 	payload: SubscriptionTemplateSettingsUpdatePayload,

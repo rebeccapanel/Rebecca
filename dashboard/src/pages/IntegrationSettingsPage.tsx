@@ -1,8 +1,8 @@
 import {
 	Alert,
 	AlertIcon,
-	Box,
 	Badge,
+	Box,
 	Button,
 	chakra,
 	Divider,
@@ -31,13 +31,13 @@ import {
 	Spinner,
 	Stack,
 	Switch,
-	Textarea,
 	Tab,
 	TabList,
 	TabPanel,
 	TabPanels,
 	Tabs,
 	Text,
+	Textarea,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -50,31 +50,36 @@ import {
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
 import useGetUser from "hooks/useGetUser";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { fetch as apiFetch } from "service/http";
 import {
+	type AdminSubscriptionSettings,
 	getPanelSettings,
+	getSubscriptionSettings,
+	getSubscriptionTemplateContent,
 	getTelegramSettings,
+	issueSubscriptionCertificate,
 	type PanelSettingsResponse,
+	renewSubscriptionCertificate,
 	type SubscriptionSettingsBundle,
+	type SubscriptionTemplateContentResponse,
 	type SubscriptionTemplateSettings,
 	type SubscriptionTemplateSettingsUpdatePayload,
-	type SubscriptionTemplateContentResponse,
-	type AdminSubscriptionSettings,
-	type SubscriptionCertificate,
 	type TelegramSettingsResponse,
 	type TelegramSettingsUpdatePayload,
-	updatePanelSettings,
-	getSubscriptionSettings,
-	updateSubscriptionSettings,
 	updateAdminSubscriptionSettings,
-	getSubscriptionTemplateContent,
+	updatePanelSettings,
+	updateSubscriptionSettings,
 	updateSubscriptionTemplateContent,
-	issueSubscriptionCertificate,
-	renewSubscriptionCertificate,
 	updateTelegramSettings,
 } from "service/settings";
 import {
@@ -423,7 +428,9 @@ type FormValues = {
 
 const RefreshIcon = chakra(ArrowPathIcon, { baseStyle: { w: 4, h: 4 } });
 const SaveIcon = chakra(PaperAirplaneIcon, { baseStyle: { w: 4, h: 4 } });
-const ChevronDownIcon = chakra(HeroChevronDownIcon, { baseStyle: { w: 4, h: 4 } });
+const ChevronDownIcon = chakra(HeroChevronDownIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
 const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
 
 const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
@@ -484,7 +491,8 @@ const buildSubscriptionDefaults = (
 	use_custom_json_default: settings?.use_custom_json_default ?? false,
 	use_custom_json_for_v2rayn: settings?.use_custom_json_for_v2rayn ?? false,
 	use_custom_json_for_v2rayng: settings?.use_custom_json_for_v2rayng ?? false,
-	use_custom_json_for_streisand: settings?.use_custom_json_for_streisand ?? false,
+	use_custom_json_for_streisand:
+		settings?.use_custom_json_for_streisand ?? false,
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
 });
@@ -509,10 +517,12 @@ const cleanOverridePayload = (
 			if (!trimmed) {
 				return;
 			}
-			target[key] = trimmed as SubscriptionTemplateSettings[keyof SubscriptionTemplateSettings];
+			target[key] =
+				trimmed as SubscriptionTemplateSettings[keyof SubscriptionTemplateSettings];
 			return;
 		}
-		target[key] = value as SubscriptionTemplateSettings[keyof SubscriptionTemplateSettings];
+		target[key] =
+			value as SubscriptionTemplateSettings[keyof SubscriptionTemplateSettings];
 	});
 	return cleaned;
 };
@@ -642,8 +652,9 @@ export const IntegrationSettingsPage = () => {
 		}
 	}, [panelData]);
 
-	const [adminOverrides, setAdminOverrides] =
-		useState<Record<number, AdminSubscriptionSettings>>({});
+	const [adminOverrides, setAdminOverrides] = useState<
+		Record<number, AdminSubscriptionSettings>
+	>({});
 	const [savingAdminId, setSavingAdminId] = useState<number | null>(null);
 	const [selectedAdminId, setSelectedAdminId] = useState<number | null>(null);
 	const [activeIntegrationTab, setActiveIntegrationTab] = useState<number>(0);
@@ -816,15 +827,18 @@ export const IntegrationSettingsPage = () => {
 		}
 	}, [subscriptionBundle, resetSubscription]);
 
-	const integrationTabKeys: string[] = ["panel", "telegram", "subscriptions"];
-	const splitHash = () => {
+	const integrationTabKeys = useMemo(
+		() => ["panel", "telegram", "subscriptions"],
+		[],
+	);
+	const splitHash = useCallback(() => {
 		const hash = window.location.hash || "";
 		const idx = hash.indexOf("#", 1);
 		return {
 			base: idx >= 0 ? hash.slice(0, idx) : hash,
 			tab: idx >= 0 ? hash.slice(idx + 1) : "",
 		};
-	};
+	}, []);
 	useEffect(() => {
 		const syncTabFromHash = () => {
 			const { tab } = splitHash();
@@ -844,8 +858,7 @@ export const IntegrationSettingsPage = () => {
 		syncTabFromHash();
 		window.addEventListener("hashchange", syncTabFromHash);
 		return () => window.removeEventListener("hashchange", syncTabFromHash);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [integrationTabKeys, splitHash]);
 
 	const mutation = useMutation(updateTelegramSettings, {
 		onSuccess: (updated) => {
@@ -897,7 +910,7 @@ export const IntegrationSettingsPage = () => {
 								settings: updated,
 								admins: [],
 								certificates: [],
-						  },
+							},
 			);
 			toast({
 				title: t("settings.subscriptions.saved"),
@@ -932,7 +945,7 @@ export const IntegrationSettingsPage = () => {
 									admins: prev.admins.map((admin) =>
 										admin.id === updated.id ? updated : admin,
 									),
-							  }
+								}
 							: prev,
 				);
 				toast({
@@ -949,7 +962,11 @@ export const IntegrationSettingsPage = () => {
 	);
 
 	const templateContentMutation = useMutation(
-		(payload: { templateKey: TemplateKey; content: string; adminId: number | null }) =>
+		(payload: {
+			templateKey: TemplateKey;
+			content: string;
+			adminId: number | null;
+		}) =>
 			updateSubscriptionTemplateContent(payload.templateKey, {
 				content: payload.content,
 				admin_id: payload.adminId ?? undefined,
@@ -986,12 +1003,12 @@ export const IntegrationSettingsPage = () => {
 										(existing) => existing.domain !== cert.domain,
 									),
 								],
-						  }
+							}
 						: {
 								settings: buildSubscriptionDefaults(),
 								admins: [],
 								certificates: [cert],
-						  },
+							},
 			);
 			setCertificateForm((prev) => ({ ...prev, domains: "" }));
 			toast({
@@ -1018,7 +1035,7 @@ export const IntegrationSettingsPage = () => {
 									certificates: prev.certificates.map((existing) =>
 										existing.domain === cert.domain ? cert : existing,
 									),
-							  }
+								}
 							: prev,
 				);
 			}
@@ -1092,19 +1109,20 @@ export const IntegrationSettingsPage = () => {
 		subscriptionSettingsMutation.mutate(payload);
 	};
 
-const handleAdminFieldChange = (
-	adminId: number,
-	field: keyof AdminSubscriptionSettings,
-	value: string | null,
-) => {
-	setAdminOverrides((prev) => ({
-		...prev,
-		[adminId]: {
-			...(prev[adminId] || {}),
-			[field]: value as AdminSubscriptionSettings[keyof AdminSubscriptionSettings],
-		},
-	}));
-};
+	const handleAdminFieldChange = (
+		adminId: number,
+		field: keyof AdminSubscriptionSettings,
+		value: string | null,
+	) => {
+		setAdminOverrides((prev) => ({
+			...prev,
+			[adminId]: {
+				...(prev[adminId] || {}),
+				[field]:
+					value as AdminSubscriptionSettings[keyof AdminSubscriptionSettings],
+			},
+		}));
+	};
 
 	const handleAdminTemplateChange = (
 		adminId: number,
@@ -1206,7 +1224,7 @@ const handleAdminFieldChange = (
 						admin.username.toLowerCase().includes(q) ||
 						(admin.subscription_domain || "").toLowerCase().includes(q)
 					);
-			  });
+				});
 
 	const handleTemplateSave = () => {
 		if (!templateDialog) return;
@@ -1842,7 +1860,6 @@ const handleAdminFieldChange = (
 											"Control subscription links, templates, and certificates.",
 										)}
 									</Text>
-
 									<Box borderWidth="1px" borderRadius="lg" p={4}>
 										<Heading size="sm" mb={1}>
 											{t(
@@ -1866,9 +1883,7 @@ const handleAdminFieldChange = (
 												</FormLabel>
 												<Input
 													placeholder="https://sub.example.com"
-													{...subscriptionRegister(
-														"subscription_url_prefix",
-													)}
+													{...subscriptionRegister("subscription_url_prefix")}
 												/>
 												<FormHelperText>
 													{t(
@@ -1926,9 +1941,7 @@ const handleAdminFieldChange = (
 												</FormLabel>
 												<Input
 													placeholder="https://t.me/support"
-													{...subscriptionRegister(
-														"subscription_support_url",
-													)}
+													{...subscriptionRegister("subscription_support_url")}
 												/>
 												<FormHelperText>
 													{t(
@@ -1981,10 +1994,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2007,10 +2017,7 @@ const handleAdminFieldChange = (
 															openTemplateEditor("home_page_template", null)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2038,10 +2045,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2055,9 +2059,7 @@ const handleAdminFieldChange = (
 												<HStack spacing={2} align="stretch">
 													<Input
 														flex="1"
-														{...subscriptionRegister(
-															"clash_settings_template",
-														)}
+														{...subscriptionRegister("clash_settings_template")}
 													/>
 													<Button
 														size="sm"
@@ -2069,10 +2071,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2100,10 +2099,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2117,9 +2113,7 @@ const handleAdminFieldChange = (
 												<HStack spacing={2} align="stretch">
 													<Input
 														flex="1"
-														{...subscriptionRegister(
-															"v2ray_settings_template",
-														)}
+														{...subscriptionRegister("v2ray_settings_template")}
 													/>
 													<Button
 														size="sm"
@@ -2131,10 +2125,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2162,10 +2153,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2193,10 +2181,7 @@ const handleAdminFieldChange = (
 															)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2219,10 +2204,7 @@ const handleAdminFieldChange = (
 															openTemplateEditor("mux_template", null)
 														}
 													>
-														{t(
-															"settings.subscriptions.editTemplate",
-															"Edit",
-														)}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
@@ -2392,7 +2374,6 @@ const handleAdminFieldChange = (
 											/>
 										</SimpleGrid>
 									</Box>
-
 									<Box borderWidth="1px" borderRadius="lg" p={4}>
 										<Heading size="sm" mb={1}>
 											{t(
@@ -2436,9 +2417,13 @@ const handleAdminFieldChange = (
 																: t(
 																		"settings.subscriptions.selectAdminPlaceholder",
 																		"Select an admin to edit overrides",
-																  )}
+																	)}
 														</MenuButton>
-														<MenuList minW="320px" maxH="320px" overflowY="auto">
+														<MenuList
+															minW="320px"
+															maxH="320px"
+															overflowY="auto"
+														>
 															<Box
 																p={3}
 																borderBottom="1px solid"
@@ -2524,14 +2509,18 @@ const handleAdminFieldChange = (
 														{(() => {
 															const admin = adminOverrides[selectedAdminId];
 															if (!admin) return null;
-															const settings = admin.subscription_settings || {};
+															const settings =
+																admin.subscription_settings || {};
 															return (
 																<>
 																	<Flex
 																		justify="space-between"
 																		align={{ base: "flex-start", md: "center" }}
 																		gap={3}
-																		flexDirection={{ base: "column", md: "row" }}
+																		flexDirection={{
+																			base: "column",
+																			md: "row",
+																		}}
 																	>
 																		<Box>
 																			<Text fontWeight="semibold">
@@ -2553,7 +2542,9 @@ const handleAdminFieldChange = (
 																			<Button
 																				size="sm"
 																				variant="ghost"
-																				onClick={() => handleAdminReset(admin.id)}
+																				onClick={() =>
+																					handleAdminReset(admin.id)
+																				}
 																				isDisabled={savingAdminId === admin.id}
 																			>
 																				{t("actions.reset", "Reset")}
@@ -2717,8 +2708,7 @@ const handleAdminFieldChange = (
 																					flex="1"
 																					placeholder={
 																						subscriptionBundle?.settings
-																							.subscription_page_template ||
-																						""
+																							.subscription_page_template || ""
 																					}
 																					value={
 																						settings.subscription_page_template ??
@@ -2763,7 +2753,9 @@ const handleAdminFieldChange = (
 																						subscriptionBundle?.settings
 																							.home_page_template || ""
 																					}
-																					value={settings.home_page_template ?? ""}
+																					value={
+																						settings.home_page_template ?? ""
+																					}
 																					onChange={(event) =>
 																						handleAdminTemplateChange(
 																							admin.id,
@@ -2801,8 +2793,7 @@ const handleAdminFieldChange = (
 																					flex="1"
 																					placeholder={
 																						subscriptionBundle?.settings
-																							.clash_subscription_template ||
-																						""
+																							.clash_subscription_template || ""
 																					}
 																					value={
 																						settings.clash_subscription_template ??
@@ -2888,8 +2879,7 @@ const handleAdminFieldChange = (
 																					flex="1"
 																					placeholder={
 																						subscriptionBundle?.settings
-																							.v2ray_subscription_template ||
-																							""
+																							.v2ray_subscription_template || ""
 																					}
 																					value={
 																						settings.v2ray_subscription_template ??
@@ -3094,8 +3084,14 @@ const handleAdminFieldChange = (
 
 																	<Divider my={4} />
 
-																	<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-																		<FormControl display="flex" alignItems="center">
+																	<SimpleGrid
+																		columns={{ base: 1, md: 2 }}
+																		spacing={4}
+																	>
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
 																					{t(
@@ -3126,7 +3122,10 @@ const handleAdminFieldChange = (
 																				}
 																			/>
 																		</FormControl>
-																		<FormControl display="flex" alignItems="center">
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
 																					{t(
@@ -3157,7 +3156,10 @@ const handleAdminFieldChange = (
 																				}
 																			/>
 																		</FormControl>
-																		<FormControl display="flex" alignItems="center">
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
 																					{t(
@@ -3188,7 +3190,10 @@ const handleAdminFieldChange = (
 																				}
 																			/>
 																		</FormControl>
-																		<FormControl display="flex" alignItems="center">
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
 																					{t(
@@ -3219,7 +3224,10 @@ const handleAdminFieldChange = (
 																				}
 																			/>
 																		</FormControl>
-																		<FormControl display="flex" alignItems="center">
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
 																					{t(
@@ -3284,8 +3292,8 @@ const handleAdminFieldChange = (
 											</Stack>
 										)}
 									</Box>
-
-\t\t\t\t\t\t\t\t<Box borderWidth="1px" borderRadius="lg" p={4}>
+									\t\t\t\t\t\t\t\t
+									<Box borderWidth="1px" borderRadius="lg" p={4}>
 										<Heading size="sm" mb={1}>
 											{t(
 												"settings.subscriptions.certificateTitle",
@@ -3317,10 +3325,7 @@ const handleAdminFieldChange = (
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"settings.subscriptions.domains",
-														"Domains",
-													)}
+													{t("settings.subscriptions.domains", "Domains")}
 												</FormLabel>
 												<Textarea
 													placeholder={t(
@@ -3403,11 +3408,11 @@ const handleAdminFieldChange = (
 																	{cert.last_issued_at
 																		? new Date(
 																				cert.last_issued_at,
-																		  ).toLocaleString()
+																			).toLocaleString()
 																		: t(
 																				"settings.subscriptions.never",
 																				"Never",
-																		  )}
+																			)}
 																</Text>
 																<Text fontSize="sm" color="gray.500">
 																	{t(
@@ -3418,22 +3423,28 @@ const handleAdminFieldChange = (
 																	{cert.last_renewed_at
 																		? new Date(
 																				cert.last_renewed_at,
-																		  ).toLocaleString()
+																			).toLocaleString()
 																		: t(
 																				"settings.subscriptions.never",
 																				"Never",
-																		  )}
+																			)}
 																</Text>
 															</Box>
 															<HStack>
 																{cert.email ? (
-																	<Badge colorScheme="purple">{cert.email}</Badge>
+																	<Badge colorScheme="purple">
+																		{cert.email}
+																	</Badge>
 																) : null}
 																<Button
 																	size="sm"
 																	variant="outline"
-																	leftIcon={<ArrowPathIcon width={16} height={16} />}
-																	onClick={() => handleRenewCertificate(cert.domain)}
+																	leftIcon={
+																		<ArrowPathIcon width={16} height={16} />
+																	}
+																	onClick={() =>
+																		handleRenewCertificate(cert.domain)
+																	}
 																	isLoading={
 																		renewCertificateMutation.isLoading &&
 																		renewingDomain === cert.domain
@@ -3451,7 +3462,6 @@ const handleAdminFieldChange = (
 											</Stack>
 										)}
 									</Box>
-
 									<Flex gap={3} justify="flex-end">
 										<Button
 											variant="outline"
@@ -3467,7 +3477,8 @@ const handleAdminFieldChange = (
 											type="submit"
 											isLoading={subscriptionSettingsMutation.isLoading}
 											isDisabled={
-												!isSubscriptionDirty && !subscriptionSettingsMutation.isLoading
+												!isSubscriptionDirty &&
+												!subscriptionSettingsMutation.isLoading
 											}
 										>
 											{t("settings.save")}
@@ -3489,10 +3500,7 @@ const handleAdminFieldChange = (
 				<ModalContent>
 					<ModalHeader>
 						{templateDialog
-							? t(
-									"settings.subscriptions.editTemplate",
-									"Edit template",
-							  )
+							? t("settings.subscriptions.editTemplate", "Edit template")
 							: ""}
 					</ModalHeader>
 					<ModalCloseButton />
@@ -3522,11 +3530,7 @@ const handleAdminFieldChange = (
 									</Text>
 								)}
 								<Text fontSize="sm" color="gray.500">
-									{t(
-										"settings.subscriptions.templatePath",
-										"Using template",
-									)}
-									:{" "}
+									{t("settings.subscriptions.templatePath", "Using template")}:{" "}
 									{templateMeta?.template_name ||
 										templateDialog?.templateKey ||
 										""}
@@ -3536,8 +3540,8 @@ const handleAdminFieldChange = (
 								</Text>
 								{templateMeta?.resolved_path ? (
 									<Text fontSize="xs" color="gray.500">
-										{t("settings.subscriptions.resolvedPath", "Resolved path")}:
-										{" "}{templateMeta.resolved_path}
+										{t("settings.subscriptions.resolvedPath", "Resolved path")}:{" "}
+										{templateMeta.resolved_path}
 									</Text>
 								) : null}
 								<Box h="420px">
@@ -3549,7 +3553,9 @@ const handleAdminFieldChange = (
 									) : (
 										<Textarea
 											value={templateContent}
-											onChange={(event) => setTemplateContent(event.target.value)}
+											onChange={(event) =>
+												setTemplateContent(event.target.value)
+											}
 											h="400px"
 											fontFamily="mono"
 										/>

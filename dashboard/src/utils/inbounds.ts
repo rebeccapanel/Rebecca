@@ -266,11 +266,8 @@ export const protocolOptions: Protocol[] = [
 	"http",
 	"socks",
 ];
-export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] = [
-	"tcp,udp",
-	"tcp",
-	"udp",
-];
+export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] =
+	["tcp,udp", "tcp", "udp"];
 export const streamNetworks: StreamNetwork[] = [
 	"tcp",
 	"ws",
@@ -373,7 +370,7 @@ const hasInitialField = (
 		if (!current || typeof current !== "object") {
 			return false;
 		}
-		if (!Object.prototype.hasOwnProperty.call(current, key)) {
+		if (!Object.hasOwn(current, key)) {
 			return false;
 		}
 		current = current[key];
@@ -463,16 +460,18 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
 	return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-const certificateToForm = (certificate: Record<string, any>): TlsCertificateForm => {
+const certificateToForm = (
+	certificate: Record<string, any>,
+): TlsCertificateForm => {
 	const hasFile =
 		typeof certificate?.certificateFile === "string" ||
 		typeof certificate?.keyFile === "string";
 	const certContent = Array.isArray(certificate?.certificate)
 		? certificate.certificate.join("\n")
-		: certificate?.certificate ?? "";
+		: (certificate?.certificate ?? "");
 	const keyContent = Array.isArray(certificate?.key)
 		? certificate.key.join("\n")
-		: certificate?.key ?? "";
+		: (certificate?.key ?? "");
 	return {
 		useFile: hasFile || (!certContent && !keyContent),
 		certFile: certificate?.certificateFile ?? "",
@@ -485,14 +484,17 @@ const certificateToForm = (certificate: Record<string, any>): TlsCertificateForm
 	};
 };
 
-const certificateFromForm = (certificate: TlsCertificateForm): Record<string, any> => {
+const certificateFromForm = (
+	certificate: TlsCertificateForm,
+): Record<string, any> => {
 	if (certificate.useFile) {
 		return cleanObject({
 			certificateFile: certificate.certFile?.trim(),
 			keyFile: certificate.keyFile?.trim(),
 			oneTimeLoading: certificate.oneTimeLoading,
 			usage: certificate.usage || undefined,
-			buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+			buildChain:
+				certificate.usage === "issue" ? certificate.buildChain : undefined,
 		});
 	}
 	return cleanObject({
@@ -500,7 +502,8 @@ const certificateFromForm = (certificate: TlsCertificateForm): Record<string, an
 		key: certificate.key ? certificate.key.split("\n") : [],
 		oneTimeLoading: certificate.oneTimeLoading,
 		usage: certificate.usage || undefined,
-		buildChain: certificate.usage === "issue" ? certificate.buildChain : undefined,
+		buildChain:
+			certificate.usage === "issue" ? certificate.buildChain : undefined,
 	});
 };
 
@@ -767,8 +770,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			tlsSettings.disableSystemRoot ?? base.tlsDisableSystemRoot,
 		),
 		tlsEnableSessionResumption: Boolean(
-			tlsSettings.enableSessionResumption ??
-				base.tlsEnableSessionResumption,
+			tlsSettings.enableSessionResumption ?? base.tlsEnableSessionResumption,
 		),
 		tlsCertificates: tlsCertificates,
 		tlsAlpn: tlsAlpn.length ? tlsAlpn : base.tlsAlpn,
@@ -793,9 +795,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityFingerprint:
 			realitySettingsMeta.fingerprint ?? base.realityFingerprint,
 		realityTarget:
-			realitySettings.target ??
-			realitySettings.dest ??
-			base.realityTarget,
+			realitySettings.target ?? realitySettings.dest ?? base.realityTarget,
 		realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
 		realityServerNames: realityServerNames.length
 			? joinComma(realityServerNames)
@@ -816,14 +816,12 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			realitySettingsMeta.spiderX ??
 			realitySettings.spiderX ??
 			base.realitySpiderX,
-		realityServerName:
-			realitySettingsMeta.serverName ?? base.realityServerName,
+		realityServerName: realitySettingsMeta.serverName ?? base.realityServerName,
 		realityPublicKey:
 			realitySettingsMeta.publicKey ??
 			realitySettings.publicKey ??
 			base.realityPublicKey,
-		realityMldsa65Seed:
-			realitySettings.mldsa65Seed ?? base.realityMldsa65Seed,
+		realityMldsa65Seed: realitySettings.mldsa65Seed ?? base.realityMldsa65Seed,
 		realityMldsa65Verify:
 			realitySettingsMeta.mldsa65Verify ??
 			realitySettings.mldsa65Verify ??
@@ -1250,20 +1248,18 @@ const buildStreamSettings = (
 		const mode = values.xhttpMode;
 		const headers = headersFromForm(values.xhttpHeaders);
 		const xhttpSettings = cleanObject({
-			path: shouldIncludeValue(
-				values.xhttpPath,
-				defaults.xhttpPath,
-				initial,
-				["streamSettings", "xhttpSettings", "path"],
-			)
+			path: shouldIncludeValue(values.xhttpPath, defaults.xhttpPath, initial, [
+				"streamSettings",
+				"xhttpSettings",
+				"path",
+			])
 				? values.xhttpPath
 				: undefined,
-			host: shouldIncludeValue(
-				values.xhttpHost,
-				defaults.xhttpHost,
-				initial,
-				["streamSettings", "xhttpSettings", "host"],
-			)
+			host: shouldIncludeValue(values.xhttpHost, defaults.xhttpHost, initial, [
+				"streamSettings",
+				"xhttpSettings",
+				"host",
+			])
 				? values.xhttpHost
 				: undefined,
 			headers: headers || undefined,
@@ -1331,12 +1327,11 @@ const buildStreamSettings = (
 				)
 					? values.xhttpNoGRPCHeader || undefined
 					: undefined,
-			mode: shouldIncludeValue(
-				mode,
-				defaults.xhttpMode,
-				initial,
-				["streamSettings", "xhttpSettings", "mode"],
-			)
+			mode: shouldIncludeValue(mode, defaults.xhttpMode, initial, [
+				"streamSettings",
+				"xhttpSettings",
+				"mode",
+			])
 				? mode
 				: undefined,
 		});
@@ -1355,7 +1350,8 @@ const buildStreamSettings = (
 		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
 		tlsPayload.cipherSuites = values.tlsCipherSuites || undefined;
 		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
-		tlsPayload.verifyPeerCertByName = values.tlsVerifyPeerCertByName || undefined;
+		tlsPayload.verifyPeerCertByName =
+			values.tlsVerifyPeerCertByName || undefined;
 		delete tlsPayload.verifyPeerCertInNames; // Remove old format
 		tlsPayload.disableSystemRoot = values.tlsDisableSystemRoot;
 		tlsPayload.enableSessionResumption = values.tlsEnableSessionResumption;
@@ -1378,8 +1374,7 @@ const buildStreamSettings = (
 
 	if (values.streamSecurity === "reality") {
 		const realityPayload =
-			values.realityRawSettings &&
-			typeof values.realityRawSettings === "object"
+			values.realityRawSettings && typeof values.realityRawSettings === "object"
 				? { ...values.realityRawSettings }
 				: {};
 		const serverNames = splitLines(values.realityServerNames);
@@ -1391,8 +1386,10 @@ const buildStreamSettings = (
 		realityPayload.dest = target || undefined;
 		realityPayload.serverNames = serverNames.length ? serverNames : undefined;
 		realityPayload.privateKey = values.realityPrivateKey?.trim() || undefined;
-		realityPayload.minClientVer = values.realityMinClientVer?.trim() || undefined;
-		realityPayload.maxClientVer = values.realityMaxClientVer?.trim() || undefined;
+		realityPayload.minClientVer =
+			values.realityMinClientVer?.trim() || undefined;
+		realityPayload.maxClientVer =
+			values.realityMaxClientVer?.trim() || undefined;
 		realityPayload.maxTimediff = parseOptionalNumber(values.realityMaxTimediff);
 		realityPayload.shortIds = shortIds.length ? shortIds : undefined;
 		realityPayload.mldsa65Seed = values.realityMldsa65Seed?.trim() || undefined;
@@ -1443,14 +1440,14 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-	case "trojan":
+		case "trojan":
 			if (values.fallbacks.length) {
 				base.fallbacks = values.fallbacks
 					.map(formToFallback)
 					.filter((fallback) => Object.keys(fallback).length);
 			}
 			break;
-	case "shadowsocks":
+		case "shadowsocks":
 			base.network = values.shadowsocksNetwork || "tcp,udp";
 			base.method = values.shadowsocksMethod || undefined;
 			base.password = values.shadowsocksPassword || undefined;

@@ -102,6 +102,47 @@ type HostData = {
 	use_sni_as_host: boolean;
 };
 
+const coerceHostValue = <Key extends keyof HostData>(
+	key: Key,
+	value: unknown,
+	currentData: HostData,
+): HostData[Key] => {
+	if (key === "sort") {
+		const numeric = Number(value);
+		return Number.isFinite(numeric)
+			? (numeric as HostData[Key])
+			: (currentData.sort as HostData[Key]);
+	}
+	if (key === "port") {
+		if (value === null || value === "") {
+			return null as HostData[Key];
+		}
+		const numeric = Number(value);
+		return Number.isFinite(numeric)
+			? (numeric as HostData[Key])
+			: (currentData.port as HostData[Key]);
+	}
+	if (key === "id") {
+		if (value === null || value === "") {
+			return null as HostData[Key];
+		}
+		const numeric = Number(value);
+		return Number.isFinite(numeric)
+			? (numeric as HostData[Key])
+			: (currentData.id as HostData[Key]);
+	}
+	if (
+		key === "mux_enable" ||
+		key === "allowinsecure" ||
+		key === "is_disabled" ||
+		key === "random_user_agent" ||
+		key === "use_sni_as_host"
+	) {
+		return Boolean(value) as HostData[Key];
+	}
+	return (value ?? "") as HostData[Key];
+};
+
 const EMPTY_HOST_DATA: HostData = {
 	id: null,
 	remark: "",
@@ -641,11 +682,7 @@ const HostListRow: FC<HostCardProps> = ({
 						onPointerDown={(event) => event.stopPropagation()}
 						aria-label={t("hostsPage.toggleActive")}
 					/>
-					<Text
-						fontSize="sm"
-						color="gray.600"
-						_dark={{ color: "gray.300" }}
-					>
+					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
 						{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
 					</Text>
 					<IconButton
@@ -770,6 +807,8 @@ type HostDetailModalProps = {
 	onDelete: (uid: string) => void;
 	saving: boolean;
 	deleting: boolean;
+	mode?: "edit" | "clone";
+	onClone?: (uid: string) => void;
 };
 
 const HostDetailModal: FC<HostDetailModalProps> = ({
@@ -784,31 +823,43 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	onDelete,
 	saving,
 	deleting,
+	mode = "edit",
+	onClone,
 }) => {
 	const { t } = useTranslation();
-	const [jsonData, setJsonData] = useState<Record<string, unknown> | null>(
-		null,
-	);
+	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
 	const updatingFromJsonRef = useRef(false);
-	const resolvedHost = host ?? {
+	const _resolvedHost = host ?? {
 		uid: "",
 		inboundTag: "",
 		initialInboundTag: "",
 		data: EMPTY_HOST_DATA,
 		original: EMPTY_HOST_DATA,
 	};
+	const isCloneMode = mode === "clone";
 	const dirty = host ? isHostDirty(host) : false;
-	const hostPayload = host
-		? {
-				inboundTag: host.inboundTag,
-				...host.data,
-			}
-		: null;
-
+	const canSubmit = host
+		? Boolean(
+				host.inboundTag && host.data.remark.trim() && host.data.address.trim(),
+			)
+		: false;
+	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
+	const primaryLabel = isCloneMode
+		? t("hostsPage.clone.submit")
+		: t("hostsPage.save");
+	const hostPayload = useMemo(() => {
+		if (!host) {
+			return null;
+		}
+		return {
+			inboundTag: host.inboundTag,
+			...host.data,
+		};
+	}, [host]);
 	useEffect(() => {
 		if (!hostPayload) {
-			setJsonData(null);
+			setJsonText("");
 			setJsonError(null);
 			return;
 		}
@@ -816,56 +867,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 			updatingFromJsonRef.current = false;
 			return;
 		}
-		setJsonData(hostPayload);
+		const formatted = JSON.stringify(hostPayload, null, 2);
+		setJsonText((prev) => (prev === formatted ? prev : formatted));
 		setJsonError(null);
 	}, [hostPayload]);
-
-	const coerceHostValue = <Key extends keyof HostData>(
-		key: Key,
-		value: unknown,
-	): HostData[Key] => {
-		const currentData = resolvedHost.data;
-		if (key === "sort") {
-			const numeric = Number(value);
-			return Number.isFinite(numeric)
-				? (numeric as HostData[Key])
-				: (currentData.sort as HostData[Key]);
-		}
-		if (key === "port") {
-			if (value === null || value === "") {
-				return null as HostData[Key];
-			}
-			const numeric = Number(value);
-			return Number.isFinite(numeric)
-				? (numeric as HostData[Key])
-				: (currentData.port as HostData[Key]);
-		}
-		if (key === "id") {
-			if (value === null || value === "") {
-				return null as HostData[Key];
-			}
-			const numeric = Number(value);
-			return Number.isFinite(numeric)
-				? (numeric as HostData[Key])
-				: (currentData.id as HostData[Key]);
-		}
-		if (
-			key === "mux_enable" ||
-			key === "allowinsecure" ||
-			key === "is_disabled" ||
-			key === "random_user_agent" ||
-			key === "use_sni_as_host"
-		) {
-			return Boolean(value) as HostData[Key];
-		}
-		return (value ?? "") as HostData[Key];
-	};
 
 	const handleJsonEditorChange = useCallback(
 		(value: string) => {
 			if (!host) {
 				return;
 			}
+			setJsonText(value);
 			try {
 				const parsed = JSON.parse(value);
 				if (!parsed || typeof parsed !== "object") {
@@ -883,17 +895,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				}
 
 				(Object.keys(host.data) as Array<keyof HostData>).forEach((key) => {
-					if (Object.prototype.hasOwnProperty.call(payload, key)) {
-						onChange(host.uid, key, coerceHostValue(key, payload[key]));
+					if (Object.hasOwn(payload, key)) {
+						onChange(
+							host.uid,
+							key,
+							coerceHostValue(key, payload[key], host.data),
+						);
 					}
 				});
 
-				setJsonData(parsed as Record<string, unknown>);
 				setJsonError(null);
 			} catch (error) {
-				setJsonError(
-					error instanceof Error ? error.message : "Invalid JSON",
-				);
+				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
 			}
 		},
 		[host, onChange, onChangeInbound],
@@ -918,8 +931,19 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				<ModalHeader pb={1}>
 					<VStack align="stretch" spacing={1}>
 						<Text fontWeight="semibold" fontSize="lg">
-							{host.data.remark || t("hostsPage.untitledHost")}
+							{isCloneMode
+								? t("hostsPage.clone.title")
+								: host.data.remark || t("hostsPage.untitledHost")}
 						</Text>
+						{isCloneMode && (
+							<Text
+								fontSize="sm"
+								color="gray.500"
+								_dark={{ color: "gray.300" }}
+							>
+								{t("hostsPage.clone.description")}
+							</Text>
+						)}
 					</VStack>
 				</ModalHeader>
 				<ModalBody>
@@ -931,294 +955,300 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 						<TabPanels>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={5}>
-						<Card variant="outline">
-							<CardHeader pb={2}>
-								<Text fontWeight="semibold">
-									{t("hostsPage.section.general")}
-								</Text>
-							</CardHeader>
-							<CardBody pt={0}>
-								<VStack align="stretch" spacing={4}>
-									<FormControl>
-										<FormLabel>{t("hostsDialog.remark")}</FormLabel>
-										<InputGroup>
-											<Input
-												value={host.data.remark}
-												onChange={(event) =>
-													onChange(host.uid, "remark", event.target.value)
-												}
-											/>
-											<InputRightElement
-												width="auto"
-												pr={2}
-												pointerEvents="auto"
-											>
-												<DynamicTokensPopover />
-											</InputRightElement>
-										</InputGroup>
-									</FormControl>
-									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-											<Select
-												value={host.inboundTag}
-												onChange={(event) =>
-													onChangeInbound(host.uid, event.target.value)
-												}
-											>
-												{inboundOptions.map((option) => (
-													<option key={option.value} value={option.value}>
-														{option.label}
-													</option>
-												))}
-											</Select>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-											<NumberInput
-												value={host.data.sort}
-												allowMouseWheel
-												onChange={(_, num) =>
-													onChange(
-														host.uid,
-														"sort",
-														Number.isNaN(num) ? host.data.sort : num,
-													)
-												}
-											>
-												<NumberInputField />
-											</NumberInput>
-										</FormControl>
-									</SimpleGrid>
-									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.address")}</FormLabel>
-											<InputGroup>
-												<Input
-													value={host.data.address}
-													onChange={(event) =>
-														onChange(host.uid, "address", event.target.value)
-													}
-												/>
-												<InputRightElement
-													width="auto"
-													pr={2}
-													pointerEvents="auto"
-												>
-													<DynamicTokensPopover />
-												</InputRightElement>
-											</InputGroup>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.port")}</FormLabel>
-											<NumberInput
-												value={host.data.port ?? ""}
-												allowMouseWheel
-												onChange={(_, num) =>
-													onChange(
-														host.uid,
-														"port",
-														Number.isNaN(num) ? null : num,
-													)
-												}
-											>
-												<NumberInputField />
-											</NumberInput>
-										</FormControl>
-									</SimpleGrid>
-									<FormControl>
-										<FormLabel>{t("hostsDialog.path")}</FormLabel>
-										<Input
-											value={host.data.path}
-											onChange={(event) =>
-												onChange(host.uid, "path", event.target.value)
-											}
-											placeholder="/"
-										/>
-									</FormControl>
-								</VStack>
-							</CardBody>
-						</Card>
+									<Card variant="outline">
+										<CardHeader pb={2}>
+											<Text fontWeight="semibold">
+												{t("hostsPage.section.general")}
+											</Text>
+										</CardHeader>
+										<CardBody pt={0}>
+											<VStack align="stretch" spacing={4}>
+												<FormControl>
+													<FormLabel>{t("hostsDialog.remark")}</FormLabel>
+													<InputGroup>
+														<Input
+															value={host.data.remark}
+															onChange={(event) =>
+																onChange(host.uid, "remark", event.target.value)
+															}
+														/>
+														<InputRightElement
+															width="auto"
+															pr={2}
+															pointerEvents="auto"
+														>
+															<DynamicTokensPopover />
+														</InputRightElement>
+													</InputGroup>
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
+														<Select
+															value={host.inboundTag}
+															onChange={(event) =>
+																onChangeInbound(host.uid, event.target.value)
+															}
+														>
+															{inboundOptions.map((option) => (
+																<option key={option.value} value={option.value}>
+																	{option.label}
+																</option>
+															))}
+														</Select>
+													</FormControl>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.sort")}</FormLabel>
+														<NumberInput
+															value={host.data.sort}
+															allowMouseWheel
+															onChange={(_, num) =>
+																onChange(
+																	host.uid,
+																	"sort",
+																	Number.isNaN(num) ? host.data.sort : num,
+																)
+															}
+														>
+															<NumberInputField />
+														</NumberInput>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.address")}</FormLabel>
+														<InputGroup>
+															<Input
+																value={host.data.address}
+																onChange={(event) =>
+																	onChange(
+																		host.uid,
+																		"address",
+																		event.target.value,
+																	)
+																}
+															/>
+															<InputRightElement
+																width="auto"
+																pr={2}
+																pointerEvents="auto"
+															>
+																<DynamicTokensPopover />
+															</InputRightElement>
+														</InputGroup>
+													</FormControl>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.port")}</FormLabel>
+														<NumberInput
+															value={host.data.port ?? ""}
+															allowMouseWheel
+															onChange={(_, num) =>
+																onChange(
+																	host.uid,
+																	"port",
+																	Number.isNaN(num) ? null : num,
+																)
+															}
+														>
+															<NumberInputField />
+														</NumberInput>
+													</FormControl>
+												</SimpleGrid>
+												<FormControl>
+													<FormLabel>{t("hostsDialog.path")}</FormLabel>
+													<Input
+														value={host.data.path}
+														onChange={(event) =>
+															onChange(host.uid, "path", event.target.value)
+														}
+														placeholder="/"
+													/>
+												</FormControl>
+											</VStack>
+										</CardBody>
+									</Card>
 
-						<Card variant="outline">
-							<CardHeader pb={2}>
-								<Text fontWeight="semibold">
-									{t("hostsPage.section.security")}
-								</Text>
-							</CardHeader>
-							<CardBody pt={0}>
-								<VStack align="stretch" spacing={4}>
-									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-											<Input
-												value={host.data.sni}
-												onChange={(event) =>
-													onChange(host.uid, "sni", event.target.value)
-												}
-											/>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.host")}</FormLabel>
-											<InputGroup>
-												<Input
-													value={host.data.host}
-													onChange={(event) =>
-														onChange(host.uid, "host", event.target.value)
-													}
-												/>
-												<InputRightElement
-													width="auto"
-													pr={2}
-													pointerEvents="auto"
-												>
-													<DynamicTokensPopover />
-												</InputRightElement>
-											</InputGroup>
-										</FormControl>
-									</SimpleGrid>
-									<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.security")}</FormLabel>
-											<Select
-												value={host.data.security}
-												onChange={(event) =>
-													onChange(host.uid, "security", event.target.value)
-												}
-											>
-												{proxyHostSecurity.map((option) => (
-													<option key={option.value} value={option.value}>
-														{option.title}
-													</option>
-												))}
-											</Select>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
-											<Select
-												value={host.data.alpn}
-												onChange={(event) =>
-													onChange(host.uid, "alpn", event.target.value)
-												}
-											>
-												{proxyALPN.map((option) => (
-													<option key={option.value} value={option.value}>
-														{option.title}
-													</option>
-												))}
-											</Select>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.fingerprint")}</FormLabel>
-											<Select
-												value={host.data.fingerprint}
-												onChange={(event) =>
-													onChange(host.uid, "fingerprint", event.target.value)
-												}
-											>
-												{proxyFingerprint.map((option) => (
-													<option key={option.value} value={option.value}>
-														{option.title}
-													</option>
-												))}
-											</Select>
-										</FormControl>
-									</SimpleGrid>
-								</VStack>
-							</CardBody>
-						</Card>
+									<Card variant="outline">
+										<CardHeader pb={2}>
+											<Text fontWeight="semibold">
+												{t("hostsPage.section.security")}
+											</Text>
+										</CardHeader>
+										<CardBody pt={0}>
+											<VStack align="stretch" spacing={4}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+														<Input
+															value={host.data.sni}
+															onChange={(event) =>
+																onChange(host.uid, "sni", event.target.value)
+															}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.host")}</FormLabel>
+														<InputGroup>
+															<Input
+																value={host.data.host}
+																onChange={(event) =>
+																	onChange(host.uid, "host", event.target.value)
+																}
+															/>
+															<InputRightElement
+																width="auto"
+																pr={2}
+																pointerEvents="auto"
+															>
+																<DynamicTokensPopover />
+															</InputRightElement>
+														</InputGroup>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.security")}</FormLabel>
+														<Select
+															value={host.data.security}
+															onChange={(event) =>
+																onChange(
+																	host.uid,
+																	"security",
+																	event.target.value,
+																)
+															}
+														>
+															{proxyHostSecurity.map((option) => (
+																<option key={option.value} value={option.value}>
+																	{option.title}
+																</option>
+															))}
+														</Select>
+													</FormControl>
+													<FormControl>
+														<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
+														<Select
+															value={host.data.alpn}
+															onChange={(event) =>
+																onChange(host.uid, "alpn", event.target.value)
+															}
+														>
+															{proxyALPN.map((option) => (
+																<option key={option.value} value={option.value}>
+																	{option.title}
+																</option>
+															))}
+														</Select>
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("hostsDialog.fingerprint")}
+														</FormLabel>
+														<Select
+															value={host.data.fingerprint}
+															onChange={(event) =>
+																onChange(
+																	host.uid,
+																	"fingerprint",
+																	event.target.value,
+																)
+															}
+														>
+															{proxyFingerprint.map((option) => (
+																<option key={option.value} value={option.value}>
+																	{option.title}
+																</option>
+															))}
+														</Select>
+													</FormControl>
+												</SimpleGrid>
+											</VStack>
+										</CardBody>
+									</Card>
 
-						<Card variant="outline">
-							<CardHeader pb={2}>
-								<Text fontWeight="semibold">
-									{t("hostsPage.section.advanced")}
-								</Text>
-							</CardHeader>
-							<CardBody pt={0}>
-								<VStack align="stretch" spacing={4}>
-									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.fragment")}</FormLabel>
-											<Input
-												value={host.data.fragment_setting}
-												onChange={(event) =>
-													onChange(
-														host.uid,
-														"fragment_setting",
-														event.target.value,
-													)
-												}
-											/>
-										</FormControl>
-										<FormControl>
-											<FormLabel>{t("hostsDialog.noise")}</FormLabel>
-											<Input
-												value={host.data.noise_setting}
-												onChange={(event) =>
-													onChange(
-														host.uid,
-														"noise_setting",
-														event.target.value,
-													)
-												}
-											/>
-										</FormControl>
-									</SimpleGrid>
-									<Stack direction={{ base: "column", md: "row" }} spacing={4}>
-										<Checkbox
-											isChecked={host.data.allowinsecure}
-											onChange={(event) =>
-												onChange(
-													host.uid,
-													"allowinsecure",
-													event.target.checked,
-												)
-											}
-										>
-											{t("hostsDialog.allowinsecure")}
-										</Checkbox>
-										<Checkbox
-											isChecked={host.data.mux_enable}
-											onChange={(event) =>
-												onChange(host.uid, "mux_enable", event.target.checked)
-											}
-										>
-											{t("hostsDialog.muxEnable")}
-										</Checkbox>
-										<Checkbox
-											isChecked={host.data.random_user_agent}
-											onChange={(event) =>
-												onChange(
-													host.uid,
-													"random_user_agent",
-													event.target.checked,
-												)
-											}
-										>
-											{t("hostsDialog.randomUserAgent")}
-										</Checkbox>
-										<Checkbox
-											isChecked={host.data.use_sni_as_host}
-											onChange={(event) =>
-												onChange(
-													host.uid,
-													"use_sni_as_host",
-													event.target.checked,
-												)
-											}
-										>
-											{t("hostsDialog.useSniAsHost")}
-										</Checkbox>
-									</Stack>
-								</VStack>
-							</CardBody>
-						</Card>
+									<Card variant="outline">
+										<CardHeader pb={2}>
+											<Text fontWeight="semibold">
+												{t("hostsPage.section.advanced")}
+											</Text>
+										</CardHeader>
+										<CardBody pt={0}>
+											<VStack align="stretch" spacing={4}>
+												<FormControl>
+													<FormLabel>{t("hostsDialog.noise")}</FormLabel>
+													<Input
+														value={host.data.noise_setting}
+														onChange={(event) =>
+															onChange(
+																host.uid,
+																"noise_setting",
+																event.target.value,
+															)
+														}
+													/>
+												</FormControl>
+												<Stack
+													direction={{ base: "column", md: "row" }}
+													spacing={4}
+												>
+													<Checkbox
+														isChecked={host.data.allowinsecure}
+														onChange={(event) =>
+															onChange(
+																host.uid,
+																"allowinsecure",
+																event.target.checked,
+															)
+														}
+													>
+														{t("hostsDialog.allowinsecure")}
+													</Checkbox>
+													<Checkbox
+														isChecked={host.data.mux_enable}
+														onChange={(event) =>
+															onChange(
+																host.uid,
+																"mux_enable",
+																event.target.checked,
+															)
+														}
+													>
+														{t("hostsDialog.muxEnable")}
+													</Checkbox>
+													<Checkbox
+														isChecked={host.data.random_user_agent}
+														onChange={(event) =>
+															onChange(
+																host.uid,
+																"random_user_agent",
+																event.target.checked,
+															)
+														}
+													>
+														{t("hostsDialog.randomUserAgent")}
+													</Checkbox>
+													<Checkbox
+														isChecked={host.data.use_sni_as_host}
+														onChange={(event) =>
+															onChange(
+																host.uid,
+																"use_sni_as_host",
+																event.target.checked,
+															)
+														}
+													>
+														{t("hostsDialog.useSniAsHost")}
+													</Checkbox>
+												</Stack>
+											</VStack>
+										</CardBody>
+									</Card>
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={3}>
 									<JsonEditor
-										json={jsonData ?? hostPayload}
+										json={jsonText}
 										onChange={handleJsonEditorChange}
 									/>
 									{jsonError && (
@@ -1232,17 +1262,33 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 					</Tabs>
 				</ModalBody>
 				<ModalFooter justifyContent="space-between">
-					<Button
-						size="sm"
-						variant="ghost"
-						colorScheme="red"
-						leftIcon={<DeleteIcon />}
-						onClick={() => onDelete(host.uid)}
-						isLoading={deleting}
-					>
-						{t("hostsPage.delete")}
-					</Button>
+					{isCloneMode ? (
+						<Button size="sm" variant="ghost" onClick={onClose}>
+							{t("hostsPage.cancel")}
+						</Button>
+					) : (
+						<Button
+							size="sm"
+							variant="ghost"
+							colorScheme="red"
+							leftIcon={<DeleteIcon />}
+							onClick={() => onDelete(host.uid)}
+							isLoading={deleting}
+						>
+							{t("hostsPage.delete")}
+						</Button>
+					)}
 					<HStack spacing={3}>
+						{!isCloneMode && onClone && (
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => onClone(host.uid)}
+								isDisabled={saving || deleting}
+							>
+								{t("hostsPage.clone")}
+							</Button>
+						)}
 						<Button
 							size="sm"
 							variant="outline"
@@ -1255,10 +1301,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							size="sm"
 							colorScheme="primary"
 							onClick={() => onSave(host.uid)}
-							isDisabled={!dirty}
+							isDisabled={primaryDisabled}
 							isLoading={saving}
 						>
-							{t("hostsPage.save")}
+							{primaryLabel}
 						</Button>
 					</HStack>
 				</ModalFooter>
@@ -1522,6 +1568,7 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
+	const [cloneHost, setCloneHost] = useState<HostState | null>(null);
 	// Disabled hosts are hidden by default.
 	const [includeDisabled, setIncludeDisabled] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -1919,6 +1966,115 @@ export const HostsManager: FC = () => {
 		);
 	};
 
+	const openCloneModal = useCallback((uid: string) => {
+		const source = hostItemsRef.current.find((item) => item.uid === uid);
+		if (!source) return;
+		const baseData = { ...cloneHostData(source.data), id: null };
+		const cloneState: HostState = {
+			uid: createUid(),
+			inboundTag: source.inboundTag,
+			initialInboundTag: source.inboundTag,
+			data: cloneHostData(baseData),
+			original: cloneHostData(baseData),
+		};
+		setSelectedHostUid(null);
+		setCloneHost(cloneState);
+	}, []);
+
+	const updateCloneHost = <Key extends keyof HostData>(
+		uid: string,
+		key: Key,
+		value: HostData[Key],
+	) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid
+				? { ...prev, data: { ...prev.data, [key]: value } }
+				: prev,
+		);
+	};
+
+	const updateCloneInbound = (uid: string, inboundTag: string) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid ? { ...prev, inboundTag } : prev,
+		);
+	};
+
+	const resetCloneHost = (uid: string) => {
+		setCloneHost((prev) =>
+			prev && prev.uid === uid
+				? {
+						...prev,
+						inboundTag: prev.initialInboundTag,
+						data: cloneHostData(prev.original),
+					}
+				: prev,
+		);
+	};
+
+	const addCloneHost = async (uid: string) => {
+		if (!cloneHost || cloneHost.uid !== uid) return;
+		const remark = cloneHost.data.remark.trim();
+		const address = cloneHost.data.address.trim();
+		if (!cloneHost.inboundTag || !remark || !address) {
+			toast({
+				title: t("hostsPage.clone.error"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+			return;
+		}
+
+		const previousHosts = hostItemsRef.current;
+		const nextSort = previousHosts.length
+			? Math.max(...previousHosts.map((host) => host.data.sort)) + 1
+			: 0;
+		const sortValue = Number.isFinite(cloneHost.data.sort)
+			? cloneHost.data.sort
+			: nextSort;
+
+		const newData: HostData = {
+			...cloneHostData(cloneHost.data),
+			id: null,
+			remark,
+			address,
+			sort: sortValue,
+		};
+		const newHost: HostState = {
+			uid: createUid(),
+			inboundTag: cloneHost.inboundTag,
+			initialInboundTag: cloneHost.inboundTag,
+			data: cloneHostData(newData),
+			original: cloneHostData(newData),
+		};
+
+		setSavingHostUid(uid);
+		try {
+			const nextHosts = sortHosts([...previousHosts, newHost]);
+			applyHostItems(nextHosts);
+			const payload = buildInboundPayload(nextHosts, [cloneHost.inboundTag]);
+			await setHosts(payload);
+			await fetchHosts();
+			toast({
+				title: t("hostsPage.clone.created"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+			setCloneHost(null);
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.clone.error"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setSavingHostUid(null);
+		}
+	};
+
 	const toggleActive = async (uid: string, isActive: boolean) => {
 		if (isPostLoading) {
 			return;
@@ -1941,10 +2097,7 @@ export const HostsManager: FC = () => {
 			if (!updatedHost) {
 				throw new Error("Host not found");
 			}
-			const payload = buildInboundPayload(nextHosts, [
-				updatedHost.inboundTag,
-				updatedHost.initialInboundTag,
-			]);
+			const payload = groupHostsByInbound(nextHosts);
 			await setHosts(payload);
 			await fetchHosts();
 		} catch (_error) {
@@ -2295,12 +2448,28 @@ export const HostsManager: FC = () => {
 				onSave={saveHost}
 				onReset={resetHost}
 				onDelete={handleDeleteHost}
+				onClone={openCloneModal}
 				saving={
 					!!selectedHost && savingHostUid === selectedHost.uid && isPostLoading
 				}
 				deleting={
 					!!selectedHost && deletingUid === selectedHost.uid && isPostLoading
 				}
+			/>
+
+			<HostDetailModal
+				host={cloneHost}
+				inboundOptions={inboundOptions}
+				isOpen={Boolean(cloneHost)}
+				onClose={() => setCloneHost(null)}
+				onChange={updateCloneHost}
+				onChangeInbound={updateCloneInbound}
+				onSave={addCloneHost}
+				onReset={resetCloneHost}
+				onDelete={() => {}}
+				mode="clone"
+				saving={!!cloneHost && savingHostUid === cloneHost.uid && isPostLoading}
+				deleting={false}
 			/>
 
 			<AlertDialog

@@ -154,7 +154,7 @@ def _dispatch(
 ) -> None:
     bot_instance, settings = get_bot(with_settings=True)
     if not bot_instance or settings is None:
-        logger.warning(
+        logger.debug(
             "Telegram bot is not configured; skipped notification for category '%s'",
             category,
         )
@@ -216,7 +216,7 @@ def _dispatch(
         _last_telegram_error = last_error
 
     if not delivered:
-        logger.warning(
+        logger.debug(
             "Telegram notification for category '%s' had no recipients configured",
             category,
         )

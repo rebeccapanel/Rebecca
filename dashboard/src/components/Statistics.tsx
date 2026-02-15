@@ -107,9 +107,7 @@ const HistoryModal: FC<{
 		const extractLatest = (entries: Array<{ timestamp: number }>) =>
 			entries.length ? entries[entries.length - 1].timestamp : null;
 		if (payload.type === "network") {
-			return (
-				extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
-			);
+			return extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000);
 		}
 		if (payload.type === "panel") {
 			return (
@@ -118,16 +116,16 @@ const HistoryModal: FC<{
 				Math.floor(Date.now() / 1000)
 			);
 		}
-		return (
-			extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000)
-		);
+		return extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000);
 	}, [payload]);
 	const cutoff = latestTimestamp - intervalSeconds;
 	const filteredStandardEntries = useMemo(() => {
 		if (!payload || payload.type === "network" || payload.type === "panel") {
 			return [];
 		}
-		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.entries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
@@ -136,21 +134,27 @@ const HistoryModal: FC<{
 		if (!payload || payload.type !== "network") {
 			return [];
 		}
-		const entries = payload.entries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.entries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelCpu = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		const entries = payload.cpuEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.cpuEntries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
 
 	const filteredPanelMemory = useMemo(() => {
 		if (!payload || payload.type !== "panel") return [];
-		const entries = payload.memoryEntries.slice().sort((a, b) => a.timestamp - b.timestamp);
+		const entries = payload.memoryEntries
+			.slice()
+			.sort((a, b) => a.timestamp - b.timestamp);
 		const filtered = entries.filter((entry) => entry.timestamp >= cutoff);
 		return filtered.length ? filtered : entries;
 	}, [payload, cutoff]);
@@ -351,9 +355,10 @@ const HistoryPreview: FC<{
 
 const MetricBadge: FC<{
 	label: string;
-	value: string;
+	value: ReactNode;
 	colorScheme?: string;
-}> = ({ label, value, colorScheme = "gray" }) => {
+	valueClassName?: string;
+}> = ({ label, value, colorScheme = "gray", valueClassName }) => {
 	const borderColor = useColorModeValue("gray.200", "gray.700");
 	const bg = useColorModeValue("white", "gray.900");
 	const valueColor = useColorModeValue(
@@ -375,7 +380,11 @@ const MetricBadge: FC<{
 				{label}
 			</Text>
 			<Text fontWeight="semibold" color={valueColor}>
-				{value}
+				{valueClassName ? (
+					<chakra.span className={valueClassName}>{value}</chakra.span>
+				) : (
+					value
+				)}
 			</Text>
 		</Box>
 	);
@@ -509,14 +518,17 @@ const SystemOverviewCard: FC<{
 					<MetricBadge
 						label={t("memoryUsage")}
 						value={`${formatBytes(data.memory.current)} / ${formatBytes(data.memory.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 					<MetricBadge
 						label={t("swapUsage")}
 						value={`${formatBytes(data.swap.current)} / ${formatBytes(data.swap.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 					<MetricBadge
 						label={t("diskUsage")}
 						value={`${formatBytes(data.disk.current)} / ${formatBytes(data.disk.total)}`}
+						valueClassName="rb-usage-pair"
 					/>
 				</SimpleGrid>
 				<Stack
@@ -911,6 +923,9 @@ const RedisUsageCard: FC<{
 										? `${formatBytes(data.memory_used)} / ${formatBytes(data.memory_total)}`
 										: formatBytes(data.memory_used)
 								}
+								valueClassName={
+									data.memory_percent > 0 ? "rb-usage-pair" : undefined
+								}
 								colorScheme="purple"
 							/>
 							{data.version && (
@@ -953,6 +968,7 @@ const RedisUsageCard: FC<{
 							<MetricBadge
 								label={t("redis.cacheHits", "Cache Hits/Misses")}
 								value={`${formatNumberValue(data.hits)} / ${formatNumberValue(data.misses)}`}
+								valueClassName="rb-usage-pair"
 								colorScheme="blue"
 							/>
 						</SimpleGrid>

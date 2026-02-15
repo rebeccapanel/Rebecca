@@ -29,8 +29,20 @@ def _column_exists(bind, table_name: str, column_name: str) -> bool:
 def upgrade() -> None:
     bind = op.get_bind()
     geo_mode_enum.create(bind, checkfirst=True)
+    existing_geo_modes = {}
+    valid_geo_modes = {"default", "custom"}
 
     if _column_exists(bind, "nodes", "geo_mode"):
+        rows = bind.execute(
+            sa.text("SELECT id, geo_mode FROM nodes")
+        ).fetchall()
+        for row in rows:
+            geo_mode = row.geo_mode
+            if geo_mode is None:
+                continue
+            if geo_mode not in valid_geo_modes:
+                geo_mode = "default"
+            existing_geo_modes[row.id] = geo_mode
         with op.batch_alter_table("nodes") as batch_op:
             batch_op.drop_column("geo_mode")
 
@@ -45,6 +57,12 @@ def upgrade() -> None:
         )
 
     op.execute("UPDATE nodes SET geo_mode='default' WHERE geo_mode IS NULL")
+    if existing_geo_modes:
+        update_stmt = sa.text(
+            "UPDATE nodes SET geo_mode = :geo_mode WHERE id = :id"
+        )
+        for node_id, geo_mode in existing_geo_modes.items():
+            bind.execute(update_stmt, {"geo_mode": geo_mode, "id": node_id})
 
 
 def downgrade() -> None:

@@ -6,8 +6,8 @@ import type {
 	StandardAdminPermissionsBulkPayload,
 	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
-import { create } from "zustand";
 import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
+import { create } from "zustand";
 
 export type AdminFilters = {
 	search: string;

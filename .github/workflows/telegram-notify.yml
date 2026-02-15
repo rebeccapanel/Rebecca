@@ -62,7 +62,24 @@ jobs:
               HEADER="$ICON <b>release build pipeline completed</b>"
             fi
 
-            # --- Get all relevant workflows for this commit (Build, Build-dev, CodeQL, Ruff, DB tests, PR build) ---
+            SHORT_SHA_ESC=$(html_escape "$SHORT_SHA")
+
+            # --- Commit details (single commit for this build) ---
+            COMMIT_JSON=$(curl -s \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/$SHA")
+
+            COMMIT_MSG_RAW=$(echo "$COMMIT_JSON" | jq -r '.commit.message // ""' | head -n 1)
+            COMMIT_MSG_RAW=${COMMIT_MSG_RAW//$'\r'/ }
+            COMMIT_MSG_RAW=${COMMIT_MSG_RAW//$'\n'/ }
+            COMMIT_MSG_ESC=$(html_escape "$COMMIT_MSG_RAW")
+            COMMIT_URL_RAW=$(echo "$COMMIT_JSON" | jq -r '.html_url // ""')
+            COMMIT_URL_ESC=$(html_escape "$COMMIT_URL_RAW")
+
+            MESSAGE="$HEADER%0A%0A$CONTEXT_LINE%0A👤 Triggered by: $ACTOR%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📝 Message: $COMMIT_MSG_ESC%0A🔗 <a href=\"$COMMIT_URL_ESC\">Open commit</a>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open $PIPELINE_KIND run</a>"
+
+            # --- Fetch status of all relevant workflows for this commit ---
             RUNS_JSON=$(curl -s \
               -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github.v3+json" \
@@ -168,9 +185,27 @@ jobs:
               MESSAGE="$MESSAGE%0A%0A<b>Workflows for this commit:</b>%0A$WF_BLOCK"
             fi
 
-            if [[ -n "$ESCAPED_COMMITS" ]]; then
-              COMMITS_BLOCK=$(printf "%s" "$ESCAPED_COMMITS" | sed 's/$/%0A/g')
-              MESSAGE="$MESSAGE%0A%0A<b>Recent commits (top 10):</b>%0A$COMMITS_BLOCK"
+            # --- Extract GHCR image for Build-dev from logs ---
+            IMAGE_REF_ESC=""
+            if [[ "$WF_NAME" == "Build-dev" ]]; then
+              LOGS_URL="https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs"
+              curl -sL \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -o logs.zip \
+                "$LOGS_URL" || true
+
+              if [[ -s "logs.zip" ]]; then
+                RAW_LINE=$(unzip -p logs.zip 2>/dev/null | grep -E 'ghcr\.io/.*/rebecca:dev@sha256:' | tail -n 1 || true)
+                if [[ -n "$RAW_LINE" ]]; then
+                  IMG_RAW=$(echo "$RAW_LINE" | grep -oE 'ghcr\.io[^ ]*rebecca:dev@sha256:[0-9a-f]+' | head -n 1 || true)
+                  if [[ -n "$IMG_RAW" ]]; then
+                    DIGEST=$(echo "$IMG_RAW" | sed 's/.*rebecca:dev@//')
+                    IMAGE_REF="ghcr.io/rebeccapanel/rebecca:dev@$DIGEST"
+                    IMAGE_REF_ESC=$(html_escape "$IMAGE_REF")
+                  fi
+                fi
+              fi
+              rm -f logs.zip || true
             fi
 
             if [[ -n "$IMAGE_REF_ESC" ]]; then

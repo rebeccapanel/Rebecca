@@ -5,8 +5,6 @@ import warnings
 from pathlib import Path
 
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
-
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -23,7 +21,7 @@ from app import runtime
 from app.db import GetDB, crud
 from app.utils.system import register_scheduler_jobs
 
-__version__ = "0.0.33"
+__version__ = "0.0.35"
 
 IS_RUNNING_TESTS = "PYTEST_CURRENT_TEST" in os.environ
 IS_RUNNING_ALEMBIC = any("alembic" in (arg or "").lower() for arg in sys.argv)
@@ -53,6 +51,8 @@ else:
         docs_url="/docs" if DOCS else None,
         redoc_url="/redoc" if DOCS else None,
     )
+
+    from apscheduler.schedulers.background import BackgroundScheduler
 
     scheduler = BackgroundScheduler({"apscheduler.job_defaults.max_instances": 20}, timezone="UTC")
     runtime.scheduler = scheduler

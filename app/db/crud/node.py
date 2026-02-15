@@ -27,6 +27,15 @@ ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 # ============================================================================
 
 
+def _normalize_proxy_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        trimmed = value.strip()
+        return trimmed or None
+    return value
+
+
 def get_node(db: Session, name: Optional[str] = None, node_id: Optional[int] = None) -> Optional[Node]:
     """Retrieves a node by its name or ID."""
     query = db.query(Node)
@@ -109,6 +118,13 @@ def create_node(db: Session, node: NodeCreate) -> Node:
     """Creates a new node in the database."""
     from app.utils.crypto import generate_certificate, generate_unique_cn
 
+    proxy_enabled = bool(getattr(node, "proxy_enabled", False))
+    proxy_type = _normalize_proxy_value(getattr(node, "proxy_type", None)) if proxy_enabled else None
+    proxy_host = _normalize_proxy_value(getattr(node, "proxy_host", None)) if proxy_enabled else None
+    proxy_port = getattr(node, "proxy_port", None) if proxy_enabled else None
+    proxy_username = _normalize_proxy_value(getattr(node, "proxy_username", None)) if proxy_enabled else None
+    proxy_password = _normalize_proxy_value(getattr(node, "proxy_password", None)) if proxy_enabled else None
+
     dbnode = Node(
         name=node.name,
         address=node.address,
@@ -119,6 +135,12 @@ def create_node(db: Session, node: NodeCreate) -> Node:
         geo_mode=node.geo_mode,
         use_nobetci=bool(getattr(node, "use_nobetci", False)),
         nobetci_port=getattr(node, "nobetci_port", None) or None,
+        proxy_enabled=proxy_enabled,
+        proxy_type=proxy_type,
+        proxy_host=proxy_host,
+        proxy_port=proxy_port,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
     )
     db.add(dbnode)
     db.flush()
@@ -196,6 +218,26 @@ def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
         dbnode.nobetci_port = modify.nobetci_port or None
         if dbnode.nobetci_port and not dbnode.use_nobetci:
             dbnode.use_nobetci = True
+    proxy_enabled_flag = getattr(modify, "proxy_enabled", None)
+    if proxy_enabled_flag is not None:
+        dbnode.proxy_enabled = bool(proxy_enabled_flag)
+        if not dbnode.proxy_enabled:
+            dbnode.proxy_type = None
+            dbnode.proxy_host = None
+            dbnode.proxy_port = None
+            dbnode.proxy_username = None
+            dbnode.proxy_password = None
+    if dbnode.proxy_enabled:
+        if getattr(modify, "proxy_type", None) is not None:
+            dbnode.proxy_type = _normalize_proxy_value(modify.proxy_type)
+        if getattr(modify, "proxy_host", None) is not None:
+            dbnode.proxy_host = _normalize_proxy_value(modify.proxy_host)
+        if getattr(modify, "proxy_port", None) is not None:
+            dbnode.proxy_port = modify.proxy_port or None
+        if getattr(modify, "proxy_username", None) is not None:
+            dbnode.proxy_username = _normalize_proxy_value(modify.proxy_username)
+        if getattr(modify, "proxy_password", None) is not None:
+            dbnode.proxy_password = _normalize_proxy_value(modify.proxy_password)
     if data_limit_updated:
         usage_total = (dbnode.uplink or 0) + (dbnode.downlink or 0)
         if dbnode.data_limit is None or usage_total < dbnode.data_limit:

@@ -15,7 +15,7 @@ from typing import Union
 import commentjson
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
-from sqlalchemy import func
+from sqlalchemy import func, literal
 
 from app.db import GetDB
 from app.db import models as db_models
@@ -39,6 +39,22 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
         else:
             a[key] = value
     return a
+
+
+def _normalize_certificate_fields(certificate: dict) -> dict:
+    if not isinstance(certificate, dict):
+        return {}
+    if "certificateFile" not in certificate:
+        for key in ("certFile", "certfile"):
+            if key in certificate:
+                certificate["certificateFile"] = certificate.pop(key)
+                break
+    if "keyFile" not in certificate:
+        for key in ("keyfile",):
+            if key in certificate:
+                certificate["keyFile"] = certificate.pop(key)
+                break
+    return certificate
 
 
 def _derive_reality_public_key_python(private_key: str) -> str:
@@ -410,6 +426,15 @@ class XRayConfig(dict):
                 "is_fallback": False,
             }
 
+            if inbound["protocol"] == "vless":
+                inbound_settings = inbound.get("settings") or {}
+                if isinstance(inbound_settings, dict):
+                    encryption = inbound_settings.get("encryption")
+                    if isinstance(encryption, str):
+                        encryption = encryption.strip()
+                    if encryption:
+                        settings["encryption"] = encryption
+
             # port settings
             try:
                 settings["port"] = inbound["port"]
@@ -462,8 +487,12 @@ class XRayConfig(dict):
                     if isinstance(alpn, str) and alpn.strip():
                         settings["alpn"] = alpn.strip()
                     for certificate in tls_settings.get("certificates", []):
-                        if certificate.get("certificateFile", None):
-                            with open(certificate["certificateFile"], "rb") as file:
+                        if not isinstance(certificate, dict):
+                            continue
+                        certificate = _normalize_certificate_fields(certificate)
+                        cert_path = certificate.get("certificateFile", None)
+                        if isinstance(cert_path, str) and cert_path.strip():
+                            with open(cert_path, "rb") as file:
                                 cert = file.read()
                                 settings["sni"].extend(get_cert_SANs(cert))
 
@@ -655,14 +684,38 @@ class XRayConfig(dict):
         config._migrate_deprecated_configs()
 
         with GetDB() as db:
-            query = (
+            base_columns = (
+                db_models.User.id,
+                db_models.User.username,
+                db_models.User.credential_key,
+                db_models.User.flow,
+                db_models.User.service_id,
+                func.lower(db_models.Proxy.type).label("type"),
+                db_models.Proxy.settings,
+            )
+
+            service_query = (
                 db.query(
+                    *base_columns,
+                    literal(None).label("excluded_inbound_tags"),
+                )
+                .join(db_models.Proxy, db_models.User.id == db_models.Proxy.user_id)
+                .filter(db_models.User.status.in_([UserStatus.active, UserStatus.on_hold]))
+                .filter(db_models.User.service_id.isnot(None))
+                .group_by(
+                    func.lower(db_models.Proxy.type),
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
                     db_models.User.flow,
-                    func.lower(db_models.Proxy.type).label("type"),
+                    db_models.User.service_id,
                     db_models.Proxy.settings,
+                )
+            )
+
+            no_service_query = (
+                db.query(
+                    *base_columns,
                     func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label(
                         "excluded_inbound_tags"
                     ),
@@ -673,18 +726,50 @@ class XRayConfig(dict):
                     db_models.Proxy.id == db_models.excluded_inbounds_association.c.proxy_id,
                 )
                 .filter(db_models.User.status.in_([UserStatus.active, UserStatus.on_hold]))
+                .filter(db_models.User.service_id.is_(None))
                 .group_by(
                     func.lower(db_models.Proxy.type),
                     db_models.User.id,
                     db_models.User.username,
                     db_models.User.credential_key,
                     db_models.User.flow,
+                    db_models.User.service_id,
                     db_models.Proxy.settings,
                 )
             )
-            result = query.all()
+            result = list(service_query.all()) + list(no_service_query.all())
 
             grouped_data = defaultdict(list)
+            service_allowed_cache: dict[int, set[str]] = {}
+
+            def _get_service_allowed_tags(service_id: int) -> set[str]:
+                if service_id in service_allowed_cache:
+                    return service_allowed_cache[service_id]
+                try:
+                    from app.services.data_access import get_service_host_map_cached
+
+                    host_map = get_service_host_map_cached(service_id, force_refresh=True)
+                except Exception:
+                    host_map = {}
+                allowed = {tag for tag, hosts in (host_map or {}).items() if hosts}
+                if not allowed:
+                    try:
+                        rows = (
+                            db.query(db_models.ProxyHost.inbound_tag)
+                            .join(
+                                db_models.ServiceHostLink,
+                                db_models.ServiceHostLink.host_id == db_models.ProxyHost.id,
+                            )
+                            .filter(db_models.ServiceHostLink.service_id == service_id)
+                            .filter(~db_models.ProxyHost.is_disabled.is_(True))
+                            .distinct()
+                            .all()
+                        )
+                        allowed = {row[0] for row in rows if row and row[0]}
+                    except Exception:
+                        pass
+                service_allowed_cache[service_id] = allowed
+                return allowed
 
             for row in result:
                 grouped_data[row.type].append(
@@ -695,6 +780,7 @@ class XRayConfig(dict):
                         row.flow,
                         row.settings,
                         [i for i in row.excluded_inbound_tags.split(",") if i] if row.excluded_inbound_tags else None,
+                        row.service_id,
                     )
                 )
 
@@ -707,9 +793,13 @@ class XRayConfig(dict):
                     clients = config.get_inbound(inbound["tag"])["settings"]["clients"]
 
                     for row in rows:
-                        user_id, username, credential_key, user_flow, settings, excluded_inbound_tags = row
+                        user_id, username, credential_key, user_flow, settings, excluded_inbound_tags, service_id = row
 
-                        if excluded_inbound_tags and inbound["tag"] in excluded_inbound_tags:
+                        if service_id is not None:
+                            allowed_tags = _get_service_allowed_tags(service_id)
+                            if inbound["tag"] not in allowed_tags:
+                                continue
+                        elif excluded_inbound_tags and inbound["tag"] in excluded_inbound_tags:
                             continue
 
                         email = f"{user_id}.{username}"

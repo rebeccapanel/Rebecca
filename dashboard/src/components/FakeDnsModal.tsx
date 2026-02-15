@@ -104,7 +104,9 @@ export const FakeDnsModal: FC<FakeDnsModalProps> = ({
 			<ModalContent mx="3">
 				<ModalHeader pt={6}>
 					<Text fontWeight="semibold" fontSize="lg">
-						{isEdit ? t("pages.xray.fakedns.edit") : t("pages.xray.fakedns.add")}
+						{isEdit
+							? t("pages.xray.fakedns.edit")
+							: t("pages.xray.fakedns.add")}
 					</Text>
 				</ModalHeader>
 				<ModalCloseButton mt={3} />

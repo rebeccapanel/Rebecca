@@ -1523,16 +1523,16 @@ export class Outbound extends CommonClass {
 			return {
 				servers: [
 					{
-					address: this.address,
-					port: this.port,
-					password: this.password,
-					method: this.method,
-					ivCheck: this.ivCheck,
-					uot: this.uot,
-					UoTVersion: this.UoTVersion,
-				},
-			],
-		};
+						address: this.address,
+						port: this.port,
+						password: this.password,
+						method: this.method,
+						ivCheck: this.ivCheck,
+						uot: this.uot,
+						UoTVersion: this.UoTVersion,
+					},
+				],
+			};
 		}
 	};
 

@@ -360,11 +360,7 @@ def modify_service(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    allowed_changed = (
-        hosts_modified and allowed_before is not None and allowed_after is not None and allowed_before != allowed_after
-    )
-
-    if hosts_modified and allowed_changed and service.id is not None:
+    if hosts_modified and service.id is not None:
         _refresh_service_users_background(service.id)
 
     db.refresh(service)

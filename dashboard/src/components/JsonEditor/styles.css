@@ -16,8 +16,8 @@
 .ace_editor,
 .jsoneditor {
 	font-family:
-		"Source Code Pro", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-		monospace;
+		"Source Code Pro", Menlo, Monaco, Consolas, "Liberation Mono",
+		"Courier New", monospace;
 }
 
 .ace-one-dark {

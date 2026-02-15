@@ -2,11 +2,18 @@ import {
 	Badge,
 	Box,
 	Button,
-	chakra,
 	Collapse,
+	chakra,
 	Divider,
-	IconButton,
+	Flex,
+	Heading,
 	HStack,
+	IconButton,
+	Input,
+	InputGroup,
+	InputLeftElement,
+	InputRightElement,
+	Link,
 	List,
 	ListIcon,
 	ListItem,
@@ -15,34 +22,17 @@ import {
 	Stack,
 	Table,
 	TableContainer,
+	Tag,
 	Tbody,
 	Td,
-	Th,
 	Text,
+	Th,
 	Thead,
 	Tr,
-	Tag,
-	SimpleGrid,
-	FormControl,
-	FormLabel,
-	Select,
-	Switch,
-	NumberInput,
-	NumberInputField,
-	NumberInputStepper,
-	NumberIncrementStepper,
-	NumberDecrementStepper,
-	Link,
-	Input,
-	InputGroup,
-	InputLeftElement,
-	InputRightElement,
+	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
-	useBreakpointValue,
 	VStack,
-	Flex,
-	Heading,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 import {
@@ -51,18 +41,18 @@ import {
 	CheckCircleIcon,
 	ChevronDownIcon,
 	InformationCircleIcon,
-	MagnifyingGlassIcon,
 	LightBulbIcon,
+	MagnifyingGlassIcon,
 	QuestionMarkCircleIcon,
-	SparklesIcon,
-	XMarkIcon,
 	ShieldCheckIcon,
+	SparklesIcon,
 	TagIcon,
 	UserIcon,
+	XMarkIcon,
 } from "@heroicons/react/24/outline";
-import useGetUser from "hooks/useGetUser";
-import dayjs from "dayjs";
 import { StatusBadge } from "components/StatusBadge";
+import dayjs from "dayjs";
+import useGetUser from "hooks/useGetUser";
 import {
 	type FC,
 	useCallback,
@@ -147,10 +137,17 @@ type TutorialContent = {
 		links?: { label: string; action: "navigate" | "url"; target: string }[];
 	};
 	quickTips?: string[];
-	sections?: (TutorialSection & { requiresRole?: ("sudo" | "full_access")[] })[];
+	sections?: (TutorialSection & {
+		requiresRole?: ("sudo" | "full_access")[];
+	})[];
 	dialogSections?: DialogSection[];
 	statuses?: StatusGuide[];
-	adminRoles?: { id: string; title: string; description: string; bullets?: string[] }[];
+	adminRoles?: {
+		id: string;
+		title: string;
+		description: string;
+		bullets?: string[];
+	}[];
 	faqs?: FaqItem[];
 	samples?: SampleUser[];
 };
@@ -176,7 +173,10 @@ const TagShape = chakra(TagIcon, iconProps);
 const UserShape = chakra(UserIcon, iconProps);
 
 const normalizeRole = (role?: string | null) =>
-	role?.toString().toLowerCase().replace(/[^a-z]/g, "") || "";
+	role
+		?.toString()
+		.toLowerCase()
+		.replace(/[^a-z]/g, "") || "";
 
 const TutorialsPage: FC = () => {
 	const { t, i18n } = useTranslation();
@@ -191,8 +191,12 @@ const TutorialsPage: FC = () => {
 	const [activeTab, setActiveTab] = useState<"general" | "admin">("general");
 	const [highlightId, setHighlightId] = useState<string | null>(null);
 	const [newMenuIds, setNewMenuIds] = useState<Set<string>>(new Set());
-	const highlightTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-	const autoScrollTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+	const highlightTimer = useRef<ReturnType<typeof window.setTimeout> | null>(
+		null,
+	);
+	const autoScrollTimer = useRef<ReturnType<typeof window.setTimeout> | null>(
+		null,
+	);
 	const autoScrollDone = useRef(false);
 	const autoScrollAttempts = useRef(0);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
@@ -356,11 +360,14 @@ const TutorialsPage: FC = () => {
 	}, [fetchContent]);
 
 	const normalizedSearch = searchTerm.trim().toLowerCase();
-	const containsTerm = (value?: string | null) => {
-		if (!normalizedSearch) return true;
-		if (!value) return false;
-		return value.toLowerCase().includes(normalizedSearch);
-	};
+	const containsTerm = useCallback(
+		(value?: string | null) => {
+			if (!normalizedSearch) return true;
+			if (!value) return false;
+			return value.toLowerCase().includes(normalizedSearch);
+		},
+		[normalizedSearch],
+	);
 
 	const filtered = useMemo(() => {
 		if (!content) {
@@ -411,27 +418,26 @@ const TutorialsPage: FC = () => {
 			return haystacks.some((value) => containsTerm(value));
 		});
 
-		const dialogSections = filterArray(content.dialogSections || [], (section) => {
-			const fieldText =
-				section.fields?.flatMap((field) => [
-					field.name,
-					field.detail || "",
-					...(field.tips || []),
-				]) || [];
-			const haystacks = [
-				section.title,
-				section.description || "",
-				...fieldText,
-			];
-			return haystacks.some((value) => containsTerm(value));
-		});
+		const dialogSections = filterArray(
+			content.dialogSections || [],
+			(section) => {
+				const fieldText =
+					section.fields?.flatMap((field) => [
+						field.name,
+						field.detail || "",
+						...(field.tips || []),
+					]) || [];
+				const haystacks = [
+					section.title,
+					section.description || "",
+					...fieldText,
+				];
+				return haystacks.some((value) => containsTerm(value));
+			},
+		);
 
 		const adminRoles = filterArray(content.adminRoles || [], (role) => {
-			const haystacks = [
-				role.title,
-				role.description,
-				...(role.bullets || []),
-			];
+			const haystacks = [role.title, role.description, ...(role.bullets || [])];
 			return haystacks.some((value) => containsTerm(value));
 		});
 
@@ -446,11 +452,7 @@ const TutorialsPage: FC = () => {
 		});
 
 		const faqs = filterArray(content.faqs || [], (faq) => {
-			const haystacks = [
-				faq.question,
-				faq.answer,
-				...(faq.bullets || []),
-			];
+			const haystacks = [faq.question, faq.answer, ...(faq.bullets || [])];
 			return haystacks.some((value) => containsTerm(value));
 		});
 
@@ -465,8 +467,22 @@ const TutorialsPage: FC = () => {
 			return haystacks.some((value) => containsTerm(value));
 		});
 
-		return { quickTips, sections, dialogSections, statuses, faqs, samples, adminRoles };
-	}, [content, getUserIsSuccess, normalizedSearch, normalizedUserRole]);
+		return {
+			quickTips,
+			sections,
+			dialogSections,
+			statuses,
+			faqs,
+			samples,
+			adminRoles,
+		};
+	}, [
+		content,
+		getUserIsSuccess,
+		normalizedSearch,
+		normalizedUserRole,
+		containsTerm,
+	]);
 
 	const allMenuIds = menuIdSets.all;
 	const hasNewGeneral = useMemo(
@@ -481,7 +497,8 @@ const TutorialsPage: FC = () => {
 		() => allMenuIds.find((id) => newMenuIds.has(id)),
 		[allMenuIds, newMenuIds],
 	);
-	const hasNewForActiveTab = activeTab === "admin" ? hasNewAdmin : hasNewGeneral;
+	const hasNewForActiveTab =
+		activeTab === "admin" ? hasNewAdmin : hasNewGeneral;
 
 	const generalSections = useMemo(
 		() => filtered.sections.filter((section) => !section.requiresRole?.length),
@@ -528,7 +545,10 @@ const TutorialsPage: FC = () => {
 
 			if (filtered.dialogSections.length) {
 				const dialogChildren = [
-					{ id: "dialog-illustration", label: t("tutorials.dialogFullPreview") },
+					{
+						id: "dialog-illustration",
+						label: t("tutorials.dialogFullPreview"),
+					},
 					...filtered.dialogSections.map((section) => ({
 						id: `dialog-${section.id}`,
 						label: section.title,
@@ -720,51 +740,13 @@ const TutorialsPage: FC = () => {
 		// reset expanded and active on tab change
 		setExpandedGroups(new Set());
 		if (menuItems.length) {
-			setActiveId(menuItems[0].id);
+			setActiveId(firstMenuId ?? null);
 		} else {
 			setActiveId(null);
 		}
-	}, [activeTab, menuItems.length]);
-	useEffect(() => {
-		if (!activeId) return;
-		const parent = menuItems.find(
-			(item) =>
-				item.id === activeId ||
-				item.children?.some((child) => child.id === activeId),
-		);
-		if (parent?.children?.length) {
-			setExpandedFor(parent.id);
-		}
-	}, [activeId, menuItems]);
+	}, [menuItems.length, firstMenuId]);
 
-	const triggerHighlight = (id: string) => {
-		setHighlightId(id);
-		if (highlightTimer.current) {
-			clearTimeout(highlightTimer.current);
-		}
-		highlightTimer.current = window.setTimeout(() => {
-			setHighlightId((current) => (current === id ? null : current));
-		}, 3500);
-	};
-
-	const scrollToId = (id: string) => {
-		if (typeof document === "undefined") return false;
-		const el = document.getElementById(id);
-		if (!el) return false;
-		const prefersReduce =
-			typeof window !== "undefined" &&
-			window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-		el.scrollIntoView({
-			behavior: prefersReduce ? "auto" : "smooth",
-			block: "start",
-			inline: "nearest",
-		});
-		setActiveId(id);
-		triggerHighlight(id);
-		return true;
-	};
-
-	const setExpandedFor = (id?: string) => {
+	const setExpandedFor = useCallback((id?: string) => {
 		setExpandedGroups((prev) => {
 			if (!id) {
 				if (prev.size === 0) return prev;
@@ -775,7 +757,48 @@ const TutorialsPage: FC = () => {
 			}
 			return new Set<string>([id]);
 		});
-	};
+	}, []);
+
+	const triggerHighlight = useCallback((id: string) => {
+		setHighlightId(id);
+		if (highlightTimer.current) {
+			clearTimeout(highlightTimer.current);
+		}
+		highlightTimer.current = window.setTimeout(() => {
+			setHighlightId((current) => (current === id ? null : current));
+		}, 3500);
+	}, []);
+
+	const scrollToId = useCallback(
+		(id: string) => {
+			if (typeof document === "undefined") return false;
+			const el = document.getElementById(id);
+			if (!el) return false;
+			const prefersReduce =
+				typeof window !== "undefined" &&
+				window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+			el.scrollIntoView({
+				behavior: prefersReduce ? "auto" : "smooth",
+				block: "start",
+				inline: "nearest",
+			});
+			setActiveId(id);
+			triggerHighlight(id);
+			return true;
+		},
+		[triggerHighlight],
+	);
+	useEffect(() => {
+		if (!activeId) return;
+		const parent = menuItems.find(
+			(item) =>
+				item.id === activeId ||
+				item.children?.some((child) => child.id === activeId),
+		);
+		if (parent?.children?.length) {
+			setExpandedFor(parent.id);
+		}
+	}, [activeId, menuItems, setExpandedFor]);
 
 	const roleIcons: Record<string, typeof SparkleIcon | undefined> = {
 		crown: SparkleIcon,
@@ -784,16 +807,19 @@ const TutorialsPage: FC = () => {
 		user: UserShape,
 	};
 
-	const acknowledgeMenuId = useCallback((id: string) => {
-		setNewMenuIds((prev) => {
-			if (!prev.has(id)) return prev;
-			const next = new Set(prev);
-			next.delete(id);
-			return next;
-		});
-		const langKey = normalizeTutorialLang(i18n.language);
-		acknowledgeTutorialIds(langKey, id);
-	}, [i18n.language]);
+	const acknowledgeMenuId = useCallback(
+		(id: string) => {
+			setNewMenuIds((prev) => {
+				if (!prev.has(id)) return prev;
+				const next = new Set(prev);
+				next.delete(id);
+				return next;
+			});
+			const langKey = normalizeTutorialLang(i18n.language);
+			acknowledgeTutorialIds(langKey, id);
+		},
+		[i18n.language],
+	);
 
 	useEffect(() => {
 		if (typeof document === "undefined") return;
@@ -827,7 +853,9 @@ const TutorialsPage: FC = () => {
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 		if (!firstNewId || autoScrollDone.current) return;
-		const targetTab = menuIdSets.admin.includes(firstNewId) ? "admin" : "general";
+		const targetTab = menuIdSets.admin.includes(firstNewId)
+			? "admin"
+			: "general";
 		if (activeTab !== targetTab) {
 			setActiveTab(targetTab);
 			return;
@@ -893,7 +921,7 @@ const TutorialsPage: FC = () => {
 			onUnload();
 			window.removeEventListener("beforeunload", onUnload);
 		};
-	}, [scrollKey]);
+	}, []);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -1069,7 +1097,9 @@ const TutorialsPage: FC = () => {
 									rightIcon={
 										<ChevronDownIcon
 											style={{
-												transform: isMenuOpen ? "rotate(180deg)" : "rotate(0deg)",
+												transform: isMenuOpen
+													? "rotate(180deg)"
+													: "rotate(0deg)",
 												transition: "transform 0.2s ease",
 											}}
 										/>
@@ -1168,7 +1198,9 @@ const TutorialsPage: FC = () => {
 															_active={{ bg: menuActiveBg }}
 															onClick={() => {
 																if (hasChildren) {
-																	setExpandedFor(isExpanded ? undefined : item.id);
+																	setExpandedFor(
+																		isExpanded ? undefined : item.id,
+																	);
 																}
 																acknowledgeMenuId(item.id);
 																scrollToId(item.id);
@@ -1266,629 +1298,724 @@ const TutorialsPage: FC = () => {
 							</Collapse>
 						</VStack>
 					</Box>
-			<Box flex="1" minW={0}>
-				{activeTab === "general" && content?.panelIntro ? (
-					<Box {...cardStyles} id="panel-intro">
-						<HStack spacing={2} mb={2}>
-							<SparkleIcon />
-							<Text fontWeight="semibold">{content.panelIntro.title}</Text>
-						</HStack>
-						{content.panelIntro.description ? (
-							<Text fontSize="sm" color={textMuted} mb={2}>
-								{content.panelIntro.description}
-							</Text>
-						) : null}
-						{content.panelIntro.bullets?.length ? (
-							<List spacing={2} stylePosition="inside" mb={content.panelIntro.links?.length ? 3 : 0}>
-								{content.panelIntro.bullets.map((tip, index) => (
-									<ListItem key={`panel-tip-${index}`}>
-										<ListIcon as={CheckIcon} color="primary.500" />
-										<Text as="span">{tip}</Text>
-									</ListItem>
-								))}
-							</List>
-						) : null}
-						{content.panelIntro.links?.length ? (
-							<HStack spacing={2} flexWrap="wrap">
-								{content.panelIntro.links.map((link, idx) => (
-									<Button
-										key={`panel-link-${idx}`}
-										size="sm"
-										variant={link.action === "url" ? "outline" : "solid"}
-										colorScheme="primary"
-										onClick={() => {
-											if (link.action === "navigate") {
-												navigate(link.target);
-											} else {
-												window.open(link.target, "_blank", "noopener,noreferrer");
-											}
-										}}
+					<Box flex="1" minW={0}>
+						{activeTab === "general" && content?.panelIntro ? (
+							<Box {...cardStyles} id="panel-intro">
+								<HStack spacing={2} mb={2}>
+									<SparkleIcon />
+									<Text fontWeight="semibold">{content.panelIntro.title}</Text>
+								</HStack>
+								{content.panelIntro.description ? (
+									<Text fontSize="sm" color={textMuted} mb={2}>
+										{content.panelIntro.description}
+									</Text>
+								) : null}
+								{content.panelIntro.bullets?.length ? (
+									<List
+										spacing={2}
+										stylePosition="inside"
+										mb={content.panelIntro.links?.length ? 3 : 0}
 									>
-										{link.label}
-									</Button>
-								))}
-							</HStack>
+										{content.panelIntro.bullets.map((tip) => (
+											<ListItem key={tip}>
+												<ListIcon as={CheckIcon} color="primary.500" />
+												<Text as="span">{tip}</Text>
+											</ListItem>
+										))}
+									</List>
+								) : null}
+								{content.panelIntro.links?.length ? (
+									<HStack spacing={2} flexWrap="wrap">
+										{content.panelIntro.links.map((link) => (
+											<Button
+												key={`${link.action}-${link.target}`}
+												size="sm"
+												variant={link.action === "url" ? "outline" : "solid"}
+												colorScheme="primary"
+												onClick={() => {
+													if (link.action === "navigate") {
+														navigate(link.target);
+													} else {
+														window.open(
+															link.target,
+															"_blank",
+															"noopener,noreferrer",
+														);
+													}
+												}}
+											>
+												{link.label}
+											</Button>
+										))}
+									</HStack>
+								) : null}
+							</Box>
 						) : null}
-					</Box>
-				) : null}
 
-				{activeTab === "general" && filtered.quickTips.length ? (
-					<Box {...cardStyles} {...highlightStyles("quick-tips")} id="quick-tips">
-						<HStack spacing={2} mb={2}>
-							<SparkleIcon />
-							<Text fontWeight="semibold">{t("tutorials.quickTips")}</Text>
-						</HStack>
-						<List spacing={2} stylePosition="inside">
-							{filtered.quickTips.map((tip, index) => (
-								<ListItem key={`tip-${index}`}>
-									<ListIcon as={CheckIcon} color="primary.500" />
-									<Text as="span">{tip}</Text>
-								</ListItem>
-							))}
-						</List>
-					</Box>
-				) : null}
+						{activeTab === "general" && filtered.quickTips.length ? (
+							<Box
+								{...cardStyles}
+								{...highlightStyles("quick-tips")}
+								id="quick-tips"
+							>
+								<HStack spacing={2} mb={2}>
+									<SparkleIcon />
+									<Text fontWeight="semibold">{t("tutorials.quickTips")}</Text>
+								</HStack>
+								<List spacing={2} stylePosition="inside">
+									{filtered.quickTips.map((tip) => (
+										<ListItem key={tip}>
+											<ListIcon as={CheckIcon} color="primary.500" />
+											<Text as="span">{tip}</Text>
+										</ListItem>
+									))}
+								</List>
+							</Box>
+						) : null}
 
-				{currentSections.length ? (
-					<Box {...cardStyles} id="sections-block" mt={4}>
-						<HStack spacing={2} mb={4}>
-							<InfoIcon />
-							<Text fontWeight="semibold">{t("tutorials.walkthroughs")}</Text>
-						</HStack>
-						<VStack spacing={4} align="stretch">
-							{currentSections.map((section, index) => (
-								<Box
-									key={section.id}
-									id={`section-${section.id}`}
-									borderWidth="1px"
-									borderRadius="lg"
-									bg={innerCardBg}
-									p={3}
-									{...highlightStyles(`section-${section.id}`)}
-									scrollMarginTop="160px"
-								>
-									<VStack align="stretch" spacing={2}>
-										<Text fontWeight="semibold">{section.title}</Text>
-										<Text fontSize="sm" color={textMuted}>
-											{section.description}
-										</Text>
-										{!section.subsections?.length && section.id.includes("create-user") && (
-											<HStack spacing={2} flexWrap="wrap">
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => navigate("/users")}
-												>
-													{t("users")}
-												</Button>
-												<Button
-													size="sm"
-													colorScheme="primary"
-													onClick={() => {
-														sessionStorage.setItem("openCreateUser", "true");
-														navigate("/users");
-													}}
-												>
-													{t("createUser")}
-												</Button>
-											</HStack>
-										)}
-										{!section.subsections?.length && section.id.includes("myaccount") && (
-											<HStack spacing={2} flexWrap="wrap">
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => navigate("/myaccount")}
-												>
-													{t("tutorials.openMyAccount")}
-												</Button>
-											</HStack>
-										)}
-										{!section.subsections?.length &&
-											section.id.includes("admins-page") && (
-												<HStack spacing={2} flexWrap="wrap">
-													<Button
-														size="sm"
-														variant="outline"
-														onClick={() => navigate("/admins")}
-													>
-														{t("tutorials.openAdmins")}
-													</Button>
-													<Button
-														size="sm"
-														colorScheme="primary"
-														onClick={() => {
-															sessionStorage.setItem("openCreateAdmin", "true");
-															navigate("/admins");
-														}}
-													>
-														{t("tutorials.openCreateAdmin")}
-													</Button>
-												</HStack>
-											)}
-										{section.id.includes("admins-page") && (
-											<HStack spacing={2} flexWrap="wrap">
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => navigate("/admins")}
-												>
-													{t("tutorials.openAdmins")}
-												</Button>
-												<Button
-													size="sm"
-													colorScheme="primary"
-													onClick={() => {
-														sessionStorage.setItem("openCreateAdmin", "true");
-														navigate("/admins");
-													}}
-												>
-													{t("tutorials.openCreateAdmin")}
-												</Button>
-											</HStack>
-										)}
-										{section.steps?.length ? (
-											<OrderedList spacing={1} ps={4}>
-												{section.steps.map((step, idx) => (
-													<ListItem key={`${section.id}-step-${idx}`}>
-														{step}
-													</ListItem>
-												))}
-											</OrderedList>
-										) : null}
-										{section.hints?.length ? (
-											<Box borderRadius="md" p={2} bg={hintBg}>
-												<HStack spacing={2} mb={1}>
-													<HintIcon w={4} h={4} />
-													<Text fontSize="sm" fontWeight="medium">
-														{t("tutorials.hints")}
-													</Text>
-												</HStack>
-												<List spacing={1.5} stylePosition="inside">
-													{section.hints.map((hint, idx) => (
-														<ListItem key={`${section.id}-hint-${idx}`}>
-															{hint}
-														</ListItem>
-													))}
-												</List>
-											</Box>
-										) : null}
-										{section.subsections?.length ? (
-											<VStack align="stretch" spacing={3}>
-												{section.subsections.map((sub) => (
-													<Box
-														key={sub.id}
-														id={`section-${section.id}-${sub.id}`}
-														borderWidth="1px"
-														borderColor={
-															highlightId === `section-${section.id}-${sub.id}`
-																? "primary.300"
-																: sub.color
-																	? `${sub.color}.300`
-																	: "light-border"
-														}
-														borderRadius="md"
-														p={3}
-														_dark={{
-															borderColor:
-																highlightId === `section-${section.id}-${sub.id}`
-																	? "primary.400"
-																	: sub.color
-																		? `${sub.color}.400`
-																		: "whiteAlpha.200",
-														}}
-														bg={hintBg}
-														scrollMarginTop="160px"
-														animation={
-															highlightId === `section-${section.id}-${sub.id}`
-																? `${pulseGlow} 1.2s ease-in-out 0s 2`
-																: undefined
-														}
-													>
-														<VStack align="stretch" spacing={2}>
-															<HStack spacing={2}>
-																{roleIcons[sub.icon || ""] ? (
-																	<Box
-																		bg={`${sub.color || "gray"}.100`}
-																		_dark={{ bg: `${sub.color || "gray"}.700` }}
-																		borderRadius="full"
-																		p={2}
-																		display="inline-flex"
-																		alignItems="center"
-																		justifyContent="center"
-																	>
-																		{(() => {
-																			const IconComp = roleIcons[sub.icon || ""];
-																			if (!IconComp) return null;
-																			return (
-																				<IconComp
-																					color={
-																						sub.color
-																							? `${sub.color}.600`
-																							: "primary.500"
-																					}
-																				/>
-																			);
-																		})()}
-																	</Box>
-																) : null}
-																<VStack align="stretch" spacing={0}>
-																	<Text fontWeight="semibold">{sub.title}</Text>
-																	{sub.description ? (
-																		<Text fontSize="sm" color={textMuted}>
-																			{sub.description}
-																		</Text>
+						{currentSections.length ? (
+							<Box {...cardStyles} id="sections-block" mt={4}>
+								<HStack spacing={2} mb={4}>
+									<InfoIcon />
+									<Text fontWeight="semibold">
+										{t("tutorials.walkthroughs")}
+									</Text>
+								</HStack>
+								<VStack spacing={4} align="stretch">
+									{currentSections.map((section, index) => (
+										<Box
+											key={section.id}
+											id={`section-${section.id}`}
+											borderWidth="1px"
+											borderRadius="lg"
+											bg={innerCardBg}
+											p={3}
+											{...highlightStyles(`section-${section.id}`)}
+											scrollMarginTop="160px"
+										>
+											<VStack align="stretch" spacing={2}>
+												<Text fontWeight="semibold">{section.title}</Text>
+												<Text fontSize="sm" color={textMuted}>
+													{section.description}
+												</Text>
+												{!section.subsections?.length &&
+													section.id.includes("create-user") && (
+														<HStack spacing={2} flexWrap="wrap">
+															<Button
+																size="sm"
+																variant="outline"
+																onClick={() => navigate("/users")}
+															>
+																{t("users")}
+															</Button>
+															<Button
+																size="sm"
+																colorScheme="primary"
+																onClick={() => {
+																	sessionStorage.setItem(
+																		"openCreateUser",
+																		"true",
+																	);
+																	navigate("/users");
+																}}
+															>
+																{t("createUser")}
+															</Button>
+														</HStack>
+													)}
+												{!section.subsections?.length &&
+													section.id.includes("myaccount") && (
+														<HStack spacing={2} flexWrap="wrap">
+															<Button
+																size="sm"
+																variant="outline"
+																onClick={() => navigate("/myaccount")}
+															>
+																{t("tutorials.openMyAccount")}
+															</Button>
+														</HStack>
+													)}
+												{!section.subsections?.length &&
+													section.id.includes("admins-page") && (
+														<HStack spacing={2} flexWrap="wrap">
+															<Button
+																size="sm"
+																variant="outline"
+																onClick={() => navigate("/admins")}
+															>
+																{t("tutorials.openAdmins")}
+															</Button>
+															<Button
+																size="sm"
+																colorScheme="primary"
+																onClick={() => {
+																	sessionStorage.setItem(
+																		"openCreateAdmin",
+																		"true",
+																	);
+																	navigate("/admins");
+																}}
+															>
+																{t("tutorials.openCreateAdmin")}
+															</Button>
+														</HStack>
+													)}
+												{section.id.includes("admins-page") && (
+													<HStack spacing={2} flexWrap="wrap">
+														<Button
+															size="sm"
+															variant="outline"
+															onClick={() => navigate("/admins")}
+														>
+															{t("tutorials.openAdmins")}
+														</Button>
+														<Button
+															size="sm"
+															colorScheme="primary"
+															onClick={() => {
+																sessionStorage.setItem(
+																	"openCreateAdmin",
+																	"true",
+																);
+																navigate("/admins");
+															}}
+														>
+															{t("tutorials.openCreateAdmin")}
+														</Button>
+													</HStack>
+												)}
+												{section.steps?.length ? (
+													<OrderedList spacing={1} ps={4}>
+														{section.steps.map((step, idx) => (
+															<ListItem key={`${section.id}-step-${idx}`}>
+																{step}
+															</ListItem>
+														))}
+													</OrderedList>
+												) : null}
+												{section.hints?.length ? (
+													<Box borderRadius="md" p={2} bg={hintBg}>
+														<HStack spacing={2} mb={1}>
+															<HintIcon w={4} h={4} />
+															<Text fontSize="sm" fontWeight="medium">
+																{t("tutorials.hints")}
+															</Text>
+														</HStack>
+														<List spacing={1.5} stylePosition="inside">
+															{section.hints.map((hint, idx) => (
+																<ListItem key={`${section.id}-hint-${idx}`}>
+																	{hint}
+																</ListItem>
+															))}
+														</List>
+													</Box>
+												) : null}
+												{section.subsections?.length ? (
+													<VStack align="stretch" spacing={3}>
+														{section.subsections.map((sub) => (
+															<Box
+																key={sub.id}
+																id={`section-${section.id}-${sub.id}`}
+																borderWidth="1px"
+																borderColor={
+																	highlightId ===
+																	`section-${section.id}-${sub.id}`
+																		? "primary.300"
+																		: sub.color
+																			? `${sub.color}.300`
+																			: "light-border"
+																}
+																borderRadius="md"
+																p={3}
+																_dark={{
+																	borderColor:
+																		highlightId ===
+																		`section-${section.id}-${sub.id}`
+																			? "primary.400"
+																			: sub.color
+																				? `${sub.color}.400`
+																				: "whiteAlpha.200",
+																}}
+																bg={hintBg}
+																scrollMarginTop="160px"
+																animation={
+																	highlightId ===
+																	`section-${section.id}-${sub.id}`
+																		? `${pulseGlow} 1.2s ease-in-out 0s 2`
+																		: undefined
+																}
+															>
+																<VStack align="stretch" spacing={2}>
+																	<HStack spacing={2}>
+																		{roleIcons[sub.icon || ""] ? (
+																			<Box
+																				bg={`${sub.color || "gray"}.100`}
+																				_dark={{
+																					bg: `${sub.color || "gray"}.700`,
+																				}}
+																				borderRadius="full"
+																				p={2}
+																				display="inline-flex"
+																				alignItems="center"
+																				justifyContent="center"
+																			>
+																				{(() => {
+																					const IconComp =
+																						roleIcons[sub.icon || ""];
+																					if (!IconComp) return null;
+																					return (
+																						<IconComp
+																							color={
+																								sub.color
+																									? `${sub.color}.600`
+																									: "primary.500"
+																							}
+																						/>
+																					);
+																				})()}
+																			</Box>
+																		) : null}
+																		<VStack align="stretch" spacing={0}>
+																			<Text fontWeight="semibold">
+																				{sub.title}
+																			</Text>
+																			{sub.description ? (
+																				<Text fontSize="sm" color={textMuted}>
+																					{sub.description}
+																				</Text>
+																			) : null}
+																		</VStack>
+																	</HStack>
+																	{sub.steps?.length ? (
+																		<OrderedList spacing={1} ps={4}>
+																			{sub.steps.map((step, idx) => (
+																				<ListItem
+																					key={`${section.id}-${sub.id}-step-${idx}`}
+																				>
+																					{step}
+																				</ListItem>
+																			))}
+																		</OrderedList>
+																	) : null}
+																	{sub.hints?.length ? (
+																		<Box
+																			borderRadius="md"
+																			p={2}
+																			bg={innerCardBg}
+																		>
+																			<HStack spacing={2} mb={1}>
+																				<HintIcon w={4} h={4} />
+																				<Text fontSize="sm" fontWeight="medium">
+																					{t("tutorials.hints")}
+																				</Text>
+																			</HStack>
+																			<List
+																				spacing={1.5}
+																				stylePosition="inside"
+																			>
+																				{sub.hints.map((hint, idx) => (
+																					<ListItem
+																						key={`${section.id}-${sub.id}-hint-${idx}`}
+																					>
+																						{hint}
+																					</ListItem>
+																				))}
+																			</List>
+																		</Box>
 																	) : null}
 																</VStack>
-															</HStack>
-															{sub.steps?.length ? (
-															<OrderedList spacing={1} ps={4}>
-																{sub.steps.map((step, idx) => (
-																	<ListItem key={`${section.id}-${sub.id}-step-${idx}`}>
-																		{step}
-																	</ListItem>
-																))}
-															</OrderedList>
-															) : null}
-															{sub.hints?.length ? (
-																<Box borderRadius="md" p={2} bg={innerCardBg}>
-																	<HStack spacing={2} mb={1}>
-																		<HintIcon w={4} h={4} />
-																		<Text fontSize="sm" fontWeight="medium">
-																			{t("tutorials.hints")}
-																		</Text>
-																	</HStack>
-																	<List spacing={1.5} stylePosition="inside">
-																		{sub.hints.map((hint, idx) => (
-																			<ListItem key={`${section.id}-${sub.id}-hint-${idx}`}>
-																				{hint}
+															</Box>
+														))}
+													</VStack>
+												) : null}
+											</VStack>
+											{index !== filtered.sections.length - 1 ? (
+												<Divider my={3} />
+											) : null}
+										</Box>
+									))}
+								</VStack>
+							</Box>
+						) : null}
+
+						{activeTab === "general" && filtered.dialogSections.length ? (
+							<Box
+								{...cardStyles}
+								{...highlightStyles("dialog-guide")}
+								id="dialog-guide"
+								mt={4}
+							>
+								<HStack spacing={2} mb={4}>
+									<BookIcon />
+									<Text fontWeight="semibold">
+										{t("tutorials.dialogGuide")}
+									</Text>
+								</HStack>
+								<VStack spacing={3} align="stretch">
+									{filtered.dialogSections.map((section, index) => (
+										<Box
+											key={section.id}
+											id={`dialog-${section.id}`}
+											borderWidth="1px"
+											borderRadius="lg"
+											bg={innerCardBg}
+											p={3}
+											{...highlightStyles(`dialog-${section.id}`)}
+											scrollMarginTop="160px"
+										>
+											<VStack align="stretch" spacing={2}>
+												<Text fontWeight="semibold">{section.title}</Text>
+												{section.description ? (
+													<Text fontSize="sm" color={textMuted}>
+														{section.description}
+													</Text>
+												) : null}
+												{section.fields?.length ? (
+													<VStack align="stretch" spacing={2}>
+														{section.fields.map((field, idx) => (
+															<Box
+																key={`${section.id}-field-${idx}`}
+																borderWidth="1px"
+																borderRadius="md"
+																borderColor="light-border"
+																_dark={{ borderColor: "whiteAlpha.200" }}
+																p={3}
+																bg={hintBg}
+															>
+																<Text fontWeight="semibold">{field.name}</Text>
+																{field.detail ? (
+																	<Text fontSize="sm" color={textMuted} mt={1}>
+																		{field.detail}
+																	</Text>
+																) : null}
+																{field.tips?.length ? (
+																	<List
+																		spacing={1}
+																		mt={2}
+																		stylePosition="inside"
+																	>
+																		{field.tips.map((tip, tipIdx) => (
+																			<ListItem
+																				key={`${section.id}-field-${idx}-tip-${tipIdx}`}
+																			>
+																				<ListIcon
+																					as={CheckIcon}
+																					color="primary.500"
+																				/>
+																				<Text as="span">{tip}</Text>
 																			</ListItem>
 																		))}
 																	</List>
-																</Box>
-															) : null}
-														</VStack>
-													</Box>
-												))}
-											</VStack>
-										) : null}
-									</VStack>
-									{index !== filtered.sections.length - 1 ? (
-										<Divider my={3} />
-									) : null}
-								</Box>
-							))}
-						</VStack>
-					</Box>
-				) : null}
-
-				{activeTab === "general" && filtered.dialogSections.length ? (
-					<Box
-						{...cardStyles}
-						{...highlightStyles("dialog-guide")}
-						id="dialog-guide"
-						mt={4}
-					>
-						<HStack spacing={2} mb={4}>
-							<BookIcon />
-							<Text fontWeight="semibold">{t("tutorials.dialogGuide")}</Text>
-						</HStack>
-						<VStack spacing={3} align="stretch">
-							{filtered.dialogSections.map((section, index) => (
-								<Box
-									key={section.id}
-									id={`dialog-${section.id}`}
-									borderWidth="1px"
-									borderRadius="lg"
-									bg={innerCardBg}
-									p={3}
-									{...highlightStyles(`dialog-${section.id}`)}
-									scrollMarginTop="160px"
-								>
-									<VStack align="stretch" spacing={2}>
-										<Text fontWeight="semibold">{section.title}</Text>
-										{section.description ? (
-											<Text fontSize="sm" color={textMuted}>
-												{section.description}
-											</Text>
-										) : null}
-										{section.fields?.length ? (
-											<VStack align="stretch" spacing={2}>
-												{section.fields.map((field, idx) => (
-													<Box
-														key={`${section.id}-field-${idx}`}
-														borderWidth="1px"
-														borderRadius="md"
-														borderColor="light-border"
-														_dark={{ borderColor: "whiteAlpha.200" }}
-														p={3}
-														bg={hintBg}
-													>
-														<Text fontWeight="semibold">{field.name}</Text>
-														{field.detail ? (
-															<Text fontSize="sm" color={textMuted} mt={1}>
-																{field.detail}
-															</Text>
-														) : null}
-														{field.tips?.length ? (
-															<List spacing={1} mt={2} stylePosition="inside">
-																{field.tips.map((tip, tipIdx) => (
-																	<ListItem
-																		key={`${section.id}-field-${idx}-tip-${tipIdx}`}
-																	>
-																		<ListIcon as={CheckIcon} color="primary.500" />
-																		<Text as="span">{tip}</Text>
-																	</ListItem>
-																))}
-															</List>
-														) : null}
-													</Box>
-												))}
-											</VStack>
-										) : null}
-									</VStack>
-									{index !== filtered.dialogSections.length - 1 ? (
-										<Divider my={3} />
-									) : null}
-								</Box>
-							))}
-						</VStack>
-					</Box>
-				) : null}
-
-				{activeTab === "general" && filtered.samples.length ? (
-					<Box {...cardStyles} {...highlightStyles("samples")} id="samples" mt={4}>
-						<HStack spacing={2} mb={2}>
-							<InfoIcon />
-							<Text fontWeight="semibold">{t("tutorials.sampleTable")}</Text>
-						</HStack>
-						<Text fontSize="sm" color={textMuted} mb={3}>
-							{t("tutorials.sampleTableNote")}
-						</Text>
-						<TableContainer
-							overflowX="auto"
-							bg={innerCardBg}
-							borderWidth="1px"
-							borderColor="light-border"
-							borderRadius="lg"
-							_dark={{ borderColor: "whiteAlpha.200" }}
-							boxShadow="sm"
-						>
-							<Table size="sm" variant="striped" colorScheme={tableColorScheme}>
-								<Thead>
-									<Tr>
-										<Th fontWeight="bold">{t("tutorials.table.username")}</Th>
-										<Th fontWeight="bold">{t("tutorials.table.status")}</Th>
-										<Th fontWeight="bold">{t("tutorials.table.expire")}</Th>
-										<Th fontWeight="bold">{t("tutorials.table.traffic")}</Th>
-										<Th fontWeight="bold">{t("tutorials.table.note")}</Th>
-									</Tr>
-								</Thead>
-								<Tbody>
-									{filtered.samples.map((sample) => {
-										const expiryLabel = formatExpiryLabel(sample.expireInDays);
-										const expiryTimestamp = expiryToTimestamp(sample.expireInDays);
-										return (
-											<Tr
-												key={sample.username}
-												_hover={{ bg: rowHoverBg }}
-											>
-												<Td fontWeight="medium">{sample.username}</Td>
-												<Td>
-													<StatusBadge
-														status={sample.status}
-														expiryDate={expiryTimestamp ?? undefined}
-														compact
-													/>
-												</Td>
-												<Td>
-													<Text fontSize="sm">{expiryLabel}</Text>
-												</Td>
-												<Td>
-													<Text fontSize="sm" dir="ltr">
-														{formatTraffic(sample)}
-													</Text>
-												</Td>
-												<Td>
-													<VStack align="flex-start" spacing={1}>
-														<Text fontSize="sm">
-															{sample.note || "-"}
-														</Text>
-														{typeof sample.ipLimit === "number" ? (
-															<Tag colorScheme="gray" size="sm">
-																{t("tutorials.table.ipLimit", {
-																	count: sample.ipLimit,
-																})}
-															</Tag>
-														) : null}
+																) : null}
+															</Box>
+														))}
 													</VStack>
-												</Td>
+												) : null}
+											</VStack>
+											{index !== filtered.dialogSections.length - 1 ? (
+												<Divider my={3} />
+											) : null}
+										</Box>
+									))}
+								</VStack>
+							</Box>
+						) : null}
+
+						{activeTab === "general" && filtered.samples.length ? (
+							<Box
+								{...cardStyles}
+								{...highlightStyles("samples")}
+								id="samples"
+								mt={4}
+							>
+								<HStack spacing={2} mb={2}>
+									<InfoIcon />
+									<Text fontWeight="semibold">
+										{t("tutorials.sampleTable")}
+									</Text>
+								</HStack>
+								<Text fontSize="sm" color={textMuted} mb={3}>
+									{t("tutorials.sampleTableNote")}
+								</Text>
+								<TableContainer
+									overflowX="auto"
+									bg={innerCardBg}
+									borderWidth="1px"
+									borderColor="light-border"
+									borderRadius="lg"
+									_dark={{ borderColor: "whiteAlpha.200" }}
+									boxShadow="sm"
+								>
+									<Table
+										size="sm"
+										variant="striped"
+										colorScheme={tableColorScheme}
+									>
+										<Thead>
+											<Tr>
+												<Th fontWeight="bold">
+													{t("tutorials.table.username")}
+												</Th>
+												<Th fontWeight="bold">{t("tutorials.table.status")}</Th>
+												<Th fontWeight="bold">{t("tutorials.table.expire")}</Th>
+												<Th fontWeight="bold">
+													{t("tutorials.table.traffic")}
+												</Th>
+												<Th fontWeight="bold">{t("tutorials.table.note")}</Th>
 											</Tr>
-										);
-									})}
-								</Tbody>
-							</Table>
-						</TableContainer>
-					</Box>
-				) : null}
+										</Thead>
+										<Tbody>
+											{filtered.samples.map((sample) => {
+												const expiryLabel = formatExpiryLabel(
+													sample.expireInDays,
+												);
+												const expiryTimestamp = expiryToTimestamp(
+													sample.expireInDays,
+												);
+												return (
+													<Tr key={sample.username} _hover={{ bg: rowHoverBg }}>
+														<Td fontWeight="medium">{sample.username}</Td>
+														<Td>
+															<StatusBadge
+																status={sample.status}
+																expiryDate={expiryTimestamp ?? undefined}
+																compact
+															/>
+														</Td>
+														<Td>
+															<Text fontSize="sm">{expiryLabel}</Text>
+														</Td>
+														<Td>
+															<Text fontSize="sm" dir="ltr">
+																{formatTraffic(sample)}
+															</Text>
+														</Td>
+														<Td>
+															<VStack align="flex-start" spacing={1}>
+																<Text fontSize="sm">{sample.note || "-"}</Text>
+																{typeof sample.ipLimit === "number" ? (
+																	<Tag colorScheme="gray" size="sm">
+																		{t("tutorials.table.ipLimit", {
+																			count: sample.ipLimit,
+																		})}
+																	</Tag>
+																) : null}
+															</VStack>
+														</Td>
+													</Tr>
+												);
+											})}
+										</Tbody>
+									</Table>
+								</TableContainer>
+							</Box>
+						) : null}
 
-				{activeTab === "general" && filtered.statuses.length ? (
-					<Box {...cardStyles} {...highlightStyles("statuses")} id="statuses" mt={4}>
-						<HStack spacing={2} mb={4}>
-							<InfoIcon />
-							<Text fontWeight="semibold">{t("tutorials.statusGuide")}</Text>
-						</HStack>
-						<VStack align="stretch" spacing={3}>
-							{filtered.statuses.map((status, idx) => (
-								<Box
-									key={status.status}
-									borderWidth="1px"
-									borderRadius="lg"
-									bg={innerCardBg}
-									p={3}
-									{...highlightStyles(`status-${status.status}`)}
-								>
-									<VStack align="stretch" spacing={2}>
-										<StatusBadge status={status.status} showDetail />
-										<Text fontWeight="semibold">{status.title}</Text>
-										<Text fontSize="sm" color={textMuted}>
-											{status.description}
-										</Text>
-										{status.actions?.length ? (
-											<Stack spacing={1.5} mt={1}>
-												<Text fontSize="sm" fontWeight="medium">
-													{t("tutorials.actions")}
+						{activeTab === "general" && filtered.statuses.length ? (
+							<Box
+								{...cardStyles}
+								{...highlightStyles("statuses")}
+								id="statuses"
+								mt={4}
+							>
+								<HStack spacing={2} mb={4}>
+									<InfoIcon />
+									<Text fontWeight="semibold">
+										{t("tutorials.statusGuide")}
+									</Text>
+								</HStack>
+								<VStack align="stretch" spacing={3}>
+									{filtered.statuses.map((status, idx) => (
+										<Box
+											key={status.status}
+											borderWidth="1px"
+											borderRadius="lg"
+											bg={innerCardBg}
+											p={3}
+											{...highlightStyles(`status-${status.status}`)}
+										>
+											<VStack align="stretch" spacing={2}>
+												<StatusBadge status={status.status} showDetail />
+												<Text fontWeight="semibold">{status.title}</Text>
+												<Text fontSize="sm" color={textMuted}>
+													{status.description}
 												</Text>
-												<List spacing={1} stylePosition="inside">
-													{status.actions.map((action, aIdx) => (
-														<ListItem key={`${status.status}-action-${aIdx}`}>
-															<ListIcon as={CheckIcon} color="primary.500" />
-															<Text as="span">{action}</Text>
-														</ListItem>
-													))}
-												</List>
-											</Stack>
-										) : null}
-									</VStack>
-									{idx !== filtered.statuses.length - 1 ? (
-										<Divider my={3} />
-									) : null}
-								</Box>
-							))}
-						</VStack>
-					</Box>
-				) : null}
-
-				{activeTab === "admin" && adminRoleCards.length ? (
-					<Box {...cardStyles} {...highlightStyles("admin-roles")} id="admin-roles" mt={4}>
-						<HStack spacing={2} mb={4}>
-							<InfoIcon />
-							<Text fontWeight="semibold">{t("tutorials.adminRoles")}</Text>
-						</HStack>
-						<VStack align="stretch" spacing={3}>
-							{adminRoleCards.map((role, idx) => (
-								<Box
-									key={role.id}
-									id={`admin-role-${role.id}`}
-									borderWidth="1px"
-									borderRadius="lg"
-									bg={innerCardBg}
-									p={3}
-									{...highlightStyles(`admin-role-${role.id}`)}
-								>
-									<VStack align="stretch" spacing={2}>
-										<Text fontWeight="semibold">{role.title}</Text>
-										<Text fontSize="sm" color={textMuted}>
-											{role.description}
-										</Text>
-										{role.bullets?.length ? (
-											<List spacing={1.5} stylePosition="inside">
-												{role.bullets.map((bullet, bIdx) => (
-													<ListItem key={`${role.id}-bullet-${bIdx}`}>
-														<ListIcon as={CheckIcon} color="primary.500" />
-														<Text as="span">{bullet}</Text>
-													</ListItem>
-												))}
-											</List>
-										) : null}
-									</VStack>
-									{idx !== adminRoleCards.length - 1 ? <Divider my={3} /> : null}
-								</Box>
-							))}
-						</VStack>
-					</Box>
-				) : null}
-
-				{activeTab === "general" && filtered.faqs.length ? (
-					<Box {...cardStyles} {...highlightStyles("faq")} id="faq" mt={4}>
-						<HStack spacing={2} mb={2}>
-							<QuestionIcon />
-							<Text fontWeight="semibold">{t("tutorials.faq")}</Text>
-						</HStack>
-						<VStack spacing={3} align="stretch">
-							{filtered.faqs.map((faq, idx) => (
-								<Box
-									key={faq.id}
-									id={`faq-${faq.id}`}
-									borderWidth="1px"
-									borderRadius="lg"
-									p={3}
-									{...highlightStyles(`faq-${faq.id}`)}
-								>
-									<VStack align="stretch" spacing={2}>
-										<Text fontWeight="semibold">{faq.question}</Text>
-										{faq.id === "subscription-basics" ? (
-											<Text fontSize="sm">
-												اشتراک همان یوزر است با لینک اتصال. از صفحه{" "}
-												<Link
-													color="primary.500"
-													fontWeight="semibold"
-													onClick={() => navigate("/users")}
-													textDecoration="underline"
-												>
-													کاربران
-												</Link>{" "}
-												دکمه{" "}
-												<Link
-													color="primary.500"
-													fontWeight="semibold"
-													onClick={() => {
-														sessionStorage.setItem("openCreateUser", "true");
-														navigate("/users");
-													}}
-													textDecoration="underline"
-												>
-													ساخت یوزر
-												</Link>{" "}
-												را بزن تا یک اشتراک بسازی.
-											</Text>
-										) : (
-											<Text fontSize="sm">{faq.answer}</Text>
-										)}
-										{faq.bullets?.length ? (
-											<List spacing={1.5} stylePosition="inside">
-												{faq.bullets.map((bullet, bIdx) => (
-													<ListItem key={`${faq.id}-bullet-${bIdx}`}>
-														<ListIcon as={CheckIcon} color="primary.500" />
-														{faq.id === "subscription-basics" &&
-														bullet.includes("ساخت یوزر") ? (
-															<>
-																<Text as="span">برای ساخت سریع، روی </Text>
-																<Link
-																	color="primary.500"
-																	fontWeight="semibold"
-																	onClick={() => {
-																		sessionStorage.setItem("openCreateUser", "true");
-																		navigate("/users");
-																	}}
-																	textDecoration="underline"
-																	cursor="pointer"
+												{status.actions?.length ? (
+													<Stack spacing={1.5} mt={1}>
+														<Text fontSize="sm" fontWeight="medium">
+															{t("tutorials.actions")}
+														</Text>
+														<List spacing={1} stylePosition="inside">
+															{status.actions.map((action, aIdx) => (
+																<ListItem
+																	key={`${status.status}-action-${aIdx}`}
 																>
-																	ساخت یوزر
-																</Link>
-																<Text as="span"> کلیک کن تا دیالوگ ساخت باز شود.</Text>
-															</>
-														) : (
-															<Text as="span">{bullet}</Text>
-														)}
-													</ListItem>
-												))}
-											</List>
-										) : null}
-									</VStack>
-									{idx !== filtered.faqs.length - 1 ? (
-										<Divider my={3} />
-									) : null}
-								</Box>
-							))}
-						</VStack>
+																	<ListIcon
+																		as={CheckIcon}
+																		color="primary.500"
+																	/>
+																	<Text as="span">{action}</Text>
+																</ListItem>
+															))}
+														</List>
+													</Stack>
+												) : null}
+											</VStack>
+											{idx !== filtered.statuses.length - 1 ? (
+												<Divider my={3} />
+											) : null}
+										</Box>
+									))}
+								</VStack>
+							</Box>
+						) : null}
+
+						{activeTab === "admin" && adminRoleCards.length ? (
+							<Box
+								{...cardStyles}
+								{...highlightStyles("admin-roles")}
+								id="admin-roles"
+								mt={4}
+							>
+								<HStack spacing={2} mb={4}>
+									<InfoIcon />
+									<Text fontWeight="semibold">{t("tutorials.adminRoles")}</Text>
+								</HStack>
+								<VStack align="stretch" spacing={3}>
+									{adminRoleCards.map((role, idx) => (
+										<Box
+											key={role.id}
+											id={`admin-role-${role.id}`}
+											borderWidth="1px"
+											borderRadius="lg"
+											bg={innerCardBg}
+											p={3}
+											{...highlightStyles(`admin-role-${role.id}`)}
+										>
+											<VStack align="stretch" spacing={2}>
+												<Text fontWeight="semibold">{role.title}</Text>
+												<Text fontSize="sm" color={textMuted}>
+													{role.description}
+												</Text>
+												{role.bullets?.length ? (
+													<List spacing={1.5} stylePosition="inside">
+														{role.bullets.map((bullet, bIdx) => (
+															<ListItem key={`${role.id}-bullet-${bIdx}`}>
+																<ListIcon as={CheckIcon} color="primary.500" />
+																<Text as="span">{bullet}</Text>
+															</ListItem>
+														))}
+													</List>
+												) : null}
+											</VStack>
+											{idx !== adminRoleCards.length - 1 ? (
+												<Divider my={3} />
+											) : null}
+										</Box>
+									))}
+								</VStack>
+							</Box>
+						) : null}
+
+						{activeTab === "general" && filtered.faqs.length ? (
+							<Box {...cardStyles} {...highlightStyles("faq")} id="faq" mt={4}>
+								<HStack spacing={2} mb={2}>
+									<QuestionIcon />
+									<Text fontWeight="semibold">{t("tutorials.faq")}</Text>
+								</HStack>
+								<VStack spacing={3} align="stretch">
+									{filtered.faqs.map((faq, idx) => (
+										<Box
+											key={faq.id}
+											id={`faq-${faq.id}`}
+											borderWidth="1px"
+											borderRadius="lg"
+											p={3}
+											{...highlightStyles(`faq-${faq.id}`)}
+										>
+											<VStack align="stretch" spacing={2}>
+												<Text fontWeight="semibold">{faq.question}</Text>
+												{faq.id === "subscription-basics" ? (
+													<Text fontSize="sm">
+														اشتراک همان یوزر است با لینک اتصال. از صفحه{" "}
+														<Link
+															color="primary.500"
+															fontWeight="semibold"
+															onClick={() => navigate("/users")}
+															textDecoration="underline"
+														>
+															کاربران
+														</Link>{" "}
+														دکمه{" "}
+														<Link
+															color="primary.500"
+															fontWeight="semibold"
+															onClick={() => {
+																sessionStorage.setItem(
+																	"openCreateUser",
+																	"true",
+																);
+																navigate("/users");
+															}}
+															textDecoration="underline"
+														>
+															ساخت یوزر
+														</Link>{" "}
+														را بزن تا یک اشتراک بسازی.
+													</Text>
+												) : (
+													<Text fontSize="sm">{faq.answer}</Text>
+												)}
+												{faq.bullets?.length ? (
+													<List spacing={1.5} stylePosition="inside">
+														{faq.bullets.map((bullet, bIdx) => (
+															<ListItem key={`${faq.id}-bullet-${bIdx}`}>
+																<ListIcon as={CheckIcon} color="primary.500" />
+																{faq.id === "subscription-basics" &&
+																bullet.includes("ساخت یوزر") ? (
+																	<>
+																		<Text as="span">برای ساخت سریع، روی </Text>
+																		<Link
+																			color="primary.500"
+																			fontWeight="semibold"
+																			onClick={() => {
+																				sessionStorage.setItem(
+																					"openCreateUser",
+																					"true",
+																				);
+																				navigate("/users");
+																			}}
+																			textDecoration="underline"
+																			cursor="pointer"
+																		>
+																			ساخت یوزر
+																		</Link>
+																		<Text as="span">
+																			{" "}
+																			کلیک کن تا دیالوگ ساخت باز شود.
+																		</Text>
+																	</>
+																) : (
+																	<Text as="span">{bullet}</Text>
+																)}
+															</ListItem>
+														))}
+													</List>
+												) : null}
+											</VStack>
+											{idx !== filtered.faqs.length - 1 ? (
+												<Divider my={3} />
+											) : null}
+										</Box>
+									))}
+								</VStack>
+							</Box>
+						) : null}
 					</Box>
-				) : null}
-			</Box>
-		</Flex>
-	)}
-</VStack>
-);
+				</Flex>
+			)}
+		</VStack>
+	);
 };
 
 export default TutorialsPage;

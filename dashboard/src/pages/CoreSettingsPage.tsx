@@ -72,7 +72,10 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "react-query";
 import { fetch as apiFetch } from "service/http";
-import { BalancerModal, type BalancerFormValues } from "../components/BalancerModal";
+import {
+	type BalancerFormValues,
+	BalancerModal,
+} from "../components/BalancerModal";
 import { DnsModal } from "../components/DnsModal";
 import { DnsPresetsModal } from "../components/DnsPresetsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
@@ -124,6 +127,11 @@ const compactActionButtonProps = {
 const serializeConfig = (value: any) => JSON.stringify(value ?? {});
 const formatList = (value: string | string[] | undefined) =>
 	Array.isArray(value) ? value.join(",") : (value ?? "");
+const normalizeSearchValue = (value: unknown): string => {
+	if (Array.isArray(value)) return value.map(normalizeSearchValue).join(" ");
+	if (value && typeof value === "object") return JSON.stringify(value);
+	return String(value ?? "");
+};
 const DNS_STRATEGY_OPTIONS = ["UseSystem", "UseIP", "UseIPv4", "UseIPv6"];
 const createDefaultDnsConfig = () => ({
 	servers: [] as any[],
@@ -422,7 +430,10 @@ export const CoreSettingsPage: FC = () => {
 		serializeConfig(form.getValues("config")),
 	);
 	const watchedConfig = useWatch({ control: form.control, name: "config" });
-	const watchedDnsConfig = useWatch({ control: form.control, name: "config.dns" });
+	const watchedDnsConfig = useWatch({
+		control: form.control,
+		name: "config.dns",
+	});
 	const hasConfigChanges = useMemo(
 		() => serializeConfig(watchedConfig) !== initialConfigStringRef.current,
 		[watchedConfig],
@@ -446,9 +457,9 @@ export const CoreSettingsPage: FC = () => {
 		number | null
 	>(null);
 	const [editingDnsIndex, setEditingDnsIndex] = useState<number | null>(null);
-	const [editingFakeDnsIndex, setEditingFakeDnsIndex] = useState<
-		number | null
-	>(null);
+	const [editingFakeDnsIndex, setEditingFakeDnsIndex] = useState<number | null>(
+		null,
+	);
 	const [isFullScreen, setIsFullScreen] = useState(false);
 	const [advSettings, setAdvSettings] = useState<string>("xraySetting");
 	const [obsSettings, setObsSettings] = useState<string>("");
@@ -457,41 +468,43 @@ export const CoreSettingsPage: FC = () => {
 	const [warpOptionValue, setWarpOptionValue] = useState<string>("");
 	const [warpCustomDomain, setWarpCustomDomain] = useState<string>("");
 	const [activeTab, setActiveTab] = useState<number>(0);
-	const tabKeys = [
-		"basic",
-		"routing",
-		"outbounds",
-		"balancers",
-		"dns",
-		"advanced",
-		"logs",
-	];
-	const splitHash = () => {
+	const tabKeys = useMemo(
+		() => [
+			"basic",
+			"routing",
+			"outbounds",
+			"balancers",
+			"dns",
+			"advanced",
+			"logs",
+		],
+		[],
+	);
+	const splitHash = useCallback(() => {
 		const hash = window.location.hash || "";
 		const idx = hash.indexOf("#", 1);
 		return {
 			base: idx >= 0 ? hash.slice(0, idx) : hash,
 			tab: idx >= 0 ? hash.slice(idx + 1) : "",
 		};
-	};
-
-useEffect(() => {
-	const syncFromHash = () => {
-		const { tab } = splitHash();
-		const idx = tabKeys.findIndex((key) => key === tab.toLowerCase());
-		if (idx >= 0) {
-			setActiveTab(idx);
-		} else {
-			setActiveTab(0);
-			const { base } = splitHash();
-			window.location.hash = `${base || "#"}#${tabKeys[0]}`;
-		}
-	};
-	syncFromHash();
-	window.addEventListener("hashchange", syncFromHash);
-	return () => window.removeEventListener("hashchange", syncFromHash);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
+
+	useEffect(() => {
+		const syncFromHash = () => {
+			const { tab } = splitHash();
+			const idx = tabKeys.indexOf(tab.toLowerCase());
+			if (idx >= 0) {
+				setActiveTab(idx);
+			} else {
+				setActiveTab(0);
+				const { base } = splitHash();
+				window.location.hash = `${base || "#"}#${tabKeys[0]}`;
+			}
+		};
+		syncFromHash();
+		window.addEventListener("hashchange", syncFromHash);
+		return () => window.removeEventListener("hashchange", syncFromHash);
+	}, [splitHash, tabKeys]);
 
 	const basicSectionBorder = useColorModeValue("gray.200", "whiteAlpha.300");
 	const emptyStateBorder = useColorModeValue("gray.200", "whiteAlpha.300");
@@ -631,7 +644,9 @@ useEffect(() => {
 			syncOutboundDisplay((config?.outbounds as OutboundJson[]) || []);
 			syncRoutingRuleDisplay((config?.routing?.rules as RoutingRule[]) || []);
 			setBalancersData(
-				buildBalancerRows((config?.routing?.balancers as BalancerConfig[]) || []),
+				buildBalancerRows(
+					(config?.routing?.balancers as BalancerConfig[]) || [],
+				),
 			);
 			setDnsServers(config?.dns?.servers || []);
 			setFakeDns(config?.fakedns || []);
@@ -671,7 +686,11 @@ useEffect(() => {
 				setObsSettings("burstObservatory");
 			}
 		}
-	}, [obsSettings, watchedConfig?.observatory, watchedConfig?.burstObservatory]);
+	}, [
+		obsSettings,
+		watchedConfig?.observatory,
+		watchedConfig?.burstObservatory,
+	]);
 
 	const { mutate: handleRestartCore, isLoading: isRestarting } = useMutation(
 		restartCore,
@@ -728,14 +747,14 @@ useEffect(() => {
 			});
 	});
 
-	const fetchOutboundsTraffic = async () => {
+	const fetchOutboundsTraffic = useCallback(async () => {
 		const response = await apiFetch<{ success: boolean; obj: any }>(
 			"/panel/xray/getOutboundsTraffic",
 		);
 		if (response?.success) {
 			setOutboundsTraffic(response.obj);
 		}
-	};
+	}, []);
 
 	const _resetOutboundTraffic = async (index: number) => {
 		const payload: Record<string, string | undefined> = {};
@@ -809,15 +828,12 @@ useEffect(() => {
 		moveOutbound(index, index + 1);
 	};
 
-	const normalizeSearchValue = (value: unknown): string => {
-		if (Array.isArray(value)) return value.map(normalizeSearchValue).join(" ");
-		if (value && typeof value === "object") return JSON.stringify(value);
-		return String(value ?? "");
-	};
-
 	const filteredRoutingRules = useMemo(() => {
 		const term = routingRuleSearch.trim().toLowerCase();
-		const rows = routingRuleData.map((rule, originalIndex) => ({ rule, originalIndex }));
+		const rows = routingRuleData.map((rule, originalIndex) => ({
+			rule,
+			originalIndex,
+		}));
 		if (!term) return rows;
 		return rows.filter(({ rule }) => {
 			const haystack = [
@@ -843,7 +859,10 @@ useEffect(() => {
 
 	const filteredOutboundData = useMemo(() => {
 		const term = outboundSearch.trim().toLowerCase();
-		const rows = outboundData.map((outbound, originalIndex) => ({ outbound, originalIndex }));
+		const rows = outboundData.map((outbound, originalIndex) => ({
+			outbound,
+			originalIndex,
+		}));
 		if (!term) return rows;
 		return rows.filter(({ outbound }) =>
 			JSON.stringify(outbound).toLowerCase().includes(term),
@@ -1207,7 +1226,7 @@ useEffect(() => {
 		return () => {
 			active = false;
 		};
-	}, [canManageXraySettings]);
+	}, [canManageXraySettings, fetchOutboundsTraffic]);
 
 	const canonicalRoutingRules = useMemo<RoutingRule[]>(
 		() =>
@@ -2180,76 +2199,84 @@ useEffect(() => {
 												</Td>
 											</Tr>
 										)}
-										{filteredRoutingRules.map(({ rule, originalIndex }, index) => (
-											<Tr key={rule.key}>
-												<Td>
-													<VStack align="flex-start" spacing={1}>
-														<Text fontWeight="semibold">
-															{originalIndex + 1}
-														</Text>
+										{filteredRoutingRules.map(
+											({ rule, originalIndex }, _index) => (
+												<Tr key={rule.key}>
+													<Td>
+														<VStack align="flex-start" spacing={1}>
+															<Text fontWeight="semibold">
+																{originalIndex + 1}
+															</Text>
+															<HStack spacing={1}>
+																<IconButton
+																	aria-label="move up"
+																	icon={<ArrowUpIconStyled />}
+																	size="xs"
+																	variant="ghost"
+																	isDisabled={
+																		routingRuleSearch.trim().length > 0 ||
+																		originalIndex === 0
+																	}
+																	onClick={() =>
+																		replaceRule(
+																			originalIndex,
+																			originalIndex - 1,
+																		)
+																	}
+																/>
+																<IconButton
+																	aria-label="move down"
+																	icon={<ArrowDownIconStyled />}
+																	size="xs"
+																	variant="ghost"
+																	isDisabled={
+																		routingRuleSearch.trim().length > 0 ||
+																		originalIndex === routingRuleData.length - 1
+																	}
+																	onClick={() =>
+																		replaceRule(
+																			originalIndex,
+																			originalIndex + 1,
+																		)
+																	}
+																/>
+															</HStack>
+														</VStack>
+													</Td>
+													<Td>{renderChipList(rule.source, "blue")}</Td>
+													<Td>{renderTextValue(rule.sourcePort)}</Td>
+													<Td>{renderChipList(rule.network, "purple")}</Td>
+													<Td>{renderChipList(rule.protocol, "green")}</Td>
+													<Td>{renderAttrsCell(rule.attrs)}</Td>
+													<Td>{renderChipList(rule.ip, "blue")}</Td>
+													<Td>{renderChipList(rule.domain, "blue")}</Td>
+													<Td>{renderTextValue(rule.port)}</Td>
+													<Td>{renderChipList(rule.inboundTag, "teal")}</Td>
+													<Td>{renderChipList(rule.user, "cyan")}</Td>
+													<Td>{renderTextValue(rule.outboundTag)}</Td>
+													<Td>{renderTextValue(rule.balancerTag)}</Td>
+													<Td>
 														<HStack spacing={1}>
 															<IconButton
-																aria-label="move up"
-																icon={<ArrowUpIconStyled />}
+																aria-label="edit"
+																icon={<EditIconStyled />}
 																size="xs"
 																variant="ghost"
-																isDisabled={
-																	routingRuleSearch.trim().length > 0 ||
-																	originalIndex === 0
-																}
-																onClick={() =>
-																	replaceRule(originalIndex, originalIndex - 1)
-																}
+																onClick={() => editRule(originalIndex)}
 															/>
 															<IconButton
-																aria-label="move down"
-																icon={<ArrowDownIconStyled />}
+																aria-label="delete"
+																icon={<DeleteIconStyled />}
 																size="xs"
 																variant="ghost"
-																isDisabled={
-																	routingRuleSearch.trim().length > 0 ||
-																	originalIndex === routingRuleData.length - 1
-																}
-																onClick={() =>
-																	replaceRule(originalIndex, originalIndex + 1)
-																}
+																colorScheme="red"
+																onClick={() => deleteRule(originalIndex)}
 															/>
 														</HStack>
-													</VStack>
-												</Td>
-												<Td>{renderChipList(rule.source, "blue")}</Td>
-												<Td>{renderTextValue(rule.sourcePort)}</Td>
-												<Td>{renderChipList(rule.network, "purple")}</Td>
-												<Td>{renderChipList(rule.protocol, "green")}</Td>
-												<Td>{renderAttrsCell(rule.attrs)}</Td>
-												<Td>{renderChipList(rule.ip, "blue")}</Td>
-												<Td>{renderChipList(rule.domain, "blue")}</Td>
-												<Td>{renderTextValue(rule.port)}</Td>
-												<Td>{renderChipList(rule.inboundTag, "teal")}</Td>
-												<Td>{renderChipList(rule.user, "cyan")}</Td>
-												<Td>{renderTextValue(rule.outboundTag)}</Td>
-												<Td>{renderTextValue(rule.balancerTag)}</Td>
-												<Td>
-													<HStack spacing={1}>
-														<IconButton
-															aria-label="edit"
-															icon={<EditIconStyled />}
-															size="xs"
-															variant="ghost"
-															onClick={() => editRule(originalIndex)}
-														/>
-														<IconButton
-															aria-label="delete"
-															icon={<DeleteIconStyled />}
-															size="xs"
-															variant="ghost"
-															colorScheme="red"
-															onClick={() => deleteRule(originalIndex)}
-														/>
-													</HStack>
-												</Td>
-											</Tr>
-										))}
+													</Td>
+												</Tr>
+											),
+										)}
 									</Tbody>
 								</TableGrid>
 							</TableCard>
@@ -2307,93 +2334,102 @@ useEffect(() => {
 											<Tr>
 												<Td colSpan={5}>
 													<Text textAlign="center" color="gray.500">
-														{t("pages.xray.outbound.empty", "No outbound found")}
+														{t(
+															"pages.xray.outbound.empty",
+															"No outbound found",
+														)}
 													</Text>
 												</Td>
 											</Tr>
 										)}
-										{filteredOutboundData.map(({ outbound, originalIndex }, index) => (
-											<Tr key={outbound.key}>
-												<Td>
-													<HStack>
-														<Text>{originalIndex + 1}</Text>
-														<IconButton
-															aria-label={t(
-																"pages.xray.outbound.moveUp",
-																"Move up",
-															)}
-															icon={<ArrowUpIconStyled />}
-															size="xs"
-															variant="ghost"
-															isDisabled={
-																outboundSearch.trim().length > 0 ||
-																originalIndex === 0
-															}
-															onClick={() => moveOutboundUp(originalIndex)}
-														/>
-														<IconButton
-															aria-label={t(
-																"pages.xray.outbound.moveDown",
-																"Move down",
-															)}
-															icon={<ArrowDownIconStyled />}
-															size="xs"
-															variant="ghost"
-															isDisabled={
-																outboundSearch.trim().length > 0 ||
-																originalIndex === outboundData.length - 1
-															}
-															onClick={() => moveOutboundDown(originalIndex)}
-														/>
-														<IconButton
-															aria-label="edit"
-															icon={<EditIconStyled />}
-															size="xs"
-															variant="ghost"
-															onClick={() => editOutbound(originalIndex)}
-														/>
-														<IconButton
-															aria-label="delete"
-															icon={<DeleteIconStyled />}
-															size="xs"
-															variant="ghost"
-															colorScheme="red"
-															onClick={() => deleteOutbound(originalIndex)}
-														/>
-													</HStack>
-												</Td>
-												<Td>{outbound.tag}</Td>
-												<Td>
-													<Tag colorScheme="purple">{outbound.protocol}</Tag>
-													{["vmess", "vless", "trojan", "shadowsocks"].includes(
-														outbound.protocol,
-													) && (
-														<>
-															<Tag colorScheme="blue">
-																{outbound.streamSettings?.network}
-															</Tag>
-															{outbound.streamSettings?.security === "tls" && (
-																<Tag colorScheme="green">tls</Tag>
-															)}
-															{outbound.streamSettings?.security ===
-																"reality" && (
-																<Tag colorScheme="green">reality</Tag>
-															)}
-														</>
-													)}
-												</Td>
-												<Td>
-													{findOutboundAddress(outbound).map((addr: string) => (
-														<Text key={addr}>{addr}</Text>
-													))}
-												</Td>
-												<Td>
-													<Tag colorScheme="green">
-														{findOutboundTraffic(outbound, originalIndex)}
-													</Tag>
-												</Td>
-											</Tr>
-										))}
+										{filteredOutboundData.map(
+											({ outbound, originalIndex }, _index) => (
+												<Tr key={outbound.key}>
+													<Td>
+														<HStack>
+															<Text>{originalIndex + 1}</Text>
+															<IconButton
+																aria-label={t(
+																	"pages.xray.outbound.moveUp",
+																	"Move up",
+																)}
+																icon={<ArrowUpIconStyled />}
+																size="xs"
+																variant="ghost"
+																isDisabled={
+																	outboundSearch.trim().length > 0 ||
+																	originalIndex === 0
+																}
+																onClick={() => moveOutboundUp(originalIndex)}
+															/>
+															<IconButton
+																aria-label={t(
+																	"pages.xray.outbound.moveDown",
+																	"Move down",
+																)}
+																icon={<ArrowDownIconStyled />}
+																size="xs"
+																variant="ghost"
+																isDisabled={
+																	outboundSearch.trim().length > 0 ||
+																	originalIndex === outboundData.length - 1
+																}
+																onClick={() => moveOutboundDown(originalIndex)}
+															/>
+															<IconButton
+																aria-label="edit"
+																icon={<EditIconStyled />}
+																size="xs"
+																variant="ghost"
+																onClick={() => editOutbound(originalIndex)}
+															/>
+															<IconButton
+																aria-label="delete"
+																icon={<DeleteIconStyled />}
+																size="xs"
+																variant="ghost"
+																colorScheme="red"
+																onClick={() => deleteOutbound(originalIndex)}
+															/>
+														</HStack>
+													</Td>
+													<Td>{outbound.tag}</Td>
+													<Td>
+														<Tag colorScheme="purple">{outbound.protocol}</Tag>
+														{[
+															"vmess",
+															"vless",
+															"trojan",
+															"shadowsocks",
+														].includes(outbound.protocol) && (
+															<>
+																<Tag colorScheme="blue">
+																	{outbound.streamSettings?.network}
+																</Tag>
+																{outbound.streamSettings?.security ===
+																	"tls" && <Tag colorScheme="green">tls</Tag>}
+																{outbound.streamSettings?.security ===
+																	"reality" && (
+																	<Tag colorScheme="green">reality</Tag>
+																)}
+															</>
+														)}
+													</Td>
+													<Td>
+														{findOutboundAddress(outbound).map(
+															(addr: string) => (
+																<Text key={addr}>{addr}</Text>
+															),
+														)}
+													</Td>
+													<Td>
+														<Tag colorScheme="green">
+															{findOutboundTraffic(outbound, originalIndex)}
+														</Tag>
+													</Td>
+												</Tr>
+											),
+										)}
 									</Tbody>
 								</TableGrid>
 							</TableCard>
@@ -2693,7 +2729,9 @@ useEffect(() => {
 										</SettingRow>
 										<SettingRow
 											label={t("pages.xray.dns.disableFallbackIfMatch")}
-											description={t("pages.xray.dns.disableFallbackIfMatchDesc")}
+											description={t(
+												"pages.xray.dns.disableFallbackIfMatchDesc",
+											)}
 											controlId="dns-disable-fallback-match"
 										>
 											{(id) => (
@@ -2802,9 +2840,7 @@ useEffect(() => {
 																	</HStack>
 																</Td>
 																<Td>
-																	{typeof dns === "object"
-																		? dns.address
-																		: dns}
+																	{typeof dns === "object" ? dns.address : dns}
 																</Td>
 																<Td>
 																	{typeof dns === "object"
@@ -2856,9 +2892,7 @@ useEffect(() => {
 								</SectionCard>
 							)}
 							{dnsEnabled && (
-								<SectionCard
-									title={t("pages.xray.fakedns.title", "Fake DNS")}
-								>
+								<SectionCard title={t("pages.xray.fakedns.title", "Fake DNS")}>
 									{fakeDns.length > 0 ? (
 										<VStack align="stretch" spacing={3}>
 											<Button
@@ -3114,9 +3148,7 @@ useEffect(() => {
 				setFakeDns={setFakeDns}
 				fakeDnsIndex={editingFakeDnsIndex}
 				currentFakeDnsData={
-					editingFakeDnsIndex !== null
-						? fakeDns[editingFakeDnsIndex]
-						: null
+					editingFakeDnsIndex !== null ? fakeDns[editingFakeDnsIndex] : null
 				}
 			/>
 		</VStack>

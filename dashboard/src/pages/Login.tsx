@@ -105,7 +105,8 @@ export const Login: FC = () => {
 	const usernameValue = watch("username") || "";
 	const passwordValue = watch("password") || "";
 	const canSubmit =
-		Boolean(usernameValue.trim().length) && Boolean(passwordValue.trim().length);
+		Boolean(usernameValue.trim().length) &&
+		Boolean(passwordValue.trim().length);
 
 	// Only clear existing tokens on initial mount to avoid wiping the new token
 	useEffect(() => {
@@ -114,7 +115,7 @@ export const Login: FC = () => {
 			navigate("/login", { replace: true });
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [location.pathname, navigate]);
 	const login = (values: LoginFormValues) => {
 		setError("");
 		const formData = new FormData();
@@ -134,9 +135,13 @@ export const Login: FC = () => {
 			.finally(() => setLoading(false));
 	};
 
-	const handleLoginClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
+	const handleLoginClick = async (
+		event: React.MouseEvent<HTMLButtonElement>,
+	) => {
 		// Prevent submit when fields are empty and surface validation errors
-		const valid = await trigger(["username", "password"], { shouldFocus: true });
+		const valid = await trigger(["username", "password"], {
+			shouldFocus: true,
+		});
 		if (!valid) {
 			event.preventDefault();
 			return;

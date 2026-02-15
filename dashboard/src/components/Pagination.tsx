@@ -17,8 +17,8 @@ import { type ChangeEvent, type FC, useMemo } from "react";
 
 import { useTranslation } from "react-i18next";
 import {
-	setUsersPerPageLimitSize,
 	setAdminsPerPageLimitSize,
+	setUsersPerPageLimitSize,
 } from "utils/userPreferenceStorage";
 
 const PrevIcon = chakra(ArrowLongLeftIcon, {

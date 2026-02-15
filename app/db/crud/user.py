@@ -804,9 +804,11 @@ def get_users(
                                 filtered_users.sort(key=lambda u: u.data_limit or 0, reverse=reverse)
                             elif "expire" in sort_str:
                                 filtered_users.sort(
-                                    key=lambda u: u.expire or datetime.max.replace(tzinfo=timezone.utc)
-                                    if u.expire
-                                    else datetime.min.replace(tzinfo=timezone.utc),
+                                    key=lambda u: (
+                                        u.expire or datetime.max.replace(tzinfo=timezone.utc)
+                                        if u.expire
+                                        else datetime.min.replace(tzinfo=timezone.utc)
+                                    ),
                                     reverse=reverse,
                                 )
 
@@ -1839,7 +1841,9 @@ def adjust_all_users_expire(
         )
 
     if UserStatus.on_hold in scope:
-        on_hold_query = _build_user_bulk_query(db, admin, service_id, service_without_assignment, eager_load=False).filter(
+        on_hold_query = _build_user_bulk_query(
+            db, admin, service_id, service_without_assignment, eager_load=False
+        ).filter(
             User.status == UserStatus.on_hold,
             User.on_hold_expire_duration.isnot(None),
         )
@@ -2039,26 +2043,40 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         admin (Optional[Admin]): Admin to filter users by, if any.
     """
     now = datetime.now(timezone.utc)
-    base_filters = [User.status == UserStatus.disabled]
+    query = db.query(User).filter(User.status == UserStatus.disabled)
     if admin:
-        base_filters.append(User.admin == admin)
+        query = query.filter(User.admin == admin)
 
-    # Move eligible disabled users back to on_hold
-    on_hold_filters = list(base_filters) + [
-        User.expire.is_(None),
-        User.on_hold_expire_duration.isnot(None),
-        User.online_at.is_(None),
-    ]
-    db.query(User).filter(*on_hold_filters).update(
-        {User.status: UserStatus.on_hold, User.last_status_change: now},
-        synchronize_session=False,
-    )
+    users = query.order_by(User.created_at.asc()).all()
 
-    # Reactivate remaining disabled users
-    db.query(User).filter(*base_filters).update(
-        {User.status: UserStatus.active, User.last_status_change: now},
-        synchronize_session=False,
-    )
+    remaining_slots: Optional[int] = None
+    if _is_user_limit_enforced(admin):
+        active_count = _get_active_users_count(db, admin)
+        remaining_slots = max((admin.users_limit or 0) - active_count, 0)
+
+    now_ts = now.timestamp()
+    for dbuser in users:
+        target_status: Optional[UserStatus] = None
+
+        if dbuser.expire and dbuser.expire <= now_ts:
+            target_status = UserStatus.expired
+        else:
+            limit = dbuser.data_limit or 0
+            if limit > 0 and dbuser.used_traffic >= limit:
+                target_status = UserStatus.limited
+            elif dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
+                target_status = UserStatus.on_hold
+            else:
+                if remaining_slots is not None:
+                    if remaining_slots <= 0:
+                        # Keep disabled if admin limit is reached.
+                        continue
+                    remaining_slots -= 1
+                target_status = UserStatus.active
+
+        if target_status and dbuser.status != target_status:
+            dbuser.status = target_status
+            dbuser.last_status_change = now
 
     db.commit()
 

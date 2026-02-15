@@ -83,7 +83,7 @@ class V2rayShareLink(str):
             )
 
         elif inbound["protocol"] == "vless":
-            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
+            selected_auth = inbound.get("encryption") or "none"
             link = self.vless(
                 remark=remark,
                 address=address_formatted,
@@ -884,7 +884,13 @@ class V2rayJsonConfig(str):
             dialer_settings["noises"] = V2rayJsonConfig.make_noises(noises)
 
         if dialer_settings:
-            return {"tag": "dialer", "protocol": "freedom", "settings": dialer_settings}
+            dialer_settings.setdefault("domainStrategy", "AsIs")
+            return {
+                "tag": "fragment",
+                "protocol": "freedom",
+                "settings": dialer_settings,
+                "streamSettings": {"sockopt": {"tcpKeepAliveIdle": 100, "tcpNoDelay": True}},
+            }
 
         return None
 
@@ -960,7 +966,11 @@ class V2rayJsonConfig(str):
             tls_settings = None
 
         if dialer_proxy:
-            sockopt = {"dialerProxy": dialer_proxy}
+            sockopt = {
+                "dialerProxy": dialer_proxy,
+                "tcpKeepAliveIdle": 100,
+                "tcpNoDelay": True,
+            }
         else:
             sockopt = None
 
@@ -995,7 +1005,7 @@ class V2rayJsonConfig(str):
             outbound["settings"] = self.vmess_config(address=address, port=port, id=settings["id"])
 
         elif inbound["protocol"] == "vless":
-            selected_auth = settings.get("selectedAuth") or settings.get("encryption") or "none"
+            selected_auth = inbound.get("encryption") or "none"
             if net in ("tcp", "raw", "kcp") and headers != "http" and tls in ("tls", "reality"):
                 flow = settings.get("flow", "")
             else:

@@ -386,6 +386,14 @@ def add_node(dbnode: "DBNode"):
     remove_node(dbnode.id)
 
     tls = get_tls(node_id=dbnode.id)
+    proxy_config = {
+        "enabled": bool(getattr(dbnode, "proxy_enabled", False)),
+        "type": getattr(dbnode, "proxy_type", None),
+        "host": getattr(dbnode, "proxy_host", None),
+        "port": getattr(dbnode, "proxy_port", None),
+        "username": getattr(dbnode, "proxy_username", None),
+        "password": getattr(dbnode, "proxy_password", None),
+    }
     state.nodes[dbnode.id] = XRayNode(
         address=dbnode.address,
         port=dbnode.port,
@@ -393,6 +401,8 @@ def add_node(dbnode: "DBNode"):
         ssl_key=tls["key"],
         ssl_cert=tls["certificate"],
         usage_coefficient=dbnode.usage_coefficient,
+        proxy=proxy_config,
+        server_cert=getattr(dbnode, "certificate", None),
     )
 
     return state.nodes[dbnode.id]
@@ -478,8 +488,26 @@ def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> Non
         logger.info('Connected to "%s" node, xray run on v%s', dbnode.name, version)
 
     except Exception as e:
-        _change_node_status(node_id, NodeStatus.error, message=str(e))
-        logger.info('Unable to connect to "%s" node', dbnode.name)
+        recovered = False
+        try:
+            if node.connected and node.started:
+                try:
+                    version = node.get_version()
+                except Exception:
+                    version = dbnode.xray_version
+                _change_node_status(node_id, NodeStatus.connected, version=version)
+                logger.warning(
+                    'Node "%s" reported connected after connect error: %s',
+                    dbnode.name,
+                    e,
+                )
+                recovered = True
+        except Exception:
+            pass
+
+        if not recovered:
+            _change_node_status(node_id, NodeStatus.error, message=str(e))
+            logger.info('Unable to connect to "%s" node', dbnode.name)
 
     finally:
         try:

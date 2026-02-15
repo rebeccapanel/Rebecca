@@ -271,6 +271,8 @@ class User(Base):
 
     @property
     def excluded_inbounds(self):
+        if self.service_id is not None:
+            return {proxy.type: [] for proxy in self.proxies}
         _ = {}
         for proxy in self.proxies:
             _[proxy.type] = [i.tag for i in proxy.excluded_inbounds]
@@ -281,12 +283,66 @@ class User(Base):
         from app.runtime import xray  # lazy import to avoid circular dependency
 
         _ = {}
+        if self.service_id is not None:
+            allowed_tags = set()
+            try:
+                service = getattr(self, "service", None)
+                host_links = getattr(service, "host_links", None) if service else None
+                if host_links is not None:
+                    for link in host_links:
+                        host = getattr(link, "host", None)
+                        if not host or getattr(host, "is_disabled", False):
+                            continue
+                        if getattr(host, "inbound_tag", None):
+                            allowed_tags.add(host.inbound_tag)
+            except Exception:
+                pass
+
+            if not allowed_tags:
+                try:
+                    from app.services.data_access import get_service_host_map_cached
+
+                    host_map = get_service_host_map_cached(self.service_id, force_refresh=True)
+                except Exception:
+                    host_map = {}
+                allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
+            if not allowed_tags:
+                try:
+                    from app.db import GetDB
+                    from app.db import models as db_models
+
+                    with GetDB() as db:
+                        rows = (
+                            db.query(db_models.ProxyHost.inbound_tag)
+                            .join(
+                                db_models.ServiceHostLink,
+                                db_models.ServiceHostLink.host_id == db_models.ProxyHost.id,
+                            )
+                            .filter(db_models.ServiceHostLink.service_id == self.service_id)
+                            .filter(~db_models.ProxyHost.is_disabled.is_(True))
+                            .distinct()
+                            .all()
+                        )
+                    allowed_tags = {row[0] for row in rows if row and row[0]}
+                except Exception:
+                    pass
+            for proxy in self.proxies:
+                proxy_key = proxy.type
+                proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
+                _[proxy_key] = []
+                for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
+                    if inbound["tag"] in allowed_tags:
+                        _[proxy_key].append(inbound["tag"])
+            return _
+
         for proxy in self.proxies:
-            _[proxy.type] = []
+            proxy_key = proxy.type
+            proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
+            _[proxy_key] = []
             excluded_tags = [i.tag for i in proxy.excluded_inbounds]
-            for inbound in xray.config.inbounds_by_protocol.get(proxy.type, []):
+            for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
                 if inbound["tag"] not in excluded_tags:
-                    _[proxy.type].append(inbound["tag"])
+                    _[proxy_key].append(inbound["tag"])
 
         return _
 
@@ -583,6 +639,12 @@ class Node(Base):
     data_limit = Column(BigInteger, nullable=True, default=None)
     use_nobetci = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     nobetci_port = Column(Integer, nullable=True, default=None)
+    proxy_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    proxy_type = Column(String(16), nullable=True, default=None)
+    proxy_host = Column(String(255), nullable=True, default=None)
+    proxy_port = Column(Integer, nullable=True, default=None)
+    proxy_username = Column(String(255), nullable=True, default=None)
+    proxy_password = Column(String(255), nullable=True, default=None)
     certificate = Column(Text, nullable=True)  # Node-specific certificate (PEM format)
     certificate_key = Column(Text, nullable=True)  # Node-specific certificate key (PEM format)
 

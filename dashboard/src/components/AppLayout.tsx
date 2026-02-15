@@ -13,6 +13,7 @@ import {
 	MenuButton,
 	MenuItem,
 	MenuList,
+	type PlacementWithLogical,
 	Popover,
 	PopoverBody,
 	PopoverContent,
@@ -23,37 +24,42 @@ import {
 	useColorModeValue,
 	useDisclosure,
 	VStack,
-	type PlacementWithLogical,
 } from "@chakra-ui/react";
 import {
 	ArrowLeftOnRectangleIcon,
+	ArrowUpOnSquareIcon,
 	Bars3Icon,
 	CheckIcon,
+	Cog6ToothIcon,
+	GlobeAltIcon,
 	LanguageIcon,
+	ServerIcon,
 	ShieldCheckIcon,
+	Square3Stack3DIcon,
 	Squares2X2Icon,
 	UserCircleIcon,
 	UserGroupIcon,
 } from "@heroicons/react/24/outline";
-import { ArrowUpOnSquareIcon } from "@heroicons/react/24/outline";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
 import useGetUser from "hooks/useGetUser";
 import {
+	type ElementType,
 	type MouseEvent as ReactMouseEvent,
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	useEffect,
-	useLayoutEffect,
 } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { AdminRole } from "types/Admin";
+import { AdminRole, AdminSection } from "types/Admin";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
-import { HeaderCalendar } from "./HeaderCalendar";
 import { GitHubStars } from "./GitHubStars";
+import { HeaderCalendar } from "./HeaderCalendar";
 import ThemeSelector from "./ThemeSelector";
 
 const iconProps = {
@@ -70,7 +76,26 @@ const UserIcon = chakra(UserCircleIcon, iconProps);
 const HomeIcon = chakra(Squares2X2Icon, iconProps);
 const UsersIcon = chakra(UserGroupIcon, iconProps);
 const AdminsIcon = chakra(ShieldCheckIcon, iconProps);
+const SettingsIcon = chakra(Cog6ToothIcon, iconProps);
+const ServicesIcon = chakra(Squares2X2Icon, iconProps);
+const HostsIcon = chakra(ServerIcon, iconProps);
+const NodesIcon = chakra(Square3Stack3DIcon, iconProps);
+const InsightsIcon = chakra(GlobeAltIcon, iconProps);
 const ShareIcon = chakra(ArrowUpOnSquareIcon, iconProps);
+
+type SettingsMenuItem = {
+	key: string;
+	label: string;
+	to: string;
+	icon?: ElementType;
+};
+
+type BottomNavItem = {
+	key: string;
+	label: string;
+	to?: string;
+	kind?: "menu" | "link";
+};
 
 export function AppLayout() {
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -79,12 +104,14 @@ export function AppLayout() {
 	const languageMenu = useDisclosure();
 	const userMenu = useDisclosure();
 	const accountMenu = useDisclosure();
+	const settingsMenu = useDisclosure();
 	const { t, i18n } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const navigate = useNavigate();
 	const location = useLocation();
 	useAppleEmoji();
 	const isRTL = i18n.language === "fa";
+	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
 	const contentRef = useRef<HTMLDivElement | null>(null);
@@ -92,15 +119,31 @@ export function AppLayout() {
 	const accountHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const accountHoldOpened = useRef(false);
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
-	const tabContentRefs = useRef<Record<string, HTMLDivElement | null>>({});
-	const navContainerRef = useRef<HTMLDivElement | null>(null);
-	const [activeSelector, setActiveSelector] = useState({
-		x: 0,
-		y: 0,
-		width: 0,
-		height: 0,
-		visible: false,
+	const settingsHoldTimeout = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+	const settingsHoldOpened = useRef(false);
+	const settingsHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
+	const tabContentRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+	const navDragRef = useRef<{
+		active: boolean;
+		moved: boolean;
+		startX: number;
+		startY: number;
+		pointerId: number | null;
+	}>({
+		active: false,
+		moved: false,
+		startX: 0,
+		startY: 0,
+		pointerId: null,
 	});
+	const navMoveRaf = useRef<number | null>(null);
+	const navMovePoint = useRef<{ x: number; y: number } | null>(null);
+	const suppressNavClickUntil = useRef(0);
+	const [previewTabKey, setPreviewTabKey] = useState<string | null>(null);
+	const previewTabKeyRef = useRef<string | null>(null);
+	const [isNavDragging, setIsNavDragging] = useState(false);
 	const languagePlacement =
 		useBreakpointValue<PlacementWithLogical>({
 			base: "bottom-start",
@@ -137,13 +180,18 @@ export function AppLayout() {
 		"inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 -14px 28px rgba(255, 255, 255, 0.07), inset 0 12px 28px rgba(0, 0, 0, 0.28)",
 	);
 	const activePillBg = useColorModeValue(
-		"rgba(0, 0, 0, 0.14)",
-		"rgba(255, 255, 255, 0.12)",
+		"rgba(255, 255, 255, 0.18)",
+		"rgba(255, 255, 255, 0.08)",
 	);
 	const activePillShadow = useColorModeValue(
-		"0 6px 18px rgba(0, 0, 0, 0.16)",
-		"0 6px 18px rgba(0, 0, 0, 0.16)",
+		"0 6px 14px rgba(15, 23, 42, 0.1)",
+		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
+
+	const setPreviewTabKeySafe = (value: string | null) => {
+		previewTabKeyRef.current = value;
+		setPreviewTabKey(value);
+	};
 
 	const roleLabel = useMemo(() => {
 		switch (userData.role) {
@@ -164,6 +212,66 @@ export function AppLayout() {
 		{ code: "zh-cn", label: "中文", flag: "CN" },
 		{ code: "ru", label: "Русский", flag: "RU" },
 	];
+
+	const isPrivilegedAdmin =
+		userData.role === AdminRole.FullAccess || userData.role === AdminRole.Sudo;
+
+	const settingsMenuItems = useMemo(() => {
+		if (!isPrivilegedAdmin) return [];
+		const items: Array<SettingsMenuItem | null> = [
+			sectionAccess?.[AdminSection.Services]
+				? {
+						key: "services",
+						label: t("services.menu", "Services"),
+						to: "/services",
+						icon: ServicesIcon,
+					}
+				: null,
+			sectionAccess?.[AdminSection.Hosts]
+				? {
+						key: "hosts",
+						label: t("header.hostSettings", "Host settings"),
+						to: "/hosts",
+						icon: HostsIcon,
+					}
+				: null,
+			sectionAccess?.[AdminSection.Nodes]
+				? {
+						key: "node-settings",
+						label: t("header.nodeSettings", "Node settings"),
+						to: "/node-settings",
+						icon: NodesIcon,
+					}
+				: null,
+			sectionAccess?.[AdminSection.Integrations]
+				? {
+						key: "integrations",
+						label: t("header.integrationSettings", "Master settings"),
+						to: "/integrations",
+						icon: SettingsIcon,
+					}
+				: null,
+			sectionAccess?.[AdminSection.Xray]
+				? {
+						key: "xray-settings",
+						label: t("header.xraySettings", "Xray settings"),
+						to: "/xray-settings",
+						icon: SettingsIcon,
+					}
+				: null,
+			sectionAccess?.[AdminSection.Xray]
+				? {
+						key: "access-insights",
+						label: t("header.accessInsights", "Access insights"),
+						to: "/access-insights",
+						icon: InsightsIcon,
+					}
+				: null,
+		];
+		return items.filter(Boolean) as SettingsMenuItem[];
+	}, [isPrivilegedAdmin, sectionAccess, t]);
+
+	const hasSettingsMenu = settingsMenuItems.length > 0;
 
 	const changeLanguage = (lang: string) => {
 		i18n.changeLanguage(lang);
@@ -262,13 +370,9 @@ export function AppLayout() {
 		};
 	}, [isMobile, isRTL, sidebarDrawer]);
 
-	const bottomNavItems = useMemo(() => {
-		const items = [
-			{ key: "dashboard", label: t("nav.dashboard", "Dashboard"), to: "/" },
-			{ key: "users", label: t("nav.users", "Users"), to: "/users" },
-		];
-		const canSeeAdmins =
-			userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+	const bottomNavItems = useMemo<BottomNavItem[]>(() => {
+		const items: BottomNavItem[] = [];
+		const canSeeAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
 		if (canSeeAdmins) {
 			items.push({
 				key: "admins",
@@ -276,54 +380,191 @@ export function AppLayout() {
 				to: "/admins",
 			});
 		}
+		items.push({ key: "users", label: t("nav.users", "Users"), to: "/users" });
+		items.push({
+			key: "dashboard",
+			label: t("nav.dashboard", "Dashboard"),
+			to: "/",
+		});
 		items.push({
 			key: "myaccount",
 			label: t("nav.myaccount", "My account"),
 			to: "/myaccount",
 		});
+		if (hasSettingsMenu) {
+			items.push({
+				key: "settings",
+				label: t("header.settings", "Settings"),
+				kind: "menu",
+			});
+		}
 		return items;
-	}, [t, userData.role]);
+	}, [t, sectionAccess, hasSettingsMenu]);
 
-	const resolveActive = (to: string) => {
-		if (to === "/") return location.pathname === "/";
-		return location.pathname.startsWith(to);
-	};
+	const activeSettingsItem = useMemo(
+		() =>
+			settingsMenuItems.find((item) => {
+				if (item.to === "/") return location.pathname === "/";
+				return location.pathname.startsWith(item.to);
+			}),
+		[settingsMenuItems, location.pathname],
+	);
+	const isSettingsRoute = Boolean(activeSettingsItem);
+	const activeSettingsKey = activeSettingsItem?.key ?? null;
+	const SettingsNavIcon = activeSettingsItem?.icon ?? SettingsIcon;
+	const popoverModifiers = useMemo(
+		() => [
+			{
+				name: "preventOverflow",
+				options: {
+					boundary: "viewport",
+					padding: 12,
+				},
+			},
+			{
+				name: "flip",
+				options: {
+					boundary: "viewport",
+					padding: 12,
+				},
+			},
+		],
+		[],
+	);
+
+	const resolveActive = useCallback(
+		(item: BottomNavItem) => {
+			if (item.key === "settings") return isSettingsRoute;
+			if (!item.to) return false;
+			if (item.to === "/") return location.pathname === "/";
+			return location.pathname.startsWith(item.to);
+		},
+		[isSettingsRoute, location.pathname],
+	);
 
 	const activeTabKey = useMemo(() => {
-		const activeItem = bottomNavItems.find((item) => resolveActive(item.to));
+		const activeItem = bottomNavItems.find((item) => resolveActive(item));
 		return activeItem?.key ?? null;
-	}, [bottomNavItems, location.pathname]);
+	}, [bottomNavItems, resolveActive]);
+	const selectedTabKey = previewTabKey ?? activeTabKey;
 
-	const updateActiveSelector = () => {
+	const navKeyAtPoint = (clientX: number, clientY: number) => {
+		for (const item of bottomNavItems) {
+			const node = tabContentRefs.current[item.key];
+			if (!node) continue;
+			const rect = node.getBoundingClientRect();
+			if (
+				clientX >= rect.left &&
+				clientX <= rect.right &&
+				clientY >= rect.top &&
+				clientY <= rect.bottom
+			) {
+				return item.key;
+			}
+		}
+		return null;
+	};
+
+	const handleNavPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (!isMobile) return;
-		const container = navContainerRef.current;
-		if (!container || !activeTabKey) {
-			setActiveSelector((prev) => ({ ...prev, visible: false }));
+		const key = navKeyAtPoint(event.clientX, event.clientY);
+		if (!key) return;
+		const target = bottomNavItems.find((item) => item.key === key);
+		if (target?.kind === "menu") {
 			return;
 		}
-		const target = tabContentRefs.current[activeTabKey];
-		if (!target) return;
-		const containerRect = container.getBoundingClientRect();
-		const targetRect = target.getBoundingClientRect();
-		setActiveSelector({
-			x: targetRect.left - containerRect.left,
-			y: targetRect.top - containerRect.top,
-			width: targetRect.width,
-			height: targetRect.height,
-			visible: true,
+		navDragRef.current.active = true;
+		navDragRef.current.moved = false;
+		navDragRef.current.startX = event.clientX;
+		navDragRef.current.startY = event.clientY;
+		navDragRef.current.pointerId = event.pointerId;
+		setPreviewTabKeySafe(key);
+	};
+
+	const handleNavPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+		if (!navDragRef.current.active) return;
+		navMovePoint.current = { x: event.clientX, y: event.clientY };
+		if (navMoveRaf.current) return;
+		navMoveRaf.current = window.requestAnimationFrame(() => {
+			navMoveRaf.current = null;
+			const point = navMovePoint.current;
+			if (!point) return;
+			const dx = point.x - navDragRef.current.startX;
+			const dy = point.y - navDragRef.current.startY;
+			if (!navDragRef.current.moved && Math.hypot(dx, dy) < 6) {
+				return;
+			}
+			if (!navDragRef.current.moved) {
+				navDragRef.current.moved = true;
+				setIsNavDragging(true);
+			}
+			const key = navKeyAtPoint(point.x, point.y);
+			if (key && key !== previewTabKeyRef.current) {
+				setPreviewTabKeySafe(key);
+			}
 		});
 	};
 
-	useLayoutEffect(() => {
-		updateActiveSelector();
-	}, [activeTabKey, isMobile, i18n.language]);
+	const finalizeNavDrag = () => {
+		if (!navDragRef.current.active) return;
+		const key = previewTabKeyRef.current;
+		const moved = navDragRef.current.moved;
+		navDragRef.current.active = false;
+		navDragRef.current.moved = false;
+		navDragRef.current.pointerId = null;
+		if (navMoveRaf.current) {
+			window.cancelAnimationFrame(navMoveRaf.current);
+			navMoveRaf.current = null;
+		}
+		setIsNavDragging(false);
+		setPreviewTabKeySafe(null);
+		if (!moved) {
+			return;
+		}
+		suppressNavClickUntil.current = Date.now() + 400;
+		if (!key) return;
+		const target = bottomNavItems.find((item) => item.key === key);
+		if (!target) return;
+		if (target.key === "settings") {
+			openSettingsMenu();
+			return;
+		}
+		if (key !== activeTabKey && target.to) {
+			navigate(target.to);
+		}
+	};
 
-	useEffect(() => {
-		if (!isMobile) return;
-		const handleResize = () => updateActiveSelector();
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
-	}, [isMobile, activeTabKey]);
+	const handleNavPointerUp = () => {
+		finalizeNavDrag();
+	};
+
+	const handleNavPointerCancel = () => {
+		if (!navDragRef.current.active) return;
+		navDragRef.current.active = false;
+		navDragRef.current.moved = false;
+		navDragRef.current.pointerId = null;
+		if (navMoveRaf.current) {
+			window.cancelAnimationFrame(navMoveRaf.current);
+			navMoveRaf.current = null;
+		}
+		setIsNavDragging(false);
+		setPreviewTabKeySafe(null);
+	};
+
+	const handleNavClick = (to?: string) => {
+		if (!to) {
+			return;
+		}
+		if (Date.now() < suppressNavClickUntil.current) {
+			return;
+		}
+		if (navDragRef.current.active || isNavDragging) {
+			return;
+		}
+		handleSettingsMenuClose();
+		handleAccountMenuClose();
+		navigate(to);
+	};
 
 	const clearAccountHoldTimer = () => {
 		if (accountHoldTimeout.current) {
@@ -338,6 +579,7 @@ export function AppLayout() {
 		accountHoldOpened.current = false;
 		accountHoldTimeout.current = window.setTimeout(() => {
 			accountHoldOpened.current = true;
+			handleSettingsMenuClose();
 			accountMenu.onOpen();
 		}, 560);
 	};
@@ -360,6 +602,77 @@ export function AppLayout() {
 	const handleAccountMenuClose = () => {
 		accountHoldOpened.current = false;
 		accountMenu.onClose();
+	};
+
+	const clearSettingsHoldTimer = () => {
+		if (settingsHoldTimeout.current) {
+			window.clearTimeout(settingsHoldTimeout.current);
+			settingsHoldTimeout.current = null;
+		}
+	};
+
+	const handleSettingsHoldStart = () => {
+		if (!isMobile) return;
+		clearSettingsHoldTimer();
+		settingsHoldOpened.current = false;
+		settingsHoldTimeout.current = window.setTimeout(() => {
+			settingsHoldOpened.current = true;
+			openSettingsMenu();
+		}, 560);
+	};
+
+	const handleSettingsHoldEnd = () => {
+		clearSettingsHoldTimer();
+		settingsHoldStartPoint.current = null;
+	};
+
+	const handleSettingsHoldMove = (clientX: number, clientY: number) => {
+		const start = settingsHoldStartPoint.current;
+		if (!start || settingsHoldOpened.current) return;
+		const dx = clientX - start.x;
+		const dy = clientY - start.y;
+		if (Math.hypot(dx, dy) > 12) {
+			clearSettingsHoldTimer();
+		}
+	};
+
+	const handleSettingsMenuClose = () => {
+		settingsHoldOpened.current = false;
+		settingsMenu.onClose();
+		if (previewTabKeyRef.current === "settings") {
+			setPreviewTabKeySafe(null);
+		}
+	};
+
+	const openSettingsMenu = () => {
+		accountMenu.onClose();
+		settingsMenu.onOpen();
+		setPreviewTabKeySafe("settings");
+	};
+
+	const handleSettingsMenuToggle = () => {
+		if (Date.now() < suppressNavClickUntil.current) return;
+		if (settingsMenu.isOpen) {
+			handleSettingsMenuClose();
+			return;
+		}
+		openSettingsMenu();
+	};
+
+	const settingsDefaultTabByPath: Record<string, string> = {
+		"/integrations": "panel",
+		"/hosts": "inbounds",
+		"/usage": "services",
+		"/xray-settings": "basic",
+	};
+
+	const navigateToSettingsItem = (target: string) => {
+		const defaultTab = settingsDefaultTabByPath[target];
+		if (defaultTab) {
+			navigate(`${target}#${defaultTab}`);
+			return;
+		}
+		navigate(target);
 	};
 
 	return (
@@ -694,7 +1007,11 @@ export function AppLayout() {
 										<Text fontWeight="semibold" fontSize="sm">
 											{t("pwa.ios.title", "Add to Home Screen")}
 										</Text>
-										<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.300" }}>
+										<Text
+											fontSize="xs"
+											color="gray.600"
+											_dark={{ color: "gray.300" }}
+										>
 											{t(
 												"pwa.ios.body",
 												"Tap Share and then Add to Home Screen for a faster app-like experience.",
@@ -731,6 +1048,7 @@ export function AppLayout() {
 								borderWidth="1px"
 								backdropFilter="blur(20px) saturate(1.35)"
 								borderRadius="26px"
+								clipPath="inset(0 round 26px)"
 								px="3"
 								pt="2"
 								pb="calc(env(safe-area-inset-bottom) + 6px)"
@@ -740,13 +1058,16 @@ export function AppLayout() {
 									WebkitBackdropFilter: "blur(20px) saturate(1.35)",
 									position: "relative",
 									overflow: "hidden",
-									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
-										backgroundColor: glassPanelFallbackBg,
-									},
+									isolation: "isolate",
+									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+										{
+											backgroundColor: glassPanelFallbackBg,
+										},
 									"&::before": {
 										content: '""',
 										position: "absolute",
 										inset: "-40%",
+										borderRadius: "inherit",
 										background: glassPanelRefraction,
 										filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
 										mixBlendMode: "screen",
@@ -767,26 +1088,21 @@ export function AppLayout() {
 									justify="space-between"
 									position="relative"
 									align="center"
-									ref={navContainerRef}
+									spacing={1}
+									dir="ltr"
+									onPointerDown={handleNavPointerDown}
+									onPointerMove={handleNavPointerMove}
+									onPointerUp={handleNavPointerUp}
+									onPointerCancel={handleNavPointerCancel}
 								>
-									<Box
-										position="absolute"
-										top="0"
-										left="0"
-										width={`${activeSelector.width}px`}
-										height={`${activeSelector.height}px`}
-										transform={`translate3d(${activeSelector.x}px, ${activeSelector.y}px, 0)`}
-										transition="transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1), width 220ms, height 220ms, opacity 160ms"
-										opacity={activeSelector.visible ? 1 : 0}
-										borderRadius="22px"
-										bg={activePillBg}
-										boxShadow={activePillShadow}
-										filter="blur(0.15px)"
-										zIndex={0}
-										pointerEvents="none"
-									/>
 									{bottomNavItems.map((item) => {
-										const isActive = resolveActive(item.to);
+										const isActive = resolveActive(item);
+										const isSelected = selectedTabKey === item.key;
+										const isSettingsItem = item.key === "settings";
+										const settingsLabel =
+											isSettingsItem && activeSettingsItem?.label
+												? activeSettingsItem.label
+												: item.label;
 										const icon =
 											item.key === "dashboard" ? (
 												<HomeIcon />
@@ -794,11 +1110,18 @@ export function AppLayout() {
 												<UsersIcon />
 											) : item.key === "admins" ? (
 												<AdminsIcon />
+											) : item.key === "settings" ? (
+												<SettingsNavIcon />
 											) : (
 												<UserIcon />
 											);
-										const iconStack = (
-											<Box position="relative" w="full" display="flex" justifyContent="center">
+										const navContent = (
+											<Box
+												w="full"
+												display="flex"
+												justifyContent="center"
+												minW="0"
+											>
 												<Box
 													position="relative"
 													display="inline-flex"
@@ -807,81 +1130,104 @@ export function AppLayout() {
 													justifyContent="center"
 													px="3"
 													py="1.5"
-													ref={(node) => {
-														tabContentRefs.current[item.key] = node;
-													}}
+													maxW="100%"
+													w="fit-content"
 												>
-													<VStack spacing={1} align="center" position="relative" zIndex={1}>
+													{isSelected && (
 														<Box
-															position="relative"
-															w="8"
-															h="8"
-															display="grid"
-															placeItems="center"
-														>
-															<Box position="relative" zIndex={1}>
-																{icon}
-															</Box>
+															position="absolute"
+															inset="0"
+															borderRadius="999px"
+															bg={activePillBg}
+															boxShadow={activePillShadow}
+															transition="opacity 0.12s ease-out"
+															zIndex={0}
+															pointerEvents="none"
+														/>
+													)}
+													<Box
+														position="relative"
+														zIndex={1}
+														w="8"
+														h="8"
+														display="grid"
+														placeItems="center"
+													>
+														<Box position="relative" zIndex={1}>
+															{icon}
 														</Box>
-														<Text
-															fontSize="9px"
-															lineHeight="1"
-															fontWeight="medium"
-															textAlign="center"
-															noOfLines={1}
-															maxW="64px"
-														>
-															{item.label}
-														</Text>
-													</VStack>
+													</Box>
+													<Text
+														position="relative"
+														zIndex={1}
+														fontSize="10px"
+														lineHeight="1.1"
+														fontWeight="semibold"
+														textAlign="center"
+														noOfLines={2}
+														maxW="100%"
+														overflowWrap="anywhere"
+														px="1"
+													>
+														{settingsLabel}
+													</Text>
 												</Box>
 											</Box>
 										);
 
-										if (item.key === "myaccount") {
+										if (item.key === "settings") {
 											return (
-													<Popover
-														key={item.key}
-														isOpen={accountMenu.isOpen}
-														onClose={handleAccountMenuClose}
-														placement="top"
-														gutter={12}
-														closeOnBlur
-													>
-														<PopoverTrigger>
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() => {
-																	if (accountHoldOpened.current) return;
-																	handleAccountMenuClose();
-																	navigate(item.to);
-																}}
-																onPointerDown={(event) => {
-																	if (event.pointerType === "mouse") return;
-																	accountHoldStartPoint.current = {
-																		x: event.clientX,
-																		y: event.clientY,
-																	};
-																	handleAccountHoldStart();
-																}}
-																onPointerMove={(event) => {
-																	if (event.pointerType === "mouse") return;
-																	handleAccountHoldMove(event.clientX, event.clientY);
-																}}
-																onPointerUp={handleAccountHoldEnd}
-																onPointerCancel={handleAccountHoldEnd}
-																onPointerLeave={handleAccountHoldEnd}
-																onContextMenu={(event) => {
-																	if (isMobile) event.preventDefault();
-																}}
-																color={isActive ? "primary.500" : "gray.600"}
+												<Popover
+													key={item.key}
+													isOpen={settingsMenu.isOpen}
+													onClose={handleSettingsMenuClose}
+													placement="top"
+													gutter={12}
+													closeOnBlur
+													modifiers={popoverModifiers}
+													strategy="fixed"
+												>
+													<PopoverTrigger>
+														<Button
+															variant="ghost"
+															size="sm"
+															ref={(node) => {
+																tabContentRefs.current[item.key] = node;
+															}}
+															onClick={() => {
+																if (settingsHoldOpened.current) return;
+																handleSettingsMenuToggle();
+															}}
+															onPointerDown={(event) => {
+																if (event.pointerType === "mouse") return;
+																settingsHoldStartPoint.current = {
+																	x: event.clientX,
+																	y: event.clientY,
+																};
+																handleSettingsHoldStart();
+															}}
+															onPointerMove={(event) => {
+																if (event.pointerType === "mouse") return;
+																handleSettingsHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
+															}}
+															onPointerUp={handleSettingsHoldEnd}
+															onPointerCancel={handleSettingsHoldEnd}
+															onPointerLeave={handleSettingsHoldEnd}
+															onContextMenu={(event) => {
+																if (isMobile) event.preventDefault();
+															}}
+															color={isActive ? "primary.500" : "gray.600"}
 															_dark={{
 																color: isActive ? "primary.300" : "gray.300",
 															}}
 															flex="1"
 															minW="0"
-															minH="44px"
+															minH="48px"
+															h="auto"
+															px="0"
 															position="relative"
 															zIndex={1}
 															sx={{ touchAction: "manipulation" }}
@@ -889,12 +1235,16 @@ export function AppLayout() {
 															_hover={{ bg: "transparent" }}
 															_active={{ bg: "transparent" }}
 															_focus={{ bg: "transparent" }}
-															>
-																{iconStack}
-															</Button>
-														</PopoverTrigger>
+														>
+															{navContent}
+														</Button>
+													</PopoverTrigger>
+													<Portal>
 														<PopoverContent
-														w="180px"
+															w="min(210px, calc(100vw - 24px))"
+															maxW="calc(100vw - 24px)"
+															maxH="calc(100vh - 160px)"
+															overflowY="auto"
 															borderRadius="18px"
 															bg={glassPanelBg}
 															borderColor={glassPanelBorder}
@@ -902,52 +1252,213 @@ export function AppLayout() {
 															boxShadow={glassPanelShadow}
 															backdropFilter="blur(18px) saturate(1.3)"
 															sx={{
-																WebkitBackdropFilter: "blur(18px) saturate(1.3)",
+																WebkitBackdropFilter:
+																	"blur(18px) saturate(1.3)",
 																position: "relative",
 																overflow: "hidden",
-																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
-																	backgroundColor: glassPanelFallbackBg,
-																},
+																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																	{
+																		backgroundColor: glassPanelFallbackBg,
+																	},
 																"&::before": {
 																	content: '""',
 																	position: "absolute",
 																	inset: "-40%",
 																	background: glassPanelRefraction,
-																	filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
+																	filter:
+																		"blur(0.2px) contrast(1.15) saturate(1.1)",
 																	mixBlendMode: "screen",
 																	opacity: 0.7,
 																	pointerEvents: "none",
 																},
 																"&::after": {
 																	content: '""',
-																position: "absolute",
-																inset: "0",
-																borderRadius: "inherit",
-																boxShadow: glassPanelInnerShadow,
-																pointerEvents: "none",
-															},
-														}}
-													>
-														<PopoverBody position="relative" zIndex={1} p="2">
-															<Button
-																variant="ghost"
-																size="sm"
-																w="full"
-																justifyContent="flex-start"
-																leftIcon={<LogoutIcon />}
-																color="red.500"
-																_hover={{ bg: menuHover }}
-																_active={{ bg: menuHover }}
-																_focus={{ bg: menuHover }}
-																onClick={() => {
-																	handleAccountMenuClose();
-																	navigate("/login");
-																}}
-															>
-																{t("header.logout", "Log out")}
-															</Button>
-														</PopoverBody>
-													</PopoverContent>
+																	position: "absolute",
+																	inset: "0",
+																	borderRadius: "inherit",
+																	boxShadow: glassPanelInnerShadow,
+																	pointerEvents: "none",
+																},
+															}}
+														>
+															<PopoverBody position="relative" zIndex={1} p="2">
+																<VStack align="stretch" spacing={1}>
+																	{settingsMenuItems.map((entry) => {
+																		const ItemIcon = entry.icon;
+																		const isSelected =
+																			activeSettingsKey === entry.key;
+																		return (
+																			<Button
+																				key={entry.key}
+																				variant="ghost"
+																				size="sm"
+																				w="full"
+																				justifyContent="flex-start"
+																				leftIcon={
+																					ItemIcon ? <ItemIcon /> : undefined
+																				}
+																				bg={
+																					isSelected ? menuHover : "transparent"
+																				}
+																				fontWeight={
+																					isSelected ? "semibold" : "normal"
+																				}
+																				aria-current={
+																					isSelected ? "page" : undefined
+																				}
+																				_hover={{
+																					bg:
+																						isSelected || activeSettingsKey
+																							? menuHover
+																							: "transparent",
+																				}}
+																				_active={{ bg: menuHover }}
+																				_focusVisible={{ boxShadow: "outline" }}
+																				onClick={() => {
+																					handleSettingsMenuClose();
+																					navigateToSettingsItem(entry.to);
+																				}}
+																			>
+																				{entry.label}
+																			</Button>
+																		);
+																	})}
+																</VStack>
+															</PopoverBody>
+														</PopoverContent>
+													</Portal>
+												</Popover>
+											);
+										}
+
+										if (item.key === "myaccount") {
+											return (
+												<Popover
+													key={item.key}
+													isOpen={accountMenu.isOpen}
+													onClose={handleAccountMenuClose}
+													placement="top"
+													gutter={12}
+													closeOnBlur
+													modifiers={popoverModifiers}
+													strategy="fixed"
+												>
+													<PopoverTrigger>
+														<Button
+															variant="ghost"
+															size="sm"
+															ref={(node) => {
+																tabContentRefs.current[item.key] = node;
+															}}
+															onClick={() => {
+																if (accountHoldOpened.current) return;
+																handleAccountMenuClose();
+																handleNavClick(item.to);
+															}}
+															onPointerDown={(event) => {
+																if (event.pointerType === "mouse") return;
+																accountHoldStartPoint.current = {
+																	x: event.clientX,
+																	y: event.clientY,
+																};
+																handleAccountHoldStart();
+															}}
+															onPointerMove={(event) => {
+																if (event.pointerType === "mouse") return;
+																handleAccountHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
+															}}
+															onPointerUp={handleAccountHoldEnd}
+															onPointerCancel={handleAccountHoldEnd}
+															onPointerLeave={handleAccountHoldEnd}
+															onContextMenu={(event) => {
+																if (isMobile) event.preventDefault();
+															}}
+															color={isActive ? "primary.500" : "gray.600"}
+															_dark={{
+																color: isActive ? "primary.300" : "gray.300",
+															}}
+															flex="1"
+															minW="0"
+															minH="48px"
+															h="auto"
+															px="0"
+															position="relative"
+															zIndex={1}
+															sx={{ touchAction: "manipulation" }}
+															userSelect="none"
+															_hover={{ bg: "transparent" }}
+															_active={{ bg: "transparent" }}
+															_focus={{ bg: "transparent" }}
+														>
+															{navContent}
+														</Button>
+													</PopoverTrigger>
+													<Portal>
+														<PopoverContent
+															w="min(180px, calc(100vw - 24px))"
+															maxW="calc(100vw - 24px)"
+															maxH="calc(100vh - 160px)"
+															overflowY="auto"
+															borderRadius="18px"
+															bg={glassPanelBg}
+															borderColor={glassPanelBorder}
+															borderWidth="1px"
+															boxShadow={glassPanelShadow}
+															backdropFilter="blur(18px) saturate(1.3)"
+															sx={{
+																WebkitBackdropFilter:
+																	"blur(18px) saturate(1.3)",
+																position: "relative",
+																overflow: "hidden",
+																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
+																	{
+																		backgroundColor: glassPanelFallbackBg,
+																	},
+																"&::before": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "-40%",
+																	background: glassPanelRefraction,
+																	filter:
+																		"blur(0.2px) contrast(1.15) saturate(1.1)",
+																	mixBlendMode: "screen",
+																	opacity: 0.7,
+																	pointerEvents: "none",
+																},
+																"&::after": {
+																	content: '""',
+																	position: "absolute",
+																	inset: "0",
+																	borderRadius: "inherit",
+																	boxShadow: glassPanelInnerShadow,
+																	pointerEvents: "none",
+																},
+															}}
+														>
+															<PopoverBody position="relative" zIndex={1} p="2">
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	w="full"
+																	justifyContent="flex-start"
+																	leftIcon={<LogoutIcon />}
+																	color="red.500"
+																	_hover={{ bg: menuHover }}
+																	_active={{ bg: menuHover }}
+																	_focus={{ bg: menuHover }}
+																	onClick={() => {
+																		handleAccountMenuClose();
+																		navigate("/login");
+																	}}
+																>
+																	{t("header.logout", "Log out")}
+																</Button>
+															</PopoverBody>
+														</PopoverContent>
+													</Portal>
 												</Popover>
 											);
 										}
@@ -957,20 +1468,29 @@ export function AppLayout() {
 												key={item.key}
 												variant="ghost"
 												size="sm"
-												onClick={() => navigate(item.to)}
+												ref={(node) => {
+													tabContentRefs.current[item.key] = node;
+												}}
+												onClick={() => {
+													if (item.to) {
+														handleNavClick(item.to);
+													}
+												}}
 												color={isActive ? "primary.500" : "gray.600"}
-											_dark={{ color: isActive ? "primary.300" : "gray.300" }}
-											flex="1"
-											minW="0"
-											minH="44px"
-											position="relative"
-											zIndex={1}
-											userSelect="none"
-											_hover={{ bg: "transparent" }}
-											_active={{ bg: "transparent" }}
-											_focus={{ bg: "transparent" }}
+												_dark={{ color: isActive ? "primary.300" : "gray.300" }}
+												flex="1"
+												minW="0"
+												minH="48px"
+												h="auto"
+												px="0"
+												position="relative"
+												zIndex={1}
+												userSelect="none"
+												_hover={{ bg: "transparent" }}
+												_active={{ bg: "transparent" }}
+												_focus={{ bg: "transparent" }}
 											>
-												{iconStack}
+												{navContent}
 											</Button>
 										);
 									})}

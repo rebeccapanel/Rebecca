@@ -984,7 +984,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														})}
 													/>
 												</FormControl>
-												<HStack flexWrap="wrap" spacing={3} alignItems="flex-end">
+												<HStack
+													flexWrap="wrap"
+													spacing={3}
+													alignItems="flex-end"
+												>
 													<FormControl isRequired={requiresEndpoint}>
 														<FormLabel>
 															{t("pages.outbound.port", "Port")}
@@ -1079,12 +1083,16 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															>
 																{Object.values(SSMethods).map((method) => (
 																	<option key={method} value={method}>
-																	{method}
+																		{method}
 																	</option>
 																))}
 															</Select>
 														</FormControl>
-														<FormControl display="flex" alignItems="center" gap={2}>
+														<FormControl
+															display="flex"
+															alignItems="center"
+															gap={2}
+														>
 															<Switch size="sm" {...register("ssIvCheck")} />
 															<FormLabel mb="0">
 																{t("pages.outbound.ivCheck", "Enable IV Check")}
