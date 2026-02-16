@@ -26,6 +26,18 @@ export type AccessInsightSource = {
 	node_id: number | null;
 	node_name: string;
 	is_master: boolean;
+	connected?: boolean;
+};
+
+export type AccessInsightSourceStatus = {
+	node_id: number | null;
+	node_name: string;
+	is_master?: boolean;
+	connected?: boolean;
+	ok: boolean;
+	total_lines: number;
+	matched_lines: number;
+	error?: string;
 };
 
 export type AccessInsightsResponse = {
@@ -41,6 +53,7 @@ export type AccessInsightsResponse = {
 	detail?: string;
 	mode?: string;
 	sources?: AccessInsightSource[];
+	source_statuses?: AccessInsightSourceStatus[];
 	window_seconds?: number;
 	items: AccessInsightClient[];
 	platform_counts: Record<string, number>;

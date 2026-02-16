@@ -204,19 +204,16 @@ def _get_due_active_user_ids(
     if now_ts is None:
         now_ts = datetime.now(timezone.utc).timestamp()
 
-    query = (
-        db.query(User.id)
-        .filter(
-            User.status == UserStatus.active,
-            or_(
-                and_(User.expire.isnot(None), User.expire > 0, User.expire <= now_ts),
-                and_(
-                    User.data_limit.isnot(None),
-                    User.data_limit > 0,
-                    func.coalesce(User.used_traffic, 0) >= User.data_limit,
-                ),
+    query = db.query(User.id).filter(
+        User.status == UserStatus.active,
+        or_(
+            and_(User.expire.isnot(None), User.expire > 0, User.expire <= now_ts),
+            and_(
+                User.data_limit.isnot(None),
+                User.data_limit > 0,
+                func.coalesce(User.used_traffic, 0) >= User.data_limit,
             ),
-        )
+        ),
     )
     if after_id is not None:
         query = query.filter(User.id > after_id)

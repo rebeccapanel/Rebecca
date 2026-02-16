@@ -68,6 +68,7 @@ import type {
 	AccessInsightClient,
 	AccessInsightPlatform,
 	AccessInsightSource,
+	AccessInsightSourceStatus,
 	AccessInsightsResponse,
 	AccessInsightUnmatched,
 } from "types/AccessInsights";
@@ -157,6 +158,18 @@ type RawMetadataChunk = {
 	sources: AccessInsightSource[];
 };
 
+type RawSourceStatusChunk = {
+	type: "source_status";
+	node_id: number | null;
+	node_name: string;
+	is_master?: boolean;
+	connected?: boolean;
+	ok: boolean;
+	total_lines: number;
+	matched_lines: number;
+	error?: string;
+};
+
 type RawErrorChunk = {
 	type: "error";
 	node_id?: number | null;
@@ -176,6 +189,7 @@ type RawTopLevelError = {
 type RawStreamChunk =
 	| RawLogsChunk
 	| RawMetadataChunk
+	| RawSourceStatusChunk
 	| RawErrorChunk
 	| RawCompleteChunk
 	| RawTopLevelError;
@@ -357,6 +371,7 @@ const buildInsightsFromRawNdjson = (
 	const clients = new Map<string, MutableClient>();
 	const usersByPlatform = new Map<string, Set<string>>();
 	const unmatched = new Map<string, AccessInsightUnmatched>();
+	const sourceStatusMap = new Map<string, AccessInsightSourceStatus>();
 	let matchedEntries = 0;
 	let sources: AccessInsightSource[] = [];
 	let streamError: string | undefined;
@@ -387,6 +402,21 @@ const buildInsightsFromRawNdjson = (
 		if ("type" in chunk && chunk.type === "error") {
 			const fromNode = chunk.node_name ? `[${chunk.node_name}] ` : "";
 			nodeErrors.push(`${fromNode}${chunk.error}`);
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "source_status") {
+			const key = `${chunk.node_id ?? "master"}:${chunk.node_name}`;
+			sourceStatusMap.set(key, {
+				node_id: chunk.node_id,
+				node_name: chunk.node_name,
+				is_master: chunk.is_master,
+				connected: chunk.connected,
+				ok: chunk.ok,
+				total_lines: chunk.total_lines,
+				matched_lines: chunk.matched_lines,
+				error: chunk.error,
+			});
 			continue;
 		}
 
@@ -530,6 +560,7 @@ const buildInsightsFromRawNdjson = (
 	return {
 		mode: "frontend",
 		sources,
+		source_statuses: Array.from(sourceStatusMap.values()),
 		log_path: sources.map((src) => src.node_name).join(", "),
 		geo_assets_path: "frontend-stream",
 		items: clientList,
@@ -720,6 +751,29 @@ const AccessInsightsPage: FC = () => {
 		});
 	}, [clients, search]);
 
+	const sourceStatuses = useMemo(
+		() => data?.source_statuses || [],
+		[data],
+	);
+
+	const successfulNodeNames = useMemo(() => {
+		if (sourceStatuses.length) {
+			const names = sourceStatuses
+				.filter((status) => status.ok)
+				.map((status) => status.node_name)
+				.filter(Boolean);
+			return Array.from(new Set(names));
+		}
+		const fallbackNames =
+			data?.sources?.map((source) => source.node_name).filter(Boolean) || [];
+		return Array.from(new Set(fallbackNames));
+	}, [data, sourceStatuses]);
+
+	const failedNodeStatuses = useMemo(
+		() => sourceStatuses.filter((status) => !status.ok),
+		[sourceStatuses],
+	);
+
 	if (!canViewXray) {
 		return (
 			<Box p={6}>
@@ -745,6 +799,15 @@ const AccessInsightsPage: FC = () => {
 						"Recent connections are grouped using geosite/geoip data to highlight which platforms users are reaching.",
 					)}
 				</Text>
+				<Text color="gray.600" fontSize="sm" fontFamily="mono">
+					nodes: {successfulNodeNames.length ? successfulNodeNames.join(",") : "-"}
+				</Text>
+				{failedNodeStatuses.length ? (
+					<Text color="red.400" fontSize="sm">
+						unreachable:{" "}
+						{failedNodeStatuses.map((status) => status.node_name).join(",")}
+					</Text>
+				) : null}
 				{!insightsEnabled ? (
 					<Box
 						position="absolute"

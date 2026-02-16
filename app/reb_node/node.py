@@ -4,6 +4,7 @@ import ssl
 import tempfile
 import threading
 import time
+import json
 from collections import deque
 from contextlib import contextmanager
 from typing import Optional
@@ -653,6 +654,56 @@ class ReSTXRayNode:
         """
         self._ensure_connected()
         self.make_request("/update_geo", timeout=300, files=files)
+
+    def get_access_logs(self, max_lines: int = 500) -> list[str]:
+        """
+        Fetch access logs from node.
+        Prefer websocket transport for lower overhead; fallback to REST endpoint.
+        """
+        self._ensure_connected()
+        max_lines = max(1, int(max_lines))
+
+        # Prefer websocket endpoint when available on node service.
+        try:
+            websocket_url = (
+                f"wss://{self.address.strip('/')}:{self.port}/access_logs/ws"
+                f"?session_id={self._session_id}&max_lines={max_lines}"
+            )
+            self._ssl_context.load_verify_locations(self.session.verify)
+            ws = create_connection(
+                websocket_url,
+                sslopt={"context": self._ssl_context},
+                timeout=40,
+                **self._ws_proxy_options,
+            )
+            try:
+                payload = ws.recv()
+            finally:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+
+            data = json.loads(payload) if payload else {}
+            if isinstance(data, dict):
+                if data.get("error"):
+                    raise NodeAPIError(0, data.get("error"))
+                lines = data.get("lines", [])
+                if isinstance(lines, list):
+                    return [str(line) for line in lines]
+        except Exception:
+            # Fallback to REST endpoint for backward compatibility with older nodes.
+            pass
+
+        response = self.make_request("/access_logs", timeout=30, max_lines=max_lines)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid access logs response from node")
+        if not response.get("exists"):
+            return []
+        lines = response.get("lines") or []
+        if not isinstance(lines, list):
+            raise NodeAPIError(0, "Invalid access logs payload")
+        return [str(line) for line in lines]
 
     def _ensure_connected(self):
         try:

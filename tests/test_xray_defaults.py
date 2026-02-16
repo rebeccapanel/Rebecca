@@ -2,6 +2,7 @@ from app.utils.xray_defaults import (
     LOG_CLEANUP_INTERVAL_DISABLED,
     apply_log_paths,
     normalize_log_cleanup_interval,
+    normalize_tls_verify_peer_cert_fields,
 )
 
 
@@ -35,3 +36,27 @@ def test_apply_log_paths_normalizes_cleanup_values():
     )
     assert config["log"]["accessCleanupInterval"] == 3600
     assert config["log"]["errorCleanupInterval"] == LOG_CLEANUP_INTERVAL_DISABLED
+
+
+def test_normalize_tls_verify_peer_cert_fields_migrates_old_key_to_new():
+    tls_settings = {
+        "serverName": "example.com",
+        "verifyPeerCertInNames": ["dns.google", "cloudflare-dns.com"],
+    }
+
+    normalized = normalize_tls_verify_peer_cert_fields(tls_settings)
+
+    assert normalized["verifyPeerCertByName"] == "dns.google"
+    assert "verifyPeerCertInNames" not in normalized
+
+
+def test_normalize_tls_verify_peer_cert_fields_keeps_new_key_and_removes_old():
+    tls_settings = {
+        "verifyPeerCertByName": "one.one.one.one",
+        "verifyPeerCertInNames": ["dns.google"],
+    }
+
+    normalized = normalize_tls_verify_peer_cert_fields(tls_settings)
+
+    assert normalized["verifyPeerCertByName"] == "one.one.one.one"
+    assert "verifyPeerCertInNames" not in normalized

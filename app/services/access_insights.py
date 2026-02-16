@@ -75,6 +75,34 @@ class NodeLogSource:
     log_path: Optional[Path]
     is_master: bool
     fetch_lines: Optional[Callable[[int], list[str]]] = None
+    connected: bool = False
+
+
+def _load_node_metadata() -> dict[int, dict[str, Any]]:
+    """
+    Load node metadata (name/status) for debug-friendly source labels.
+    Falls back to empty mapping if DB is unavailable.
+    """
+    try:
+        from app.db import GetDB, crud
+    except Exception:
+        return {}
+
+    metadata: dict[int, dict[str, Any]] = {}
+    try:
+        with GetDB() as db:
+            for dbnode in crud.get_nodes(db):
+                if dbnode.id is None:
+                    continue
+                node_id = int(dbnode.id)
+                metadata[node_id] = {
+                    "name": getattr(dbnode, "name", None),
+                    "status": getattr(dbnode, "status", None),
+                }
+    except Exception:
+        return {}
+
+    return metadata
 
 
 def _resolve_assets_base() -> Path:
@@ -99,30 +127,38 @@ def get_all_log_sources() -> list[NodeLogSource]:
 
     # Add master xray log
     master_log = resolve_access_log_path()
-    if master_log.exists():
-        sources.append(
-            NodeLogSource(
-                node_id=None,
-                node_name="Master",
-                log_path=master_log,
-                is_master=True,
-                fetch_lines=None,
-            )
+    sources.append(
+        NodeLogSource(
+            node_id=None,
+            node_name="master",
+            log_path=master_log,
+            is_master=True,
+            fetch_lines=None,
+            connected=master_log.exists(),
         )
+    )
 
     # Add node logs via REST API
     if xray and hasattr(xray, "nodes"):
+        node_metadata = _load_node_metadata()
         for node_id, node in xray.nodes.items():
-            if not getattr(node, "connected", False):
+            metadata = node_metadata.get(int(node_id), {})
+            status_raw = metadata.get("status")
+            status = str(getattr(status_raw, "value", status_raw)).strip().lower() if status_raw is not None else ""
+            if status in {"disabled", "limited"}:
                 continue
+
+            node_name = metadata.get("name") or getattr(node, "name", None) or f"Node-{node_id}"
+            connected = bool(getattr(node, "_session_id", None))
             try:
                 sources.append(
                     NodeLogSource(
                         node_id=node_id,
-                        node_name=node.name or f"Node-{node_id}",
+                        node_name=node_name,
                         log_path=None,
                         is_master=False,
                         fetch_lines=lambda max_lines, _node=node: _fetch_node_access_logs(_node, max_lines),
+                        connected=connected,
                     )
                 )
             except Exception:
@@ -867,17 +903,34 @@ def build_access_insights(
 
 def _fetch_node_access_logs(node, max_lines: int = 500) -> list[str]:
     """
-    Fetch access logs from a remote node via API.
+    Fetch access logs from a remote node.
+    Uses websocket transport when available on the node, otherwise REST fallback.
     Returns list of log lines.
     """
+    max_lines = max(1, int(max_lines))
     try:
-        response = node.make_request("/access_logs", timeout=30, max_lines=max_lines)
-        if response and isinstance(response, dict):
-            if response.get("exists") and response.get("lines"):
-                return response["lines"]
+        # New node client API (websocket-preferred + REST fallback)
+        if hasattr(node, "get_access_logs"):
+            lines = node.get_access_logs(max_lines=max_lines)
+            if isinstance(lines, list):
+                return [str(line) for line in lines]
+            raise RuntimeError("Invalid access logs response from node")
+
+        # Legacy fallback for older node client objects.
+        if hasattr(node, "_ensure_connected"):
+            node._ensure_connected()
+
+        response = node.make_request("/access_logs", timeout=40, max_lines=max_lines)
+        if isinstance(response, dict):
+            if not response.get("exists"):
+                return []
+            lines = response.get("lines") or []
+            if isinstance(lines, list):
+                return [str(line) for line in lines]
+            raise RuntimeError("Invalid access logs payload from node")
         return []
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _iter_source_lines(source: NodeLogSource, max_lines: int) -> list[str]:
@@ -905,10 +958,7 @@ def _distribute_line_budget(
     total_lines = max(0, int(total_lines))
     preferred_min_per_source = max(0, int(preferred_min_per_source))
 
-    if (
-        preferred_min_per_source > 0
-        and total_lines >= preferred_min_per_source * source_count
-    ):
+    if preferred_min_per_source > 0 and total_lines >= preferred_min_per_source * source_count:
         budgets = [preferred_min_per_source] * source_count
         remaining = total_lines - (preferred_min_per_source * source_count)
         idx = 0
@@ -962,6 +1012,7 @@ def stream_raw_logs(
                 "node_id": s.node_id,
                 "node_name": s.node_name,
                 "is_master": s.is_master,
+                "connected": s.connected,
             }
             for s in sources
         ],
@@ -980,13 +1031,16 @@ def stream_raw_logs(
             continue
         try:
             lines = _iter_source_lines(source, source_max_lines)
+            total_lines = len(lines)
 
             chunk = []
+            matched_lines = 0
             for line in lines:
                 if search_lower and search_lower not in line.lower():
                     continue
 
                 chunk.append(line)
+                matched_lines += 1
 
                 if len(chunk) >= 50:
                     yield {
@@ -1006,11 +1060,33 @@ def stream_raw_logs(
                     "lines": chunk,
                 }
 
+            yield {
+                "type": "source_status",
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": True,
+                "total_lines": total_lines,
+                "matched_lines": matched_lines,
+            }
+
         except Exception as e:
             yield {
                 "type": "error",
                 "node_id": source.node_id,
                 "node_name": source.node_name,
+                "error": str(e),
+            }
+            yield {
+                "type": "source_status",
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": False,
+                "total_lines": 0,
+                "matched_lines": 0,
                 "error": str(e),
             }
 
@@ -1070,6 +1146,7 @@ def build_multi_node_insights(
 
     total_matches = 0
     search_lower = (search or "").strip().lower()
+    source_statuses: list[dict[str, Any]] = []
     source_budgets = _distribute_line_budget(
         total_lines=lookback_lines,
         source_count=len(sources),
@@ -1081,12 +1158,27 @@ def build_multi_node_insights(
             continue
         try:
             lines = _iter_source_lines(source, source_max_lines)
-        except Exception:
+        except Exception as exc:
+            source_statuses.append(
+                {
+                    "node_id": source.node_id,
+                    "node_name": source.node_name,
+                    "is_master": source.is_master,
+                    "connected": source.connected,
+                    "ok": False,
+                    "total_lines": 0,
+                    "matched_lines": 0,
+                    "error": str(exc),
+                }
+            )
             continue
 
+        source_total_lines = len(lines)
+        source_matched_lines = 0
         for raw in reversed(lines):
             if search_lower and search_lower not in raw.lower():
                 continue
+            source_matched_lines += 1
             entry = parse_access_line(raw)
             if not entry or entry.get("action") != "accepted":
                 continue
@@ -1182,6 +1274,18 @@ def build_multi_node_insights(
 
             total_matches += 1
 
+        source_statuses.append(
+            {
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": True,
+                "total_lines": source_total_lines,
+                "matched_lines": source_matched_lines,
+            }
+        )
+
     client_list: list[dict[str, Any]] = []
     for c in clients.values():
         platforms_list = []
@@ -1228,9 +1332,11 @@ def build_multi_node_insights(
                 "node_id": s.node_id,
                 "node_name": s.node_name,
                 "is_master": s.is_master,
+                "connected": s.connected,
             }
             for s in sources
         ],
+        "source_statuses": source_statuses,
         "items": client_list,
         "platform_counts": platform_counts,
         "platforms": [

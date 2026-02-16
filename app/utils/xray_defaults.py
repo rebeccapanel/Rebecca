@@ -80,6 +80,47 @@ def normalize_log_cleanup_interval(value: Any) -> int:
     return LOG_CLEANUP_INTERVAL_DISABLED
 
 
+def normalize_tls_verify_peer_cert_fields(tls_settings: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize deprecated TLS verify-peer fields for modern Xray.
+
+    - `verifyPeerCertInNames` (deprecated list/string) -> `verifyPeerCertByName` (string)
+    - Always removes `verifyPeerCertInNames` to avoid startup failures on newer Xray.
+    """
+    if not isinstance(tls_settings, dict):
+        return {}
+
+    normalized = dict(tls_settings)
+    by_name = normalized.get("verifyPeerCertByName")
+    in_names = normalized.get("verifyPeerCertInNames")
+
+    # Migrate old field only when new field is missing/empty.
+    if (not isinstance(by_name, str) or not by_name.strip()) and in_names:
+        if isinstance(in_names, list):
+            first = next((str(item).strip() for item in in_names if str(item).strip()), "")
+            if first:
+                by_name = first
+        elif isinstance(in_names, str):
+            candidate = in_names.strip()
+            if candidate:
+                by_name = candidate
+
+    # Normalize target field to a non-empty string.
+    if isinstance(by_name, list):
+        by_name = next((str(item).strip() for item in by_name if str(item).strip()), "")
+    elif by_name is not None and not isinstance(by_name, str):
+        by_name = str(by_name).strip()
+
+    if isinstance(by_name, str) and by_name.strip():
+        normalized["verifyPeerCertByName"] = by_name.strip()
+    else:
+        normalized.pop("verifyPeerCertByName", None)
+
+    # Never keep deprecated key for modern Xray.
+    normalized.pop("verifyPeerCertInNames", None)
+    return normalized
+
+
 def apply_log_paths(config: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize presence of log config without forcing absolute paths; actual paths are resolved per-runtime.
