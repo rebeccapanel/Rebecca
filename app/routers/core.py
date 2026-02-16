@@ -2,6 +2,7 @@ import asyncio
 import time
 import json
 import contextlib
+import ipaddress
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
 from starlette.websockets import WebSocketDisconnect
@@ -349,6 +350,42 @@ def get_raw_access_logs(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+@router.post("/core/access/operators", responses={403: responses._403})
+def resolve_access_log_operators(
+    ips: list[str] = Body(default_factory=list, embed=True),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """
+    Resolve ISP/operator metadata for a list of source IPs.
+    This endpoint is intentionally lightweight and used by frontend aggregation mode.
+    """
+    if not isinstance(ips, list):
+        raise HTTPException(status_code=422, detail="ips should be a list")
+
+    seen: set[str] = set()
+    unique_ips: list[str] = []
+    for raw in ips[:5000]:
+        try:
+            ip = str(raw or "").strip()
+        except Exception:
+            continue
+        if not ip or ip in seen:
+            continue
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        seen.add(ip)
+        unique_ips.append(ip)
+
+    operators = []
+    for ip in unique_ips:
+        short_name, owner = access_insights.classify_isp(ip)
+        operators.append({"ip": ip, "short_name": short_name, "owner": owner})
+
+    return {"operators": operators}
 
 
 @router.websocket("/core/access/logs/ws")

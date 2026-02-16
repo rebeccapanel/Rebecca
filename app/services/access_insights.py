@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 import os
 import requests
+from urllib.parse import urlsplit, urlunsplit
 
 from app.runtime import xray
 from config import XRAY_ASSETS_PATH, XRAY_LOG_DIR, REDIS_ENABLED
@@ -61,8 +62,29 @@ _json_geo_cache: dict[str, Any] = {"loaded_at": None, "domain_map": {}, "ip_netw
 _json_geo_lock = threading.Lock()
 _JSON_GEO_TTL_SECONDS = 600
 _JSON_GEOSITE_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/geosite.json"
-_JSON_GEOIP_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/geoip.json"
-_JSON_ISP_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/ISPbyrange.json"
+
+
+def _sibling_raw_url(base_url: str, filename: str) -> str:
+    """
+    Build a sibling raw GitHub URL from the geosite URL.
+    Keeps scheme/host/repo/branch path intact and swaps only filename.
+    """
+    try:
+        parsed = urlsplit(base_url)
+        path = parsed.path or ""
+        if "/" not in path:
+            return base_url
+        parent = path.rsplit("/", 1)[0]
+        sibling_path = f"{parent}/{filename}"
+        return urlunsplit((parsed.scheme, parsed.netloc, sibling_path, parsed.query, parsed.fragment))
+    except Exception:
+        if "/" in base_url:
+            return f"{base_url.rsplit('/', 1)[0]}/{filename}"
+        return base_url
+
+
+_JSON_GEOIP_URL = _sibling_raw_url(_JSON_GEOSITE_URL, "geoip.json")
+_JSON_ISP_URL = _sibling_raw_url(_JSON_GEOSITE_URL, "ISPbyrange.json")
 _json_isp_cache: dict[str, Any] = {"loaded_at": None, "ranges": []}  # ranges: list[(network, short_name, owner)]
 
 

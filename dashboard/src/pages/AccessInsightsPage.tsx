@@ -206,6 +206,16 @@ type ParsedAccessLog = {
 	userLabel: string;
 };
 
+type OperatorLookupItem = {
+	ip: string;
+	short_name?: string;
+	owner?: string;
+};
+
+type OperatorLookupResponse = {
+	operators?: OperatorLookupItem[];
+};
+
 type MutableClient = {
 	user_key: string;
 	user_label: string;
@@ -576,6 +586,77 @@ const buildInsightsFromRawNdjson = (
 	};
 };
 
+const enrichInsightsWithOperators = async (
+	insights: AccessInsightsResponse,
+): Promise<AccessInsightsResponse> => {
+	const items = Array.isArray(insights.items) ? insights.items : [];
+	if (!items.length) return insights;
+
+	const hasOperators = items.some(
+		(client) => Array.isArray(client.operators) && client.operators.length > 0,
+	);
+	if (hasOperators) return insights;
+
+	const uniqueIps = Array.from(
+		new Set(
+			items
+				.flatMap((client) => (client.sources || []).map((ip) => (ip || "").trim()))
+				.filter((ip) => ip && isIpLiteral(ip)),
+		),
+	);
+	if (!uniqueIps.length) return insights;
+
+	let lookup: OperatorLookupResponse | null = null;
+	try {
+		lookup = await fetch<OperatorLookupResponse>("/core/access/operators", {
+			method: "POST",
+			body: { ips: uniqueIps },
+		});
+	} catch {
+		return insights;
+	}
+
+	const entries = Array.isArray(lookup?.operators) ? lookup.operators : [];
+	if (!entries.length) return insights;
+
+	const operatorByIp = new Map(entries.map((entry) => [entry.ip, entry] as const));
+
+	const enrichedItems = items.map((client) => {
+		const sourceIps = Array.from(
+			new Set(
+				(client.sources || [])
+					.map((ip) => (ip || "").trim())
+					.filter((ip) => ip && isIpLiteral(ip)),
+			),
+		);
+		const operators = sourceIps.map((ip) => {
+			const meta = operatorByIp.get(ip);
+			return {
+				ip,
+				short_name: meta?.short_name || "Unknown",
+				owner: meta?.owner || meta?.short_name || "Unknown",
+			};
+		});
+
+		const operatorCounts: Record<string, number> = {};
+		for (const operator of operators) {
+			const key = (operator.short_name || operator.owner || "Unknown").trim() || "Unknown";
+			operatorCounts[key] = (operatorCounts[key] || 0) + 1;
+		}
+
+		return {
+			...client,
+			operators,
+			operator_counts: operatorCounts,
+		};
+	});
+
+	return {
+		...insights,
+		items: enrichedItems,
+	};
+};
+
 const buildApiUrl = (path: string, query: URLSearchParams) => {
 	const base = ((import.meta.env.VITE_BASE_API as string | undefined) || "/api")
 		.replace(/\/+$/, "")
@@ -630,10 +711,11 @@ const AccessInsightsPage: FC = () => {
 				DEFAULT_WINDOW_SECONDS,
 				DEFAULT_LIMIT,
 			);
+			const enrichedParsed = await enrichInsightsWithOperators(parsed);
 			if (parsed?.error) {
 				setError(parsed.detail || parsed.error);
 			}
-			setData(parsed);
+			setData(enrichedParsed);
 		} catch (rawErr) {
 			try {
 				const query = new URLSearchParams({
@@ -644,10 +726,11 @@ const AccessInsightsPage: FC = () => {
 				const response = await fetch<AccessInsightsResponse>(
 					`/core/access/insights/multi-node?${query.toString()}`,
 				);
+				const enrichedResponse = await enrichInsightsWithOperators(response);
 				if (response?.error) {
 					setError(response.detail || response.error);
 				}
-				setData(response);
+				setData(enrichedResponse);
 			} catch (err: any) {
 				setError(
 					err?.message ||
