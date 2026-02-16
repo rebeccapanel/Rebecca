@@ -561,6 +561,9 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
                     "googleusercontent.com",
                     "crashlytics.com",
                     "doubleclick.net",
+                    "gvt1.com",
+                    "ggpht.com",
+                    "dns.google",
                 ),
                 "google",
             ),
@@ -659,10 +662,25 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
             (("ocsp-certum.com",), "certum"),
             (("mazholl.com",), "mazholl"),
             (("samsungosp.com", "samsungapps.com"), "samsung"),
+            (("samsungiotcloud.com",), "samsung"),
             (("ipwho.is", "api.ip.sb", "seeip.org"), "ip_lookup"),
-            (("cloudflare.com", "one.one.one.one"), "cloudflare"),
+            (("ifconfig.co",), "ip_lookup"),
+            (("cloudflare.com", "one.one.one.one", "pullcf.com"), "cloudflare"),
             (("applovin.com",), "applovin"),
+            (("applvn.com",), "applovin"),
             (("samsung.com", "samsungcloudcdn.com"), "samsung"),
+            (("googlesyndication.com", "googleadservices.com"), "google_ads"),
+            (("appmetrica.yandex.net",), "yandex"),
+            (("playfabapi.com",), "playfab"),
+            (("shalltry.com", "transsion-os.com"), "transsion"),
+            (("optime-ai.com",), "optime_ai"),
+            (("truecaller.com",), "truecaller"),
+            (("xiaohongshu.com",), "xiaohongshu"),
+            (("dbankcloud.asia", "dbankcloud.eu"), "huawei"),
+            (("launchdarkly.com",), "launchdarkly"),
+            (("expressapisv2.net",), "expressapis"),
+            (("dalyfeds.com",), "dalyfeds"),
+            (("fexori.com",), "fexori"),
         ]
         for needles, platform in fast_map:
             if any(n in host_val for n in needles):
@@ -680,21 +698,65 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
         fast_ip_map = [
             (("149.154.", "91.108."), "telegram"),
             (("157.240.",), "facebook"),
+            (("102.132.",), "facebook"),
             (("31.13.", "57.144.", "185.60."), "instagram"),
             (("140.82.", "185.199.", "20.201.", "192.30."), "github"),
             (("155.133.", "162.254.", "208.64.", "146.66.", "205.196."), "steam"),
             (("47.241.", "47.74.", "161.117."), "alibaba"),
             (("20.33.",), "microsoft"),
-            (("2.16.168.",), "akamai"),
+            (("2.16.",), "akamai"),
             (("2.189.58.",), "eitaa"),
-            (("2.189.68.", "5.28.", "85.133.", "185.79.", "195.254."), "iran"),
+            (("2.189.68.", "5.28.", "85.133.", "185.79.", "195.254.", "91.98."), "iran"),
             (("13.51.",), "aws"),
-            (("188.212.98.", "89.167.", "194.26.66.", "74.1.1.", "87.248.132."), "hosting"),
+            (
+                (
+                    "188.212.98.",
+                    "89.167.",
+                    "194.26.66.",
+                    "74.1.1.",
+                    "87.248.132.",
+                    "65.21.",
+                    "65.109.",
+                    "95.216.",
+                    "37.27.",
+                    "5.78.",
+                    "193.151.132.",
+                    "199.103.24.",
+                    "82.21.204.",
+                    "195.62.32.",
+                    "198.46.254.",
+                    "178.156.212.",
+                    "185.22.42.",
+                    "212.33.197.",
+                    "156.146.",
+                ),
+                "hosting",
+            ),
             (("17.",), "apple"),
-            (("172.64.", "162.159.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."), "cloudflare"),
-            (("8.8.8.8", "8.8.4.4", "216.58.", "216.239.", "142.250.", "142.251.", "172.217."), "google"),
+            (
+                ("172.64.", "172.65.", "162.159.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."),
+                "cloudflare",
+            ),
+            (
+                (
+                    "8.8.8.8",
+                    "8.8.4.4",
+                    "216.58.",
+                    "216.239.",
+                    "142.250.",
+                    "142.251.",
+                    "172.217.",
+                    "173.194.",
+                    "74.125.",
+                    "34.102.",
+                    "34.120.",
+                    "35.190.",
+                ),
+                "google",
+            ),
             (("1.1.1.1", "1.0.0.1"), "cloudflare-dns"),
-            (("10.", "127.", "239.255.255."), "local"),
+            (("10.", "127.", "198.18.", "239.255.255."), "local"),
+            (("71.18.",), "tiktok"),
         ]
         for prefixes, platform in fast_ip_map:
             if any(ip_val.startswith(pref) for pref in prefixes):
@@ -1024,8 +1086,7 @@ def build_access_insights(
                 "sources": sorted(c.get("sources") or []),
                 "nodes": sorted(c.get("nodes") or []),
                 "source_nodes": {
-                    ip: sorted(list(node_names))
-                    for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                    ip: sorted(list(node_names)) for ip, node_names in sorted((c.get("source_nodes") or {}).items())
                 },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
@@ -1482,8 +1543,7 @@ def build_multi_node_insights(
                 "sources": sorted(list(c.get("sources") or [])[:20]),
                 "nodes": sorted(list(c.get("nodes") or [])),
                 "source_nodes": {
-                    ip: sorted(list(node_names))
-                    for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                    ip: sorted(list(node_names)) for ip, node_names in sorted((c.get("source_nodes") or {}).items())
                 },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
