@@ -11,6 +11,8 @@ export type AccessInsightClient = {
 	route: string;
 	connections: number;
 	sources?: string[];
+	nodes?: string[];
+	source_nodes?: Record<string, string[]>;
 	operators?: { ip: string; short_name?: string; owner?: string }[];
 	operator_counts?: Record<string, number>;
 	platforms: AccessInsightPlatform[];

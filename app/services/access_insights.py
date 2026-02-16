@@ -6,7 +6,7 @@ import re
 import threading
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 import os
@@ -62,6 +62,21 @@ _json_geo_cache: dict[str, Any] = {"loaded_at": None, "domain_map": {}, "ip_netw
 _json_geo_lock = threading.Lock()
 _JSON_GEO_TTL_SECONDS = 600
 _JSON_GEOSITE_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/geosite.json"
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_iso(value: Optional[datetime] = None) -> str:
+    dt = _ensure_utc(value) if isinstance(value, datetime) else _utcnow()
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def _sibling_raw_url(base_url: str, filename: str) -> str:
@@ -347,7 +362,9 @@ def _load_json_geo_assets() -> tuple[dict[str, str], list[tuple[ipaddress._BaseN
     """
     with _json_geo_lock:
         loaded_at = _json_geo_cache.get("loaded_at")
-        if loaded_at and (datetime.utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
+        if isinstance(loaded_at, datetime):
+            loaded_at = _ensure_utc(loaded_at)
+        if loaded_at and (_utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
             return _json_geo_cache.get("domain_map", {}), _json_geo_cache.get("ip_networks", [])
 
         domain_map: dict[str, str] = {}
@@ -384,7 +401,7 @@ def _load_json_geo_assets() -> tuple[dict[str, str], list[tuple[ipaddress._BaseN
                     except Exception:
                         continue
 
-        _json_geo_cache["loaded_at"] = datetime.utcnow()
+        _json_geo_cache["loaded_at"] = _utcnow()
         _json_geo_cache["domain_map"] = domain_map
         _json_geo_cache["ip_networks"] = ip_networks
         return domain_map, ip_networks
@@ -460,7 +477,9 @@ def classify_connection(host: str | None, ip: str | None, assets: GeoAssets) -> 
 def _load_json_isp_ranges() -> list[tuple[ipaddress._BaseNetwork, str, str]]:
     with _json_geo_lock:
         loaded_at = _json_isp_cache.get("loaded_at")
-        if loaded_at and (datetime.utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
+        if isinstance(loaded_at, datetime):
+            loaded_at = _ensure_utc(loaded_at)
+        if loaded_at and (_utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
             return _json_isp_cache.get("ranges", [])
 
         ranges: list[tuple[ipaddress._BaseNetwork, str, str]] = []
@@ -487,7 +506,7 @@ def _load_json_isp_ranges() -> list[tuple[ipaddress._BaseNetwork, str, str]]:
         except Exception:
             ranges = _json_isp_cache.get("ranges", [])
 
-        _json_isp_cache["loaded_at"] = datetime.utcnow()
+        _json_isp_cache["loaded_at"] = _utcnow()
         _json_isp_cache["ranges"] = ranges
         return ranges
 
@@ -719,7 +738,7 @@ ACCESS_RE = re.compile(
 def _parse_timestamp(raw: str) -> Optional[datetime]:
     for fmt in ("%Y/%m/%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S"):
         try:
-            return datetime.strptime(raw, fmt)
+            return _ensure_utc(datetime.strptime(raw, fmt))
         except ValueError:
             continue
     return None
@@ -824,7 +843,7 @@ def build_access_insights(
                 "matched_entries": 0,
                 "geo_assets_path": "",
                 "geo_assets": {"geosite": False, "geoip": False},
-                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "generated_at": _utc_iso(),
                 "lookback_lines": 0,
                 "window_seconds": window_seconds,
             }
@@ -848,7 +867,7 @@ def build_access_insights(
             "matched_entries": 0,
             "geo_assets_path": str(_resolve_assets_base()),
             "geo_assets": {"geosite": False, "geoip": False},
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_iso(),
             "lookback_lines": lookback_lines,
             "window_seconds": window_seconds,
         }
@@ -866,7 +885,7 @@ def build_access_insights(
     unmatched_seen: set[tuple[str, Optional[str]]] = set()
     redis_client = get_redis() if REDIS_ENABLED else None
 
-    cutoff = datetime.utcnow() - timedelta(seconds=window_seconds)
+    cutoff = _utcnow() - timedelta(seconds=window_seconds)
     total_matches = 0
 
     for raw in reversed(lines):
@@ -930,6 +949,8 @@ def build_access_insights(
                 "route": entry.get("route") or "",
                 "connections": 0,
                 "sources": set(),
+                "nodes": set(),
+                "source_nodes": {},
                 "operators": {},
                 "operator_counts": {},
                 "platforms": {},
@@ -938,6 +959,11 @@ def build_access_insights(
 
         if source_ip:
             client["sources"].add(source_ip)
+            client["nodes"].add("master")
+            source_nodes = client["source_nodes"]
+            if source_ip not in source_nodes:
+                source_nodes[source_ip] = set()
+            source_nodes[source_ip].add("master")
             op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
             if source_ip not in isp_cache:
                 op_short, op_owner = classify_isp(source_ip)
@@ -992,10 +1018,15 @@ def build_access_insights(
             {
                 "user_key": c["user_key"],
                 "user_label": c["user_label"],
-                "last_seen": last_seen_dt.isoformat() + "Z",
+                "last_seen": _utc_iso(last_seen_dt),
                 "route": c.get("route") or "",
                 "connections": c["connections"],
                 "sources": sorted(c.get("sources") or []),
+                "nodes": sorted(c.get("nodes") or []),
+                "source_nodes": {
+                    ip: sorted(list(node_names))
+                    for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
                     for ip, meta in sorted(c.get("operators", {}).items())
@@ -1030,7 +1061,7 @@ def build_access_insights(
             for name, count in top_platforms
         ],
         "matched_entries": total_matches,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_iso(),
         "lookback_lines": lookback_lines,
         "window_seconds": window_seconds,
         "unmatched": unmatched_entries,
@@ -1248,7 +1279,7 @@ def build_multi_node_insights(
                 "detail": "Access Insights is disabled in panel settings",
                 "items": [],
                 "platforms": [],
-                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "generated_at": _utc_iso(),
             }
     except Exception:
         pass
@@ -1264,14 +1295,14 @@ def build_multi_node_insights(
             "detail": "No access logs found for the requested nodes",
             "items": [],
             "platforms": [],
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_iso(),
         }
 
     lookback_lines = max(limit, min(lookback_lines, 2000))
     window_seconds = max(5, min(window_seconds, 600))
 
     assets = load_geo_assets()
-    cutoff = datetime.utcnow() - timedelta(seconds=window_seconds)
+    cutoff = _utcnow() - timedelta(seconds=window_seconds)
 
     MAX_CLIENTS = 500
     clients: dict[str, dict[str, Any]] = {}
@@ -1375,6 +1406,7 @@ def build_multi_node_insights(
                     "connections": 0,
                     "sources": set(),
                     "nodes": set(),
+                    "source_nodes": {},
                     "operators": {},
                     "operator_counts": {},
                     "platforms": {},
@@ -1385,6 +1417,10 @@ def build_multi_node_insights(
 
             if source_ip:
                 client["sources"].add(source_ip)
+                source_nodes = client["source_nodes"]
+                if source_ip not in source_nodes:
+                    source_nodes[source_ip] = set()
+                source_nodes[source_ip].add(source.node_name)
                 op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
                 if source_ip not in isp_cache:
                     op_short, op_owner = classify_isp(source_ip)
@@ -1440,11 +1476,15 @@ def build_multi_node_insights(
             {
                 "user_key": c["user_key"],
                 "user_label": c["user_label"],
-                "last_seen": last_seen_dt.isoformat() + "Z",
+                "last_seen": _utc_iso(last_seen_dt),
                 "route": c.get("route") or "",
                 "connections": c["connections"],
                 "sources": sorted(list(c.get("sources") or [])[:20]),
                 "nodes": sorted(list(c.get("nodes") or [])),
+                "source_nodes": {
+                    ip: sorted(list(node_names))
+                    for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
                     for ip, meta in sorted(list(c.get("operators", {}).items())[:10])
@@ -1484,7 +1524,7 @@ def build_multi_node_insights(
             for name, count in top_platforms
         ],
         "matched_entries": total_matches,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_iso(),
         "lookback_lines": lookback_lines,
         "window_seconds": window_seconds,
     }

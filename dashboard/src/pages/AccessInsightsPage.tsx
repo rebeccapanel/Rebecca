@@ -4,12 +4,14 @@ import {
 	Badge,
 	Box,
 	Button,
+	ButtonGroup,
 	HStack,
 	Icon,
 	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
+	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -35,6 +37,7 @@ import {
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
+	type ChangeEvent,
 	type ElementType,
 	type FC,
 	useCallback,
@@ -85,6 +88,64 @@ import TciSvg from "../assets/operators/tci-svgrepo-com.svg";
 const REFRESH_INTERVAL = 5000;
 const DEFAULT_LIMIT = 250;
 const DEFAULT_WINDOW_SECONDS = 120;
+const ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
+const ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY =
+	"rebecca-access-insights-per-page";
+const DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE = 10;
+
+const readAccessInsightsPageSize = () => {
+	if (typeof window === "undefined") return DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE;
+	const raw = window.localStorage.getItem(
+		ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY,
+	);
+	const parsed = Number.parseInt(raw || "", 10);
+	if (
+		Number.isFinite(parsed) &&
+		ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.includes(
+			parsed as (typeof ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS)[number],
+		)
+	) {
+		return parsed;
+	}
+	return DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE;
+};
+
+const writeAccessInsightsPageSize = (value: number) => {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(
+		ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY,
+		String(value),
+	);
+};
+
+const MIN_PAGINATION_ITEMS = 5;
+const PAGINATION_WIDTH = 7;
+
+const generatePageItems = (total: number, current: number, width: number) => {
+	if (width < MIN_PAGINATION_ITEMS || width % 2 === 0) return [];
+	if (total <= width) return Array.from({ length: total }, (_, index) => index);
+	const left = Math.max(
+		0,
+		Math.min(total - width, current - Math.floor(width / 2)),
+	);
+	const items: Array<string | number> = Array.from(
+		{ length: width },
+		(_, index) => left + index,
+	);
+	if (typeof items[0] === "number" && items[0] > 0) {
+		items[0] = 0;
+		items[1] = "prev-more";
+	}
+	if (
+		typeof items[items.length - 1] === "number" &&
+		(items[items.length - 1] as number) < total - 1
+	) {
+		items[items.length - 1] = total - 1;
+		items[items.length - 2] = "next-more";
+	}
+	return items;
+};
+
 const iconAs = (icon: IconType) => icon as unknown as ElementType;
 
 const renderPlatformIcon = (name: string) => {
@@ -230,6 +291,7 @@ type MutableClient = {
 	connectionEvents: number;
 	sources: Set<string>;
 	nodes: Set<string>;
+	sourceNodes: Map<string, Set<string>>;
 	platforms: Map<
 		string,
 		{ platform: string; connections: number; destinations: Set<string> }
@@ -606,6 +668,7 @@ const buildInsightsFromRawNdjson = (
 					connectionEvents: 0,
 					sources: new Set<string>(),
 					nodes: new Set<string>(),
+					sourceNodes: new Map<string, Set<string>>(),
 					platforms: new Map(),
 				};
 				clients.set(userKey, client);
@@ -616,6 +679,12 @@ const buildInsightsFromRawNdjson = (
 			}
 			if (sourceIp) {
 				client.sources.add(sourceIp);
+				if (chunk.node_name) {
+					const mappedNodes =
+						client.sourceNodes.get(sourceIp) || new Set<string>();
+					mappedNodes.add(chunk.node_name);
+					client.sourceNodes.set(sourceIp, mappedNodes);
+				}
 			}
 			client.connectionEvents += 1;
 			if (parsed.timestampMs > client.lastSeenMs) {
@@ -662,6 +731,12 @@ const buildInsightsFromRawNdjson = (
 			route: client.route || "",
 			connections: client.sources.size || client.connectionEvents,
 			sources: Array.from(client.sources).sort(),
+			nodes: Array.from(client.nodes).sort(),
+			source_nodes: Object.fromEntries(
+				Array.from(client.sourceNodes.entries())
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([ip, nodeSet]) => [ip, Array.from(nodeSet).sort()]),
+			),
 			platforms: Array.from(client.platforms.values())
 				.map((platform) => ({
 					platform: platform.platform,
@@ -825,6 +900,10 @@ const AccessInsightsPage: FC = () => {
 	const [autoRefresh, setAutoRefresh] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showAllUnmatched, setShowAllUnmatched] = useState(false);
+	const [clientsPerPage, setClientsPerPage] = useState<number>(
+		readAccessInsightsPageSize,
+	);
+	const [currentPage, setCurrentPage] = useState(0);
 
 	const loadData = useCallback(async () => {
 		if (!canViewXray || !insightsEnabled) return;
@@ -972,6 +1051,15 @@ const AccessInsightsPage: FC = () => {
 		return (clients as AccessInsightClient[]).filter((client) => {
 			if (client.user_label.toLowerCase().includes(q)) return true;
 			if ((client.route || "").toLowerCase().includes(q)) return true;
+			for (const nodeName of client.nodes || []) {
+				if ((nodeName || "").toLowerCase().includes(q)) return true;
+			}
+			for (const [ip, nodes] of Object.entries(client.source_nodes || {})) {
+				if ((ip || "").toLowerCase().includes(q)) return true;
+				for (const nodeName of nodes || []) {
+					if ((nodeName || "").toLowerCase().includes(q)) return true;
+				}
+			}
 			for (const p of client.platforms || []) {
 				if (p.platform.toLowerCase().includes(q)) return true;
 				for (const dest of p.destinations || []) {
@@ -981,6 +1069,52 @@ const AccessInsightsPage: FC = () => {
 			return false;
 		});
 	}, [clients, search]);
+
+	const totalFilteredClients = filteredClients.length;
+	const totalPages = Math.max(
+		1,
+		Math.ceil(totalFilteredClients / Math.max(1, clientsPerPage)),
+	);
+	const safeCurrentPage = Math.min(currentPage, totalPages - 1);
+
+	useEffect(() => {
+		if (safeCurrentPage !== currentPage) {
+			setCurrentPage(safeCurrentPage);
+		}
+	}, [currentPage, safeCurrentPage]);
+
+	const paginatedClients = useMemo(() => {
+		const start = safeCurrentPage * clientsPerPage;
+		return filteredClients.slice(start, start + clientsPerPage);
+	}, [clientsPerPage, filteredClients, safeCurrentPage]);
+
+	const pageItems = useMemo(
+		() => generatePageItems(totalPages, safeCurrentPage, PAGINATION_WIDTH),
+		[safeCurrentPage, totalPages],
+	);
+	const canPrevPage = safeCurrentPage > 0;
+	const canNextPage = safeCurrentPage + 1 < totalPages;
+	const pageRangeStart =
+		totalFilteredClients === 0 ? 0 : safeCurrentPage * clientsPerPage + 1;
+	const pageRangeEnd = Math.min(
+		(safeCurrentPage + 1) * clientsPerPage,
+		totalFilteredClients,
+	);
+
+	const handlePerPageChange = (e: ChangeEvent<HTMLSelectElement>) => {
+		const next = Number.parseInt(e.target.value, 10);
+		if (
+			!Number.isFinite(next) ||
+			!ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.includes(
+				next as (typeof ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS)[number],
+			)
+		) {
+			return;
+		}
+		setClientsPerPage(next);
+		setCurrentPage(0);
+		writeAccessInsightsPageSize(next);
+	};
 
 	const sourceStatuses = useMemo(() => data?.source_statuses || [], [data]);
 
@@ -1079,6 +1213,7 @@ const AccessInsightsPage: FC = () => {
 						onChange={(e) => {
 							setSearch(e.target.value);
 							setShowAllUnmatched(false);
+							setCurrentPage(0);
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
@@ -1298,7 +1433,79 @@ const AccessInsightsPage: FC = () => {
 				opacity={insightsEnabled ? 1 : 0.3}
 				filter={insightsEnabled ? "none" : "blur(2px)"}
 			>
-				{filteredClients.map((client) => (
+				{totalFilteredClients > 0 ? (
+					<HStack
+						justifyContent="space-between"
+						w="full"
+						columnGap={{ lg: 4, md: 0 }}
+						rowGap={{ md: 0, base: 4 }}
+						flexDirection={{ md: "row", base: "column" }}
+					>
+						<HStack>
+							<Select
+								minW="72px"
+								value={String(clientsPerPage)}
+								onChange={handlePerPageChange}
+								size="sm"
+								rounded="md"
+							>
+								{ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.map((size) => (
+									<option key={size} value={size}>
+										{size}
+									</option>
+								))}
+							</Select>
+							<Text whiteSpace="nowrap" fontSize="sm">
+								{t("itemsPerPage")}
+							</Text>
+						</HStack>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"pages.accessInsights.paginationRange",
+								"{{start}}-{{end}} of {{total}}",
+								{
+									start: pageRangeStart,
+									end: pageRangeEnd,
+									total: totalFilteredClients,
+								},
+							)}
+						</Text>
+						<ButtonGroup size="sm" isAttached variant="outline">
+							<Button
+								onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+								isDisabled={!canPrevPage}
+							>
+								{t("previous")}
+							</Button>
+							{pageItems.map((pageIndex) =>
+								typeof pageIndex === "string" ? (
+									<Button key={pageIndex} isDisabled>
+										...
+									</Button>
+								) : (
+									<Button
+										key={pageIndex}
+										variant={
+											pageIndex === safeCurrentPage ? "solid" : "outline"
+										}
+										onClick={() => setCurrentPage(pageIndex)}
+									>
+										{pageIndex + 1}
+									</Button>
+								),
+							)}
+							<Button
+								onClick={() =>
+									setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))
+								}
+								isDisabled={!canNextPage}
+							>
+								{t("next")}
+							</Button>
+						</ButtonGroup>
+					</HStack>
+				) : null}
+				{paginatedClients.map((client) => (
 					<Box key={client.user_key} borderWidth="1px" borderRadius="lg" p={4}>
 						<HStack justify="space-between" align="start" flexWrap="wrap">
 							<VStack align="start" spacing={1}>
@@ -1307,6 +1514,28 @@ const AccessInsightsPage: FC = () => {
 									{t("pages.accessInsights.ips", "IPs")}:{" "}
 									{(client.sources || []).join(", ") || "-"}
 								</Text>
+								<Text fontSize="sm" color="gray.500">
+									{t("pages.accessInsights.nodes", "Nodes")}:{" "}
+									{(client.nodes || []).join(", ") || "-"}
+								</Text>
+								{client.source_nodes &&
+								Object.keys(client.source_nodes).length > 0 ? (
+									<VStack align="start" spacing={0}>
+										<Text fontSize="xs" color="gray.500">
+											{t("pages.accessInsights.ipNodeMap", "IP -> Node(s)")}
+										</Text>
+										{Object.entries(client.source_nodes).map(([ip, nodes]) => (
+											<Text
+												key={ip}
+												fontSize="xs"
+												color="gray.500"
+												fontFamily="mono"
+											>
+												{ip} {"->"} {(nodes || []).join(", ") || "-"}
+											</Text>
+										))}
+									</VStack>
+								) : null}
 								<Text fontSize="sm" color="gray.500">
 									{t("pages.accessInsights.route", "Route")}:{" "}
 									{client.route || "-"}
@@ -1376,7 +1605,44 @@ const AccessInsightsPage: FC = () => {
 						</Table>
 					</Box>
 				))}
-				{filteredClients.length === 0 && !loading ? (
+				{totalFilteredClients > 0 ? (
+					<HStack justifyContent="flex-end">
+						<ButtonGroup size="sm" isAttached variant="outline">
+							<Button
+								onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+								isDisabled={!canPrevPage}
+							>
+								{t("previous")}
+							</Button>
+							{pageItems.map((pageIndex) =>
+								typeof pageIndex === "string" ? (
+									<Button key={`bottom-${pageIndex}`} isDisabled>
+										...
+									</Button>
+								) : (
+									<Button
+										key={`bottom-${pageIndex}`}
+										variant={
+											pageIndex === safeCurrentPage ? "solid" : "outline"
+										}
+										onClick={() => setCurrentPage(pageIndex)}
+									>
+										{pageIndex + 1}
+									</Button>
+								),
+							)}
+							<Button
+								onClick={() =>
+									setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))
+								}
+								isDisabled={!canNextPage}
+							>
+								{t("next")}
+							</Button>
+						</ButtonGroup>
+					</HStack>
+				) : null}
+				{totalFilteredClients === 0 && !loading ? (
 					<Box borderWidth="1px" borderRadius="md" p={4}>
 						<Text color="gray.500">
 							{t("pages.accessInsights.noData", "No recent connections found.")}
