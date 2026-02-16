@@ -3,6 +3,7 @@ import {
 	AlertIcon,
 	Badge,
 	Box,
+	Button,
 	HStack,
 	Icon,
 	IconButton,
@@ -43,6 +44,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { IconType } from "react-icons";
+import { FaMicrosoft } from "react-icons/fa";
 import { FiGlobe } from "react-icons/fi";
 import {
 	SiApple,
@@ -50,11 +52,13 @@ import {
 	SiBitcoin,
 	SiCloudflare,
 	SiFacebook,
+	SiGithub,
 	SiGoogle,
 	SiInstagram,
 	SiNetflix,
 	SiSamsung,
 	SiSnapchat,
+	SiSteam,
 	SiTelegram,
 	SiTiktok,
 	SiWhatsapp,
@@ -97,8 +101,10 @@ const renderPlatformIcon = (name: string) => {
 	if (n.includes("cloudflare")) return <Icon as={iconAs(SiCloudflare)} />;
 	if (n.includes("apple") || n.includes("icloud"))
 		return <Icon as={iconAs(SiApple)} />;
+	if (n.includes("github")) return <Icon as={iconAs(SiGithub)} />;
+	if (n.includes("steam")) return <Icon as={iconAs(SiSteam)} />;
 	if (n.includes("microsoft") || n.includes("windows"))
-		return <Icon as={iconAs(FiGlobe)} />;
+		return <Icon as={iconAs(FaMicrosoft)} />;
 	if (n.includes("netflix")) return <Icon as={iconAs(SiNetflix)} />;
 	if (n.includes("samsung")) return <Icon as={iconAs(SiSamsung)} />;
 	if (
@@ -286,10 +292,13 @@ const guessPlatformFromLine = (
 ): string => {
 	const host = (destination || "").toLowerCase();
 	if (host) {
+		// Access log parser may emit truncated bracketed IPv6 hosts like "[2a02".
+		if (host.startsWith("[")) return "ipv6";
+
 		const rules: Array<[string[], string]> = [
 			[["googlevideo.com", "ytimg.com", "youtube.com"], "youtube"],
 			[["instagram.com", "cdninstagram.com", "fbcdn.net"], "instagram"],
-			[["tiktok", "pangle"], "tiktok"],
+			[["tiktok", "pangle", "ibyteimg.com", "byteimg.com"], "tiktok"],
 			[["whatsapp.com", "whatsapp.net"], "whatsapp"],
 			[["facebook.com", "messenger.com"], "facebook"],
 			[["telegram.org", "t.me", "telegram.me"], "telegram"],
@@ -302,15 +311,108 @@ const guessPlatformFromLine = (
 					"googleapis.com",
 					"gstatic.com",
 					"gmail.com",
+					"google.",
 					"play.googleapis.com",
 					"googlevideo.com",
 					"googleusercontent.com",
+					"crashlytics.com",
+					"doubleclick.net",
 				],
 				"google",
 			],
-			[["icloud.com", "apple.com", "mzstatic.com"], "apple"],
-			[["microsoft.com", "live.com", "office.com"], "microsoft"],
-			[["cloudflare.com"], "cloudflare"],
+			[
+				[
+					"icloud.com",
+					"apple.com",
+					"mzstatic.com",
+					"mail.me.com",
+					"safebrowsing.apple",
+				],
+				"apple",
+			],
+			[
+				[
+					"microsoft.com",
+					"live.com",
+					"office.com",
+					"msn.com",
+					"bing.com",
+					"trafficmanager.net",
+					"vscode-cdn.net",
+					"vscode.dev",
+					"vscode-sync.",
+				],
+				"microsoft",
+			],
+			[
+				[
+					"github.com",
+					"githubusercontent.com",
+					"githubassets.com",
+					"github.io",
+					"github.dev",
+					"alive.github.com",
+				],
+				"github",
+			],
+			[
+				[
+					"steampowered.com",
+					"steamcommunity.com",
+					"steamstatic.com",
+					"steamserver.net",
+					"steamcontent.com",
+					"steam-chat.com",
+				],
+				"steam",
+			],
+			[
+				[
+					"chatgpt.com",
+					"chat.openai.com",
+					"ab.chatgpt.com",
+					"openai.com",
+					"auth.openai.com",
+					"help.openai.com",
+					"cdn.platform.openai.com",
+					"cdn.openai.com",
+					"oaistatic.com",
+				],
+				"openai",
+			],
+			[["opera.com", "operacdn.com"], "opera"],
+			[["mail.yahoo.com", "yahoo.com", "yahoosandbox.net"], "yahoo"],
+			[
+				[
+					"micloud.xiaomi.net",
+					"miui.com",
+					"xiaomi.com",
+					"msg.global.xiaomi.net",
+				],
+				"xiaomi",
+			],
+			[["neshanmap.ir"], "neshan"],
+			[["eitaa.com", "eitaa.ir"], "eitaa"],
+			[["web.splus.ir"], "splus"],
+			[["linkedin.com"], "linkedin"],
+			[["divar.ir", "divarcdn.com"], "divar"],
+			[["services.mozilla.com"], "mozilla"],
+			[["codmwest.com"], "codm"],
+			[["soundcloud.com"], "soundcloud"],
+			[["discord.gg", "discord.com"], "discord"],
+			[["yektanet.com"], "yektanet"],
+			[["tsyndicate.com"], "tsyndicate"],
+			[["uuidksinc.net"], "uuidksinc"],
+			[["beyla.site"], "beyla"],
+			[["flixcdn.com"], "flixcdn"],
+			[["xhcdn.com", "xnxx-cdn.com"], "porn"],
+			[["hansha.online"], "hansha"],
+			[["sotoon.ir"], "sotoon"],
+			[["ocsp-certum.com"], "certum"],
+			[["mazholl.com"], "mazholl"],
+			[["samsungosp.com", "samsungapps.com"], "samsung"],
+			[["ipwho.is", "api.ip.sb", "seeip.org"], "ip_lookup"],
+			[["cloudflare.com", "one.one.one.one"], "cloudflare"],
 			[["applovin.com"], "applovin"],
 			[["samsung.com", "samsungcloudcdn.com"], "samsung"],
 		];
@@ -327,14 +429,47 @@ const guessPlatformFromLine = (
 	const ip = destinationIp || (isIpLiteral(destination) ? destination : "");
 	if (ip) {
 		const ipRules: Array<[string[], string]> = [
-			[["149.154.167.", "149.154.175.", "91.108."], "telegram"],
-			[["157.240."], "facebook"],
+			[["149.154.", "91.108."], "telegram"],
+			[["157.240.", "31.13.", "57.144.", "185.60."], "instagram"],
+			[["140.82.", "185.199.", "20.201.", "192.30."], "github"],
+			[["155.133.", "162.254.", "208.64.", "146.66.", "205.196."], "steam"],
+			[["47.241.", "47.74.", "161.117."], "alibaba"],
+			[["20.33."], "microsoft"],
+			[["2.16.168."], "akamai"],
+			[["2.189.58."], "eitaa"],
+			[["2.189.68.", "5.28.", "85.133.", "185.79.", "195.254."], "iran"],
+			[["13.51."], "aws"],
 			[
-				["172.64.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."],
+				["188.212.98.", "89.167.", "194.26.66.", "74.1.1.", "87.248.132."],
+				"hosting",
+			],
+			[["17."], "apple"],
+			[
+				[
+					"172.64.",
+					"162.159.",
+					"104.16.",
+					"104.17.",
+					"104.18.",
+					"104.19.",
+					"104.20.",
+				],
 				"cloudflare",
 			],
-			[["8.8.8.8", "8.8.4.4"], "google-dns"],
+			[
+				[
+					"8.8.8.8",
+					"8.8.4.4",
+					"216.58.",
+					"216.239.",
+					"142.250.",
+					"142.251.",
+					"172.217.",
+				],
+				"google",
+			],
 			[["1.1.1.1", "1.0.0.1"], "cloudflare-dns"],
+			[["10.", "127.", "239.255.255."], "local"],
 		];
 		for (const [prefixes, platform] of ipRules) {
 			if (prefixes.some((prefix) => ip.startsWith(prefix))) {
@@ -600,7 +735,9 @@ const enrichInsightsWithOperators = async (
 	const uniqueIps = Array.from(
 		new Set(
 			items
-				.flatMap((client) => (client.sources || []).map((ip) => (ip || "").trim()))
+				.flatMap((client) =>
+					(client.sources || []).map((ip) => (ip || "").trim()),
+				)
 				.filter((ip) => ip && isIpLiteral(ip)),
 		),
 	);
@@ -619,7 +756,9 @@ const enrichInsightsWithOperators = async (
 	const entries = Array.isArray(lookup?.operators) ? lookup.operators : [];
 	if (!entries.length) return insights;
 
-	const operatorByIp = new Map(entries.map((entry) => [entry.ip, entry] as const));
+	const operatorByIp = new Map(
+		entries.map((entry) => [entry.ip, entry] as const),
+	);
 
 	const enrichedItems = items.map((client) => {
 		const sourceIps = Array.from(
@@ -640,7 +779,9 @@ const enrichInsightsWithOperators = async (
 
 		const operatorCounts: Record<string, number> = {};
 		for (const operator of operators) {
-			const key = (operator.short_name || operator.owner || "Unknown").trim() || "Unknown";
+			const key =
+				(operator.short_name || operator.owner || "Unknown").trim() ||
+				"Unknown";
 			operatorCounts[key] = (operatorCounts[key] || 0) + 1;
 		}
 
@@ -683,6 +824,7 @@ const AccessInsightsPage: FC = () => {
 	const [search, setSearch] = useState("");
 	const [autoRefresh, setAutoRefresh] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [showAllUnmatched, setShowAllUnmatched] = useState(false);
 
 	const loadData = useCallback(async () => {
 		if (!canViewXray || !insightsEnabled) return;
@@ -716,6 +858,7 @@ const AccessInsightsPage: FC = () => {
 				setError(parsed.detail || parsed.error);
 			}
 			setData(enrichedParsed);
+			setShowAllUnmatched(false);
 		} catch (rawErr) {
 			try {
 				const query = new URLSearchParams({
@@ -731,6 +874,7 @@ const AccessInsightsPage: FC = () => {
 					setError(response.detail || response.error);
 				}
 				setData(enrichedResponse);
+				setShowAllUnmatched(false);
 			} catch (err: any) {
 				setError(
 					err?.message ||
@@ -797,6 +941,10 @@ const AccessInsightsPage: FC = () => {
 		() => data?.unmatched || [],
 		[data],
 	);
+	const visibleUnmatched = useMemo(
+		() => (showAllUnmatched ? unmatched : unmatched.slice(0, 3)),
+		[showAllUnmatched, unmatched],
+	);
 
 	const operatorTotals = useMemo(() => {
 		const totals = new Map<string, Set<string>>();
@@ -834,10 +982,7 @@ const AccessInsightsPage: FC = () => {
 		});
 	}, [clients, search]);
 
-	const sourceStatuses = useMemo(
-		() => data?.source_statuses || [],
-		[data],
-	);
+	const sourceStatuses = useMemo(() => data?.source_statuses || [], [data]);
 
 	const successfulNodeNames = useMemo(() => {
 		if (sourceStatuses.length) {
@@ -883,7 +1028,8 @@ const AccessInsightsPage: FC = () => {
 					)}
 				</Text>
 				<Text color="gray.600" fontSize="sm" fontFamily="mono">
-					nodes: {successfulNodeNames.length ? successfulNodeNames.join(",") : "-"}
+					nodes:{" "}
+					{successfulNodeNames.length ? successfulNodeNames.join(",") : "-"}
 				</Text>
 				{failedNodeStatuses.length ? (
 					<Text color="red.400" fontSize="sm">
@@ -930,7 +1076,10 @@ const AccessInsightsPage: FC = () => {
 							"Search platform, host, or email",
 						)}
 						value={search}
-						onChange={(e) => setSearch(e.target.value)}
+						onChange={(e) => {
+							setSearch(e.target.value);
+							setShowAllUnmatched(false);
+						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
 								loadData();
@@ -1074,7 +1223,7 @@ const AccessInsightsPage: FC = () => {
 			) : null}
 
 			{unmatched.length > 0 ? (
-				<Box borderWidth="1px" borderRadius="md" p={4}>
+				<Box borderWidth="1px" borderRadius="md" p={3}>
 					<HStack justify="space-between" align="center" mb={2}>
 						<Text fontWeight="bold">
 							{t(
@@ -1082,20 +1231,31 @@ const AccessInsightsPage: FC = () => {
 								"Unmapped destinations",
 							)}
 						</Text>
-						<Tooltip
-							label={t("pages.accessInsights.copyUnmatched", "Copy as JSON")}
-						>
-							<IconButton
-								aria-label="copy-unmatched"
-								icon={<ClipboardDocumentIcon width={18} />}
-								size="sm"
-								onClick={() =>
-									navigator.clipboard.writeText(
-										JSON.stringify(unmatched, null, 2),
-									)
-								}
-							/>
-						</Tooltip>
+						<HStack spacing={2}>
+							<Button
+								size="xs"
+								variant="outline"
+								onClick={() => setShowAllUnmatched((prev) => !prev)}
+							>
+								{showAllUnmatched
+									? t("pages.accessInsights.unmatchedLess", "Show less")
+									: t("pages.accessInsights.unmatchedMoreBtn", "Show more")}
+							</Button>
+							<Tooltip
+								label={t("pages.accessInsights.copyUnmatched", "Copy as JSON")}
+							>
+								<IconButton
+									aria-label="copy-unmatched"
+									icon={<ClipboardDocumentIcon width={18} />}
+									size="xs"
+									onClick={() =>
+										navigator.clipboard.writeText(
+											JSON.stringify(unmatched, null, 2),
+										)
+									}
+								/>
+							</Tooltip>
+						</HStack>
 					</HStack>
 					<Table size="sm" variant="simple">
 						<Thead>
@@ -1105,7 +1265,7 @@ const AccessInsightsPage: FC = () => {
 							</Tr>
 						</Thead>
 						<Tbody>
-							{unmatched.slice(0, 50).map((row, idx) => (
+							{visibleUnmatched.map((row, idx) => (
 								<Tr
 									key={`${row.destination}-${row.destination_ip || "noip"}-${idx}`}
 								>
@@ -1119,13 +1279,13 @@ const AccessInsightsPage: FC = () => {
 							))}
 						</Tbody>
 					</Table>
-					{unmatched.length > 50 ? (
+					{!showAllUnmatched && unmatched.length > 3 ? (
 						<Text mt={2} color="gray.500" fontSize="sm">
 							{t(
 								"pages.accessInsights.unmatchedMore",
 								"{{count}} more entries not shown",
 								{
-									count: unmatched.length - 50,
+									count: unmatched.length - 3,
 								},
 							)}
 						</Text>

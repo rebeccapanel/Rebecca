@@ -515,10 +515,15 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
     """
     host_val = (host or "").lower()
     if host_val:
+        # Access log parser may produce truncated bracketed IPv6 hosts like "[2a02".
+        # Treat those as IPv6 traffic instead of unmapped "other".
+        if host_val.startswith("["):
+            return "ipv6"
+
         fast_map = [
             (("googlevideo.com", "ytimg.com", "youtube.com"), "youtube"),
             (("instagram.com", "cdninstagram.com", "fbcdn.net"), "instagram"),
-            (("tiktok", "pangle"), "tiktok"),
+            (("tiktok", "pangle", "ibyteimg.com", "byteimg.com"), "tiktok"),
             (("whatsapp.com", "whatsapp.net"), "whatsapp"),
             (("facebook.com", "messenger.com"), "facebook"),
             (("telegram.org", "t.me", "telegram.me"), "telegram"),
@@ -531,15 +536,112 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
                     "googleapis.com",
                     "gstatic.com",
                     "gmail.com",
+                    "google.",
                     "play.googleapis.com",
                     "googlevideo.com",
                     "googleusercontent.com",
+                    "crashlytics.com",
+                    "doubleclick.net",
                 ),
                 "google",
             ),
-            (("icloud.com", "apple.com", "mzstatic.com"), "apple"),
-            (("microsoft.com", "live.com", "office.com"), "microsoft"),
-            (("cloudflare.com",), "cloudflare"),
+            (("icloud.com", "apple.com", "mzstatic.com", "mail.me.com", "safebrowsing.apple"), "apple"),
+            (
+                (
+                    "microsoft.com",
+                    "live.com",
+                    "office.com",
+                    "msn.com",
+                    "bing.com",
+                    "trafficmanager.net",
+                    "vscode-cdn.net",
+                    "vscode.dev",
+                    "vscode-sync.",
+                ),
+                "microsoft",
+            ),
+            (
+                (
+                    "github.com",
+                    "githubusercontent.com",
+                    "githubassets.com",
+                    "github.io",
+                    "github.dev",
+                    "alive.github.com",
+                ),
+                "github",
+            ),
+            (
+                (
+                    "steampowered.com",
+                    "steamcommunity.com",
+                    "steamstatic.com",
+                    "steamserver.net",
+                    "steamcontent.com",
+                    "steam-chat.com",
+                ),
+                "steam",
+            ),
+            (
+                (
+                    "chatgpt.com",
+                    "chat.openai.com",
+                    "ab.chatgpt.com",
+                    "openai.com",
+                    "auth.openai.com",
+                    "help.openai.com",
+                    "cdn.platform.openai.com",
+                    "cdn.openai.com",
+                    "oaistatic.com",
+                ),
+                "openai",
+            ),
+            (
+                (
+                    "opera.com",
+                    "operacdn.com",
+                ),
+                "opera",
+            ),
+            (
+                (
+                    "mail.yahoo.com",
+                    "yahoo.com",
+                    "yahoosandbox.net",
+                ),
+                "yahoo",
+            ),
+            (
+                (
+                    "micloud.xiaomi.net",
+                    "miui.com",
+                    "xiaomi.com",
+                    "msg.global.xiaomi.net",
+                ),
+                "xiaomi",
+            ),
+            (("neshanmap.ir",), "neshan"),
+            (("eitaa.com", "eitaa.ir"), "eitaa"),
+            (("web.splus.ir",), "splus"),
+            (("linkedin.com",), "linkedin"),
+            (("divar.ir", "divarcdn.com"), "divar"),
+            (("services.mozilla.com",), "mozilla"),
+            (("codmwest.com",), "codm"),
+            (("soundcloud.com",), "soundcloud"),
+            (("discord.gg", "discord.com"), "discord"),
+            (("yektanet.com",), "yektanet"),
+            (("tsyndicate.com",), "tsyndicate"),
+            (("uuidksinc.net",), "uuidksinc"),
+            (("beyla.site",), "beyla"),
+            (("flixcdn.com",), "flixcdn"),
+            (("xhcdn.com", "xnxx-cdn.com"), "porn"),
+            (("hansha.online",), "hansha"),
+            (("sotoon.ir",), "sotoon"),
+            (("ocsp-certum.com",), "certum"),
+            (("mazholl.com",), "mazholl"),
+            (("samsungosp.com", "samsungapps.com"), "samsung"),
+            (("ipwho.is", "api.ip.sb", "seeip.org"), "ip_lookup"),
+            (("cloudflare.com", "one.one.one.one"), "cloudflare"),
             (("applovin.com",), "applovin"),
             (("samsung.com", "samsungcloudcdn.com"), "samsung"),
         ]
@@ -557,11 +659,23 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
     ip_val = ip or ""
     if ip_val:
         fast_ip_map = [
-            (("149.154.167.", "149.154.175.", "91.108."), "telegram"),
+            (("149.154.", "91.108."), "telegram"),
             (("157.240.",), "facebook"),
-            (("172.64.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."), "cloudflare"),
-            (("8.8.8.8", "8.8.4.4"), "google-dns"),
+            (("31.13.", "57.144.", "185.60."), "instagram"),
+            (("140.82.", "185.199.", "20.201.", "192.30."), "github"),
+            (("155.133.", "162.254.", "208.64.", "146.66.", "205.196."), "steam"),
+            (("47.241.", "47.74.", "161.117."), "alibaba"),
+            (("20.33.",), "microsoft"),
+            (("2.16.168.",), "akamai"),
+            (("2.189.58.",), "eitaa"),
+            (("2.189.68.", "5.28.", "85.133.", "185.79.", "195.254."), "iran"),
+            (("13.51.",), "aws"),
+            (("188.212.98.", "89.167.", "194.26.66.", "74.1.1.", "87.248.132."), "hosting"),
+            (("17.",), "apple"),
+            (("172.64.", "162.159.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."), "cloudflare"),
+            (("8.8.8.8", "8.8.4.4", "216.58.", "216.239.", "142.250.", "142.251.", "172.217."), "google"),
             (("1.1.1.1", "1.0.0.1"), "cloudflare-dns"),
+            (("10.", "127.", "239.255.255."), "local"),
         ]
         for prefixes, platform in fast_ip_map:
             if any(ip_val.startswith(pref) for pref in prefixes):
