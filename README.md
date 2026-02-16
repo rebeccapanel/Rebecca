@@ -141,7 +141,7 @@ You will lose access to the dashboard as soon as you close the SSH terminal. The
 Next, you need to create a sudo admin for logging into the Rebecca dashboard by the following command
 
 ```bash
-rebecca cli admin create --role sudo
+rebecca cli admin create --role full_access
 ```
 
 That's it! You can login to your dashboard using these credentials

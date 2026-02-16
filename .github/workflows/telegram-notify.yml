@@ -15,9 +15,7 @@ on:
 
   # Also send notifications for Release events
   release:
-    types:
-      - published
-      - prereleased
+    types: [published, prereleased]
 
 jobs:
   notify-telegram:
@@ -58,17 +56,10 @@ jobs:
               *) ICON="⏳"; LABEL="$WF_CONCLUSION";;
             esac
 
-            # Different text for dev vs release build
             if [[ "$WF_NAME" == "Build-dev" ]]; then
-              HEADER="$ICON <b>dev build pipeline completed</b>"
-              CONTEXT_LINE="🌿 Branch: <code>$BRANCH</code>"
-              PIPELINE_KIND="dev build"
+              HEADER="$ICON <b>dev build pipeline completed for <code>$BRANCH</code></b>"
             else
-              # For release builds, head_branch is usually the tag (e.g. v1.2.3)
-              TAG_ESC=$(html_escape "$BRANCH_RAW")
               HEADER="$ICON <b>release build pipeline completed</b>"
-              CONTEXT_LINE="🏷 Tag: <code>$TAG_ESC</code>"
-              PIPELINE_KIND="release build"
             fi
 
             SHORT_SHA_ESC=$(html_escape "$SHORT_SHA")
@@ -122,15 +113,72 @@ jobs:
               ESC_URL=$(html_escape "$URL")
 
               case "$CONCLUSION" in
-                success) STATUS_ICON="✅"; STATUS_TEXT="success";;
-                failure) STATUS_ICON="❌"; STATUS_TEXT="failed";;
-                cancelled) STATUS_ICON="⏹"; STATUS_TEXT="cancelled";;
-                in_progress) STATUS_ICON="⏳"; STATUS_TEXT="in progress";;
-                *) STATUS_ICON="❔"; STATUS_TEXT="$CONCLUSION";;
+                success) STATUS_ICON="✅"; STATUS="success";;
+                failure) STATUS_ICON="❌"; STATUS="failed";;
+                cancelled) STATUS_ICON="⏹"; STATUS="cancelled";;
+                in_progress) STATUS_ICON="⏳"; STATUS="in progress";;
+                *) STATUS_ICON="❔"; STATUS="$CONCLUSION";;
               esac
 
-              WORKFLOW_LINES+="$STATUS_ICON <a href=\"$ESC_URL\">$ESC_NAME</a>: <code>$STATUS_TEXT</code>"$'\n'
+              WORKFLOW_LINES+="$STATUS_ICON <a href=\"$ESC_URL\">$ESC_NAME</a>: <code>$STATUS</code>"$'\n'
             done <<< "$BASE64_ROWS"
+
+            # --- Get recent commits for this SHA (top 10) ---
+            COMMITS_JSON=$(curl -s \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/commits?sha=$SHA&per_page=10")
+
+            COMMITS_RAW=$(echo "$COMMITS_JSON" | jq -r '
+              .[] | "- " +
+              (.commit.message
+                | gsub("\r"; " ")
+                | gsub("\n"; " ")
+                | gsub("\""; "\\\"")
+              )
+              + " (" + (.sha[0:7]) + ")"
+            ')
+
+            ESCAPED_COMMITS=""
+            while IFS= read -r line; do
+              if [[ -n "$line" ]]; then
+                if [[ "$line" =~ \(([a-f0-9]{7})\)$ ]]; then
+                  HASH="${BASH_REMATCH[1]}"
+                  PREFIX="${line% (*}"
+                  ESC_PREFIX=$(html_escape "$PREFIX")
+                  ESC_HASH=$(html_escape "$HASH")
+                  ESCAPED_COMMITS+="$ESC_PREFIX (<code>$ESC_HASH</code>)"$'\n'
+                else
+                  ESCAPED_COMMITS+=$(html_escape "$line")$'\n'
+                fi
+              fi
+            done <<< "$COMMITS_RAW"
+
+            # --- Extract GHCR image for Build-dev from logs and normalize owner ---
+            IMAGE_REF_ESC=""
+            if [[ "$WF_NAME" == "Build-dev" ]]; then
+              LOGS_URL="${{ github.event.workflow_run.logs_url }}"
+              curl -sL \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -o logs.zip \
+                "$LOGS_URL" || true
+
+              if [[ -s "logs.zip" ]]; then
+                RAW_LINE=$(unzip -p logs.zip 2>/dev/null | grep -E 'ghcr\.io/.*/rebecca:dev@sha256:' | tail -n 1 || true)
+                if [[ -n "$RAW_LINE" ]]; then
+                  IMG_RAW=$(echo "$RAW_LINE" | grep -oE 'ghcr\.io[^ ]*rebecca:dev@sha256:[0-9a-f]+' || true)
+                  if [[ -n "$IMG_RAW" ]]; then
+                    DIGEST=$(echo "$IMG_RAW" | sed 's/.*rebecca:dev@//')
+                    IMAGE_REF="ghcr.io/rebeccapanel/rebecca:dev@$DIGEST"
+                    IMAGE_REF_ESC=$(html_escape "$IMAGE_REF")
+                  fi
+                fi
+              fi
+            fi
+
+            SHORT_SHA_ESC=$(html_escape "$SHORT_SHA")
+
+            MESSAGE="$HEADER%0A%0A👤 Triggered by: $ACTOR%0A🌿 Branch: <code>$BRANCH</code>%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open main workflow run</a>"
 
             if [[ -n "$WORKFLOW_LINES" ]]; then
               WF_BLOCK=$(printf "%s" "$WORKFLOW_LINES" | sed 's/$/%0A/g')
@@ -169,7 +217,7 @@ jobs:
             ACTOR=$(html_escape "${{ github.actor }}")
             REL_TAG=$(html_escape "${{ github.event.release.tag_name }}")
             REL_NAME_RAW="${{ github.event.release.name }}"
-            REL_NAME=$(html_escape "$REL_NAME_RAW")
+            REL_NAME=$(html_escape "$REL_NAME_RAW$")
             REL_URL="${{ github.event.release.html_url }}"
             ACTION="${{ github.event.action }}"
 
