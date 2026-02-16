@@ -58,6 +58,7 @@ LOG_CLEANUP_INTERVAL_OPTIONS_SECONDS = (
     21600,
     86400,
 )
+VERIFY_PEER_CERT_BY_NAME_MIN_VERSION = "26.1.31"
 
 
 def normalize_log_cleanup_interval(value: Any) -> int:
@@ -80,44 +81,65 @@ def normalize_log_cleanup_interval(value: Any) -> int:
     return LOG_CLEANUP_INTERVAL_DISABLED
 
 
-def normalize_tls_verify_peer_cert_fields(tls_settings: dict[str, Any]) -> dict[str, Any]:
-    """
-    Normalize deprecated TLS verify-peer fields for modern Xray.
+def _first_non_empty_string(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            candidate = str(item).strip()
+            if candidate:
+                return candidate
+        return ""
+    if value is None:
+        return ""
+    return str(value).strip()
 
-    - `verifyPeerCertInNames` (deprecated list/string) -> `verifyPeerCertByName` (string)
-    - Always removes `verifyPeerCertInNames` to avoid startup failures on newer Xray.
+
+def _normalize_name_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        candidate = value.strip()
+        return [candidate] if candidate else []
+    if isinstance(value, (list, tuple, set)):
+        names = [str(item).strip() for item in value]
+        return [name for name in names if name]
+    return []
+
+
+def normalize_tls_verify_peer_cert_fields(
+    tls_settings: dict[str, Any],
+    *,
+    use_verify_peer_cert_by_name: bool = True,
+) -> dict[str, Any]:
+    """
+    Normalize TLS verify-peer fields by target Xray compatibility.
+
+    - Newer Xray: use `verifyPeerCertByName` (string), remove old key.
+    - Older Xray: use `verifyPeerCertInNames` (list), remove new key.
     """
     if not isinstance(tls_settings, dict):
         return {}
 
     normalized = dict(tls_settings)
-    by_name = normalized.get("verifyPeerCertByName")
-    in_names = normalized.get("verifyPeerCertInNames")
+    by_name = _first_non_empty_string(normalized.get("verifyPeerCertByName"))
+    in_names = _normalize_name_list(normalized.get("verifyPeerCertInNames"))
 
-    # Migrate old field only when new field is missing/empty.
-    if (not isinstance(by_name, str) or not by_name.strip()) and in_names:
-        if isinstance(in_names, list):
-            first = next((str(item).strip() for item in in_names if str(item).strip()), "")
-            if first:
-                by_name = first
-        elif isinstance(in_names, str):
-            candidate = in_names.strip()
-            if candidate:
-                by_name = candidate
+    if not by_name and in_names:
+        by_name = in_names[0]
+    if not in_names and by_name:
+        in_names = [by_name]
 
-    # Normalize target field to a non-empty string.
-    if isinstance(by_name, list):
-        by_name = next((str(item).strip() for item in by_name if str(item).strip()), "")
-    elif by_name is not None and not isinstance(by_name, str):
-        by_name = str(by_name).strip()
-
-    if isinstance(by_name, str) and by_name.strip():
-        normalized["verifyPeerCertByName"] = by_name.strip()
+    if use_verify_peer_cert_by_name:
+        if by_name:
+            normalized["verifyPeerCertByName"] = by_name
+        else:
+            normalized.pop("verifyPeerCertByName", None)
+        normalized.pop("verifyPeerCertInNames", None)
     else:
+        if in_names:
+            normalized["verifyPeerCertInNames"] = in_names
+        else:
+            normalized.pop("verifyPeerCertInNames", None)
         normalized.pop("verifyPeerCertByName", None)
-
-    # Never keep deprecated key for modern Xray.
-    normalized.pop("verifyPeerCertInNames", None)
     return normalized
 
 

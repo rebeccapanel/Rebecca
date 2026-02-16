@@ -60,3 +60,32 @@ def test_normalize_tls_verify_peer_cert_fields_keeps_new_key_and_removes_old():
 
     assert normalized["verifyPeerCertByName"] == "one.one.one.one"
     assert "verifyPeerCertInNames" not in normalized
+
+
+def test_normalize_tls_verify_peer_cert_fields_legacy_mode_uses_old_key():
+    tls_settings = {
+        "verifyPeerCertByName": "one.one.one.one",
+    }
+
+    normalized = normalize_tls_verify_peer_cert_fields(
+        tls_settings,
+        use_verify_peer_cert_by_name=False,
+    )
+
+    assert normalized["verifyPeerCertInNames"] == ["one.one.one.one"]
+    assert "verifyPeerCertByName" not in normalized
+
+
+def test_normalize_tls_verify_peer_cert_fields_legacy_mode_keeps_old_names_list():
+    tls_settings = {
+        "verifyPeerCertByName": "ignored.when.old.exists",
+        "verifyPeerCertInNames": ["dns.google", "cloudflare-dns.com"],
+    }
+
+    normalized = normalize_tls_verify_peer_cert_fields(
+        tls_settings,
+        use_verify_peer_cert_by_name=False,
+    )
+
+    assert normalized["verifyPeerCertInNames"] == ["dns.google", "cloudflare-dns.com"]
+    assert "verifyPeerCertByName" not in normalized
