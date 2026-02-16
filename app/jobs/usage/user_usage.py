@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
-from sqlalchemy import and_, bindparam, func, insert, select, update
+from sqlalchemy import and_, bindparam, func, insert, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
@@ -192,6 +192,61 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
                 pass
 
     return changed
+
+
+def _get_due_active_user_ids(
+    db, now_ts: Optional[float] = None, *, batch_size: int = 500, after_id: Optional[int] = None
+) -> List[int]:
+    """Return active users that are already due for limited/expired status transitions."""
+    if batch_size <= 0:
+        return []
+
+    if now_ts is None:
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+    query = (
+        db.query(User.id)
+        .filter(
+            User.status == UserStatus.active,
+            or_(
+                and_(User.expire.isnot(None), User.expire > 0, User.expire <= now_ts),
+                and_(
+                    User.data_limit.isnot(None),
+                    User.data_limit > 0,
+                    func.coalesce(User.used_traffic, 0) >= User.data_limit,
+                ),
+            ),
+        )
+    )
+    if after_id is not None:
+        query = query.filter(User.id > after_id)
+
+    rows = query.order_by(User.id.asc()).limit(batch_size).all()
+
+    return [int(row[0]) for row in rows if row and row[0] is not None]
+
+
+def _enforce_due_active_users(db, *, batch_size: int = 500) -> int:
+    """
+    Enforce limit/expiry for due active users even without fresh usage samples.
+    This prevents users from staying active until their next connection.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    changed_total = 0
+    last_id: Optional[int] = None
+
+    while True:
+        due_ids = _get_due_active_user_ids(db, now_ts=now_ts, batch_size=batch_size, after_id=last_id)
+        if not due_ids:
+            break
+
+        changed_total += len(_enforce_user_limits_and_expiry(db, due_ids))
+        last_id = due_ids[-1]
+
+        if len(due_ids) < batch_size:
+            break
+
+    return changed_total
 
 
 # endregion
@@ -396,6 +451,13 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
 
 
 def record_user_usages():
+    # Always enforce due limits/expiry first, even if no current usage was collected.
+    try:
+        with GetDB() as db:
+            _enforce_due_active_users(db)
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.warning(f"Failed to enforce due active-user limits/expiry: {exc}")
+
     api_instances, usage_coefficient = _build_api_instances()
     if not api_instances:
         return

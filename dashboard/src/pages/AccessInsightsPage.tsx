@@ -67,9 +67,11 @@ import { getPanelSettings } from "service/settings";
 import type {
 	AccessInsightClient,
 	AccessInsightPlatform,
+	AccessInsightSource,
 	AccessInsightsResponse,
 	AccessInsightUnmatched,
 } from "types/AccessInsights";
+import { getAuthToken } from "utils/authStorage";
 import IrancellSvg from "../assets/operators/irancell-svgrepo-com.svg";
 import MciSvg from "../assets/operators/mci-svgrepo-com.svg";
 import RightelSvg from "../assets/operators/rightel-svgrepo-com.svg";
@@ -137,6 +139,420 @@ const renderOperatorIcon = (name: string) => {
 		return <Box as="img" src={RightelSvg} style={style} />;
 	return <Icon as={iconAs(FiGlobe)} />;
 };
+
+const DEFAULT_MAX_LINES = 1000;
+const MAX_CLIENTS = 500;
+const ACCESS_LINE_RE =
+	/^(?<ts>\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+from\s+(?:(?<src_prefix>\w+):)?(?<src_ip>[0-9a-fA-F.:]+)(?::(?<src_port>\d+))?\s+(?<action>accepted|rejected)\s+(?:(?<net>\w+):)?(?<dest>[^:\s]+)(?::(?<dest_port>\d+))?(?:\s+\[(?<route>[^\]]+)\])?(?:\s+email:\s+(?<email>\S+))?/i;
+
+type RawLogsChunk = {
+	type: "logs";
+	node_id: number | null;
+	node_name: string;
+	lines: string[];
+};
+
+type RawMetadataChunk = {
+	type: "metadata";
+	sources: AccessInsightSource[];
+};
+
+type RawErrorChunk = {
+	type: "error";
+	node_id?: number | null;
+	node_name?: string;
+	error: string;
+};
+
+type RawCompleteChunk = {
+	type: "complete";
+};
+
+type RawTopLevelError = {
+	error: string;
+	detail?: string;
+};
+
+type RawStreamChunk =
+	| RawLogsChunk
+	| RawMetadataChunk
+	| RawErrorChunk
+	| RawCompleteChunk
+	| RawTopLevelError;
+
+type ParsedAccessLog = {
+	timestampMs: number | null;
+	action: string;
+	destination: string;
+	destinationIp: string | null;
+	source: string;
+	email: string | null;
+	route: string;
+	userKey: string;
+	userLabel: string;
+};
+
+type MutableClient = {
+	user_key: string;
+	user_label: string;
+	lastSeenMs: number;
+	route: string;
+	connectionEvents: number;
+	sources: Set<string>;
+	nodes: Set<string>;
+	platforms: Map<
+		string,
+		{ platform: string; connections: number; destinations: Set<string> }
+	>;
+};
+
+const parseXrayTimestamp = (raw: string): number | null => {
+	const [datePart, timePart] = raw.trim().split(/\s+/, 2);
+	if (!datePart || !timePart) return null;
+
+	const [yearRaw, monthRaw, dayRaw] = datePart.split("/");
+	const [hmsPart, fractionRaw = "0"] = timePart.split(".");
+	const [hourRaw, minuteRaw, secondRaw] = hmsPart.split(":");
+
+	const year = Number(yearRaw);
+	const month = Number(monthRaw);
+	const day = Number(dayRaw);
+	const hour = Number(hourRaw);
+	const minute = Number(minuteRaw);
+	const second = Number(secondRaw);
+	const ms = Number(fractionRaw.padEnd(3, "0").slice(0, 3));
+
+	if (
+		!Number.isFinite(year) ||
+		!Number.isFinite(month) ||
+		!Number.isFinite(day) ||
+		!Number.isFinite(hour) ||
+		!Number.isFinite(minute) ||
+		!Number.isFinite(second) ||
+		!Number.isFinite(ms)
+	) {
+		return null;
+	}
+
+	return Date.UTC(year, month - 1, day, hour, minute, second, ms);
+};
+
+const isIpLiteral = (value: string): boolean => {
+	if (!value) return false;
+	if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) return true;
+	return value.includes(":") && /^[0-9a-fA-F:]+$/.test(value);
+};
+
+const buildUserKey = (source: string, email: string | null) => {
+	if (email?.trim()) {
+		const label = email.trim();
+		return { key: label.toLowerCase(), label };
+	}
+
+	let src = source.trim();
+	if (src.includes(":") && !src.startsWith("[")) {
+		src = src.split(":", 1)[0] || src;
+	}
+	return { key: src, label: src };
+};
+
+const guessPlatformFromLine = (
+	destination: string,
+	destinationIp: string | null,
+): string => {
+	const host = (destination || "").toLowerCase();
+	if (host) {
+		const rules: Array<[string[], string]> = [
+			[["googlevideo.com", "ytimg.com", "youtube.com"], "youtube"],
+			[["instagram.com", "cdninstagram.com", "fbcdn.net"], "instagram"],
+			[["tiktok", "pangle"], "tiktok"],
+			[["whatsapp.com", "whatsapp.net"], "whatsapp"],
+			[["facebook.com", "messenger.com"], "facebook"],
+			[["telegram.org", "t.me", "telegram.me"], "telegram"],
+			[["snapchat.com"], "snapchat"],
+			[["netflix.com"], "netflix"],
+			[["twitter.com", "x.com"], "twitter"],
+			[
+				[
+					"google.com",
+					"googleapis.com",
+					"gstatic.com",
+					"gmail.com",
+					"play.googleapis.com",
+					"googlevideo.com",
+					"googleusercontent.com",
+				],
+				"google",
+			],
+			[["icloud.com", "apple.com", "mzstatic.com"], "apple"],
+			[["microsoft.com", "live.com", "office.com"], "microsoft"],
+			[["cloudflare.com"], "cloudflare"],
+			[["applovin.com"], "applovin"],
+			[["samsung.com", "samsungcloudcdn.com"], "samsung"],
+		];
+
+		for (const [needles, platform] of rules) {
+			if (needles.some((needle) => host.includes(needle))) {
+				return platform;
+			}
+		}
+
+		if (host.includes("1.1.1.1")) return "cloudflare";
+	}
+
+	const ip = destinationIp || (isIpLiteral(destination) ? destination : "");
+	if (ip) {
+		const ipRules: Array<[string[], string]> = [
+			[["149.154.167.", "149.154.175.", "91.108."], "telegram"],
+			[["157.240."], "facebook"],
+			[
+				["172.64.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."],
+				"cloudflare",
+			],
+			[["8.8.8.8", "8.8.4.4"], "google-dns"],
+			[["1.1.1.1", "1.0.0.1"], "cloudflare-dns"],
+		];
+		for (const [prefixes, platform] of ipRules) {
+			if (prefixes.some((prefix) => ip.startsWith(prefix))) {
+				return platform;
+			}
+		}
+	}
+
+	return "other";
+};
+
+const parseAccessLogLine = (line: string): ParsedAccessLog | null => {
+	const match = ACCESS_LINE_RE.exec(line.trim());
+	if (!match?.groups) return null;
+
+	const action = (match.groups.action || "").toLowerCase();
+	const tsRaw = match.groups.ts || "";
+	const destination = match.groups.dest || "";
+	const destinationIp = isIpLiteral(destination) ? destination : null;
+	const source = match.groups.src_ip || "";
+	const email = match.groups.email || null;
+	const route = match.groups.route || "";
+	const user = buildUserKey(source, email);
+
+	return {
+		timestampMs: parseXrayTimestamp(tsRaw),
+		action,
+		destination,
+		destinationIp,
+		source,
+		email,
+		route,
+		userKey: user.key,
+		userLabel: user.label,
+	};
+};
+
+const buildInsightsFromRawNdjson = (
+	ndjson: string,
+	lookbackLines: number,
+	windowSeconds: number,
+	limit: number,
+): AccessInsightsResponse => {
+	const clients = new Map<string, MutableClient>();
+	const usersByPlatform = new Map<string, Set<string>>();
+	const unmatched = new Map<string, AccessInsightUnmatched>();
+	let matchedEntries = 0;
+	let sources: AccessInsightSource[] = [];
+	let streamError: string | undefined;
+	const nodeErrors: string[] = [];
+	const cutoffMs = Date.now() - windowSeconds * 1000;
+
+	for (const row of ndjson.split("\n")) {
+		const rawRow = row.trim();
+		if (!rawRow) continue;
+
+		let chunk: RawStreamChunk;
+		try {
+			chunk = JSON.parse(rawRow) as RawStreamChunk;
+		} catch {
+			continue;
+		}
+
+		if ("error" in chunk && !("type" in chunk)) {
+			streamError = chunk.detail || chunk.error;
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "metadata") {
+			sources = Array.isArray(chunk.sources) ? chunk.sources : [];
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "error") {
+			const fromNode = chunk.node_name ? `[${chunk.node_name}] ` : "";
+			nodeErrors.push(`${fromNode}${chunk.error}`);
+			continue;
+		}
+
+		if (!("type" in chunk) || chunk.type !== "logs") {
+			continue;
+		}
+
+		for (const rawLine of chunk.lines || []) {
+			const parsed = parseAccessLogLine(rawLine);
+			if (!parsed || parsed.action !== "accepted") continue;
+			if (!parsed.timestampMs || parsed.timestampMs < cutoffMs) continue;
+
+			let sourceIp = parsed.source || "";
+			if (sourceIp.includes(":") && !sourceIp.startsWith("[")) {
+				sourceIp = sourceIp.split(":", 1)[0] || sourceIp;
+			}
+			if (sourceIp.startsWith("127.") || sourceIp === "localhost") continue;
+
+			const platform = guessPlatformFromLine(
+				parsed.destination,
+				parsed.destinationIp,
+			);
+			const userKey = parsed.userKey || "unknown";
+			const userLabel = parsed.userLabel || userKey;
+
+			if (!clients.has(userKey) && clients.size >= MAX_CLIENTS) {
+				continue;
+			}
+
+			if (!usersByPlatform.has(platform)) {
+				usersByPlatform.set(platform, new Set<string>());
+			}
+			usersByPlatform.get(platform)?.add(userKey);
+
+			let client = clients.get(userKey);
+			if (!client) {
+				client = {
+					user_key: userKey,
+					user_label: userLabel,
+					lastSeenMs: parsed.timestampMs,
+					route: parsed.route || "",
+					connectionEvents: 0,
+					sources: new Set<string>(),
+					nodes: new Set<string>(),
+					platforms: new Map(),
+				};
+				clients.set(userKey, client);
+			}
+
+			if (chunk.node_name) {
+				client.nodes.add(chunk.node_name);
+			}
+			if (sourceIp) {
+				client.sources.add(sourceIp);
+			}
+			client.connectionEvents += 1;
+			if (parsed.timestampMs > client.lastSeenMs) {
+				client.lastSeenMs = parsed.timestampMs;
+			}
+			if (parsed.route) {
+				client.route = parsed.route;
+			}
+
+			let platformData = client.platforms.get(platform);
+			if (!platformData) {
+				platformData = {
+					platform,
+					connections: 0,
+					destinations: new Set<string>(),
+				};
+				client.platforms.set(platform, platformData);
+			}
+			platformData.connections += 1;
+			if (parsed.destination) {
+				platformData.destinations.add(parsed.destination);
+			}
+
+			matchedEntries += 1;
+
+			if (platform === "other") {
+				const key = `${parsed.destination || ""}:${parsed.destinationIp || ""}`;
+				if (!unmatched.has(key)) {
+					unmatched.set(key, {
+						destination: parsed.destination || "",
+						destination_ip: parsed.destinationIp,
+						platform: "other",
+					});
+				}
+			}
+		}
+	}
+
+	const clientList: AccessInsightClient[] = Array.from(clients.values()).map(
+		(client) => ({
+			user_key: client.user_key,
+			user_label: client.user_label,
+			last_seen: new Date(client.lastSeenMs).toISOString(),
+			route: client.route || "",
+			connections: client.sources.size || client.connectionEvents,
+			sources: Array.from(client.sources).sort(),
+			platforms: Array.from(client.platforms.values())
+				.map((platform) => ({
+					platform: platform.platform,
+					connections: platform.connections,
+					destinations: Array.from(platform.destinations).sort().slice(0, 20),
+				}))
+				.sort((a, b) => b.connections - a.connections),
+		}),
+	);
+
+	clientList.sort(
+		(a, b) => dayjs(b.last_seen).valueOf() - dayjs(a.last_seen).valueOf(),
+	);
+	if (limit > 0) {
+		clientList.splice(limit);
+	}
+
+	const platformCounts = Object.fromEntries(
+		Array.from(usersByPlatform.entries()).map(([platform, users]) => [
+			platform,
+			users.size,
+		]),
+	);
+
+	const totalUniqueClients = clients.size;
+	const platforms = Array.from(usersByPlatform.entries())
+		.map(([platform, users]) => ({
+			platform,
+			count: users.size,
+			percent: totalUniqueClients ? users.size / totalUniqueClients : 0,
+		}))
+		.sort((a, b) => b.count - a.count);
+	const finalError =
+		streamError ||
+		(matchedEntries === 0 && nodeErrors.length ? nodeErrors[0] : undefined);
+	const detail =
+		!streamError && nodeErrors.length
+			? `Partial data from ${nodeErrors.length} source(s)`
+			: undefined;
+
+	return {
+		mode: "frontend",
+		sources,
+		log_path: sources.map((src) => src.node_name).join(", "),
+		geo_assets_path: "frontend-stream",
+		items: clientList,
+		platform_counts: platformCounts,
+		platforms,
+		matched_entries: matchedEntries,
+		error: finalError,
+		detail,
+		generated_at: new Date().toISOString(),
+		lookback_lines: lookbackLines,
+		window_seconds: windowSeconds,
+		unmatched: Array.from(unmatched.values()),
+	};
+};
+
+const buildApiUrl = (path: string, query: URLSearchParams) => {
+	const base = ((import.meta.env.VITE_BASE_API as string | undefined) || "/api")
+		.replace(/\/+$/, "")
+		.trim();
+	const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+	return `${base}${normalizedPath}?${query.toString()}`;
+};
+
 type PlatformStat = [string, number, number | undefined];
 
 const AccessInsightsPage: FC = () => {
@@ -162,24 +578,55 @@ const AccessInsightsPage: FC = () => {
 		setError(null);
 		try {
 			const query = new URLSearchParams({
-				limit: String(DEFAULT_LIMIT),
-				window_seconds: String(DEFAULT_WINDOW_SECONDS),
+				max_lines: String(DEFAULT_MAX_LINES),
 			});
-			const response = await fetch<AccessInsightsResponse>(
-				`/core/access/insights?${query.toString()}`,
+			const token = getAuthToken();
+			const rawResponse = await window.fetch(
+				buildApiUrl("/core/access/logs/raw", query),
+				{
+					method: "GET",
+					headers: token ? { Authorization: `Bearer ${token}` } : {},
+					cache: "no-store",
+				},
 			);
-			if (response?.error) {
-				setError(response.detail || response.error);
+			if (!rawResponse.ok) {
+				throw new Error(`Failed to stream raw logs (${rawResponse.status})`);
 			}
-			setData(response);
-		} catch (err: any) {
-			setError(
-				err?.message ||
-					t(
-						"pages.accessInsights.errors.loadFailed",
-						"Failed to load access insights",
-					),
+			const ndjson = await rawResponse.text();
+			const parsed = buildInsightsFromRawNdjson(
+				ndjson,
+				DEFAULT_MAX_LINES,
+				DEFAULT_WINDOW_SECONDS,
+				DEFAULT_LIMIT,
 			);
+			if (parsed?.error) {
+				setError(parsed.detail || parsed.error);
+			}
+			setData(parsed);
+		} catch (rawErr) {
+			try {
+				const query = new URLSearchParams({
+					limit: String(DEFAULT_LIMIT),
+					lookback: String(DEFAULT_MAX_LINES),
+					window_seconds: String(DEFAULT_WINDOW_SECONDS),
+				});
+				const response = await fetch<AccessInsightsResponse>(
+					`/core/access/insights/multi-node?${query.toString()}`,
+				);
+				if (response?.error) {
+					setError(response.detail || response.error);
+				}
+				setData(response);
+			} catch (err: any) {
+				setError(
+					err?.message ||
+						(rawErr as Error)?.message ||
+						t(
+							"pages.accessInsights.errors.loadFailed",
+							"Failed to load access insights",
+						),
+				);
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -273,8 +720,6 @@ const AccessInsightsPage: FC = () => {
 		});
 	}, [clients, search]);
 
-	const _items = data?.items || [];
-
 	if (!canViewXray) {
 		return (
 			<Box p={6}>
@@ -367,19 +812,34 @@ const AccessInsightsPage: FC = () => {
 				</HStack>
 				<HStack spacing={2} color="gray.500" fontSize="sm">
 					<Text>
+						{t("pages.accessInsights.sources", "Sources")}:{" "}
+						<Badge colorScheme="blue">{data?.sources?.length || 0}</Badge>
+					</Text>
+					{data?.sources?.length ? (
+						<Tooltip
+							label={data.sources
+								.map((src) => src.node_name)
+								.filter(Boolean)
+								.join(", ")}
+						>
+							<Badge colorScheme="green">
+								{t("pages.accessInsights.multiNode", "Master + active nodes")}
+							</Badge>
+						</Tooltip>
+					) : null}
+					<Text>
 						{t("pages.accessInsights.logPath", "Log")}:{" "}
 						<Badge colorScheme="gray">
 							{data?.log_path || t("pages.accessInsights.unknown", "Unknown")}
 						</Badge>
 					</Text>
-					<Text>
-						{t("pages.accessInsights.geoPath", "Geo assets")}:{" "}
-						<Badge colorScheme="gray">
-							{data?.geo_assets_path ||
-								t("pages.accessInsights.unknown", "Unknown")}
-						</Badge>
-					</Text>
-					{data ? (
+					{data?.geo_assets_path ? (
+						<Text>
+							{t("pages.accessInsights.geoPath", "Geo assets")}:{" "}
+							<Badge colorScheme="gray">{data.geo_assets_path}</Badge>
+						</Text>
+					) : null}
+					{data?.geo_assets ? (
 						<Badge
 							colorScheme={
 								data.geo_assets.geosite && data.geo_assets.geoip
@@ -391,6 +851,11 @@ const AccessInsightsPage: FC = () => {
 							{data.geo_assets.geoip ? "geoip" : "geoip missing"}
 						</Badge>
 					) : null}
+					<Badge colorScheme={data?.mode === "frontend" ? "purple" : "gray"}>
+						{data?.mode === "frontend"
+							? t("pages.accessInsights.frontMode", "Frontend aggregation")
+							: t("pages.accessInsights.backMode", "Backend aggregation")}
+					</Badge>
 				</HStack>
 			</HStack>
 

@@ -50,6 +50,36 @@ _DEFAULT_XRAY_CONFIG: dict[str, Any] = {
 }
 
 
+LOG_CLEANUP_INTERVAL_DISABLED = 0
+LOG_CLEANUP_INTERVAL_OPTIONS_SECONDS = (
+    LOG_CLEANUP_INTERVAL_DISABLED,
+    3600,
+    10800,
+    21600,
+    86400,
+)
+
+
+def normalize_log_cleanup_interval(value: Any) -> int:
+    """
+    Normalize log cleanup interval to one of the supported seconds values.
+    Invalid values fallback to disabled (0).
+    """
+    if value is None:
+        return LOG_CLEANUP_INTERVAL_DISABLED
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return LOG_CLEANUP_INTERVAL_DISABLED
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return LOG_CLEANUP_INTERVAL_DISABLED
+    if parsed in LOG_CLEANUP_INTERVAL_OPTIONS_SECONDS:
+        return parsed
+    return LOG_CLEANUP_INTERVAL_DISABLED
+
+
 def apply_log_paths(config: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize presence of log config without forcing absolute paths; actual paths are resolved per-runtime.
@@ -61,6 +91,8 @@ def apply_log_paths(config: dict[str, Any]) -> dict[str, Any]:
     # Keep existing values; set defaults to empty (stdout) so callers can override at runtime.
     log_cfg.setdefault("access", log_cfg.get("access", ""))
     log_cfg.setdefault("error", log_cfg.get("error", ""))
+    log_cfg["accessCleanupInterval"] = normalize_log_cleanup_interval(log_cfg.get("accessCleanupInterval"))
+    log_cfg["errorCleanupInterval"] = normalize_log_cleanup_interval(log_cfg.get("errorCleanupInterval"))
     cfg["log"] = log_cfg
     return cfg
 

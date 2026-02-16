@@ -351,6 +351,14 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 						)}
 
 						<Stack spacing={4}>
+							{isAddMode && (
+								<Checkbox isChecked isReadOnly isDisabled pointerEvents="none">
+									{t(
+										"nodes.certInfoOption",
+										"Cert: After creating the node, the certificate will be shown. This option is informational only.",
+									)}
+								</Checkbox>
+							)}
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 								<FormControl>
 									<Input

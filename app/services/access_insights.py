@@ -689,6 +689,7 @@ def build_access_insights(
     users_by_platform: dict[str, set[str]] = {}
     total_unique_clients: set[str] = set()
     platform_cache: dict[tuple[Any, Any], Optional[str]] = {}
+    isp_cache: dict[str, tuple[str, str]] = {}
     unmatched_entries: list[dict[str, Any]] = []
     unmatched_seen: set[tuple[str, Optional[str]]] = set()
     redis_client = get_redis() if REDIS_ENABLED else None
@@ -765,7 +766,10 @@ def build_access_insights(
 
         if source_ip:
             client["sources"].add(source_ip)
-            op_short, op_owner = classify_isp(source_ip)
+            op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
+            if source_ip not in isp_cache:
+                op_short, op_owner = classify_isp(source_ip)
+                isp_cache[source_ip] = (op_short, op_owner)
             client["operators"][source_ip] = {"short_name": op_short, "owner": op_owner}
             op_key = op_short or op_owner or "Unknown"
             client["operator_counts"][op_key] = client["operator_counts"].get(op_key, 0) + 1
@@ -887,6 +891,38 @@ def _iter_source_lines(source: NodeLogSource, max_lines: int) -> list[str]:
     return []
 
 
+def _distribute_line_budget(
+    total_lines: int,
+    source_count: int,
+    preferred_min_per_source: int = 0,
+) -> list[int]:
+    """
+    Distribute one global line budget across N sources without exceeding total_lines.
+    """
+    if source_count <= 0:
+        return []
+
+    total_lines = max(0, int(total_lines))
+    preferred_min_per_source = max(0, int(preferred_min_per_source))
+
+    if (
+        preferred_min_per_source > 0
+        and total_lines >= preferred_min_per_source * source_count
+    ):
+        budgets = [preferred_min_per_source] * source_count
+        remaining = total_lines - (preferred_min_per_source * source_count)
+        idx = 0
+        while remaining > 0:
+            budgets[idx] += 1
+            remaining -= 1
+            idx = (idx + 1) % source_count
+        return budgets
+
+    base = total_lines // source_count
+    remainder = total_lines % source_count
+    return [base + (1 if i < remainder else 0) for i in range(source_count)]
+
+
 def stream_raw_logs(
     max_lines: int = 500,
     node_id: Optional[int] = None,
@@ -933,11 +969,17 @@ def stream_raw_logs(
 
     # Stream lines from each source
     search_lower = search.lower() if search else ""
-    lines_per_source = max(50, max_lines // len(sources))
+    source_budgets = _distribute_line_budget(
+        total_lines=max_lines,
+        source_count=len(sources),
+        preferred_min_per_source=50,
+    )
 
-    for source in sources:
+    for source, source_max_lines in zip(sources, source_budgets):
+        if source_max_lines <= 0:
+            continue
         try:
-            lines = _iter_source_lines(source, lines_per_source)
+            lines = _iter_source_lines(source, source_max_lines)
 
             chunk = []
             for line in lines:
@@ -1023,25 +1065,37 @@ def build_multi_node_insights(
     clients: dict[str, dict[str, Any]] = {}
     users_by_platform: dict[str, set[str]] = {}
     platform_cache: dict[tuple[Any, Any], Optional[str]] = {}
+    isp_cache: dict[str, tuple[str, str]] = {}
     redis_client = get_redis() if REDIS_ENABLED else None
 
     total_matches = 0
-    lines_per_source = max(100, lookback_lines // len(sources))
+    search_lower = (search or "").strip().lower()
+    source_budgets = _distribute_line_budget(
+        total_lines=lookback_lines,
+        source_count=len(sources),
+        preferred_min_per_source=100,
+    )
 
-    for source in sources:
+    for source, source_max_lines in zip(sources, source_budgets):
+        if source_max_lines <= 0:
+            continue
         try:
-            lines = _iter_source_lines(source, lines_per_source)
+            lines = _iter_source_lines(source, source_max_lines)
         except Exception:
             continue
 
         for raw in reversed(lines):
+            if search_lower and search_lower not in raw.lower():
+                continue
             entry = parse_access_line(raw)
             if not entry or entry.get("action") != "accepted":
                 continue
 
             ts = entry.get("timestamp")
-            if not isinstance(ts, datetime) or ts < cutoff:
+            if not isinstance(ts, datetime):
                 continue
+            if ts < cutoff:
+                break
 
             source_ip = entry.get("source") or ""
             if ":" in source_ip and not source_ip.startswith("["):
@@ -1103,7 +1157,10 @@ def build_multi_node_insights(
 
             if source_ip:
                 client["sources"].add(source_ip)
-                op_short, op_owner = classify_isp(source_ip)
+                op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
+                if source_ip not in isp_cache:
+                    op_short, op_owner = classify_isp(source_ip)
+                    isp_cache[source_ip] = (op_short, op_owner)
                 client["operators"][source_ip] = {"short_name": op_short, "owner": op_owner}
                 op_key = op_short or op_owner or "Unknown"
                 client["operator_counts"][op_key] = client["operator_counts"].get(op_key, 0) + 1

@@ -1,0 +1,37 @@
+from app.utils.xray_defaults import (
+    LOG_CLEANUP_INTERVAL_DISABLED,
+    apply_log_paths,
+    normalize_log_cleanup_interval,
+)
+
+
+def test_normalize_log_cleanup_interval_accepts_supported_values():
+    assert normalize_log_cleanup_interval("3600") == 3600
+    assert normalize_log_cleanup_interval(10800) == 10800
+    assert normalize_log_cleanup_interval(" 21600 ") == 21600
+
+
+def test_normalize_log_cleanup_interval_rejects_unsupported_values():
+    assert normalize_log_cleanup_interval(None) == LOG_CLEANUP_INTERVAL_DISABLED
+    assert normalize_log_cleanup_interval("") == LOG_CLEANUP_INTERVAL_DISABLED
+    assert normalize_log_cleanup_interval("invalid") == LOG_CLEANUP_INTERVAL_DISABLED
+    assert normalize_log_cleanup_interval(7200) == LOG_CLEANUP_INTERVAL_DISABLED
+
+
+def test_apply_log_paths_sets_cleanup_defaults():
+    config = apply_log_paths({})
+    assert config["log"]["accessCleanupInterval"] == LOG_CLEANUP_INTERVAL_DISABLED
+    assert config["log"]["errorCleanupInterval"] == LOG_CLEANUP_INTERVAL_DISABLED
+
+
+def test_apply_log_paths_normalizes_cleanup_values():
+    config = apply_log_paths(
+        {
+            "log": {
+                "accessCleanupInterval": "3600",
+                "errorCleanupInterval": "bad-value",
+            }
+        }
+    )
+    assert config["log"]["accessCleanupInterval"] == 3600
+    assert config["log"]["errorCleanupInterval"] == LOG_CLEANUP_INTERVAL_DISABLED

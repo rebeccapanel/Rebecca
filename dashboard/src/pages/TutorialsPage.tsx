@@ -62,7 +62,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Status } from "types/User";
 import {
 	acknowledgeTutorialIds,
@@ -181,6 +181,7 @@ const normalizeRole = (role?: string | null) =>
 const TutorialsPage: FC = () => {
 	const { t, i18n } = useTranslation();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const [content, setContent] = useState<TutorialContent | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -197,8 +198,13 @@ const TutorialsPage: FC = () => {
 	const autoScrollTimer = useRef<ReturnType<typeof window.setTimeout> | null>(
 		null,
 	);
+	const focusScrollTimer = useRef<ReturnType<typeof window.setTimeout> | null>(
+		null,
+	);
 	const autoScrollDone = useRef(false);
 	const autoScrollAttempts = useRef(0);
+	const focusScrollAttempts = useRef(0);
+	const focusHandledFor = useRef<string | null>(null);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	const {
@@ -244,6 +250,10 @@ const TutorialsPage: FC = () => {
 	const normalizedUserRole = useMemo(
 		() => normalizeRole(userData?.role as string | undefined),
 		[userData],
+	);
+	const focusIdFromQuery = useMemo(
+		() => (searchParams.get("focus") ?? "").trim(),
+		[searchParams],
 	);
 	const menuIdSets = useMemo(() => {
 		const general: string[] = [];
@@ -880,6 +890,53 @@ const TutorialsPage: FC = () => {
 		};
 	}, [activeTab, firstNewId, menuIdSets.admin, scrollToId]);
 
+	useEffect(() => {
+		if (!focusIdFromQuery) {
+			focusHandledFor.current = null;
+		}
+	}, [focusIdFromQuery]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		if (!focusIdFromQuery || loading) return;
+		if (focusHandledFor.current === focusIdFromQuery) return;
+		if (!menuIdSets.all.includes(focusIdFromQuery)) return;
+
+		const targetTab = menuIdSets.admin.includes(focusIdFromQuery)
+			? "admin"
+			: "general";
+		if (activeTab !== targetTab) {
+			setActiveTab(targetTab);
+			return;
+		}
+
+		focusScrollAttempts.current = 0;
+		const attemptScroll = () => {
+			focusScrollAttempts.current += 1;
+			const found = scrollToId(focusIdFromQuery);
+			if (found) {
+				focusHandledFor.current = focusIdFromQuery;
+				return;
+			}
+			if (focusScrollAttempts.current < 10) {
+				focusScrollTimer.current = window.setTimeout(attemptScroll, 140);
+			}
+		};
+		focusScrollTimer.current = window.setTimeout(attemptScroll, 120);
+		return () => {
+			if (focusScrollTimer.current) {
+				clearTimeout(focusScrollTimer.current);
+			}
+		};
+	}, [
+		activeTab,
+		focusIdFromQuery,
+		loading,
+		menuIdSets.admin,
+		menuIdSets.all,
+		scrollToId,
+	]);
+
 	const highlightStyles = (id: string) => {
 		const isActive = highlightId === id;
 		return {
@@ -896,6 +953,9 @@ const TutorialsPage: FC = () => {
 			}
 			if (autoScrollTimer.current) {
 				clearTimeout(autoScrollTimer.current);
+			}
+			if (focusScrollTimer.current) {
+				clearTimeout(focusScrollTimer.current);
 			}
 		},
 		[],

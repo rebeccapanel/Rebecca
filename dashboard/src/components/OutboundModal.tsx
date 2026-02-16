@@ -42,7 +42,12 @@ import {
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
+	ALPN_OPTION,
 	GrpcStreamSettings,
+	HttpUpgradeStreamSettings,
+	KcpStreamSettings,
+	MODE_OPTION,
+	Mux,
 	Outbound,
 	Protocols,
 	RealityStreamSettings,
@@ -50,7 +55,10 @@ import {
 	StreamSettings,
 	TcpStreamSettings,
 	TlsStreamSettings,
+	UTLS_FINGERPRINT,
+	WireguardDomainStrategy,
 	WsStreamSettings,
+	XHTTPStreamSettings,
 } from "../utils/outbound";
 import { JsonEditor } from "./JsonEditor";
 
@@ -58,6 +66,15 @@ const AddIcon = chakra(PlusIcon);
 const MinusIcon = chakra(MinusIconOutline);
 
 type ProtocolValue = (typeof Protocols)[keyof typeof Protocols];
+type StreamNetworkValue =
+	| "tcp"
+	| "kcp"
+	| "ws"
+	| "grpc"
+	| "httpupgrade"
+	| "xhttp";
+type OutboundSecurityValue = "none" | "tls" | "reality";
+type XhttpModeValue = (typeof MODE_OPTION)[keyof typeof MODE_OPTION];
 
 interface WireguardPeerForm {
 	publicKey: string;
@@ -83,18 +100,45 @@ interface OutboundFormValues {
 	ssIvCheck: boolean;
 	tlsEnabled: boolean;
 	tlsServerName: string;
+	tlsFingerprint: string;
+	tlsAlpn: string;
+	tlsAllowInsecure: boolean;
+	tlsEchConfigList: string;
 	realityEnabled: boolean;
+	realityServerName: string;
+	realityFingerprint: string;
 	realityPublicKey: string;
 	realityShortId: string;
-	network: "tcp" | "ws" | "grpc";
+	realitySpiderX: string;
+	realityMldsa65Verify: string;
+	network: StreamNetworkValue;
 	tcpType: "none" | "http";
 	tcpHost: string;
 	tcpPath: string;
+	kcpType: string;
+	kcpSeed: string;
 	wsHost: string;
 	wsPath: string;
 	grpcServiceName: string;
+	grpcAuthority: string;
+	grpcMultiMode: boolean;
+	httpupgradeHost: string;
+	httpupgradePath: string;
+	xhttpHost: string;
+	xhttpPath: string;
+	xhttpMode: XhttpModeValue | "";
+	xhttpNoGRPCHeader: boolean;
+	xhttpScMinPostsIntervalMs: string;
+	xhttpXmuxMaxConcurrency: string;
+	xhttpXmuxMaxConnections: number;
+	xhttpXmuxCMaxReuseTimes: number;
+	xhttpXmuxHMaxRequestTimes: string;
+	xhttpXmuxHMaxReusableSecs: string;
+	xhttpXmuxHKeepAlivePeriod: number;
 	muxEnabled: boolean;
 	muxConcurrency: number;
+	muxXudpConcurrency: number;
+	muxXudpProxyUdp443: "reject" | "allow" | "skip";
 	vnextEncryption: string;
 	dnsNetwork: string;
 	dnsAddress: string;
@@ -103,6 +147,11 @@ interface OutboundFormValues {
 	blackholeResponse: string;
 	wireguardSecret: string;
 	wireguardAddress: string;
+	wireguardMtu: number;
+	wireguardWorkers: number;
+	wireguardDomainStrategy: string;
+	wireguardReserved: string;
+	wireguardNoKernelTun: boolean;
 	wireguardPeers: WireguardPeerForm[];
 }
 
@@ -130,18 +179,45 @@ const defaultValues: OutboundFormValues = {
 	ssIvCheck: false,
 	tlsEnabled: false,
 	tlsServerName: "",
+	tlsFingerprint: "",
+	tlsAlpn: "",
+	tlsAllowInsecure: false,
+	tlsEchConfigList: "",
 	realityEnabled: false,
+	realityServerName: "",
+	realityFingerprint: "",
 	realityPublicKey: "",
 	realityShortId: "",
+	realitySpiderX: "",
+	realityMldsa65Verify: "",
 	network: "tcp",
 	tcpType: "none",
 	tcpHost: "",
 	tcpPath: "",
+	kcpType: "none",
+	kcpSeed: "",
 	wsHost: "",
 	wsPath: "",
 	grpcServiceName: "",
+	grpcAuthority: "",
+	grpcMultiMode: false,
+	httpupgradeHost: "",
+	httpupgradePath: "/",
+	xhttpHost: "",
+	xhttpPath: "/",
+	xhttpMode: "",
+	xhttpNoGRPCHeader: false,
+	xhttpScMinPostsIntervalMs: "30",
+	xhttpXmuxMaxConcurrency: "16-32",
+	xhttpXmuxMaxConnections: 0,
+	xhttpXmuxCMaxReuseTimes: 0,
+	xhttpXmuxHMaxRequestTimes: "600-900",
+	xhttpXmuxHMaxReusableSecs: "1800-3000",
+	xhttpXmuxHKeepAlivePeriod: 0,
 	muxEnabled: false,
 	muxConcurrency: 8,
+	muxXudpConcurrency: 16,
+	muxXudpProxyUdp443: "reject",
 	vnextEncryption: "auto",
 	dnsNetwork: "udp",
 	dnsAddress: "",
@@ -150,6 +226,11 @@ const defaultValues: OutboundFormValues = {
 	blackholeResponse: "",
 	wireguardSecret: "",
 	wireguardAddress: "",
+	wireguardMtu: 1420,
+	wireguardWorkers: 2,
+	wireguardDomainStrategy: "",
+	wireguardReserved: "",
+	wireguardNoKernelTun: false,
 	wireguardPeers: [
 		{
 			publicKey: "",
@@ -160,6 +241,42 @@ const defaultValues: OutboundFormValues = {
 		},
 	],
 };
+
+const STREAM_NETWORK_OPTIONS_BY_PROTOCOL: Record<
+	ProtocolValue,
+	StreamNetworkValue[]
+> = {
+	[Protocols.VMess]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.VLESS]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.Trojan]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.Shadowsocks]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.Freedom]: [],
+	[Protocols.Blackhole]: [],
+	[Protocols.DNS]: [],
+	[Protocols.Socks]: [],
+	[Protocols.HTTP]: [],
+	[Protocols.Wireguard]: [],
+};
+
+const KCP_HEADER_TYPE_OPTIONS = [
+	"none",
+	"srtp",
+	"utp",
+	"wechat-video",
+	"dtls",
+	"wireguard",
+	"dns",
+] as const;
+
+const XHTTP_MODE_OPTIONS = Object.values(MODE_OPTION);
+const TLS_FINGERPRINT_OPTIONS = Object.values(UTLS_FINGERPRINT);
+const TLS_ALPN_OPTIONS = Object.values(ALPN_OPTION);
+
+const splitComma = (value: string): string[] =>
+	value
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
 
 const buildOutboundJson = (values: OutboundFormValues) => {
 	const settings: Record<string, unknown> = {};
@@ -248,21 +365,26 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			settings.port = Number(values.dnsPort) || undefined;
 			break;
 		case Protocols.Wireguard:
+			settings.mtu = Number(values.wireguardMtu) || undefined;
 			settings.secretKey = values.wireguardSecret || undefined;
 			settings.address = values.wireguardAddress
-				? values.wireguardAddress
-						.split(",")
-						.map((item) => item.trim())
-						.filter(Boolean)
+				? splitComma(values.wireguardAddress)
 				: undefined;
+			settings.workers = Number(values.wireguardWorkers) || undefined;
+			settings.domainStrategy = WireguardDomainStrategy.includes(
+				values.wireguardDomainStrategy as never,
+			)
+				? values.wireguardDomainStrategy
+				: undefined;
+			settings.reserved = values.wireguardReserved
+				? splitComma(values.wireguardReserved)
+						.map((value) => Number(value))
+						.filter((value) => !Number.isNaN(value))
+				: undefined;
+			settings.noKernelTun = values.wireguardNoKernelTun;
 			settings.peers = values.wireguardPeers.map((peer: WireguardPeerForm) => ({
 				publicKey: peer.publicKey || undefined,
-				allowedIPs: peer.allowedIPs
-					? peer.allowedIPs
-							.split(",")
-							.map((item) => item.trim())
-							.filter(Boolean)
-					: undefined,
+				allowedIPs: peer.allowedIPs ? splitComma(peer.allowedIPs) : undefined,
 				endpoint: peer.endpoint || undefined,
 				keepAlive: Number(peer.keepAlive) || undefined,
 				preSharedKey: peer.presharedKey || undefined,
@@ -272,13 +394,12 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			break;
 	}
 
-	const streamSettings = new StreamSettings();
-	streamSettings.network = values.network;
-	streamSettings.security = values.realityEnabled
+	const security: OutboundSecurityValue = values.realityEnabled
 		? "reality"
 		: values.tlsEnabled
 			? "tls"
 			: "none";
+	const streamSettings = new StreamSettings(values.network, security);
 
 	if (values.network === "tcp") {
 		streamSettings.tcp = new TcpStreamSettings(
@@ -286,53 +407,79 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			values.tcpHost,
 			values.tcpPath,
 		);
+	} else if (values.network === "kcp") {
+		streamSettings.kcp = new KcpStreamSettings();
+		streamSettings.kcp.type = values.kcpType || "none";
+		streamSettings.kcp.seed = values.kcpSeed || "";
 	} else if (values.network === "ws") {
 		streamSettings.ws = new WsStreamSettings(values.wsPath, values.wsHost, 0);
 	} else if (values.network === "grpc") {
 		streamSettings.grpc = new GrpcStreamSettings(
 			values.grpcServiceName,
-			"",
-			false,
+			values.grpcAuthority,
+			values.grpcMultiMode,
+		);
+	} else if (values.network === "httpupgrade") {
+		streamSettings.httpupgrade = new HttpUpgradeStreamSettings(
+			values.httpupgradePath,
+			values.httpupgradeHost,
+		);
+	} else if (values.network === "xhttp") {
+		streamSettings.xhttp = new XHTTPStreamSettings(
+			values.xhttpPath,
+			values.xhttpHost,
+			values.xhttpMode,
+			values.xhttpNoGRPCHeader,
+			values.xhttpScMinPostsIntervalMs,
+			{
+				maxConcurrency: values.xhttpXmuxMaxConcurrency,
+				maxConnections: Number(values.xhttpXmuxMaxConnections) || 0,
+				cMaxReuseTimes: Number(values.xhttpXmuxCMaxReuseTimes) || 0,
+				hMaxRequestTimes: values.xhttpXmuxHMaxRequestTimes,
+				hMaxReusableSecs: values.xhttpXmuxHMaxReusableSecs,
+				hKeepAlivePeriod: Number(values.xhttpXmuxHKeepAlivePeriod) || 0,
+			},
 		);
 	}
 
 	if (values.tlsEnabled) {
 		streamSettings.tls = new TlsStreamSettings(
 			values.tlsServerName,
-			[],
-			"",
-			false,
-			"",
+			splitComma(values.tlsAlpn),
+			values.tlsFingerprint,
+			values.tlsAllowInsecure,
+			values.tlsEchConfigList,
 		);
 	}
 
 	if (values.realityEnabled) {
 		streamSettings.reality = new RealityStreamSettings(
 			values.realityPublicKey,
-			"",
-			values.tlsServerName,
+			values.realityFingerprint,
+			values.realityServerName,
 			values.realityShortId,
-			"",
-			"",
+			values.realitySpiderX,
+			values.realityMldsa65Verify,
 		);
 	}
 
+	const mux = values.muxEnabled
+		? new Mux(
+				true,
+				Number(values.muxConcurrency) || defaultValues.muxConcurrency,
+				Number(values.muxXudpConcurrency) || defaultValues.muxXudpConcurrency,
+				values.muxXudpProxyUdp443 || defaultValues.muxXudpProxyUdp443,
+			)
+		: undefined;
 	const outbound = new Outbound(
 		values.tag,
 		values.protocol,
 		settings,
 		streamSettings,
-		undefined,
+		values.sendThrough || undefined,
+		mux,
 	);
-	const json = outbound.toJson();
-	json.sendThrough = values.sendThrough || undefined;
-	if (values.muxEnabled) {
-		json.mux = {
-			enabled: true,
-			concurrency: Number(values.muxConcurrency) || undefined,
-		};
-	}
-	return json;
+	return outbound.toJson();
 };
 
 export const OutboundModal: FC<OutboundModalProps> = ({
@@ -411,56 +558,37 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	const [configInput, setConfigInput] = useState("");
 	const updatingFromJsonRef = useRef(false);
 
-	// capability flags to mirror backend support
-	const canStream = useMemo(() => {
-		const allowed: ProtocolValue[] = [
-			Protocols.VMess,
-			Protocols.VLESS,
-			Protocols.Trojan,
-			Protocols.Shadowsocks,
-		];
-		return allowed.includes(typedProtocol);
-	}, [typedProtocol]);
+	const streamNetworkOptions = useMemo(
+		() => STREAM_NETWORK_OPTIONS_BY_PROTOCOL[typedProtocol] ?? [],
+		[typedProtocol],
+	);
 
-	const canTls = useMemo(() => {
-		const allowed: ProtocolValue[] = [
-			Protocols.VMess,
-			Protocols.VLESS,
-			Protocols.Trojan,
-			Protocols.Shadowsocks,
-		];
-		return allowed.includes(typedProtocol);
-	}, [typedProtocol]);
-
-	const canReality = useMemo(() => {
-		const allowed: ProtocolValue[] = [Protocols.VLESS, Protocols.Trojan];
-		return (
-			allowed.includes(typedProtocol) &&
-			(network === "tcp" || network === "grpc")
-		);
-	}, [network, typedProtocol]);
-
-	const canMux = useMemo(() => {
-		const allowed: ProtocolValue[] = [
-			Protocols.VMess,
-			Protocols.VLESS,
-			Protocols.Trojan,
-			Protocols.Shadowsocks,
-			Protocols.HTTP,
-			Protocols.Socks,
-		];
-		if (!allowed.includes(typedProtocol)) {
-			return false;
-		}
+	const capabilityProbe = useMemo(() => {
+		const stream = new StreamSettings(network ?? "tcp");
+		const security: OutboundSecurityValue = realityEnabled
+			? "reality"
+			: tlsEnabled
+				? "tls"
+				: "none";
+		stream.security = security;
+		stream.network = network ?? "tcp";
+		const settings = Outbound.Settings.getSettings(typedProtocol) ?? {};
 		if (
 			typedProtocol === Protocols.VLESS &&
-			(formValues?.flow ?? "").trim().length > 0
+			settings &&
+			typeof settings === "object" &&
+			"flow" in settings
 		) {
-			return false;
+			(settings as { flow: string }).flow = formValues?.flow ?? "";
 		}
-		return true;
-	}, [formValues?.flow, typedProtocol]);
+		return new Outbound("probe", typedProtocol, settings, stream, undefined);
+	}, [formValues?.flow, network, realityEnabled, tlsEnabled, typedProtocol]);
 
+	const canStream = capabilityProbe.canEnableStream();
+	const canTls = capabilityProbe.canEnableTls();
+	const canReality = capabilityProbe.canEnableReality();
+	const canMux = capabilityProbe.canEnableMux();
+	const canTlsFlow = capabilityProbe.canEnableTlsFlow();
 	const canAnySecurity = canTls || canReality;
 
 	const mapJsonToFormValues = useCallback((json: any): OutboundFormValues => {
@@ -475,39 +603,96 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			muxConcurrency: Number(
 				json?.mux?.concurrency ?? defaultValues.muxConcurrency,
 			),
+			muxXudpConcurrency: Number(
+				json?.mux?.xudpConcurrency ?? defaultValues.muxXudpConcurrency,
+			),
+			muxXudpProxyUdp443:
+				json?.mux?.xudpProxyUDP443 === "allow" ||
+				json?.mux?.xudpProxyUDP443 === "skip" ||
+				json?.mux?.xudpProxyUDP443 === "reject"
+					? json.mux.xudpProxyUDP443
+					: defaultValues.muxXudpProxyUdp443,
 		};
 
-		const stream = outbound?.stream ?? json?.streamSettings ?? json?.stream;
-		mapped.network =
-			(stream?.network as OutboundFormValues["network"]) ??
-			defaultValues.network;
+		const stream =
+			outbound?.stream ?? json?.streamSettings ?? json?.stream ?? {};
 		const streamRaw: any = stream;
-		mapped.tlsEnabled =
-			stream?.security === "tls" ||
-			Boolean(streamRaw?.tls || streamRaw?.tlsSettings);
-		mapped.realityEnabled =
-			stream?.security === "reality" ||
-			Boolean(streamRaw?.reality || streamRaw?.realitySettings);
-		mapped.tlsServerName =
-			streamRaw?.tls?.serverName ?? streamRaw?.tlsSettings?.serverName ?? "";
-		mapped.realityPublicKey =
-			streamRaw?.reality?.publicKey ??
-			streamRaw?.realitySettings?.publicKey ??
-			"";
-		mapped.realityShortId =
-			streamRaw?.reality?.shortId ?? streamRaw?.realitySettings?.shortId ?? "";
+		const streamSecurity =
+			(streamRaw?.security as OutboundSecurityValue | undefined) ?? "none";
+		mapped.network =
+			(streamRaw?.network as OutboundFormValues["network"]) ??
+			defaultValues.network;
+		mapped.tlsEnabled = streamSecurity === "tls";
+		mapped.realityEnabled = streamSecurity === "reality";
+		const tlsSettings = streamRaw?.tls ?? streamRaw?.tlsSettings ?? {};
+		mapped.tlsServerName = tlsSettings?.serverName ?? "";
+		mapped.tlsFingerprint = tlsSettings?.fingerprint ?? "";
+		mapped.tlsAlpn = Array.isArray(tlsSettings?.alpn)
+			? tlsSettings.alpn.join(",")
+			: "";
+		mapped.tlsAllowInsecure = Boolean(tlsSettings?.allowInsecure);
+		mapped.tlsEchConfigList = tlsSettings?.echConfigList ?? "";
 
-		if (stream?.network === "tcp" && stream.tcp) {
-			mapped.tcpType = stream.tcp.type as OutboundFormValues["tcpType"];
-			mapped.tcpHost = stream.tcp.host ?? "";
-			mapped.tcpPath = stream.tcp.path ?? "";
+		const realitySettings =
+			streamRaw?.reality ?? streamRaw?.realitySettings ?? {};
+		mapped.realityServerName = realitySettings?.serverName ?? "";
+		mapped.realityFingerprint = realitySettings?.fingerprint ?? "";
+		mapped.realityPublicKey = realitySettings?.publicKey ?? "";
+		mapped.realityShortId = realitySettings?.shortId ?? "";
+		mapped.realitySpiderX = realitySettings?.spiderX ?? "";
+		mapped.realityMldsa65Verify = realitySettings?.mldsa65Verify ?? "";
+
+		if (mapped.network === "tcp" && streamRaw?.tcp) {
+			mapped.tcpType = streamRaw.tcp.type as OutboundFormValues["tcpType"];
+			mapped.tcpHost = streamRaw.tcp.host ?? "";
+			mapped.tcpPath = streamRaw.tcp.path ?? "";
 		}
-		if (stream?.network === "ws" && stream.ws) {
-			mapped.wsHost = stream.ws.host ?? "";
-			mapped.wsPath = stream.ws.path ?? "";
+		if (mapped.network === "kcp" && streamRaw?.kcp) {
+			mapped.kcpType = streamRaw.kcp.type ?? "none";
+			mapped.kcpSeed = streamRaw.kcp.seed ?? "";
 		}
-		if (stream?.network === "grpc" && stream.grpc) {
-			mapped.grpcServiceName = stream.grpc.serviceName ?? "";
+		if (mapped.network === "ws" && streamRaw?.ws) {
+			mapped.wsHost = streamRaw.ws.host ?? "";
+			mapped.wsPath = streamRaw.ws.path ?? "";
+		}
+		if (mapped.network === "grpc" && streamRaw?.grpc) {
+			mapped.grpcServiceName = streamRaw.grpc.serviceName ?? "";
+			mapped.grpcAuthority = streamRaw.grpc.authority ?? "";
+			mapped.grpcMultiMode = Boolean(streamRaw.grpc.multiMode);
+		}
+		if (mapped.network === "httpupgrade" && streamRaw?.httpupgrade) {
+			mapped.httpupgradeHost = streamRaw.httpupgrade.host ?? "";
+			mapped.httpupgradePath = streamRaw.httpupgrade.path ?? "/";
+		}
+		if (mapped.network === "xhttp" && streamRaw?.xhttp) {
+			mapped.xhttpHost = streamRaw.xhttp.host ?? "";
+			mapped.xhttpPath = streamRaw.xhttp.path ?? "/";
+			mapped.xhttpMode = streamRaw.xhttp.mode ?? "";
+			mapped.xhttpNoGRPCHeader = Boolean(streamRaw.xhttp.noGRPCHeader);
+			mapped.xhttpScMinPostsIntervalMs =
+				streamRaw.xhttp.scMinPostsIntervalMs ??
+				defaultValues.xhttpScMinPostsIntervalMs;
+			mapped.xhttpXmuxMaxConcurrency =
+				streamRaw.xhttp?.xmux?.maxConcurrency ??
+				defaultValues.xhttpXmuxMaxConcurrency;
+			mapped.xhttpXmuxMaxConnections = Number(
+				streamRaw.xhttp?.xmux?.maxConnections ??
+					defaultValues.xhttpXmuxMaxConnections,
+			);
+			mapped.xhttpXmuxCMaxReuseTimes = Number(
+				streamRaw.xhttp?.xmux?.cMaxReuseTimes ??
+					defaultValues.xhttpXmuxCMaxReuseTimes,
+			);
+			mapped.xhttpXmuxHMaxRequestTimes =
+				streamRaw.xhttp?.xmux?.hMaxRequestTimes ??
+				defaultValues.xhttpXmuxHMaxRequestTimes;
+			mapped.xhttpXmuxHMaxReusableSecs =
+				streamRaw.xhttp?.xmux?.hMaxReusableSecs ??
+				defaultValues.xhttpXmuxHMaxReusableSecs;
+			mapped.xhttpXmuxHKeepAlivePeriod = Number(
+				streamRaw.xhttp?.xmux?.hKeepAlivePeriod ??
+					defaultValues.xhttpXmuxHKeepAlivePeriod,
+			);
 		}
 
 		if (outbound?.hasAddressPort()) {
@@ -588,6 +773,18 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				mapped.wireguardAddress = Array.isArray((settings as any)?.address)
 					? (settings as any).address.join(",")
 					: (settings?.address ?? "");
+				mapped.wireguardMtu = Number(
+					(settings as any)?.mtu ?? defaultValues.wireguardMtu,
+				);
+				mapped.wireguardWorkers = Number(
+					(settings as any)?.workers ?? defaultValues.wireguardWorkers,
+				);
+				mapped.wireguardDomainStrategy =
+					(settings as any)?.domainStrategy ?? "";
+				mapped.wireguardReserved = Array.isArray((settings as any)?.reserved)
+					? (settings as any).reserved.join(",")
+					: ((settings as any)?.reserved ?? "");
+				mapped.wireguardNoKernelTun = Boolean((settings as any)?.noKernelTun);
 				const peers =
 					settings?.peers?.map((peer: Outbound.WireguardPeer) => ({
 						publicKey: peer.publicKey ?? "",
@@ -596,7 +793,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 							: "",
 						endpoint: peer.endpoint ?? "",
 						keepAlive: Number(peer.keepAlive ?? 0),
-						presharedKey: (peer as any).preSharedKey ?? (peer as any).psk ?? "",
+						presharedKey: (peer as any).psk ?? (peer as any).preSharedKey ?? "",
 					})) ?? [];
 				mapped.wireguardPeers =
 					peers.length > 0 ? peers : defaultValues.wireguardPeers;
@@ -612,8 +809,15 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			mapped.network = "tcp";
 		}
 
-		if (json?.mux?.concurrency != null) {
-			mapped.muxConcurrency = Number(json.mux.concurrency);
+		const protocolNetworks =
+			STREAM_NETWORK_OPTIONS_BY_PROTOCOL[
+				(mapped.protocol as ProtocolValue) ?? defaultValues.protocol
+			] ?? [];
+		if (
+			protocolNetworks.length > 0 &&
+			!protocolNetworks.includes(mapped.network)
+		) {
+			mapped.network = protocolNetworks[0];
 		}
 
 		if (!mapped.wireguardPeers || mapped.wireguardPeers.length === 0) {
@@ -622,14 +826,6 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 
 		return mapped;
 	}, []);
-
-	useEffect(() => {
-		if (isWireguard) {
-			setValue("tlsEnabled", false);
-			setValue("realityEnabled", false);
-			setValue("network", "tcp");
-		}
-	}, [isWireguard, setValue]);
 
 	useEffect(() => {
 		if (!isOpen) {
@@ -662,31 +858,112 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	}, [formValues]);
 
 	useEffect(() => {
+		if (!isOpen) {
+			return;
+		}
 		if (!canStream) {
-			setValue("network", defaultValues.network);
+			if (network !== defaultValues.network) {
+				setValue("network", defaultValues.network);
+			}
 			setValue("tcpType", defaultValues.tcpType);
 			setValue("tcpHost", "");
 			setValue("tcpPath", "");
+			setValue("kcpType", defaultValues.kcpType);
+			setValue("kcpSeed", "");
 			setValue("wsHost", "");
 			setValue("wsPath", "");
 			setValue("grpcServiceName", "");
+			setValue("grpcAuthority", "");
+			setValue("grpcMultiMode", false);
+			setValue("httpupgradeHost", "");
+			setValue("httpupgradePath", defaultValues.httpupgradePath);
+			setValue("xhttpHost", "");
+			setValue("xhttpPath", defaultValues.xhttpPath);
+			setValue("xhttpMode", defaultValues.xhttpMode);
+			setValue("xhttpNoGRPCHeader", false);
+			setValue(
+				"xhttpScMinPostsIntervalMs",
+				defaultValues.xhttpScMinPostsIntervalMs,
+			);
+			setValue(
+				"xhttpXmuxMaxConcurrency",
+				defaultValues.xhttpXmuxMaxConcurrency,
+			);
+			setValue(
+				"xhttpXmuxMaxConnections",
+				defaultValues.xhttpXmuxMaxConnections,
+			);
+			setValue(
+				"xhttpXmuxCMaxReuseTimes",
+				defaultValues.xhttpXmuxCMaxReuseTimes,
+			);
+			setValue(
+				"xhttpXmuxHMaxRequestTimes",
+				defaultValues.xhttpXmuxHMaxRequestTimes,
+			);
+			setValue(
+				"xhttpXmuxHMaxReusableSecs",
+				defaultValues.xhttpXmuxHMaxReusableSecs,
+			);
+			setValue(
+				"xhttpXmuxHKeepAlivePeriod",
+				defaultValues.xhttpXmuxHKeepAlivePeriod,
+			);
+			if (tlsEnabled) {
+				setValue("tlsEnabled", false);
+			}
+			if (realityEnabled) {
+				setValue("realityEnabled", false);
+			}
+			return;
 		}
-	}, [canStream, setValue]);
+		if (
+			streamNetworkOptions.length > 0 &&
+			!streamNetworkOptions.includes(network)
+		) {
+			setValue("network", streamNetworkOptions[0]);
+		}
+	}, [
+		canStream,
+		isOpen,
+		network,
+		realityEnabled,
+		setValue,
+		streamNetworkOptions,
+		tlsEnabled,
+	]);
 
 	useEffect(() => {
 		if (!canTls && tlsEnabled) {
 			setValue("tlsEnabled", false);
 			setValue("tlsServerName", "");
+			setValue("tlsFingerprint", "");
+			setValue("tlsAlpn", "");
+			setValue("tlsAllowInsecure", false);
+			setValue("tlsEchConfigList", "");
 		}
 	}, [canTls, setValue, tlsEnabled]);
 
 	useEffect(() => {
 		if (!canReality && realityEnabled) {
 			setValue("realityEnabled", false);
+			setValue("realityServerName", "");
+			setValue("realityFingerprint", "");
 			setValue("realityPublicKey", "");
 			setValue("realityShortId", "");
+			setValue("realitySpiderX", "");
+			setValue("realityMldsa65Verify", "");
 		}
 	}, [canReality, realityEnabled, setValue]);
+
+	useEffect(() => {
+		if (
+			(typedProtocol !== Protocols.VLESS || network !== "tcp") &&
+			(formValues?.flow ?? "").trim().length > 0
+		) {
+			setValue("flow", "");
+		}
+	}, [formValues?.flow, network, setValue, typedProtocol]);
 
 	useEffect(() => {
 		if (!canMux && muxEnabled) {
@@ -694,14 +971,16 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		}
 	}, [canMux, muxEnabled, setValue]);
 
-	// defensive: wireguard should not keep security/network overrides
 	useEffect(() => {
 		if (isWireguard) {
-			setValue("tlsEnabled", false);
-			setValue("realityEnabled", false);
-			setValue("network", "tcp");
+			if (tlsEnabled) {
+				setValue("tlsEnabled", false);
+			}
+			if (realityEnabled) {
+				setValue("realityEnabled", false);
+			}
 		}
-	}, [isWireguard, setValue]);
+	}, [isWireguard, realityEnabled, setValue, tlsEnabled]);
 
 	const protocolOptions = useMemo(
 		() => [
@@ -1101,7 +1380,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</>
 												)}
 												{typedProtocol === Protocols.VLESS && (
-													<HStack>
+													<>
 														<FormControl>
 															<FormLabel>
 																{t("pages.outbound.encryption", "Encryption")}
@@ -1112,15 +1391,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																{...register("encryption")}
 															/>
 														</FormControl>
-														<FormControl>
-															<FormLabel>Flow</FormLabel>
-															<Input
-																size="sm"
-																placeholder="xtls-rprx-vision"
-																{...register("flow")}
-															/>
-														</FormControl>
-													</HStack>
+														{canTlsFlow && (
+															<FormControl>
+																<FormLabel>Flow</FormLabel>
+																<Input
+																	size="sm"
+																	placeholder="xtls-rprx-vision"
+																	{...register("flow")}
+																/>
+															</FormControl>
+														)}
+													</>
 												)}
 												{typedProtocol === Protocols.VMess && (
 													<FormControl>
@@ -1240,6 +1521,57 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														placeholder="10.0.0.1/32"
 														{...register("wireguardAddress")}
 													/>
+												</FormControl>
+												<HStack align="flex-end">
+													<FormControl>
+														<FormLabel>MTU</FormLabel>
+														<Input
+															size="sm"
+															type="number"
+															{...register("wireguardMtu", {
+																valueAsNumber: true,
+															})}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>Workers</FormLabel>
+														<Input
+															size="sm"
+															type="number"
+															{...register("wireguardWorkers", {
+																valueAsNumber: true,
+															})}
+														/>
+													</FormControl>
+												</HStack>
+												<FormControl>
+													<FormLabel>Domain Strategy</FormLabel>
+													<Select
+														size="sm"
+														{...register("wireguardDomainStrategy")}
+													>
+														<option value="">{t("common.none", "None")}</option>
+														{WireguardDomainStrategy.map((strategy) => (
+															<option key={strategy} value={strategy}>
+																{strategy}
+															</option>
+														))}
+													</Select>
+												</FormControl>
+												<FormControl>
+													<FormLabel>Reserved</FormLabel>
+													<Input
+														size="sm"
+														placeholder="1,2,3"
+														{...register("wireguardReserved")}
+													/>
+												</FormControl>
+												<FormControl display="flex" alignItems="center" gap={2}>
+													<Switch
+														size="sm"
+														{...register("wireguardNoKernelTun")}
+													/>
+													<FormLabel mb="0">No Kernel Tun</FormLabel>
 												</FormControl>
 												<VStack spacing={3} align="stretch">
 													<HStack justify="space-between">
@@ -1363,16 +1695,12 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											<VStack spacing={3} align="stretch">
 												<FormControl>
 													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Select
-														size="sm"
-														{...register("network")}
-														onChange={(event) => {
-															register("network").onChange(event);
-														}}
-													>
-														<option value="tcp">tcp</option>
-														<option value="ws">ws</option>
-														<option value="grpc">grpc</option>
+													<Select size="sm" {...register("network")}>
+														{streamNetworkOptions.map((networkOption) => (
+															<option key={networkOption} value={networkOption}>
+																{networkOption}
+															</option>
+														))}
 													</Select>
 												</FormControl>
 												{network === "tcp" && (
@@ -1400,6 +1728,28 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														)}
 													</HStack>
 												)}
+												{network === "kcp" && (
+													<HStack>
+														<FormControl>
+															<FormLabel>
+																{t("pages.outbound.kcpHeader", "mKCP header")}
+															</FormLabel>
+															<Select size="sm" {...register("kcpType")}>
+																{KCP_HEADER_TYPE_OPTIONS.map((headerType) => (
+																	<option key={headerType} value={headerType}>
+																		{headerType}
+																	</option>
+																))}
+															</Select>
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("pages.outbound.kcpSeed", "mKCP seed")}
+															</FormLabel>
+															<Input size="sm" {...register("kcpSeed")} />
+														</FormControl>
+													</HStack>
+												)}
 												{network === "ws" && (
 													<HStack>
 														<FormControl>
@@ -1413,10 +1763,162 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</HStack>
 												)}
 												{network === "grpc" && (
-													<FormControl>
-														<FormLabel>{t("serviceName")}</FormLabel>
-														<Input size="sm" {...register("grpcServiceName")} />
-													</FormControl>
+													<>
+														<HStack>
+															<FormControl>
+																<FormLabel>{t("serviceName")}</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("grpcServiceName")}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>Authority</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("grpcAuthority")}
+																/>
+															</FormControl>
+														</HStack>
+														<FormControl
+															display="flex"
+															alignItems="center"
+															gap={2}
+														>
+															<Switch
+																size="sm"
+																{...register("grpcMultiMode")}
+															/>
+															<FormLabel mb="0">
+																{t("pages.outbound.multiMode", "Multi mode")}
+															</FormLabel>
+														</FormControl>
+													</>
+												)}
+												{network === "httpupgrade" && (
+													<HStack>
+														<FormControl>
+															<FormLabel>{t("host")}</FormLabel>
+															<Input
+																size="sm"
+																{...register("httpupgradeHost")}
+															/>
+														</FormControl>
+														<FormControl>
+															<FormLabel>{t("path")}</FormLabel>
+															<Input
+																size="sm"
+																{...register("httpupgradePath")}
+															/>
+														</FormControl>
+													</HStack>
+												)}
+												{network === "xhttp" && (
+													<VStack spacing={3} align="stretch">
+														<HStack>
+															<FormControl>
+																<FormLabel>{t("host")}</FormLabel>
+																<Input size="sm" {...register("xhttpHost")} />
+															</FormControl>
+															<FormControl>
+																<FormLabel>{t("path")}</FormLabel>
+																<Input size="sm" {...register("xhttpPath")} />
+															</FormControl>
+														</HStack>
+														<FormControl>
+															<FormLabel>Mode</FormLabel>
+															<Select size="sm" {...register("xhttpMode")}>
+																<option value="">
+																	{t("common.none", "None")}
+																</option>
+																{XHTTP_MODE_OPTIONS.map((modeOption) => (
+																	<option key={modeOption} value={modeOption}>
+																		{modeOption}
+																	</option>
+																))}
+															</Select>
+														</FormControl>
+														{(formValues?.xhttpMode === "stream-up" ||
+															formValues?.xhttpMode === "stream-one") && (
+															<FormControl
+																display="flex"
+																alignItems="center"
+																gap={2}
+															>
+																<Switch
+																	size="sm"
+																	{...register("xhttpNoGRPCHeader")}
+																/>
+																<FormLabel mb="0">No gRPC Header</FormLabel>
+															</FormControl>
+														)}
+														{formValues?.xhttpMode === "packet-up" && (
+															<FormControl>
+																<FormLabel>Min Upload Interval (Ms)</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("xhttpScMinPostsIntervalMs")}
+																/>
+															</FormControl>
+														)}
+														<HStack>
+															<FormControl>
+																<FormLabel>Max Concurrency</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("xhttpXmuxMaxConcurrency")}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>Max Connections</FormLabel>
+																<Input
+																	size="sm"
+																	type="number"
+																	{...register("xhttpXmuxMaxConnections", {
+																		valueAsNumber: true,
+																	})}
+																/>
+															</FormControl>
+														</HStack>
+														<HStack>
+															<FormControl>
+																<FormLabel>Max Reuse Times</FormLabel>
+																<Input
+																	size="sm"
+																	type="number"
+																	{...register("xhttpXmuxCMaxReuseTimes", {
+																		valueAsNumber: true,
+																	})}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>Max Request Times</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("xhttpXmuxHMaxRequestTimes")}
+																/>
+															</FormControl>
+														</HStack>
+														<HStack>
+															<FormControl>
+																<FormLabel>Max Reusable Secs</FormLabel>
+																<Input
+																	size="sm"
+																	{...register("xhttpXmuxHMaxReusableSecs")}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>Keep Alive Period</FormLabel>
+																<Input
+																	size="sm"
+																	type="number"
+																	{...register("xhttpXmuxHKeepAlivePeriod", {
+																		valueAsNumber: true,
+																	})}
+																/>
+															</FormControl>
+														</HStack>
+													</VStack>
 												)}
 											</VStack>
 										</Box>
@@ -1427,82 +1929,137 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											<Text fontWeight="semibold" mb={3}>
 												{t("pages.outbound.security")}
 											</Text>
-											{/*
-												Security behaves like Xray docs / 3x-ui:
-												one of none / tls / reality (when supported).
-											*/}
-											{(() => {
-												const securityValue: "none" | "tls" | "reality" =
-													realityEnabled && canReality
-														? "reality"
-														: tlsEnabled && canTls
-															? "tls"
-															: "none";
-												const securityOptions: Array<{
-													value: "none" | "tls" | "reality";
-													label: string;
-													disabled?: boolean;
-												}> = [
-													{ value: "none", label: t("common.none", "None") },
-													{ value: "tls", label: "TLS", disabled: !canTls },
-													{
-														value: "reality",
-														label: "Reality",
-														disabled: !canReality,
-													},
-												];
-												return (
-													<FormControl maxW="260px">
-														<FormLabel mb={1}>
-															{t("pages.outbound.security")}
-														</FormLabel>
-														<Select
+											<FormControl maxW="260px">
+												<FormLabel mb={1}>
+													{t("pages.outbound.security")}
+												</FormLabel>
+												<Select
+													size="sm"
+													value={
+														realityEnabled && canReality
+															? "reality"
+															: tlsEnabled && canTls
+																? "tls"
+																: "none"
+													}
+													onChange={(event) => {
+														const next = event.target
+															.value as OutboundSecurityValue;
+														setValue("tlsEnabled", next === "tls");
+														setValue("realityEnabled", next === "reality");
+														if (next !== "tls") {
+															setValue("tlsServerName", "");
+															setValue("tlsFingerprint", "");
+															setValue("tlsAlpn", "");
+															setValue("tlsAllowInsecure", false);
+															setValue("tlsEchConfigList", "");
+														}
+														if (next !== "reality") {
+															setValue("realityServerName", "");
+															setValue("realityFingerprint", "");
+															setValue("realityPublicKey", "");
+															setValue("realityShortId", "");
+															setValue("realitySpiderX", "");
+															setValue("realityMldsa65Verify", "");
+														}
+													}}
+												>
+													<option value="none">
+														{t("common.none", "None")}
+													</option>
+													<option value="tls" disabled={!canTls}>
+														TLS
+													</option>
+													<option value="reality" disabled={!canReality}>
+														Reality
+													</option>
+												</Select>
+											</FormControl>
+											{tlsEnabled && canTls && (
+												<VStack spacing={3} align="stretch" mt={3}>
+													<FormControl>
+														<FormLabel>SNI</FormLabel>
+														<Input
 															size="sm"
-															value={securityValue}
-															onChange={(event) => {
-																const next = event.target.value as
-																	| "none"
-																	| "tls"
-																	| "reality";
-																setValue("tlsEnabled", next === "tls");
-																setValue("realityEnabled", next === "reality");
-																if (next !== "tls") {
-																	setValue("tlsServerName", "");
-																}
-																if (next !== "reality") {
-																	setValue("realityPublicKey", "");
-																	setValue("realityShortId", "");
-																}
-															}}
-														>
-															{securityOptions.map((opt) => (
-																<option
-																	key={opt.value}
-																	value={opt.value}
-																	disabled={opt.disabled}
-																>
-																	{opt.label}
-																</option>
-															))}
+															placeholder="example.com"
+															{...register("tlsServerName")}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>uTLS</FormLabel>
+														<Select size="sm" {...register("tlsFingerprint")}>
+															<option value="">
+																{t("common.none", "None")}
+															</option>
+															{TLS_FINGERPRINT_OPTIONS.map(
+																(fingerprintOption) => (
+																	<option
+																		key={fingerprintOption}
+																		value={fingerprintOption}
+																	>
+																		{fingerprintOption}
+																	</option>
+																),
+															)}
 														</Select>
 													</FormControl>
-												);
-											})()}
-											{tlsEnabled && canTls && (
-												<FormControl mt={3}>
-													<FormLabel>SNI</FormLabel>
-													<Input
-														size="sm"
-														placeholder="example.com"
-														{...register("tlsServerName")}
-													/>
-												</FormControl>
+													<FormControl>
+														<FormLabel>ALPN</FormLabel>
+														<Input
+															size="sm"
+															placeholder={TLS_ALPN_OPTIONS.join(",")}
+															{...register("tlsAlpn")}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>ECH Config List</FormLabel>
+														<Input
+															size="sm"
+															{...register("tlsEchConfigList")}
+														/>
+													</FormControl>
+													<FormControl
+														display="flex"
+														alignItems="center"
+														gap={2}
+													>
+														<Switch
+															size="sm"
+															{...register("tlsAllowInsecure")}
+														/>
+														<FormLabel mb="0">Allow Insecure</FormLabel>
+													</FormControl>
+												</VStack>
 											)}
 											{realityEnabled && canReality && (
 												<VStack spacing={3} align="stretch" mt={3}>
 													<FormControl>
 														<FormLabel>SNI</FormLabel>
-														<Input size="sm" {...register("tlsServerName")} />
+														<Input
+															size="sm"
+															{...register("realityServerName")}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>uTLS</FormLabel>
+														<Select
+															size="sm"
+															{...register("realityFingerprint")}
+														>
+															<option value="">
+																{t("common.none", "None")}
+															</option>
+															{TLS_FINGERPRINT_OPTIONS.map(
+																(fingerprintOption) => (
+																	<option
+																		key={fingerprintOption}
+																		value={fingerprintOption}
+																	>
+																		{fingerprintOption}
+																	</option>
+																),
+															)}
+														</Select>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -1516,6 +2073,18 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<FormControl>
 														<FormLabel>{t("pages.outbound.shortId")}</FormLabel>
 														<Input size="sm" {...register("realityShortId")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel>SpiderX</FormLabel>
+														<Input size="sm" {...register("realitySpiderX")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel>mldsa65 Verify</FormLabel>
+														<Textarea
+															size="sm"
+															rows={3}
+															{...register("realityMldsa65Verify")}
+														/>
 													</FormControl>
 												</VStack>
 											)}
@@ -1534,18 +2103,41 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<Switch size="sm" {...register("muxEnabled")} />
 											</FormControl>
 											{muxEnabled && (
-												<FormControl mt={3}>
-													<FormLabel>
-														{t("pages.outbound.concurrency")}
-													</FormLabel>
-													<Input
-														size="sm"
-														type="number"
-														{...register("muxConcurrency", {
-															valueAsNumber: true,
-														})}
-													/>
-												</FormControl>
+												<VStack align="stretch" spacing={3} mt={3}>
+													<FormControl>
+														<FormLabel>
+															{t("pages.outbound.concurrency")}
+														</FormLabel>
+														<Input
+															size="sm"
+															type="number"
+															{...register("muxConcurrency", {
+																valueAsNumber: true,
+															})}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>xudp Concurrency</FormLabel>
+														<Input
+															size="sm"
+															type="number"
+															{...register("muxXudpConcurrency", {
+																valueAsNumber: true,
+															})}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>xudp UDP 443</FormLabel>
+														<Select
+															size="sm"
+															{...register("muxXudpProxyUdp443")}
+														>
+															<option value="reject">reject</option>
+															<option value="allow">allow</option>
+															<option value="skip">skip</option>
+														</Select>
+													</FormControl>
+												</VStack>
 											)}
 										</Box>
 									)}

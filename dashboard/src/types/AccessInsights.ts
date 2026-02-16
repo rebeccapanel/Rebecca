@@ -22,10 +22,16 @@ export type AccessInsightUnmatched = {
 	platform?: string;
 };
 
+export type AccessInsightSource = {
+	node_id: number | null;
+	node_name: string;
+	is_master: boolean;
+};
+
 export type AccessInsightsResponse = {
-	log_path: string;
-	geo_assets_path: string;
-	geo_assets: {
+	log_path?: string;
+	geo_assets_path?: string;
+	geo_assets?: {
 		geosite: boolean;
 		geoip: boolean;
 	};
@@ -33,6 +39,8 @@ export type AccessInsightsResponse = {
 	matched_entries?: number;
 	error?: string;
 	detail?: string;
+	mode?: string;
+	sources?: AccessInsightSource[];
 	window_seconds?: number;
 	items: AccessInsightClient[];
 	platform_counts: Record<string, number>;

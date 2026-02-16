@@ -1,4 +1,5 @@
 import { Box } from "@chakra-ui/react";
+import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { FC } from "react";
 
 type UserStatusProps = {
@@ -29,7 +30,7 @@ export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
 
 	const timeDifferenceInSeconds = currentTimeInSeconds - unixTime;
 
-	if (timeDifferenceInSeconds <= 60) {
+	if (timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS) {
 		return (
 			<Box
 				bg="green.300"

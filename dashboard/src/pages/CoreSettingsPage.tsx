@@ -170,6 +170,29 @@ const SERVICES_OPTIONS: { label: string; value: string }[] = [
 const XRAY_LOG_DIR_HINT = "/var/lib/rebecca/xray-core";
 const DEFAULT_ACCESS_LOG_PATH = `${XRAY_LOG_DIR_HINT}/access.log`;
 const DEFAULT_ERROR_LOG_PATH = `${XRAY_LOG_DIR_HINT}/error.log`;
+const LOG_CLEANUP_INTERVAL_OPTIONS = [
+	{ value: 0, labelKey: "pages.xray.logCleanupDisabled", fallback: "Disabled" },
+	{
+		value: 3600,
+		labelKey: "pages.xray.logCleanup1h",
+		fallback: "Every 1 hour",
+	},
+	{
+		value: 10800,
+		labelKey: "pages.xray.logCleanup3h",
+		fallback: "Every 3 hours",
+	},
+	{
+		value: 21600,
+		labelKey: "pages.xray.logCleanup6h",
+		fallback: "Every 6 hours",
+	},
+	{
+		value: 86400,
+		labelKey: "pages.xray.logCleanup24h",
+		fallback: "Every 24 hours",
+	},
+];
 
 type OutboundJson = Record<string, any>;
 type BalancerConfig = {
@@ -2059,20 +2082,52 @@ export const CoreSettingsPage: FC = () => {
 											controlId="access-log"
 										>
 											{(id) => (
-												<Controller
-													name="config.log.access"
-													control={form.control}
-													render={({ field }) => (
-														<Select {...field} id={id} size="sm" maxW="220px">
-															<option value="">Empty</option>
-															{["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
-																<option key={s} value={s}>
-																	{s}
-																</option>
-															))}
-														</Select>
-													)}
-												/>
+												<HStack spacing={2} w="full" flexWrap="wrap">
+													<Controller
+														name="config.log.access"
+														control={form.control}
+														render={({ field }) => (
+															<Select {...field} id={id} size="sm" maxW="220px">
+																<option value="">Empty</option>
+																{["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
+																	<option key={s} value={s}>
+																		{s}
+																	</option>
+																))}
+															</Select>
+														)}
+													/>
+													<Controller
+														name="config.log.accessCleanupInterval"
+														control={form.control}
+														render={({ field }) => (
+															<Select
+																id={`${id}-cleanup`}
+																size="sm"
+																maxW="220px"
+																value={
+																	field.value === undefined ||
+																	field.value === null ||
+																	field.value === ""
+																		? "0"
+																		: String(field.value)
+																}
+																onChange={(e) =>
+																	field.onChange(Number(e.target.value))
+																}
+															>
+																{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
+																	<option
+																		key={option.value}
+																		value={String(option.value)}
+																	>
+																		{t(option.labelKey, option.fallback)}
+																	</option>
+																))}
+															</Select>
+														)}
+													/>
+												</HStack>
 											)}
 										</SettingRow>
 										<SettingRow
@@ -2080,20 +2135,52 @@ export const CoreSettingsPage: FC = () => {
 											controlId="error-log"
 										>
 											{(id) => (
-												<Controller
-													name="config.log.error"
-													control={form.control}
-													render={({ field }) => (
-														<Select {...field} id={id} size="sm" maxW="220px">
-															<option value="">Empty</option>
-															{["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
-																<option key={s} value={s}>
-																	{s}
-																</option>
-															))}
-														</Select>
-													)}
-												/>
+												<HStack spacing={2} w="full" flexWrap="wrap">
+													<Controller
+														name="config.log.error"
+														control={form.control}
+														render={({ field }) => (
+															<Select {...field} id={id} size="sm" maxW="220px">
+																<option value="">Empty</option>
+																{["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
+																	<option key={s} value={s}>
+																		{s}
+																	</option>
+																))}
+															</Select>
+														)}
+													/>
+													<Controller
+														name="config.log.errorCleanupInterval"
+														control={form.control}
+														render={({ field }) => (
+															<Select
+																id={`${id}-cleanup`}
+																size="sm"
+																maxW="220px"
+																value={
+																	field.value === undefined ||
+																	field.value === null ||
+																	field.value === ""
+																		? "0"
+																		: String(field.value)
+																}
+																onChange={(e) =>
+																	field.onChange(Number(e.target.value))
+																}
+															>
+																{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
+																	<option
+																		key={option.value}
+																		value={String(option.value)}
+																	>
+																		{t(option.labelKey, option.fallback)}
+																	</option>
+																))}
+															</Select>
+														)}
+													/>
+												</HStack>
 											)}
 										</SettingRow>
 										<SettingRow
