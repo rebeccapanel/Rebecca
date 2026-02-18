@@ -134,7 +134,10 @@ const getTutorialMenuIds = (
 		});
 	});
 
-	if (Array.isArray(content.dialogSections) && content.dialogSections.length > 0) {
+	if (
+		Array.isArray(content.dialogSections) &&
+		content.dialogSections.length > 0
+	) {
 		ids.add("dialog-guide");
 		ids.add("dialog-illustration");
 		content.dialogSections.forEach((section) => {
@@ -254,8 +257,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				: false;
 
 			if (hasVersionBump) {
+				if (!updated) {
+					setHasNewTutorials(activeUnseen.length > 0);
+					return;
+				}
 				if (newIds.length > 0 || activeUnseen.length > 0) {
-					const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
+					const mergedUnseen = Array.from(
+						new Set([...activeUnseen, ...newIds]),
+					);
 					writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
 					setHasNewTutorials(true);
 					return;
