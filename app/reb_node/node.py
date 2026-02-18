@@ -220,6 +220,8 @@ class ReSTXRayNode:
         usage_coefficient: float = 1,
         proxy: Optional[dict] = None,
         server_cert: Optional[str] = None,
+        node_id: Optional[int] = None,
+        node_name: Optional[str] = None,
     ):
         self.address = address
         self.port = port
@@ -228,6 +230,8 @@ class ReSTXRayNode:
         self.ssl_cert = ssl_cert
         self.usage_coefficient = usage_coefficient
         self._server_cert = server_cert
+        self.node_id = node_id
+        self.node_name = node_name or address
 
         self._keyfile = string_to_temp_file(ssl_key)
         self._certfile = string_to_temp_file(ssl_cert)
@@ -258,6 +262,21 @@ class ReSTXRayNode:
         self.node_version = None
         self._tls_target_name = "rebeccapanel"
         self._grpc_root_cert: Optional[bytes] = None
+
+    def _register_runtime_error(self, detail: str) -> None:
+        """Best-effort bridge to master error reporting/status handling."""
+        if self.node_id is None:
+            return
+        try:
+            from app.reb_node import operations as node_operations
+
+            node_operations.register_node_runtime_error(
+                int(self.node_id),
+                detail,
+                fallback_name=self.node_name,
+            )
+        except Exception:
+            pass
 
     def _prepare_config(self, config: XRayConfig):
         for inbound in config.get("inbounds", []):
@@ -428,6 +447,8 @@ class ReSTXRayNode:
                         self._api = None
                         self._started = False
                         self._set_health_cache(False, False)
+                    if "xray is started already" not in detail_text:
+                        self._register_runtime_error(str(detail))
                     raise NodeAPIError(res.status_code, detail)
                 except NodeAPIError:
                     raise
@@ -440,6 +461,7 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
+                    self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 except Exception as exc:
                     last_exc = exc
@@ -447,6 +469,7 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
+                    self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 finally:
                     if res is not None:
@@ -725,6 +748,8 @@ class XRayNode:
         usage_coefficient: float = 1,
         proxy: Optional[dict] = None,
         server_cert: Optional[str] = None,
+        node_id: Optional[int] = None,
+        node_name: Optional[str] = None,
     ):
         return ReSTXRayNode(
             address=address,
@@ -735,4 +760,6 @@ class XRayNode:
             usage_coefficient=usage_coefficient,
             proxy=proxy,
             server_cert=server_cert,
+            node_id=node_id,
+            node_name=node_name,
         )

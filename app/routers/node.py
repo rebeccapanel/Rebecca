@@ -470,12 +470,14 @@ def update_node_core(
     if not node:
         raise HTTPException(404, detail="Node not connected")
 
-    try:
-        node.update_core(version=version)
-        startup_config = xray.config.include_db_users()
-        xray.operations.restart_node(node_id, startup_config)
-    except Exception as e:
-        raise HTTPException(502, detail=f"Update failed: {e}")
+    _node_operation_or_raise(
+        node_id=node_id,
+        node_name=dbnode.name,
+        action=lambda: node.update_core(version=version),
+        failure_message=f"Unable to update node core for {dbnode.name}",
+    )
+    startup_config = xray.config.include_db_users()
+    xray.operations.restart_node(node_id, startup_config)
 
     return {"detail": f"Node {dbnode.name} switched to {version}"}
 
@@ -536,24 +538,32 @@ def update_node_geo(
     if not node:
         raise HTTPException(404, detail="Node not connected")
 
-    try:
-        node.update_geo(files=files)
-        startup_config = xray.config.include_db_users()
-        xray.operations.restart_node(node_id, startup_config)
-    except Exception as e:
-        raise HTTPException(502, detail=f"Geo update failed: {e}")
+    _node_operation_or_raise(
+        node_id=node_id,
+        node_name=dbnode.name,
+        action=lambda: node.update_geo(files=files),
+        failure_message=f"Unable to update geo assets for {dbnode.name}",
+    )
+    startup_config = xray.config.include_db_users()
+    xray.operations.restart_node(node_id, startup_config)
 
     return {"detail": f"Geo assets updated on node {dbnode.name}"}
 
 
-def _node_operation_or_raise(node, action, failure_message: str):
+def _node_operation_or_raise(node_id: int, node_name: str, action, failure_message: str):
     try:
         return action()
     except Exception as exc:
         logger.exception(failure_message)
+        detail = getattr(exc, "detail", None) or str(exc) or "Unknown node error"
+        try:
+            xray.operations.register_node_runtime_error(node_id, detail, fallback_name=node_name)
+        except Exception:
+            pass
         status_code = getattr(exc, "status_code", None) or 502
-        detail = getattr(exc, "detail", None) or str(exc)
-        raise HTTPException(status_code, detail=detail) from exc
+        if not isinstance(status_code, int) or status_code < 400:
+            status_code = 502
+        raise HTTPException(status_code, detail=f'Node "{node_name}" has problem: {detail}') from exc
 
 
 @router.post("/node/{node_id}/service/restart", responses={403: responses._403, 404: responses._404})
@@ -568,9 +578,10 @@ def restart_node_service(
         raise HTTPException(404, detail="Node not connected")
 
     _node_operation_or_raise(
-        node,
-        node.restart_host_service,
-        f"Unable to restart node service for {dbnode.name}",
+        node_id=node_id,
+        node_name=dbnode.name,
+        action=node.restart_host_service,
+        failure_message=f"Unable to restart node service for {dbnode.name}",
     )
     return {"detail": f"Restart requested for node {dbnode.name}"}
 
@@ -587,8 +598,9 @@ def update_node_service(
         raise HTTPException(404, detail="Node not connected")
 
     _node_operation_or_raise(
-        node,
-        node.update_host_service,
-        f"Unable to update Rebecca-node service for {dbnode.name}",
+        node_id=node_id,
+        node_name=dbnode.name,
+        action=node.update_host_service,
+        failure_message=f"Unable to update Rebecca-node service for {dbnode.name}",
     )
     return {"detail": f"Update requested for node {dbnode.name}"}

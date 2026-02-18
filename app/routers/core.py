@@ -709,7 +709,15 @@ def apply_geo_assets(
                 xray.operations.restart_node(node_id, startup_config)
                 results["nodes"][str(node_id)] = {"status": "ok"}
             except Exception as e:
-                results["nodes"][str(node_id)] = {"status": "error", "detail": str(e)}
+                detail = str(e) or "Unknown node error"
+                try:
+                    xray.operations.register_node_runtime_error(node_id, detail, fallback_name=db_node.name)
+                except Exception:
+                    pass
+                results["nodes"][str(node_id)] = {
+                    "status": "error",
+                    "detail": f'Node "{db_node.name}" has problem: {detail}',
+                }
 
     return results
 
