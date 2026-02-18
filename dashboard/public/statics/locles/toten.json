@@ -1,6 +1,6 @@
 {
 	"meta": {
-		"updated": "2026-02-18 20:10"
+		"updated": "2026-02-18 22:10"
 	},
 	"intro": "This page is a quick walk-through so you can ship accounts fast without touching the backend.",
 	"quickTips": [
@@ -61,6 +61,7 @@
 			"id": "service-auto-inbound",
 			"title": "Service inbound auto-assign",
 			"description": "Use service inbound tags to auto-select a service while creating or editing users.",
+			"requiresRole": ["full_access", "sudo"],
 			"steps": [
 				"Go to Services, open a service, and create its \"Service inbound\". The tag format is setservice-<service_id>.",
 				"In Create/Edit user, if no service is selected, choose only that service inbound tag in inbounds.",

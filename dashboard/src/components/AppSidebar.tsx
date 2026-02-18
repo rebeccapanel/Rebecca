@@ -82,6 +82,102 @@ type SidebarItem = {
 };
 type SidebarSubItems = NonNullable<SidebarItem["subItems"]>;
 
+type TutorialMenuSection = {
+	id?: string;
+	requiresRole?: ("sudo" | "full_access")[];
+	subsections?: { id?: string }[];
+};
+
+type TutorialMenuContent = {
+	meta?: { updated?: string };
+	quickTips?: unknown[];
+	sections?: TutorialMenuSection[];
+	dialogSections?: { id?: string }[];
+	samples?: unknown[];
+	statuses?: { status?: string }[];
+	faqs?: { id?: string }[];
+	adminRoles?: { id?: string }[];
+};
+
+const normalizeRole = (role?: string | null) =>
+	role
+		?.toString()
+		.toLowerCase()
+		.replace(/[^a-z]/g, "") || "";
+
+const getTutorialMenuIds = (
+	content: TutorialMenuContent,
+	normalizedUserRole: string,
+	hasResolvedUser: boolean,
+) => {
+	const ids = new Set<string>();
+
+	if (Array.isArray(content.quickTips) && content.quickTips.length > 0) {
+		ids.add("quick-tips");
+	}
+
+	(content.sections || []).forEach((section) => {
+		const sectionId = section.id?.toString().trim();
+		if (!sectionId) return;
+		const requiredRoles = (section.requiresRole || [])
+			.map((role) => normalizeRole(role))
+			.filter(Boolean);
+		if (requiredRoles.length > 0) {
+			if (!hasResolvedUser || !normalizedUserRole) return;
+			if (!requiredRoles.includes(normalizedUserRole)) return;
+		}
+		ids.add(`section-${sectionId}`);
+		(section.subsections || []).forEach((subsection) => {
+			const subsectionId = subsection.id?.toString().trim();
+			if (!subsectionId) return;
+			ids.add(`section-${sectionId}-${subsectionId}`);
+		});
+	});
+
+	if (Array.isArray(content.dialogSections) && content.dialogSections.length > 0) {
+		ids.add("dialog-guide");
+		ids.add("dialog-illustration");
+		content.dialogSections.forEach((section) => {
+			const sectionId = section.id?.toString().trim();
+			if (!sectionId) return;
+			ids.add(`dialog-${sectionId}`);
+		});
+	}
+
+	if (Array.isArray(content.samples) && content.samples.length > 0) {
+		ids.add("samples");
+	}
+
+	if (Array.isArray(content.statuses) && content.statuses.length > 0) {
+		ids.add("statuses");
+		content.statuses.forEach((status) => {
+			const statusId = status.status?.toString().trim();
+			if (!statusId) return;
+			ids.add(`status-${statusId}`);
+		});
+	}
+
+	if (Array.isArray(content.faqs) && content.faqs.length > 0) {
+		ids.add("faq");
+		content.faqs.forEach((faq) => {
+			const faqId = faq.id?.toString().trim();
+			if (!faqId) return;
+			ids.add(`faq-${faqId}`);
+		});
+	}
+
+	if (Array.isArray(content.adminRoles) && content.adminRoles.length > 0) {
+		ids.add("admin-roles");
+		content.adminRoles.forEach((role) => {
+			const roleId = role.id?.toString().trim();
+			if (!roleId) return;
+			ids.add(`admin-role-${roleId}`);
+		});
+	}
+
+	return Array.from(ids);
+};
+
 const LogoIcon = chakra("img", {
 	baseStyle: {
 		w: 8,
@@ -123,6 +219,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		sectionAccess?.[AdminSection.Services],
 	);
 	const [hasNewTutorials, setHasNewTutorials] = useState(false);
+	const normalizedUserRole = normalizeRole(userData?.role);
 
 	const checkTutorialUpdates = useCallback(async () => {
 		const langKey = normalizeTutorialLang(i18n.language);
@@ -133,28 +230,61 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			if (!response.ok) {
 				throw new Error(`Failed to load tutorial meta: ${response.status}`);
 			}
-			const data = (await response.json()) as { meta?: { updated?: string } };
+			const data = (await response.json()) as TutorialMenuContent;
 			const updated = data?.meta?.updated?.toString().trim();
-			if (!updated) {
-				setHasNewTutorials(false);
+			const menuIds = getTutorialMenuIds(
+				data,
+				normalizedUserRole,
+				getUserIsSuccess,
+			);
+			const stored = readTutorialStorage(langKey);
+			const activeUnseen = stored.unseen.filter((id) => menuIds.includes(id));
+
+			if (!stored.updated) {
+				if (updated) {
+					writeTutorialStorage(langKey, updated, menuIds, activeUnseen);
+				}
+				setHasNewTutorials(activeUnseen.length > 0);
 				return;
 			}
-			const stored = readTutorialStorage(langKey);
-			if (stored.unseen.length > 0) {
+
+			const newIds = menuIds.filter((id) => !stored.ids.includes(id));
+			const hasVersionBump = updated
+				? isTutorialUpdated(updated, stored.updated)
+				: false;
+
+			if (hasVersionBump) {
+				if (newIds.length > 0 || activeUnseen.length > 0) {
+					const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
+					writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
+					setHasNewTutorials(true);
+					return;
+				}
 				setHasNewTutorials(true);
 				return;
 			}
-			if (!stored.updated) {
-				writeTutorialStorage(langKey, updated, stored.ids, stored.unseen);
-				setHasNewTutorials(false);
+
+			if (newIds.length > 0) {
+				const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
+				writeTutorialStorage(langKey, stored.updated, menuIds, mergedUnseen);
+				setHasNewTutorials(true);
 				return;
 			}
-			setHasNewTutorials(isTutorialUpdated(updated, stored.updated));
+
+			if (
+				menuIds.length > 0 &&
+				(stored.ids.length !== menuIds.length ||
+					activeUnseen.length !== stored.unseen.length)
+			) {
+				writeTutorialStorage(langKey, stored.updated, menuIds, activeUnseen);
+			}
+
+			setHasNewTutorials(activeUnseen.length > 0);
 		} catch (err) {
 			console.error("Failed to check tutorial updates", err);
 			setHasNewTutorials(false);
 		}
-	}, [i18n.language]);
+	}, [getUserIsSuccess, i18n.language, normalizedUserRole]);
 
 	useEffect(() => {
 		void checkTutorialUpdates();

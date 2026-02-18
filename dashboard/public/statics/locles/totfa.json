@@ -1,6 +1,6 @@
 {
 	"meta": {
-		"updated": "29-11-1404 20:10"
+		"updated": "29-11-1404 22:10"
 	},
 	"intro": "این صفحه یه راهنمای جمع‌وجوره تا تند تند کارای روزمره پنل رو انجام بدی.",
 	"quickTips": [
@@ -61,6 +61,7 @@
 			"id": "service-auto-inbound",
 			"title": "انتخاب خودکار سرویس با Service Inbound",
 			"description": "با تگ‌های Service inbound می‌توانی هنگام ساخت یا ویرایش یوزر، سرویس را خودکار انتخاب کنی.",
+			"requiresRole": ["full_access", "sudo"],
 			"steps": [
 				"به صفحه سرویس‌ها برو، سرویس را باز کن و Service inbound همان سرویس را بساز. فرمت تگ: setservice-<service_id> است.",
 				"در ساخت/ویرایش یوزر، وقتی سرویسی انتخاب نشده، فقط همان تگ Service inbound را در inbounds انتخاب کن.",
