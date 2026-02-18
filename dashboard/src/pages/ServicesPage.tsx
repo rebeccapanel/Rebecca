@@ -472,9 +472,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 						<Box>
 							<Text fontWeight="medium" mb={2}>
 								{t("services.autoInbound.title", "Service inbound")}
-								<Box as="span" ml={2} fontSize="xs" color="orange.500">
-									{t("common.comingSoon", "Coming soon")}
-								</Box>
 							</Text>
 							<Stack spacing={3} borderWidth="1px" borderRadius="md" p={4}>
 								<Flex align="center" justify="space-between" gap={3}>
@@ -501,7 +498,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										size="sm"
 										onClick={handleCreateAutoInbound}
 										isDisabled={
-											true ||
 											!initialService?.id ||
 											autoInboundExists ||
 											autoInboundBusy
@@ -516,7 +512,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										colorScheme="red"
 										onClick={handleDeleteAutoInbound}
 										isDisabled={
-											true ||
 											!initialService?.id ||
 											!autoInboundExists ||
 											autoInboundBusy
@@ -531,9 +526,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										"services.autoInbound.helper",
 										"Use this inbound as the only selection to auto-assign the service. It uses Shadowsocks defaults and should stay without hosts.",
 									)}
-								</Text>
-								<Text fontSize="sm" color="orange.500">
-									{t("common.comingSoon", "Coming soon")}
 								</Text>
 								{!initialService?.id && (
 									<Text fontSize="sm" color="gray.500">

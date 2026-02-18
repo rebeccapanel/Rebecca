@@ -663,6 +663,186 @@ def test_add_user_auto_service_from_inbound_tag(auth_client: TestClient):
     assert auto_tag not in data["inbounds"]["vmess"]
 
 
+def test_add_user_auto_service_inbound_requires_single_selection(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        service = _create_service_with_host(db, f"auto-single-{unique}")
+        service_id = service.id
+
+    assert service_id is not None
+    auto_tag = f"setservice-{service_id}"
+    username = f"autosvc-multi-{unique}"
+
+    with (
+        patch(
+            "app.routers.user.xray.config.inbounds_by_protocol",
+            {"vmess": [{"tag": "VMess TCP"}]},
+        ),
+        patch(
+            "app.routers.user.xray.config.inbounds_by_tag",
+            {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}, auto_tag: {"tag": auto_tag, "protocol": "vmess"}},
+        ),
+    ):
+        response = auth_client.post(
+            "/api/user",
+            json={
+                "username": username,
+                "proxies": {"vmess": {}},
+                "inbounds": {"vmess": [auto_tag, "VMess TCP"]},
+            },
+        )
+
+    assert response.status_code == 400
+    assert "must be selected alone" in response.json()["detail"]
+
+
+def test_add_user_ignores_inbounds_when_service_selected(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        service_one = _create_service_with_host(db, f"svc-ignore-{unique}-one")
+        service_two = _create_service_with_host(db, f"svc-ignore-{unique}-two")
+        service_one_id = service_one.id
+        service_two_id = service_two.id
+
+    assert service_one_id is not None
+    assert service_two_id is not None
+    auto_tag = f"setservice-{service_two_id}"
+    username = f"svc-ignore-{unique}"
+
+    with (
+        patch(
+            "app.routers.user.xray.config.inbounds_by_protocol",
+            {"vmess": [{"tag": "VMess TCP"}]},
+        ),
+        patch(
+            "app.routers.user.xray.config.inbounds_by_tag",
+            {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}, auto_tag: {"tag": auto_tag, "protocol": "vmess"}},
+        ),
+    ):
+        response = auth_client.post(
+            "/api/user",
+            json={
+                "username": username,
+                "service_id": service_one_id,
+                "inbounds": {"vmess": [auto_tag, "VMess TCP"]},
+            },
+        )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["service_id"] == service_one_id
+    assert auto_tag not in data["inbounds"].get("vmess", [])
+
+
+def test_modify_user_auto_service_from_inbound_tag(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        service = _create_service_with_host(db, f"mod-auto-svc-{unique}")
+        service_id = service.id
+
+    assert service_id is not None
+    auto_tag = f"setservice-{service_id}"
+    username = f"mod-autosvc-{unique}"
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}]},
+    ):
+        create_resp = auth_client.post(
+            "/api/user",
+            json={"username": username, "proxies": {"vmess": {}}},
+        )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["service_id"] is None
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_tag",
+        {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}, auto_tag: {"tag": auto_tag, "protocol": "vmess"}},
+    ):
+        update_resp = auth_client.put(
+            f"/api/user/{username}",
+            json={"inbounds": {"vmess": [auto_tag]}},
+        )
+
+    assert update_resp.status_code == 200
+    data = update_resp.json()
+    assert data["service_id"] == service_id
+    assert auto_tag not in data["inbounds"].get("vmess", [])
+
+
+def test_modify_user_auto_service_inbound_requires_single_selection(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        service = _create_service_with_host(db, f"mod-auto-single-{unique}")
+        service_id = service.id
+
+    assert service_id is not None
+    auto_tag = f"setservice-{service_id}"
+    username = f"mod-autosvc-multi-{unique}"
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}]},
+    ):
+        create_resp = auth_client.post(
+            "/api/user",
+            json={"username": username, "proxies": {"vmess": {}}},
+        )
+    assert create_resp.status_code == 201
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_tag",
+        {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}, auto_tag: {"tag": auto_tag, "protocol": "vmess"}},
+    ):
+        update_resp = auth_client.put(
+            f"/api/user/{username}",
+            json={"inbounds": {"vmess": [auto_tag, "VMess TCP"]}},
+        )
+
+    assert update_resp.status_code == 400
+    assert "must be selected alone" in update_resp.json()["detail"]
+
+
+def test_modify_user_ignores_inbounds_when_service_selected(auth_client: TestClient):
+    unique = uuid4().hex[:6]
+    with TestingSessionLocal() as db:
+        target_service = _create_service_with_host(db, f"mod-ignore-{unique}-target")
+        other_service = _create_service_with_host(db, f"mod-ignore-{unique}-other")
+        target_service_id = target_service.id
+        other_service_id = other_service.id
+
+    assert target_service_id is not None
+    assert other_service_id is not None
+    auto_tag = f"setservice-{other_service_id}"
+    username = f"mod-ignore-{unique}"
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}]},
+    ):
+        create_resp = auth_client.post(
+            "/api/user",
+            json={"username": username, "proxies": {"vmess": {}}},
+        )
+    assert create_resp.status_code == 201
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_tag",
+        {"VMess TCP": {"tag": "VMess TCP", "protocol": "vmess"}, auto_tag: {"tag": auto_tag, "protocol": "vmess"}},
+    ):
+        update_resp = auth_client.put(
+            f"/api/user/{username}",
+            json={
+                "service_id": target_service_id,
+                "inbounds": {"vmess": [auto_tag, "VMess TCP"]},
+            },
+        )
+
+    assert update_resp.status_code == 200
+    data = update_resp.json()
+    assert data["service_id"] == target_service_id
+
+
 def test_update_user_service_change(auth_client: TestClient):
     unique = uuid4().hex[:6]
     with TestingSessionLocal() as db:

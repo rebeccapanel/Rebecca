@@ -50,7 +50,7 @@ def _ensure_service_visibility(service, admin: Admin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You're not allowed")
 
 
-def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int], Optional[str]]:
+def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int], Optional[str], Optional[str]]:
     """
     Detect the special auto-service inbound tag: setservice-<service_id>.
 
@@ -58,11 +58,11 @@ def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int
     across all protocols in the *raw* payload (before model validation).
     """
     if payload_dict.get("service_id") is not None:
-        return None, None
+        return None, None, None
 
     inbounds_payload = payload_dict.get("inbounds")
     if not isinstance(inbounds_payload, dict) or not inbounds_payload:
-        return None, None
+        return None, None, None
 
     tags: List[str] = []
     for value in inbounds_payload.values():
@@ -72,23 +72,37 @@ def _detect_auto_service_from_inbounds(payload_dict: dict) -> tuple[Optional[int
             tags.append(value)
 
     normalized_tags = {tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()}
-    if len(normalized_tags) != 1:
-        return None, None
+    if not normalized_tags:
+        return None, None, None
 
-    inbound_tag = next(iter(normalized_tags))
+    auto_tags = [tag for tag in normalized_tags if _AUTO_SERVICE_INBOUND_RE.match(tag)]
+    if not auto_tags:
+        return None, None, None
+
+    if len(auto_tags) > 1:
+        return None, None, "Only one service inbound can be selected at a time."
+
+    if len(normalized_tags) != 1:
+        return (
+            None,
+            auto_tags[0],
+            "Service inbound must be selected alone without any additional inbounds.",
+        )
+
+    inbound_tag = auto_tags[0]
     match = _AUTO_SERVICE_INBOUND_RE.match(inbound_tag)
     if not match:
-        return None, None
+        return None, inbound_tag, None
 
     try:
         service_id = int(match.group(1))
     except ValueError:
-        return None, inbound_tag
+        return None, inbound_tag, f'Invalid service inbound tag "{inbound_tag}".'
 
     if service_id <= 0:
-        return None, inbound_tag
+        return None, inbound_tag, f'Invalid service inbound tag "{inbound_tag}".'
 
-    return service_id, inbound_tag
+    return service_id, inbound_tag, None
 
 
 def _ensure_flow_permission(admin: Admin, has_flow: bool) -> None:
@@ -174,7 +188,9 @@ def add_user(
 
     # Auto-service mode: detect setservice-<service_id> inbound tag when it is
     # the only inbound provided in the raw payload.
-    auto_service_id, auto_service_tag = _detect_auto_service_from_inbounds(detect_payload)
+    auto_service_id, auto_service_tag, auto_service_error = _detect_auto_service_from_inbounds(detect_payload)
+    if auto_service_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=auto_service_error)
     if auto_service_id is not None:
         payload_dict["service_id"] = auto_service_id
         logger.info(
@@ -469,6 +485,35 @@ def modify_user(
         next_plan=modified_user.next_plan.model_dump() if modified_user.next_plan else None,
     )
 
+    explicit_service_selected = "service_id" in modified_user.model_fields_set and modified_user.service_id is not None
+    if explicit_service_selected and modified_user.inbounds:
+        # Service mode ignores inbound selections.
+        modified_user = modified_user.model_copy(update={"inbounds": {}})
+
+    detect_payload = {
+        "service_id": modified_user.service_id if explicit_service_selected else None,
+        "inbounds": modified_user.inbounds if "inbounds" in modified_user.model_fields_set else {},
+    }
+    auto_service_id, auto_service_tag, auto_service_error = _detect_auto_service_from_inbounds(detect_payload)
+    if auto_service_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=auto_service_error)
+
+    auto_service_applied = False
+    if auto_service_id is not None and not explicit_service_selected:
+        modified_user = modified_user.model_copy(
+            update={
+                "service_id": auto_service_id,
+                "inbounds": {},
+            }
+        )
+        auto_service_applied = True
+        logger.info(
+            'Auto-selected service_id=%s from inbound tag "%s" for user "%s" on modify',
+            auto_service_id,
+            auto_service_tag,
+            dbuser.username,
+        )
+
     if modified_user.service_id is not None:
         for proxy_type in modified_user.proxies:
             if not xray.config.inbounds_by_protocol.get(proxy_type):
@@ -487,7 +532,7 @@ def modify_user(
             detail="Only sudo admins can set service to null.",
         )
 
-    service_set = "service_id" in modified_user.model_fields_set
+    service_set = ("service_id" in modified_user.model_fields_set) or auto_service_applied
     target_service = None
     db_admin = None
     if service_set and modified_user.service_id is not None:

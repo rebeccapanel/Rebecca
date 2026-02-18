@@ -1,6 +1,6 @@
 {
 	"meta": {
-		"updated": "2026-01-31 15:05"
+		"updated": "2026-02-18 20:10"
 	},
 	"intro": "This page is a quick walk-through so you can ship accounts fast without touching the backend.",
 	"quickTips": [
@@ -55,6 +55,22 @@
 				"Use on hold to keep it ready without starting the clock until first connect.",
 				"Add a short note so you remember why this account exists.",
 				"IP limit 1–2 makes sharing much harder."
+			]
+		},
+		{
+			"id": "service-auto-inbound",
+			"title": "Service inbound auto-assign",
+			"description": "Use service inbound tags to auto-select a service while creating or editing users.",
+			"steps": [
+				"Go to Services, open a service, and create its \"Service inbound\". The tag format is setservice-<service_id>.",
+				"In Create/Edit user, if no service is selected, choose only that service inbound tag in inbounds.",
+				"The panel automatically assigns the linked service and applies service-specific inbounds/hosts.",
+				"If you manually select a service, inbound selections are ignored and service settings are applied."
+			],
+			"hints": [
+				"Service inbound must be selected alone. Do not combine it with any other inbound tag.",
+				"If you need manual inbound control, do not use the setservice-* inbound.",
+				"Use the service tutorial from Nodes/Services page for troubleshooting and exact setup."
 			]
 		},
 		{
@@ -303,7 +319,9 @@
 					"name": "Inbounds / protocols",
 					"detail": "Choose an inbound per protocol (vless/vmess/trojan/ss) so the user link is built.",
 					"tips": [
-						"If the list is empty, add an inbound first under Hosts/Nodes."
+						"If the list is empty, add an inbound first under Hosts/Nodes.",
+						"If you use setservice-* inbound, select it alone; it auto-selects the linked service.",
+						"When service is selected manually, inbound selections are ignored."
 					]
 				},
 				{
