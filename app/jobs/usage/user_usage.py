@@ -121,6 +121,39 @@ def _reset_user_to_next_plan(db, user: User) -> bool:
         return False
 
 
+def _to_utc_timestamp(value: Optional[datetime]) -> Optional[float]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).timestamp()
+    return value.astimezone(timezone.utc).timestamp()
+
+
+def _should_reactivate_on_hold(user: User, *, now_ts: float) -> bool:
+    if user.status != UserStatus.on_hold:
+        return False
+
+    base_time = user.edit_at or user.created_at or user.last_status_change
+    base_ts = _to_utc_timestamp(base_time)
+    online_ts = _to_utc_timestamp(user.online_at)
+    if online_ts is not None and (base_ts is None or online_ts >= base_ts):
+        return True
+
+    timeout_ts = _to_utc_timestamp(user.on_hold_timeout)
+    return timeout_ts is not None and timeout_ts <= now_ts
+
+
+def _apply_on_hold_activation(user: User, *, now_dt: datetime) -> None:
+    user.status = UserStatus.active
+    user.last_status_change = now_dt
+
+    hold_duration = user.on_hold_expire_duration
+    if hold_duration is not None:
+        user.expire = int(now_dt.timestamp()) + int(hold_duration)
+    user.on_hold_expire_duration = None
+    user.on_hold_timeout = None
+
+
 def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     """
     Ensure users crossing their data/time limits are moved to limited/expired immediately.
@@ -138,7 +171,13 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     )
 
     changed: List[User] = []
+    activated: List[User] = []
     for user in users:
+        now_dt = datetime.now(timezone.utc)
+        if _should_reactivate_on_hold(user, now_ts=now_ts):
+            _apply_on_hold_activation(user, now_dt=now_dt)
+            activated.append(user)
+
         limited = bool(user.data_limit and (user.used_traffic or 0) >= user.data_limit)
         expired = bool(user.expire and user.expire <= now_ts)
 
@@ -160,12 +199,13 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
 
         if target_status and user.status != target_status:
             user.status = target_status
-            user.last_status_change = datetime.now(timezone.utc)
+            user.last_status_change = now_dt
             changed.append(user)
 
-    if changed:
+    if changed or activated:
         db.commit()
 
+        changed_ids = {user.id for user in changed}
         for user in changed:
             try:
                 xray.operations.remove_user(user)
@@ -181,6 +221,33 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
                 )
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
+
+            # Keep Redis caches in sync (best-effort)
+            try:
+                from app.redis.cache import cache_user, invalidate_user_cache
+
+                invalidate_user_cache(username=user.username, user_id=user.id)
+                cache_user(user, mark_for_sync=True)
+            except Exception:
+                pass
+
+        for user in activated:
+            if user.id in changed_ids:
+                continue
+            try:
+                xray.operations.add_user(user)
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to add re-activated user {user.id} to XRay: {exc}")
+
+            try:
+                report.status_change(
+                    username=user.username,
+                    status=user.status,
+                    user=UserResponse.model_validate(user),
+                    user_admin=user.admin,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to send activation report for user {user.id}: {exc}")
 
             # Keep Redis caches in sync (best-effort)
             try:

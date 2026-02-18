@@ -415,6 +415,91 @@ def test_auto_renew_triggers_on_expire(auth_client: TestClient):
         db.close()
 
 
+def test_on_hold_user_reactivates_after_online_usage_signal(auth_client: TestClient):
+    username = f"onhold_reactivate_{uuid4().hex[:8]}"
+    hold_duration = 3600
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "status": "on_hold",
+            "on_hold_expire_duration": hold_duration,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    now = datetime.now(timezone.utc)
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        assert dbuser.status.value == "on_hold"
+
+        # Simulate a fresh post-hold connection/usage sample.
+        dbuser.edit_at = now - timedelta(minutes=2)
+        dbuser.online_at = now
+        dbuser.used_traffic = (dbuser.used_traffic or 0) + 1024
+        db.commit()
+
+        user_usage = _load_user_usage_module()
+        user_usage._enforce_user_limits_and_expiry(db, [dbuser.id])
+        db.refresh(dbuser)
+
+        assert dbuser.status.value == "active"
+        assert dbuser.on_hold_expire_duration is None
+        assert dbuser.on_hold_timeout is None
+        assert dbuser.expire is not None
+        assert dbuser.expire > int(now.timestamp())
+    finally:
+        db.close()
+
+
+def test_usage_service_reactivates_on_hold_user_after_sync(auth_client: TestClient):
+    username = f"onhold_sync_reactivate_{uuid4().hex[:8]}"
+    hold_duration = 3600
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "status": "on_hold",
+            "on_hold_expire_duration": hold_duration,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    now = datetime.now(timezone.utc)
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        dbuser.edit_at = now - timedelta(minutes=1)
+        dbuser.online_at = now
+        dbuser.used_traffic = (dbuser.used_traffic or 0) + 2048
+        db.commit()
+
+        from app.services.usage_service import _enforce_user_limits_after_sync
+
+        _enforce_user_limits_after_sync(db, [dbuser])
+        db.refresh(dbuser)
+
+        assert dbuser.status.value == "active"
+        assert dbuser.on_hold_expire_duration is None
+        assert dbuser.on_hold_timeout is None
+        assert dbuser.expire is not None
+    finally:
+        db.close()
+
+
 def test_due_active_user_is_expired_without_new_usage_samples(auth_client: TestClient):
     username = f"job_due_expire_{uuid4().hex[:8]}"
     future_ts = int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp())
