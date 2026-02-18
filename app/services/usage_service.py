@@ -33,6 +33,39 @@ from config import REDIS_ENABLED
 logger = logging.getLogger(__name__)
 
 
+def _to_utc_timestamp(value: Optional[datetime]) -> Optional[float]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).timestamp()
+    return value.astimezone(timezone.utc).timestamp()
+
+
+def _should_reactivate_on_hold(user: User, *, now_ts: float) -> bool:
+    if user.status != UserStatus.on_hold:
+        return False
+
+    base_time = user.edit_at or user.created_at or user.last_status_change
+    base_ts = _to_utc_timestamp(base_time)
+    online_ts = _to_utc_timestamp(user.online_at)
+    if online_ts is not None and (base_ts is None or online_ts >= base_ts):
+        return True
+
+    timeout_ts = _to_utc_timestamp(user.on_hold_timeout)
+    return timeout_ts is not None and timeout_ts <= now_ts
+
+
+def _apply_on_hold_activation(user: User, *, now_dt: datetime) -> None:
+    user.status = UserStatus.active
+    user.last_status_change = now_dt
+
+    hold_duration = user.on_hold_expire_duration
+    if hold_duration is not None:
+        user.expire = int(now_dt.timestamp()) + int(hold_duration)
+    user.on_hold_expire_duration = None
+    user.on_hold_timeout = None
+
+
 def sync_usage_updates_to_db() -> None:
     """
     Sync pending usage updates from Redis to database.
@@ -418,6 +451,7 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
 
     now_ts = datetime.now(timezone.utc).timestamp()
     changed: List[User] = []
+    activated: List[User] = []
 
     # Ensure relationships needed for notifications are available.
     user_ids = [u.id for u in users if getattr(u, "id", None) is not None]
@@ -433,6 +467,11 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
         db_user = indexed.get(user.id)
         if not db_user:
             continue
+
+        now_dt = datetime.now(timezone.utc)
+        if _should_reactivate_on_hold(db_user, now_ts=now_ts):
+            _apply_on_hold_activation(db_user, now_dt=now_dt)
+            activated.append(db_user)
 
         limited = bool(db_user.data_limit and (db_user.used_traffic or 0) >= db_user.data_limit)
         expired = bool(db_user.expire and db_user.expire <= now_ts)
@@ -463,12 +502,13 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
 
         if target_status and db_user.status != target_status:
             db_user.status = target_status
-            db_user.last_status_change = datetime.now(timezone.utc)
+            db_user.last_status_change = now_dt
             changed.append(db_user)
 
-    if changed:
+    if changed or activated:
         db.commit()
 
+        changed_ids = {user.id for user in changed}
         for user in changed:
             try:
                 xray.operations.remove_user(user)
@@ -486,6 +526,32 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
                 logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
 
             # Best-effort cache refresh
+            try:
+                from app.redis.cache import cache_user, invalidate_user_cache
+
+                invalidate_user_cache(username=user.username, user_id=user.id)
+                cache_user(user, mark_for_sync=True)
+            except Exception:
+                pass
+
+        for user in activated:
+            if user.id in changed_ids:
+                continue
+            try:
+                xray.operations.add_user(user)
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to add re-activated user {user.id} to XRay: {exc}")
+
+            try:
+                report.status_change(
+                    username=user.username,
+                    status=user.status,
+                    user=UserResponse.model_validate(user),
+                    user_admin=user.admin,
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                logger.warning(f"Failed to send activation report for user {user.id}: {exc}")
+
             try:
                 from app.redis.cache import cache_user, invalidate_user_cache
 

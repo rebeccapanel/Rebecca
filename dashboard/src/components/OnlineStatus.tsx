@@ -1,4 +1,5 @@
 import { Box, Text } from "@chakra-ui/react";
+import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -54,7 +55,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 		);
 	}
 
-	if (timeDifferenceInSeconds <= 60) {
+	if (timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS) {
 		return (
 			<Text
 				display="inline-flex"

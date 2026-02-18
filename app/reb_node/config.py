@@ -23,7 +23,11 @@ from app.models.proxy import ProxyTypes, ProxySettings
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
 from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
-from app.utils.xray_defaults import apply_log_paths
+from app.utils.xray_defaults import (
+    VERIFY_PEER_CERT_BY_NAME_MIN_VERSION,
+    apply_log_paths,
+    normalize_tls_verify_peer_cert_fields,
+)
 from config import (
     DEBUG,
     XRAY_EXECUTABLE_PATH,
@@ -332,6 +336,7 @@ class XRayConfig(dict):
 
     def _migrate_deprecated_configs(self):
         """Migrate deprecated config formats to new formats to avoid deprecation warnings."""
+        use_verify_peer_cert_by_name = is_xray_version_at_least(VERIFY_PEER_CERT_BY_NAME_MIN_VERSION)
 
         def migrate_stream_settings(stream):
             """Helper function to migrate stream settings for both inbound and outbound."""
@@ -371,6 +376,14 @@ class XRayConfig(dict):
                                 if isinstance(host_value, str):
                                     # Convert string to list if needed
                                     req_headers["Host"] = [host_value]
+
+            # Migrate deprecated TLS verify-peer field names
+            tls_settings = stream.get("tlsSettings")
+            if isinstance(tls_settings, dict):
+                stream["tlsSettings"] = normalize_tls_verify_peer_cert_fields(
+                    tls_settings,
+                    use_verify_peer_cert_by_name=use_verify_peer_cert_by_name,
+                )
 
         # Migrate inbounds
         if "inbounds" in self:
@@ -682,6 +695,7 @@ class XRayConfig(dict):
         config = self.copy()
         # Ensure migration is applied to the copied config before adding users
         config._migrate_deprecated_configs()
+        use_verify_peer_cert_by_name = is_xray_version_at_least(VERIFY_PEER_CERT_BY_NAME_MIN_VERSION)
 
         with GetDB() as db:
             base_columns = (
@@ -856,34 +870,13 @@ class XRayConfig(dict):
                 continue
             tls_settings = stream.get("tlsSettings")
             if isinstance(tls_settings, dict):
-                # Create a copy to modify
-                tls_settings = {**tls_settings}
+                tls_settings = normalize_tls_verify_peer_cert_fields(
+                    tls_settings,
+                    use_verify_peer_cert_by_name=use_verify_peer_cert_by_name,
+                )
                 # Remove deprecated "settings" key if present
                 if "settings" in tls_settings:
                     tls_settings.pop("settings", None)
-
-                # Apply version-based migration
-                if is_xray_version_at_least("26.1.31"):
-                    # verifyPeerCertInNames is the old one it has been replaced by verifyPeerCertByName
-                    if tls_settings.get("verifyPeerCertInNames"):
-                        names = tls_settings.pop("verifyPeerCertInNames", None)
-                        # If verifyPeerCertByName is already set, keep its value and just remove the old field.
-                        if not tls_settings.get("verifyPeerCertByName") and names:
-                            # verifyPeerCertByName expects a string, not an array
-                            if isinstance(names, list) and len(names) > 0:
-                                tls_settings["verifyPeerCertByName"] = names[0]
-                            elif isinstance(names, str):
-                                tls_settings["verifyPeerCertByName"] = names
-                else:
-                    if tls_settings.get("verifyPeerCertByName"):
-                        names = tls_settings.pop("verifyPeerCertByName", None)
-                        # If verifyPeerCertInNames is already set, keep its value and just remove the new field.
-                        if not tls_settings.get("verifyPeerCertInNames") and names:
-                            # verifyPeerCertInNames expects a list
-                            if isinstance(names, str):
-                                tls_settings["verifyPeerCertInNames"] = [names]
-                            elif isinstance(names, list):
-                                tls_settings["verifyPeerCertInNames"] = names
 
                 # Update the stream with the modified settings
                 stream["tlsSettings"] = tls_settings

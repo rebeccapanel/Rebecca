@@ -290,6 +290,14 @@ export const InboundFormModal: FC<Props> = ({
 		name: "socksAccounts",
 	});
 	const {
+		fields: wsHeaderFields,
+		append: appendWsHeader,
+		remove: removeWsHeader,
+	} = useFieldArray({
+		control,
+		name: "wsHeaders",
+	});
+	const {
 		fields: xhttpHeaderFields,
 		append: appendXhttpHeader,
 		remove: removeXhttpHeader,
@@ -1412,20 +1420,81 @@ export const InboundFormModal: FC<Props> = ({
 											)}
 
 											{streamNetwork === "ws" && (
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.ws.path", "WebSocket path")}
-														</FormLabel>
-														<Input {...register("wsPath")} placeholder="/ws" />
-													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t("inbounds.ws.host", "WebSocket host header")}
-														</FormLabel>
-														<Input {...register("wsHost")} />
-													</FormControl>
-												</SimpleGrid>
+												<Stack spacing={3}>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.ws.path", "WebSocket path")}
+															</FormLabel>
+															<Input
+																{...register("wsPath")}
+																placeholder="/ws"
+															/>
+														</FormControl>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.ws.host", "Host")}
+															</FormLabel>
+															<Input
+																{...register("wsHost")}
+																placeholder="example.com"
+															/>
+														</FormControl>
+													</SimpleGrid>
+													<Stack spacing={2}>
+														<Flex justify="space-between" align="center">
+															<Text fontWeight="medium">
+																{t("inbounds.ws.headers", "Custom headers")}
+															</Text>
+															<Button
+																size="xs"
+																onClick={() =>
+																	appendWsHeader({ name: "", value: "" })
+																}
+															>
+																{t("inbounds.accounts.add", "Add")}
+															</Button>
+														</Flex>
+														{wsHeaderFields.map((field, index) => (
+															<HStack
+																key={field.id}
+																spacing={2}
+																align="flex-start"
+															>
+																<FormControl>
+																	<Input
+																		{...register(
+																			`wsHeaders.${index}.name` as const,
+																		)}
+																		placeholder={t(
+																			"inbounds.ws.headerName",
+																			"Header name",
+																		)}
+																	/>
+																</FormControl>
+																<FormControl>
+																	<Input
+																		{...register(
+																			`wsHeaders.${index}.value` as const,
+																		)}
+																		placeholder={t(
+																			"inbounds.ws.headerValue",
+																			"Header value",
+																		)}
+																	/>
+																</FormControl>
+																<Button
+																	size="xs"
+																	variant="ghost"
+																	colorScheme="red"
+																	onClick={() => removeWsHeader(index)}
+																>
+																	{t("hostsPage.delete", "Delete")}
+																</Button>
+															</HStack>
+														))}
+													</Stack>
+												</Stack>
 											)}
 
 											{streamNetwork === "tcp" && (

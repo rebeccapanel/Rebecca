@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, List
 
 import logging
+import time
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -403,6 +404,8 @@ def add_node(dbnode: "DBNode"):
         usage_coefficient=dbnode.usage_coefficient,
         proxy=proxy_config,
         server_cert=getattr(dbnode, "certificate", None),
+        node_id=dbnode.id,
+        node_name=dbnode.name,
     )
 
     return state.nodes[dbnode.id]
@@ -428,6 +431,43 @@ def _change_node_status(node_id: int, status: NodeStatus, message: str = None, v
 
 global _connecting_nodes
 _connecting_nodes = {}
+_NODE_ERROR_NOTIFY_COOLDOWN_SECONDS = 60
+_last_node_error_report: dict[int, tuple[str, float]] = {}
+
+
+def register_node_runtime_error(node_id: int, error: str, *, fallback_name: str | None = None) -> None:
+    """Persist node runtime failures, mark node as errored, and notify telegram (best-effort)."""
+    error_text = str(error or "Unknown node error").strip()[:1024]
+    node_name = fallback_name or f"node-{node_id}"
+
+    try:
+        with GetDB() as db:
+            dbnode = crud.get_node_by_id(db, node_id)
+            if dbnode:
+                node_name = dbnode.name or node_name
+                if dbnode.status not in (NodeStatus.disabled, NodeStatus.limited):
+                    previous_status = dbnode.status
+                    updated_dbnode = crud.update_node_status(
+                        db,
+                        dbnode,
+                        NodeStatus.error,
+                        message=error_text,
+                        version=dbnode.xray_version,
+                    )
+                    report.node_status_change(
+                        NodeResponse.model_validate(updated_dbnode),
+                        previous_status=previous_status,
+                    )
+    except Exception as exc:
+        logger.warning("Failed to persist node error state for node %s: %s", node_id, exc)
+
+    # Avoid telegram storm for identical repeated errors in a short time window.
+    now = time.time()
+    last = _last_node_error_report.get(node_id)
+    if last and last[0] == error_text and (now - last[1]) < _NODE_ERROR_NOTIFY_COOLDOWN_SECONDS:
+        return
+    _last_node_error_report[node_id] = (error_text, now)
+    report.node_error(node_name, error_text)
 
 
 def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> None:
@@ -506,7 +546,7 @@ def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> Non
             pass
 
         if not recovered:
-            _change_node_status(node_id, NodeStatus.error, message=str(e))
+            register_node_runtime_error(node_id, str(e), fallback_name=dbnode.name)
             logger.info('Unable to connect to "%s" node', dbnode.name)
 
     finally:
@@ -566,8 +606,7 @@ def restart_node(node_id, config=None):
         else:
             _change_node_status(node_id, NodeStatus.connected, version=version)
     except Exception as e:
-        _change_node_status(node_id, NodeStatus.error, message=str(e))
-        report.node_error(dbnode.name, str(e))
+        register_node_runtime_error(node_id, str(e), fallback_name=dbnode.name)
         logger.info(f"Unable to restart node {node_id}")
         try:
             node.disconnect()
@@ -583,4 +622,5 @@ __all__ = [
     "connect_node",
     "reconnect_node",
     "restart_node",
+    "register_node_runtime_error",
 ]

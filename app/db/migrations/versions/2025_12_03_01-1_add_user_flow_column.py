@@ -56,6 +56,9 @@ def upgrade() -> None:
     else:
         # Fallback: small loop using raw queries to avoid model mismatches on SQLite
         session = Session(bind=bind)
+        update_proxy_settings_stmt = sa.text(
+            "UPDATE proxies SET settings = :settings WHERE id = :pid"
+        ).bindparams(sa.bindparam("settings", type_=sa.JSON()))
         try:
             results = session.execute(sa.text("SELECT id, user_id, settings FROM proxies")).fetchall()
             for row in results:
@@ -72,7 +75,7 @@ def upgrade() -> None:
                         {"flow": proxy_flow, "uid": row.user_id},
                     )
                 session.execute(
-                    sa.text("UPDATE proxies SET settings = :settings WHERE id = :pid"),
+                    update_proxy_settings_stmt,
                     {"settings": settings, "pid": row.id},
                 )
             session.commit()

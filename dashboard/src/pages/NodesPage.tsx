@@ -49,6 +49,7 @@ import {
 	ArrowDownTrayIcon,
 	ArrowPathIcon,
 	Bars3Icon,
+	BookOpenIcon,
 	TrashIcon as DeleteIcon,
 	DocumentDuplicateIcon,
 	PencilIcon as EditIcon,
@@ -68,6 +69,7 @@ import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { useNavigate } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import type { Status as UserStatus } from "types/User";
 import { formatBytes } from "utils/formatByte";
@@ -102,6 +104,9 @@ const CopyIconStyled = chakra(DocumentDuplicateIcon, {
 	baseStyle: { w: 4, h: 4 },
 });
 const DownloadIconStyled = chakra(ArrowDownTrayIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const TutorialIconStyled = chakra(BookOpenIcon, {
 	baseStyle: { w: 4, h: 4 },
 });
 
@@ -161,6 +166,7 @@ type GeoDialogTarget = { type: "master" } | { type: "node"; node: NodeType };
 
 export const NodesPage: FC = () => {
 	const { t } = useTranslation();
+	const navigate = useNavigate();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canManageNodes =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.nodes);
@@ -1318,6 +1324,18 @@ export const NodesPage: FC = () => {
 						justify="flex-end"
 						alignItems={{ base: "flex-end", sm: "center" }}
 					>
+						<Button
+							leftIcon={<TutorialIconStyled />}
+							variant="outline"
+							size="sm"
+							onClick={() =>
+								navigate("/tutorials?focus=section-nodes-admin-guide")
+							}
+							w={{ base: "auto", sm: "auto" }}
+							px={{ base: 4, sm: 4 }}
+						>
+							{t("nodes.nodeTutorial", "Node tutorial")}
+						</Button>
 						<Button
 							variant="outline"
 							size="sm"

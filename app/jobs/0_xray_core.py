@@ -43,6 +43,18 @@ def core_health_check():
     for node_id, node in list(xray.nodes.items()):
         connected, started = node.refresh_health(force=True)
         dbnode_status = node_status_map.get(node_id)
+        health_error = None
+
+        if dbnode_status == NodeStatus.connected and not connected:
+            health_error = "Health check failed: node is disconnected"
+        elif dbnode_status == NodeStatus.connected and connected and not started:
+            health_error = "Health check failed: node core is not started"
+
+        if health_error:
+            try:
+                xray.operations.register_node_runtime_error(node_id, health_error)
+            except Exception:
+                pass
 
         if dbnode_status in (NodeStatus.disabled, NodeStatus.limited):
             _last_auto_reconnect_attempt.pop(node_id, None)

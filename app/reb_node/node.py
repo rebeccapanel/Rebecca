@@ -4,6 +4,7 @@ import ssl
 import tempfile
 import threading
 import time
+import json
 from collections import deque
 from contextlib import contextmanager
 from typing import Optional
@@ -219,6 +220,8 @@ class ReSTXRayNode:
         usage_coefficient: float = 1,
         proxy: Optional[dict] = None,
         server_cert: Optional[str] = None,
+        node_id: Optional[int] = None,
+        node_name: Optional[str] = None,
     ):
         self.address = address
         self.port = port
@@ -227,6 +230,8 @@ class ReSTXRayNode:
         self.ssl_cert = ssl_cert
         self.usage_coefficient = usage_coefficient
         self._server_cert = server_cert
+        self.node_id = node_id
+        self.node_name = node_name or address
 
         self._keyfile = string_to_temp_file(ssl_key)
         self._certfile = string_to_temp_file(ssl_cert)
@@ -257,6 +262,21 @@ class ReSTXRayNode:
         self.node_version = None
         self._tls_target_name = "rebeccapanel"
         self._grpc_root_cert: Optional[bytes] = None
+
+    def _register_runtime_error(self, detail: str) -> None:
+        """Best-effort bridge to master error reporting/status handling."""
+        if self.node_id is None:
+            return
+        try:
+            from app.reb_node import operations as node_operations
+
+            node_operations.register_node_runtime_error(
+                int(self.node_id),
+                detail,
+                fallback_name=self.node_name,
+            )
+        except Exception:
+            pass
 
     def _prepare_config(self, config: XRayConfig):
         for inbound in config.get("inbounds", []):
@@ -427,6 +447,8 @@ class ReSTXRayNode:
                         self._api = None
                         self._started = False
                         self._set_health_cache(False, False)
+                    if "xray is started already" not in detail_text:
+                        self._register_runtime_error(str(detail))
                     raise NodeAPIError(res.status_code, detail)
                 except NodeAPIError:
                     raise
@@ -439,6 +461,7 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
+                    self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 except Exception as exc:
                     last_exc = exc
@@ -446,6 +469,7 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
+                    self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 finally:
                     if res is not None:
@@ -654,6 +678,56 @@ class ReSTXRayNode:
         self._ensure_connected()
         self.make_request("/update_geo", timeout=300, files=files)
 
+    def get_access_logs(self, max_lines: int = 500) -> list[str]:
+        """
+        Fetch access logs from node.
+        Prefer websocket transport for lower overhead; fallback to REST endpoint.
+        """
+        self._ensure_connected()
+        max_lines = max(1, int(max_lines))
+
+        # Prefer websocket endpoint when available on node service.
+        try:
+            websocket_url = (
+                f"wss://{self.address.strip('/')}:{self.port}/access_logs/ws"
+                f"?session_id={self._session_id}&max_lines={max_lines}"
+            )
+            self._ssl_context.load_verify_locations(self.session.verify)
+            ws = create_connection(
+                websocket_url,
+                sslopt={"context": self._ssl_context},
+                timeout=40,
+                **self._ws_proxy_options,
+            )
+            try:
+                payload = ws.recv()
+            finally:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+
+            data = json.loads(payload) if payload else {}
+            if isinstance(data, dict):
+                if data.get("error"):
+                    raise NodeAPIError(0, data.get("error"))
+                lines = data.get("lines", [])
+                if isinstance(lines, list):
+                    return [str(line) for line in lines]
+        except Exception:
+            # Fallback to REST endpoint for backward compatibility with older nodes.
+            pass
+
+        response = self.make_request("/access_logs", timeout=30, max_lines=max_lines)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid access logs response from node")
+        if not response.get("exists"):
+            return []
+        lines = response.get("lines") or []
+        if not isinstance(lines, list):
+            raise NodeAPIError(0, "Invalid access logs payload")
+        return [str(line) for line in lines]
+
     def _ensure_connected(self):
         try:
             connected, _ = self.refresh_health(force=True)
@@ -674,6 +748,8 @@ class XRayNode:
         usage_coefficient: float = 1,
         proxy: Optional[dict] = None,
         server_cert: Optional[str] = None,
+        node_id: Optional[int] = None,
+        node_name: Optional[str] = None,
     ):
         return ReSTXRayNode(
             address=address,
@@ -684,4 +760,6 @@ class XRayNode:
             usage_coefficient=usage_coefficient,
             proxy=proxy,
             server_cert=server_cert,
+            node_id=node_id,
+            node_name=node_name,
         )

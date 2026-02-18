@@ -6,11 +6,12 @@ import re
 import threading
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 import os
 import requests
+from urllib.parse import urlsplit, urlunsplit
 
 from app.runtime import xray
 from config import XRAY_ASSETS_PATH, XRAY_LOG_DIR, REDIS_ENABLED
@@ -61,8 +62,44 @@ _json_geo_cache: dict[str, Any] = {"loaded_at": None, "domain_map": {}, "ip_netw
 _json_geo_lock = threading.Lock()
 _JSON_GEO_TTL_SECONDS = 600
 _JSON_GEOSITE_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/geosite.json"
-_JSON_GEOIP_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/geoip.json"
-_JSON_ISP_URL = "https://raw.githubusercontent.com/ppouria/geo-templates/main/ISPbyrange.json"
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_iso(value: Optional[datetime] = None) -> str:
+    dt = _ensure_utc(value) if isinstance(value, datetime) else _utcnow()
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def _sibling_raw_url(base_url: str, filename: str) -> str:
+    """
+    Build a sibling raw GitHub URL from the geosite URL.
+    Keeps scheme/host/repo/branch path intact and swaps only filename.
+    """
+    try:
+        parsed = urlsplit(base_url)
+        path = parsed.path or ""
+        if "/" not in path:
+            return base_url
+        parent = path.rsplit("/", 1)[0]
+        sibling_path = f"{parent}/{filename}"
+        return urlunsplit((parsed.scheme, parsed.netloc, sibling_path, parsed.query, parsed.fragment))
+    except Exception:
+        if "/" in base_url:
+            return f"{base_url.rsplit('/', 1)[0]}/{filename}"
+        return base_url
+
+
+_JSON_GEOIP_URL = _sibling_raw_url(_JSON_GEOSITE_URL, "geoip.json")
+_JSON_ISP_URL = _sibling_raw_url(_JSON_GEOSITE_URL, "ISPbyrange.json")
 _json_isp_cache: dict[str, Any] = {"loaded_at": None, "ranges": []}  # ranges: list[(network, short_name, owner)]
 
 
@@ -75,6 +112,34 @@ class NodeLogSource:
     log_path: Optional[Path]
     is_master: bool
     fetch_lines: Optional[Callable[[int], list[str]]] = None
+    connected: bool = False
+
+
+def _load_node_metadata() -> dict[int, dict[str, Any]]:
+    """
+    Load node metadata (name/status) for debug-friendly source labels.
+    Falls back to empty mapping if DB is unavailable.
+    """
+    try:
+        from app.db import GetDB, crud
+    except Exception:
+        return {}
+
+    metadata: dict[int, dict[str, Any]] = {}
+    try:
+        with GetDB() as db:
+            for dbnode in crud.get_nodes(db):
+                if dbnode.id is None:
+                    continue
+                node_id = int(dbnode.id)
+                metadata[node_id] = {
+                    "name": getattr(dbnode, "name", None),
+                    "status": getattr(dbnode, "status", None),
+                }
+    except Exception:
+        return {}
+
+    return metadata
 
 
 def _resolve_assets_base() -> Path:
@@ -99,30 +164,38 @@ def get_all_log_sources() -> list[NodeLogSource]:
 
     # Add master xray log
     master_log = resolve_access_log_path()
-    if master_log.exists():
-        sources.append(
-            NodeLogSource(
-                node_id=None,
-                node_name="Master",
-                log_path=master_log,
-                is_master=True,
-                fetch_lines=None,
-            )
+    sources.append(
+        NodeLogSource(
+            node_id=None,
+            node_name="master",
+            log_path=master_log,
+            is_master=True,
+            fetch_lines=None,
+            connected=master_log.exists(),
         )
+    )
 
     # Add node logs via REST API
     if xray and hasattr(xray, "nodes"):
+        node_metadata = _load_node_metadata()
         for node_id, node in xray.nodes.items():
-            if not getattr(node, "connected", False):
+            metadata = node_metadata.get(int(node_id), {})
+            status_raw = metadata.get("status")
+            status = str(getattr(status_raw, "value", status_raw)).strip().lower() if status_raw is not None else ""
+            if status in {"disabled", "limited"}:
                 continue
+
+            node_name = metadata.get("name") or getattr(node, "name", None) or f"Node-{node_id}"
+            connected = bool(getattr(node, "_session_id", None))
             try:
                 sources.append(
                     NodeLogSource(
                         node_id=node_id,
-                        node_name=node.name or f"Node-{node_id}",
+                        node_name=node_name,
                         log_path=None,
                         is_master=False,
                         fetch_lines=lambda max_lines, _node=node: _fetch_node_access_logs(_node, max_lines),
+                        connected=connected,
                     )
                 )
             except Exception:
@@ -289,7 +362,9 @@ def _load_json_geo_assets() -> tuple[dict[str, str], list[tuple[ipaddress._BaseN
     """
     with _json_geo_lock:
         loaded_at = _json_geo_cache.get("loaded_at")
-        if loaded_at and (datetime.utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
+        if isinstance(loaded_at, datetime):
+            loaded_at = _ensure_utc(loaded_at)
+        if loaded_at and (_utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
             return _json_geo_cache.get("domain_map", {}), _json_geo_cache.get("ip_networks", [])
 
         domain_map: dict[str, str] = {}
@@ -326,7 +401,7 @@ def _load_json_geo_assets() -> tuple[dict[str, str], list[tuple[ipaddress._BaseN
                     except Exception:
                         continue
 
-        _json_geo_cache["loaded_at"] = datetime.utcnow()
+        _json_geo_cache["loaded_at"] = _utcnow()
         _json_geo_cache["domain_map"] = domain_map
         _json_geo_cache["ip_networks"] = ip_networks
         return domain_map, ip_networks
@@ -402,7 +477,9 @@ def classify_connection(host: str | None, ip: str | None, assets: GeoAssets) -> 
 def _load_json_isp_ranges() -> list[tuple[ipaddress._BaseNetwork, str, str]]:
     with _json_geo_lock:
         loaded_at = _json_isp_cache.get("loaded_at")
-        if loaded_at and (datetime.utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
+        if isinstance(loaded_at, datetime):
+            loaded_at = _ensure_utc(loaded_at)
+        if loaded_at and (_utcnow() - loaded_at).total_seconds() < _JSON_GEO_TTL_SECONDS:
             return _json_isp_cache.get("ranges", [])
 
         ranges: list[tuple[ipaddress._BaseNetwork, str, str]] = []
@@ -429,7 +506,7 @@ def _load_json_isp_ranges() -> list[tuple[ipaddress._BaseNetwork, str, str]]:
         except Exception:
             ranges = _json_isp_cache.get("ranges", [])
 
-        _json_isp_cache["loaded_at"] = datetime.utcnow()
+        _json_isp_cache["loaded_at"] = _utcnow()
         _json_isp_cache["ranges"] = ranges
         return ranges
 
@@ -457,10 +534,15 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
     """
     host_val = (host or "").lower()
     if host_val:
+        # Access log parser may produce truncated bracketed IPv6 hosts like "[2a02".
+        # Treat those as IPv6 traffic instead of unmapped "other".
+        if host_val.startswith("["):
+            return "ipv6"
+
         fast_map = [
             (("googlevideo.com", "ytimg.com", "youtube.com"), "youtube"),
             (("instagram.com", "cdninstagram.com", "fbcdn.net"), "instagram"),
-            (("tiktok", "pangle"), "tiktok"),
+            (("tiktok", "pangle", "ibyteimg.com", "byteimg.com"), "tiktok"),
             (("whatsapp.com", "whatsapp.net"), "whatsapp"),
             (("facebook.com", "messenger.com"), "facebook"),
             (("telegram.org", "t.me", "telegram.me"), "telegram"),
@@ -473,17 +555,132 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
                     "googleapis.com",
                     "gstatic.com",
                     "gmail.com",
+                    "google.",
                     "play.googleapis.com",
                     "googlevideo.com",
                     "googleusercontent.com",
+                    "crashlytics.com",
+                    "doubleclick.net",
+                    "gvt1.com",
+                    "ggpht.com",
+                    "dns.google",
                 ),
                 "google",
             ),
-            (("icloud.com", "apple.com", "mzstatic.com"), "apple"),
-            (("microsoft.com", "live.com", "office.com"), "microsoft"),
-            (("cloudflare.com",), "cloudflare"),
+            (("icloud.com", "apple.com", "mzstatic.com", "mail.me.com", "safebrowsing.apple"), "apple"),
+            (
+                (
+                    "microsoft.com",
+                    "live.com",
+                    "office.com",
+                    "msn.com",
+                    "bing.com",
+                    "trafficmanager.net",
+                    "vscode-cdn.net",
+                    "vscode.dev",
+                    "vscode-sync.",
+                ),
+                "microsoft",
+            ),
+            (
+                (
+                    "github.com",
+                    "githubusercontent.com",
+                    "githubassets.com",
+                    "github.io",
+                    "github.dev",
+                    "alive.github.com",
+                ),
+                "github",
+            ),
+            (
+                (
+                    "steampowered.com",
+                    "steamcommunity.com",
+                    "steamstatic.com",
+                    "steamserver.net",
+                    "steamcontent.com",
+                    "steam-chat.com",
+                ),
+                "steam",
+            ),
+            (
+                (
+                    "chatgpt.com",
+                    "chat.openai.com",
+                    "ab.chatgpt.com",
+                    "openai.com",
+                    "auth.openai.com",
+                    "help.openai.com",
+                    "cdn.platform.openai.com",
+                    "cdn.openai.com",
+                    "oaistatic.com",
+                ),
+                "openai",
+            ),
+            (
+                (
+                    "opera.com",
+                    "operacdn.com",
+                ),
+                "opera",
+            ),
+            (
+                (
+                    "mail.yahoo.com",
+                    "yahoo.com",
+                    "yahoosandbox.net",
+                ),
+                "yahoo",
+            ),
+            (
+                (
+                    "micloud.xiaomi.net",
+                    "miui.com",
+                    "xiaomi.com",
+                    "msg.global.xiaomi.net",
+                ),
+                "xiaomi",
+            ),
+            (("neshanmap.ir",), "neshan"),
+            (("eitaa.com", "eitaa.ir"), "eitaa"),
+            (("web.splus.ir",), "splus"),
+            (("linkedin.com",), "linkedin"),
+            (("divar.ir", "divarcdn.com"), "divar"),
+            (("services.mozilla.com",), "mozilla"),
+            (("codmwest.com",), "codm"),
+            (("soundcloud.com",), "soundcloud"),
+            (("discord.gg", "discord.com"), "discord"),
+            (("yektanet.com",), "yektanet"),
+            (("tsyndicate.com",), "tsyndicate"),
+            (("uuidksinc.net",), "uuidksinc"),
+            (("beyla.site",), "beyla"),
+            (("flixcdn.com",), "flixcdn"),
+            (("xhcdn.com", "xnxx-cdn.com"), "porn"),
+            (("hansha.online",), "hansha"),
+            (("sotoon.ir",), "sotoon"),
+            (("ocsp-certum.com",), "certum"),
+            (("mazholl.com",), "mazholl"),
+            (("samsungosp.com", "samsungapps.com"), "samsung"),
+            (("samsungiotcloud.com",), "samsung"),
+            (("ipwho.is", "api.ip.sb", "seeip.org"), "ip_lookup"),
+            (("ifconfig.co",), "ip_lookup"),
+            (("cloudflare.com", "one.one.one.one", "pullcf.com"), "cloudflare"),
             (("applovin.com",), "applovin"),
+            (("applvn.com",), "applovin"),
             (("samsung.com", "samsungcloudcdn.com"), "samsung"),
+            (("googlesyndication.com", "googleadservices.com"), "google_ads"),
+            (("appmetrica.yandex.net",), "yandex"),
+            (("playfabapi.com",), "playfab"),
+            (("shalltry.com", "transsion-os.com"), "transsion"),
+            (("optime-ai.com",), "optime_ai"),
+            (("truecaller.com",), "truecaller"),
+            (("xiaohongshu.com",), "xiaohongshu"),
+            (("dbankcloud.asia", "dbankcloud.eu"), "huawei"),
+            (("launchdarkly.com",), "launchdarkly"),
+            (("expressapisv2.net",), "expressapis"),
+            (("dalyfeds.com",), "dalyfeds"),
+            (("fexori.com",), "fexori"),
         ]
         for needles, platform in fast_map:
             if any(n in host_val for n in needles):
@@ -499,11 +696,67 @@ def guess_platform(host: str | None, ip: str | None, assets: GeoAssets) -> str:
     ip_val = ip or ""
     if ip_val:
         fast_ip_map = [
-            (("149.154.167.", "149.154.175.", "91.108."), "telegram"),
+            (("149.154.", "91.108."), "telegram"),
             (("157.240.",), "facebook"),
-            (("172.64.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."), "cloudflare"),
-            (("8.8.8.8", "8.8.4.4"), "google-dns"),
+            (("102.132.",), "facebook"),
+            (("31.13.", "57.144.", "185.60."), "instagram"),
+            (("140.82.", "185.199.", "20.201.", "192.30."), "github"),
+            (("155.133.", "162.254.", "208.64.", "146.66.", "205.196."), "steam"),
+            (("47.241.", "47.74.", "161.117."), "alibaba"),
+            (("20.33.",), "microsoft"),
+            (("2.16.",), "akamai"),
+            (("2.189.58.",), "eitaa"),
+            (("2.189.68.", "5.28.", "85.133.", "185.79.", "195.254.", "91.98."), "iran"),
+            (("13.51.",), "aws"),
+            (
+                (
+                    "188.212.98.",
+                    "89.167.",
+                    "194.26.66.",
+                    "74.1.1.",
+                    "87.248.132.",
+                    "65.21.",
+                    "65.109.",
+                    "95.216.",
+                    "37.27.",
+                    "5.78.",
+                    "193.151.132.",
+                    "199.103.24.",
+                    "82.21.204.",
+                    "195.62.32.",
+                    "198.46.254.",
+                    "178.156.212.",
+                    "185.22.42.",
+                    "212.33.197.",
+                    "156.146.",
+                ),
+                "hosting",
+            ),
+            (("17.",), "apple"),
+            (
+                ("172.64.", "172.65.", "162.159.", "104.16.", "104.17.", "104.18.", "104.19.", "104.20."),
+                "cloudflare",
+            ),
+            (
+                (
+                    "8.8.8.8",
+                    "8.8.4.4",
+                    "216.58.",
+                    "216.239.",
+                    "142.250.",
+                    "142.251.",
+                    "172.217.",
+                    "173.194.",
+                    "74.125.",
+                    "34.102.",
+                    "34.120.",
+                    "35.190.",
+                ),
+                "google",
+            ),
             (("1.1.1.1", "1.0.0.1"), "cloudflare-dns"),
+            (("10.", "127.", "198.18.", "239.255.255."), "local"),
+            (("71.18.",), "tiktok"),
         ]
         for prefixes, platform in fast_ip_map:
             if any(ip_val.startswith(pref) for pref in prefixes):
@@ -547,7 +800,7 @@ ACCESS_RE = re.compile(
 def _parse_timestamp(raw: str) -> Optional[datetime]:
     for fmt in ("%Y/%m/%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S"):
         try:
-            return datetime.strptime(raw, fmt)
+            return _ensure_utc(datetime.strptime(raw, fmt))
         except ValueError:
             continue
     return None
@@ -652,7 +905,7 @@ def build_access_insights(
                 "matched_entries": 0,
                 "geo_assets_path": "",
                 "geo_assets": {"geosite": False, "geoip": False},
-                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "generated_at": _utc_iso(),
                 "lookback_lines": 0,
                 "window_seconds": window_seconds,
             }
@@ -676,7 +929,7 @@ def build_access_insights(
             "matched_entries": 0,
             "geo_assets_path": str(_resolve_assets_base()),
             "geo_assets": {"geosite": False, "geoip": False},
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_iso(),
             "lookback_lines": lookback_lines,
             "window_seconds": window_seconds,
         }
@@ -689,11 +942,12 @@ def build_access_insights(
     users_by_platform: dict[str, set[str]] = {}
     total_unique_clients: set[str] = set()
     platform_cache: dict[tuple[Any, Any], Optional[str]] = {}
+    isp_cache: dict[str, tuple[str, str]] = {}
     unmatched_entries: list[dict[str, Any]] = []
     unmatched_seen: set[tuple[str, Optional[str]]] = set()
     redis_client = get_redis() if REDIS_ENABLED else None
 
-    cutoff = datetime.utcnow() - timedelta(seconds=window_seconds)
+    cutoff = _utcnow() - timedelta(seconds=window_seconds)
     total_matches = 0
 
     for raw in reversed(lines):
@@ -757,6 +1011,8 @@ def build_access_insights(
                 "route": entry.get("route") or "",
                 "connections": 0,
                 "sources": set(),
+                "nodes": set(),
+                "source_nodes": {},
                 "operators": {},
                 "operator_counts": {},
                 "platforms": {},
@@ -765,7 +1021,15 @@ def build_access_insights(
 
         if source_ip:
             client["sources"].add(source_ip)
-            op_short, op_owner = classify_isp(source_ip)
+            client["nodes"].add("master")
+            source_nodes = client["source_nodes"]
+            if source_ip not in source_nodes:
+                source_nodes[source_ip] = set()
+            source_nodes[source_ip].add("master")
+            op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
+            if source_ip not in isp_cache:
+                op_short, op_owner = classify_isp(source_ip)
+                isp_cache[source_ip] = (op_short, op_owner)
             client["operators"][source_ip] = {"short_name": op_short, "owner": op_owner}
             op_key = op_short or op_owner or "Unknown"
             client["operator_counts"][op_key] = client["operator_counts"].get(op_key, 0) + 1
@@ -816,10 +1080,14 @@ def build_access_insights(
             {
                 "user_key": c["user_key"],
                 "user_label": c["user_label"],
-                "last_seen": last_seen_dt.isoformat() + "Z",
+                "last_seen": _utc_iso(last_seen_dt),
                 "route": c.get("route") or "",
                 "connections": c["connections"],
                 "sources": sorted(c.get("sources") or []),
+                "nodes": sorted(c.get("nodes") or []),
+                "source_nodes": {
+                    ip: sorted(list(node_names)) for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
                     for ip, meta in sorted(c.get("operators", {}).items())
@@ -854,7 +1122,7 @@ def build_access_insights(
             for name, count in top_platforms
         ],
         "matched_entries": total_matches,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_iso(),
         "lookback_lines": lookback_lines,
         "window_seconds": window_seconds,
         "unmatched": unmatched_entries,
@@ -863,17 +1131,34 @@ def build_access_insights(
 
 def _fetch_node_access_logs(node, max_lines: int = 500) -> list[str]:
     """
-    Fetch access logs from a remote node via API.
+    Fetch access logs from a remote node.
+    Uses websocket transport when available on the node, otherwise REST fallback.
     Returns list of log lines.
     """
+    max_lines = max(1, int(max_lines))
     try:
-        response = node.make_request("/access_logs", timeout=30, max_lines=max_lines)
-        if response and isinstance(response, dict):
-            if response.get("exists") and response.get("lines"):
-                return response["lines"]
+        # New node client API (websocket-preferred + REST fallback)
+        if hasattr(node, "get_access_logs"):
+            lines = node.get_access_logs(max_lines=max_lines)
+            if isinstance(lines, list):
+                return [str(line) for line in lines]
+            raise RuntimeError("Invalid access logs response from node")
+
+        # Legacy fallback for older node client objects.
+        if hasattr(node, "_ensure_connected"):
+            node._ensure_connected()
+
+        response = node.make_request("/access_logs", timeout=40, max_lines=max_lines)
+        if isinstance(response, dict):
+            if not response.get("exists"):
+                return []
+            lines = response.get("lines") or []
+            if isinstance(lines, list):
+                return [str(line) for line in lines]
+            raise RuntimeError("Invalid access logs payload from node")
         return []
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _iter_source_lines(source: NodeLogSource, max_lines: int) -> list[str]:
@@ -885,6 +1170,35 @@ def _iter_source_lines(source: NodeLogSource, max_lines: int) -> list[str]:
         return _tail(source.log_path, max_lines)
 
     return []
+
+
+def _distribute_line_budget(
+    total_lines: int,
+    source_count: int,
+    preferred_min_per_source: int = 0,
+) -> list[int]:
+    """
+    Distribute one global line budget across N sources without exceeding total_lines.
+    """
+    if source_count <= 0:
+        return []
+
+    total_lines = max(0, int(total_lines))
+    preferred_min_per_source = max(0, int(preferred_min_per_source))
+
+    if preferred_min_per_source > 0 and total_lines >= preferred_min_per_source * source_count:
+        budgets = [preferred_min_per_source] * source_count
+        remaining = total_lines - (preferred_min_per_source * source_count)
+        idx = 0
+        while remaining > 0:
+            budgets[idx] += 1
+            remaining -= 1
+            idx = (idx + 1) % source_count
+        return budgets
+
+    base = total_lines // source_count
+    remainder = total_lines % source_count
+    return [base + (1 if i < remainder else 0) for i in range(source_count)]
 
 
 def stream_raw_logs(
@@ -926,6 +1240,7 @@ def stream_raw_logs(
                 "node_id": s.node_id,
                 "node_name": s.node_name,
                 "is_master": s.is_master,
+                "connected": s.connected,
             }
             for s in sources
         ],
@@ -933,18 +1248,27 @@ def stream_raw_logs(
 
     # Stream lines from each source
     search_lower = search.lower() if search else ""
-    lines_per_source = max(50, max_lines // len(sources))
+    source_budgets = _distribute_line_budget(
+        total_lines=max_lines,
+        source_count=len(sources),
+        preferred_min_per_source=50,
+    )
 
-    for source in sources:
+    for source, source_max_lines in zip(sources, source_budgets):
+        if source_max_lines <= 0:
+            continue
         try:
-            lines = _iter_source_lines(source, lines_per_source)
+            lines = _iter_source_lines(source, source_max_lines)
+            total_lines = len(lines)
 
             chunk = []
+            matched_lines = 0
             for line in lines:
                 if search_lower and search_lower not in line.lower():
                     continue
 
                 chunk.append(line)
+                matched_lines += 1
 
                 if len(chunk) >= 50:
                     yield {
@@ -964,11 +1288,33 @@ def stream_raw_logs(
                     "lines": chunk,
                 }
 
+            yield {
+                "type": "source_status",
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": True,
+                "total_lines": total_lines,
+                "matched_lines": matched_lines,
+            }
+
         except Exception as e:
             yield {
                 "type": "error",
                 "node_id": source.node_id,
                 "node_name": source.node_name,
+                "error": str(e),
+            }
+            yield {
+                "type": "source_status",
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": False,
+                "total_lines": 0,
+                "matched_lines": 0,
                 "error": str(e),
             }
 
@@ -994,7 +1340,7 @@ def build_multi_node_insights(
                 "detail": "Access Insights is disabled in panel settings",
                 "items": [],
                 "platforms": [],
-                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "generated_at": _utc_iso(),
             }
     except Exception:
         pass
@@ -1010,38 +1356,66 @@ def build_multi_node_insights(
             "detail": "No access logs found for the requested nodes",
             "items": [],
             "platforms": [],
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_iso(),
         }
 
     lookback_lines = max(limit, min(lookback_lines, 2000))
     window_seconds = max(5, min(window_seconds, 600))
 
     assets = load_geo_assets()
-    cutoff = datetime.utcnow() - timedelta(seconds=window_seconds)
+    cutoff = _utcnow() - timedelta(seconds=window_seconds)
 
     MAX_CLIENTS = 500
     clients: dict[str, dict[str, Any]] = {}
     users_by_platform: dict[str, set[str]] = {}
     platform_cache: dict[tuple[Any, Any], Optional[str]] = {}
+    isp_cache: dict[str, tuple[str, str]] = {}
     redis_client = get_redis() if REDIS_ENABLED else None
 
     total_matches = 0
-    lines_per_source = max(100, lookback_lines // len(sources))
+    search_lower = (search or "").strip().lower()
+    source_statuses: list[dict[str, Any]] = []
+    source_budgets = _distribute_line_budget(
+        total_lines=lookback_lines,
+        source_count=len(sources),
+        preferred_min_per_source=100,
+    )
 
-    for source in sources:
+    for source, source_max_lines in zip(sources, source_budgets):
+        if source_max_lines <= 0:
+            continue
         try:
-            lines = _iter_source_lines(source, lines_per_source)
-        except Exception:
+            lines = _iter_source_lines(source, source_max_lines)
+        except Exception as exc:
+            source_statuses.append(
+                {
+                    "node_id": source.node_id,
+                    "node_name": source.node_name,
+                    "is_master": source.is_master,
+                    "connected": source.connected,
+                    "ok": False,
+                    "total_lines": 0,
+                    "matched_lines": 0,
+                    "error": str(exc),
+                }
+            )
             continue
 
+        source_total_lines = len(lines)
+        source_matched_lines = 0
         for raw in reversed(lines):
+            if search_lower and search_lower not in raw.lower():
+                continue
+            source_matched_lines += 1
             entry = parse_access_line(raw)
             if not entry or entry.get("action") != "accepted":
                 continue
 
             ts = entry.get("timestamp")
-            if not isinstance(ts, datetime) or ts < cutoff:
+            if not isinstance(ts, datetime):
                 continue
+            if ts < cutoff:
+                break
 
             source_ip = entry.get("source") or ""
             if ":" in source_ip and not source_ip.startswith("["):
@@ -1093,6 +1467,7 @@ def build_multi_node_insights(
                     "connections": 0,
                     "sources": set(),
                     "nodes": set(),
+                    "source_nodes": {},
                     "operators": {},
                     "operator_counts": {},
                     "platforms": {},
@@ -1103,7 +1478,14 @@ def build_multi_node_insights(
 
             if source_ip:
                 client["sources"].add(source_ip)
-                op_short, op_owner = classify_isp(source_ip)
+                source_nodes = client["source_nodes"]
+                if source_ip not in source_nodes:
+                    source_nodes[source_ip] = set()
+                source_nodes[source_ip].add(source.node_name)
+                op_short, op_owner = isp_cache.get(source_ip) or ("Unknown", "Unknown")
+                if source_ip not in isp_cache:
+                    op_short, op_owner = classify_isp(source_ip)
+                    isp_cache[source_ip] = (op_short, op_owner)
                 client["operators"][source_ip] = {"short_name": op_short, "owner": op_owner}
                 op_key = op_short or op_owner or "Unknown"
                 client["operator_counts"][op_key] = client["operator_counts"].get(op_key, 0) + 1
@@ -1125,6 +1507,18 @@ def build_multi_node_insights(
 
             total_matches += 1
 
+        source_statuses.append(
+            {
+                "node_id": source.node_id,
+                "node_name": source.node_name,
+                "is_master": source.is_master,
+                "connected": source.connected,
+                "ok": True,
+                "total_lines": source_total_lines,
+                "matched_lines": source_matched_lines,
+            }
+        )
+
     client_list: list[dict[str, Any]] = []
     for c in clients.values():
         platforms_list = []
@@ -1143,11 +1537,14 @@ def build_multi_node_insights(
             {
                 "user_key": c["user_key"],
                 "user_label": c["user_label"],
-                "last_seen": last_seen_dt.isoformat() + "Z",
+                "last_seen": _utc_iso(last_seen_dt),
                 "route": c.get("route") or "",
                 "connections": c["connections"],
                 "sources": sorted(list(c.get("sources") or [])[:20]),
                 "nodes": sorted(list(c.get("nodes") or [])),
+                "source_nodes": {
+                    ip: sorted(list(node_names)) for ip, node_names in sorted((c.get("source_nodes") or {}).items())
+                },
                 "operators": [
                     {"ip": ip, "short_name": meta.get("short_name"), "owner": meta.get("owner")}
                     for ip, meta in sorted(list(c.get("operators", {}).items())[:10])
@@ -1171,9 +1568,11 @@ def build_multi_node_insights(
                 "node_id": s.node_id,
                 "node_name": s.node_name,
                 "is_master": s.is_master,
+                "connected": s.connected,
             }
             for s in sources
         ],
+        "source_statuses": source_statuses,
         "items": client_list,
         "platform_counts": platform_counts,
         "platforms": [
@@ -1185,7 +1584,7 @@ def build_multi_node_insights(
             for name, count in top_platforms
         ],
         "matched_entries": total_matches,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_iso(),
         "lookback_lines": lookback_lines,
         "window_seconds": window_seconds,
     }

@@ -152,7 +152,7 @@ export type InboundFormValues = {
 
 	// WS
 	wsPath: string;
-	wsHost: string; // mapped به Host header
+	wsHost: string; // mapped to wsSettings.host
 	wsHeaders: HeaderForm[];
 
 	// TCP header
@@ -591,7 +591,7 @@ export const createDefaultInboundForm = (
 	realityRawSettings: {},
 	wsPath: "/",
 	wsHost: "",
-	wsHeaders: [createDefaultHeader()],
+	wsHeaders: [],
 	tcpHeaderType: "none",
 	tcpHttpHosts: "",
 	tcpHttpPath: "/",
@@ -829,13 +829,18 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityRawSettings: rawRealitySettings,
 		wsPath: stream?.wsSettings?.path ?? base.wsPath,
 		wsHost:
-			stream?.wsSettings?.headers?.Host !== undefined
-				? Array.isArray(stream.wsSettings.headers.Host)
-					? stream.wsSettings.headers.Host.join(",")
-					: String(stream.wsSettings.headers.Host)
-				: base.wsHost,
+			(() => {
+				const hostValue = stream?.wsSettings?.host;
+				if (typeof hostValue === "string" && hostValue.trim().length) {
+					return hostValue;
+				}
+				if (Array.isArray(hostValue) && hostValue.length) {
+					return hostValue.join(",");
+				}
+				return getHeaderValue(stream?.wsSettings?.headers, "Host");
+			})() ?? base.wsHost,
 		wsHeaders: stream?.wsSettings?.headers
-			? headersToForm(stream.wsSettings.headers)
+			? headersToForm(omitHeader(stream.wsSettings.headers, "Host"))
 			: base.wsHeaders,
 		tcpHeaderType: stream?.tcpSettings?.header?.type ?? base.tcpHeaderType,
 		tcpHttpHosts: joinLines(
@@ -1023,6 +1028,48 @@ const headersFromForm = (
 	headers: HeaderForm[],
 ): Record<string, string | string[]> | undefined => normalizeHeaderMap(headers);
 
+const headersFromFormSingleValue = (
+	headers: HeaderForm[],
+): Record<string, string> | undefined => {
+	const record: Record<string, string> = {};
+	headers.forEach(({ name, value }) => {
+		const trimmedName = name?.trim();
+		const trimmedValue = value?.trim();
+		if (!trimmedName || !trimmedValue) {
+			return;
+		}
+		record[trimmedName] = trimmedValue;
+	});
+	return Object.keys(record).length ? record : undefined;
+};
+
+const getHeaderValue = (
+	headers: Record<string, string | string[]> | undefined,
+	headerName: string,
+): string | undefined => {
+	if (!headers) return undefined;
+	const target = headerName.toLowerCase();
+	for (const [name, value] of Object.entries(headers)) {
+		if (name.toLowerCase() !== target) continue;
+		return Array.isArray(value) ? value.join(",") : String(value);
+	}
+	return undefined;
+};
+
+const omitHeader = (
+	headers: Record<string, string | string[]> | undefined,
+	headerName: string,
+): Record<string, string | string[]> | undefined => {
+	if (!headers) return undefined;
+	const target = headerName.toLowerCase();
+	const next: Record<string, string | string[]> = {};
+	for (const [name, value] of Object.entries(headers)) {
+		if (name.toLowerCase() === target) continue;
+		next[name] = value;
+	}
+	return Object.keys(next).length ? next : undefined;
+};
+
 const buildStreamSettings = (
 	values: InboundFormValues,
 	options?: BuildInboundOptions,
@@ -1044,19 +1091,16 @@ const buildStreamSettings = (
 	}
 
 	if (values.streamNetwork === "ws") {
-		let headers = headersFromForm(values.wsHeaders);
+		const headers = omitHeader(
+			headersFromFormSingleValue(values.wsHeaders),
+			"Host",
+		);
 		const wsHost = values.wsHost.trim();
-		if (wsHost) {
-			if (!headers) {
-				headers = { Host: wsHost };
-			} else if (!("Host" in headers)) {
-				headers.Host = wsHost;
-			}
-		}
 
 		stream.wsSettings = cleanObject({
 			acceptProxyProtocol: values.wsAcceptProxyProtocol || undefined,
 			path: values.wsPath || undefined,
+			host: wsHost || undefined,
 			headers,
 		});
 	}

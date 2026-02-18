@@ -3,12 +3,15 @@ import {
 	AlertIcon,
 	Badge,
 	Box,
+	Button,
+	ButtonGroup,
 	HStack,
 	Icon,
 	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
+	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -34,6 +37,7 @@ import {
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
+	type ChangeEvent,
 	type ElementType,
 	type FC,
 	useCallback,
@@ -43,6 +47,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { IconType } from "react-icons";
+import { FaMicrosoft } from "react-icons/fa";
 import { FiGlobe } from "react-icons/fi";
 import {
 	SiApple,
@@ -50,11 +55,13 @@ import {
 	SiBitcoin,
 	SiCloudflare,
 	SiFacebook,
+	SiGithub,
 	SiGoogle,
 	SiInstagram,
 	SiNetflix,
 	SiSamsung,
 	SiSnapchat,
+	SiSteam,
 	SiTelegram,
 	SiTiktok,
 	SiWhatsapp,
@@ -67,9 +74,12 @@ import { getPanelSettings } from "service/settings";
 import type {
 	AccessInsightClient,
 	AccessInsightPlatform,
+	AccessInsightSource,
+	AccessInsightSourceStatus,
 	AccessInsightsResponse,
 	AccessInsightUnmatched,
 } from "types/AccessInsights";
+import { getAuthToken } from "utils/authStorage";
 import IrancellSvg from "../assets/operators/irancell-svgrepo-com.svg";
 import MciSvg from "../assets/operators/mci-svgrepo-com.svg";
 import RightelSvg from "../assets/operators/rightel-svgrepo-com.svg";
@@ -78,6 +88,64 @@ import TciSvg from "../assets/operators/tci-svgrepo-com.svg";
 const REFRESH_INTERVAL = 5000;
 const DEFAULT_LIMIT = 250;
 const DEFAULT_WINDOW_SECONDS = 120;
+const ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
+const ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY =
+	"rebecca-access-insights-per-page";
+const DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE = 10;
+
+const readAccessInsightsPageSize = () => {
+	if (typeof window === "undefined") return DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE;
+	const raw = window.localStorage.getItem(
+		ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY,
+	);
+	const parsed = Number.parseInt(raw || "", 10);
+	if (
+		Number.isFinite(parsed) &&
+		ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.includes(
+			parsed as (typeof ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS)[number],
+		)
+	) {
+		return parsed;
+	}
+	return DEFAULT_ACCESS_INSIGHTS_PAGE_SIZE;
+};
+
+const writeAccessInsightsPageSize = (value: number) => {
+	if (typeof window === "undefined") return;
+	window.localStorage.setItem(
+		ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY,
+		String(value),
+	);
+};
+
+const MIN_PAGINATION_ITEMS = 5;
+const PAGINATION_WIDTH = 7;
+
+const generatePageItems = (total: number, current: number, width: number) => {
+	if (width < MIN_PAGINATION_ITEMS || width % 2 === 0) return [];
+	if (total <= width) return Array.from({ length: total }, (_, index) => index);
+	const left = Math.max(
+		0,
+		Math.min(total - width, current - Math.floor(width / 2)),
+	);
+	const items: Array<string | number> = Array.from(
+		{ length: width },
+		(_, index) => left + index,
+	);
+	if (typeof items[0] === "number" && items[0] > 0) {
+		items[0] = 0;
+		items[1] = "prev-more";
+	}
+	if (
+		typeof items[items.length - 1] === "number" &&
+		(items[items.length - 1] as number) < total - 1
+	) {
+		items[items.length - 1] = total - 1;
+		items[items.length - 2] = "next-more";
+	}
+	return items;
+};
+
 const iconAs = (icon: IconType) => icon as unknown as ElementType;
 
 const renderPlatformIcon = (name: string) => {
@@ -94,8 +162,10 @@ const renderPlatformIcon = (name: string) => {
 	if (n.includes("cloudflare")) return <Icon as={iconAs(SiCloudflare)} />;
 	if (n.includes("apple") || n.includes("icloud"))
 		return <Icon as={iconAs(SiApple)} />;
+	if (n.includes("github")) return <Icon as={iconAs(SiGithub)} />;
+	if (n.includes("steam")) return <Icon as={iconAs(SiSteam)} />;
 	if (n.includes("microsoft") || n.includes("windows"))
-		return <Icon as={iconAs(FiGlobe)} />;
+		return <Icon as={iconAs(FaMicrosoft)} />;
 	if (n.includes("netflix")) return <Icon as={iconAs(SiNetflix)} />;
 	if (n.includes("samsung")) return <Icon as={iconAs(SiSamsung)} />;
 	if (
@@ -137,6 +207,729 @@ const renderOperatorIcon = (name: string) => {
 		return <Box as="img" src={RightelSvg} style={style} />;
 	return <Icon as={iconAs(FiGlobe)} />;
 };
+
+const DEFAULT_MAX_LINES = 1000;
+const MAX_CLIENTS = 500;
+const ACCESS_LINE_RE =
+	/^(?<ts>\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+from\s+(?:(?<src_prefix>\w+):)?(?<src_ip>[0-9a-fA-F.:]+)(?::(?<src_port>\d+))?\s+(?<action>accepted|rejected)\s+(?:(?<net>\w+):)?(?<dest>[^:\s]+)(?::(?<dest_port>\d+))?(?:\s+\[(?<route>[^\]]+)\])?(?:\s+email:\s+(?<email>\S+))?/i;
+
+type RawLogsChunk = {
+	type: "logs";
+	node_id: number | null;
+	node_name: string;
+	lines: string[];
+};
+
+type RawMetadataChunk = {
+	type: "metadata";
+	sources: AccessInsightSource[];
+};
+
+type RawSourceStatusChunk = {
+	type: "source_status";
+	node_id: number | null;
+	node_name: string;
+	is_master?: boolean;
+	connected?: boolean;
+	ok: boolean;
+	total_lines: number;
+	matched_lines: number;
+	error?: string;
+};
+
+type RawErrorChunk = {
+	type: "error";
+	node_id?: number | null;
+	node_name?: string;
+	error: string;
+};
+
+type RawCompleteChunk = {
+	type: "complete";
+};
+
+type RawTopLevelError = {
+	error: string;
+	detail?: string;
+};
+
+type RawStreamChunk =
+	| RawLogsChunk
+	| RawMetadataChunk
+	| RawSourceStatusChunk
+	| RawErrorChunk
+	| RawCompleteChunk
+	| RawTopLevelError;
+
+type ParsedAccessLog = {
+	timestampMs: number | null;
+	action: string;
+	destination: string;
+	destinationIp: string | null;
+	source: string;
+	email: string | null;
+	route: string;
+	userKey: string;
+	userLabel: string;
+};
+
+type OperatorLookupItem = {
+	ip: string;
+	short_name?: string;
+	owner?: string;
+};
+
+type OperatorLookupResponse = {
+	operators?: OperatorLookupItem[];
+};
+
+type MutableClient = {
+	user_key: string;
+	user_label: string;
+	lastSeenMs: number;
+	route: string;
+	connectionEvents: number;
+	sources: Set<string>;
+	nodes: Set<string>;
+	sourceNodes: Map<string, Set<string>>;
+	platforms: Map<
+		string,
+		{ platform: string; connections: number; destinations: Set<string> }
+	>;
+};
+
+const parseXrayTimestamp = (raw: string): number | null => {
+	const [datePart, timePart] = raw.trim().split(/\s+/, 2);
+	if (!datePart || !timePart) return null;
+
+	const [yearRaw, monthRaw, dayRaw] = datePart.split("/");
+	const [hmsPart, fractionRaw = "0"] = timePart.split(".");
+	const [hourRaw, minuteRaw, secondRaw] = hmsPart.split(":");
+
+	const year = Number(yearRaw);
+	const month = Number(monthRaw);
+	const day = Number(dayRaw);
+	const hour = Number(hourRaw);
+	const minute = Number(minuteRaw);
+	const second = Number(secondRaw);
+	const ms = Number(fractionRaw.padEnd(3, "0").slice(0, 3));
+
+	if (
+		!Number.isFinite(year) ||
+		!Number.isFinite(month) ||
+		!Number.isFinite(day) ||
+		!Number.isFinite(hour) ||
+		!Number.isFinite(minute) ||
+		!Number.isFinite(second) ||
+		!Number.isFinite(ms)
+	) {
+		return null;
+	}
+
+	return Date.UTC(year, month - 1, day, hour, minute, second, ms);
+};
+
+const isIpLiteral = (value: string): boolean => {
+	if (!value) return false;
+	if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) return true;
+	return value.includes(":") && /^[0-9a-fA-F:]+$/.test(value);
+};
+
+const buildUserKey = (source: string, email: string | null) => {
+	if (email?.trim()) {
+		const label = email.trim();
+		return { key: label.toLowerCase(), label };
+	}
+
+	let src = source.trim();
+	if (src.includes(":") && !src.startsWith("[")) {
+		src = src.split(":", 1)[0] || src;
+	}
+	return { key: src, label: src };
+};
+
+const guessPlatformFromLine = (
+	destination: string,
+	destinationIp: string | null,
+): string => {
+	const host = (destination || "").toLowerCase();
+	if (host) {
+		// Access log parser may emit truncated bracketed IPv6 hosts like "[2a02".
+		if (host.startsWith("[")) return "ipv6";
+
+		const rules: Array<[string[], string]> = [
+			[["googlevideo.com", "ytimg.com", "youtube.com"], "youtube"],
+			[["instagram.com", "cdninstagram.com", "fbcdn.net"], "instagram"],
+			[["tiktok", "pangle", "ibyteimg.com", "byteimg.com"], "tiktok"],
+			[["whatsapp.com", "whatsapp.net"], "whatsapp"],
+			[["facebook.com", "messenger.com"], "facebook"],
+			[["telegram.org", "t.me", "telegram.me"], "telegram"],
+			[["snapchat.com"], "snapchat"],
+			[["netflix.com"], "netflix"],
+			[["twitter.com", "x.com"], "twitter"],
+			[
+				[
+					"google.com",
+					"googleapis.com",
+					"gstatic.com",
+					"gmail.com",
+					"google.",
+					"play.googleapis.com",
+					"googlevideo.com",
+					"googleusercontent.com",
+					"crashlytics.com",
+					"doubleclick.net",
+					"gvt1.com",
+					"ggpht.com",
+					"dns.google",
+				],
+				"google",
+			],
+			[
+				[
+					"icloud.com",
+					"apple.com",
+					"mzstatic.com",
+					"mail.me.com",
+					"safebrowsing.apple",
+				],
+				"apple",
+			],
+			[
+				[
+					"microsoft.com",
+					"live.com",
+					"office.com",
+					"msn.com",
+					"bing.com",
+					"trafficmanager.net",
+					"vscode-cdn.net",
+					"vscode.dev",
+					"vscode-sync.",
+				],
+				"microsoft",
+			],
+			[
+				[
+					"github.com",
+					"githubusercontent.com",
+					"githubassets.com",
+					"github.io",
+					"github.dev",
+					"alive.github.com",
+				],
+				"github",
+			],
+			[
+				[
+					"steampowered.com",
+					"steamcommunity.com",
+					"steamstatic.com",
+					"steamserver.net",
+					"steamcontent.com",
+					"steam-chat.com",
+				],
+				"steam",
+			],
+			[
+				[
+					"chatgpt.com",
+					"chat.openai.com",
+					"ab.chatgpt.com",
+					"openai.com",
+					"auth.openai.com",
+					"help.openai.com",
+					"cdn.platform.openai.com",
+					"cdn.openai.com",
+					"oaistatic.com",
+				],
+				"openai",
+			],
+			[["opera.com", "operacdn.com"], "opera"],
+			[["mail.yahoo.com", "yahoo.com", "yahoosandbox.net"], "yahoo"],
+			[
+				[
+					"micloud.xiaomi.net",
+					"miui.com",
+					"xiaomi.com",
+					"msg.global.xiaomi.net",
+				],
+				"xiaomi",
+			],
+			[["neshanmap.ir"], "neshan"],
+			[["eitaa.com", "eitaa.ir"], "eitaa"],
+			[["web.splus.ir"], "splus"],
+			[["linkedin.com"], "linkedin"],
+			[["divar.ir", "divarcdn.com"], "divar"],
+			[["services.mozilla.com"], "mozilla"],
+			[["codmwest.com"], "codm"],
+			[["soundcloud.com"], "soundcloud"],
+			[["discord.gg", "discord.com"], "discord"],
+			[["yektanet.com"], "yektanet"],
+			[["tsyndicate.com"], "tsyndicate"],
+			[["uuidksinc.net"], "uuidksinc"],
+			[["beyla.site"], "beyla"],
+			[["flixcdn.com"], "flixcdn"],
+			[["xhcdn.com", "xnxx-cdn.com"], "porn"],
+			[["hansha.online"], "hansha"],
+			[["sotoon.ir"], "sotoon"],
+			[["ocsp-certum.com"], "certum"],
+			[["mazholl.com"], "mazholl"],
+			[["samsungosp.com", "samsungapps.com"], "samsung"],
+			[["samsungiotcloud.com"], "samsung"],
+			[["ipwho.is", "api.ip.sb", "seeip.org"], "ip_lookup"],
+			[["ifconfig.co"], "ip_lookup"],
+			[["cloudflare.com", "one.one.one.one", "pullcf.com"], "cloudflare"],
+			[["applovin.com"], "applovin"],
+			[["applvn.com"], "applovin"],
+			[["samsung.com", "samsungcloudcdn.com"], "samsung"],
+			[["googlesyndication.com", "googleadservices.com"], "google_ads"],
+			[["appmetrica.yandex.net"], "yandex"],
+			[["playfabapi.com"], "playfab"],
+			[["shalltry.com", "transsion-os.com"], "transsion"],
+			[["optime-ai.com"], "optime_ai"],
+			[["truecaller.com"], "truecaller"],
+			[["xiaohongshu.com"], "xiaohongshu"],
+			[["dbankcloud.asia", "dbankcloud.eu"], "huawei"],
+			[["launchdarkly.com"], "launchdarkly"],
+			[["expressapisv2.net"], "expressapis"],
+			[["dalyfeds.com"], "dalyfeds"],
+			[["fexori.com"], "fexori"],
+		];
+
+		for (const [needles, platform] of rules) {
+			if (needles.some((needle) => host.includes(needle))) {
+				return platform;
+			}
+		}
+
+		if (host.includes("1.1.1.1")) return "cloudflare";
+	}
+
+	const ip = destinationIp || (isIpLiteral(destination) ? destination : "");
+	if (ip) {
+		const ipRules: Array<[string[], string]> = [
+			[["149.154.", "91.108."], "telegram"],
+			[["157.240.", "31.13.", "57.144.", "185.60."], "instagram"],
+			[["102.132."], "facebook"],
+			[["140.82.", "185.199.", "20.201.", "192.30."], "github"],
+			[["155.133.", "162.254.", "208.64.", "146.66.", "205.196."], "steam"],
+			[["47.241.", "47.74.", "161.117."], "alibaba"],
+			[["20.33."], "microsoft"],
+			[["2.16."], "akamai"],
+			[["2.189.58."], "eitaa"],
+			[
+				["2.189.68.", "5.28.", "85.133.", "185.79.", "195.254.", "91.98."],
+				"iran",
+			],
+			[["13.51."], "aws"],
+			[
+				[
+					"188.212.98.",
+					"89.167.",
+					"194.26.66.",
+					"74.1.1.",
+					"87.248.132.",
+					"65.21.",
+					"65.109.",
+					"95.216.",
+					"37.27.",
+					"5.78.",
+					"193.151.132.",
+					"199.103.24.",
+					"82.21.204.",
+					"195.62.32.",
+					"198.46.254.",
+					"178.156.212.",
+					"185.22.42.",
+					"212.33.197.",
+					"156.146.",
+				],
+				"hosting",
+			],
+			[["17."], "apple"],
+			[
+				[
+					"172.64.",
+					"172.65.",
+					"162.159.",
+					"104.16.",
+					"104.17.",
+					"104.18.",
+					"104.19.",
+					"104.20.",
+				],
+				"cloudflare",
+			],
+			[
+				[
+					"8.8.8.8",
+					"8.8.4.4",
+					"216.58.",
+					"216.239.",
+					"142.250.",
+					"142.251.",
+					"172.217.",
+					"173.194.",
+					"74.125.",
+					"34.102.",
+					"34.120.",
+					"35.190.",
+				],
+				"google",
+			],
+			[["1.1.1.1", "1.0.0.1"], "cloudflare-dns"],
+			[["10.", "127.", "198.18.", "239.255.255."], "local"],
+			[["71.18."], "tiktok"],
+		];
+		for (const [prefixes, platform] of ipRules) {
+			if (prefixes.some((prefix) => ip.startsWith(prefix))) {
+				return platform;
+			}
+		}
+	}
+
+	return "other";
+};
+
+const parseAccessLogLine = (line: string): ParsedAccessLog | null => {
+	const match = ACCESS_LINE_RE.exec(line.trim());
+	if (!match?.groups) return null;
+
+	const action = (match.groups.action || "").toLowerCase();
+	const tsRaw = match.groups.ts || "";
+	const destination = match.groups.dest || "";
+	const destinationIp = isIpLiteral(destination) ? destination : null;
+	const source = match.groups.src_ip || "";
+	const email = match.groups.email || null;
+	const route = match.groups.route || "";
+	const user = buildUserKey(source, email);
+
+	return {
+		timestampMs: parseXrayTimestamp(tsRaw),
+		action,
+		destination,
+		destinationIp,
+		source,
+		email,
+		route,
+		userKey: user.key,
+		userLabel: user.label,
+	};
+};
+
+const buildInsightsFromRawNdjson = (
+	ndjson: string,
+	lookbackLines: number,
+	windowSeconds: number,
+	limit: number,
+): AccessInsightsResponse => {
+	const clients = new Map<string, MutableClient>();
+	const usersByPlatform = new Map<string, Set<string>>();
+	const unmatched = new Map<string, AccessInsightUnmatched>();
+	const sourceStatusMap = new Map<string, AccessInsightSourceStatus>();
+	let matchedEntries = 0;
+	let sources: AccessInsightSource[] = [];
+	let streamError: string | undefined;
+	const nodeErrors: string[] = [];
+	const cutoffMs = Date.now() - windowSeconds * 1000;
+
+	for (const row of ndjson.split("\n")) {
+		const rawRow = row.trim();
+		if (!rawRow) continue;
+
+		let chunk: RawStreamChunk;
+		try {
+			chunk = JSON.parse(rawRow) as RawStreamChunk;
+		} catch {
+			continue;
+		}
+
+		if ("error" in chunk && !("type" in chunk)) {
+			streamError = chunk.detail || chunk.error;
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "metadata") {
+			sources = Array.isArray(chunk.sources) ? chunk.sources : [];
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "error") {
+			const fromNode = chunk.node_name ? `[${chunk.node_name}] ` : "";
+			nodeErrors.push(`${fromNode}${chunk.error}`);
+			continue;
+		}
+
+		if ("type" in chunk && chunk.type === "source_status") {
+			const key = `${chunk.node_id ?? "master"}:${chunk.node_name}`;
+			sourceStatusMap.set(key, {
+				node_id: chunk.node_id,
+				node_name: chunk.node_name,
+				is_master: chunk.is_master,
+				connected: chunk.connected,
+				ok: chunk.ok,
+				total_lines: chunk.total_lines,
+				matched_lines: chunk.matched_lines,
+				error: chunk.error,
+			});
+			continue;
+		}
+
+		if (!("type" in chunk) || chunk.type !== "logs") {
+			continue;
+		}
+
+		for (const rawLine of chunk.lines || []) {
+			const parsed = parseAccessLogLine(rawLine);
+			if (!parsed || parsed.action !== "accepted") continue;
+			if (!parsed.timestampMs || parsed.timestampMs < cutoffMs) continue;
+
+			let sourceIp = parsed.source || "";
+			if (sourceIp.includes(":") && !sourceIp.startsWith("[")) {
+				sourceIp = sourceIp.split(":", 1)[0] || sourceIp;
+			}
+			if (sourceIp.startsWith("127.") || sourceIp === "localhost") continue;
+
+			const platform = guessPlatformFromLine(
+				parsed.destination,
+				parsed.destinationIp,
+			);
+			const userKey = parsed.userKey || "unknown";
+			const userLabel = parsed.userLabel || userKey;
+
+			if (!clients.has(userKey) && clients.size >= MAX_CLIENTS) {
+				continue;
+			}
+
+			if (!usersByPlatform.has(platform)) {
+				usersByPlatform.set(platform, new Set<string>());
+			}
+			usersByPlatform.get(platform)?.add(userKey);
+
+			let client = clients.get(userKey);
+			if (!client) {
+				client = {
+					user_key: userKey,
+					user_label: userLabel,
+					lastSeenMs: parsed.timestampMs,
+					route: parsed.route || "",
+					connectionEvents: 0,
+					sources: new Set<string>(),
+					nodes: new Set<string>(),
+					sourceNodes: new Map<string, Set<string>>(),
+					platforms: new Map(),
+				};
+				clients.set(userKey, client);
+			}
+
+			if (chunk.node_name) {
+				client.nodes.add(chunk.node_name);
+			}
+			if (sourceIp) {
+				client.sources.add(sourceIp);
+				if (chunk.node_name) {
+					const mappedNodes =
+						client.sourceNodes.get(sourceIp) || new Set<string>();
+					mappedNodes.add(chunk.node_name);
+					client.sourceNodes.set(sourceIp, mappedNodes);
+				}
+			}
+			client.connectionEvents += 1;
+			if (parsed.timestampMs > client.lastSeenMs) {
+				client.lastSeenMs = parsed.timestampMs;
+			}
+			if (parsed.route) {
+				client.route = parsed.route;
+			}
+
+			let platformData = client.platforms.get(platform);
+			if (!platformData) {
+				platformData = {
+					platform,
+					connections: 0,
+					destinations: new Set<string>(),
+				};
+				client.platforms.set(platform, platformData);
+			}
+			platformData.connections += 1;
+			if (parsed.destination) {
+				platformData.destinations.add(parsed.destination);
+			}
+
+			matchedEntries += 1;
+
+			if (platform === "other") {
+				const key = `${parsed.destination || ""}:${parsed.destinationIp || ""}`;
+				if (!unmatched.has(key)) {
+					unmatched.set(key, {
+						destination: parsed.destination || "",
+						destination_ip: parsed.destinationIp,
+						platform: "other",
+					});
+				}
+			}
+		}
+	}
+
+	const clientList: AccessInsightClient[] = Array.from(clients.values()).map(
+		(client) => ({
+			user_key: client.user_key,
+			user_label: client.user_label,
+			last_seen: new Date(client.lastSeenMs).toISOString(),
+			route: client.route || "",
+			connections: client.sources.size || client.connectionEvents,
+			sources: Array.from(client.sources).sort(),
+			nodes: Array.from(client.nodes).sort(),
+			source_nodes: Object.fromEntries(
+				Array.from(client.sourceNodes.entries())
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(([ip, nodeSet]) => [ip, Array.from(nodeSet).sort()]),
+			),
+			platforms: Array.from(client.platforms.values())
+				.map((platform) => ({
+					platform: platform.platform,
+					connections: platform.connections,
+					destinations: Array.from(platform.destinations).sort().slice(0, 20),
+				}))
+				.sort((a, b) => b.connections - a.connections),
+		}),
+	);
+
+	clientList.sort(
+		(a, b) => dayjs(b.last_seen).valueOf() - dayjs(a.last_seen).valueOf(),
+	);
+	if (limit > 0) {
+		clientList.splice(limit);
+	}
+
+	const platformCounts = Object.fromEntries(
+		Array.from(usersByPlatform.entries()).map(([platform, users]) => [
+			platform,
+			users.size,
+		]),
+	);
+
+	const totalUniqueClients = clients.size;
+	const platforms = Array.from(usersByPlatform.entries())
+		.map(([platform, users]) => ({
+			platform,
+			count: users.size,
+			percent: totalUniqueClients ? users.size / totalUniqueClients : 0,
+		}))
+		.sort((a, b) => b.count - a.count);
+	const finalError =
+		streamError ||
+		(matchedEntries === 0 && nodeErrors.length ? nodeErrors[0] : undefined);
+	const detail =
+		!streamError && nodeErrors.length
+			? `Partial data from ${nodeErrors.length} source(s)`
+			: undefined;
+
+	return {
+		mode: "frontend",
+		sources,
+		source_statuses: Array.from(sourceStatusMap.values()),
+		log_path: sources.map((src) => src.node_name).join(", "),
+		geo_assets_path: "frontend-stream",
+		items: clientList,
+		platform_counts: platformCounts,
+		platforms,
+		matched_entries: matchedEntries,
+		error: finalError,
+		detail,
+		generated_at: new Date().toISOString(),
+		lookback_lines: lookbackLines,
+		window_seconds: windowSeconds,
+		unmatched: Array.from(unmatched.values()),
+	};
+};
+
+const enrichInsightsWithOperators = async (
+	insights: AccessInsightsResponse,
+): Promise<AccessInsightsResponse> => {
+	const items = Array.isArray(insights.items) ? insights.items : [];
+	if (!items.length) return insights;
+
+	const hasOperators = items.some(
+		(client) => Array.isArray(client.operators) && client.operators.length > 0,
+	);
+	if (hasOperators) return insights;
+
+	const uniqueIps = Array.from(
+		new Set(
+			items
+				.flatMap((client) =>
+					(client.sources || []).map((ip) => (ip || "").trim()),
+				)
+				.filter((ip) => ip && isIpLiteral(ip)),
+		),
+	);
+	if (!uniqueIps.length) return insights;
+
+	let lookup: OperatorLookupResponse | null = null;
+	try {
+		lookup = await fetch<OperatorLookupResponse>("/core/access/operators", {
+			method: "POST",
+			body: { ips: uniqueIps },
+		});
+	} catch {
+		return insights;
+	}
+
+	const entries = Array.isArray(lookup?.operators) ? lookup.operators : [];
+	if (!entries.length) return insights;
+
+	const operatorByIp = new Map(
+		entries.map((entry) => [entry.ip, entry] as const),
+	);
+
+	const enrichedItems = items.map((client) => {
+		const sourceIps = Array.from(
+			new Set(
+				(client.sources || [])
+					.map((ip) => (ip || "").trim())
+					.filter((ip) => ip && isIpLiteral(ip)),
+			),
+		);
+		const operators = sourceIps.map((ip) => {
+			const meta = operatorByIp.get(ip);
+			return {
+				ip,
+				short_name: meta?.short_name || "Unknown",
+				owner: meta?.owner || meta?.short_name || "Unknown",
+			};
+		});
+
+		const operatorCounts: Record<string, number> = {};
+		for (const operator of operators) {
+			const key =
+				(operator.short_name || operator.owner || "Unknown").trim() ||
+				"Unknown";
+			operatorCounts[key] = (operatorCounts[key] || 0) + 1;
+		}
+
+		return {
+			...client,
+			operators,
+			operator_counts: operatorCounts,
+		};
+	});
+
+	return {
+		...insights,
+		items: enrichedItems,
+	};
+};
+
+const buildApiUrl = (path: string, query: URLSearchParams) => {
+	const base = ((import.meta.env.VITE_BASE_API as string | undefined) || "/api")
+		.replace(/\/+$/, "")
+		.trim();
+	const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+	return `${base}${normalizedPath}?${query.toString()}`;
+};
+
 type PlatformStat = [string, number, number | undefined];
 
 const AccessInsightsPage: FC = () => {
@@ -155,6 +948,11 @@ const AccessInsightsPage: FC = () => {
 	const [search, setSearch] = useState("");
 	const [autoRefresh, setAutoRefresh] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [showAllUnmatched, setShowAllUnmatched] = useState(false);
+	const [clientsPerPage, setClientsPerPage] = useState<number>(
+		readAccessInsightsPageSize,
+	);
+	const [currentPage, setCurrentPage] = useState(0);
 
 	const loadData = useCallback(async () => {
 		if (!canViewXray || !insightsEnabled) return;
@@ -162,24 +960,59 @@ const AccessInsightsPage: FC = () => {
 		setError(null);
 		try {
 			const query = new URLSearchParams({
-				limit: String(DEFAULT_LIMIT),
-				window_seconds: String(DEFAULT_WINDOW_SECONDS),
+				max_lines: String(DEFAULT_MAX_LINES),
 			});
-			const response = await fetch<AccessInsightsResponse>(
-				`/core/access/insights?${query.toString()}`,
+			const token = getAuthToken();
+			const rawResponse = await window.fetch(
+				buildApiUrl("/core/access/logs/raw", query),
+				{
+					method: "GET",
+					headers: token ? { Authorization: `Bearer ${token}` } : {},
+					cache: "no-store",
+				},
 			);
-			if (response?.error) {
-				setError(response.detail || response.error);
+			if (!rawResponse.ok) {
+				throw new Error(`Failed to stream raw logs (${rawResponse.status})`);
 			}
-			setData(response);
-		} catch (err: any) {
-			setError(
-				err?.message ||
-					t(
-						"pages.accessInsights.errors.loadFailed",
-						"Failed to load access insights",
-					),
+			const ndjson = await rawResponse.text();
+			const parsed = buildInsightsFromRawNdjson(
+				ndjson,
+				DEFAULT_MAX_LINES,
+				DEFAULT_WINDOW_SECONDS,
+				DEFAULT_LIMIT,
 			);
+			const enrichedParsed = await enrichInsightsWithOperators(parsed);
+			if (parsed?.error) {
+				setError(parsed.detail || parsed.error);
+			}
+			setData(enrichedParsed);
+			setShowAllUnmatched(false);
+		} catch (rawErr) {
+			try {
+				const query = new URLSearchParams({
+					limit: String(DEFAULT_LIMIT),
+					lookback: String(DEFAULT_MAX_LINES),
+					window_seconds: String(DEFAULT_WINDOW_SECONDS),
+				});
+				const response = await fetch<AccessInsightsResponse>(
+					`/core/access/insights/multi-node?${query.toString()}`,
+				);
+				const enrichedResponse = await enrichInsightsWithOperators(response);
+				if (response?.error) {
+					setError(response.detail || response.error);
+				}
+				setData(enrichedResponse);
+				setShowAllUnmatched(false);
+			} catch (err: any) {
+				setError(
+					err?.message ||
+						(rawErr as Error)?.message ||
+						t(
+							"pages.accessInsights.errors.loadFailed",
+							"Failed to load access insights",
+						),
+				);
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -236,6 +1069,10 @@ const AccessInsightsPage: FC = () => {
 		() => data?.unmatched || [],
 		[data],
 	);
+	const visibleUnmatched = useMemo(
+		() => (showAllUnmatched ? unmatched : unmatched.slice(0, 3)),
+		[showAllUnmatched, unmatched],
+	);
 
 	const operatorTotals = useMemo(() => {
 		const totals = new Map<string, Set<string>>();
@@ -263,6 +1100,15 @@ const AccessInsightsPage: FC = () => {
 		return (clients as AccessInsightClient[]).filter((client) => {
 			if (client.user_label.toLowerCase().includes(q)) return true;
 			if ((client.route || "").toLowerCase().includes(q)) return true;
+			for (const nodeName of client.nodes || []) {
+				if ((nodeName || "").toLowerCase().includes(q)) return true;
+			}
+			for (const [ip, nodes] of Object.entries(client.source_nodes || {})) {
+				if ((ip || "").toLowerCase().includes(q)) return true;
+				for (const nodeName of nodes || []) {
+					if ((nodeName || "").toLowerCase().includes(q)) return true;
+				}
+			}
 			for (const p of client.platforms || []) {
 				if (p.platform.toLowerCase().includes(q)) return true;
 				for (const dest of p.destinations || []) {
@@ -273,7 +1119,71 @@ const AccessInsightsPage: FC = () => {
 		});
 	}, [clients, search]);
 
-	const _items = data?.items || [];
+	const totalFilteredClients = filteredClients.length;
+	const totalPages = Math.max(
+		1,
+		Math.ceil(totalFilteredClients / Math.max(1, clientsPerPage)),
+	);
+	const safeCurrentPage = Math.min(currentPage, totalPages - 1);
+
+	useEffect(() => {
+		if (safeCurrentPage !== currentPage) {
+			setCurrentPage(safeCurrentPage);
+		}
+	}, [currentPage, safeCurrentPage]);
+
+	const paginatedClients = useMemo(() => {
+		const start = safeCurrentPage * clientsPerPage;
+		return filteredClients.slice(start, start + clientsPerPage);
+	}, [clientsPerPage, filteredClients, safeCurrentPage]);
+
+	const pageItems = useMemo(
+		() => generatePageItems(totalPages, safeCurrentPage, PAGINATION_WIDTH),
+		[safeCurrentPage, totalPages],
+	);
+	const canPrevPage = safeCurrentPage > 0;
+	const canNextPage = safeCurrentPage + 1 < totalPages;
+	const pageRangeStart =
+		totalFilteredClients === 0 ? 0 : safeCurrentPage * clientsPerPage + 1;
+	const pageRangeEnd = Math.min(
+		(safeCurrentPage + 1) * clientsPerPage,
+		totalFilteredClients,
+	);
+
+	const handlePerPageChange = (e: ChangeEvent<HTMLSelectElement>) => {
+		const next = Number.parseInt(e.target.value, 10);
+		if (
+			!Number.isFinite(next) ||
+			!ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.includes(
+				next as (typeof ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS)[number],
+			)
+		) {
+			return;
+		}
+		setClientsPerPage(next);
+		setCurrentPage(0);
+		writeAccessInsightsPageSize(next);
+	};
+
+	const sourceStatuses = useMemo(() => data?.source_statuses || [], [data]);
+
+	const successfulNodeNames = useMemo(() => {
+		if (sourceStatuses.length) {
+			const names = sourceStatuses
+				.filter((status) => status.ok)
+				.map((status) => status.node_name)
+				.filter(Boolean);
+			return Array.from(new Set(names));
+		}
+		const fallbackNames =
+			data?.sources?.map((source) => source.node_name).filter(Boolean) || [];
+		return Array.from(new Set(fallbackNames));
+	}, [data, sourceStatuses]);
+
+	const failedNodeStatuses = useMemo(
+		() => sourceStatuses.filter((status) => !status.ok),
+		[sourceStatuses],
+	);
 
 	if (!canViewXray) {
 		return (
@@ -300,6 +1210,16 @@ const AccessInsightsPage: FC = () => {
 						"Recent connections are grouped using geosite/geoip data to highlight which platforms users are reaching.",
 					)}
 				</Text>
+				<Text color="gray.600" fontSize="sm" fontFamily="mono">
+					nodes:{" "}
+					{successfulNodeNames.length ? successfulNodeNames.join(",") : "-"}
+				</Text>
+				{failedNodeStatuses.length ? (
+					<Text color="red.400" fontSize="sm">
+						unreachable:{" "}
+						{failedNodeStatuses.map((status) => status.node_name).join(",")}
+					</Text>
+				) : null}
 				{!insightsEnabled ? (
 					<Box
 						position="absolute"
@@ -339,7 +1259,11 @@ const AccessInsightsPage: FC = () => {
 							"Search platform, host, or email",
 						)}
 						value={search}
-						onChange={(e) => setSearch(e.target.value)}
+						onChange={(e) => {
+							setSearch(e.target.value);
+							setShowAllUnmatched(false);
+							setCurrentPage(0);
+						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter") {
 								loadData();
@@ -367,19 +1291,34 @@ const AccessInsightsPage: FC = () => {
 				</HStack>
 				<HStack spacing={2} color="gray.500" fontSize="sm">
 					<Text>
+						{t("pages.accessInsights.sources", "Sources")}:{" "}
+						<Badge colorScheme="blue">{data?.sources?.length || 0}</Badge>
+					</Text>
+					{data?.sources?.length ? (
+						<Tooltip
+							label={data.sources
+								.map((src) => src.node_name)
+								.filter(Boolean)
+								.join(", ")}
+						>
+							<Badge colorScheme="green">
+								{t("pages.accessInsights.multiNode", "Master + active nodes")}
+							</Badge>
+						</Tooltip>
+					) : null}
+					<Text>
 						{t("pages.accessInsights.logPath", "Log")}:{" "}
 						<Badge colorScheme="gray">
 							{data?.log_path || t("pages.accessInsights.unknown", "Unknown")}
 						</Badge>
 					</Text>
-					<Text>
-						{t("pages.accessInsights.geoPath", "Geo assets")}:{" "}
-						<Badge colorScheme="gray">
-							{data?.geo_assets_path ||
-								t("pages.accessInsights.unknown", "Unknown")}
-						</Badge>
-					</Text>
-					{data ? (
+					{data?.geo_assets_path ? (
+						<Text>
+							{t("pages.accessInsights.geoPath", "Geo assets")}:{" "}
+							<Badge colorScheme="gray">{data.geo_assets_path}</Badge>
+						</Text>
+					) : null}
+					{data?.geo_assets ? (
 						<Badge
 							colorScheme={
 								data.geo_assets.geosite && data.geo_assets.geoip
@@ -391,6 +1330,11 @@ const AccessInsightsPage: FC = () => {
 							{data.geo_assets.geoip ? "geoip" : "geoip missing"}
 						</Badge>
 					) : null}
+					<Badge colorScheme={data?.mode === "frontend" ? "purple" : "gray"}>
+						{data?.mode === "frontend"
+							? t("pages.accessInsights.frontMode", "Frontend aggregation")
+							: t("pages.accessInsights.backMode", "Backend aggregation")}
+					</Badge>
 				</HStack>
 			</HStack>
 
@@ -463,7 +1407,7 @@ const AccessInsightsPage: FC = () => {
 			) : null}
 
 			{unmatched.length > 0 ? (
-				<Box borderWidth="1px" borderRadius="md" p={4}>
+				<Box borderWidth="1px" borderRadius="md" p={3}>
 					<HStack justify="space-between" align="center" mb={2}>
 						<Text fontWeight="bold">
 							{t(
@@ -471,20 +1415,31 @@ const AccessInsightsPage: FC = () => {
 								"Unmapped destinations",
 							)}
 						</Text>
-						<Tooltip
-							label={t("pages.accessInsights.copyUnmatched", "Copy as JSON")}
-						>
-							<IconButton
-								aria-label="copy-unmatched"
-								icon={<ClipboardDocumentIcon width={18} />}
-								size="sm"
-								onClick={() =>
-									navigator.clipboard.writeText(
-										JSON.stringify(unmatched, null, 2),
-									)
-								}
-							/>
-						</Tooltip>
+						<HStack spacing={2}>
+							<Button
+								size="xs"
+								variant="outline"
+								onClick={() => setShowAllUnmatched((prev) => !prev)}
+							>
+								{showAllUnmatched
+									? t("pages.accessInsights.unmatchedLess", "Show less")
+									: t("pages.accessInsights.unmatchedMoreBtn", "Show more")}
+							</Button>
+							<Tooltip
+								label={t("pages.accessInsights.copyUnmatched", "Copy as JSON")}
+							>
+								<IconButton
+									aria-label="copy-unmatched"
+									icon={<ClipboardDocumentIcon width={18} />}
+									size="xs"
+									onClick={() =>
+										navigator.clipboard.writeText(
+											JSON.stringify(unmatched, null, 2),
+										)
+									}
+								/>
+							</Tooltip>
+						</HStack>
 					</HStack>
 					<Table size="sm" variant="simple">
 						<Thead>
@@ -494,7 +1449,7 @@ const AccessInsightsPage: FC = () => {
 							</Tr>
 						</Thead>
 						<Tbody>
-							{unmatched.slice(0, 50).map((row, idx) => (
+							{visibleUnmatched.map((row, idx) => (
 								<Tr
 									key={`${row.destination}-${row.destination_ip || "noip"}-${idx}`}
 								>
@@ -508,13 +1463,13 @@ const AccessInsightsPage: FC = () => {
 							))}
 						</Tbody>
 					</Table>
-					{unmatched.length > 50 ? (
+					{!showAllUnmatched && unmatched.length > 3 ? (
 						<Text mt={2} color="gray.500" fontSize="sm">
 							{t(
 								"pages.accessInsights.unmatchedMore",
 								"{{count}} more entries not shown",
 								{
-									count: unmatched.length - 50,
+									count: unmatched.length - 3,
 								},
 							)}
 						</Text>
@@ -527,7 +1482,79 @@ const AccessInsightsPage: FC = () => {
 				opacity={insightsEnabled ? 1 : 0.3}
 				filter={insightsEnabled ? "none" : "blur(2px)"}
 			>
-				{filteredClients.map((client) => (
+				{totalFilteredClients > 0 ? (
+					<HStack
+						justifyContent="space-between"
+						w="full"
+						columnGap={{ lg: 4, md: 0 }}
+						rowGap={{ md: 0, base: 4 }}
+						flexDirection={{ md: "row", base: "column" }}
+					>
+						<HStack>
+							<Select
+								minW="72px"
+								value={String(clientsPerPage)}
+								onChange={handlePerPageChange}
+								size="sm"
+								rounded="md"
+							>
+								{ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS.map((size) => (
+									<option key={size} value={size}>
+										{size}
+									</option>
+								))}
+							</Select>
+							<Text whiteSpace="nowrap" fontSize="sm">
+								{t("itemsPerPage")}
+							</Text>
+						</HStack>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"pages.accessInsights.paginationRange",
+								"{{start}}-{{end}} of {{total}}",
+								{
+									start: pageRangeStart,
+									end: pageRangeEnd,
+									total: totalFilteredClients,
+								},
+							)}
+						</Text>
+						<ButtonGroup size="sm" isAttached variant="outline">
+							<Button
+								onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+								isDisabled={!canPrevPage}
+							>
+								{t("previous")}
+							</Button>
+							{pageItems.map((pageIndex) =>
+								typeof pageIndex === "string" ? (
+									<Button key={pageIndex} isDisabled>
+										...
+									</Button>
+								) : (
+									<Button
+										key={pageIndex}
+										variant={
+											pageIndex === safeCurrentPage ? "solid" : "outline"
+										}
+										onClick={() => setCurrentPage(pageIndex)}
+									>
+										{pageIndex + 1}
+									</Button>
+								),
+							)}
+							<Button
+								onClick={() =>
+									setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))
+								}
+								isDisabled={!canNextPage}
+							>
+								{t("next")}
+							</Button>
+						</ButtonGroup>
+					</HStack>
+				) : null}
+				{paginatedClients.map((client) => (
 					<Box key={client.user_key} borderWidth="1px" borderRadius="lg" p={4}>
 						<HStack justify="space-between" align="start" flexWrap="wrap">
 							<VStack align="start" spacing={1}>
@@ -536,6 +1563,28 @@ const AccessInsightsPage: FC = () => {
 									{t("pages.accessInsights.ips", "IPs")}:{" "}
 									{(client.sources || []).join(", ") || "-"}
 								</Text>
+								<Text fontSize="sm" color="gray.500">
+									{t("pages.accessInsights.nodes", "Nodes")}:{" "}
+									{(client.nodes || []).join(", ") || "-"}
+								</Text>
+								{client.source_nodes &&
+								Object.keys(client.source_nodes).length > 0 ? (
+									<VStack align="start" spacing={0}>
+										<Text fontSize="xs" color="gray.500">
+											{t("pages.accessInsights.ipNodeMap", "IP -> Node(s)")}
+										</Text>
+										{Object.entries(client.source_nodes).map(([ip, nodes]) => (
+											<Text
+												key={ip}
+												fontSize="xs"
+												color="gray.500"
+												fontFamily="mono"
+											>
+												{ip} {"->"} {(nodes || []).join(", ") || "-"}
+											</Text>
+										))}
+									</VStack>
+								) : null}
 								<Text fontSize="sm" color="gray.500">
 									{t("pages.accessInsights.route", "Route")}:{" "}
 									{client.route || "-"}
@@ -605,7 +1654,44 @@ const AccessInsightsPage: FC = () => {
 						</Table>
 					</Box>
 				))}
-				{filteredClients.length === 0 && !loading ? (
+				{totalFilteredClients > 0 ? (
+					<HStack justifyContent="flex-end">
+						<ButtonGroup size="sm" isAttached variant="outline">
+							<Button
+								onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+								isDisabled={!canPrevPage}
+							>
+								{t("previous")}
+							</Button>
+							{pageItems.map((pageIndex) =>
+								typeof pageIndex === "string" ? (
+									<Button key={`bottom-${pageIndex}`} isDisabled>
+										...
+									</Button>
+								) : (
+									<Button
+										key={`bottom-${pageIndex}`}
+										variant={
+											pageIndex === safeCurrentPage ? "solid" : "outline"
+										}
+										onClick={() => setCurrentPage(pageIndex)}
+									>
+										{pageIndex + 1}
+									</Button>
+								),
+							)}
+							<Button
+								onClick={() =>
+									setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))
+								}
+								isDisabled={!canNextPage}
+							>
+								{t("next")}
+							</Button>
+						</ButtonGroup>
+					</HStack>
+				) : null}
+				{totalFilteredClients === 0 && !loading ? (
 					<Box borderWidth="1px" borderRadius="md" p={4}>
 						<Text color="gray.500">
 							{t("pages.accessInsights.noData", "No recent connections found.")}

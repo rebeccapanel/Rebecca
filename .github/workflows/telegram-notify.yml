@@ -77,8 +77,6 @@ jobs:
             COMMIT_URL_RAW=$(echo "$COMMIT_JSON" | jq -r '.html_url // ""')
             COMMIT_URL_ESC=$(html_escape "$COMMIT_URL_RAW")
 
-            MESSAGE="$HEADER%0A%0A$CONTEXT_LINE%0A👤 Triggered by: $ACTOR%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📝 Message: $COMMIT_MSG_ESC%0A🔗 <a href=\"$COMMIT_URL_ESC\">Open commit</a>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open $PIPELINE_KIND run</a>"
-
             # --- Fetch status of all relevant workflows for this commit ---
             RUNS_JSON=$(curl -s \
               -H "Authorization: token $GITHUB_TOKEN" \
@@ -178,7 +176,7 @@ jobs:
 
             SHORT_SHA_ESC=$(html_escape "$SHORT_SHA")
 
-            MESSAGE="$HEADER%0A%0A👤 Triggered by: $ACTOR%0A🌿 Branch: <code>$BRANCH</code>%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open main workflow run</a>"
+            MESSAGE="$HEADER%0A%0A👤 Triggered by: $ACTOR%0A🌿 Branch: <code>$BRANCH</code>%0A🔖 Commit: <code>$SHORT_SHA_ESC</code>%0A📝 Message: $COMMIT_MSG_ESC%0A🔗 <a href=\"$COMMIT_URL_ESC\">Open commit</a>%0A📦 Status: <code>$LABEL</code>%0A🔗 <a href=\"$ESC_RUN_URL\">Open main workflow run</a>"
 
             if [[ -n "$WORKFLOW_LINES" ]]; then
               WF_BLOCK=$(printf "%s" "$WORKFLOW_LINES" | sed 's/$/%0A/g')
