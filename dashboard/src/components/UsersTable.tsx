@@ -144,6 +144,32 @@ type SummaryStatProps = {
 	isMobile?: boolean;
 };
 
+type CreatedByTextProps = {
+	show: boolean;
+	adminUsername?: string | null;
+};
+
+const CreatedByText: FC<CreatedByTextProps> = ({ show, adminUsername }) => {
+	const { t } = useTranslation();
+	if (!show || !adminUsername) return null;
+
+	return (
+		<Text
+			fontSize="xs"
+			color="gray.500"
+			_dark={{ color: "gray.400" }}
+			dir="ltr"
+			sx={{ unicodeBidi: "isolate" }}
+			lineHeight="1.2"
+		>
+			{t("usersTable.by", "by")}{" "}
+			<chakra.span color="primary.500" fontWeight="medium">
+				{adminUsername}
+			</chakra.span>
+		</Text>
+	);
+};
+
 const getResetStrategy = (strategy: string): string => {
 	const entry = resetStrategy.find((item) => item.value === strategy);
 	return entry?.title ?? "No";
@@ -925,6 +951,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 												>
 													{user.username}
 												</Text>
+												<CreatedByText
+													show={hasElevatedRole}
+													adminUsername={user.admin_username}
+												/>
 												<OnlineStatus lastOnline={user.online_at ?? null} />
 											</Box>
 										</HStack>
@@ -1072,6 +1102,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									canDeleteUsers ? () => onDeletingUser(user) : undefined
 								}
 								isRTL={isRTL}
+								showCreator={hasElevatedRole}
 								t={t}
 							/>
 						))}
@@ -1356,6 +1387,7 @@ type UserCardProps = {
 	canEdit: boolean;
 	onDelete?: () => void;
 	isRTL: boolean;
+	showCreator: boolean;
 	t: TranslateFn;
 };
 
@@ -1365,6 +1397,7 @@ const _UserCard: FC<UserCardProps> = ({
 	canEdit,
 	onDelete,
 	isRTL,
+	showCreator,
 	t,
 }) => (
 	<Box
@@ -1389,6 +1422,10 @@ const _UserCard: FC<UserCardProps> = ({
 						>
 							{user.username}
 						</Text>
+						<CreatedByText
+							show={showCreator}
+							adminUsername={user.admin_username}
+						/>
 						<OnlineStatus lastOnline={user.online_at ?? null} />
 					</Box>
 				</HStack>
@@ -1448,6 +1485,7 @@ const MobileUserCard: FC<UserCardProps> = ({
 	canEdit,
 	onDelete,
 	isRTL,
+	showCreator,
 	t,
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
@@ -1510,6 +1548,10 @@ const MobileUserCard: FC<UserCardProps> = ({
 							>
 								{user.username}
 							</Text>
+							<CreatedByText
+								show={showCreator}
+								adminUsername={user.admin_username}
+							/>
 							<OnlineStatus
 								lastOnline={user.online_at ?? null}
 								withMargin={false}

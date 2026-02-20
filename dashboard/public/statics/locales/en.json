@@ -1461,6 +1461,7 @@
 	"usersTable.add30Days": "Add 30 days",
 	"usersTable.service": "service",
 	"usersTable.status": "status",
+	"usersTable.by": "by",
 	"usersTable.total": "Total",
 	"users.searchHelpLabel": "Search tips",
 	"users.searchHelp": "Search by username, key, token, UUID, config link, or subscription URL.",

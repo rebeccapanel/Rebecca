@@ -1444,6 +1444,7 @@
 	"usersTable.noUserMatched": "به‌نظر میرسه کاربری که جستجو کردید، وجود ندارد",
 	"usersTable.service": "سرویس",
 	"usersTable.status": "وضعیت",
+	"usersTable.by": "توسط",
 	"usersTable.total": "مجموع",
 	"users.searchHelpLabel": "راهنمای جستجو",
 	"users.searchHelp": "با نام کاربری، کلید، توکن، UUID، لینک کانفیگ یا لینک سابسکریپشن جستجو کن.",
