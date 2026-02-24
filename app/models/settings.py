@@ -97,6 +97,8 @@ class SubscriptionTemplateSettings(BaseModel):
     use_custom_json_for_streisand: bool = False
     use_custom_json_for_happ: bool = False
     subscription_path: str = "sub"
+    subscription_aliases: List[str] = Field(default_factory=list)
+    subscription_ports: List[int] = Field(default_factory=list)
 
 
 class SubscriptionTemplateSettingsUpdate(BaseModel):
@@ -119,6 +121,8 @@ class SubscriptionTemplateSettingsUpdate(BaseModel):
     use_custom_json_for_v2rayng: Optional[bool] = None
     use_custom_json_for_streisand: Optional[bool] = None
     use_custom_json_for_happ: Optional[bool] = None
+    subscription_aliases: Optional[List[str]] = None
+    subscription_ports: Optional[List[int]] = None
 
 
 class AdminSubscriptionOverrides(SubscriptionTemplateSettingsUpdate):
