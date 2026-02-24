@@ -20,26 +20,36 @@ def _resolve_identifier(token: Optional[str], key: Optional[str], identifier: Op
 
 
 def _match_path_alias(alias: str, path: str) -> Optional[str]:
-    # supports /mypath/{identifier} or /legacy/{token}
+    # supports both templated and plain aliases:
+    # /mypath/{identifier}  OR  /mypath/
     parsed = urlsplit(alias)
     alias_path = parsed.path.strip()
     if not alias_path:
         return None
-    if "{" not in alias_path:
-        return None
 
-    regex = re.escape(alias_path)
-    regex = regex.replace(re.escape("{identifier}"), r"(?P<identifier>[^/]+)")
-    regex = regex.replace(re.escape("{token}"), r"(?P<identifier>[^/]+)")
-    regex = regex.replace(re.escape("{key}"), r"(?P<identifier>[^/]+)")
-    match = re.match(rf"^{regex}/?$", path)
-    if not match:
+    if "{" in alias_path:
+        regex = re.escape(alias_path)
+        regex = regex.replace(re.escape("{identifier}"), r"(?P<identifier>[^/]+)")
+        regex = regex.replace(re.escape("{token}"), r"(?P<identifier>[^/]+)")
+        regex = regex.replace(re.escape("{key}"), r"(?P<identifier>[^/]+)")
+        match = re.match(rf"^{regex}/?$", path)
+        if not match:
+            return None
+        return match.groupdict().get("identifier")
+
+    # plain form: /mypath/ => capture first segment after prefix
+    prefix = alias_path if alias_path.endswith("/") else f"{alias_path}/"
+    if not path.startswith(prefix):
         return None
-    return match.groupdict().get("identifier")
+    tail = path[len(prefix):].strip("/")
+    if not tail:
+        return None
+    return tail.split("/", 1)[0]
 
 
 def _match_query_alias(alias: str, request: Request) -> Optional[str]:
     # supports /api/v1/client/subscribe?token={identifier}
+    # also supports wildcard forms like /api/v1/client/subscribe?token=
     parsed = urlsplit(alias)
     if not parsed.query:
         return None
@@ -52,10 +62,18 @@ def _match_query_alias(alias: str, request: Request) -> Optional[str]:
     for key, values in template_qs.items():
         expected = values[0] if values else ""
         actual = req_qs.get(key)
+
         if expected in {"{identifier}", "{token}", "{key}"}:
             if actual:
                 return actual
             return None
+
+        # blank value in template means "accept any value"
+        if expected == "":
+            if actual:
+                return actual
+            return None
+
         if actual != expected:
             return None
 
@@ -66,8 +84,16 @@ def _match_query_alias(alias: str, request: Request) -> Optional[str]:
     return None
 
 
-def _resolve_identifier_from_aliases(request: Request, aliases: list[str]) -> Optional[str]:
+def _resolve_identifier_from_aliases(request: Request, aliases: list[str], primary_path: str) -> Optional[str]:
     path = request.url.path
+
+    # Always support /sub/<identifier> as stable default fallback
+    for fixed_prefix in ("/sub/", f"/{(primary_path or 'sub').strip('/')}/"):
+        if path.startswith(fixed_prefix):
+            tail = path[len(fixed_prefix):].strip("/")
+            if tail:
+                return tail.split("/", 1)[0]
+
     for alias in aliases:
         alias = (alias or "").strip()
         if not alias:
@@ -115,7 +141,7 @@ def subscribe_custom_alias(
 ):
     settings = SubscriptionSettingsService.get_settings(ensure_record=True, db=db)
     aliases = settings.subscription_aliases or []
-    identifier = _resolve_identifier_from_aliases(request, aliases)
+    identifier = _resolve_identifier_from_aliases(request, aliases, settings.subscription_path)
     if not identifier:
         raise HTTPException(status_code=404, detail="Not Found")
     dbuser: UserResponse = _get_user_by_identifier(identifier, db)

@@ -471,6 +471,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 
 type SubscriptionFormValues = SubscriptionTemplateSettings & {
 	subscription_aliases_text: string;
+	subscription_ports_text: string;
 };
 
 const buildSubscriptionDefaults = (
@@ -498,7 +499,9 @@ const buildSubscriptionDefaults = (
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
 	subscription_aliases: settings?.subscription_aliases ?? [],
+	subscription_ports: settings?.subscription_ports ?? [],
 	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
+	subscription_ports_text: (settings?.subscription_ports ?? []).join(","),
 });
 
 const cleanOverridePayload = (
@@ -1091,6 +1094,10 @@ export const IntegrationSettingsPage = () => {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter(Boolean);
+		const ports = (values.subscription_ports_text || "")
+			.split(/[,\s]+/)
+			.map((v) => Number(v))
+			.filter((v) => Number.isFinite(v) && v > 0 && v <= 65535);
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
 			subscription_profile_title: values.subscription_profile_title.trim(),
@@ -1113,7 +1120,9 @@ export const IntegrationSettingsPage = () => {
 			use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
 			use_custom_json_for_streisand: values.use_custom_json_for_streisand,
 			use_custom_json_for_happ: values.use_custom_json_for_happ,
+			subscription_path: values.subscription_path?.trim() || "sub",
 			subscription_aliases: aliases,
+			subscription_ports: ports,
 		};
 		subscriptionSettingsMutation.mutate(payload);
 	};
@@ -2217,26 +2226,15 @@ export const IntegrationSettingsPage = () => {
 													</Button>
 												</HStack>
 											</FormControl>
-											<FormControl isReadOnly>
+											<FormControl>
 												<FormLabel>
 													{t(
 														"settings.subscriptions.subscriptionPath",
 														"Subscription path",
 													)}
 												</FormLabel>
-												<Input
-													value={
-														subscriptionBundle?.settings.subscription_path ||
-														"sub"
-													}
-													readOnly
-												/>
-												<FormHelperText>
-													{t(
-														"settings.subscriptions.subscriptionPathHint",
-														"Path follows the backend route and is shown for reference.",
-													)}
-												</FormHelperText>
+												<Input placeholder="sub" {...subscriptionRegister("subscription_path")} />
+												<FormHelperText>Editable primary path. Legacy /sub remains supported.</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
@@ -2246,13 +2244,18 @@ export const IntegrationSettingsPage = () => {
 													)}
 												</FormLabel>
 												<Textarea
-													placeholder="/mypath/{identifier}\n/test/{token}\n/api/v1/client/subscribe?token={identifier}"
+													placeholder="/mypath/\n/test/\n/api/v1/client/subscribe?token=\n/api/v1/client/subscribe?key="
 													rows={4}
 													{...subscriptionRegister("subscription_aliases_text")}
 												/>
 												<FormHelperText>
-													One alias per line. Supports path or query templates with {"{identifier}"}, {"{token}"}, {"{key}"}.
+													One alias per line. Examples: /mypath/ , /test/ , /api/v1/client/subscribe?token= , /api/v1/client/subscribe?key=
 												</FormHelperText>
+											</FormControl>
+											<FormControl>
+												<FormLabel>Subscription ports</FormLabel>
+												<Input placeholder="443,8080" {...subscriptionRegister("subscription_ports_text")} />
+												<FormHelperText>Comma-separated extra ports for generated subscription URLs.</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
 										<Divider my={4} />
@@ -3352,11 +3355,8 @@ export const IntegrationSettingsPage = () => {
 												<FormLabel>
 													{t("settings.subscriptions.domains", "Domains")}
 												</FormLabel>
-												<Textarea
-													placeholder={t(
-														"settings.subscriptions.domainsPlaceholder",
-														"example.com, www.example.com",
-													)}
+												<Input
+													placeholder="example.com,sub.example.com"
 													value={certificateForm.domains}
 													onChange={(event) =>
 														setCertificateForm((prev) => ({
@@ -3366,10 +3366,7 @@ export const IntegrationSettingsPage = () => {
 													}
 												/>
 												<FormHelperText>
-													{t(
-														"settings.subscriptions.domainsHint",
-														"Separate multiple domains with comma or space.",
-													)}
+													{t("settings.subscriptions.domainsHint", "Comma-separated list of domains for certificate issuance.")}
 												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>

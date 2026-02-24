@@ -20,9 +20,10 @@ def test_subscription_alias_path_and_query(auth_client):
 
     settings_payload = {
         "subscription_aliases": [
-            "/mypath/{identifier}",
-            "/test/{token}",
-            "/api/v1/client/subscribe?token={identifier}",
+            "/mypath/",
+            "/test/",
+            "/api/v1/client/subscribe?token=",
+            "/api/v1/client/subscribe?key=",
         ]
     }
     upd = auth_client.put("/api/settings/subscriptions", json=settings_payload)
@@ -40,7 +41,17 @@ def test_subscription_alias_path_and_query(auth_client):
     q1 = auth_client.get(f"/api/v1/client/subscribe?token={credential_key}")
     assert q1.status_code == 200, q1.text
 
+    # wildcard query alias with empty template value
+    q2 = auth_client.get(f"/api/v1/client/subscribe?key={credential_key}")
+    assert q2.status_code == 200, q2.text
+
+    # packed legacy format like username+key should resolve to key
+    q3 = auth_client.get(f"/api/v1/client/subscribe?token=alias_user+{credential_key}")
+    assert q3.status_code == 200, q3.text
+
     # all aliases should resolve to the same subscription payload
     assert p1.text == baseline.text
     assert p2.text == baseline.text
     assert q1.text == baseline.text
+    assert q2.text == baseline.text
+    assert q3.text == baseline.text

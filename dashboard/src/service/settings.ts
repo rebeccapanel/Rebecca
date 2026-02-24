@@ -77,11 +77,10 @@ export interface SubscriptionTemplateSettings {
 	use_custom_json_for_happ: boolean;
 	subscription_path: string;
 	subscription_aliases: string[];
+	subscription_ports: number[];
 }
 
-export type SubscriptionTemplateSettingsUpdatePayload = Partial<
-	Omit<SubscriptionTemplateSettings, "subscription_path">
->;
+export type SubscriptionTemplateSettingsUpdatePayload = Partial<SubscriptionTemplateSettings>;
 
 export interface AdminSubscriptionSettings {
 	id: number;
