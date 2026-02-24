@@ -2,13 +2,19 @@
 
 ln -s /code/rebecca-cli.py /usr/bin/rebecca-cli && chmod +x /usr/bin/rebecca-cli && rebecca-cli completion install --shell bash
 
-# Check and install Xray if not present
-if [ ! -f "/usr/local/bin/xray" ]; then
-    echo "Xray executable not found, installing latest version..."
-    if [ -f "/code/Rebecca-scripts/install_latest_xray.sh" ]; then
-        bash /code/Rebecca-scripts/install_latest_xray.sh
-    elif [ -f "/code/scripts/install_latest_xray.sh" ]; then
-        bash /code/scripts/install_latest_xray.sh
+DATA_DIR="${REBECCA_DATA_DIR:-/var/lib/rebecca}"
+XRAY_DIR="${DATA_DIR}/xray-core"
+XRAY_BIN="${XRAY_DIR}/xray"
+
+mkdir -p "$XRAY_DIR"
+
+# Check and install Xray into persistent host-mounted storage
+if [ ! -x "$XRAY_BIN" ]; then
+    echo "Persisted Xray executable not found at ${XRAY_BIN}, installing..."
+    if [ -f "/code/scripts/install_latest_xray.sh" ]; then
+        XRAY_INSTALL_DIR="$XRAY_DIR" XRAY_ASSETS_DIR="$XRAY_DIR" bash /code/scripts/install_latest_xray.sh
+    elif [ -f "/code/Rebecca-scripts/install_latest_xray.sh" ]; then
+        XRAY_INSTALL_DIR="$XRAY_DIR" XRAY_ASSETS_DIR="$XRAY_DIR" bash /code/Rebecca-scripts/install_latest_xray.sh
     else
         # Fallback: download and install directly
         ARCH=$(uname -m)
@@ -26,10 +32,9 @@ if [ ! -f "/usr/local/bin/xray" ]; then
         if curl -L -o "$ZIP_FILE" "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${ARCH}.zip"; then
             if command -v unzip >/dev/null 2>&1; then
                 unzip -q "$ZIP_FILE" -d "$TMP_DIR"
-                install -m 755 "${TMP_DIR}/xray" "/usr/local/bin/xray"
-                mkdir -p "/usr/local/share/xray/"
-                install -m 644 "${TMP_DIR}/geoip.dat" "/usr/local/share/xray/geoip.dat" 2>/dev/null || true
-                install -m 644 "${TMP_DIR}/geosite.dat" "/usr/local/share/xray/geosite.dat" 2>/dev/null || true
+                install -m 755 "${TMP_DIR}/xray" "$XRAY_BIN"
+                install -m 644 "${TMP_DIR}/geoip.dat" "${XRAY_DIR}/geoip.dat" 2>/dev/null || true
+                install -m 644 "${TMP_DIR}/geosite.dat" "${XRAY_DIR}/geosite.dat" 2>/dev/null || true
                 echo "Xray installed successfully"
             else
                 echo "Warning: unzip not found, cannot install Xray"
@@ -40,6 +45,13 @@ if [ ! -f "/usr/local/bin/xray" ]; then
         rm -rf "$TMP_DIR"
     fi
 fi
+
+# Keep compatibility paths, but always run panel using persistent core/assets.
+mkdir -p /usr/local/bin /usr/local/share
+ln -sf "$XRAY_BIN" /usr/local/bin/xray
+ln -sfn "$XRAY_DIR" /usr/local/share/xray
+export XRAY_EXECUTABLE_PATH="$XRAY_BIN"
+export XRAY_ASSETS_PATH="$XRAY_DIR"
 
 # Wait for database to be ready
 echo "Waiting for database to be ready..."
