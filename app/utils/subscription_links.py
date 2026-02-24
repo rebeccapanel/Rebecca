@@ -4,7 +4,6 @@ from typing import Dict, Optional
 
 from app.models.user import UserResponse
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH
 
 # Lazy/fallback import to avoid hard dependency in environments missing updated settings model
 try:  # pragma: no cover - defensive for mixed deployments
@@ -56,18 +55,27 @@ def build_subscription_links(
                     pass
 
         effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
-        url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+        url_prefixes = SubscriptionSettingsService.build_subscription_bases(effective_settings, salt=salt)
+        url_prefix = url_prefixes[0]
     except Exception:
-        path = XRAY_SUBSCRIPTION_PATH.strip("/") if XRAY_SUBSCRIPTION_PATH else "sub"
-        url_prefix = f"/{path}"
+        url_prefix = "/sub"
 
     links: Dict[str, str] = {}
+    try:
+        url_prefixes  # type: ignore[name-defined]
+    except Exception:
+        url_prefixes = [url_prefix]
     if user.credential_key:
         links["username-key"] = f"{url_prefix}/{user.username}/{user.credential_key}"
         links["key"] = f"{url_prefix}/{user.credential_key}"
 
     token = create_subscription_token(user.username)
     links["token"] = f"{url_prefix}/{token}"
+
+    for extra_prefix in url_prefixes[1:]:
+        if user.credential_key:
+            links[f"key@{extra_prefix.rsplit(':',1)[-1].split('/')[0]}"] = f"{extra_prefix}/{user.credential_key}"
+        links[f"token@{extra_prefix.rsplit(':',1)[-1].split('/')[0]}"] = f"{extra_prefix}/{token}"
 
     has_key = bool(user.credential_key)
     if not has_key:

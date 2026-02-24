@@ -20,7 +20,6 @@ from app.utils.credentials import (
 )
 from xray_api.types.account import Account
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH
 
 # Fallback import to avoid deployment breakage when settings model isn't updated yet
 try:  # pragma: no cover
@@ -718,7 +717,7 @@ class UserResponse(User):
             effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
             url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
         except Exception:
-            url_prefix = f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
+            url_prefix = "/sub"
 
         links: Dict[str, str] = {}
         if self.credential_key:
