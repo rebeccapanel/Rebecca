@@ -148,6 +148,20 @@ class SubscriptionSettingsService:
             return ""
         return SubscriptionSettingsService._ensure_scheme(cleaned)
 
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off", ""}:
+                return False
+        return bool(value)
+
 
     @staticmethod
     def _normalize_ports(raw: Any) -> List[int]:
@@ -196,15 +210,16 @@ class SubscriptionSettingsService:
             try:
                 parsed = json.loads(text)
                 if isinstance(parsed, list):
-                    values = [cls._sanitize_alias(v) for v in parsed if cls._sanitize_alias(v)]
-                    return values
+                    values = [cls._sanitize_alias(v) for v in parsed]
+                    return [alias for i, alias in enumerate(values) if alias and alias not in values[:i]]
             except Exception:
                 # legacy single-line string alias support
                 sanitized = cls._sanitize_alias(text)
                 return [sanitized] if sanitized else []
             return values
         if isinstance(raw, list):
-            return [cls._sanitize_alias(v) for v in raw if cls._sanitize_alias(v)]
+            values = [cls._sanitize_alias(v) for v in raw]
+            return [alias for i, alias in enumerate(values) if alias and alias not in values[:i]]
         return values
 
     @classmethod
@@ -426,21 +441,18 @@ class SubscriptionSettingsService:
                     value = cls._normalize_support_url(value)
                 if key in {"subscription_profile_title", "subscription_update_interval"} and value is not None:
                     value = str(value).strip()
+                if key == "subscription_path":
+                    value = cls._normalize_path(value)
                 if isinstance(value, str):
                     value = value.strip()
                 if key.startswith("use_custom_json"):
-                    value = bool(value)
+                    value = cls._coerce_bool(value)
                 if key == "subscription_aliases":
                     if value is None:
                         value = []
                     if not isinstance(value, list):
                         raise ValueError("subscription_aliases must be a list")
-                    normalized_aliases: List[str] = []
-                    for item in value:
-                        alias = cls._sanitize_alias(str(item or ""))
-                        if alias:
-                            normalized_aliases.append(alias)
-                    value = json.dumps(normalized_aliases)
+                    value = json.dumps(cls._normalize_aliases(value))
                 if key == "subscription_ports":
                     if value is None:
                         value = []
@@ -489,12 +501,14 @@ class SubscriptionSettingsService:
                     value = str(value).strip()
                 if key == "subscription_path":
                     value = cls._normalize_path(str(value))
-                if key == "subscription_path":
-                    value = cls._normalize_path(str(value))
+                if key == "subscription_aliases":
+                    value = cls._normalize_aliases(value)
+                if key == "subscription_ports":
+                    value = cls._normalize_ports(value)
                 if isinstance(value, str):
                     value = value.strip()
                 if key.startswith("use_custom_json"):
-                    value = bool(value)
+                    value = cls._coerce_bool(value)
                 setattr(effective, key, value)
 
         if effective.subscription_domain:
@@ -519,18 +533,24 @@ class SubscriptionSettingsService:
         if not prefix:
             return [f"/{path}"]
 
-        bases=[f"{prefix.rstrip('/')}/{path}"]
-        ports = cls._normalize_ports(getattr(settings, 'subscription_ports', []))
-        if ports and prefix.startswith('http'):
+        bases = [f"{prefix.rstrip('/')}/{path}"]
+        ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
+        if ports and prefix.startswith("http"):
             from urllib.parse import urlsplit, urlunsplit
-            parts=urlsplit(prefix)
-            host = parts.hostname or ''
+
+            parts = urlsplit(prefix)
+            host = parts.hostname or ""
             for p in ports:
                 netloc = f"{host}:{p}"
                 if parts.username:
                     auth = parts.username + ((":" + (parts.password or "")) if parts.password else "")
                     netloc = f"{auth}@{netloc}"
-                alt=urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment)).rstrip('/') + f"/{path}"
+                alt = (
+                    urlunsplit(
+                        (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+                    ).rstrip("/")
+                    + f"/{path}"
+                )
                 if alt not in bases:
                     bases.append(alt)
         return bases
