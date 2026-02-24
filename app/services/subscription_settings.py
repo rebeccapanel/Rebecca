@@ -37,6 +37,7 @@ DEFAULT_USE_CUSTOM_JSON_FOR_HAPP = False
 
 REBECCA_DATA_DIR = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca"))
 CERT_BASE_PATH = Path(os.getenv("REBECCA_CERT_BASE", REBECCA_DATA_DIR / "certs"))
+APP_TEMPLATE_BASE_PATH = (Path(__file__).resolve().parents[1] / "templates").resolve()
 DOMAIN_PATTERN = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -315,18 +316,20 @@ class SubscriptionSettingsService:
         try:
             base = cls.get_settings(ensure_record=True, db=db)
             template_name, custom_directory = cls._effective_template_selection(template_key, base, admin)
-            if not custom_directory:
-                raise ValueError("Custom templates directory is not configured; cannot save template content.")
-
-            base_dir = Path(custom_directory).expanduser().resolve()
+            base_dir = (
+                Path(custom_directory).expanduser().resolve() if custom_directory else APP_TEMPLATE_BASE_PATH
+            )
             target_path = (base_dir / template_name).resolve()
             try:
                 target_path.relative_to(base_dir)
             except ValueError as exc:
                 raise ValueError("Template path escapes the templates directory.") from exc
 
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.write_text(content, encoding="utf-8")
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path.write_text(content, encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"Unable to write template {template_name}: {exc}") from exc
 
             return cls.read_template_content(template_key, admin=admin, db=db)
         finally:
