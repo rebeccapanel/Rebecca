@@ -1,7 +1,7 @@
 """add subscription aliases settings
 
-Revision ID: a24b7a1e9f01
-Revises: ff05a3b7cdef
+Revision ID: 11_add_subscription_aliases
+Revises: 10_ensure_subscription_schema
 Create Date: 2026-02-24 07:40:00.000000
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "a24b7a1e9f01"
+revision = "11_add_subscription_aliases"
 down_revision = "10_ensure_subscription_schema"
 branch_labels = None
 depends_on = None

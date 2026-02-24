@@ -1,7 +1,7 @@
 """add subscription path and ports
 
-Revision ID: b24c8d2f9012
-Revises: a24b7a1e9f01
+Revision ID: 12_subscription_path_ports
+Revises: 11_add_subscription_aliases
 Create Date: 2026-02-24 14:05:00.000000
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "b24c8d2f9012"
-down_revision = "a24b7a1e9f01"
+revision = "12_subscription_path_ports"
+down_revision = "11_add_subscription_aliases"
 branch_labels = None
 depends_on = None
 
