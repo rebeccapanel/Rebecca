@@ -475,6 +475,30 @@ type SubscriptionFormValues = SubscriptionTemplateSettings & {
 	subscription_ports_text: string;
 };
 
+const parseSubscriptionPortsInput = (raw: string): number[] => {
+	const normalized = (raw || "").replace(/[،؛]/g, ",");
+	const tokens = normalized
+		.split(/[,\s]+/)
+		.map((token) => token.trim())
+		.filter(Boolean);
+	const ports: number[] = [];
+	tokens.forEach((token) => {
+		const port = Number(token);
+		if (
+			Number.isFinite(port) &&
+			port > 0 &&
+			port <= 65535 &&
+			!ports.includes(port)
+		) {
+			ports.push(port);
+		}
+	});
+	return ports;
+};
+
+const formatSubscriptionPorts = (ports: number[]): string =>
+	ports.join(", ");
+
 const buildSubscriptionDefaults = (
 	settings?: SubscriptionTemplateSettings,
 ): SubscriptionFormValues => ({
@@ -502,7 +526,9 @@ const buildSubscriptionDefaults = (
 	subscription_aliases: settings?.subscription_aliases ?? [],
 	subscription_ports: settings?.subscription_ports ?? [],
 	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
-	subscription_ports_text: (settings?.subscription_ports ?? []).join(","),
+	subscription_ports_text: formatSubscriptionPorts(
+		settings?.subscription_ports ?? [],
+	),
 });
 
 const cleanOverridePayload = (
@@ -824,6 +850,8 @@ export const IntegrationSettingsPage = () => {
 		control: subscriptionControl,
 		handleSubmit: handleSubscriptionSubmit,
 		reset: resetSubscription,
+		setValue: setSubscriptionValue,
+		watch: watchSubscription,
 		formState: { isDirty: isSubscriptionDirty },
 	} = useForm<SubscriptionFormValues>({
 		defaultValues: buildSubscriptionDefaults(subscriptionBundle?.settings),
@@ -834,6 +862,12 @@ export const IntegrationSettingsPage = () => {
 			resetSubscription(buildSubscriptionDefaults(subscriptionBundle.settings));
 		}
 	}, [subscriptionBundle, resetSubscription]);
+
+	const subscriptionPortsText = watchSubscription("subscription_ports_text");
+	const parsedSubscriptionPorts = useMemo(
+		() => parseSubscriptionPortsInput(subscriptionPortsText || ""),
+		[subscriptionPortsText],
+	);
 
 	const integrationTabKeys = useMemo(
 		() => ["panel", "telegram", "subscriptions", "template-creator"],
@@ -1092,10 +1126,7 @@ export const IntegrationSettingsPage = () => {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter(Boolean);
-		const ports = (values.subscription_ports_text || "")
-			.split(/[,\s]+/)
-			.map((v) => Number(v))
-			.filter((v) => Number.isFinite(v) && v > 0 && v <= 65535);
+		const ports = parseSubscriptionPortsInput(values.subscription_ports_text || "");
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
 			subscription_profile_title: values.subscription_profile_title.trim(),
@@ -1309,17 +1340,6 @@ export const IntegrationSettingsPage = () => {
 			<Heading size="lg" mb={4}>
 				{t("settings.integrations")}
 			</Heading>
-			<Alert status="warning" variant="left-accent" borderRadius="md" mb={6}>
-				<AlertIcon />
-				<Box>
-					<Text fontWeight="semibold">
-						{t("settings.integrations.incompleteWarningTitle")}
-					</Text>
-					<Text fontSize="sm">
-						{t("settings.integrations.incompleteWarningDescription")}
-					</Text>
-				</Box>
-			</Alert>
 			<Tabs
 				colorScheme="primary"
 				index={activeIntegrationTab}
@@ -1866,13 +1886,54 @@ export const IntegrationSettingsPage = () => {
 									<Text fontSize="sm" color="gray.500">
 										{t("settings.subscriptions.description")}
 									</Text>
-									<Box borderWidth="1px" borderRadius="lg" p={4}>
-										<Heading size="sm" mb={1}>
-											{t("settings.subscriptions.globalTitle")}
-										</Heading>
-										<Text fontSize="sm" color="gray.500" mb={4}>
-											{t("settings.subscriptions.globalDescription")}
-										</Text>
+									<Box
+										borderWidth="1px"
+										borderRadius="lg"
+										p={{ base: 4, md: 5 }}
+										bg="gray.50"
+										_dark={{ bg: "gray.900" }}
+									>
+										<Flex
+											justify="space-between"
+											align={{ base: "flex-start", md: "center" }}
+											flexDirection={{ base: "column", md: "row" }}
+											gap={3}
+											mb={4}
+										>
+											<Box>
+												<Heading size="sm" mb={1}>
+													{t("settings.subscriptions.globalTitle")}
+												</Heading>
+												<Text fontSize="sm" color="gray.500">
+													{t("settings.subscriptions.globalDescription")}
+												</Text>
+											</Box>
+											<HStack spacing={2}>
+												<Button
+													variant="outline"
+													size="sm"
+													leftIcon={<RefreshIcon />}
+													type="button"
+													onClick={() => refetchSubscriptionSettings()}
+													isDisabled={subscriptionSettingsMutation.isLoading}
+												>
+													{t("actions.refresh")}
+												</Button>
+												<Button
+													colorScheme="primary"
+													size="sm"
+													leftIcon={<SaveIcon />}
+													type="submit"
+													isLoading={subscriptionSettingsMutation.isLoading}
+													isDisabled={
+														!isSubscriptionDirty &&
+														!subscriptionSettingsMutation.isLoading
+													}
+												>
+													{t("settings.save")}
+												</Button>
+											</HStack>
+										</Flex>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<FormControl>
 												<FormLabel>
@@ -2151,13 +2212,15 @@ export const IntegrationSettingsPage = () => {
 													</Button>
 												</HStack>
 											</FormControl>
-											<FormControl>
-												<FormLabel>
-													{t("settings.subscriptions.subscriptionPath")}
-												</FormLabel>
-												<Input placeholder="sub" {...subscriptionRegister("subscription_path")} />
-												<FormHelperText>Editable primary path. Legacy /sub remains supported.</FormHelperText>
-											</FormControl>
+											<Box gridColumn={{ base: "1 / -1", md: "1 / -1" }}>
+												<Divider mb={3} />
+												<Text fontSize="sm" fontWeight="semibold">
+													{t(
+														"settings.subscriptions.routingSection",
+														"Routing aliases and ports",
+													)}
+												</Text>
+											</Box>
 											<FormControl>
 												<FormLabel>
 													{t(
@@ -2175,12 +2238,49 @@ export const IntegrationSettingsPage = () => {
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
-												<FormLabel>Subscription ports</FormLabel>
-												<Input placeholder="443,8080" {...subscriptionRegister("subscription_ports_text")} />
-												<FormHelperText>Comma-separated extra ports for generated subscription URLs.</FormHelperText>
+												<FormLabel>
+													{t(
+														"settings.subscriptions.subscriptionPorts",
+														"Subscription ports",
+													)}
+												</FormLabel>
+												<Input
+													placeholder="443, 8443"
+													{...subscriptionRegister("subscription_ports_text", {
+														onBlur: (event) => {
+															const normalized = formatSubscriptionPorts(
+																parseSubscriptionPortsInput(
+																	event.target.value || "",
+																),
+															);
+															setSubscriptionValue(
+																"subscription_ports_text",
+																normalized,
+																{
+																	shouldDirty: true,
+																},
+															);
+														},
+													})}
+												/>
+												<FormHelperText>
+													{t(
+														"settings.subscriptions.subscriptionPortsHint",
+														"Extra ports for generated subscription URLs. Separate with comma or space.",
+													)}
+													{parsedSubscriptionPorts.length > 0
+														? ` ${t("settings.subscriptions.activePorts", "Active ports")}: ${parsedSubscriptionPorts.join(", ")}`
+														: ""}
+												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
 										<Divider my={4} />
+										<Text fontSize="sm" fontWeight="semibold" mb={3}>
+											{t(
+												"settings.subscriptions.clientJsonSection",
+												"Client JSON behavior",
+											)}
+										</Text>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<Controller
 												control={subscriptionControl}
@@ -3205,34 +3305,23 @@ export const IntegrationSettingsPage = () => {
 											</Stack>
 										)}
 									</Box>
-									<Flex gap={3} justify="flex-end">
-										<Button
-											variant="outline"
-											leftIcon={<RefreshIcon />}
-											onClick={() => refetchSubscriptionSettings()}
-											isDisabled={subscriptionSettingsMutation.isLoading}
-										>
-											{t("actions.refresh")}
-										</Button>
-										<Button
-											colorScheme="primary"
-											leftIcon={<SaveIcon />}
-											type="submit"
-											isLoading={subscriptionSettingsMutation.isLoading}
-											isDisabled={
-												!isSubscriptionDirty &&
-												!subscriptionSettingsMutation.isLoading
-											}
-										>
-											{t("settings.save")}
-										</Button>
-									</Flex>
 								</VStack>
 							</form>
 						)}
 					</TabPanel>
 					<TabPanel px={{ base: 0, md: 2 }}>
 						<VStack align="stretch" spacing={6}>
+							<Alert status="warning" variant="left-accent" borderRadius="md">
+								<AlertIcon />
+								<Box>
+									<Text fontWeight="semibold">
+										{t("settings.integrations.incompleteWarningTitle")}
+									</Text>
+									<Text fontSize="sm">
+										{t("settings.integrations.incompleteWarningDescription")}
+									</Text>
+								</Box>
+							</Alert>
 							<Text fontSize="sm" color="gray.500">
 								{t("settings.templates.description")}
 							</Text>

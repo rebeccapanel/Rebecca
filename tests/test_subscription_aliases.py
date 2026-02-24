@@ -55,3 +55,13 @@ def test_subscription_alias_path_and_query(auth_client):
     assert q1.text == baseline.text
     assert q2.text == baseline.text
     assert q3.text == baseline.text
+
+
+def test_subscription_path_update_is_persisted(auth_client):
+    response = auth_client.put(
+        "/api/settings/subscriptions",
+        json={"subscription_path": "mysub"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["subscription_path"] == "mysub"
