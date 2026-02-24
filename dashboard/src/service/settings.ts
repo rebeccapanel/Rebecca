@@ -76,6 +76,7 @@ export interface SubscriptionTemplateSettings {
 	use_custom_json_for_streisand: boolean;
 	use_custom_json_for_happ: boolean;
 	subscription_path: string;
+	subscription_aliases: string[];
 }
 
 export type SubscriptionTemplateSettingsUpdatePayload = Partial<

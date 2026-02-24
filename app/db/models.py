@@ -164,6 +164,7 @@ class SubscriptionSettings(Base):
     use_custom_json_for_v2rayng = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_streisand = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_happ = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    subscription_aliases = Column(Text, nullable=False, default="[]")
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

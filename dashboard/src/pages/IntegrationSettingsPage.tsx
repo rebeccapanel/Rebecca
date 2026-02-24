@@ -469,7 +469,9 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 	};
 };
 
-type SubscriptionFormValues = SubscriptionTemplateSettings;
+type SubscriptionFormValues = SubscriptionTemplateSettings & {
+	subscription_aliases_text: string;
+};
 
 const buildSubscriptionDefaults = (
 	settings?: SubscriptionTemplateSettings,
@@ -495,6 +497,8 @@ const buildSubscriptionDefaults = (
 		settings?.use_custom_json_for_streisand ?? false,
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
+	subscription_aliases: settings?.subscription_aliases ?? [],
+	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
 });
 
 const cleanOverridePayload = (
@@ -1083,6 +1087,10 @@ export const IntegrationSettingsPage = () => {
 	};
 
 	const onSubmitSubscriptionSettings = (values: SubscriptionFormValues) => {
+		const aliases = (values.subscription_aliases_text || "")
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter(Boolean);
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
 			subscription_profile_title: values.subscription_profile_title.trim(),
@@ -1105,6 +1113,7 @@ export const IntegrationSettingsPage = () => {
 			use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
 			use_custom_json_for_streisand: values.use_custom_json_for_streisand,
 			use_custom_json_for_happ: values.use_custom_json_for_happ,
+			subscription_aliases: aliases,
 		};
 		subscriptionSettingsMutation.mutate(payload);
 	};
@@ -2227,6 +2236,22 @@ export const IntegrationSettingsPage = () => {
 														"settings.subscriptions.subscriptionPathHint",
 														"Path follows the backend route and is shown for reference.",
 													)}
+												</FormHelperText>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t(
+														"settings.subscriptions.subscriptionAliases",
+														"Subscription alias URLs",
+													)}
+												</FormLabel>
+												<Textarea
+													placeholder="/mypath/{identifier}\n/test/{token}\n/api/v1/client/subscribe?token={identifier}"
+													rows={4}
+													{...subscriptionRegister("subscription_aliases_text")}
+												/>
+												<FormHelperText>
+													One alias per line. Supports path or query templates with {"{identifier}"}, {"{token}"}, {"{key}"}.
 												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
