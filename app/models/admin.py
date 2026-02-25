@@ -336,6 +336,11 @@ class Admin(BaseModel):
         description="Maximum data limit for admin in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
     )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
+    )
     users_limit: Optional[int] = Field(
         None,
         description="Maximum number of users admin can create (null = unlimited)",
@@ -633,6 +638,11 @@ class AdminModify(BaseModel):
         description="Maximum data limit in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
     )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
+    )
     users_limit: Optional[int] = Field(
         None,
         description="Maximum number of users (null = unlimited)",
@@ -658,6 +668,11 @@ class AdminPartialModify(AdminModify):
         None,
         description="Maximum data limit in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
+    )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
     )
     users_limit: Optional[int] = Field(
         None,
