@@ -478,6 +478,7 @@ def update_node_core(
     )
     startup_config = xray.config.include_db_users()
     xray.operations.restart_node(node_id, startup_config)
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=8)
 
     return {"detail": f"Node {dbnode.name} switched to {version}"}
 
@@ -583,6 +584,8 @@ def restart_node_service(
         action=node.restart_host_service,
         failure_message=f"Unable to restart node service for {dbnode.name}",
     )
+    startup_config = xray.config.include_db_users()
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=10)
     return {"detail": f"Restart requested for node {dbnode.name}"}
 
 
@@ -603,4 +606,6 @@ def update_node_service(
         action=node.update_host_service,
         failure_message=f"Unable to update Rebecca-node service for {dbnode.name}",
     )
+    startup_config = xray.config.include_db_users()
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=20)
     return {"detail": f"Update requested for node {dbnode.name}"}
