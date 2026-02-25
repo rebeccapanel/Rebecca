@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -97,6 +97,8 @@ class SubscriptionTemplateSettings(BaseModel):
     use_custom_json_for_streisand: bool = False
     use_custom_json_for_happ: bool = False
     subscription_path: str = "sub"
+    subscription_aliases: List[str] = Field(default_factory=list)
+    subscription_ports: List[int] = Field(default_factory=list)
 
 
 class SubscriptionTemplateSettingsUpdate(BaseModel):
@@ -119,6 +121,9 @@ class SubscriptionTemplateSettingsUpdate(BaseModel):
     use_custom_json_for_v2rayng: Optional[bool] = None
     use_custom_json_for_streisand: Optional[bool] = None
     use_custom_json_for_happ: Optional[bool] = None
+    subscription_path: Optional[str] = None
+    subscription_aliases: Optional[List[str]] = None
+    subscription_ports: Optional[List[int]] = None
 
 
 class AdminSubscriptionOverrides(SubscriptionTemplateSettingsUpdate):
@@ -129,7 +134,7 @@ class AdminSubscriptionSettingsResponse(BaseModel):
     id: int
     username: str
     subscription_domain: Optional[str] = None
-    subscription_settings: Dict[str, Optional[str | bool]] = Field(default_factory=dict)
+    subscription_settings: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminSubscriptionSettingsUpdate(BaseModel):

@@ -61,6 +61,49 @@ class NodeAPIError(Exception):
         self.detail = detail
 
 
+def _detail_to_text(detail) -> str:
+    if detail is None:
+        return ""
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, dict):
+        parts = []
+        for key in ("message", "detail", "stdout", "stderr"):
+            value = detail.get(key)
+            if value:
+                parts.append(str(value))
+        if parts:
+            return " | ".join(parts)
+        try:
+            return json.dumps(detail, ensure_ascii=False)
+        except Exception:
+            return str(detail)
+    if isinstance(detail, list):
+        try:
+            return " | ".join(str(item) for item in detail)
+        except Exception:
+            return str(detail)
+    return str(detail)
+
+
+def _is_expected_maintenance_disconnect(detail) -> bool:
+    text = _detail_to_text(detail).lower()
+    if not text:
+        return False
+
+    expected_tokens = (
+        "failed with exit code -15",
+        "failed with exit code 143",
+        "max retries exceeded",
+        "connection refused",
+        "connection reset by peer",
+        "remote end closed connection",
+        "failed to establish a new connection",
+        "read timed out",
+    )
+    return any(token in text for token in expected_tokens)
+
+
 _GRPC_PROXY_ENV_LOCK = threading.Lock()
 
 
@@ -421,7 +464,7 @@ class ReSTXRayNode:
     def refresh_health(self, *, force: bool = True) -> tuple[bool, bool]:
         return self._check_health(force=force)
 
-    def make_request(self, path: str, timeout: int, **params):
+    def make_request(self, path: str, timeout: int, *, report_runtime_error: bool = True, **params):
         payload = {"session_id": self._session_id, **params}
         last_exc: Exception | None = None
 
@@ -447,7 +490,7 @@ class ReSTXRayNode:
                         self._api = None
                         self._started = False
                         self._set_health_cache(False, False)
-                    if "xray is started already" not in detail_text:
+                    if report_runtime_error and "xray is started already" not in detail_text:
                         self._register_runtime_error(str(detail))
                     raise NodeAPIError(res.status_code, detail)
                 except NodeAPIError:
@@ -461,7 +504,8 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
-                    self._register_runtime_error(str(exc))
+                    if report_runtime_error:
+                        self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 except Exception as exc:
                     last_exc = exc
@@ -469,7 +513,8 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
-                    self._register_runtime_error(str(exc))
+                    if report_runtime_error:
+                        self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 finally:
                     if res is not None:
@@ -663,12 +708,40 @@ class ReSTXRayNode:
     def restart_host_service(self):
         """Ask the remote node to restart its Rebecca services via maintenance API."""
         self._ensure_connected()
-        return self.make_request("/maintenance/restart", timeout=300)
+        try:
+            return self.make_request("/maintenance/restart", timeout=300, report_runtime_error=False)
+        except NodeAPIError as exc:
+            if not _is_expected_maintenance_disconnect(exc.detail):
+                raise
+
+            # Maintenance restart can drop this control connection mid-request.
+            self._session_id = None
+            self._api = None
+            self._started = False
+            self._set_health_cache(False, False)
+            return {
+                "status": "accepted",
+                "detail": "Node maintenance restart triggered. Reconnect will be attempted automatically.",
+            }
 
     def update_host_service(self):
         """Ask the remote node to run the Rebecca-node update workflow via maintenance API."""
         self._ensure_connected()
-        return self.make_request("/maintenance/update", timeout=900)
+        try:
+            return self.make_request("/maintenance/update", timeout=900, report_runtime_error=False)
+        except NodeAPIError as exc:
+            if not _is_expected_maintenance_disconnect(exc.detail):
+                raise
+
+            # Older maintenance services may self-terminate with -15 during updates.
+            self._session_id = None
+            self._api = None
+            self._started = False
+            self._set_health_cache(False, False)
+            return {
+                "status": "accepted",
+                "detail": "Node maintenance update triggered. Reconnect will be attempted automatically.",
+            }
 
     def update_geo(self, files: list[dict]):
         """

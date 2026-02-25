@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
@@ -13,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.db.base import SessionLocal
 from app.templates import _get_env
 from app.utils.maintenance import maintenance_request
-from config import XRAY_SUBSCRIPTION_PATH
 
 DEFAULT_SUBSCRIPTION_URL_PREFIX = ""
 DEFAULT_SUBSCRIPTION_PROFILE_TITLE = "Subscription"
@@ -37,6 +37,7 @@ DEFAULT_USE_CUSTOM_JSON_FOR_HAPP = False
 
 REBECCA_DATA_DIR = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca"))
 CERT_BASE_PATH = Path(os.getenv("REBECCA_CERT_BASE", REBECCA_DATA_DIR / "certs"))
+APP_TEMPLATE_BASE_PATH = (Path(__file__).resolve().parents[1] / "templates").resolve()
 DOMAIN_PATTERN = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -75,7 +76,9 @@ class SubscriptionSettingsData:
     use_custom_json_for_v2rayng: bool = False
     use_custom_json_for_streisand: bool = False
     use_custom_json_for_happ: bool = False
-    subscription_path: str = XRAY_SUBSCRIPTION_PATH
+    subscription_path: str = "sub"
+    subscription_aliases: List[str] = field(default_factory=list)
+    subscription_ports: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +133,12 @@ class SubscriptionSettingsService:
             return value
         return f"https://{value}"
 
+
+    @staticmethod
+    def _normalize_path(value: Optional[str]) -> str:
+        raw = (value or "").strip().strip("/")
+        return raw or "sub"
+
     @staticmethod
     def _normalize_support_url(value: Optional[str]) -> str:
         if value is None:
@@ -138,6 +147,80 @@ class SubscriptionSettingsService:
         if not cleaned:
             return ""
         return SubscriptionSettingsService._ensure_scheme(cleaned)
+
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off", ""}:
+                return False
+        return bool(value)
+
+
+    @staticmethod
+    def _normalize_ports(raw: Any) -> List[int]:
+        if raw is None:
+            return []
+        values = raw
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return []
+            try:
+                values = json.loads(text)
+            except Exception:
+                values = [v.strip() for v in text.split(',') if v.strip()]
+        if not isinstance(values, list):
+            return []
+        ports: List[int] = []
+        for v in values:
+            try:
+                p = int(v)
+            except Exception:
+                continue
+            if 1 <= p <= 65535 and p not in ports:
+                ports.append(p)
+        return ports
+
+    @staticmethod
+    def _sanitize_alias(alias: str) -> str:
+        cleaned = str(alias or "").strip()
+        if not cleaned:
+            return ""
+        # keep aliases readable in UI/DB (without placeholder braces)
+        cleaned = cleaned.replace("{identifier}", "").replace("{token}", "").replace("{key}", "")
+        cleaned = re.sub(r"//+", "/", cleaned)
+        return cleaned.strip()
+
+    @classmethod
+    def _normalize_aliases(cls, raw: Any) -> List[str]:
+        values: List[str] = []
+        if raw is None:
+            return values
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return values
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    values = [cls._sanitize_alias(v) for v in parsed]
+                    return [alias for i, alias in enumerate(values) if alias and alias not in values[:i]]
+            except Exception:
+                # legacy single-line string alias support
+                sanitized = cls._sanitize_alias(text)
+                return [sanitized] if sanitized else []
+            return values
+        if isinstance(raw, list):
+            values = [cls._sanitize_alias(v) for v in raw]
+            return [alias for i, alias in enumerate(values) if alias and alias not in values[:i]]
+        return values
 
     @classmethod
     def _fallback_defaults(cls) -> SubscriptionSettingsData:
@@ -161,7 +244,9 @@ class SubscriptionSettingsService:
             use_custom_json_for_v2rayng=DEFAULT_USE_CUSTOM_JSON_FOR_V2RAYNG,
             use_custom_json_for_streisand=DEFAULT_USE_CUSTOM_JSON_FOR_STREISAND,
             use_custom_json_for_happ=DEFAULT_USE_CUSTOM_JSON_FOR_HAPP,
-            subscription_path=XRAY_SUBSCRIPTION_PATH,
+            subscription_path="sub",
+            subscription_aliases=[],
+            subscription_ports=[],
         )
 
     @classmethod
@@ -191,7 +276,9 @@ class SubscriptionSettingsService:
             use_custom_json_for_v2rayng=bool(record.use_custom_json_for_v2rayng),
             use_custom_json_for_streisand=bool(record.use_custom_json_for_streisand),
             use_custom_json_for_happ=bool(record.use_custom_json_for_happ),
-            subscription_path=XRAY_SUBSCRIPTION_PATH,
+            subscription_path=cls._normalize_path(getattr(record, "subscription_path", "sub")),
+            subscription_aliases=cls._normalize_aliases(record.subscription_aliases),
+            subscription_ports=cls._normalize_ports(getattr(record, "subscription_ports", None)),
         )
 
     @classmethod
@@ -237,6 +324,8 @@ class SubscriptionSettingsService:
                 use_custom_json_for_v2rayng=defaults.use_custom_json_for_v2rayng,
                 use_custom_json_for_streisand=defaults.use_custom_json_for_streisand,
                 use_custom_json_for_happ=defaults.use_custom_json_for_happ,
+                subscription_aliases=json.dumps(defaults.subscription_aliases),
+                subscription_ports=json.dumps(defaults.subscription_ports),
             )
             db.add(record)
             db.commit()
@@ -315,18 +404,20 @@ class SubscriptionSettingsService:
         try:
             base = cls.get_settings(ensure_record=True, db=db)
             template_name, custom_directory = cls._effective_template_selection(template_key, base, admin)
-            if not custom_directory:
-                raise ValueError("Custom templates directory is not configured; cannot save template content.")
-
-            base_dir = Path(custom_directory).expanduser().resolve()
+            base_dir = (
+                Path(custom_directory).expanduser().resolve() if custom_directory else APP_TEMPLATE_BASE_PATH
+            )
             target_path = (base_dir / template_name).resolve()
             try:
                 target_path.relative_to(base_dir)
             except ValueError as exc:
                 raise ValueError("Template path escapes the templates directory.") from exc
 
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.write_text(content, encoding="utf-8")
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path.write_text(content, encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"Unable to write template {template_name}: {exc}") from exc
 
             return cls.read_template_content(template_key, admin=admin, db=db)
         finally:
@@ -350,10 +441,24 @@ class SubscriptionSettingsService:
                     value = cls._normalize_support_url(value)
                 if key in {"subscription_profile_title", "subscription_update_interval"} and value is not None:
                     value = str(value).strip()
+                if key == "subscription_path":
+                    value = cls._normalize_path(value)
                 if isinstance(value, str):
                     value = value.strip()
                 if key.startswith("use_custom_json"):
-                    value = bool(value)
+                    value = cls._coerce_bool(value)
+                if key == "subscription_aliases":
+                    if value is None:
+                        value = []
+                    if not isinstance(value, list):
+                        raise ValueError("subscription_aliases must be a list")
+                    value = json.dumps(cls._normalize_aliases(value))
+                if key == "subscription_ports":
+                    if value is None:
+                        value = []
+                    if not isinstance(value, list):
+                        raise ValueError("subscription_ports must be a list")
+                    value = json.dumps(cls._normalize_ports(value))
                 setattr(record, key, value)
             record.updated_at = _now()
             db.add(record)
@@ -394,10 +499,16 @@ class SubscriptionSettingsService:
                     value = cls._normalize_support_url(value)
                 if key in {"subscription_profile_title", "subscription_update_interval"}:
                     value = str(value).strip()
+                if key == "subscription_path":
+                    value = cls._normalize_path(str(value))
+                if key == "subscription_aliases":
+                    value = cls._normalize_aliases(value)
+                if key == "subscription_ports":
+                    value = cls._normalize_ports(value)
                 if isinstance(value, str):
                     value = value.strip()
                 if key.startswith("use_custom_json"):
-                    value = bool(value)
+                    value = cls._coerce_bool(value)
                 setattr(effective, key, value)
 
         if effective.subscription_domain:
@@ -411,13 +522,38 @@ class SubscriptionSettingsService:
 
     @classmethod
     def build_subscription_base(cls, settings: EffectiveSubscriptionSettings, *, salt: Optional[str] = None) -> str:
+        return cls.build_subscription_bases(settings, salt=salt)[0]
+
+    @classmethod
+    def build_subscription_bases(cls, settings: EffectiveSubscriptionSettings, *, salt: Optional[str] = None) -> List[str]:
         prefix = settings.subscription_url_prefix or ""
         if salt:
             prefix = prefix.replace("*", salt)
-        path = (settings.subscription_path or XRAY_SUBSCRIPTION_PATH).strip("/")
-        if prefix:
-            return f"{prefix}/{path}"
-        return f"/{path}"
+        path = (settings.subscription_path or "sub").strip("/")
+        if not prefix:
+            return [f"/{path}"]
+
+        bases = [f"{prefix.rstrip('/')}/{path}"]
+        ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
+        if ports and prefix.startswith("http"):
+            from urllib.parse import urlsplit, urlunsplit
+
+            parts = urlsplit(prefix)
+            host = parts.hostname or ""
+            for p in ports:
+                netloc = f"{host}:{p}"
+                if parts.username:
+                    auth = parts.username + ((":" + (parts.password or "")) if parts.password else "")
+                    netloc = f"{auth}@{netloc}"
+                alt = (
+                    urlunsplit(
+                        (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+                    ).rstrip("/")
+                    + f"/{path}"
+                )
+                if alt not in bases:
+                    bases.append(alt)
+        return bases
 
 
 class SubscriptionCertificateService:
