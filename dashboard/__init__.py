@@ -5,11 +5,46 @@ from pathlib import Path
 
 from app import app
 from config import DEBUG, VITE_BASE_API, DASHBOARD_PATH
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 base_dir = Path(__file__).parent
 build_dir = base_dir / "build"
 statics_dir = build_dir / "statics"
+
+
+def _normalize_dashboard_root(path: str) -> str:
+    normalized = str(path or "").strip().strip("/")
+    if not normalized:
+        return "/dashboard"
+    return f"/{normalized}"
+
+
+dashboard_root = _normalize_dashboard_root(DASHBOARD_PATH)
+dashboard_login = f"{dashboard_root}/login"
+
+
+def _redirect_to_dashboard_login():
+    return RedirectResponse(url=dashboard_login, status_code=307)
+
+
+def register_dashboard_login_redirects():
+    if app is None or getattr(app.state, "dashboard_login_redirect_registered", False):
+        return
+
+    app.state.dashboard_login_redirect_registered = True
+    app.add_api_route(
+        dashboard_root,
+        _redirect_to_dashboard_login,
+        methods=["GET"],
+        include_in_schema=False,
+    )
+    app.add_api_route(
+        f"{dashboard_root}/",
+        _redirect_to_dashboard_login,
+        methods=["GET"],
+        include_in_schema=False,
+    )
 
 
 def build():
@@ -49,6 +84,7 @@ def run_dev():
 def run_build():
     if not build_dir.is_dir() or not (build_dir / "index.html").exists():
         build()
+    register_dashboard_login_redirects()
     app.mount(DASHBOARD_PATH, StaticFiles(directory=build_dir, html=True), name="dashboard")
     if statics_dir.is_dir():
         app.mount("/statics/", StaticFiles(directory=statics_dir, html=True), name="statics")
