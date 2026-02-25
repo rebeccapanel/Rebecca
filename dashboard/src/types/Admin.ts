@@ -80,6 +80,7 @@ export type Admin = {
 	telegram_id?: number | null;
 	users_usage?: number | null;
 	data_limit?: number | null;
+	expire?: number | null;
 	users_limit?: number | null;
 	users_count?: number | null;
 	active_users?: number | null;
@@ -102,6 +103,7 @@ export type AdminCreatePayload = {
 	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
+	expire?: number | null;
 	users_limit?: number | null;
 };
 
@@ -112,6 +114,7 @@ export type AdminUpdatePayload = {
 	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
+	expire?: number | null;
 	users_limit?: number | null;
 };
 

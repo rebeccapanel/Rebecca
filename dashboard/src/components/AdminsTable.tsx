@@ -83,7 +83,6 @@ import {
 	AdminStatus,
 	UserPermissionToggle,
 } from "types/Admin";
-import { getAdminExpireMap } from "utils/adminExpireStorage";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
@@ -93,6 +92,7 @@ import {
 import AdminPermissionsModal from "./AdminPermissionsModal";
 
 const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
+const ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted";
 
 const iconProps = {
 	baseStyle: {
@@ -330,7 +330,6 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
-	const adminExpireMap = useMemo(() => getAdminExpireMap(), []);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
@@ -1030,22 +1029,33 @@ export const AdminsTable: FC<TableProps> = (props) => {
 							canManageThisAdmin && admin.username !== currentAdminUsername;
 						const showDisableAction =
 							canChangeStatus && admin.status !== AdminStatus.Disabled;
-						const hasLimitDisabledReason =
+						const hasDataLimitDisabledReason =
 							admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+						const hasTimeLimitDisabledReason =
+							admin.disabled_reason === ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY;
 						const disabledReasonLabel = admin.disabled_reason
-							? hasLimitDisabledReason
+							? hasDataLimitDisabledReason
 								? t(
 										"admins.disabledReason.dataLimitExceeded",
 										"Your data limit has been reached",
 									)
+								: hasTimeLimitDisabledReason
+									? t(
+											"admins.disabledReason.timeLimitExceeded",
+											"Your account time limit has expired",
+										)
 								: admin.disabled_reason
 							: null;
 						const showEnableAction =
 							canChangeStatus &&
 							admin.status === AdminStatus.Disabled &&
-							!hasLimitDisabledReason;
+							!hasDataLimitDisabledReason &&
+							!hasTimeLimitDisabledReason;
 						const showDeleteAction = canChangeStatus;
-						const adminExpireAt = adminExpireMap[admin.username];
+						const adminExpireAt =
+							typeof admin.expire === "number" && admin.expire > 0
+								? admin.expire
+								: null;
 
 						return (
 							<Box
@@ -1748,24 +1758,36 @@ export const AdminsTable: FC<TableProps> = (props) => {
 															const showDisableAction =
 																canChangeStatus &&
 																admin.status !== AdminStatus.Disabled;
-															const hasLimitDisabledReason =
+															const hasDataLimitDisabledReason =
 																admin.disabled_reason ===
 																ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+															const hasTimeLimitDisabledReason =
+																admin.disabled_reason ===
+																ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY;
 															const disabledReasonLabel = admin.disabled_reason
-																? hasLimitDisabledReason
+																? hasDataLimitDisabledReason
 																	? t(
 																			"admins.disabledReason.dataLimitExceeded",
 																			"Your data limit has been reached",
 																		)
+																	: hasTimeLimitDisabledReason
+																		? t(
+																				"admins.disabledReason.timeLimitExceeded",
+																				"Your account time limit has expired",
+																			)
 																	: admin.disabled_reason
 																: null;
 															const showEnableAction =
 																canChangeStatus &&
 																admin.status === AdminStatus.Disabled &&
-																!hasLimitDisabledReason;
+																!hasDataLimitDisabledReason &&
+																!hasTimeLimitDisabledReason;
 															const showDeleteAction = canChangeStatus;
 															const adminExpireAt =
-																adminExpireMap[admin.username];
+																typeof admin.expire === "number" &&
+																admin.expire > 0
+																	? admin.expire
+																	: null;
 
 															const cells = {
 																username: (

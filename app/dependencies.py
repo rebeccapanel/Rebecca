@@ -1,5 +1,5 @@
 from typing import Optional, Union
-from app.models.admin import AdminInDB, AdminValidationResult, Admin, AdminRole
+from app.models.admin import AdminInDB, AdminValidationResult, Admin, AdminRole, AdminStatus
 from app.models.user import UserResponse, UserStatus
 from app.db.models import User
 from app.db import Session, crud, get_db
@@ -23,6 +23,11 @@ def validate_admin(db: Session, username: str, password: str) -> Optional[AdminV
 
     dbadmin = crud.get_admin(db, username)
     if dbadmin and AdminInDB.model_validate(dbadmin).verify_password(password):
+        if crud.enforce_admin_time_limit(db, dbadmin):
+            db.commit()
+            db.refresh(dbadmin)
+        if dbadmin.status != AdminStatus.active:
+            return None
         return AdminValidationResult(username=dbadmin.username, role=dbadmin.role)
 
     return None

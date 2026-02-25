@@ -307,7 +307,7 @@ def enable_admin_account(
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Re-activate a previously disabled admin and restore their users."""
+    """Re-activate a previously disabled admin without auto-changing user statuses."""
     current_admin.ensure_can_manage_admin(Admin.model_validate(dbadmin))
     if dbadmin.status == AdminStatus.deleted:
         raise HTTPException(status_code=400, detail="Admin already deleted")
@@ -318,15 +318,14 @@ def enable_admin_account(
             status_code=400,
             detail="Admin is disabled because the assigned data limit has been exhausted.",
         )
+    if dbadmin.disabled_reason == crud.ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="Admin is disabled because the assigned time limit has expired.",
+        )
 
     previous_state = Admin.model_validate(dbadmin)
     updated_admin = crud.enable_admin(db, dbadmin)
-    try:
-        crud.activate_all_disabled_users(db=db, admin=dbadmin)
-    except UsersLimitReachedError as exc:
-        report.admin_users_limit_reached(dbadmin, exc.limit, exc.current_active)
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         startup_config = xray.config.include_db_users()

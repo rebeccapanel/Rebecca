@@ -8,6 +8,7 @@ import sqlalchemy as sa
 _logger = logging.getLogger(__name__)
 _RECORD_CHANGED_ERRNO = 1020
 ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
+ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted"
 MASTER_NODE_NAME = "Master"
 _USER_STATUS_ENUM_ENSURED = False
 
