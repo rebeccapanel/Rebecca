@@ -67,10 +67,10 @@ export const CoreVersionDialog = ({
 	useEffect(() => {
 		if (isOpen) {
 			setVersion(currentVersion || "");
-			setPersist(Boolean(allowPersist));
+			setPersist(false);
 			setSubmissionError(null);
 		}
-	}, [isOpen, currentVersion, allowPersist]);
+	}, [isOpen, currentVersion]);
 
 	const releaseOptions = useMemo(
 		() => releasesQuery.data?.tags ?? [],

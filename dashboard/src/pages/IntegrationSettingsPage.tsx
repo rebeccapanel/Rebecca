@@ -87,7 +87,6 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { JsonEditor } from "../components/JsonEditor";
-import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
 
 type EventToggleItem = {
 	key: string;
@@ -470,34 +469,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 	};
 };
 
-type SubscriptionFormValues = SubscriptionTemplateSettings & {
-	subscription_aliases_text: string;
-	subscription_ports_text: string;
-};
-
-const parseSubscriptionPortsInput = (raw: string): number[] => {
-	const normalized = (raw || "").replace(/[،؛]/g, ",");
-	const tokens = normalized
-		.split(/[,\s]+/)
-		.map((token) => token.trim())
-		.filter(Boolean);
-	const ports: number[] = [];
-	tokens.forEach((token) => {
-		const port = Number(token);
-		if (
-			Number.isFinite(port) &&
-			port > 0 &&
-			port <= 65535 &&
-			!ports.includes(port)
-		) {
-			ports.push(port);
-		}
-	});
-	return ports;
-};
-
-const formatSubscriptionPorts = (ports: number[]): string =>
-	ports.join(", ");
+type SubscriptionFormValues = SubscriptionTemplateSettings;
 
 const buildSubscriptionDefaults = (
 	settings?: SubscriptionTemplateSettings,
@@ -523,12 +495,6 @@ const buildSubscriptionDefaults = (
 		settings?.use_custom_json_for_streisand ?? false,
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
-	subscription_aliases: settings?.subscription_aliases ?? [],
-	subscription_ports: settings?.subscription_ports ?? [],
-	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
-	subscription_ports_text: formatSubscriptionPorts(
-		settings?.subscription_ports ?? [],
-	),
 });
 
 const cleanOverridePayload = (
@@ -850,8 +816,6 @@ export const IntegrationSettingsPage = () => {
 		control: subscriptionControl,
 		handleSubmit: handleSubscriptionSubmit,
 		reset: resetSubscription,
-		setValue: setSubscriptionValue,
-		watch: watchSubscription,
 		formState: { isDirty: isSubscriptionDirty },
 	} = useForm<SubscriptionFormValues>({
 		defaultValues: buildSubscriptionDefaults(subscriptionBundle?.settings),
@@ -863,14 +827,8 @@ export const IntegrationSettingsPage = () => {
 		}
 	}, [subscriptionBundle, resetSubscription]);
 
-	const subscriptionPortsText = watchSubscription("subscription_ports_text");
-	const parsedSubscriptionPorts = useMemo(
-		() => parseSubscriptionPortsInput(subscriptionPortsText || ""),
-		[subscriptionPortsText],
-	);
-
 	const integrationTabKeys = useMemo(
-		() => ["panel", "telegram", "subscriptions", "template-creator"],
+		() => ["panel", "telegram", "subscriptions"],
 		[],
 	);
 	const splitHash = useCallback(() => {
@@ -1018,7 +976,10 @@ export const IntegrationSettingsPage = () => {
 				setTemplateMeta(updated);
 				setTemplateContent(updated.content || "");
 				generateSuccessMessage(
-					t("settings.subscriptions.templateSaved"),
+					t(
+						"settings.subscriptions.templateSaved",
+						"Template saved successfully",
+					),
 					toast,
 				);
 			},
@@ -1122,11 +1083,6 @@ export const IntegrationSettingsPage = () => {
 	};
 
 	const onSubmitSubscriptionSettings = (values: SubscriptionFormValues) => {
-		const aliases = (values.subscription_aliases_text || "")
-			.split(/\r?\n/)
-			.map((line) => line.trim())
-			.filter(Boolean);
-		const ports = parseSubscriptionPortsInput(values.subscription_ports_text || "");
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
 			subscription_profile_title: values.subscription_profile_title.trim(),
@@ -1149,9 +1105,6 @@ export const IntegrationSettingsPage = () => {
 			use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
 			use_custom_json_for_streisand: values.use_custom_json_for_streisand,
 			use_custom_json_for_happ: values.use_custom_json_for_happ,
-			subscription_path: values.subscription_path?.trim() || "sub",
-			subscription_aliases: aliases,
-			subscription_ports: ports,
 		};
 		subscriptionSettingsMutation.mutate(payload);
 	};
@@ -1293,7 +1246,10 @@ export const IntegrationSettingsPage = () => {
 		);
 		if (!certificateForm.email.trim() || domains.length === 0) {
 			toast({
-				title: t("settings.subscriptions.certificateMissingInput"),
+				title: t(
+					"settings.subscriptions.certificateMissingInput",
+					"Add email and at least one domain.",
+				),
 				status: "warning",
 				duration: 2500,
 			});
@@ -1348,10 +1304,7 @@ export const IntegrationSettingsPage = () => {
 				<TabList>
 					<Tab>{t("settings.panel.tabTitle")}</Tab>
 					<Tab>{t("settings.telegram")}</Tab>
-					<Tab>{t("settings.subscriptions.tabTitle")}</Tab>
-					<Tab>
-						{t("settings.templates.tabTitle")}
-					</Tab>
+					<Tab>{t("settings.subscriptions.tabTitle", "Subscriptions")}</Tab>
 				</TabList>
 				<TabPanels>
 					<TabPanel px={{ base: 0, md: 2 }}>
@@ -1397,10 +1350,16 @@ export const IntegrationSettingsPage = () => {
 									>
 										<Box>
 											<Heading size="sm" mb={1}>
-												{t("settings.panel.accessInsightsTitle")}
+												{t(
+													"settings.panel.accessInsightsTitle",
+													"Enable Access Insights",
+												)}
 											</Heading>
 											<Text fontSize="sm" color="gray.500">
-												{t("settings.panel.accessInsightsDescription")}
+												{t(
+													"settings.panel.accessInsightsDescription",
+													"When enabled, Access Insights will load extra geo/ISP data and may consume more memory.",
+												)}
 											</Text>
 										</Box>
 										<Switch
@@ -1421,15 +1380,24 @@ export const IntegrationSettingsPage = () => {
 									>
 										<Box>
 											<Heading size="sm" mb={1}>
-												{t("settings.panel.defaultSubscriptionType")}
+												{t(
+													"settings.panel.defaultSubscriptionType",
+													"Default subscription link format",
+												)}
 											</Heading>
 											<Text fontSize="sm" color="gray.500">
-												{t("settings.panel.defaultSubscriptionTypeDescription")}
+												{t(
+													"settings.panel.defaultSubscriptionTypeDescription",
+													"Choose which subscription link format is shown by default. All formats remain valid.",
+												)}
 											</Text>
 										</Box>
 										<FormControl maxW={{ base: "full", md: "240px" }}>
 											<FormLabel fontSize="sm" mb={1}>
-												{t("settings.panel.defaultSubscriptionTypeLabel")}
+												{t(
+													"settings.panel.defaultSubscriptionTypeLabel",
+													"Default link format",
+												)}
 											</FormLabel>
 											<Select
 												size="sm"
@@ -1445,13 +1413,13 @@ export const IntegrationSettingsPage = () => {
 												isDisabled={panelMutation.isLoading || isPanelLoading}
 											>
 												<option value="username-key">
-													{t("settings.panel.link.usernameKey")}
+													{t("settings.panel.link.usernameKey", "username/key")}
 												</option>
 												<option value="key">
-													{t("settings.panel.link.keyOnly")}
+													{t("settings.panel.link.keyOnly", "key only")}
 												</option>
 												<option value="token">
-													{t("settings.panel.link.token")}
+													{t("settings.panel.link.token", "token")}
 												</option>
 											</Select>
 										</FormControl>
@@ -1535,7 +1503,10 @@ export const IntegrationSettingsPage = () => {
 														? t("settings.panel.updateInProgressHint")
 														: activeMaintenanceAction === "restart"
 															? t("settings.panel.restartInProgressHint")
-															: t("settings.panel.softReloadInProgressHint")}
+															: t(
+																	"settings.panel.softReloadInProgressHint",
+																	"Soft reloading panel...",
+																)}
 												</Text>
 											</Alert>
 										)}
@@ -1556,7 +1527,7 @@ export const IntegrationSettingsPage = () => {
 												onClick={() => softReloadMutation.mutate()}
 												isLoading={softReloadMutation.isLoading}
 											>
-												{t("settings.panel.softReloadAction")}
+												{t("settings.panel.softReloadAction", "Soft Reload")}
 											</Button>
 											<Button
 												size="sm"
@@ -1884,72 +1855,49 @@ export const IntegrationSettingsPage = () => {
 							>
 								<VStack align="stretch" spacing={6}>
 									<Text fontSize="sm" color="gray.500">
-										{t("settings.subscriptions.description")}
+										{t(
+											"settings.subscriptions.description",
+											"Control subscription links, templates, and certificates.",
+										)}
 									</Text>
-									<Box
-										borderWidth="1px"
-										borderRadius="lg"
-										p={{ base: 4, md: 5 }}
-										bg="gray.50"
-										_dark={{ bg: "gray.900" }}
-									>
-										<Flex
-											justify="space-between"
-											align={{ base: "flex-start", md: "center" }}
-											flexDirection={{ base: "column", md: "row" }}
-											gap={3}
-											mb={4}
-										>
-											<Box>
-												<Heading size="sm" mb={1}>
-													{t("settings.subscriptions.globalTitle")}
-												</Heading>
-												<Text fontSize="sm" color="gray.500">
-													{t("settings.subscriptions.globalDescription")}
-												</Text>
-											</Box>
-											<HStack spacing={2}>
-												<Button
-													variant="outline"
-													size="sm"
-													leftIcon={<RefreshIcon />}
-													type="button"
-													onClick={() => refetchSubscriptionSettings()}
-													isDisabled={subscriptionSettingsMutation.isLoading}
-												>
-													{t("actions.refresh")}
-												</Button>
-												<Button
-													colorScheme="primary"
-													size="sm"
-													leftIcon={<SaveIcon />}
-													type="submit"
-													isLoading={subscriptionSettingsMutation.isLoading}
-													isDisabled={
-														!isSubscriptionDirty &&
-														!subscriptionSettingsMutation.isLoading
-													}
-												>
-													{t("settings.save")}
-												</Button>
-											</HStack>
-										</Flex>
+									<Box borderWidth="1px" borderRadius="lg" p={4}>
+										<Heading size="sm" mb={1}>
+											{t(
+												"settings.subscriptions.globalTitle",
+												"Global subscription settings",
+											)}
+										</Heading>
+										<Text fontSize="sm" color="gray.500" mb={4}>
+											{t(
+												"settings.subscriptions.globalDescription",
+												"Defaults applied to every admin unless overridden.",
+											)}
+										</Text>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.urlPrefix")}
+													{t(
+														"settings.subscriptions.urlPrefix",
+														"Subscription URL prefix",
+													)}
 												</FormLabel>
 												<Input
 													placeholder="https://sub.example.com"
 													{...subscriptionRegister("subscription_url_prefix")}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.urlPrefixHint")}
+													{t(
+														"settings.subscriptions.urlPrefixHint",
+														"Base domain for generated links. Keep empty for relative URLs.",
+													)}
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.customTemplatesDir")}
+													{t(
+														"settings.subscriptions.customTemplatesDir",
+														"Custom templates directory",
+													)}
 												</FormLabel>
 												<Input
 													placeholder="/var/lib/rebecca/templates"
@@ -1958,12 +1906,18 @@ export const IntegrationSettingsPage = () => {
 													)}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.customTemplatesDirHint")}
+													{t(
+														"settings.subscriptions.customTemplatesDirHint",
+														"Optional override for Jinja template lookup.",
+													)}
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.profileTitle")}
+													{t(
+														"settings.subscriptions.profileTitle",
+														"Subscription profile title",
+													)}
 												</FormLabel>
 												<Input
 													placeholder="Subscription"
@@ -1972,24 +1926,36 @@ export const IntegrationSettingsPage = () => {
 													)}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.profileTitleHint")}
+													{t(
+														"settings.subscriptions.profileTitleHint",
+														"Shown in profile-title headers and subscription pages.",
+													)}
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.supportUrl")}
+													{t(
+														"settings.subscriptions.supportUrl",
+														"Support URL",
+													)}
 												</FormLabel>
 												<Input
 													placeholder="https://t.me/support"
 													{...subscriptionRegister("subscription_support_url")}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.supportUrlHint")}
+													{t(
+														"settings.subscriptions.supportUrlHint",
+														"Link used in support-url header. Leave empty to rely on admin Telegram.",
+													)}
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.updateInterval")}
+													{t(
+														"settings.subscriptions.updateInterval",
+														"Profile update interval (hours)",
+													)}
 												</FormLabel>
 												<Input
 													type="number"
@@ -1998,12 +1964,18 @@ export const IntegrationSettingsPage = () => {
 													)}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.updateIntervalHint")}
+													{t(
+														"settings.subscriptions.updateIntervalHint",
+														"Sent in profile-update-interval header.",
+													)}
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.subscriptionPageTemplate")}
+													{t(
+														"settings.subscriptions.subscriptionPageTemplate",
+														"Subscription page template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2022,13 +1994,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.homePageTemplate")}
+													{t(
+														"settings.subscriptions.homePageTemplate",
+														"Home page template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2042,13 +2017,16 @@ export const IntegrationSettingsPage = () => {
 															openTemplateEditor("home_page_template", null)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.clashTemplate")}
+													{t(
+														"settings.subscriptions.clashTemplate",
+														"Clash subscription template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2067,13 +2045,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.clashSettingsTemplate")}
+													{t(
+														"settings.subscriptions.clashSettingsTemplate",
+														"Clash settings template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2090,13 +2071,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.v2rayTemplate")}
+													{t(
+														"settings.subscriptions.v2rayTemplate",
+														"V2Ray subscription template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2115,13 +2099,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.v2raySettingsTemplate")}
+													{t(
+														"settings.subscriptions.v2raySettingsTemplate",
+														"V2Ray settings template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2138,13 +2125,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.singboxTemplate")}
+													{t(
+														"settings.subscriptions.singboxTemplate",
+														"Sing-box subscription template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2163,13 +2153,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.singboxSettingsTemplate")}
+													{t(
+														"settings.subscriptions.singboxSettingsTemplate",
+														"Sing-box settings template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2188,13 +2181,16 @@ export const IntegrationSettingsPage = () => {
 															)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.muxTemplate")}
+													{t(
+														"settings.subscriptions.muxTemplate",
+														"Mux template",
+													)}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
 													<Input
@@ -2208,79 +2204,33 @@ export const IntegrationSettingsPage = () => {
 															openTemplateEditor("mux_template", null)
 														}
 													>
-														{t("settings.subscriptions.editTemplate")}
+														{t("settings.subscriptions.editTemplate", "Edit")}
 													</Button>
 												</HStack>
 											</FormControl>
-											<Box gridColumn={{ base: "1 / -1", md: "1 / -1" }}>
-												<Divider mb={3} />
-												<Text fontSize="sm" fontWeight="semibold">
-													{t(
-														"settings.subscriptions.routingSection",
-														"Routing aliases and ports",
-													)}
-												</Text>
-											</Box>
-											<FormControl>
+											<FormControl isReadOnly>
 												<FormLabel>
 													{t(
-														"settings.subscriptions.subscriptionAliases",
-														"Subscription alias URLs",
-													)}
-												</FormLabel>
-												<Textarea
-													placeholder="/mypath/\n/test/\n/api/v1/client/subscribe?token=\n/api/v1/client/subscribe?key="
-													rows={4}
-													{...subscriptionRegister("subscription_aliases_text")}
-												/>
-												<FormHelperText>
-													One alias per line. Examples: /mypath/ , /test/ , /api/v1/client/subscribe?token= , /api/v1/client/subscribe?key=
-												</FormHelperText>
-											</FormControl>
-											<FormControl>
-												<FormLabel>
-													{t(
-														"settings.subscriptions.subscriptionPorts",
-														"Subscription ports",
+														"settings.subscriptions.subscriptionPath",
+														"Subscription path",
 													)}
 												</FormLabel>
 												<Input
-													placeholder="443, 8443"
-													{...subscriptionRegister("subscription_ports_text", {
-														onBlur: (event) => {
-															const normalized = formatSubscriptionPorts(
-																parseSubscriptionPortsInput(
-																	event.target.value || "",
-																),
-															);
-															setSubscriptionValue(
-																"subscription_ports_text",
-																normalized,
-																{
-																	shouldDirty: true,
-																},
-															);
-														},
-													})}
+													value={
+														subscriptionBundle?.settings.subscription_path ||
+														"sub"
+													}
+													readOnly
 												/>
 												<FormHelperText>
 													{t(
-														"settings.subscriptions.subscriptionPortsHint",
-														"Extra ports for generated subscription URLs. Separate with comma or space.",
+														"settings.subscriptions.subscriptionPathHint",
+														"Path follows the backend route and is shown for reference.",
 													)}
-													{parsedSubscriptionPorts.length > 0
-														? ` ${t("settings.subscriptions.activePorts", "Active ports")}: ${parsedSubscriptionPorts.join(", ")}`
-														: ""}
 												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
 										<Divider my={4} />
-										<Text fontSize="sm" fontWeight="semibold" mb={3}>
-											{t(
-												"settings.subscriptions.clientJsonSection",
-												"Client JSON behavior",
-											)}
-										</Text>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<Controller
 												control={subscriptionControl}
@@ -2289,10 +2239,16 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonDefault")}
+																{t(
+																	"settings.subscriptions.customJsonDefault",
+																	"Use JSON by default",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonDefaultHint")}
+																{t(
+																	"settings.subscriptions.customJsonDefaultHint",
+																	"Serve JSON config when clients support it.",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2311,10 +2267,16 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonV2rayn")}
+																{t(
+																	"settings.subscriptions.customJsonV2rayn",
+																	"Custom JSON for v2rayN",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonV2raynHint")}
+																{t(
+																	"settings.subscriptions.customJsonV2raynHint",
+																	"Force JSON for v2rayN clients.",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2333,10 +2295,16 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonV2rayng")}
+																{t(
+																	"settings.subscriptions.customJsonV2rayng",
+																	"Custom JSON for v2rayNG",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonV2rayngHint")}
+																{t(
+																	"settings.subscriptions.customJsonV2rayngHint",
+																	"Return JSON configs to v2rayNG.",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2355,10 +2323,16 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonStreisand")}
+																{t(
+																	"settings.subscriptions.customJsonStreisand",
+																	"Custom JSON for Streisand",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonStreisandHint")}
+																{t(
+																	"settings.subscriptions.customJsonStreisandHint",
+																	"Prefer JSON when Streisand is detected.",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2377,10 +2351,16 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonHapp")}
+																{t(
+																	"settings.subscriptions.customJsonHapp",
+																	"Custom JSON for Happ",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonHappHint")}
+																{t(
+																	"settings.subscriptions.customJsonHappHint",
+																	"Send JSON configs to Happ clients.",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2396,20 +2376,32 @@ export const IntegrationSettingsPage = () => {
 									</Box>
 									<Box borderWidth="1px" borderRadius="lg" p={4}>
 										<Heading size="sm" mb={1}>
-											{t("settings.subscriptions.adminsTitle")}
+											{t(
+												"settings.subscriptions.adminsTitle",
+												"Admin-specific overrides",
+											)}
 										</Heading>
 										<Text fontSize="sm" color="gray.500" mb={4}>
-											{t("settings.subscriptions.adminsDescription")}
+											{t(
+												"settings.subscriptions.adminsDescription",
+												"Assign dedicated domains, Telegram IDs, and templates to each admin.",
+											)}
 										</Text>
 										{Object.values(adminOverrides).length === 0 ? (
 											<Text color="gray.500">
-												{t("settings.subscriptions.noAdmins")}
+												{t(
+													"settings.subscriptions.noAdmins",
+													"No admins available.",
+												)}
 											</Text>
 										) : (
 											<Stack spacing={4}>
 												<FormControl maxW={{ base: "full", md: "320px" }}>
 													<FormLabel>
-														{t("settings.subscriptions.selectAdmin")}
+														{t(
+															"settings.subscriptions.selectAdmin",
+															"Choose admin",
+														)}
 													</FormLabel>
 													<Menu>
 														<MenuButton
@@ -2422,7 +2414,10 @@ export const IntegrationSettingsPage = () => {
 															{selectedAdminId &&
 															adminOverrides[selectedAdminId]
 																? adminOverrides[selectedAdminId].username
-																: t("settings.subscriptions.selectAdminPlaceholder")}
+																: t(
+																		"settings.subscriptions.selectAdminPlaceholder",
+																		"Select an admin to edit overrides",
+																	)}
 														</MenuButton>
 														<MenuList
 															minW="320px"
@@ -2439,7 +2434,10 @@ export const IntegrationSettingsPage = () => {
 																		<SearchIcon color="gray.400" />
 																	</InputLeftElement>
 																	<Input
-																		placeholder={t("settings.subscriptions.searchAdmin")}
+																		placeholder={t(
+																			"settings.subscriptions.searchAdmin",
+																			"Search admin by name or domain",
+																		)}
 																		value={adminSearchTerm}
 																		onChange={(event) =>
 																			setAdminSearchTerm(event.target.value)
@@ -2450,7 +2448,10 @@ export const IntegrationSettingsPage = () => {
 															{filteredAdmins.length === 0 ? (
 																<Box px={3} py={2}>
 																	<Text color="gray.500">
-																		{t("settings.subscriptions.noResults")}
+																		{t(
+																			"settings.subscriptions.noResults",
+																			"No matches",
+																		)}
 																	</Text>
 																</Box>
 															) : (
@@ -2482,13 +2483,19 @@ export const IntegrationSettingsPage = () => {
 														</MenuList>
 													</Menu>
 													<FormHelperText>
-														{t("settings.subscriptions.inheritHint")}
+														{t(
+															"settings.subscriptions.inheritHint",
+															"Leave fields empty to inherit panel defaults.",
+														)}
 													</FormHelperText>
 												</FormControl>
 												{selectedAdminId == null ||
 												!adminOverrides[selectedAdminId] ? (
 													<Text color="gray.500">
-														{t("settings.subscriptions.selectAdminPlaceholder")}
+														{t(
+															"settings.subscriptions.selectAdminPlaceholder",
+															"Select an admin to edit overrides",
+														)}
 													</Text>
 												) : (
 													<Box
@@ -2520,7 +2527,10 @@ export const IntegrationSettingsPage = () => {
 																				{admin.username}
 																			</Text>
 																			<Text fontSize="sm" color="gray.500">
-																				{t("settings.subscriptions.adminHint")}
+																				{t(
+																					"settings.subscriptions.adminHint",
+																					"Overrides only apply to this admin's links.",
+																				)}
 																			</Text>
 																		</Box>
 																		<HStack spacing={2}>
@@ -2537,7 +2547,7 @@ export const IntegrationSettingsPage = () => {
 																				}
 																				isDisabled={savingAdminId === admin.id}
 																			>
-																				{t("actions.reset")}
+																				{t("actions.reset", "Reset")}
 																			</Button>
 																		</HStack>
 																	</Flex>
@@ -2548,7 +2558,10 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.adminDomain")}
+																				{t(
+																					"settings.subscriptions.adminDomain",
+																					"Custom domain",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder="sub.admin.example.com"
@@ -2564,7 +2577,10 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.customTemplatesDir")}
+																				{t(
+																					"settings.subscriptions.customTemplatesDir",
+																					"Custom templates directory",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder={
@@ -2584,7 +2600,10 @@ export const IntegrationSettingsPage = () => {
 																				}
 																			/>
 																			<FormHelperText>
-																				{t("settings.subscriptions.inheritHint")}
+																				{t(
+																					"settings.subscriptions.inheritHint",
+																					"Leave empty to inherit panel default.",
+																				)}
 																			</FormHelperText>
 																		</FormControl>
 																	</SimpleGrid>
@@ -2596,7 +2615,10 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.profileTitle")}
+																				{t(
+																					"settings.subscriptions.profileTitle",
+																					"Subscription profile title",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder={
@@ -2618,7 +2640,10 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.supportUrl")}
+																				{t(
+																					"settings.subscriptions.supportUrl",
+																					"Support URL",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder={
@@ -2640,7 +2665,10 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.updateInterval")}
+																				{t(
+																					"settings.subscriptions.updateInterval",
+																					"Profile update interval (hours)",
+																				)}
 																			</FormLabel>
 																			<Input
 																				type="number"
@@ -2670,7 +2698,10 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.subscriptionPageTemplate")}
+																				{t(
+																					"settings.subscriptions.subscriptionPageTemplate",
+																					"Subscription page template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2701,13 +2732,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.homePageTemplate")}
+																				{t(
+																					"settings.subscriptions.homePageTemplate",
+																					"Home page template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2737,13 +2774,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.clashTemplate")}
+																				{t(
+																					"settings.subscriptions.clashTemplate",
+																					"Clash subscription template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2774,13 +2817,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.clashSettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.clashSettingsTemplate",
+																					"Clash settings template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2811,13 +2860,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.v2rayTemplate")}
+																				{t(
+																					"settings.subscriptions.v2rayTemplate",
+																					"V2Ray subscription template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2848,13 +2903,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.v2raySettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.v2raySettingsTemplate",
+																					"V2Ray settings template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2885,13 +2946,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.singboxTemplate")}
+																				{t(
+																					"settings.subscriptions.singboxTemplate",
+																					"Sing-box subscription template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2923,13 +2990,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.singboxSettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.singboxSettingsTemplate",
+																					"Sing-box settings template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2960,13 +3033,19 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.muxTemplate")}
+																				{t(
+																					"settings.subscriptions.muxTemplate",
+																					"Mux template",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -2994,7 +3073,10 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																						"Edit",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
@@ -3012,10 +3094,16 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonDefault")}
+																					{t(
+																						"settings.subscriptions.customJsonDefault",
+																						"Use JSON by default",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonDefaultHint")}
+																					{t(
+																						"settings.subscriptions.customJsonDefaultHint",
+																						"Serve JSON config when clients support it.",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3040,10 +3128,16 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonV2rayn")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayn",
+																						"Custom JSON for v2rayN",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonV2raynHint")}
+																					{t(
+																						"settings.subscriptions.customJsonV2raynHint",
+																						"Force JSON for v2rayN clients.",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3068,10 +3162,16 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonV2rayng")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayng",
+																						"Custom JSON for v2rayNG",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonV2rayngHint")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayngHint",
+																						"Return JSON configs to v2rayNG.",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3096,10 +3196,16 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonStreisand")}
+																					{t(
+																						"settings.subscriptions.customJsonStreisand",
+																						"Custom JSON for Streisand",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonStreisandHint")}
+																					{t(
+																						"settings.subscriptions.customJsonStreisandHint",
+																						"Prefer JSON when Streisand is detected.",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3124,10 +3230,16 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonHapp")}
+																					{t(
+																						"settings.subscriptions.customJsonHapp",
+																						"Custom JSON for Happ",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonHappHint")}
+																					{t(
+																						"settings.subscriptions.customJsonHappHint",
+																						"Send JSON configs to Happ clients.",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3155,7 +3267,10 @@ export const IntegrationSettingsPage = () => {
 																			onClick={() => handleAdminReset(admin.id)}
 																			isDisabled={savingAdminId === admin.id}
 																		>
-																			{t("settings.subscriptions.resetOverrides")}
+																			{t(
+																				"settings.subscriptions.resetOverrides",
+																				"Use panel defaults",
+																			)}
 																		</Button>
 																		<Button
 																			colorScheme="primary"
@@ -3163,7 +3278,10 @@ export const IntegrationSettingsPage = () => {
 																			onClick={() => handleAdminSave(admin.id)}
 																			isLoading={savingAdminId === admin.id}
 																		>
-																			{t("settings.subscriptions.saveAdmin")}
+																			{t(
+																				"settings.subscriptions.saveAdmin",
+																				"Save overrides",
+																			)}
 																		</Button>
 																	</Flex>
 																</>
@@ -3177,15 +3295,21 @@ export const IntegrationSettingsPage = () => {
 									\t\t\t\t\t\t\t\t
 									<Box borderWidth="1px" borderRadius="lg" p={4}>
 										<Heading size="sm" mb={1}>
-											{t("settings.subscriptions.certificateTitle")}
+											{t(
+												"settings.subscriptions.certificateTitle",
+												"Certificates",
+											)}
 										</Heading>
 										<Text fontSize="sm" color="gray.500" mb={4}>
-											{t("settings.subscriptions.certificateDescription")}
+											{t(
+												"settings.subscriptions.certificateDescription",
+												"Issue or renew SSL certificates and keep domains in sync with the panel.",
+											)}
 										</Text>
 										<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.email")}
+													{t("settings.subscriptions.email", "Email")}
 												</FormLabel>
 												<Input
 													type="email"
@@ -3201,10 +3325,13 @@ export const IntegrationSettingsPage = () => {
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("settings.subscriptions.domains")}
+													{t("settings.subscriptions.domains", "Domains")}
 												</FormLabel>
-												<Input
-													placeholder="example.com,sub.example.com"
+												<Textarea
+													placeholder={t(
+														"settings.subscriptions.domainsPlaceholder",
+														"example.com, www.example.com",
+													)}
 													value={certificateForm.domains}
 													onChange={(event) =>
 														setCertificateForm((prev) => ({
@@ -3214,7 +3341,10 @@ export const IntegrationSettingsPage = () => {
 													}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.domainsHint", "Comma-separated list of domains for certificate issuance.")}
+													{t(
+														"settings.subscriptions.domainsHint",
+														"Separate multiple domains with comma or space.",
+													)}
 												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
@@ -3225,16 +3355,25 @@ export const IntegrationSettingsPage = () => {
 												onClick={handleIssueCertificate}
 												isLoading={issueCertificateMutation.isLoading}
 											>
-												{t("settings.subscriptions.issueAction")}
+												{t(
+													"settings.subscriptions.issueAction",
+													"Issue certificate",
+												)}
 											</Button>
 										</Flex>
 										<Divider my={4} />
 										<Heading size="sm" mb={2}>
-											{t("settings.subscriptions.certificateList")}
+											{t(
+												"settings.subscriptions.certificateList",
+												"Saved domains",
+											)}
 										</Heading>
 										{!subscriptionBundle?.certificates?.length ? (
 											<Text color="gray.500">
-												{t("settings.subscriptions.noCertificates")}
+												{t(
+													"settings.subscriptions.noCertificates",
+													"No certificates recorded yet.",
+												)}
 											</Text>
 										) : (
 											<Stack spacing={3}>
@@ -3254,26 +3393,41 @@ export const IntegrationSettingsPage = () => {
 															<Box>
 																<Text fontWeight="semibold">{cert.domain}</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.pathLabel")}
+																	{t(
+																		"settings.subscriptions.pathLabel",
+																		"Path",
+																	)}
 																	: {cert.path}
 																</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.lastIssued")}
+																	{t(
+																		"settings.subscriptions.lastIssued",
+																		"Issued",
+																	)}
 																	:{" "}
 																	{cert.last_issued_at
 																		? new Date(
 																				cert.last_issued_at,
 																			).toLocaleString()
-																		: t("settings.subscriptions.never")}
+																		: t(
+																				"settings.subscriptions.never",
+																				"Never",
+																			)}
 																</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.lastRenewed")}
+																	{t(
+																		"settings.subscriptions.lastRenewed",
+																		"Renewed",
+																	)}
 																	:{" "}
 																	{cert.last_renewed_at
 																		? new Date(
 																				cert.last_renewed_at,
 																			).toLocaleString()
-																		: t("settings.subscriptions.never")}
+																		: t(
+																				"settings.subscriptions.never",
+																				"Never",
+																			)}
 																</Text>
 															</Box>
 															<HStack>
@@ -3296,7 +3450,10 @@ export const IntegrationSettingsPage = () => {
 																		renewingDomain === cert.domain
 																	}
 																>
-																	{t("settings.subscriptions.renewAction")}
+																	{t(
+																		"settings.subscriptions.renewAction",
+																		"Renew",
+																	)}
 																</Button>
 															</HStack>
 														</Flex>
@@ -3305,32 +3462,31 @@ export const IntegrationSettingsPage = () => {
 											</Stack>
 										)}
 									</Box>
+									<Flex gap={3} justify="flex-end">
+										<Button
+											variant="outline"
+											leftIcon={<RefreshIcon />}
+											onClick={() => refetchSubscriptionSettings()}
+											isDisabled={subscriptionSettingsMutation.isLoading}
+										>
+											{t("actions.refresh")}
+										</Button>
+										<Button
+											colorScheme="primary"
+											leftIcon={<SaveIcon />}
+											type="submit"
+											isLoading={subscriptionSettingsMutation.isLoading}
+											isDisabled={
+												!isSubscriptionDirty &&
+												!subscriptionSettingsMutation.isLoading
+											}
+										>
+											{t("settings.save")}
+										</Button>
+									</Flex>
 								</VStack>
 							</form>
 						)}
-					</TabPanel>
-					<TabPanel px={{ base: 0, md: 2 }}>
-						<VStack align="stretch" spacing={6}>
-							<Alert status="warning" variant="left-accent" borderRadius="md">
-								<AlertIcon />
-								<Box>
-									<Text fontWeight="semibold">
-										{t("settings.integrations.incompleteWarningTitle")}
-									</Text>
-									<Text fontSize="sm">
-										{t("settings.integrations.incompleteWarningDescription")}
-									</Text>
-								</Box>
-							</Alert>
-							<Text fontSize="sm" color="gray.500">
-								{t("settings.templates.description")}
-							</Text>
-							<SubscriptionTemplateCreator
-								onSaved={() => {
-									void refetchSubscriptionSettings();
-								}}
-							/>
-						</VStack>
 					</TabPanel>
 				</TabPanels>
 			</Tabs>
@@ -3344,7 +3500,7 @@ export const IntegrationSettingsPage = () => {
 				<ModalContent>
 					<ModalHeader>
 						{templateDialog
-							? t("settings.subscriptions.editTemplateTitle")
+							? t("settings.subscriptions.editTemplate", "Edit template")
 							: ""}
 					</ModalHeader>
 					<ModalCloseButton />
@@ -3357,18 +3513,24 @@ export const IntegrationSettingsPage = () => {
 							<VStack align="stretch" spacing={3}>
 								{templateDialog?.adminId ? (
 									<Text fontWeight="medium">
-										{t("settings.subscriptions.adminTemplateFor")}
+										{t(
+											"settings.subscriptions.adminTemplateFor",
+											"Admin-specific template",
+										)}
 										:{" "}
 										{adminOverrides[templateDialog.adminId]?.username ||
-											t("settings.subscriptions.admin")}
+											t("settings.subscriptions.admin", "Admin")}
 									</Text>
 								) : (
 									<Text fontWeight="medium">
-										{t("settings.subscriptions.globalTemplate")}
+										{t(
+											"settings.subscriptions.globalTemplate",
+											"Panel default template",
+										)}
 									</Text>
 								)}
 								<Text fontSize="sm" color="gray.500">
-									{t("settings.subscriptions.templatePath")}:{" "}
+									{t("settings.subscriptions.templatePath", "Using template")}:{" "}
 									{templateMeta?.template_name ||
 										templateDialog?.templateKey ||
 										""}
@@ -3378,7 +3540,7 @@ export const IntegrationSettingsPage = () => {
 								</Text>
 								{templateMeta?.resolved_path ? (
 									<Text fontSize="xs" color="gray.500">
-										{t("settings.subscriptions.resolvedPath")}:{" "}
+										{t("settings.subscriptions.resolvedPath", "Resolved path")}:{" "}
 										{templateMeta.resolved_path}
 									</Text>
 								) : null}
@@ -3404,7 +3566,7 @@ export const IntegrationSettingsPage = () => {
 					</ModalBody>
 					<ModalFooter>
 						<Button mr={3} onClick={closeTemplateEditor} variant="ghost">
-							{t("actions.close")}
+							{t("actions.close", "Close")}
 						</Button>
 						<Button
 							colorScheme="primary"
@@ -3414,7 +3576,7 @@ export const IntegrationSettingsPage = () => {
 							}
 							isDisabled={!templateDialog || templateLoading}
 						>
-							{t("settings.save")}
+							{t("settings.save", "Save")}
 						</Button>
 					</ModalFooter>
 				</ModalContent>

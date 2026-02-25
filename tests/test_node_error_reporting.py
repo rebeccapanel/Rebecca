@@ -46,8 +46,6 @@ def test_register_node_runtime_error_updates_status_and_notifies(monkeypatch):
     monkeypatch.setattr(operations.crud, "update_node_status", mock_update)
     monkeypatch.setattr(operations.report, "node_status_change", mock_status_change)
     monkeypatch.setattr(operations.report, "node_error", mock_node_error)
-    mock_schedule = MagicMock()
-    monkeypatch.setattr(operations, "schedule_node_reconnect", mock_schedule)
     monkeypatch.setattr(
         operations.NodeResponse,
         "model_validate",
@@ -60,7 +58,6 @@ def test_register_node_runtime_error_updates_status_and_notifies(monkeypatch):
     mock_update.assert_called_once()
     mock_status_change.assert_called_once()
     mock_node_error.assert_called_once_with("node-7", "grpc timeout")
-    mock_schedule.assert_called_once_with(7)
 
 
 def test_register_node_runtime_error_keeps_limited_status_but_notifies(monkeypatch):
@@ -77,15 +74,12 @@ def test_register_node_runtime_error_keeps_limited_status_but_notifies(monkeypat
     monkeypatch.setattr(operations.crud, "update_node_status", mock_update)
     monkeypatch.setattr(operations.report, "node_status_change", mock_status_change)
     monkeypatch.setattr(operations.report, "node_error", mock_node_error)
-    mock_schedule = MagicMock()
-    monkeypatch.setattr(operations, "schedule_node_reconnect", mock_schedule)
 
     operations.register_node_runtime_error(7, "node is limited")
 
     mock_update.assert_not_called()
     mock_status_change.assert_not_called()
     mock_node_error.assert_called_once_with("node-7", "node is limited")
-    mock_schedule.assert_called_once_with(7)
 
 
 def test_register_node_runtime_error_has_cooldown_for_same_error(monkeypatch):
@@ -100,8 +94,6 @@ def test_register_node_runtime_error_has_cooldown_for_same_error(monkeypatch):
     monkeypatch.setattr(operations.crud, "update_node_status", MagicMock(return_value=dbnode))
     monkeypatch.setattr(operations.report, "node_status_change", MagicMock())
     monkeypatch.setattr(operations.report, "node_error", mock_node_error)
-    mock_schedule = MagicMock()
-    monkeypatch.setattr(operations, "schedule_node_reconnect", mock_schedule)
     monkeypatch.setattr(
         operations.NodeResponse,
         "model_validate",
@@ -112,4 +104,3 @@ def test_register_node_runtime_error_has_cooldown_for_same_error(monkeypatch):
     operations.register_node_runtime_error(7, "same error")
 
     assert mock_node_error.call_count == 1
-    assert mock_schedule.call_count == 2

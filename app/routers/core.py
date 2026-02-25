@@ -492,24 +492,34 @@ def modify_core_config(payload: dict, admin: Admin = Depends(Admin.check_sudo_ad
 
 def _update_env_envfile(env_path: Path, key: str, value: str) -> str:
     """Update .env key=value if active, skip if commented, return effective value."""
-    env_path.parent.mkdir(parents=True, exist_ok=True)
     env_path.touch(exist_ok=True)
     lines = env_path.read_text(encoding="utf-8").splitlines()
     found = False
+    current_value = None
 
     for i, ln in enumerate(lines):
         stripped = ln.strip()
+        # commented key
+        if stripped.startswith(f"#{key}="):
+            parts = stripped.split("=", 1)
+            if len(parts) == 2:
+                current_value = parts[1].strip().strip('"').strip("'")
+            found = True
+            break
+
         # active key
         if stripped.startswith(f"{key}="):
             lines[i] = f'{key}="{value}"'
             found = True
+            current_value = value
             break
 
     if not found:
         lines.append(f'{key}="{value}"')
+        current_value = value
 
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return value
+    return current_value
 
 
 @router.get("/core/xray/releases", responses={403: responses._403})
@@ -545,8 +555,7 @@ def update_core_version(
     except Exception as exc:
         raise HTTPException(502, detail=f"Failed to download Xray release: {exc}")
 
-    data_dir = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca")).resolve()
-    base_dir = (data_dir / "xray-core").resolve()
+    base_dir = Path("/var/lib/rebecca/xray-core")
     base_dir.mkdir(parents=True, exist_ok=True)
 
     if xray.core.started:
@@ -558,17 +567,9 @@ def update_core_version(
     exe_path = _install_xray_zip(resp.content, base_dir)
 
     if persist_env:
-        env_targets = [Path(".env"), data_dir / ".env"]
-        for env_path in env_targets:
-            try:
-                _update_env_envfile(env_path, "XRAY_EXECUTABLE_PATH", str(exe_path))
-                _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(base_dir))
-            except Exception:
-                pass
+        _update_env_envfile(Path(".env"), "XRAY_EXECUTABLE_PATH", str(exe_path))
 
     xray.core.executable_path = str(exe_path)
-    xray.core.assets_path = str(base_dir)
-    xray.core._env["XRAY_LOCATION_ASSET"] = str(base_dir)
     try:
         xray.core.version = xray.core.get_version()
     except Exception:
@@ -582,14 +583,12 @@ def update_core_version(
 
 def _resolve_assets_path_master(persist_env: bool) -> Path:
     """Resolve and persist assets directory for master."""
-    data_dir = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca")).resolve()
-    target = (data_dir / "xray-core").resolve()
-    if persist_env:
-        for env_path in (Path(".env"), data_dir / ".env"):
-            try:
-                _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(target))
-            except Exception:
-                pass
+    target = Path("/var/lib/rebecca/assets").resolve()
+    env_path = Path(".env")
+
+    old_path = _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(target)) if persist_env else None
+    if old_path:
+        target = Path(old_path).resolve()
 
     target.mkdir(parents=True, exist_ok=True)
 
@@ -686,7 +685,6 @@ def apply_geo_assets(
     master_assets_dir = _resolve_assets_path_master(persist_env=persist_env)
     saved = _download_geo_files(master_assets_dir, files)
     xray.core.assets_path = str(master_assets_dir)
-    xray.core._env["XRAY_LOCATION_ASSET"] = str(master_assets_dir)
 
     startup_config = xray.config.include_db_users()
 

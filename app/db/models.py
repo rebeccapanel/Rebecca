@@ -149,8 +149,6 @@ class SubscriptionSettings(Base):
         String(512), nullable=False, default="https://t.me/", server_default="https://t.me/"
     )
     subscription_update_interval = Column(String(32), nullable=False, default="12", server_default="12")
-    subscription_path = Column(String(128), nullable=False, default="sub", server_default="sub")
-    subscription_ports = Column(Text, nullable=False, default="[]")
     custom_templates_directory = Column(String(512), nullable=True, default=None)
     clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")
     clash_settings_template = Column(String(255), nullable=False, default="clash/settings.yml")
@@ -166,7 +164,6 @@ class SubscriptionSettings(Base):
     use_custom_json_for_v2rayng = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_streisand = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_happ = Column(Boolean, nullable=False, default=False, server_default=text("0"))
-    subscription_aliases = Column(Text, nullable=False, default="[]")
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

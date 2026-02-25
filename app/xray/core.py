@@ -26,7 +26,6 @@ class XRayCore:
         if config.get("log", {}).get("logLevel") in ("none", "error"):
             config["log"]["logLevel"] = "warning"
 
-        self._env["XRAY_LOCATION_ASSET"] = str(self.assets_path)
         cmd = [self.executable_path, "run", "-config", "stdin:"]
         self._process = subprocess.Popen(cmd, env=self._env, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         self._process.stdin.write(config.to_json().encode())

@@ -17,6 +17,7 @@ from app.subscription.share import encode_title, generate_subscription, is_crede
 from app.services.subscription_settings import SubscriptionSettingsService
 from app.templates import render_template
 from app.utils.proxy_uuid import ensure_user_proxy_uuids
+from config import XRAY_SUBSCRIPTION_PATH
 
 client_config = {
     "clash-meta": {
@@ -57,7 +58,7 @@ client_config = {
     },
 }
 
-router = APIRouter(tags=["Subscription"], prefix="/sub")
+router = APIRouter(tags=["Subscription"], prefix=f"/{XRAY_SUBSCRIPTION_PATH}")
 
 
 def _resolve_support_url(settings) -> str:
@@ -268,45 +269,27 @@ def _build_usage_payload(
     }
 
 
-def _candidate_identifiers(identifier: str) -> list[str]:
-    raw = (identifier or "").strip()
-    if not raw:
-        return []
-    out: list[str] = [raw]
-
-    # support legacy packed forms like "username+key" / "username:key"
-    for sep in ("+", ":", "|", " "):
-        if sep in raw:
-            tail = raw.rsplit(sep, 1)[-1].strip()
-            if tail and tail not in out:
-                out.append(tail)
-
-    return out
-
-
 def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
     """
-    Resolve a subscription identifier which may be token, credential key,
-    or packed forms like username+key.
+    Resolve a subscription identifier which may be either a token or a credential key.
+    We prefer token validation first because legacy tokens can look like hex keys too.
     """
     token_error: Optional[HTTPException] = None
+    try:
+        return get_validated_sub(token=identifier, db=db)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 404):
+            raise
+        token_error = exc
 
-    for candidate in _candidate_identifiers(identifier):
+    if is_credential_key(identifier):
         try:
-            return get_validated_sub(token=candidate, db=db)
+            return get_validated_sub_by_key_only(credential_key=identifier, db=db)
         except HTTPException as exc:
             if exc.status_code not in (400, 404):
                 raise
-            token_error = exc
-
-        if is_credential_key(candidate):
-            try:
-                return get_validated_sub_by_key_only(credential_key=candidate, db=db)
-            except HTTPException as exc:
-                if exc.status_code not in (400, 404):
-                    raise
-                if token_error is None:
-                    token_error = exc
+            if token_error is None:
+                token_error = exc
 
     if token_error:
         raise token_error

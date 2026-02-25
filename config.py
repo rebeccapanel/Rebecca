@@ -1,6 +1,4 @@
 import json
-import os
-from pathlib import Path
 
 from decouple import config
 from dotenv import load_dotenv
@@ -34,34 +32,8 @@ VITE_BASE_API = (
 XRAY_FALLBACKS_INBOUND_TAG = config("XRAY_FALLBACKS_INBOUND_TAG", cast=str, default="") or config(
     "XRAY_FALLBACK_INBOUND_TAG", cast=str, default=""
 )
-REBECCA_DATA_DIR = Path(config("REBECCA_DATA_DIR", default="/var/lib/rebecca")).expanduser()
-PERSISTENT_XRAY_DIR = REBECCA_DATA_DIR / "xray-core"
-PERSISTENT_XRAY_EXECUTABLE = PERSISTENT_XRAY_DIR / "xray"
-
-
-def _resolve_xray_executable_path() -> str:
-    configured = (os.getenv("XRAY_EXECUTABLE_PATH") or "").strip()
-    # In container deployments, always prefer persisted host-mounted core if present.
-    if PERSISTENT_XRAY_EXECUTABLE.exists():
-        return str(PERSISTENT_XRAY_EXECUTABLE)
-    if configured:
-        return configured
-    return str(PERSISTENT_XRAY_EXECUTABLE)
-
-
-def _resolve_xray_assets_path() -> str:
-    configured = (os.getenv("XRAY_ASSETS_PATH") or "").strip()
-    persistent_candidates = [PERSISTENT_XRAY_DIR, REBECCA_DATA_DIR / "assets"]
-    for candidate in persistent_candidates:
-        if (candidate / "geoip.dat").exists() or (candidate / "geosite.dat").exists():
-            return str(candidate)
-    if configured:
-        return configured
-    return str(PERSISTENT_XRAY_DIR)
-
-
-XRAY_EXECUTABLE_PATH = _resolve_xray_executable_path()
-XRAY_ASSETS_PATH = _resolve_xray_assets_path()
+XRAY_EXECUTABLE_PATH = config("XRAY_EXECUTABLE_PATH", default="/usr/local/bin/xray")
+XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
 XRAY_SUBSCRIPTION_URL_PREFIX = ""  # subscription prefix now comes from DB
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")

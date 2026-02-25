@@ -47,11 +47,10 @@ def run_dev():
 
 
 def run_build():
-    if not build_dir.is_dir() or not (build_dir / "index.html").exists():
-        build()
-    app.mount(DASHBOARD_PATH, StaticFiles(directory=build_dir, html=True), name="dashboard")
-    if statics_dir.is_dir():
-        app.mount("/statics/", StaticFiles(directory=statics_dir, html=True), name="statics")
+    if build_dir.is_dir() and (build_dir / "index.html").exists():
+        app.mount(DASHBOARD_PATH, StaticFiles(directory=build_dir, html=True), name="dashboard")
+        if statics_dir.is_dir():
+            app.mount("/statics/", StaticFiles(directory=statics_dir, html=True), name="statics")
 
 
 def startup():
@@ -62,8 +61,4 @@ def startup():
 
 
 if app is not None:
-    if DEBUG:
-        app.add_event_handler("startup", startup)
-    else:
-        # Mount dashboard immediately in production mode so route is always available.
-        run_build()
+    app.add_event_handler("startup", startup)

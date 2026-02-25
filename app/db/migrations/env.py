@@ -211,118 +211,6 @@ def _install_safe_ops() -> None:
             ]
         )
 
-    _MYSQL_DUPLICATE_CODES = {1050, 1060, 1061, 1826}
-    _MYSQL_MISSING_CODES = {1051, 1091, 1146}
-    _POSTGRES_DUPLICATE_STATES = {"42701", "42710", "42P07"}
-    _POSTGRES_MISSING_STATES = {"42703", "42704", "42P01"}
-    _DUPLICATE_MESSAGE_MARKERS = (
-        "already exists",
-        "duplicate column name",
-        "duplicate key name",
-        "duplicate key",
-        "relation already exists",
-        "constraint already exists",
-    )
-    _MISSING_MESSAGE_MARKERS = (
-        "no such column",
-        "no such table",
-        "unknown column",
-        "unknown table",
-        "can't drop",
-        "does not exist",
-        "doesn't exist",
-        "undefined column",
-        "undefined table",
-    )
-
-    def _extract_error_metadata(exc: Exception) -> tuple[int | str | None, str]:
-        target = exc
-        if isinstance(exc, sa.exc.DBAPIError) and exc.orig is not None:
-            target = exc.orig
-        message = str(target).lower()
-        code: int | str | None = None
-        args = getattr(target, "args", ())
-        if args:
-            first = args[0]
-            if isinstance(first, int):
-                code = first
-            elif isinstance(first, str):
-                code = first.strip() or None
-        sql_state = getattr(target, "sqlstate", None) or getattr(target, "pgcode", None)
-        if sql_state:
-            code = str(sql_state)
-        if isinstance(code, str):
-            text = code.strip()
-            if text.isdigit():
-                code = int(text)
-            else:
-                code = text.upper()
-        return code, message
-
-    def _is_duplicate_error(exc: Exception) -> bool:
-        code, message = _extract_error_metadata(exc)
-        if isinstance(code, int) and code in _MYSQL_DUPLICATE_CODES:
-            return True
-        if isinstance(code, str) and code in _POSTGRES_DUPLICATE_STATES:
-            return True
-        return any(marker in message for marker in _DUPLICATE_MESSAGE_MARKERS)
-
-    def _is_missing_error(exc: Exception) -> bool:
-        code, message = _extract_error_metadata(exc)
-        if isinstance(code, int) and code in _MYSQL_MISSING_CODES:
-            return True
-        if isinstance(code, str) and code in _POSTGRES_MISSING_STATES:
-            return True
-        return any(marker in message for marker in _MISSING_MESSAGE_MARKERS)
-
-    def _should_ignore_db_error(exc: Exception, op_kind: str | None) -> bool:
-        if op_kind == "create":
-            return _is_duplicate_error(exc)
-        if op_kind == "drop":
-            return _is_missing_error(exc)
-        return False
-
-    def _run_ddl(
-        fn,
-        op_kind: str | None,
-    ):
-        try:
-            return fn()
-        except Exception as exc:
-            if _should_ignore_db_error(exc, op_kind):
-                return None
-            raise
-
-    def _classify_sql_statement(statement) -> str | None:
-        if statement is None:
-            return None
-        sql_text = " ".join(str(statement).lower().split())
-        if not sql_text:
-            return None
-
-        create_markers = (
-            " add column ",
-            " add constraint ",
-            " add foreign key ",
-            " create table ",
-            " create index ",
-            " create unique index ",
-            " create unique ",
-        )
-        drop_markers = (
-            " drop column ",
-            " drop constraint ",
-            " drop foreign key ",
-            " drop table ",
-            " drop index ",
-        )
-
-        if any(marker in sql_text for marker in create_markers):
-            return "create"
-        if any(marker in sql_text for marker in drop_markers):
-            return "drop"
-        return None
-
     _orig_add_column = Operations.add_column
     _orig_drop_column = Operations.drop_column
     _orig_create_table = Operations.create_table
@@ -332,46 +220,30 @@ def _install_safe_ops() -> None:
     _orig_create_foreign_key = Operations.create_foreign_key
     _orig_create_unique_constraint = getattr(Operations, "create_unique_constraint", None)
     _orig_drop_constraint = Operations.drop_constraint
-    _orig_execute = getattr(Operations, "execute", None)
 
     def _safe_add_column(self, table_name, column, schema=None, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_add_column(self, table_name, column, schema=schema, **kw),
-                "create",
-            )
+            return _orig_add_column(self, table_name, column, schema=schema, **kw)
         table_name, schema = _normalize_table(table_name, schema)
         if _column_exists(bind, table_name, column.name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_add_column(self, table_name, column, schema=schema, **kw),
-            "create",
-        )
+        return _orig_add_column(self, table_name, column, schema=schema, **kw)
 
     def _safe_drop_column(self, table_name, column_name, schema=None, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_drop_column(self, table_name, column_name, schema=schema, **kw),
-                "drop",
-            )
+            return _orig_drop_column(self, table_name, column_name, schema=schema, **kw)
         table_name, schema = _normalize_table(table_name, schema)
         if not _column_exists(bind, table_name, column_name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_drop_column(self, table_name, column_name, schema=schema, **kw),
-            "drop",
-        )
+        return _orig_drop_column(self, table_name, column_name, schema=schema, **kw)
 
     def _safe_create_table(self, table_name, *columns, **kw):
         bind = self.get_bind()
         schema = kw.get("schema")
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_create_table(self, table_name, *columns, **kw),
-                "create",
-            )
+            return _orig_create_table(self, table_name, *columns, **kw)
         table_name, schema = _normalize_table(table_name, schema)
         if _table_exists(bind, table_name, schema):
             column_defs = [
@@ -380,53 +252,38 @@ def _install_safe_ops() -> None:
                 if isinstance(col, sa.Column)
             ]
             return sa.table(table_name, *column_defs, schema=schema)
-        return _run_ddl(
-            lambda: _orig_create_table(self, table_name, *columns, **kw),
-            "create",
-        )
+        return _orig_create_table(self, table_name, *columns, **kw)
 
     def _safe_drop_table(self, table_name, **kw):
         bind = self.get_bind()
         schema = kw.get("schema")
         if bind is None:
-            return _run_ddl(lambda: _orig_drop_table(self, table_name, **kw), "drop")
+            return _orig_drop_table(self, table_name, **kw)
         table_name, schema = _normalize_table(table_name, schema)
         if not _table_exists(bind, table_name, schema):
             return None
-        return _run_ddl(lambda: _orig_drop_table(self, table_name, **kw), "drop")
+        return _orig_drop_table(self, table_name, **kw)
 
     def _safe_create_index(self, index_name, table_name, columns, **kw):
         bind = self.get_bind()
         schema = kw.get("schema")
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_create_index(self, index_name, table_name, columns, **kw),
-                "create",
-            )
+            return _orig_create_index(self, index_name, table_name, columns, **kw)
         table_name, schema = _normalize_table(table_name, schema)
         if _index_exists(bind, table_name, index_name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_create_index(self, index_name, table_name, columns, **kw),
-            "create",
-        )
+        return _orig_create_index(self, index_name, table_name, columns, **kw)
 
     def _safe_drop_index(self, index_name, table_name=None, **kw):
         bind = self.get_bind()
         schema = kw.get("schema")
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_drop_index(self, index_name, table_name=table_name, **kw),
-                "drop",
-            )
+            return _orig_drop_index(self, index_name, table_name=table_name, **kw)
         if table_name:
             table_name, schema = _normalize_table(table_name, schema)
         if table_name and not _index_exists(bind, table_name, index_name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_drop_index(self, index_name, table_name=table_name, **kw),
-            "drop",
-        )
+        return _orig_drop_index(self, index_name, table_name=table_name, **kw)
 
     def _safe_create_foreign_key(
         self,
@@ -440,17 +297,14 @@ def _install_safe_ops() -> None:
         bind = self.get_bind()
         schema = kw.get("source_schema")
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_create_foreign_key(
-                    self,
-                    constraint_name,
-                    source_table,
-                    referent_table,
-                    local_cols,
-                    remote_cols,
-                    **kw,
-                ),
-                "create",
+            return _orig_create_foreign_key(
+                self,
+                constraint_name,
+                source_table,
+                referent_table,
+                local_cols,
+                remote_cols,
+                **kw,
             )
         source_table, schema = _normalize_table(source_table, schema)
         if _foreign_key_exists(
@@ -463,17 +317,14 @@ def _install_safe_ops() -> None:
             schema=schema,
         ):
             return None
-        return _run_ddl(
-            lambda: _orig_create_foreign_key(
-                self,
-                constraint_name,
-                source_table,
-                referent_table,
-                local_cols,
-                remote_cols,
-                **kw,
-            ),
-            "create",
+        return _orig_create_foreign_key(
+            self,
+            constraint_name,
+            source_table,
+            referent_table,
+            local_cols,
+            remote_cols,
+            **kw,
         )
 
     def _safe_create_unique_constraint(self, constraint_name, table_name, columns, **kw):
@@ -482,49 +333,28 @@ def _install_safe_ops() -> None:
         if bind is None or _orig_create_unique_constraint is None:
             if _orig_create_unique_constraint is None:
                 return None
-            return _run_ddl(
-                lambda: _orig_create_unique_constraint(
-                    self, constraint_name, table_name, columns, **kw
-                ),
-                "create",
+            return _orig_create_unique_constraint(
+                self, constraint_name, table_name, columns, **kw
             )
         table_name, schema = _normalize_table(table_name, schema)
         if _unique_constraint_exists(bind, table_name, constraint_name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_create_unique_constraint(
-                self, constraint_name, table_name, columns, **kw
-            ),
-            "create",
+        return _orig_create_unique_constraint(
+            self, constraint_name, table_name, columns, **kw
         )
 
     def _safe_drop_constraint(self, constraint_name, table_name, type_=None, **kw):
         bind = self.get_bind()
         schema = kw.get("schema")
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_drop_constraint(
-                    self, constraint_name, table_name, type_=type_, **kw
-                ),
-                "drop",
+            return _orig_drop_constraint(
+                self, constraint_name, table_name, type_=type_, **kw
             )
         table_name, schema = _normalize_table(table_name, schema)
         if not _constraint_exists(bind, table_name, constraint_name, type_, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_drop_constraint(
-                self, constraint_name, table_name, type_=type_, **kw
-            ),
-            "drop",
-        )
-
-    def _safe_execute(self, sqltext, execution_options=None):
-        if _orig_execute is None:
-            return None
-        op_kind = _classify_sql_statement(sqltext)
-        return _run_ddl(
-            lambda: _orig_execute(self, sqltext, execution_options=execution_options),
-            op_kind,
+        return _orig_drop_constraint(
+            self, constraint_name, table_name, type_=type_, **kw
         )
 
     Operations.add_column = _safe_add_column
@@ -537,8 +367,6 @@ def _install_safe_ops() -> None:
     if _orig_create_unique_constraint is not None:
         Operations.create_unique_constraint = _safe_create_unique_constraint
     Operations.drop_constraint = _safe_drop_constraint
-    if _orig_execute is not None:
-        Operations.execute = _safe_execute
 
     _orig_batch_add_column = BatchOperations.add_column
     _orig_batch_drop_column = BatchOperations.drop_column
@@ -549,7 +377,6 @@ def _install_safe_ops() -> None:
         BatchOperations, "create_unique_constraint", None
     )
     _orig_batch_drop_constraint = BatchOperations.drop_constraint
-    _orig_batch_execute = getattr(BatchOperations, "execute", None)
 
     def _batch_table_info(batch_op):
         return batch_op.impl.table_name, getattr(batch_op.impl, "schema", None)
@@ -557,49 +384,46 @@ def _install_safe_ops() -> None:
     def _safe_batch_add_column(self, column, *args, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(lambda: _orig_batch_add_column(self, column, *args, **kw), "create")
+            return _orig_batch_add_column(self, column, *args, **kw)
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if _column_exists(bind, table_name, column.name, schema):
             return None
-        return _run_ddl(lambda: _orig_batch_add_column(self, column, *args, **kw), "create")
+        return _orig_batch_add_column(self, column, *args, **kw)
 
     def _safe_batch_drop_column(self, column_name, *args, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(lambda: _orig_batch_drop_column(self, column_name, *args, **kw), "drop")
+            return _orig_batch_drop_column(self, column_name, *args, **kw)
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if not _column_exists(bind, table_name, column_name, schema):
             return None
-        return _run_ddl(lambda: _orig_batch_drop_column(self, column_name, *args, **kw), "drop")
+        return _orig_batch_drop_column(self, column_name, *args, **kw)
 
     def _safe_batch_create_index(self, index_name, columns, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(lambda: _orig_batch_create_index(self, index_name, columns, **kw), "create")
+            return _orig_batch_create_index(self, index_name, columns, **kw)
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if _index_exists(bind, table_name, index_name, schema):
             return None
-        return _run_ddl(lambda: _orig_batch_create_index(self, index_name, columns, **kw), "create")
+        return _orig_batch_create_index(self, index_name, columns, **kw)
 
     def _safe_batch_drop_index(self, index_name, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(lambda: _orig_batch_drop_index(self, index_name, **kw), "drop")
+            return _orig_batch_drop_index(self, index_name, **kw)
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if not _index_exists(bind, table_name, index_name, schema):
             return None
-        return _run_ddl(lambda: _orig_batch_drop_index(self, index_name, **kw), "drop")
+        return _orig_batch_drop_index(self, index_name, **kw)
 
     def _safe_batch_create_foreign_key(
         self, constraint_name, referent_table, local_cols, remote_cols, **kw
     ):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_batch_create_foreign_key(
-                    self, constraint_name, referent_table, local_cols, remote_cols, **kw
-                ),
-                "create",
+            return _orig_batch_create_foreign_key(
+                self, constraint_name, referent_table, local_cols, remote_cols, **kw
             )
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if _foreign_key_exists(
@@ -612,11 +436,8 @@ def _install_safe_ops() -> None:
             schema=schema,
         ):
             return None
-        return _run_ddl(
-            lambda: _orig_batch_create_foreign_key(
-                self, constraint_name, referent_table, local_cols, remote_cols, **kw
-            ),
-            "create",
+        return _orig_batch_create_foreign_key(
+            self, constraint_name, referent_table, local_cols, remote_cols, **kw
         )
 
     def _safe_batch_create_unique_constraint(
@@ -626,45 +447,24 @@ def _install_safe_ops() -> None:
         if bind is None or _orig_batch_create_unique_constraint is None:
             if _orig_batch_create_unique_constraint is None:
                 return None
-            return _run_ddl(
-                lambda: _orig_batch_create_unique_constraint(
-                    self, constraint_name, columns, **kw
-                ),
-                "create",
+            return _orig_batch_create_unique_constraint(
+                self, constraint_name, columns, **kw
             )
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if _unique_constraint_exists(bind, table_name, constraint_name, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_batch_create_unique_constraint(
-                self, constraint_name, columns, **kw
-            ),
-            "create",
+        return _orig_batch_create_unique_constraint(
+            self, constraint_name, columns, **kw
         )
 
     def _safe_batch_drop_constraint(self, constraint_name, type_=None, **kw):
         bind = self.get_bind()
         if bind is None:
-            return _run_ddl(
-                lambda: _orig_batch_drop_constraint(self, constraint_name, type_=type_, **kw),
-                "drop",
-            )
+            return _orig_batch_drop_constraint(self, constraint_name, type_=type_, **kw)
         table_name, schema = _normalize_table(*_batch_table_info(self))
         if not _constraint_exists(bind, table_name, constraint_name, type_, schema):
             return None
-        return _run_ddl(
-            lambda: _orig_batch_drop_constraint(self, constraint_name, type_=type_, **kw),
-            "drop",
-        )
-
-    def _safe_batch_execute(self, sqltext, execution_options=None):
-        if _orig_batch_execute is None:
-            return None
-        op_kind = _classify_sql_statement(sqltext)
-        return _run_ddl(
-            lambda: _orig_batch_execute(self, sqltext, execution_options=execution_options),
-            op_kind,
-        )
+        return _orig_batch_drop_constraint(self, constraint_name, type_=type_, **kw)
 
     BatchOperations.add_column = _safe_batch_add_column
     BatchOperations.drop_column = _safe_batch_drop_column
@@ -674,8 +474,6 @@ def _install_safe_ops() -> None:
     if _orig_batch_create_unique_constraint is not None:
         BatchOperations.create_unique_constraint = _safe_batch_create_unique_constraint
     BatchOperations.drop_constraint = _safe_batch_drop_constraint
-    if _orig_batch_execute is not None:
-        BatchOperations.execute = _safe_batch_execute
 
 
 def run_migrations_offline() -> None:

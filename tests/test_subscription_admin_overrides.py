@@ -169,32 +169,3 @@ def test_all_supported_client_types_per_admin(auth_client: TestClient, monkeypat
     assert resp_override.status_code == 200, resp_override.text
     assert "application/json" in resp_override.headers.get("content-type", "").lower()
     json.loads(resp_override.text or "{}")
-
-
-def test_admin_override_accepts_aliases_and_ports(auth_client: TestClient):
-    unique = uuid.uuid4().hex[:8]
-    admin_id = _create_admin(auth_client, f"adm_lists_{unique}")
-    payload = {
-        "subscription_settings": {
-            "subscription_aliases": ["/client/subscribe/", "/api/v1/subscribe?token="],
-            "subscription_ports": [443, 8443],
-            "use_custom_json_for_v2rayng": True,
-        }
-    }
-    update_resp = auth_client.put(
-        f"/api/settings/subscriptions/admins/{admin_id}",
-        json=payload,
-    )
-    assert update_resp.status_code == 200, update_resp.text
-    updated = update_resp.json()
-    assert updated["subscription_settings"]["subscription_aliases"] == payload["subscription_settings"]["subscription_aliases"]
-    assert updated["subscription_settings"]["subscription_ports"] == payload["subscription_settings"]["subscription_ports"]
-    assert updated["subscription_settings"]["use_custom_json_for_v2rayng"] is True
-
-    bundle_resp = auth_client.get("/api/settings/subscriptions")
-    assert bundle_resp.status_code == 200, bundle_resp.text
-    bundle = bundle_resp.json()
-    admin_payload = next((adm for adm in bundle["admins"] if adm["id"] == admin_id), None)
-    assert admin_payload is not None
-    assert admin_payload["subscription_settings"]["subscription_aliases"] == payload["subscription_settings"]["subscription_aliases"]
-    assert admin_payload["subscription_settings"]["subscription_ports"] == payload["subscription_settings"]["subscription_ports"]
