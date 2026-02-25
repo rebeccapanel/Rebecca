@@ -1211,14 +1211,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		name: "expire",
 	});
 
-	const expireHelperText = useMemo(() => {
-		if (!expireValue) {
-			return null;
-		}
-		const { status, time } = relativeExpiryDate(expireValue);
-		return t(status, { time });
-	}, [expireValue, t]);
-
 	const _nextPlanDataLimit = useWatch({
 		control: form.control,
 
@@ -2480,40 +2472,25 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		: Boolean(form.formState.errors.expire)
 																}
 															>
-																<Grid
-																	templateColumns={{
-																		base: "1fr",
-																		md: "minmax(0, 1fr) auto",
-																	}}
-																	templateAreas={{
-																		base: isOnHold
-																			? `"label" "field" "button"`
-																			: `"label" "field" "helper" "button"`,
-																		md: isOnHold
-																			? `"label ."
-																			   "field button"`
-																			: `"label ."
-																			   "field button"
-																			   "helper ."`,
-																	}}
-																	rowGap={2}
-																	columnGap={{ base: 0, md: 4 }}
+																<Stack
+																	direction={{ base: "column", md: "row" }}
+																	align={{ base: "stretch", md: "flex-end" }}
+																	gap={{ base: 2, md: 4 }}
 																	w="full"
-																	minW={0}
+																	flexWrap={{ base: "wrap", md: "nowrap" }}
 																>
-																	<FormLabel
-																		gridArea="label"
-																		mb={0}
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{isOnHold
-																			? t("expires.days", "Expires in (days)")
-																			: t(
-																					"expires.selectDate",
-																					"Select expiration date",
-																				)}
-																	</FormLabel>
-																	<Box gridArea="field" minW={0}>
+																	<Box flex="1" minW={0}>
+																		<FormLabel
+																			mb={2}
+																			textAlign={isRTL ? "right" : "left"}
+																		>
+																			{isOnHold
+																				? t("expires.days", "Expires in (days)")
+																				: t(
+																						"expires.selectDate",
+																						"Select expiration date",
+																					)}
+																		</FormLabel>
 																		{isOnHold ? (
 																			<Controller
 																				control={form.control}
@@ -2558,6 +2535,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				name="expire"
 																				control={form.control}
 																				render={({ field }) => {
+																					const { status, time } =
+																						relativeExpiryDate(field.value);
 																					const selectedDate = field.value
 																						? dayjs.unix(field.value).toDate()
 																						: null;
@@ -2590,44 +2569,45 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																					};
 
 																					return (
-																						<DateTimePicker
-																							value={selectedDate}
-																							onChange={handleDateChange}
-																							placeholder={t(
-																								"expires.selectDate",
-																								"Select expiration date",
-																							)}
-																							disabled={disabled}
-																							minDate={new Date()}
-																							quickSelects={quickExpiryOptions.map(
-																								(option) => ({
-																									label: option.label,
-																									onClick: () => {
-																										const newDate = dayjs()
-																											.add(
-																												option.amount,
-																												option.unit,
-																											)
-																											.endOf("day");
-																										handleDateChange(
-																											newDate.toDate(),
-																										);
-																									},
-																								}),
-																							)}
-																						/>
+																						<Box w="full" minW={0}>
+																							<DateTimePicker
+																								value={selectedDate}
+																								onChange={handleDateChange}
+																								placeholder={t(
+																									"expires.selectDate",
+																									"Select expiration date",
+																								)}
+																								disabled={disabled}
+																								minDate={new Date()}
+																								quickSelects={quickExpiryOptions.map(
+																									(option) => ({
+																										label: option.label,
+																										onClick: () => {
+																											const newDate = dayjs()
+																												.add(
+																													option.amount,
+																													option.unit,
+																												)
+																												.endOf("day");
+																											handleDateChange(
+																												newDate.toDate(),
+																											);
+																										},
+																									}),
+																								)}
+																							/>
+																							{field.value ? (
+																								<FormHelperText>
+																									{t(status, { time })}
+																								</FormHelperText>
+																							) : null}
+																						</Box>
 																					);
 																				}}
 																			/>
 																		)}
 																	</Box>
-																	{!isOnHold && expireHelperText ? (
-																		<FormHelperText gridArea="helper" mt={0}>
-																			{expireHelperText}
-																		</FormHelperText>
-																	) : null}
 																	<Button
-																		gridArea="button"
 																		size="sm"
 																		variant={isOnHold ? "solid" : "outline"}
 																		colorScheme={isOnHold ? "primary" : "gray"}
@@ -2656,18 +2636,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		minW={{ base: "100%", md: "auto" }}
 																		alignSelf={{
 																			base: "stretch",
-																			md: "end",
-																		}}
-																		justifySelf={{
-																			base: "stretch",
-																			md: "start",
+																			md: "flex-end",
 																		}}
 																		flexShrink={0}
 																		h="32px"
 																	>
 																		{t("onHold.button")}
 																	</Button>
-																</Grid>
+																</Stack>
 																{isOnHold ? (
 																	<FormErrorMessage>
 																		{

@@ -596,7 +596,7 @@ def test_get_all_users_usage(auth_client: TestClient):
 def test_get_expired_users(auth_client: TestClient):
     # This endpoint has been removed
     response = auth_client.get("/api/users/expired")
-    assert response.status_code in (404, 405)  # endpoint removed / method not allowed
+    assert response.status_code == 405  # Method not allowed or endpoint removed
 
 
 def test_delete_expired_users(auth_client: TestClient):

@@ -381,8 +381,6 @@ def remove_node(node_id: int):
                 del state.nodes[node_id]
             except KeyError:
                 pass
-    _last_node_auto_reconnect_attempt.pop(node_id, None)
-    _last_node_error_report.pop(node_id, None)
 
 
 def add_node(dbnode: "DBNode"):
@@ -435,37 +433,6 @@ global _connecting_nodes
 _connecting_nodes = {}
 _NODE_ERROR_NOTIFY_COOLDOWN_SECONDS = 60
 _last_node_error_report: dict[int, tuple[str, float]] = {}
-_NODE_AUTO_RECONNECT_DELAY_SECONDS = 8
-_NODE_AUTO_RECONNECT_COOLDOWN_SECONDS = 20
-_last_node_auto_reconnect_attempt: dict[int, float] = {}
-
-
-@threaded_function
-def _connect_node_after_delay(node_id: int, config=None, *, force: bool = True, delay_seconds: float = 0) -> None:
-    try:
-        wait_seconds = max(float(delay_seconds), 0.0)
-    except (TypeError, ValueError):
-        wait_seconds = 0.0
-
-    if wait_seconds > 0:
-        time.sleep(wait_seconds)
-    _connect_node_impl(node_id, config=config, force=force)
-
-
-def schedule_node_reconnect(
-    node_id: int,
-    config=None,
-    *,
-    force: bool = True,
-    delay_seconds: float = _NODE_AUTO_RECONNECT_DELAY_SECONDS,
-) -> None:
-    now = time.time()
-    last_attempt = _last_node_auto_reconnect_attempt.get(node_id, 0.0)
-    if now - last_attempt < _NODE_AUTO_RECONNECT_COOLDOWN_SECONDS:
-        return
-
-    _last_node_auto_reconnect_attempt[node_id] = now
-    _connect_node_after_delay(node_id, config=config, force=force, delay_seconds=delay_seconds)
 
 
 def register_node_runtime_error(node_id: int, error: str, *, fallback_name: str | None = None) -> None:
@@ -498,11 +465,9 @@ def register_node_runtime_error(node_id: int, error: str, *, fallback_name: str 
     now = time.time()
     last = _last_node_error_report.get(node_id)
     if last and last[0] == error_text and (now - last[1]) < _NODE_ERROR_NOTIFY_COOLDOWN_SECONDS:
-        schedule_node_reconnect(node_id)
         return
     _last_node_error_report[node_id] = (error_text, now)
     report.node_error(node_name, error_text)
-    schedule_node_reconnect(node_id)
 
 
 def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> None:
@@ -560,7 +525,6 @@ def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> Non
         node.start(config)
         version = node.get_version()
         _change_node_status(node_id, NodeStatus.connected, version=version)
-        _last_node_auto_reconnect_attempt.pop(node_id, None)
         logger.info('Connected to "%s" node, xray run on v%s', dbnode.name, version)
 
     except Exception as e:
@@ -658,6 +622,5 @@ __all__ = [
     "connect_node",
     "reconnect_node",
     "restart_node",
-    "schedule_node_reconnect",
     "register_node_runtime_error",
 ]

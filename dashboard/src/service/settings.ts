@@ -76,11 +76,11 @@ export interface SubscriptionTemplateSettings {
 	use_custom_json_for_streisand: boolean;
 	use_custom_json_for_happ: boolean;
 	subscription_path: string;
-	subscription_aliases: string[];
-	subscription_ports: number[];
 }
 
-export type SubscriptionTemplateSettingsUpdatePayload = Partial<SubscriptionTemplateSettings>;
+export type SubscriptionTemplateSettingsUpdatePayload = Partial<
+	Omit<SubscriptionTemplateSettings, "subscription_path">
+>;
 
 export interface AdminSubscriptionSettings {
 	id: number;

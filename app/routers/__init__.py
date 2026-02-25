@@ -5,7 +5,6 @@ from . import (
     core,
     node,
     subscription,
-    subscription_alias,
     system,
     user_template,
     user,
@@ -30,7 +29,6 @@ routers = [
     service.router,
     settings.router,
     myaccount.router,
-    subscription_alias.router,
 ]
 
 for router in routers:
