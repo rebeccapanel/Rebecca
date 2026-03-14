@@ -3,6 +3,10 @@ import time
 import json
 import contextlib
 import ipaddress
+import socket
+import subprocess
+import threading
+from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
 from starlette.websockets import WebSocketDisconnect
@@ -42,6 +46,8 @@ router = APIRouter(tags=["Core"], prefix="/api", responses={401: responses._401}
 
 GITHUB_RELEASES = "https://api.github.com/repos/XTLS/Xray-core/releases"
 GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"
+OUTBOUND_TEST_DEFAULT_URL = "https://www.google.com/generate_204"
+_OUTBOUND_TEST_LOCK = threading.Lock()
 
 
 def _resolve_template_files(template_index_url: str, template_name: str) -> list[dict]:
@@ -840,6 +846,271 @@ def delete_warp_account(admin: Admin = Depends(Admin.check_sudo_admin), db: Sess
     service = _warp_service(db)
     service.delete()
     return {"account": None}
+
+
+def _decode_json_payload(value: object, field_name: str) -> object:
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if not raw_value:
+            raise HTTPException(status_code=400, detail=f"{field_name} parameter is required")
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid {field_name} JSON: {exc}") from exc
+    return value
+
+
+def _extract_outbound_test_payload(payload: dict) -> tuple[dict, list]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid request payload")
+
+    outbound_raw = payload.get("outbound")
+    if outbound_raw is None:
+        raise HTTPException(status_code=400, detail="outbound parameter is required")
+
+    outbound = _decode_json_payload(outbound_raw, "outbound")
+    if not isinstance(outbound, dict):
+        raise HTTPException(status_code=400, detail="outbound must be a JSON object")
+
+    all_outbounds_raw = payload.get("allOutbounds")
+    if all_outbounds_raw in (None, ""):
+        all_outbounds = [outbound]
+    else:
+        all_outbounds = _decode_json_payload(all_outbounds_raw, "allOutbounds")
+        if not isinstance(all_outbounds, list):
+            raise HTTPException(status_code=400, detail="allOutbounds must be a JSON array")
+        if not all_outbounds:
+            all_outbounds = [outbound]
+
+    outbound_tag = outbound.get("tag")
+    if outbound_tag and not any(
+        isinstance(candidate, dict) and candidate.get("tag") == outbound_tag for candidate in all_outbounds
+    ):
+        all_outbounds.append(outbound)
+
+    return outbound, all_outbounds
+
+
+def _find_available_test_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def _collect_process_output(process: subprocess.Popen, timeout_seconds: float = 1.0) -> str:
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return ""
+    except ValueError:
+        return ""
+    output_parts = [part.strip() for part in (stdout, stderr) if isinstance(part, str) and part.strip()]
+    return " | ".join(output_parts)
+
+
+def _wait_for_test_port(
+    process: subprocess.Popen,
+    port: int,
+    timeout_seconds: float = 3.0,
+) -> tuple[bool, str]:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if process.poll() is not None:
+            details = _collect_process_output(process)
+            if not details:
+                details = f"exit code {process.returncode}"
+            return False, f"Xray process exited: {details}"
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True, ""
+        except OSError:
+            time.sleep(0.05)
+    return False, f"Xray failed to start listening on test port {port}"
+
+
+def _stop_test_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        _collect_process_output(process)
+        return
+    try:
+        process.terminate()
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        with contextlib.suppress(Exception):
+            process.wait(timeout=1)
+    except Exception:
+        with contextlib.suppress(Exception):
+            process.kill()
+    finally:
+        _collect_process_output(process)
+
+
+def _build_outbound_test_config(outbound_tag: str, all_outbounds: list, test_port: int) -> dict:
+    processed_outbounds = []
+    for outbound in deepcopy(all_outbounds):
+        if not isinstance(outbound, dict):
+            processed_outbounds.append(outbound)
+            continue
+        protocol = str(outbound.get("protocol") or "").strip().lower()
+        if protocol == "wireguard":
+            settings = outbound.get("settings")
+            if isinstance(settings, dict):
+                settings["noKernelTun"] = True
+            else:
+                outbound["settings"] = {"noKernelTun": True}
+        processed_outbounds.append(outbound)
+
+    return {
+        "log": {
+            "loglevel": "warning",
+            "access": "none",
+            "error": "none",
+            "dnsLog": False,
+        },
+        "inbounds": [
+            {
+                "tag": "test-inbound",
+                "listen": "127.0.0.1",
+                "port": test_port,
+                "protocol": "socks",
+                "settings": {"auth": "noauth", "udp": True},
+            }
+        ],
+        "outbounds": processed_outbounds,
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+                {
+                    "type": "field",
+                    "outboundTag": outbound_tag,
+                    "network": "tcp,udp",
+                }
+            ],
+        },
+        "policy": {},
+        "stats": {},
+    }
+
+
+def _measure_outbound_delay(proxy_port: int, test_url: str) -> tuple[int, int]:
+    proxy_url = f"socks5h://127.0.0.1:{proxy_port}"
+    session = requests.Session()
+    session.trust_env = False
+    session.proxies.update({"http": proxy_url, "https": proxy_url})
+    session.headers.update({"Accept-Encoding": "identity"})
+    try:
+        warmup_response = session.get(test_url, timeout=10)
+        _ = warmup_response.content
+        warmup_response.close()
+
+        start = time.perf_counter()
+        response = session.get(test_url, timeout=10)
+        delay_ms = int(round((time.perf_counter() - start) * 1000))
+        status_code = response.status_code
+        _ = response.content
+        response.close()
+        return delay_ms, status_code
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Request failed: {exc}") from exc
+    finally:
+        session.close()
+
+
+def _get_outbound_test_url() -> str:
+    return (os.getenv("XRAY_OUTBOUND_TEST_URL", "") or "").strip() or OUTBOUND_TEST_DEFAULT_URL
+
+
+def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list) -> dict:
+    if not xray or not getattr(xray, "core", None):
+        return {"success": False, "error": "Xray runtime is not available"}
+
+    core = xray.core
+    if not getattr(core, "available", False):
+        return {"success": False, "error": "Xray core is not available"}
+
+    executable_path = str(getattr(core, "executable_path", "") or "").strip()
+    if not executable_path:
+        return {"success": False, "error": "Xray executable path is not configured"}
+
+    try:
+        test_port = _find_available_test_port()
+    except OSError as exc:
+        return {"success": False, "error": f"Failed to find available test port: {exc}"}
+
+    test_config = _build_outbound_test_config(outbound_tag, all_outbounds, test_port)
+    process = None
+    try:
+        process_env = os.environ.copy()
+        core_env = getattr(core, "_env", None)
+        if isinstance(core_env, dict):
+            process_env.update({str(key): str(value) for key, value in core_env.items() if value is not None})
+        assets_path = str(getattr(core, "assets_path", "") or "").strip()
+        if assets_path:
+            process_env["XRAY_LOCATION_ASSET"] = assets_path
+
+        process = subprocess.Popen(
+            [executable_path, "run", "-config", "stdin:"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=process_env,
+        )
+
+        if process.stdin is None:
+            return {"success": False, "error": "Failed to create stdin pipe for test Xray process"}
+        process.stdin.write(json.dumps(test_config))
+        process.stdin.flush()
+        process.stdin.close()
+
+        ready, ready_error = _wait_for_test_port(process, test_port, timeout_seconds=3.0)
+        if not ready:
+            return {"success": False, "error": ready_error}
+
+        delay, status_code = _measure_outbound_delay(test_port, _get_outbound_test_url())
+        return {
+            "success": True,
+            "delay": delay,
+            "statusCode": status_code,
+        }
+    except FileNotFoundError as exc:
+        return {"success": False, "error": f"Failed to start test xray instance: {exc}"}
+    except RuntimeError as exc:
+        return {"success": False, "error": str(exc)}
+    except Exception as exc:
+        return {"success": False, "error": f"Outbound test failed: {exc}"}
+    finally:
+        if process is not None:
+            _stop_test_process(process)
+
+
+@router.post("/panel/xray/testOutbound", responses={403: responses._403})
+def test_outbound(
+    payload: dict = Body(...),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    outbound, all_outbounds = _extract_outbound_test_payload(payload)
+    outbound_tag = str(outbound.get("tag") or "").strip()
+    outbound_protocol = str(outbound.get("protocol") or "").strip().lower()
+
+    if not outbound_tag:
+        return {"success": True, "obj": {"success": False, "error": "Outbound has no tag"}}
+    if outbound_protocol == "blackhole" or outbound_tag.lower() == "blocked":
+        return {"success": True, "obj": {"success": False, "error": "Blocked/blackhole outbound cannot be tested"}}
+
+    if not _OUTBOUND_TEST_LOCK.acquire(blocking=False):
+        return {
+            "success": True,
+            "obj": {"success": False, "error": "Another outbound test is already running, please wait"},
+        }
+
+    try:
+        result = _run_outbound_ping_test(outbound_tag=outbound_tag, all_outbounds=all_outbounds)
+    finally:
+        _OUTBOUND_TEST_LOCK.release()
+
+    return {"success": True, "obj": result}
 
 
 def _sync_outbound_records(db: Session) -> None:

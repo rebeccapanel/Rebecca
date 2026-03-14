@@ -236,6 +236,86 @@ def test_activate_admin_users(auth_client: TestClient):
     assert response.status_code == 200
 
 
+def test_activate_admin_users_reenables_disabled_regardless_of_expire_or_usage(auth_client: TestClient):
+    import uuid
+    from datetime import datetime, timezone
+    from app.db.models import User as DBUser, Admin as DBAdmin
+    from app.models.user import UserStatus
+    from tests.conftest import TestingSessionLocal
+
+    unique_id = uuid.uuid4().hex[:8]
+    admin_username = f"activate_users_state_{unique_id}"
+
+    admin_data = {"username": admin_username, "password": "activateuserspass123", "role": "standard"}
+    create_response = auth_client.post("/api/admin", json=admin_data)
+    assert create_response.status_code == 200
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    db = TestingSessionLocal()
+    try:
+        admin = db.query(DBAdmin).filter(DBAdmin.username == admin_username).first()
+        assert admin is not None
+
+        user_expire_passed = DBUser(
+            username=f"activate_expired_like_disabled_{unique_id}",
+            admin_id=admin.id,
+            status=UserStatus.disabled,
+            expire=now_ts - 3600,
+            data_limit=10_000,
+            used_traffic=0,
+        )
+        user_limit_reached = DBUser(
+            username=f"activate_limited_like_disabled_{unique_id}",
+            admin_id=admin.id,
+            status=UserStatus.disabled,
+            expire=now_ts + 86400,
+            data_limit=10_000,
+            used_traffic=10_000,
+        )
+        user_on_hold = DBUser(
+            username=f"activate_on_hold_like_disabled_{unique_id}",
+            admin_id=admin.id,
+            status=UserStatus.disabled,
+            expire=None,
+            data_limit=0,
+            used_traffic=0,
+            on_hold_expire_duration=3600,
+            online_at=None,
+        )
+        db.add_all([user_expire_passed, user_limit_reached, user_on_hold])
+        db.commit()
+        db.flush()
+
+        user_expire_passed_id = user_expire_passed.id
+        user_limit_reached_id = user_limit_reached.id
+        user_on_hold_id = user_on_hold.id
+
+        response = auth_client.post(f"/api/admin/{admin_username}/users/activate")
+        assert response.status_code == 200
+        assert response.json()["detail"] == "Users successfully activated"
+
+        db.expire_all()
+        user_expire_passed = db.query(DBUser).filter(DBUser.id == user_expire_passed_id).first()
+        user_limit_reached = db.query(DBUser).filter(DBUser.id == user_limit_reached_id).first()
+        user_on_hold = db.query(DBUser).filter(DBUser.id == user_on_hold_id).first()
+
+        assert user_expire_passed.status == UserStatus.active
+        assert user_limit_reached.status == UserStatus.active
+        assert user_on_hold.status == UserStatus.on_hold
+    finally:
+        db.query(DBUser).filter(
+            DBUser.username.in_(
+                [
+                    f"activate_expired_like_disabled_{unique_id}",
+                    f"activate_limited_like_disabled_{unique_id}",
+                    f"activate_on_hold_like_disabled_{unique_id}",
+                ]
+            )
+        ).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
 def test_reset_admin(auth_client: TestClient):
     response = auth_client.post("/api/admin/usage/reset/testadmin")
     assert response.status_code == 200

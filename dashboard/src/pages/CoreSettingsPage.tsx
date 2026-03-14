@@ -29,6 +29,7 @@ import {
 	Th,
 	Thead,
 	Tr,
+	Tooltip,
 	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
@@ -46,6 +47,7 @@ import {
 	ArrowsRightLeftIcon,
 	ArrowUpIcon,
 	ArrowUpTrayIcon,
+	BoltIcon,
 	CloudArrowUpIcon,
 	TrashIcon as DeleteIcon,
 	DocumentTextIcon,
@@ -115,6 +117,7 @@ const AdvancedTabIcon = chakra(WrenchScrewdriverIcon, {
 });
 const LogsTabIcon = chakra(DocumentTextIcon, { baseStyle: { w: 4, h: 4 } });
 const WarpIconStyled = chakra(CloudArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
+const BoltIconStyled = chakra(BoltIcon, { baseStyle: { w: 4, h: 4 } });
 const compactActionButtonProps = {
 	colorScheme: "primary",
 	size: "xs" as const,
@@ -195,6 +198,16 @@ const LOG_CLEANUP_INTERVAL_OPTIONS = [
 ];
 
 type OutboundJson = Record<string, any>;
+type OutboundTestResult = {
+	success: boolean;
+	delay?: number;
+	error?: string;
+	statusCode?: number;
+};
+type OutboundTestState = {
+	testing: boolean;
+	result: OutboundTestResult | null;
+};
 type BalancerConfig = {
 	tag: string;
 	selector: string[];
@@ -472,6 +485,9 @@ export const CoreSettingsPage: FC = () => {
 	const [fakeDns, setFakeDns] = useState<any[]>([]);
 	const [outboundsTraffic, setOutboundsTraffic] = useState<any[]>([]);
 	const [outboundIds, setOutboundIds] = useState<string[]>([]);
+	const [outboundTestStates, setOutboundTestStates] = useState<
+		Record<number, OutboundTestState>
+	>({});
 	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
 	const [editingOutboundIndex, setEditingOutboundIndex] = useState<
 		number | null
@@ -803,6 +819,139 @@ export const CoreSettingsPage: FC = () => {
 		);
 		if (response?.success) {
 			await fetchOutboundsTraffic();
+		}
+	};
+
+	const testOutbound = async (index: number) => {
+		const outbounds = getOutbounds();
+		const outbound = outbounds[index];
+		if (!outbound) {
+			toast({
+				title: t("pages.xray.outbound.testError", "Unable to test outbound"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			return;
+		}
+
+		const outboundTag = String(outbound.tag ?? "").trim();
+		const protocol = String(outbound.protocol ?? "")
+			.trim()
+			.toLowerCase();
+		if (protocol === "blackhole" || outboundTag.toLowerCase() === "blocked") {
+			toast({
+				title: t(
+					"pages.xray.outbound.testBlocked",
+					"Blocked/blackhole outbound cannot be tested",
+				),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			return;
+		}
+
+		setOutboundTestStates((prev) => ({
+			...prev,
+			[index]: { testing: true, result: null },
+		}));
+
+		try {
+			const response = await apiFetch<{
+				success: boolean;
+				obj?: OutboundTestResult;
+				msg?: string;
+			}>("/panel/xray/testOutbound", {
+				method: "POST",
+				body: {
+					outbound: JSON.stringify(outbound),
+					allOutbounds: JSON.stringify(outbounds),
+				},
+			});
+
+			const result = response?.obj;
+			if (response?.success && result) {
+				setOutboundTestStates((prev) => ({
+					...prev,
+					[index]: { testing: false, result },
+				}));
+
+				if (result.success) {
+					const delayLabel = `${result.delay ?? 0}ms`;
+					const statusCodeLabel = result.statusCode
+						? ` (${result.statusCode})`
+						: "";
+					toast({
+						title: `${t("pages.xray.outbound.testSuccess", "Outbound test successful")}: ${delayLabel}${statusCodeLabel}`,
+						status: "success",
+						isClosable: true,
+						position: "top",
+						duration: 3000,
+					});
+				} else {
+					const errorMessage =
+						result.error ||
+						t("pages.xray.outbound.testFailed", "Outbound test failed");
+					toast({
+						title: `${t("pages.xray.outbound.testFailed", "Outbound test failed")}: ${errorMessage}`,
+						status: "error",
+						isClosable: true,
+						position: "top",
+						duration: 4000,
+					});
+				}
+				return;
+			}
+
+			const message =
+				response?.msg ||
+				t("pages.xray.outbound.testError", "Unable to test outbound");
+			const failureResult: OutboundTestResult = {
+				success: false,
+				error: message,
+			};
+			setOutboundTestStates((prev) => ({
+				...prev,
+				[index]: { testing: false, result: failureResult },
+			}));
+			toast({
+				title: message,
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+		} catch (error: any) {
+			const detail =
+				error?.response?._data?.detail ??
+				error?.data?.detail ??
+				error?.message ??
+				t("pages.xray.outbound.testError", "Unable to test outbound");
+			const detailText =
+				typeof detail === "string"
+					? detail
+					: JSON.stringify(detail ?? "Unknown error");
+
+			setOutboundTestStates((prev) => ({
+				...prev,
+				[index]: {
+					testing: false,
+					result: {
+						success: false,
+						error: detailText,
+					},
+				},
+			}));
+			toast({
+				title: `${t("pages.xray.outbound.testError", "Unable to test outbound")}: ${detailText}`,
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
 		}
 	};
 
@@ -1239,6 +1388,10 @@ export const CoreSettingsPage: FC = () => {
 			cancelled = true;
 		};
 	}, [canonicalOutbounds]);
+
+	useEffect(() => {
+		setOutboundTestStates({});
+	}, [outboundIds.join("|")]);
 
 	useEffect(() => {
 		let active = true;
@@ -2414,12 +2567,13 @@ export const CoreSettingsPage: FC = () => {
 											<Th>{t("protocol")}</Th>
 											<Th>{t("pages.xray.outbound.address")}</Th>
 											<Th>{t("pages.inbounds.traffic")}</Th>
+											<Th>{t("pages.xray.outbound.test", "Test")}</Th>
 										</Tr>
 									</Thead>
 									<Tbody>
 										{filteredOutboundData.length === 0 && (
 											<Tr>
-												<Td colSpan={5}>
+												<Td colSpan={6}>
 													<Text textAlign="center" color="gray.500">
 														{t(
 															"pages.xray.outbound.empty",
@@ -2513,6 +2667,60 @@ export const CoreSettingsPage: FC = () => {
 														<Tag colorScheme="green">
 															{findOutboundTraffic(outbound, originalIndex)}
 														</Tag>
+													</Td>
+													<Td>
+														<VStack align="start" spacing={1}>
+															<IconButton
+																aria-label={t(
+																	"pages.xray.outbound.test",
+																	"Test",
+																)}
+																icon={<BoltIconStyled />}
+																size="xs"
+																variant="ghost"
+																colorScheme="yellow"
+																isLoading={Boolean(
+																	outboundTestStates[originalIndex]?.testing,
+																)}
+																isDisabled={
+																	outbound.protocol === "blackhole" ||
+																	String(outbound.tag ?? "")
+																		.toLowerCase()
+																		.trim() === "blocked"
+																}
+																onClick={() => testOutbound(originalIndex)}
+															/>
+															{outboundTestStates[originalIndex]?.result ? (
+																outboundTestStates[originalIndex].result
+																	.success ? (
+																		<Tag colorScheme="green">
+																			{`${outboundTestStates[originalIndex].result.delay ?? 0}ms`}
+																			{outboundTestStates[originalIndex]
+																				.result.statusCode
+																				? ` (${outboundTestStates[originalIndex].result.statusCode})`
+																				: ""}
+																		</Tag>
+																	) : (
+																		<Tooltip
+																			label={
+																				outboundTestStates[originalIndex]
+																					.result.error || "-"
+																			}
+																		>
+																			<Tag colorScheme="red">
+																				{t(
+																					"pages.xray.outbound.testFailedBadge",
+																					"Failed",
+																				)}
+																			</Tag>
+																		</Tooltip>
+																	)
+															) : (
+																<Text fontSize="xs" color="gray.500">
+																	-
+																</Text>
+															)}
+														</VStack>
 													</Td>
 												</Tr>
 											),

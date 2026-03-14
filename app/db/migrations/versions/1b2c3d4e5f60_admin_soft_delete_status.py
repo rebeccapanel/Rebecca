@@ -106,6 +106,35 @@ def downgrade() -> None:
     dialect = bind.dialect.name
 
     if dialect == "sqlite":
+        inspector = sa.inspect(bind)
+        existing_columns = {col["name"] for col in inspector.get_columns("admins")}
+        existing_indexes = inspector.get_indexes("admins")
+
+        # Drop any index that references `status` before recreating table,
+        # otherwise Alembic may try to re-create it after `status` is removed.
+        for index in existing_indexes:
+            index_name = index.get("name")
+            column_names = index.get("column_names") or []
+            if not index_name or "status" not in column_names:
+                continue
+            try:
+                op.drop_index(index_name, table_name="admins")
+            except Exception:
+                op.execute(f'DROP INDEX IF EXISTS "{index_name}"')
+
+        if "status" not in existing_columns:
+            refreshed_indexes = {idx["name"]: idx for idx in sa.inspect(bind).get_indexes("admins")}
+            if not any(
+                idx.get("column_names") == ["username"] and idx.get("unique")
+                for idx in refreshed_indexes.values()
+            ):
+                try:
+                    op.create_index("ix_admins_username", "admins", ["username"], unique=True)
+                except Exception:
+                    pass
+            ADMIN_STATUS_ENUM.drop(bind, checkfirst=True)
+            return
+
         with op.batch_alter_table("admins", recreate="always") as batch_op:
             batch_op.drop_column("status")
             batch_op.alter_column(

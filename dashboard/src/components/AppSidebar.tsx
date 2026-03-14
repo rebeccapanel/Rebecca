@@ -261,15 +261,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					setHasNewTutorials(activeUnseen.length > 0);
 					return;
 				}
-				if (newIds.length > 0 || activeUnseen.length > 0) {
-					const mergedUnseen = Array.from(
-						new Set([...activeUnseen, ...newIds]),
-					);
-					writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
-					setHasNewTutorials(true);
-					return;
-				}
-				setHasNewTutorials(true);
+				const mergedUnseen = Array.from(
+					new Set([...activeUnseen, ...newIds]),
+				);
+				writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
+				setHasNewTutorials(mergedUnseen.length > 0);
 				return;
 			}
 

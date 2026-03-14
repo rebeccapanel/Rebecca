@@ -2054,27 +2054,18 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         active_count = _get_active_users_count(db, admin)
         remaining_slots = max((admin.users_limit or 0) - active_count, 0)
 
-    now_ts = now.timestamp()
     for dbuser in users:
-        target_status: Optional[UserStatus] = None
-
-        if dbuser.expire and dbuser.expire <= now_ts:
-            target_status = UserStatus.expired
+        if dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
+            target_status: Optional[UserStatus] = UserStatus.on_hold
         else:
-            limit = dbuser.data_limit or 0
-            if limit > 0 and dbuser.used_traffic >= limit:
-                target_status = UserStatus.limited
-            elif dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
-                target_status = UserStatus.on_hold
-            else:
-                if remaining_slots is not None:
-                    if remaining_slots <= 0:
-                        # Keep disabled if admin limit is reached.
-                        continue
-                    remaining_slots -= 1
-                target_status = UserStatus.active
+            if remaining_slots is not None:
+                if remaining_slots <= 0:
+                    # Keep disabled if admin limit is reached.
+                    continue
+                remaining_slots -= 1
+            target_status = UserStatus.active
 
-        if target_status and dbuser.status != target_status:
+        if dbuser.status != target_status:
             dbuser.status = target_status
             dbuser.last_status_change = now
 
