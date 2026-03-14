@@ -10,7 +10,7 @@ from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
-from app.models.admin import Admin as AdminSchema
+from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
 from app.utils import report
@@ -313,6 +313,60 @@ def _enforce_due_active_users(db, *, batch_size: int = 500) -> int:
     return changed_total
 
 
+def _get_due_active_admin_ids(
+    db, now_ts: Optional[float] = None, *, batch_size: int = 500, after_id: Optional[int] = None
+) -> List[int]:
+    """Return active admins whose time limit has already expired."""
+    if batch_size <= 0:
+        return []
+
+    if now_ts is None:
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+    query = db.query(Admin.id).filter(
+        Admin.status == AdminStatus.active,
+        Admin.expire.isnot(None),
+        Admin.expire > 0,
+        Admin.expire <= now_ts,
+    )
+    if after_id is not None:
+        query = query.filter(Admin.id > after_id)
+
+    rows = query.order_by(Admin.id.asc()).limit(batch_size).all()
+    return [int(row[0]) for row in rows if row and row[0] is not None]
+
+
+def _enforce_due_active_admins(db, *, batch_size: int = 500) -> int:
+    """
+    Enforce time-limit expiry for admins even if no admin/user edit request happens.
+    This keeps account status aligned with the configured admin expiration timestamp.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    changed_total = 0
+    last_id: Optional[int] = None
+
+    while True:
+        due_ids = _get_due_active_admin_ids(db, now_ts=now_ts, batch_size=batch_size, after_id=last_id)
+        if not due_ids:
+            break
+
+        due_admins = db.query(Admin).filter(Admin.id.in_(due_ids)).order_by(Admin.id.asc()).all()
+        batch_changed = False
+        for dbadmin in due_admins:
+            if crud.enforce_admin_time_limit(db, dbadmin, now_ts=now_ts):
+                changed_total += 1
+                batch_changed = True
+
+        if batch_changed:
+            db.commit()
+
+        last_id = due_ids[-1]
+        if len(due_ids) < batch_size:
+            break
+
+    return changed_total
+
+
 # endregion
 
 
@@ -518,9 +572,10 @@ def record_user_usages():
     # Always enforce due limits/expiry first, even if no current usage was collected.
     try:
         with GetDB() as db:
+            _enforce_due_active_admins(db)
             _enforce_due_active_users(db)
     except Exception as exc:  # pragma: no cover - best-effort
-        logger.warning(f"Failed to enforce due active-user limits/expiry: {exc}")
+        logger.warning(f"Failed to enforce due active account limits/expiry: {exc}")
 
     api_instances, usage_coefficient = _build_api_instances()
     if not api_instances:

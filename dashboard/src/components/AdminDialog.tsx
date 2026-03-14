@@ -8,7 +8,6 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
-	Icon,
 	IconButton,
 	Input,
 	InputGroup,
@@ -29,7 +28,6 @@ import {
 	TabPanels,
 	Tabs,
 	Text,
-	useDisclosure,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -43,7 +41,6 @@ import { useAdminsStore } from "contexts/AdminsContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
-	type ElementType,
 	type FC,
 	useCallback,
 	useEffect,
@@ -52,9 +49,6 @@ import {
 } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { IconType } from "react-icons";
-import { GiTronArrow } from "react-icons/gi";
-import { SiTether, SiTon } from "react-icons/si";
 import { fetch } from "service/http";
 import type {
 	AdminCreatePayload,
@@ -63,10 +57,6 @@ import type {
 } from "types/Admin";
 import { AdminRole, AdminStatus } from "types/Admin";
 import type { ServiceSummary } from "types/Service";
-import {
-	getAdminExpire,
-	setAdminExpire as setAdminExpireStorage,
-} from "utils/adminExpireStorage";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import {
 	generateErrorMessage,
@@ -78,39 +68,6 @@ import AdminPermissionsModal from "./AdminPermissionsModal";
 import { DateTimePicker } from "./DateTimePicker";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
-const iconAs = (icon: IconType) => icon as unknown as ElementType;
-
-type DonationWallet = {
-	key: string;
-	label: string;
-	address: string;
-	icon: IconType;
-	color: string;
-};
-
-const DONATION_WALLETS: DonationWallet[] = [
-	{
-		key: "trx",
-		label: "TRX",
-		address: "TAZSGTDrFwgFWUFUpvMW2uMZHpy365ETYE",
-		icon: GiTronArrow,
-		color: "red.500",
-	},
-	{
-		key: "ton",
-		label: "TON",
-		address: "UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa",
-		icon: SiTon,
-		color: "blue.500",
-	},
-	{
-		key: "usdt",
-		label: "USDT (BEP20)",
-		address: "0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D",
-		icon: SiTether,
-		color: "green.500",
-	},
-];
 
 const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Standard]: {
@@ -333,11 +290,6 @@ export const AdminDialog: FC = () => {
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
 	const toast = useToast();
-	const {
-		isOpen: isDonateDialogOpen,
-		onOpen: openDonateDialog,
-		onClose: closeDonateDialog,
-	} = useDisclosure();
 	const {
 		admins,
 		adminInDialog: adminFromStore,
@@ -585,15 +537,16 @@ export const AdminDialog: FC = () => {
 			setAdminExpireDate(null);
 			return;
 		}
-		if (admin?.username) {
-			const stored = getAdminExpire(admin.username);
+		if (admin) {
 			setAdminExpireDate(
-				typeof stored === "number" ? dayjs.unix(stored).toDate() : null,
+				typeof admin.expire === "number" && admin.expire > 0
+					? dayjs.unix(admin.expire).toDate()
+					: null,
 			);
 			return;
 		}
 		setAdminExpireDate(null);
-	}, [admin?.username, isOpen]);
+	}, [admin, isOpen]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -725,12 +678,12 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
 						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
-				setAdminExpireStorage(createdAdmin.username, expireValue);
 				const requestedServices = values.services ?? [];
 				let shouldFetch = true;
 				let serviceSyncError: unknown = null;
@@ -773,6 +726,7 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
 						: undefined,
@@ -781,7 +735,6 @@ export const AdminDialog: FC = () => {
 					payload.password = values.password;
 				}
 				await updateAdmin(admin.username, payload);
-				setAdminExpireStorage(admin.username, expireValue);
 				generateSuccessMessage(
 					t("admins.updateSuccess", "Admin updated"),
 					toast,
@@ -1015,18 +968,6 @@ export const AdminDialog: FC = () => {
 					</Text>
 				</FormControl>
 			</SimpleGrid>
-			<VStack align={isRTL ? "flex-end" : "flex-start"} spacing={1}>
-				<Button size="sm" variant="outline" onClick={openDonateDialog}>
-					{t("common.comingSoon", "Coming soon")}
-				</Button>
-				<Text
-					fontSize="xs"
-					color="gray.500"
-					textAlign={isRTL ? "right" : "left"}
-				>
-					{t("admins.expireDonateHint", "Support the release by donating.")}
-				</Text>
-			</VStack>
 			<FormControl>
 				<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
 				<DateTimePicker
@@ -1041,10 +982,7 @@ export const AdminDialog: FC = () => {
 					</FormHelperText>
 				) : (
 					<FormHelperText>
-						{t(
-							"admins.expireVisualOnly",
-							"This setting is visual only for now.",
-						)}
+						{t("admins.expireHint", "Leave empty for no time limit.")}
 					</FormHelperText>
 				)}
 			</FormControl>
@@ -1225,66 +1163,6 @@ export const AdminDialog: FC = () => {
 									: t("save", "Save")}
 							</Button>
 						</HStack>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
-			<Modal isOpen={isDonateDialogOpen} onClose={closeDonateDialog} isCentered>
-				<ModalOverlay />
-				<ModalContent dir={isRTL ? "rtl" : "ltr"}>
-					<ModalHeader>{t("common.comingSoon", "Coming soon")}</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
-						<VStack align="stretch" spacing={4}>
-							<Text
-								fontSize="sm"
-								color="gray.600"
-								_dark={{ color: "gray.400" }}
-							>
-								{t(
-									"admins.expireDonateDescription",
-									"If you'd like, you can donate to speed up development.",
-								)}
-							</Text>
-							<Text fontWeight="semibold">
-								{t("admins.expireWalletsLabel", "Wallets")}
-							</Text>
-							<VStack align="stretch" spacing={3}>
-								{DONATION_WALLETS.map((wallet) => (
-									<Box
-										key={wallet.key}
-										borderWidth="1px"
-										borderRadius="md"
-										p={3}
-										_dark={{ borderColor: "whiteAlpha.300" }}
-									>
-										<HStack spacing={3} align="flex-start">
-											<Icon
-												as={iconAs(wallet.icon)}
-												color={wallet.color}
-												boxSize={5}
-											/>
-											<VStack align="flex-start" spacing={1} w="full">
-												<Text fontWeight="semibold">{wallet.label}</Text>
-												<Text
-													fontFamily="mono"
-													fontSize="xs"
-													color="gray.600"
-													_dark={{ color: "gray.400" }}
-													dir="ltr"
-													sx={{ unicodeBidi: "isolate" }}
-													wordBreak="break-all"
-												>
-													{wallet.address}
-												</Text>
-											</VStack>
-										</HStack>
-									</Box>
-								))}
-							</VStack>
-						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						<Button onClick={closeDonateDialog}>{t("close")}</Button>
 					</ModalFooter>
 				</ModalContent>
 			</Modal>
