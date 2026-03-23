@@ -452,6 +452,7 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
     now_ts = datetime.now(timezone.utc).timestamp()
     changed: List[User] = []
     activated: List[User] = []
+    users_to_remove_from_xray: List[User] = []
 
     # Ensure relationships needed for notifications are available.
     user_ids = [u.id for u in users if getattr(u, "id", None) is not None]
@@ -500,21 +501,34 @@ def _enforce_user_limits_after_sync(db, users: List[User]) -> None:
         elif expired:
             target_status = UserStatus.expired
 
-        if target_status and db_user.status != target_status:
-            db_user.status = target_status
-            db_user.last_status_change = now_dt
-            changed.append(db_user)
+        if target_status:
+            # Runtime should only contain active/on_hold users.
+            # Remove from runtime when a runtime-eligible user transitions
+            # into a non-runtime status (limited/expired).
+            if db_user.status in {UserStatus.active, UserStatus.on_hold}:
+                users_to_remove_from_xray.append(db_user)
 
-    if changed or activated:
+            if db_user.status != target_status:
+                db_user.status = target_status
+                db_user.last_status_change = now_dt
+                changed.append(db_user)
+
+    if changed or activated or users_to_remove_from_xray:
         db.commit()
 
         changed_ids = {user.id for user in changed}
-        for user in changed:
+
+        removed_ids = set()
+        for user in users_to_remove_from_xray:
+            if user.id in removed_ids:
+                continue
+            removed_ids.add(user.id)
             try:
                 xray.operations.remove_user(user)
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
 
+        for user in changed:
             try:
                 report.status_change(
                     username=user.username,

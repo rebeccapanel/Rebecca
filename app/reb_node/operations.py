@@ -269,6 +269,12 @@ def add_user(dbuser: "DBUser"):
     dbuser = _prepare_user_for_runtime(dbuser)
     if not dbuser:
         return
+
+    # Runtime should only include active / on_hold users.
+    status_value = getattr(getattr(dbuser, "status", None), "value", getattr(dbuser, "status", None))
+    if status_value not in {"active", "on_hold"}:
+        return
+
     user = UserResponse.model_validate(dbuser)
 
     for proxy_type, inbound_tags in user.inbounds.items():
