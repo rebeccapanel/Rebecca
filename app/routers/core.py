@@ -1017,11 +1017,41 @@ def _measure_outbound_delay(proxy_port: int, test_url: str) -> tuple[int, int]:
         session.close()
 
 
+def _measure_direct_delay(test_url: str) -> tuple[int, int]:
+    session = requests.Session()
+    session.trust_env = False
+    session.headers.update({"Accept-Encoding": "identity"})
+    try:
+        warmup_response = session.get(test_url, timeout=10)
+        _ = warmup_response.content
+        warmup_response.close()
+
+        start = time.perf_counter()
+        response = session.get(test_url, timeout=10)
+        delay_ms = int(round((time.perf_counter() - start) * 1000))
+        status_code = response.status_code
+        _ = response.content
+        response.close()
+        return delay_ms, status_code
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Direct request failed: {exc}") from exc
+    finally:
+        session.close()
+
+
 def _get_outbound_test_url() -> str:
     return (os.getenv("XRAY_OUTBOUND_TEST_URL", "") or "").strip() or OUTBOUND_TEST_DEFAULT_URL
 
 
-def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list) -> dict:
+def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_protocol: str = "") -> dict:
+    # Fast path for direct/freedom: no isolated test-xray process required.
+    if (outbound_protocol or "").strip().lower() in {"freedom"} or outbound_tag.lower() == "direct":
+        try:
+            delay, status_code = _measure_direct_delay(_get_outbound_test_url())
+            return {"success": True, "delay": delay, "statusCode": status_code}
+        except RuntimeError as exc:
+            return {"success": False, "error": str(exc)}
+
     if not xray or not getattr(xray, "core", None):
         return {"success": False, "error": "Xray runtime is not available"}
 
@@ -1106,7 +1136,11 @@ def test_outbound(
         }
 
     try:
-        result = _run_outbound_ping_test(outbound_tag=outbound_tag, all_outbounds=all_outbounds)
+        result = _run_outbound_ping_test(
+            outbound_tag=outbound_tag,
+            all_outbounds=all_outbounds,
+            outbound_protocol=outbound_protocol,
+        )
     finally:
         _OUTBOUND_TEST_LOCK.release()
 
