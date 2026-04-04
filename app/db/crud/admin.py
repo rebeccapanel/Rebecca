@@ -16,6 +16,7 @@ from app.db.models import (
     Admin,
     AdminServiceLink,
     AdminApiKey,
+    AdminCreatedTrafficLog,
     AdminUsageLogs,
     NextPlan,
     NodeUserUsage,
@@ -25,7 +26,12 @@ from app.db.models import (
     User,
     UserUsageResetLogs,
 )
-from app.models.admin import AdminRole, AdminStatus, UserPermission
+from app.models.admin import (
+    AdminRole,
+    AdminStatus,
+    UserPermission,
+    AdminTrafficLimitMode,
+)
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
 from app.models.user import UserStatus
 
@@ -200,6 +206,10 @@ def _admin_disabled_due_to_manual_reason(dbadmin: Admin) -> bool:
 
 
 def _admin_usage_within_limit(dbadmin: Admin) -> bool:
+    if dbadmin.role == AdminRole.full_access:
+        return True
+    if getattr(dbadmin, "traffic_limit_mode", AdminTrafficLimitMode.used_traffic) == AdminTrafficLimitMode.created_traffic:
+        return True
     limit = dbadmin.data_limit
     if limit is None:
         return True
@@ -288,6 +298,10 @@ def _maybe_enable_admin_after_time_limit(db: Session, dbadmin: Admin) -> bool:
 
 def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
     """Ensure admin state reflects assigned data limit; disable admin and their users when usage exceeds limit."""
+    if dbadmin.role == AdminRole.full_access:
+        return False
+    if getattr(dbadmin, "traffic_limit_mode", AdminTrafficLimitMode.used_traffic) == AdminTrafficLimitMode.created_traffic:
+        return False
     limit = dbadmin.data_limit
     usage = dbadmin.users_usage or 0
 
@@ -335,6 +349,12 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         )
 
     role = admin.role or AdminRole.standard
+    traffic_limit_mode = (
+        AdminTrafficLimitMode.used_traffic
+        if role == AdminRole.full_access
+        else (admin.traffic_limit_mode or AdminTrafficLimitMode.used_traffic)
+    )
+    show_user_traffic = True if role == AdminRole.full_access else bool(getattr(admin, "show_user_traffic", True))
     permissions_model = (
         ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access]
         if role == AdminRole.full_access
@@ -350,7 +370,10 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         telegram_id=admin.telegram_id if admin.telegram_id else None,
         subscription_domain=(admin.subscription_domain or "").strip() or None,
         subscription_settings=admin.subscription_settings or {},
+        created_traffic=int(getattr(admin, "created_traffic", 0) or 0),
         data_limit=admin.data_limit if admin.data_limit is not None else None,
+        traffic_limit_mode=traffic_limit_mode,
+        show_user_traffic=show_user_traffic,
         expire=_normalize_admin_expire(admin.expire),
         users_limit=admin.users_limit if admin.users_limit is not None else None,
         status=AdminStatus.active,
@@ -419,12 +442,18 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.role = modified_admin.role
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+        dbadmin.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
+        dbadmin.show_user_traffic = True
     elif modified_admin.permissions is not None:
         permissions_model = _normalize_permissions_for_role(
             target_role, modified_admin.permissions, current=dbadmin.permissions
         )
         _validate_max_data_limit(permissions_model)
         dbadmin.permissions = permissions_model.model_dump()
+    if "traffic_limit_mode" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.traffic_limit_mode = modified_admin.traffic_limit_mode or AdminTrafficLimitMode.used_traffic
+    if "show_user_traffic" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.show_user_traffic = bool(modified_admin.show_user_traffic)
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
@@ -466,12 +495,18 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.role = modified_admin.role
     if target_role == AdminRole.full_access:
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
+        dbadmin.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
+        dbadmin.show_user_traffic = True
     elif modified_admin.permissions is not None:
         permissions_model = _normalize_permissions_for_role(
             target_role, modified_admin.permissions, current=dbadmin.permissions
         )
         _validate_max_data_limit(permissions_model)
         dbadmin.permissions = permissions_model.model_dump()
+    if "traffic_limit_mode" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.traffic_limit_mode = modified_admin.traffic_limit_mode or AdminTrafficLimitMode.used_traffic
+    if "show_user_traffic" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.show_user_traffic = bool(modified_admin.show_user_traffic)
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
@@ -558,6 +593,7 @@ def remove_admin(db: Session, dbadmin: Admin) -> None:
 
     # Delete admin-related rows
     db.execute(delete(AdminApiKey).where(AdminApiKey.admin_id == admin_id))
+    db.execute(delete(AdminCreatedTrafficLog).where(AdminCreatedTrafficLog.admin_id == admin_id))
     db.execute(delete(AdminUsageLogs).where(AdminUsageLogs.admin_id == admin_id))
     db.execute(delete(AdminServiceLink).where(AdminServiceLink.admin_id == admin_id))
 

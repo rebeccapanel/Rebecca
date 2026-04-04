@@ -23,7 +23,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
 
 from app.db.base import Base
-from app.models.admin import AdminRole, AdminStatus
+from app.models.admin import AdminRole, AdminStatus, AdminTrafficLimitMode
 from app.models.node import NodeStatus, GeoMode
 from app.models.proxy import (
     ProxyHostALPN,
@@ -62,12 +62,25 @@ class Admin(Base):
     subscription_settings = Column(JSON, nullable=True, default=dict)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
+    created_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     data_limit = Column(BigInteger, nullable=True, default=None)
+    traffic_limit_mode = Column(
+        Enum(AdminTrafficLimitMode),
+        nullable=False,
+        default=AdminTrafficLimitMode.used_traffic,
+        server_default=AdminTrafficLimitMode.used_traffic.value,
+    )
+    show_user_traffic = Column(Boolean, nullable=False, default=True, server_default=text("1"))
     expire = Column(Integer, nullable=True, default=None)
     users_limit = Column(Integer, nullable=True, default=None)
     status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
     disabled_reason = Column(String(512), nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
+    created_traffic_logs = relationship(
+        "AdminCreatedTrafficLog",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+    )
     api_keys = relationship(
         "AdminApiKey",
         back_populates="admin",
@@ -89,7 +102,20 @@ class AdminUsageLogs(Base):
     admin_id = Column(Integer, ForeignKey("admins.id"))
     admin = relationship("Admin", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
+    created_traffic_at_reset = Column(BigInteger, nullable=False, default=0, server_default="0")
     reset_at = Column(DateTime, default=utcnow)
+
+
+class AdminCreatedTrafficLog(Base):
+    __tablename__ = "admin_created_traffic_logs"
+
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
+    amount = Column(BigInteger, nullable=False)
+    action = Column(String(64), nullable=False, default="unknown", server_default="unknown")
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    admin = relationship("Admin", back_populates="created_traffic_logs")
 
 
 class AdminApiKey(Base):

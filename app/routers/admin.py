@@ -410,7 +410,7 @@ def get_admin_usage(dbadmin: Admin = Depends(get_admin_by_username), current_adm
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return metrics_service.get_admin_total_usage(dbadmin)
+    return metrics_service.get_admin_effective_usage_total(dbadmin)
 
 
 @router.get("/admin/{username}/usage/daily", responses={403: responses._403, 404: responses._404})

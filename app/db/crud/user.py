@@ -55,6 +55,7 @@ from config import (
 
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
+from .admin_traffic import normalize_admin_created_traffic_delta, record_admin_created_traffic
 
 MASTER_NODE_NAME = "Master"
 
@@ -1368,6 +1369,12 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         _apply_service_to_user(db, dbuser, service, allowed)
         _ensure_admin_service_link(db, admin, service)
     db.add(dbuser)
+    record_admin_created_traffic(
+        db,
+        admin,
+        normalize_admin_created_traffic_delta(None, dbuser.data_limit),
+        action="user_create",
+    )
     db.flush()
 
     db.commit()
@@ -1478,6 +1485,7 @@ def update_user(
 ) -> User:
     """Updates a user with new details."""
     original_status_value = _status_to_str(dbuser.status)
+    previous_data_limit = dbuser.data_limit
     credential_key = dbuser.credential_key
     added_proxies: Dict[ProxyTypes, Proxy] = {}
 
@@ -1619,6 +1627,13 @@ def update_user(
     if current_status_value == UserStatus.active.value and original_status_value != UserStatus.active.value:
         _ensure_active_user_capacity(db, dbuser.admin, exclude_user_ids=(dbuser.id,))
     dbuser.edit_at = datetime.now(timezone.utc)
+
+    record_admin_created_traffic(
+        db,
+        dbuser.admin,
+        normalize_admin_created_traffic_delta(previous_data_limit, dbuser.data_limit),
+        action="user_limit_update",
+    )
 
     db.commit()
     db.refresh(dbuser)
@@ -1975,6 +1990,20 @@ def adjust_all_users_limit(
         query = query.filter(User.status.in_(scope))
     else:
         query = query.filter(User.status == UserStatus.active)
+
+    created_traffic_increments: Dict[int, int] = {}
+    if delta_bytes > 0:
+        increment_rows = (
+            query.with_entities(User.admin_id, func.count(User.id))
+            .group_by(User.admin_id)
+            .all()
+        )
+        created_traffic_increments = {
+            int(admin_id): int(count or 0) * int(delta_bytes)
+            for admin_id, count in increment_rows
+            if admin_id is not None and count
+        }
+
     new_limit = case(
         (User.data_limit + delta_bytes < 0, 0),
         else_=User.data_limit + delta_bytes,
@@ -2000,6 +2029,20 @@ def adjust_all_users_limit(
         synchronize_session=False,
     )
     if affected:
+        if created_traffic_increments:
+            admin_rows = (
+                db.query(Admin)
+                .filter(Admin.id.in_(list(created_traffic_increments.keys())))
+                .all()
+            )
+            admin_map = {int(item.id): item for item in admin_rows if item.id is not None}
+            for admin_id, amount in created_traffic_increments.items():
+                record_admin_created_traffic(
+                    db,
+                    admin_map.get(admin_id),
+                    amount,
+                    action="bulk_limit_increase",
+                )
         db.commit()
     return affected
 

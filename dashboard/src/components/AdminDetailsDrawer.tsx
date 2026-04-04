@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useTranslation } from "react-i18next";
-import { AdminRole } from "types/Admin";
+import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 
 const formatLimit = (limit?: number | null, unlimitedLabel?: string) => {
@@ -64,15 +64,28 @@ export const AdminDetailsDrawer = () => {
 	const disabledUsers = admin?.disabled_users ?? 0;
 
 	const usedBytes = admin?.users_usage ?? 0;
+	const createdTrafficBytes = admin?.created_traffic ?? 0;
 	const dataLimitBytes = admin?.data_limit ?? null;
+	const effectiveUsageBytes =
+		admin?.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
+			? createdTrafficBytes
+			: usedBytes;
 	const remainingBytes =
 		dataLimitBytes && dataLimitBytes > 0
-			? Math.max(dataLimitBytes - usedBytes, 0)
+			? Math.max(dataLimitBytes - effectiveUsageBytes, 0)
 			: null;
 	const lifetimeUsageBytes = admin?.lifetime_usage ?? null;
 	const dataLimitAllocated = admin?.data_limit_allocated ?? 0;
 	const resetBytes = admin?.reset_bytes ?? 0;
 	const unlimitedUsersUsage = admin?.unlimited_users_usage ?? 0;
+	const trafficModeLabel =
+		admin?.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
+			? t("admins.createdTrafficMode", "Created traffic")
+			: t("admins.usedTrafficMode", "Used traffic");
+	const showUserTrafficLabel =
+		admin?.show_user_traffic === false
+			? t("common.disabled", "Disabled")
+			: t("common.enabled", "Enabled");
 
 	return (
 		<Modal
@@ -186,6 +199,13 @@ export const AdminDetailsDrawer = () => {
 										value={formatBytes(usedBytes, 2)}
 									/>
 									<StatCard
+										label={t(
+											"admins.details.createdTraffic",
+											"Created traffic",
+										)}
+										value={formatBytes(createdTrafficBytes, 2)}
+									/>
+									<StatCard
 										label={t("admins.details.limit", "Limit")}
 										value={formatBytesOrUnlimited(
 											dataLimitBytes,
@@ -205,6 +225,22 @@ export const AdminDetailsDrawer = () => {
 											lifetimeUsageBytes,
 											undefined,
 										)}
+									/>
+								</SimpleGrid>
+								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mt={3}>
+									<StatCard
+										label={t(
+											"admins.details.trafficMode",
+											"Traffic limit mode",
+										)}
+										value={trafficModeLabel}
+									/>
+									<StatCard
+										label={t(
+											"admins.details.showUserTraffic",
+											"View user traffic",
+										)}
+										value={showUserTrafficLabel}
 									/>
 								</SimpleGrid>
 							</Box>

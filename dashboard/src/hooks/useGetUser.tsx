@@ -4,7 +4,11 @@ import {
 } from "constants/adminPermissions";
 import { useQuery } from "react-query";
 import { fetch } from "service/http";
-import { AdminRole, AdminStatus } from "types/Admin";
+import {
+	AdminRole,
+	AdminStatus,
+	AdminTrafficLimitMode,
+} from "types/Admin";
 import type { UseGetUserReturn, UserApi } from "types/User";
 
 const fetchUser = async () => {
@@ -25,6 +29,10 @@ const useGetUser = (): UseGetUserReturn => {
 		telegram_id: "",
 		username: "",
 		users_usage: 0,
+		created_traffic: 0,
+		data_limit: null,
+		traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
+		show_user_traffic: true,
 		status: AdminStatus.Active,
 		disabled_reason: null,
 	};

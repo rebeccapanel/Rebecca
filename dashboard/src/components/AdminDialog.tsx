@@ -22,6 +22,7 @@ import {
 	Radio,
 	RadioGroup,
 	SimpleGrid,
+	Stack,
 	Tab,
 	TabList,
 	TabPanel,
@@ -55,7 +56,11 @@ import type {
 	AdminPermissions,
 	AdminUpdatePayload,
 } from "types/Admin";
-import { AdminRole, AdminStatus } from "types/Admin";
+import {
+	AdminRole,
+	AdminStatus,
+	AdminTrafficLimitMode,
+} from "types/Admin";
 import type { ServiceSummary } from "types/Service";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import {
@@ -73,8 +78,8 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Standard]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -108,8 +113,8 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Reseller]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -143,8 +148,8 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Sudo]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -259,6 +264,8 @@ type AdminFormValues = {
 	password?: string;
 	telegram_id?: string;
 	role: AdminRole;
+	traffic_limit_mode: AdminTrafficLimitMode;
+	show_user_traffic: boolean;
 	permissions: AdminPermissions;
 	maxDataLimitPerUserGb?: string;
 	data_limit?: string;
@@ -351,6 +358,10 @@ export const AdminDialog: FC = () => {
 						t("admins.validation.telegramNumeric"),
 					),
 				role: z.nativeEnum(AdminRole).optional(),
+				traffic_limit_mode: z
+					.nativeEnum(AdminTrafficLimitMode)
+					.default(AdminTrafficLimitMode.UsedTraffic),
+				show_user_traffic: z.boolean().default(true),
 				data_limit: z
 					.string()
 					.trim()
@@ -402,6 +413,8 @@ export const AdminDialog: FC = () => {
 			password: "",
 			telegram_id: "",
 			role: AdminRole.Standard,
+			traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
+			show_user_traffic: true,
 			permissions: clonePermissions(AdminRole.Standard),
 			maxDataLimitPerUserGb: "",
 			data_limit: "",
@@ -502,9 +515,14 @@ export const AdminDialog: FC = () => {
 	}, [generateRandomString, setValue]);
 	const { errors, isSubmitting } = formState;
 	const watchRole = watch("role");
+	const watchTrafficLimitMode = watch("traffic_limit_mode");
 	const _hideExtendedPermissions = watchRole === AdminRole.Standard;
 	const permissionsValue = watch("permissions");
+	const showUserTrafficValue = watch("show_user_traffic");
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
+	const isFullAccessRole = watchRole === AdminRole.FullAccess;
+	const isCreatedTrafficMode =
+		watchTrafficLimitMode === AdminTrafficLimitMode.CreatedTraffic;
 
 	const resetPermissionsToRole = useCallback(() => {
 		const role = watchRole ?? AdminRole.Standard;
@@ -517,6 +535,23 @@ export const AdminDialog: FC = () => {
 			setValue("permissions", next, { shouldDirty: true });
 		},
 		[setValue],
+	);
+
+	const handleUserPermissionToggle = useCallback(
+		(key: "delete" | "reset_usage", next: boolean) => {
+			setValue(
+				"permissions",
+				{
+					...permissionsValue,
+					users: {
+						...permissionsValue.users,
+						[key]: next,
+					},
+				},
+				{ shouldDirty: true },
+			);
+		},
+		[permissionsValue, setValue],
 	);
 
 	const handleMaxDataLimitChange = useCallback(
@@ -578,6 +613,9 @@ export const AdminDialog: FC = () => {
 						? String(admin.telegram_id)
 						: "",
 				role: nextRole,
+				traffic_limit_mode:
+					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
+				show_user_traffic: admin?.show_user_traffic ?? true,
 				permissions: nextPermissions,
 				maxDataLimitPerUserGb: formatBytesToGbString(
 					nextPermissions.users.max_data_limit_per_user,
@@ -600,6 +638,15 @@ export const AdminDialog: FC = () => {
 			setPermissionsModalOpen(false);
 		}
 	}, [isOpen]);
+
+	useEffect(() => {
+		if (watchRole === AdminRole.FullAccess) {
+			setValue("traffic_limit_mode", AdminTrafficLimitMode.UsedTraffic, {
+				shouldDirty: true,
+			});
+			setValue("show_user_traffic", true, { shouldDirty: true });
+		}
+	}, [setValue, watchRole]);
 
 	const handleFormSubmit = handleSubmit(async (values) => {
 		const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
@@ -678,6 +725,14 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					traffic_limit_mode:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.traffic_limit_mode,
+					show_user_traffic:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.show_user_traffic,
 					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
@@ -719,6 +774,10 @@ export const AdminDialog: FC = () => {
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
+					permissions:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.permissions,
 					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
@@ -726,6 +785,14 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					traffic_limit_mode:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.traffic_limit_mode,
+					show_user_traffic:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.show_user_traffic,
 					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
@@ -932,6 +999,74 @@ export const AdminDialog: FC = () => {
 					{errors.telegram_id?.message as string}
 				</FormErrorMessage>
 			</FormControl>
+			{!isFullAccessRole && (
+				<VStack align="stretch" spacing={3}>
+					<Checkbox
+						isChecked={isCreatedTrafficMode}
+						onChange={(event) =>
+							setValue(
+								"traffic_limit_mode",
+								event.target.checked
+									? AdminTrafficLimitMode.CreatedTraffic
+									: AdminTrafficLimitMode.UsedTraffic,
+								{ shouldDirty: true },
+							)
+						}
+					>
+						{t(
+							"admins.limitByCreatedTraffic",
+							"Limit admin by created traffic",
+						)}
+					</Checkbox>
+					{isCreatedTrafficMode && (
+						<Stack spacing={2} pl={1}>
+							<Checkbox
+								isChecked={Boolean(showUserTrafficValue)}
+								onChange={(event) =>
+									setValue(
+										"show_user_traffic",
+										event.target.checked,
+										{ shouldDirty: true },
+									)
+								}
+							>
+								{t(
+									"admins.showUserTraffic",
+									"Admin can view user traffic",
+								)}
+							</Checkbox>
+							<Checkbox
+								isChecked={Boolean(permissionsValue.users.delete)}
+								onChange={(event) =>
+									handleUserPermissionToggle(
+										"delete",
+										event.target.checked,
+									)
+								}
+							>
+								{t("admins.permissions.deleteUser", "Delete user")}
+							</Checkbox>
+							<Checkbox
+								isChecked={Boolean(permissionsValue.users.reset_usage)}
+								onChange={(event) =>
+									handleUserPermissionToggle(
+										"reset_usage",
+										event.target.checked,
+									)
+								}
+							>
+								{t("admins.permissions.resetUsage", "Reset usage")}
+							</Checkbox>
+							<Text fontSize="xs" color="gray.500">
+								{t(
+									"admins.createdTrafficModeHint",
+									"These options stay synced with the Permissions tab.",
+								)}
+							</Text>
+						</Stack>
+					)}
+				</VStack>
+			)}
 			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 				<FormControl isInvalid={!!errors.data_limit}>
 					<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>

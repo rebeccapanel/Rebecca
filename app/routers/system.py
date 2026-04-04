@@ -22,6 +22,7 @@ from app.db import Session, crud, get_db
 from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost, ServiceHostLink
 from app.models.admin import Admin, AdminRole, AdminStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
+from app.services import metrics_service
 from app.models.system import (
     AdminOverviewStats,
     PersonalUsageStats,
@@ -196,7 +197,7 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
     if dbadmin and admin.role in (AdminRole.sudo, AdminRole.full_access):
         personal_total_users = crud.get_users_count(db, admin=dbadmin)
 
-    consumed_bytes = int(getattr(dbadmin, "users_usage", 0) or 0)
+    consumed_bytes = metrics_service.get_admin_effective_usage_total(dbadmin) if dbadmin else 0
     built_bytes = int(getattr(dbadmin, "lifetime_usage", 0) or 0)
     reset_bytes = max(built_bytes - consumed_bytes, 0)
     personal_usage = PersonalUsageStats(
@@ -224,15 +225,16 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
         top_admin_username=None,
         top_admin_usage=0,
     )
-    top_admin = (
-        db.query(AdminModel)
-        .filter(AdminModel.status != AdminStatus.deleted)
-        .order_by(AdminModel.users_usage.desc())
-        .first()
-    )
+    top_admin = None
+    top_admin_usage = 0
+    for candidate in db.query(AdminModel).filter(AdminModel.status != AdminStatus.deleted).all():
+        candidate_usage = metrics_service.get_admin_effective_usage_total(candidate)
+        if top_admin is None or candidate_usage > top_admin_usage:
+            top_admin = candidate
+            top_admin_usage = candidate_usage
     if top_admin:
         admin_overview.top_admin_username = top_admin.username
-        admin_overview.top_admin_usage = int(top_admin.users_usage or 0)
+        admin_overview.top_admin_usage = int(top_admin_usage or 0)
 
     # Get Redis stats
     redis_stats = None

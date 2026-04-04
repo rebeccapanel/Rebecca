@@ -385,6 +385,8 @@ export const MyAccountPage: React.FC = () => {
 			enabled: selfPermissions.self_myaccount && getUserIsSuccess,
 		},
 	);
+	const trafficBasis = data?.traffic_basis ?? "used_traffic";
+	const isCreatedTrafficBasis = trafficBasis === "created_traffic";
 	const { data: nodesData } = useQuery(
 		["myaccount-nodes", username, range.start, range.end],
 		() =>
@@ -397,7 +399,10 @@ export const MyAccountPage: React.FC = () => {
 		{
 			keepPreviousData: true,
 			enabled:
-				selfPermissions.self_myaccount && Boolean(username) && getUserIsSuccess,
+				selfPermissions.self_myaccount &&
+				Boolean(username) &&
+				getUserIsSuccess &&
+				data?.traffic_basis === "used_traffic",
 		},
 	);
 	const mutation = useMutation(changeMyAccountPassword, {
@@ -472,11 +477,13 @@ export const MyAccountPage: React.FC = () => {
 	const dailySeries = useMemo(
 		() => [
 			{
-				name: t("myaccount.dailyUsage", "Daily usage"),
+				name: isCreatedTrafficBasis
+					? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
+					: t("myaccount.dailyUsage", "Daily usage"),
 				data: dailyUsagePoints.map((p) => p.used_traffic),
 			},
 		],
-		[dailyUsagePoints, t],
+		[dailyUsagePoints, isCreatedTrafficBasis, t],
 	);
 
 	// Map backend response (with uplink/downlink) to frontend format (with used_traffic)
@@ -532,6 +539,24 @@ export const MyAccountPage: React.FC = () => {
 	const remainingData = data.remaining_data ?? Math.max(totalData - used, 0);
 	const usersLimit = data.users_limit ?? 0;
 	const remainingUsers = data.remaining_users ?? 0;
+	const usageSectionTitle = isCreatedTrafficBasis
+		? t("myaccount.createdTrafficSection", "Created traffic")
+		: t("myaccount.dataUsage");
+	const usedLabel = isCreatedTrafficBasis
+		? t("myaccount.createdTraffic", "Created traffic")
+		: t("myaccount.usedData");
+	const remainingLabel = isCreatedTrafficBasis
+		? t("myaccount.remainingTraffic", "Remaining traffic")
+		: t("myaccount.remainingData");
+	const totalLabel = isCreatedTrafficBasis
+		? t("myaccount.trafficLimit", "Traffic limit")
+		: t("myaccount.totalData");
+	const dailyChartTitle = isCreatedTrafficBasis
+		? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
+		: t("myaccount.dailyUsage");
+	const dailyTotalLabel = isCreatedTrafficBasis
+		? t("myaccount.totalCreatedTraffic", "Total created traffic")
+		: t("nodes.totalUsage", "Total usage");
 
 	return (
 		<VStack spacing={4} align="stretch">
@@ -557,15 +582,12 @@ export const MyAccountPage: React.FC = () => {
 			<Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
 				<GridItem>
 					<Text fontWeight="semibold" mb={2}>
-						{t("myaccount.dataUsage")}
+						{usageSectionTitle}
 					</Text>
 					<SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+						<StatsCard label={usedLabel} value={formatBytes(used, 2)} />
 						<StatsCard
-							label={t("myaccount.usedData")}
-							value={formatBytes(used, 2)}
-						/>
-						<StatsCard
-							label={t("myaccount.remainingData")}
+							label={remainingLabel}
 							value={
 								data.data_limit === null
 									? t("myaccount.unlimited")
@@ -573,7 +595,7 @@ export const MyAccountPage: React.FC = () => {
 							}
 						/>
 						<StatsCard
-							label={t("myaccount.totalData")}
+							label={totalLabel}
 							value={
 								data.data_limit === null
 									? t("myaccount.unlimited")
@@ -611,10 +633,16 @@ export const MyAccountPage: React.FC = () => {
 				</GridItem>
 			</Grid>
 
-			<Grid templateColumns={{ base: "1fr", lg: "2fr 1fr" }} gap={4}>
+			<Grid
+				templateColumns={{
+					base: "1fr",
+					lg: isCreatedTrafficBasis ? "1fr" : "2fr 1fr",
+				}}
+				gap={4}
+			>
 				<GridItem>
 					<ChartBox
-						title={t("myaccount.dailyUsage")}
+						title={dailyChartTitle}
 						headerActions={
 							<DateRangePicker
 								value={range}
@@ -631,7 +659,7 @@ export const MyAccountPage: React.FC = () => {
 							_dark={{ color: "gray.400" }}
 							mb={3}
 						>
-							{t("nodes.totalUsage", "Total usage")}:{" "}
+							{dailyTotalLabel}:{" "}
 							<chakra.span fontWeight="semibold">
 								{formatBytes(dailyTotal, 2)}
 							</chakra.span>
@@ -650,34 +678,36 @@ export const MyAccountPage: React.FC = () => {
 						)}
 					</ChartBox>
 				</GridItem>
-				<GridItem>
-					<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
-						<Text
-							fontSize="sm"
-							color="gray.500"
-							_dark={{ color: "gray.400" }}
-							mb={3}
-						>
-							{t("nodes.totalUsage", "Total usage")}:{" "}
-							<chakra.span fontWeight="semibold">
-								{formatBytes(perNodeTotal, 2)}
-							</chakra.span>
-						</Text>
-						{perNodeUsage.length > 0 &&
-						donutSeries.some((value: number) => value > 0) ? (
-							<ReactApexChart
-								type="donut"
-								height={360}
-								options={buildDonutOptions(colorMode, donutLabels)}
-								series={donutSeries}
-							/>
-						) : (
-							<Text color="gray.500" _dark={{ color: "gray.400" }}>
-								{t("noData")}
+				{!isCreatedTrafficBasis && (
+					<GridItem>
+						<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
+							<Text
+								fontSize="sm"
+								color="gray.500"
+								_dark={{ color: "gray.400" }}
+								mb={3}
+							>
+								{t("nodes.totalUsage", "Total usage")}:{" "}
+								<chakra.span fontWeight="semibold">
+									{formatBytes(perNodeTotal, 2)}
+								</chakra.span>
 							</Text>
-						)}
-					</ChartBox>
-				</GridItem>
+							{perNodeUsage.length > 0 &&
+							donutSeries.some((value: number) => value > 0) ? (
+								<ReactApexChart
+									type="donut"
+									height={360}
+									options={buildDonutOptions(colorMode, donutLabels)}
+									series={donutSeries}
+								/>
+							) : (
+								<Text color="gray.500" _dark={{ color: "gray.400" }}>
+									{t("noData")}
+								</Text>
+							)}
+						</ChartBox>
+					</GridItem>
+				)}
 			</Grid>
 
 			{selfPermissions.self_api_keys && (

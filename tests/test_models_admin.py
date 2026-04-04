@@ -4,6 +4,7 @@ from app.models.admin import (
     Admin,
     AdminPermissions,
     AdminRole,
+    AdminTrafficLimitMode,
     UserPermission,
     AdminManagementPermission,
     SectionAccess,
@@ -91,4 +92,33 @@ def test_admin_cast_to_int():
     pass
 
 
-# Add more tests as needed for other methods
+def test_created_traffic_mode_flags_and_lock():
+    admin = Admin(
+        username="created-mode",
+        password="pass",
+        role=AdminRole.standard,
+        data_limit=1024,
+        created_traffic=1024,
+        traffic_limit_mode=AdminTrafficLimitMode.created_traffic,
+        show_user_traffic=False,
+    )
+
+    assert admin.uses_created_traffic_limit is True
+    assert admin.can_view_user_traffic is False
+    assert admin.created_traffic_limit_reached is True
+    assert admin.user_management_locked is True
+
+
+def test_full_access_ignores_created_traffic_mode_overrides():
+    admin = Admin(
+        username="full-access",
+        password="pass",
+        role=AdminRole.full_access,
+        traffic_limit_mode=AdminTrafficLimitMode.created_traffic,
+        show_user_traffic=False,
+    )
+
+    assert admin.uses_created_traffic_limit is False
+    assert admin.traffic_limit_mode == AdminTrafficLimitMode.used_traffic
+    assert admin.can_view_user_traffic is True
+    assert admin.show_user_traffic is True

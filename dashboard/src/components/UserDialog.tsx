@@ -89,6 +89,10 @@ import type {
 import { getConfigLabelFromLink } from "utils/configLabel";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
+import {
+	canViewUserTraffic,
+	isUserManagementLocked,
+} from "utils/adminTraffic";
 import { generateUserLinks } from "utils/userLinks";
 
 import { z } from "zod";
@@ -896,29 +900,39 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const services = useServicesStore((state) => state.services);
 	const servicesLoading = useServicesStore((state) => state.isLoading);
 	const { userData, getUserIsSuccess } = useGetUser();
-	const hasElevatedRole = Boolean(
+	const hasPrivilegedRole = Boolean(
 		getUserIsSuccess &&
 			(userData.role === AdminRole.Sudo ||
 				userData.role === AdminRole.FullAccess),
 	);
+	const hasFullAccess = Boolean(
+		getUserIsSuccess && userData.role === AdminRole.FullAccess,
+	);
+	const userManagementLocked = isUserManagementLocked(userData);
+	const canViewTraffic = canViewUserTraffic(userData);
 	const canSetFlow =
-		hasElevatedRole ||
+		hasPrivilegedRole ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.SetFlow]);
 	const canSetCustomKey =
-		hasElevatedRole ||
+		hasPrivilegedRole ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.AllowCustomKey]);
-	const _canCreateUsers =
-		hasElevatedRole ||
+	const canCreateUsers =
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
 	const canDeleteUsers =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
 	const canResetUsage =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
 	const canRevokeSubscription =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
+	const canDeleteUsersVisible = canDeleteUsers && !userManagementLocked;
+	const canResetUsageVisible =
+		canResetUsage && canViewTraffic && !userManagementLocked;
+	const canRevokeSubscriptionVisible =
+		canRevokeSubscription && !userManagementLocked;
 	const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
 		null,
 	);
@@ -928,11 +942,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		? (services.find((service) => service.id === selectedServiceId) ?? null)
 		: null;
 	const isServiceManagedUser = Boolean(editingUser?.service_id);
-	const nonSudoSingleService = !hasElevatedRole && services.length === 1;
-	const showServiceSelector = hasElevatedRole || services.length !== 1;
+	const nonSudoSingleService = !hasPrivilegedRole && services.length === 1;
+	const showServiceSelector = hasPrivilegedRole || services.length !== 1;
 	const useTwoColumns = showServiceSelector && services.length > 0;
 	const shouldCenterForm = !useTwoColumns;
-	const shouldCompactModal = !hasElevatedRole && services.length === 0;
+	const shouldCompactModal = !hasPrivilegedRole && services.length === 0;
 	const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
 		enabled: isOpen,
 		staleTime: 5 * 60 * 1000,
@@ -980,7 +994,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (isEditing) {
 			if (editingUser?.service_id) {
 				setSelectedServiceId(editingUser.service_id);
-			} else if (hasElevatedRole) {
+			} else if (hasPrivilegedRole) {
 				setSelectedServiceId(null);
 			} else if (services.length) {
 				setSelectedServiceId(services[0]?.id ?? null);
@@ -990,13 +1004,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		} else if (!isOpen) {
 			setSelectedServiceId(null);
 		}
-	}, [isEditing, editingUser, isOpen, hasElevatedRole, services]);
+	}, [isEditing, editingUser, isOpen, hasPrivilegedRole, services]);
 
 	useEffect(() => {
-		if (!isEditing && isOpen && hasServices && !hasElevatedRole) {
+		if (!isEditing && isOpen && hasServices && !hasPrivilegedRole) {
 			setSelectedServiceId((current) => current ?? services[0]?.id ?? null);
 		}
-	}, [services, isEditing, isOpen, hasServices, hasElevatedRole]);
+	}, [services, isEditing, isOpen, hasServices, hasPrivilegedRole]);
 
 	useEffect(() => {
 		if (!isEditing && isOpen && !hasServices) {
@@ -1100,7 +1114,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	}, [copiedConfigIndex]);
 
 	const remainingDataInfo = useMemo(() => {
-		if (!isEditing || !editingUser) return null;
+		if (!isEditing || !editingUser || !canViewTraffic) return null;
 		const rawLimit = dataLimit;
 		const parsedLimit =
 			rawLimit === null ||
@@ -1124,7 +1138,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					? t("userDialog.remainingDataLimited")
 					: formatBytes(remainingBytes, 2),
 		};
-	}, [isEditing, editingUser, dataLimit, t]);
+	}, [canViewTraffic, isEditing, editingUser, dataLimit, t]);
 
 	const formatLink = useCallback((link?: string | null) => {
 		if (!link) return "";
@@ -1197,7 +1211,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
-		if (index === 1 && !usageFetched && editingUser) {
+		const usageTabIndex = isEditing && canViewTraffic ? 1 : -1;
+		if (index === usageTabIndex && !usageFetched && editingUser) {
 			fetchUsageWithFilter({
 				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
 			});
@@ -1356,6 +1371,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (limitReached) {
 			return;
 		}
+		if (userManagementLocked) {
+			return;
+		}
 
 		setLoading(true);
 
@@ -1401,7 +1419,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		const maxDataLimitPerUser =
 			userData?.permissions?.users?.max_data_limit_per_user;
 		const allowUnlimitedData =
-			hasElevatedRole ||
+			hasFullAccess ||
 			Boolean(
 				userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData],
 			);
@@ -1510,12 +1528,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				: 0;
 
 		if (!isEditing) {
-			const effectiveServiceId = hasElevatedRole
+			const effectiveServiceId = hasPrivilegedRole
 				? selectedServiceId
 				: (selectedServiceId ??
 					(nonSudoSingleService ? (services[0]?.id ?? null) : null));
 
-			if (!hasElevatedRole && !effectiveServiceId) {
+			if (!hasPrivilegedRole && !effectiveServiceId) {
 				setError(t("userDialog.selectService", "Please choose a service"));
 				setLoading(false);
 				return;
@@ -1710,7 +1728,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		if (typeof selectedServiceId !== "undefined") {
 			if (selectedServiceId === null) {
-				if (hasElevatedRole) {
+				if (hasPrivilegedRole) {
 					body.service_id = null;
 				}
 			} else if (selectedServiceId !== editingUser?.service_id) {
@@ -1790,7 +1808,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const handleResetUsage = () => {
-		if (!canResetUsage) {
+		if (!canResetUsageVisible) {
 			return;
 		}
 		useDashboard.setState({
@@ -1799,7 +1817,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const handleRevokeSubscription = () => {
-		if (!canRevokeSubscription) {
+		if (!canRevokeSubscriptionVisible) {
 			return;
 		}
 		useDashboard.setState({
@@ -1807,7 +1825,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		});
 	};
 
-	const disabled = loading || limitReached;
+	const disabled = loading || limitReached || userManagementLocked;
 	const submitDisabled = disabled || !form.formState.isValid;
 
 	const isOnHold = userStatus === "on_hold";
@@ -2039,6 +2057,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										</AlertDescription>
 									</Alert>
 								)}
+								{userManagementLocked && (
+									<Alert status="warning" mb={4} borderRadius="md">
+										<AlertIcon />
+										<AlertDescription>
+											{t(
+												"userDialog.managementLocked",
+												"User management is locked because the created traffic limit has been reached. Only disable and enable actions remain available.",
+											)}
+										</AlertDescription>
+									</Alert>
+								)}
 
 								<Tabs
 									index={activeTab}
@@ -2049,7 +2078,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								>
 									<TabList>
 										<Tab>{t("userDialog.tabs.edit", "Edit")}</Tab>
-										{isEditing && (
+										{isEditing && canViewTraffic && (
 											<Tab>{t("userDialog.tabs.usage", "Usage")}</Tab>
 										)}
 										{isEditing && (
@@ -2225,7 +2254,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		{`${usernameValue?.length ?? 0}/32`}
 																	</FormHelperText>
 																	{isEditing &&
-																		hasElevatedRole &&
+																		hasPrivilegedRole &&
 																		editingUser?.admin_username && (
 																			<FormHelperText
 																				fontSize="xs"
@@ -2736,7 +2765,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 												{showServiceSelector && (
 													<GridItem mt={useTwoColumns ? 0 : 4}>
-														<FormControl isRequired={!hasElevatedRole}>
+														<FormControl isRequired={!hasPrivilegedRole}>
 															<FormLabel>
 																{t("userDialog.selectServiceLabel", "Service")}
 															</FormLabel>
@@ -2780,7 +2809,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																</HStack>
 															) : hasServices ? (
 																<VStack align="stretch" spacing={3}>
-																	{hasElevatedRole && (
+																	{hasPrivilegedRole && (
 																		<Box
 																			role="button"
 																			tabIndex={disabled ? -1 : 0}
@@ -3634,7 +3663,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 												</Alert>
 											)}
 										</TabPanel>
-										{isEditing && (
+										{isEditing && canViewTraffic && (
 											<TabPanel px={0} pt={4}>
 												<VStack gap={4}>
 													<UsageFilter
@@ -3953,7 +3982,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 									>
 										{isEditing && (
 											<>
-												{canDeleteUsers && (
+												{canDeleteUsersVisible && (
 													<Tooltip label={t("delete")} placement="top">
 														<IconButton
 															aria-label="Delete"
@@ -3971,13 +4000,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													</Tooltip>
 												)}
 
-												{canResetUsage && (
+												{canResetUsageVisible && (
 													<Button onClick={handleResetUsage} size="sm">
 														{t("userDialog.resetUsage")}
 													</Button>
 												)}
 
-												{canRevokeSubscription && (
+												{canRevokeSubscriptionVisible && (
 													<Button onClick={handleRevokeSubscription} size="sm">
 														{t("userDialog.revokeSubscription")}
 													</Button>

@@ -64,6 +64,10 @@ import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import type { User, UserListItem } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
+import {
+	canViewUserTraffic,
+	isUserManagementLocked,
+} from "utils/adminTraffic";
 import { generateUserLinks } from "utils/userLinks";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
@@ -370,23 +374,35 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
 
 	const { userData } = useGetUser();
-	const hasElevatedRole =
+	const hasPrivilegedRole =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+	const hasFullAccess = userData.role === AdminRole.FullAccess;
+	const userManagementLocked = isUserManagementLocked(userData);
+	const canViewTraffic = canViewUserTraffic(userData);
 	const isAdminDisabled = Boolean(
-		!hasElevatedRole && userData.status === AdminStatus.Disabled,
+		!hasPrivilegedRole && userData.status === AdminStatus.Disabled,
 	);
 	const canCreateUsers =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
 	const canDeleteUsers =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
 	const canResetUsage =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
 	const canRevokeSub =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
+	const canOpenUserDialog =
+		!isAdminDisabled && (canCreateUsers || hasFullAccess) && !userManagementLocked;
+	const canToggleUserStatus =
+		!isAdminDisabled && (canCreateUsers || hasFullAccess || userManagementLocked);
+	const canMutateUsers = !isAdminDisabled && canCreateUsers && !userManagementLocked;
+	const canDeleteUserActions = !isAdminDisabled && canDeleteUsers && !userManagementLocked;
+	const canResetUsageActions =
+		!isAdminDisabled && canResetUsage && canViewTraffic && !userManagementLocked;
+	const canRevokeSubActions = !isAdminDisabled && canRevokeSub && !userManagementLocked;
 	const disabledReason = userData.disabled_reason;
 
 	const rowsToRender = filters.limit || 10;
@@ -536,17 +552,18 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			return; // allow browser default menu
 		}
 		const allowTraffic =
-			canCreateUsers && user.data_limit !== null && user.data_limit !== 0;
+			canMutateUsers && user.data_limit !== null && user.data_limit !== 0;
 		const allowExpire =
-			canCreateUsers &&
+			canMutateUsers &&
 			user.expire !== null &&
 			user.expire !== 0 &&
 			user.expire !== undefined;
 		const hasActions =
-			canCreateUsers ||
-			canDeleteUsers ||
-			canResetUsage ||
-			canRevokeSub ||
+			canOpenUserDialog ||
+			canDeleteUserActions ||
+			canResetUsageActions ||
+			canRevokeSubActions ||
+			canToggleUserStatus ||
 			allowTraffic ||
 			allowExpire;
 		if (!hasActions) {
@@ -657,7 +674,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	};
 
 	const handleDisableUser = async (user: UserListItem) => {
-		if (!canCreateUsers || user.status === "disabled") return;
+		if (!canToggleUserStatus || user.status === "disabled") return;
 		setContextAction("disable");
 		try {
 			await fetch(`/v2/users/${encodeURIComponent(user.username)}`, {
@@ -666,6 +683,30 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			});
 			toast({
 				title: t("usersTable.disableUser", "Disable user"),
+				status: "success",
+			});
+			refetchUsers(true);
+		} catch (error: any) {
+			toast({
+				title: error?.data?.detail || error?.message || t("error"),
+				status: "error",
+			});
+		} finally {
+			setContextAction(null);
+			closeContextMenu();
+		}
+	};
+
+	const handleEnableUser = async (user: UserListItem) => {
+		if (!canToggleUserStatus || user.status !== "disabled") return;
+		setContextAction("enable");
+		try {
+			await fetch(`/v2/users/${encodeURIComponent(user.username)}`, {
+				method: "PUT",
+				body: { status: "active" },
+			});
+			toast({
+				title: t("usersTable.enableUser", "Enable user"),
 				status: "success",
 			});
 			refetchUsers(true);
@@ -719,7 +760,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 
 	const baseColumns: Array<
 		"username" | "status" | "service" | "usage" | "actions"
-	> = ["username", "status", "service", "usage", "actions"];
+	> = canViewTraffic
+		? ["username", "status", "service", "usage", "actions"]
+		: ["username", "status", "service", "actions"];
 	const columnsToRender = isRTL ? baseColumns.slice().reverse() : baseColumns;
 	const cellAlign = isRTL ? "right" : "left";
 	const actionsAlign = isRTL ? "left" : "right";
@@ -768,7 +811,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		},
 	];
 
-	const usageForSummary = filteredUsageTotal ?? userUsage;
+	const usageForSummary = canViewTraffic
+		? filteredUsageTotal ?? userUsage
+		: null;
 
 	if (usageForSummary !== null) {
 		summaryItems.push({
@@ -848,12 +893,18 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							<Th
 								minW="240px"
 								textAlign={cellAlign}
-								cursor="pointer"
-								onClick={handleSort.bind(null, "used_traffic")}
+								cursor={canViewTraffic ? "pointer" : "default"}
+								onClick={
+									canViewTraffic
+										? handleSort.bind(null, "used_traffic")
+										: undefined
+								}
 							>
 								<HStack spacing={2} align="center">
 									<span>{t("usersTable.dataUsage")}</span>
-									<Sort sort={filters.sort} column="used_traffic" />
+									{canViewTraffic && (
+										<Sort sort={filters.sort} column="used_traffic" />
+									)}
 								</HStack>
 							</Th>
 						),
@@ -952,7 +1003,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 													{user.username}
 												</Text>
 												<CreatedByText
-													show={hasElevatedRole}
+													show={hasPrivilegedRole}
 													adminUsername={user.admin_username}
 												/>
 												<OnlineStatus lastOnline={user.online_at ?? null} />
@@ -992,15 +1043,21 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								),
 								usage: (
 									<Td textAlign={cellAlign}>
-										<UsageMeter
-											status={user.status}
-											totalUsedTraffic={user.lifetime_used_traffic}
-											dataLimitResetStrategy={user.data_limit_reset_strategy}
-											used={user.used_traffic}
-											total={user.data_limit}
-											isRTL={isRTL}
-											t={t}
-										/>
+										{canViewTraffic ? (
+											<UsageMeter
+												status={user.status}
+												totalUsedTraffic={user.lifetime_used_traffic}
+												dataLimitResetStrategy={user.data_limit_reset_strategy}
+												used={user.used_traffic}
+												total={user.data_limit}
+												isRTL={isRTL}
+												t={t}
+											/>
+										) : (
+											<Text color="gray.500" _dark={{ color: "gray.400" }}>
+												-
+											</Text>
+										)}
 									</Td>
 								),
 								actions: (
@@ -1016,10 +1073,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 												user={user}
 												isRTL={isRTL}
 												onEdit={
-													canCreateUsers ? () => onEditingUser(user) : undefined
+													canOpenUserDialog
+														? () => onEditingUser(user)
+														: undefined
 												}
 												onDelete={
-													canDeleteUsers
+													canDeleteUserActions
 														? () => onDeletingUser(user)
 														: undefined
 												}
@@ -1033,12 +1092,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									key={user.username}
 									className={classNames("interactive")}
 									onClick={() => {
-										if (canCreateUsers) {
+										if (canOpenUserDialog) {
 											onEditingUser(user);
 										}
 									}}
 									onContextMenu={(event) => handleRowContextMenu(event, user)}
-									cursor={canCreateUsers ? "pointer" : "default"}
+									cursor={canOpenUserDialog ? "pointer" : "default"}
 								>
 									{columnsToRender.map((key) => (
 										<React.Fragment key={`${user.username}-${key}`}>
@@ -1050,10 +1109,12 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 						})}
 				{!loading && usersResponse.users.length === 0 && (
 					<Tr>
-						<Td colSpan={5} borderBottom="0">
+						<Td colSpan={columnsToRender.length} borderBottom="0">
 							<EmptySection
 								isFiltered={isFiltered}
-								isCreateDisabled={isAdminDisabled || !canCreateUsers}
+								isCreateDisabled={
+									isAdminDisabled || !canCreateUsers || userManagementLocked
+								}
 							/>
 						</Td>
 					</Tr>
@@ -1096,20 +1157,23 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							<MobileUserCard
 								key={user.username}
 								user={user}
-								canEdit={canCreateUsers}
+								canEdit={canOpenUserDialog}
 								onEdit={() => onEditingUser(user)}
 								onDelete={
-									canDeleteUsers ? () => onDeletingUser(user) : undefined
+									canDeleteUserActions ? () => onDeletingUser(user) : undefined
 								}
 								isRTL={isRTL}
-								showCreator={hasElevatedRole}
+								showCreator={hasPrivilegedRole}
+								showUsage={canViewTraffic}
 								t={t}
 							/>
 						))}
 			{!loading && usersResponse.users.length === 0 && (
 				<EmptySection
 					isFiltered={isFiltered}
-					isCreateDisabled={isAdminDisabled || !canCreateUsers}
+					isCreateDisabled={
+						isAdminDisabled || !canCreateUsers || userManagementLocked
+					}
 				/>
 			)}
 		</VStack>
@@ -1287,7 +1351,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 					ref={contextMenuRef}
 				>
 					<Stack spacing={1} p={2}>
-						{canCreateUsers && (
+						{canOpenUserDialog && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"
@@ -1300,7 +1364,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								{t("userDialog.editUser", "Edit user")}
 							</Button>
 						)}
-						{canCreateUsers && contextMenu.user.status !== "disabled" && (
+						{canToggleUserStatus && contextMenu.user.status !== "disabled" && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"
@@ -1311,7 +1375,18 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								{t("usersTable.disableUser", "Disable user")}
 							</Button>
 						)}
-						{canResetUsage && (
+						{canToggleUserStatus && contextMenu.user.status === "disabled" && (
+							<Button
+								variant="ghost"
+								justifyContent="flex-start"
+								leftIcon={<CheckIcon width={16} />}
+								onClick={() => handleEnableUser(contextMenu.user!)}
+								isLoading={contextAction === "enable"}
+							>
+								{t("usersTable.enableUser", "Enable user")}
+							</Button>
+						)}
+						{canResetUsageActions && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"
@@ -1322,7 +1397,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								{t("usersTable.resetUsage", "Reset usage")}
 							</Button>
 						)}
-						{canRevokeSub && (
+						{canRevokeSubActions && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"
@@ -1333,7 +1408,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								{t("usersTable.revokeSub", "Revoke subscription")}
 							</Button>
 						)}
-						{canCreateUsers &&
+						{canMutateUsers &&
 							contextMenu.user.data_limit !== null &&
 							contextMenu.user.data_limit !== 0 && (
 								<Button
@@ -1346,7 +1421,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									{t("usersTable.add10Gb", "Add 10 GB")}
 								</Button>
 							)}
-						{canCreateUsers &&
+						{canMutateUsers &&
 							contextMenu.user.expire !== null &&
 							contextMenu.user.expire !== 0 &&
 							contextMenu.user.expire !== undefined && (
@@ -1360,7 +1435,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									{t("usersTable.add30Days", "Add 30 days")}
 								</Button>
 							)}
-						{canDeleteUsers && (
+						{canDeleteUserActions && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"
@@ -1388,6 +1463,7 @@ type UserCardProps = {
 	onDelete?: () => void;
 	isRTL: boolean;
 	showCreator: boolean;
+	showUsage?: boolean;
 	t: TranslateFn;
 };
 
@@ -1398,6 +1474,7 @@ const _UserCard: FC<UserCardProps> = ({
 	onDelete,
 	isRTL,
 	showCreator,
+	showUsage = true,
 	t,
 }) => (
 	<Box
@@ -1458,15 +1535,21 @@ const _UserCard: FC<UserCardProps> = ({
 					</Text>
 				</Box>
 			</HStack>
-			<UsageMeter
-				status={user.status}
-				totalUsedTraffic={user.lifetime_used_traffic}
-				dataLimitResetStrategy={user.data_limit_reset_strategy}
-				used={user.used_traffic}
-				total={user.data_limit}
-				isRTL={isRTL}
-				t={t}
-			/>
+			{showUsage ? (
+				<UsageMeter
+					status={user.status}
+					totalUsedTraffic={user.lifetime_used_traffic}
+					dataLimitResetStrategy={user.data_limit_reset_strategy}
+					used={user.used_traffic}
+					total={user.data_limit}
+					isRTL={isRTL}
+					t={t}
+				/>
+			) : (
+				<Text color="gray.500" _dark={{ color: "gray.400" }}>
+					-
+				</Text>
+			)}
 			<HStack justify="space-between" align="center" spacing={3}>
 				<ActionButtons
 					user={user}
@@ -1486,6 +1569,7 @@ const MobileUserCard: FC<UserCardProps> = ({
 	onDelete,
 	isRTL,
 	showCreator,
+	showUsage = true,
 	t,
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
@@ -1506,7 +1590,7 @@ const MobileUserCard: FC<UserCardProps> = ({
 	const usedLabel = formatBytes(user.used_traffic);
 	const totalLabel =
 		user.data_limit && user.data_limit > 0 ? formatBytes(user.data_limit) : "∞";
-	const usageLabelNode = (
+	const usageLabelNode = showUsage ? (
 		<Text
 			fontSize="xs"
 			color="gray.500"
@@ -1521,7 +1605,7 @@ const MobileUserCard: FC<UserCardProps> = ({
 				{totalLabel}
 			</chakra.span>
 		</Text>
-	);
+	) : null;
 
 	return (
 		<Box
@@ -1626,15 +1710,21 @@ const MobileUserCard: FC<UserCardProps> = ({
 								</Text>
 							</Box>
 						</HStack>
-						<UsageMeter
-							status={user.status}
-							totalUsedTraffic={user.lifetime_used_traffic}
-							dataLimitResetStrategy={user.data_limit_reset_strategy}
-							used={user.used_traffic}
-							total={user.data_limit}
-							isRTL={isRTL}
-							t={t}
-						/>
+						{showUsage ? (
+							<UsageMeter
+								status={user.status}
+								totalUsedTraffic={user.lifetime_used_traffic}
+								dataLimitResetStrategy={user.data_limit_reset_strategy}
+								used={user.used_traffic}
+								total={user.data_limit}
+								isRTL={isRTL}
+								t={t}
+							/>
+						) : (
+							<Text color="gray.500" _dark={{ color: "gray.400" }}>
+								-
+							</Text>
+						)}
 						<HStack
 							justify="flex-start"
 							align="center"

@@ -31,6 +31,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
+import {
+	canViewUserTraffic,
+	isUserManagementLocked,
+} from "utils/adminTraffic";
 import { type FC, type ReactNode, useRef, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
@@ -63,13 +67,15 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 	const { userData } = useGetUser();
 	const { t, i18n } = useTranslation();
 	const actionsContentRef = useRef<HTMLDivElement | null>(null);
+	const userManagementLocked = isUserManagementLocked(userData);
+	const canViewTraffic = canViewUserTraffic(userData);
 
 	const sectionAccess = userData.permissions?.sections;
 	const canAccessHosts = Boolean(sectionAccess?.[AdminSection.Hosts]);
 	const canAccessNodes = Boolean(sectionAccess?.[AdminSection.Nodes]);
 	const canResetAllUsage = Boolean(
 		userData.permissions?.users?.[UserPermissionToggle.ResetUsage],
-	);
+	) && !userManagementLocked && canViewTraffic;
 	const canOpenCoreSettings = Boolean(
 		sectionAccess?.[AdminSection.Integrations] ||
 			sectionAccess?.[AdminSection.Xray],

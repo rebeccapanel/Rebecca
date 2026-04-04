@@ -81,6 +81,7 @@ import {
 	AdminManagementPermission,
 	AdminRole,
 	AdminStatus,
+	AdminTrafficLimitMode,
 	UserPermissionToggle,
 } from "types/Admin";
 import { relativeExpiryDate } from "utils/dateFormatter";
@@ -161,22 +162,30 @@ const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 
 type AdminUsageSliderProps = {
 	used: number;
+	createdTraffic?: number | null;
 	total: number | null;
 	lifetimeUsage: number | null;
+	trafficLimitMode?: AdminTrafficLimitMode;
 	isRTL?: boolean;
 };
 
 const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 	used,
+	createdTraffic,
 	total,
 	lifetimeUsage,
+	trafficLimitMode,
 	isRTL = false,
 }) => {
 	const { t } = useTranslation();
+	const effectiveUsage =
+		trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
+			? (createdTraffic ?? 0)
+			: used;
 	const isUnlimited = total === 0 || total === null;
 	const percentage = isUnlimited
 		? 0
-		: Math.min((used / (total || 1)) * 100, 100);
+		: Math.min((effectiveUsage / (total || 1)) * 100, 100);
 	const reached = !isUnlimited && percentage >= 100;
 
 	return (
@@ -214,7 +223,7 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 			>
 				<Text className="rb-usage-pair">
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{formatBytes(used, 2)}
+						{formatBytes(effectiveUsage, 2)}
 					</chakra.span>{" "}
 					/{" "}
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
@@ -227,6 +236,18 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 							{formatBytes(lifetimeUsage, 2)}
 						</chakra.span>
+					</Text>
+				)}
+				{createdTraffic !== null && createdTraffic !== undefined && (
+					<Text color="orange.500" _dark={{ color: "orange.300" }}>
+						{t("admins.details.createdTraffic", "Created traffic")}:{" "}
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{formatBytes(createdTraffic, 2)}
+						</chakra.span>
+						{" · "}
+						{trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
+							? t("admins.createdTrafficMode", "Created traffic")
+							: t("admins.usedTrafficMode", "Used traffic")}
 					</Text>
 				)}
 			</HStack>
@@ -1019,7 +1040,11 @@ export const AdminsTable: FC<TableProps> = (props) => {
 								? String(admin.users_limit)
 								: "∞";
 						const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
-						const usageLabel = `${formatBytes(admin.users_usage ?? 0)} / ${
+						const effectiveUsage =
+							admin.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
+								? (admin.created_traffic ?? 0)
+								: (admin.users_usage ?? 0);
+						const usageLabel = `${formatBytes(effectiveUsage)} / ${
 							admin.data_limit && admin.data_limit > 0
 								? formatBytes(admin.data_limit)
 								: "∞"
@@ -1127,8 +1152,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											<AdminUsageSlider
 												isRTL={isRTL}
 												used={admin.users_usage ?? 0}
+												createdTraffic={admin.created_traffic ?? 0}
 												total={admin.data_limit ?? null}
 												lifetimeUsage={admin.lifetime_usage ?? null}
+												trafficLimitMode={admin.traffic_limit_mode}
 											/>
 											{admin.status === AdminStatus.Disabled &&
 												disabledReasonLabel && (
@@ -1937,10 +1964,12 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																		<AdminUsageSlider
 																			isRTL={isRTL}
 																			used={admin.users_usage ?? 0}
+																			createdTraffic={admin.created_traffic ?? 0}
 																			total={admin.data_limit ?? null}
 																			lifetimeUsage={
 																				admin.lifetime_usage ?? null
 																			}
+																			trafficLimitMode={admin.traffic_limit_mode}
 																		/>
 																	</Td>
 																),

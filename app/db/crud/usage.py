@@ -30,6 +30,7 @@ from .common import MASTER_NODE_NAME
 from .node import _ensure_master_state
 from .user import _status_to_str, _ensure_active_user_capacity, get_user_queryset
 from .admin import _maybe_enable_admin_after_data_limit
+from .admin_traffic import record_admin_created_traffic
 
 # ============================================================================
 
@@ -481,6 +482,13 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
         used_traffic_at_reset=dbuser.used_traffic,
     )
     db.add(usage_log)
+    if (dbuser.data_limit or 0) > 0:
+        record_admin_created_traffic(
+            db,
+            dbuser.admin,
+            int(dbuser.data_limit or 0),
+            action="user_reset_usage",
+        )
 
     dbuser.used_traffic = 0
     dbuser.node_usages.clear()
@@ -589,12 +597,17 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     Returns:
         Admin: The updated admin.
     """
-    if dbadmin.users_usage == 0:
+    if (dbadmin.users_usage or 0) == 0 and (getattr(dbadmin, "created_traffic", 0) or 0) == 0:
         return dbadmin
 
-    usage_log = AdminUsageLogs(admin=dbadmin, used_traffic_at_reset=dbadmin.users_usage)
+    usage_log = AdminUsageLogs(
+        admin=dbadmin,
+        used_traffic_at_reset=dbadmin.users_usage or 0,
+        created_traffic_at_reset=getattr(dbadmin, "created_traffic", 0) or 0,
+    )
     db.add(usage_log)
     dbadmin.users_usage = 0
+    dbadmin.created_traffic = 0
     _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()
