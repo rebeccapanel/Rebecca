@@ -5,8 +5,16 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from app.db import Session, get_db
+from app.dependencies import get_validated_sub_by_key
 from app.models.user import UserResponse
-from app.routers.subscription import _get_user_by_identifier, _serve_subscription_response
+from app.routers.subscription import (
+    _build_usage_payload,
+    _get_user_by_identifier,
+    _serve_subscription_response,
+    _subscription_with_client_type,
+    _validate_client_type,
+    client_config,
+)
 from app.services.subscription_settings import SubscriptionSettingsService
 
 router = APIRouter(tags=["Subscription"])
@@ -84,15 +92,55 @@ def _match_query_alias(alias: str, request: Request) -> Optional[str]:
     return None
 
 
-def _resolve_identifier_from_aliases(request: Request, aliases: list[str], primary_path: str) -> Optional[str]:
+def _resolve_prefixed_route(path: str, prefix: str) -> Optional[dict]:
+    if not path.startswith(prefix):
+        return None
+
+    tail = path[len(prefix):].strip("/")
+    if not tail:
+        return None
+
+    segments = [segment for segment in tail.split("/") if segment]
+    if not segments:
+        return None
+
+    if len(segments) == 1:
+        return {"kind": "identifier", "identifier": segments[0]}
+
+    if len(segments) == 2:
+        identifier, suffix = segments
+        if suffix == "info":
+            return {"kind": "identifier-info", "identifier": identifier}
+        if suffix == "usage":
+            return {"kind": "identifier-usage", "identifier": identifier}
+        if suffix in client_config:
+            return {"kind": "identifier-client", "identifier": identifier, "client_type": suffix}
+        return {"kind": "key", "username": identifier, "credential_key": suffix}
+
+    if len(segments) == 3:
+        username, credential_key, suffix = segments
+        if suffix == "info":
+            return {"kind": "key-info", "username": username, "credential_key": credential_key}
+        if suffix == "usage":
+            return {"kind": "key-usage", "username": username, "credential_key": credential_key}
+        if suffix in client_config:
+            return {
+                "kind": "key-client",
+                "username": username,
+                "credential_key": credential_key,
+                "client_type": suffix,
+            }
+    return None
+
+
+def _resolve_alias_route(request: Request, aliases: list[str], primary_path: str) -> Optional[dict]:
     path = request.url.path
 
-    # Always support /sub/<identifier> as stable default fallback
+    # Always support /sub/... as stable default fallback and mirror the configured primary path.
     for fixed_prefix in ("/sub/", f"/{(primary_path or 'sub').strip('/')}/"):
-        if path.startswith(fixed_prefix):
-            tail = path[len(fixed_prefix):].strip("/")
-            if tail:
-                return tail.split("/", 1)[0]
+        resolved = _resolve_prefixed_route(path, fixed_prefix)
+        if resolved:
+            return resolved
 
     for alias in aliases:
         alias = (alias or "").strip()
@@ -100,10 +148,10 @@ def _resolve_identifier_from_aliases(request: Request, aliases: list[str], prima
             continue
         identifier = _match_query_alias(alias, request)
         if identifier:
-            return identifier
+            return {"kind": "identifier", "identifier": identifier}
         identifier = _match_path_alias(alias, path)
         if identifier:
-            return identifier
+            return {"kind": "identifier", "identifier": identifier}
     return None
 
 
@@ -136,13 +184,44 @@ def subscribe_path_style(
 def subscribe_custom_alias(
     request: Request,
     alias_path: str,
+    start: str = Query(default=""),
+    end: str = Query(default=""),
     db: Session = Depends(get_db),
     user_agent: str = Header(default=""),
 ):
     settings = SubscriptionSettingsService.get_settings(ensure_record=True, db=db)
     aliases = settings.subscription_aliases or []
-    identifier = _resolve_identifier_from_aliases(request, aliases, settings.subscription_path)
-    if not identifier:
+    route = _resolve_alias_route(request, aliases, settings.subscription_path)
+    if not route:
         raise HTTPException(status_code=404, detail="Not Found")
-    dbuser: UserResponse = _get_user_by_identifier(identifier, db)
-    return _serve_subscription_response(request, identifier, db, dbuser, user_agent)
+
+    kind = route["kind"]
+    if kind.startswith("identifier"):
+        identifier = route["identifier"]
+        dbuser: UserResponse = _get_user_by_identifier(identifier, db)
+        if kind == "identifier":
+            return _serve_subscription_response(request, identifier, db, dbuser, user_agent)
+        if kind == "identifier-info":
+            return dbuser
+        if kind == "identifier-usage":
+            return _build_usage_payload(dbuser, start, end, db)
+        if kind == "identifier-client":
+            client_type = _validate_client_type(route["client_type"])
+            return _subscription_with_client_type(request, dbuser, client_type, db)
+
+    if kind.startswith("key"):
+        username = route["username"]
+        credential_key = route["credential_key"]
+        dbuser = get_validated_sub_by_key(username=username, credential_key=credential_key, db=db)
+        token_hint = f"{username}/{credential_key}"
+        if kind == "key":
+            return _serve_subscription_response(request, token_hint, db, dbuser, user_agent)
+        if kind == "key-info":
+            return dbuser
+        if kind == "key-usage":
+            return _build_usage_payload(dbuser, start, end, db)
+        if kind == "key-client":
+            client_type = _validate_client_type(route["client_type"])
+            return _subscription_with_client_type(request, dbuser, client_type, db)
+
+    raise HTTPException(status_code=404, detail="Not Found")

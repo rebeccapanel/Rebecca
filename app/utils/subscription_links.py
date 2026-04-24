@@ -1,6 +1,7 @@
 import secrets
 from enum import Enum
 from typing import Dict, Optional
+from urllib.parse import urlsplit
 
 from app.models.user import UserResponse
 from app.utils.jwt import create_subscription_token
@@ -23,6 +24,16 @@ except Exception:  # pragma: no cover - fallback definitions
                 default_subscription_type = SubscriptionLinkType.key.value
 
             return _Dummy()
+
+
+def _prefix_label(prefix: str) -> str:
+    try:
+        parsed = urlsplit(prefix)
+        if parsed.port:
+            return str(parsed.port)
+    except Exception:
+        pass
+    return prefix
 
 
 def build_subscription_links(
@@ -73,9 +84,11 @@ def build_subscription_links(
     links["token"] = f"{url_prefix}/{token}"
 
     for extra_prefix in url_prefixes[1:]:
+        label = _prefix_label(extra_prefix)
         if user.credential_key:
-            links[f"key@{extra_prefix.rsplit(':',1)[-1].split('/')[0]}"] = f"{extra_prefix}/{user.credential_key}"
-        links[f"token@{extra_prefix.rsplit(':',1)[-1].split('/')[0]}"] = f"{extra_prefix}/{token}"
+            links[f"username-key@{label}"] = f"{extra_prefix}/{user.username}/{user.credential_key}"
+            links[f"key@{label}"] = f"{extra_prefix}/{user.credential_key}"
+        links[f"token@{label}"] = f"{extra_prefix}/{token}"
 
     has_key = bool(user.credential_key)
     if not has_key:

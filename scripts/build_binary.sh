@@ -9,6 +9,10 @@ if [ ! -f "dashboard/build/index.html" ]; then
     exit 1
 fi
 
+if ! python -c "import PyInstaller" >/dev/null 2>&1; then
+    python -m pip install --disable-pip-version-check pyinstaller
+fi
+
 COMMON_PYINSTALLER_ARGS=(
     --clean
     --noconfirm

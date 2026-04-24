@@ -19,7 +19,6 @@ from app.utils.credentials import (
     normalize_flow_value,
 )
 from xray_api.types.account import Account
-from app.utils.jwt import create_subscription_token
 
 # Fallback import to avoid deployment breakage when settings model isn't updated yet
 try:  # pragma: no cover
@@ -695,71 +694,19 @@ class UserResponse(User):
     def validate_subscription_url(self):
         if _skip_expensive_computations.get():
             return self
-        salt = secrets.token_hex(8)
         try:
-            from app.services.subscription_settings import SubscriptionSettingsService
+            from app.utils.subscription_links import build_subscription_links
 
-            admin_obj = getattr(self, "admin", None)
-            if admin_obj is None and getattr(self, "admin_id", None):
-                try:
-                    from app.db.base import SessionLocal
-
-                    db = SessionLocal()
-                    admin_obj = db.query(Admin).filter(Admin.id == self.admin_id).first()
-                except Exception:
-                    admin_obj = None
-                finally:
-                    try:
-                        db.close()
-                    except Exception:
-                        pass
-
-            effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
-            url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+            links = build_subscription_links(self)
         except Exception:
-            url_prefix = "/sub"
+            links = {}
 
-        links: Dict[str, str] = {}
-        if self.credential_key:
-            links["username-key"] = f"{url_prefix}/{self.username}/{self.credential_key}"
-            links["key"] = f"{url_prefix}/{self.credential_key}"
-
-        token = create_subscription_token(self.username)
-        links["token"] = f"{url_prefix}/{token}"
-
-        self.subscription_urls = links
-
-        # Lazy import to avoid circular import during Alembic/env loading
-        try:
-            from app.services.panel_settings import PanelSettingsService
-
-            settings = PanelSettingsService.get_settings(ensure_record=True)
-            preferred: str = settings.default_subscription_type or SubscriptionLinkType.key.value
-        except Exception:
-            preferred = SubscriptionLinkType.key.value
-
-        order_map = {
-            SubscriptionLinkType.username_key.value: ["username-key", "token", "key"],
-            SubscriptionLinkType.key.value: ["key", "token", "username-key"],
-            SubscriptionLinkType.token.value: ["token", "key", "username-key"],
-        }
-
-        chosen = None
-        for candidate in order_map.get(preferred, ["key", "username-key", "token"]):
-            if candidate in links:
-                chosen = candidate
-                break
-        if chosen is None and links:
-            chosen = next(iter(links.keys()))
-
-        if chosen:
-            self.subscription_url = links[chosen]
-        else:
-            self.subscription_url = ""
+        self.subscription_urls = {key: value for key, value in links.items() if key != "primary"}
+        self.subscription_url = links.get("primary") or next(iter(self.subscription_urls.values()), "")
 
         # Preserve legacy field for compatibility
         if self.credential_key:
-            self.key_subscription_url = links.get("key")  # type: ignore[attr-defined]
+            self.key_subscription_url = self.subscription_urls.get("key")  # type: ignore[attr-defined]
         return self
 
     @model_validator(mode="after")

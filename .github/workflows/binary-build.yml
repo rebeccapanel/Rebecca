@@ -5,8 +5,13 @@ on:
   push:
     branches:
       - dev
-    tags:
-      - "v*.*.*"
+  pull_request:
+    branches:
+      - "**"
+  release:
+    types:
+      - published
+      - prereleased
 
 permissions:
   contents: write
@@ -35,6 +40,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+            UPLOAD_RELEASE="true"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+            UPLOAD_RELEASE="true"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            VERSION="pr-${{ github.event.pull_request.number }}-${GITHUB_SHA::7}"
+            RELEASE_TAG=""
+            UPLOAD_RELEASE="false"
+          else
+            REF_SLUG="$(echo "${GITHUB_REF_NAME}" | tr '/[:space:]' '-' | tr -cd '[:alnum:]._-')"
+            VERSION="${REF_SLUG}-${GITHUB_SHA::7}"
+            RELEASE_TAG=""
+            UPLOAD_RELEASE="false"
+          fi
+
+          ASSET_NAME="rebecca-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+
+          echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "upload_release=${UPLOAD_RELEASE}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -79,7 +115,6 @@ jobs:
                 zlib1g-dev
               python -m pip install --upgrade pip uv
               uv sync --frozen --no-dev
-              uv run python -m pip install pyinstaller
               uv run bash scripts/build_binary.sh
               rm -rf build/*.spec
             '
@@ -88,11 +123,7 @@ jobs:
         id: package
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}-${GITHUB_SHA::7}"
-          fi
-          ASSET_NAME="rebecca-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          ASSET_NAME="${{ steps.meta.outputs.asset_name }}"
           tar -C dist -czf "${ASSET_NAME}" rebecca-server rebecca-cli
           echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
 
@@ -103,10 +134,10 @@ jobs:
           path: ${{ steps.package.outputs.asset_name }}
 
       - name: Upload release asset
-        if: github.ref_type == 'tag'
+        if: steps.meta.outputs.upload_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
-            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "Rebecca ${GITHUB_REF_NAME}"
-          gh release upload "${GITHUB_REF_NAME}" "${{ steps.package.outputs.asset_name }}" --clobber
+          gh release view "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1 || \
+            gh release create "${{ steps.meta.outputs.release_tag }}" --title "${{ steps.meta.outputs.release_tag }}" --notes "Rebecca ${{ steps.meta.outputs.release_tag }}"
+          gh release upload "${{ steps.meta.outputs.release_tag }}" "${{ steps.package.outputs.asset_name }}" --clobber

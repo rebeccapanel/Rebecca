@@ -1159,18 +1159,43 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			key: t("userDialog.links.subscriptionKey", "Key"),
 			token: t("userDialog.links.subscriptionToken", "Token"),
 		};
+		const orderIndex = new Map(order.map((key, index) => [key, index]));
 
-		const results: Array<{ key: string; label: string; url: string }> = [];
-		order.forEach((key) => {
-			const value = urls[key];
-			if (!value) {
-				return;
-			}
-			const url = formatLink(value);
-			if (url) {
-				results.push({ key, label: labels[key], url });
-			}
-		});
+		const results = Object.entries(urls)
+			.map(([key, value]) => {
+				const url = formatLink(value);
+				if (!url) {
+					return null;
+				}
+
+				const [baseKeyRaw, variant] = key.split("@", 2);
+				const baseKey = baseKeyRaw as (typeof order)[number];
+				const baseLabel = labels[baseKey] ?? baseKeyRaw;
+				const label = variant ? `${baseLabel} (${variant})` : baseLabel;
+
+				return {
+					key,
+					label,
+					url,
+					order: orderIndex.get(baseKey) ?? order.length,
+					variant: variant ?? "",
+				};
+			})
+			.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+			.sort((a, b) => {
+				if (a.order !== b.order) {
+					return a.order - b.order;
+				}
+				const aHasVariant = a.variant !== "";
+				const bHasVariant = b.variant !== "";
+				if (aHasVariant !== bHasVariant) {
+					return aHasVariant ? 1 : -1;
+				}
+				return a.variant.localeCompare(b.variant, undefined, {
+					numeric: true,
+				});
+			})
+			.map(({ key, label, url }) => ({ key, label, url }));
 
 		if (results.length === 0 && editingUser.subscription_url) {
 			const fallback = formatLink(editingUser.subscription_url);
