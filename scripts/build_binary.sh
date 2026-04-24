@@ -13,13 +13,23 @@ if ! python -c "import PyInstaller" >/dev/null 2>&1; then
     python -m pip install --disable-pip-version-check pyinstaller
 fi
 
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+    PYINSTALLER_DATA_SEP=";"
+else
+    PYINSTALLER_DATA_SEP=":"
+fi
+
+pyinstaller_add_data() {
+    printf "%s%s%s" "$1" "$PYINSTALLER_DATA_SEP" "$2"
+}
+
 COMMON_PYINSTALLER_ARGS=(
     --clean
     --noconfirm
     --onefile
-    --add-data "alembic.ini:."
-    --add-data "app/templates:app/templates"
-    --add-data "app/db/migrations:app/db/migrations"
+    --add-data "$(pyinstaller_add_data "alembic.ini" ".")"
+    --add-data "$(pyinstaller_add_data "app/templates" "app/templates")"
+    --add-data "$(pyinstaller_add_data "app/db/migrations" "app/db/migrations")"
     --collect-submodules app
     --collect-submodules alembic
     --collect-submodules cli
@@ -39,7 +49,7 @@ COMMON_PYINSTALLER_ARGS=(
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     --name rebecca-server \
-    --add-data "dashboard/build:dashboard/build" \
+    --add-data "$(pyinstaller_add_data "dashboard/build" "dashboard/build")" \
     packaging/binary_launcher.py
 
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \

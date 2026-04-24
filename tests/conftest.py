@@ -9,6 +9,7 @@ TEST_DATABASE_URL = (
     or os.getenv("SQLALCHEMY_DATABASE_URL")
     or f"sqlite:///{TEST_DB_PATH}"
 )
+EXTERNAL_TEST_DATABASE = bool(os.getenv("REBECCA_TEST_DATABASE_URL"))
 
 os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 # Keep the application engine and the pytest fixture engine on the same database.
@@ -129,9 +130,11 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def db_engine():
-    Base.metadata.create_all(bind=engine)
+    if not EXTERNAL_TEST_DATABASE:
+        Base.metadata.create_all(bind=engine)
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    if not EXTERNAL_TEST_DATABASE:
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture(scope="session", autouse=True)
