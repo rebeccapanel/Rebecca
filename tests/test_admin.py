@@ -378,7 +378,7 @@ def test_activate_admin_users_reenables_disabled_regardless_of_expire_or_usage(a
         assert admin is not None
 
         user_expire_passed = DBUser(
-            username=f"activate_expired_like_disabled_{unique_id}",
+            username=f"act_exp_{unique_id}",
             admin_id=admin.id,
             status=UserStatus.disabled,
             expire=now_ts - 3600,
@@ -386,7 +386,7 @@ def test_activate_admin_users_reenables_disabled_regardless_of_expire_or_usage(a
             used_traffic=0,
         )
         user_limit_reached = DBUser(
-            username=f"activate_limited_like_disabled_{unique_id}",
+            username=f"act_limit_{unique_id}",
             admin_id=admin.id,
             status=UserStatus.disabled,
             expire=now_ts + 86400,
@@ -394,7 +394,7 @@ def test_activate_admin_users_reenables_disabled_regardless_of_expire_or_usage(a
             used_traffic=10_000,
         )
         user_on_hold = DBUser(
-            username=f"activate_on_hold_like_disabled_{unique_id}",
+            username=f"act_hold_{unique_id}",
             admin_id=admin.id,
             status=UserStatus.disabled,
             expire=None,
@@ -427,9 +427,9 @@ def test_activate_admin_users_reenables_disabled_regardless_of_expire_or_usage(a
         db.query(DBUser).filter(
             DBUser.username.in_(
                 [
-                    f"activate_expired_like_disabled_{unique_id}",
-                    f"activate_limited_like_disabled_{unique_id}",
-                    f"activate_on_hold_like_disabled_{unique_id}",
+                    f"act_exp_{unique_id}",
+                    f"act_limit_{unique_id}",
+                    f"act_hold_{unique_id}",
                 ]
             )
         ).delete(synchronize_session=False)

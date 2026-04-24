@@ -140,7 +140,7 @@ class ProxyInboundRepository:
 
     def add_default_host(self, inbound: ProxyInbound) -> None:
         host = ProxyHost(
-            remark="🚀 Rebecca ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
+            remark="Rebecca ({USERNAME}) [{PROTOCOL} - {TRANSPORT}]",
             address="{SERVER_IP}",
             inbound=inbound,
             sort=0,

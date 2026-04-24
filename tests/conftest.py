@@ -123,8 +123,15 @@ with (
     # Import models to register tables
 
 
-connect_args = {"check_same_thread": False} if TEST_DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
+engine_kwargs = {}
+if TEST_DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+elif EXTERNAL_TEST_DATABASE:
+    # Use per-statement visibility for cross-session assertions on MySQL/MariaDB.
+    engine_kwargs["isolation_level"] = "READ COMMITTED"
+    engine_kwargs["pool_pre_ping"] = True
+
+engine = create_engine(TEST_DATABASE_URL, **engine_kwargs)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
