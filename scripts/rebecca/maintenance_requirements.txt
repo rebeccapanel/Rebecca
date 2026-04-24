@@ -1,0 +1,9 @@
+typing-extensions==4.12.2
+pydantic-core==2.27.2
+pydantic==2.10.5
+fastapi==0.115.2
+uvicorn[standard]==0.27.0.post1
+PyYAML==6.0.2
+python-multipart==0.0.9
+email-validator==2.2.0
+pymysql>=1.0.0

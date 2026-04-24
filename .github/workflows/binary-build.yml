@@ -1,0 +1,112 @@
+name: Binary Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+          - arch: armv7
+            platform: linux/arm/v7
+          - arch: ppc64le
+            platform: linux/ppc64le
+          - arch: s390x
+            platform: linux/s390x
+    env:
+      DASH_DIR: ./dashboard
+      PYTHON_VERSION: "3.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ env.DASH_DIR }}/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: ${{ env.DASH_DIR }}
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: ${{ env.DASH_DIR }}
+        run: VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
+
+      - name: Create dashboard fallback page
+        working-directory: ${{ env.DASH_DIR }}
+        run: cp ./build/index.html ./build/404.html
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          docker run --rm --platform "${{ matrix.platform }}" \
+            -v "${PWD}:/work" \
+            -w /work \
+            "python:${PYTHON_VERSION}-bookworm" \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                bash \
+                build-essential \
+                curl \
+                gcc \
+                libffi-dev \
+                libssl-dev \
+                pkg-config \
+                zlib1g-dev
+              python -m pip install --upgrade pip uv
+              uv sync --frozen --no-dev
+              uv run python -m pip install pyinstaller
+              uv run bash scripts/build_binary.sh
+              rm -rf build/*.spec
+            '
+
+      - name: Package binaries
+        id: package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}-${GITHUB_SHA::7}"
+          fi
+          ASSET_NAME="rebecca-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          tar -C dist -czf "${ASSET_NAME}" rebecca-server rebecca-cli
+          echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.asset_name }}
+          path: ${{ steps.package.outputs.asset_name }}
+
+      - name: Upload release asset
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "Rebecca ${GITHUB_REF_NAME}"
+          gh release upload "${GITHUB_REF_NAME}" "${{ steps.package.outputs.asset_name }}" --clobber

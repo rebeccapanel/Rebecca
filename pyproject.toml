@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 # Discover packages but exclude dashboard and other non-package directories
 where = ["."]
-exclude = ["dashboard*", "tests*", "Rebecca-node*", "Rebecca-scripts*", "3x-ui*", "V2bX*", "sing-box_mod*", "xray-core*"]
+exclude = ["dashboard*", "tests*", "Rebecca-node*", "scripts/rebecca*", "3x-ui*", "sing-box_mod*", "xray-core*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.yaml", "*.yml", "*.txt", "*.md"]
@@ -73,9 +73,8 @@ exclude = [
     "app/db/migrations",
     "xray_api/proto",  # Auto-generated proto files
     "Rebecca-node",   # Separate node service
-    "Rebecca-scripts", # Separate scripts
+    "scripts/rebecca", # Installer and maintenance scripts
     "3x-ui",          # External dependencies
-    "V2bX",           # External dependencies
     "sing-box_mod",   # External dependencies
     "xray-core",      # External dependencies
 ]

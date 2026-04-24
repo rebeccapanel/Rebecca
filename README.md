@@ -1,9 +1,6 @@
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/xmohammad1/Rebecca-docs/raw/master/screenshots/logo-dark.png">
-      <img width="160" height="160" src="https://github.com/xmohammad1/Rebecca-docs/raw/master/screenshots/logo-light.png">
-    </picture>
+    <img width="160" height="160" src="./dashboard/src/assets/logo.svg" alt="Rebecca logo">
   </a>
 </p>
 
@@ -23,6 +20,9 @@
   </a>
   <a href="#">
     <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
+  </a>
+  <a href="https://t.me/rebeccapanel_rebecca" target="_blank">
+    <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
   </a>
   <a href="#">
     <img src="https://img.shields.io/github/stars/rebeccapanel/Rebecca?style=social" />
@@ -63,6 +63,7 @@
 - [Documentation](#documentation)
 - [API](#api)
 - [Backup](#backup)
+- [Community](#community)
 - [Telegram Bot](#telegram-bot)
 - [Rebecca CLI](#rebecca-cli)
 - [Rebecca Node](#rebecca-node)
@@ -102,21 +103,30 @@ Rebecca is user-friendly, feature-rich and reliable. It lets you create differen
 
 # Installation guide
 
-Run the following command to install Rebecca with SQLite database:
+Run the following command to install Rebecca. The installer asks whether you want Dockerized mode or binary mode:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install
 ```
 
-Run the following command to install Rebecca with MySQL database:
+Use an explicit mode for automated installs:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode docker
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode binary
+```
+
+Binary mode installs the release artifact as a native systemd service and currently supports SQLite. Release builds publish Linux binaries for `amd64`, `arm64`, `armv7`, `ppc64le`, and `s390x`; the installer picks the matching asset automatically.
+
+Dockerized mode supports SQLite, MySQL, and MariaDB. Run the following command to install Rebecca with MySQL database:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --database mysql
 ```
 
 Run the following command to install Rebecca with MariaDB database:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --database mariadb
 ```
 
 Once the installation is complete:
@@ -339,13 +349,13 @@ Rebecca provides a REST API that enables developers to interact with its service
 It's always a good idea to back up your Rebecca files regularly to prevent data loss in case of system failures or accidental deletion. Here are the steps to back up Rebecca:
 
 1. By default, all Rebecca important files are saved in `/var/lib/rebecca` (Docker versions). Copy the entire `/var/lib/rebecca` directory to a backup location of your choice, such as an external hard drive or cloud storage.
-2. Additionally, make sure to back up your env file, which contains your configuration variables, and also your Xray config file. If you installed Rebecca using rebecca-scripts (recommended installation approach), the env and other configurations should be inside the `/opt/rebecca/` directory.
+2. Additionally, make sure to back up your env file, which contains your configuration variables, and also your Xray config file. With the standard installer, the env and other configurations are inside the `/opt/rebecca/` directory.
 
 Rebecca's backup service efficiently zips all necessary files and sends them to your specified Telegram bot. It supports SQLite, MySQL, and MariaDB databases. One of its key features is automation, allowing you to schedule backups every hour. There are no limitations concerning Telegram's upload limits for bots; if a file exceeds the limit, it will be split and sent in multiple parts. Additionally, you can initiate an immediate backup at any time.
 
 Install the Latest Version of Rebecca Command:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install-script
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install-script
 ```
 
 Setup the Backup Service:
@@ -359,6 +369,12 @@ rebecca backup
 ```
 
 By following these steps, you can ensure that you have a backup of all your Rebecca files and data, as well as your configuration variables and Xray configuration, in case you need to restore them in the future. Remember to update your backups regularly to keep them up-to-date.
+
+# Community
+
+Join the Telegram channel for project updates and community discussion:
+
+https://t.me/rebeccapanel_rebecca
 
 # Telegram Bot
 

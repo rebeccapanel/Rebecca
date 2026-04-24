@@ -11,10 +11,10 @@ mkdir -p "$XRAY_DIR"
 # Check and install Xray into persistent host-mounted storage
 if [ ! -x "$XRAY_BIN" ]; then
     echo "Persisted Xray executable not found at ${XRAY_BIN}, installing..."
-    if [ -f "/code/scripts/install_latest_xray.sh" ]; then
+    if [ -f "/code/scripts/rebecca/install_latest_xray.sh" ]; then
+        XRAY_INSTALL_DIR="$XRAY_DIR" XRAY_ASSETS_DIR="$XRAY_DIR" bash /code/scripts/rebecca/install_latest_xray.sh
+    elif [ -f "/code/scripts/install_latest_xray.sh" ]; then
         XRAY_INSTALL_DIR="$XRAY_DIR" XRAY_ASSETS_DIR="$XRAY_DIR" bash /code/scripts/install_latest_xray.sh
-    elif [ -f "/code/Rebecca-scripts/install_latest_xray.sh" ]; then
-        XRAY_INSTALL_DIR="$XRAY_DIR" XRAY_ASSETS_DIR="$XRAY_DIR" bash /code/Rebecca-scripts/install_latest_xray.sh
     else
         # Fallback: download and install directly
         ARCH=$(uname -m)

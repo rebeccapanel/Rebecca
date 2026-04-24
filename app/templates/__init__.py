@@ -1,6 +1,8 @@
 import logging
+import sys
 from datetime import datetime, UTC
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional, Union
 
 import jinja2
@@ -15,6 +17,8 @@ logger = logging.getLogger("uvicorn.error")
 @lru_cache(maxsize=8)
 def _get_env(custom_directory: Optional[str] = None) -> jinja2.Environment:
     template_directories = ["app/templates"]
+    if getattr(sys, "frozen", False):
+        template_directories.append(str(Path(getattr(sys, "_MEIPASS", ".")) / "app" / "templates"))
     if custom_directory:
         template_directories.insert(0, custom_directory)
     elif CUSTOM_TEMPLATES_DIRECTORY:
