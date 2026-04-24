@@ -8,6 +8,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _cast_bool_compat(value):
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().lower()
+    if normalized in {"", "0", "false", "no", "off", "release", "prod", "production"}:
+        return False
+    if normalized in {"1", "true", "yes", "on", "debug", "dev", "development"}:
+        return True
+
+    raise ValueError(f"Invalid truth value: {value}")
+
+
 SQLALCHEMY_DATABASE_URL = config("SQLALCHEMY_DATABASE_URL", default="sqlite:///db.sqlite3")
 SQLALCHEMY_POOL_SIZE = config("SQLALCHEMY_POOL_SIZE", cast=int, default=50)
 SQLALCHEMY_MAX_OVERFLOW = config("SQLALCHEMY_MAX_OVERFLOW", cast=int, default=100)
@@ -20,8 +33,8 @@ UVICORN_SSL_KEYFILE = config("UVICORN_SSL_KEYFILE", default=None)
 UVICORN_SSL_CA_TYPE = config("UVICORN_SSL_CA_TYPE", default="public").lower()
 DASHBOARD_PATH = config("DASHBOARD_PATH", default="/dashboard/")
 
-DEBUG = config("DEBUG", default=False, cast=bool)
-DOCS = config("DOCS", default=False, cast=bool)
+DEBUG = config("DEBUG", default=False, cast=_cast_bool_compat)
+DOCS = config("DOCS", default=False, cast=_cast_bool_compat)
 
 ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
 
@@ -99,23 +112,23 @@ LOGIN_NOTIFY_WHITE_LIST = [
     ip.strip() for ip in config("LOGIN_NOTIFY_WHITE_LIST", default="", cast=str).split(",") if ip.strip()
 ]
 
-USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_V2RAYNG = config("USE_CUSTOM_JSON_FOR_V2RAYNG", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_STREISAND = config("USE_CUSTOM_JSON_FOR_STREISAND", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_HAPP = config("USE_CUSTOM_JSON_FOR_HAPP", default=False, cast=bool)
+USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_V2RAYNG = config("USE_CUSTOM_JSON_FOR_V2RAYNG", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_STREISAND = config("USE_CUSTOM_JSON_FOR_STREISAND", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_HAPP = config("USE_CUSTOM_JSON_FOR_HAPP", default=False, cast=_cast_bool_compat)
 
 ACTIVE_STATUS_TEXT = config("ACTIVE_STATUS_TEXT", default="Active")
 
 # Redis configuration
-REDIS_ENABLED = config("REDIS_ENABLED", cast=bool, default=False)
+REDIS_ENABLED = config("REDIS_ENABLED", cast=_cast_bool_compat, default=False)
 REDIS_HOST = config("REDIS_HOST", default="127.0.0.1")
 REDIS_PORT = config("REDIS_PORT", cast=int, default=6379)
 REDIS_DB = config("REDIS_DB", cast=int, default=0)
 REDIS_PASSWORD = config("REDIS_PASSWORD", default=None)
-REDIS_AUTO_START = config("REDIS_AUTO_START", cast=bool, default=False)
-_redis_enabled = config("REDIS_ENABLED", cast=bool, default=False)
-REDIS_USERS_CACHE_ENABLED = config("REDIS_USERS_CACHE_ENABLED", cast=bool, default=_redis_enabled)
+REDIS_AUTO_START = config("REDIS_AUTO_START", cast=_cast_bool_compat, default=False)
+_redis_enabled = config("REDIS_ENABLED", cast=_cast_bool_compat, default=False)
+REDIS_USERS_CACHE_ENABLED = config("REDIS_USERS_CACHE_ENABLED", cast=_cast_bool_compat, default=_redis_enabled)
 REDIS_SYNC_INTERVAL = config("REDIS_SYNC_INTERVAL", cast=int, default=180)  # 3 minutes default
 EXPIRED_STATUS_TEXT = config("EXPIRED_STATUS_TEXT", default="Expired")
 LIMITED_STATUS_TEXT = config("LIMITED_STATUS_TEXT", default="Limited")
@@ -123,7 +136,9 @@ DISABLED_STATUS_TEXT = config("DISABLED_STATUS_TEXT", default="Disabled")
 ONHOLD_STATUS_TEXT = config("ONHOLD_STATUS_TEXT", default="On-Hold")
 
 USERS_AUTODELETE_DAYS = config("USERS_AUTODELETE_DAYS", default=-1, cast=int)
-USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config("USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=bool)
+USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config(
+    "USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=_cast_bool_compat
+)
 
 
 # USERNAME: PASSWORD
@@ -148,7 +163,7 @@ RECURRENT_NOTIFICATIONS_TIMEOUT = config("RECURRENT_NOTIFICATIONS_TIMEOUT", defa
 # how many times to try after ok response not recevied after sending a notifications
 NUMBER_OF_RECURRENT_NOTIFICATIONS = config("NUMBER_OF_RECURRENT_NOTIFICATIONS", default=3, cast=int)
 
-DISABLE_RECORDING_NODE_USAGE = config("DISABLE_RECORDING_NODE_USAGE", cast=bool, default=False)
+DISABLE_RECORDING_NODE_USAGE = config("DISABLE_RECORDING_NODE_USAGE", cast=_cast_bool_compat, default=False)
 
 # headers: profile-update-interval, support-url, profile-title (DB-driven; keep static defaults)
 SUB_UPDATE_INTERVAL = "12"

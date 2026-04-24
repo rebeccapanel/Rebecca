@@ -31,16 +31,18 @@ COMMON_PYINSTALLER_ARGS=(
     --collect-all sqlalchemy
     --collect-all starlette
     --collect-all uvicorn
+    --hidden-import dashboard
+    --hidden-import main
     --hidden-import pymysql
 )
 
-python -m PyInstaller \
+env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     --name rebecca-server \
     --add-data "dashboard/build:dashboard/build" \
     packaging/binary_launcher.py
 
-python -m PyInstaller \
+env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     --name rebecca-cli \
     rebecca-cli.py

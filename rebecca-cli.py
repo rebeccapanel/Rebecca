@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 import os  # noqa
-import readline  # noqa
 import sys  # noqa
 
 sys.path.insert(0, os.getcwd())  # noqa
+
+try:
+    import readline  # noqa: F401
+except ModuleNotFoundError:
+    readline = None  # noqa: F841
 
 import typer
 from typer._completion_shared import Shells

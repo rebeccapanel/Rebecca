@@ -4,13 +4,15 @@ import tempfile
 import uuid
 
 TEST_DB_PATH = Path(tempfile.gettempdir()) / f"rebecca_test_{uuid.uuid4().hex}.sqlite"
-TEST_DATABASE_URL = os.getenv("REBECCA_TEST_DATABASE_URL", f"sqlite:///{TEST_DB_PATH}")
+TEST_DATABASE_URL = (
+    os.getenv("REBECCA_TEST_DATABASE_URL")
+    or os.getenv("SQLALCHEMY_DATABASE_URL")
+    or f"sqlite:///{TEST_DB_PATH}"
+)
 
 os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
-if os.getenv("REBECCA_TEST_DATABASE_URL"):
-    os.environ["SQLALCHEMY_DATABASE_URL"] = TEST_DATABASE_URL
-else:
-    os.environ.setdefault("SQLALCHEMY_DATABASE_URL", TEST_DATABASE_URL)
+# Keep the application engine and the pytest fixture engine on the same database.
+os.environ["SQLALCHEMY_DATABASE_URL"] = TEST_DATABASE_URL
 
 import sys
 import warnings
