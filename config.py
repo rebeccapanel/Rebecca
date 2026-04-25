@@ -1,11 +1,60 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 from decouple import config
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+
+def _iter_env_candidates():
+    explicit_env_file = (os.getenv("REBECCA_ENV_FILE") or "").strip()
+    if explicit_env_file:
+        yield Path(explicit_env_file).expanduser()
+
+    argv0 = (sys.argv[0] or "").strip()
+    if argv0:
+        script_path = Path(argv0).expanduser()
+        if script_path.exists():
+            resolved_script = script_path.resolve()
+            yield resolved_script.parent / ".env"
+            yield resolved_script.parent.parent / ".env"
+
+    if getattr(sys, "frozen", False):
+        executable_path = Path(sys.executable).resolve()
+        yield executable_path.parent / ".env"
+        yield executable_path.parent.parent / ".env"
+
+    yield Path.cwd() / ".env"
+    yield Path(__file__).resolve().with_name(".env")
+
+    discovered = find_dotenv(usecwd=True)
+    if discovered:
+        yield Path(discovered)
+
+
+def _load_environment_file() -> Path | None:
+    seen_paths: set[str] = set()
+    for candidate in _iter_env_candidates():
+        candidate = candidate.expanduser()
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            resolved_candidate = candidate
+
+        normalized = str(resolved_candidate)
+        if normalized in seen_paths:
+            continue
+        seen_paths.add(normalized)
+
+        if resolved_candidate.is_file():
+            load_dotenv(dotenv_path=resolved_candidate, override=False)
+            return resolved_candidate
+
+    return None
+
+
+LOADED_ENV_FILE = _load_environment_file()
 
 
 def _cast_bool_compat(value):

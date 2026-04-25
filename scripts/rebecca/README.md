@@ -4,7 +4,7 @@ Installer and maintenance scripts for Rebecca, Rebecca Node, and migration helpe
 
 ## Install Rebecca
 
-Default installation asks for the installation mode:
+Default installation asks for the installation mode, then asks whether you want the `latest` or `dev` channel:
 
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install
@@ -19,6 +19,13 @@ sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/
 
 Binary mode installs the published Linux release asset for the current machine. Release assets are built for `amd64`, `arm64`, `armv7`, `ppc64le`, and `s390x`.
 
+Install the dev channel explicitly:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode docker --dev
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode binary --dev
+```
+
 Dockerized mode supports SQLite, MySQL, and MariaDB:
 
 ```bash
@@ -32,10 +39,11 @@ Install a specific release:
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --version v0.5.2
 ```
 
-Install the dev Docker image:
+Update to the dev channel or a specific release:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode docker --dev
+sudo rebecca update --dev
+sudo rebecca update --version v0.5.2
 ```
 
 Update or change Xray-core:

@@ -103,7 +103,7 @@ Rebecca is user-friendly, feature-rich and reliable. It lets you create differen
 
 # Installation guide
 
-Run the following command to install Rebecca. The installer asks whether you want Dockerized mode or binary mode:
+Run the following command to install Rebecca. The installer first asks whether you want Dockerized mode or binary mode, then asks whether you want the `latest` or `dev` channel:
 
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install
@@ -116,7 +116,7 @@ sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --mode binary
 ```
 
-Binary mode installs the release artifact as a native systemd service and currently supports SQLite. Release builds publish Linux binaries for `amd64`, `arm64`, `armv7`, `ppc64le`, and `s390x`; the installer picks the matching asset automatically.
+Binary mode installs the release artifact as a native systemd service and currently supports SQLite. Release builds publish Linux binaries for `amd64`, `arm64`, `armv7`, `ppc64le`, and `s390x`; the installer picks the matching asset automatically. The `--dev` channel in binary mode downloads the latest successful binary artifact from the `dev` branch workflow.
 
 Dockerized mode supports SQLite, MySQL, and MariaDB. Run the following command to install Rebecca with MySQL database:
 

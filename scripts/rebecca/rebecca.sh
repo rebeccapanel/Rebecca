@@ -25,10 +25,15 @@ REBECCA_REF="${REBECCA_REF:-master}"
 REBECCA_RAW_BASE="${REBECCA_RAW_BASE:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}}"
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-${REBECCA_RAW_BASE}/scripts/rebecca}"
 REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
+REBECCA_BINARY_DEV_BRANCH="${REBECCA_BINARY_DEV_BRANCH:-dev}"
+REBECCA_BINARY_WORKFLOW_NAME="${REBECCA_BINARY_WORKFLOW_NAME:-binary-build}"
 INSTALL_MODE_FILE="$APP_DIR/.install-mode"
 BINARY_BIN_DIR="$APP_DIR/bin"
 BINARY_SERVER="$BINARY_BIN_DIR/rebecca-server"
 BINARY_CLI="$BINARY_BIN_DIR/rebecca-cli"
+BINARY_CLI_LAUNCHER="/usr/local/bin/rebecca-cli"
+BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
+BINARY_ARTIFACT_PREFIX="${BINARY_ARTIFACT_PREFIX:-rebecca-binaries}"
 BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
 SERVICE_DIR="/usr/local/share/rebecca-maintenance"
 SERVICE_FILE="$SERVICE_DIR/main.py"
@@ -280,6 +285,43 @@ select_install_mode() {
     esac
 }
 
+select_rebecca_version() {
+    local requested_version="${1:-}"
+    local install_mode="${2:-docker}"
+
+    if [ -n "$requested_version" ]; then
+        echo "$requested_version"
+        return
+    fi
+
+    if [ ! -t 0 ]; then
+        echo "latest"
+        return
+    fi
+
+    colorized_echo cyan "Select Rebecca release channel for ${install_mode} mode:" >&2
+    colorized_echo yellow "  1) latest (stable release)" >&2
+    if [ "$install_mode" = "binary" ]; then
+        colorized_echo yellow "  2) dev (latest successful binary build from branch ${REBECCA_BINARY_DEV_BRANCH})" >&2
+    else
+        colorized_echo yellow "  2) dev (latest Docker image from branch ${REBECCA_BINARY_DEV_BRANCH})" >&2
+    fi
+    read -r -p "Release channel [1]: " rebecca_version_answer
+
+    case "$rebecca_version_answer" in
+        2|dev|Dev)
+            echo "dev"
+            ;;
+        ""|1|latest|Latest|stable|Stable)
+            echo "latest"
+            ;;
+        *)
+            colorized_echo red "Invalid release channel selection."
+            exit 1
+            ;;
+    esac
+}
+
 install_rebecca_script() {
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/rebecca.sh"
     colorized_echo blue "Installing rebecca script"
@@ -382,6 +424,10 @@ Environment=REBECCA_APP_NAME=$APP_NAME
 Environment=REBECCA_APP_DIR=$APP_DIR
 Environment=REBECCA_DATA_DIR=$DATA_DIR
 Environment=REBECCA_ENV_FILE=$ENV_FILE
+Environment=REBECCA_INSTALL_MODE_FILE=$INSTALL_MODE_FILE
+Environment=REBECCA_BINARY_SERVER=$BINARY_SERVER
+Environment=REBECCA_BINARY_CLI=$BINARY_CLI
+Environment=REBECCA_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
 Environment=REBECCA_COMPOSE_FILE=$COMPOSE_FILE
 Environment=REBECCA_BACKUP_DIR=$APP_DIR/backup
 Environment=REBECCA_SERVICE_NAME=$APP_NAME
@@ -2037,12 +2083,17 @@ detect_binary_arch() {
     esac
 }
 
-get_binary_release_asset_url() {
+get_binary_release_asset_metadata() {
     local rebecca_version="$1"
     local binary_arch="$2"
     local release_api
     local release_payload
-    local asset_url
+    local resolved_tag
+    local server_asset_url
+    local cli_asset_url
+    local legacy_asset_url
+    local server_asset_name
+    local cli_asset_name
 
     if [ "$rebecca_version" = "latest" ]; then
         release_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/releases/latest"
@@ -2055,19 +2106,132 @@ get_binary_release_asset_url() {
         exit 1
     }
 
-    asset_url=$(echo "$release_payload" | jq -r --arg arch "linux-${binary_arch}" '
+    resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
+    server_asset_name="rebecca-server-${resolved_tag}-linux-${binary_arch}"
+    cli_asset_name="rebecca-cli-${resolved_tag}-linux-${binary_arch}"
+
+    server_asset_url=$(echo "$release_payload" | jq -r --arg name "$server_asset_name" '
+        .assets[]?
+        | select(.name == $name)
+        | .browser_download_url
+    ' | head -n 1)
+
+    cli_asset_url=$(echo "$release_payload" | jq -r --arg name "$cli_asset_name" '
+        .assets[]?
+        | select(.name == $name)
+        | .browser_download_url
+    ' | head -n 1)
+
+    if [ -n "$server_asset_url" ] && [ "$server_asset_url" != "null" ] && [ -n "$cli_asset_url" ] && [ "$cli_asset_url" != "null" ]; then
+        printf 'split|%s|%s|%s\n' "${resolved_tag:-$rebecca_version}" "$server_asset_url" "$cli_asset_url"
+        return
+    fi
+
+    legacy_asset_url=$(echo "$release_payload" | jq -r --arg arch "linux-${binary_arch}" '
         .assets[]?
         | select(.name | test($arch + "\\.tar\\.gz$"))
         | .browser_download_url
     ' | head -n 1)
 
-    if [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
-        colorized_echo red "No binary release asset found for linux-${binary_arch}." >&2
+    if [ -z "$legacy_asset_url" ] || [ "$legacy_asset_url" = "null" ]; then
+        colorized_echo red "No binary release assets found for linux-${binary_arch}." >&2
         colorized_echo yellow "Use Dockerized install or publish a binary release for this architecture." >&2
         exit 1
     fi
 
-    echo "$asset_url"
+    printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$legacy_asset_url"
+}
+
+get_binary_dev_artifact_metadata() {
+    local binary_arch="$1"
+    local workflow_runs_api
+    local workflow_runs_payload
+    local latest_run_json
+    local run_id
+    local head_sha
+    local artifact_name
+    local artifacts_api
+    local artifacts_payload
+    local artifact_url
+
+    workflow_runs_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/actions/workflows/${REBECCA_BINARY_WORKFLOW_NAME}.yml/runs?branch=${REBECCA_BINARY_DEV_BRANCH}&status=success&event=push&per_page=20"
+    workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
+        colorized_echo red "Unable to read binary dev workflow metadata: $workflow_runs_api" >&2
+        exit 1
+    }
+
+    latest_run_json=$(echo "$workflow_runs_payload" | jq -c '
+        .workflow_runs[]?
+        | select(.head_branch == "'"${REBECCA_BINARY_DEV_BRANCH}"'" and .conclusion == "success")
+    ' | head -n 1)
+
+    if [ -z "$latest_run_json" ]; then
+        colorized_echo red "No successful binary dev workflow run was found on branch ${REBECCA_BINARY_DEV_BRANCH}." >&2
+        exit 1
+    fi
+
+    run_id=$(echo "$latest_run_json" | jq -r '.id // empty')
+    head_sha=$(echo "$latest_run_json" | jq -r '.head_sha // empty')
+    artifacts_api="https://api.github.com/repos/${REBECCA_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+    artifacts_payload=$(curl -fsSL "$artifacts_api") || {
+        colorized_echo red "Unable to read binary dev workflow artifacts: $artifacts_api" >&2
+        exit 1
+    }
+
+    artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
+        [
+            .artifacts[]?
+            | select((.expired | not) and (.name == $preferred or (.name | startswith("rebecca")) and (.name | contains($arch))))
+        ]
+        | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
+        | .[0].name // empty
+    ')
+
+    if [ -z "$artifact_name" ]; then
+        colorized_echo red "No usable binary dev artifact was found for workflow run ${run_id}." >&2
+        exit 1
+    fi
+
+    artifact_url="https://nightly.link/${REBECCA_RELEASE_REPO}/workflows/${REBECCA_BINARY_WORKFLOW_NAME}/${REBECCA_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+    printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+}
+
+install_binary_cli_launcher() {
+    cat > "$BINARY_CLI_LAUNCHER" <<EOF
+#!/usr/bin/env bash
+set -e
+export REBECCA_ENV_FILE="$ENV_FILE"
+export REBECCA_APP_DIR="$APP_DIR"
+export REBECCA_DATA_DIR="$DATA_DIR"
+exec "$BINARY_CLI" "\$@"
+EOF
+
+    chmod 755 "$BINARY_CLI_LAUNCHER"
+}
+
+write_binary_release_metadata() {
+    local resolved_version="$1"
+    local binary_arch="$2"
+    local asset_url="$3"
+
+    jq -n \
+        --arg image "rebecca-server (binary)" \
+        --arg tag "$resolved_version" \
+        --arg asset_url "$asset_url" \
+        --arg arch "linux-${binary_arch}" \
+        --arg server_binary "$BINARY_SERVER" \
+        --arg cli_binary "$BINARY_CLI" \
+        --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{
+            install_mode: "binary",
+            image: $image,
+            tag: $tag,
+            asset_url: $asset_url,
+            arch: $arch,
+            server_binary: $server_binary,
+            cli_binary: $cli_binary,
+            installed_at: $installed_at
+        }' > "$BINARY_METADATA_FILE"
 }
 
 create_binary_service() {
@@ -2081,6 +2245,10 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=$APP_DIR
+Environment=REBECCA_APP_DIR=$APP_DIR
+Environment=REBECCA_ENV_FILE=$ENV_FILE
+Environment=REBECCA_INSTALL_MODE=binary
+Environment=REBECCA_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
 Environment=REBECCA_DATA_DIR=$DATA_DIR
 Environment=XRAY_EXECUTABLE_PATH=$DATA_DIR/xray-core/xray
 Environment=XRAY_ASSETS_PATH=$DATA_DIR/xray-core
@@ -2099,19 +2267,17 @@ install_binary_rebecca() {
     local rebecca_version="$1"
     local database_type="$2"
     local binary_arch
-    local asset_url
+    local binary_source_type
+    local resolved_version
+    local server_asset_url
+    local cli_asset_url
+    local artifact_url
     local tmp_dir
-    local package_path
+    local package_path=""
 
     if [ "$database_type" != "sqlite" ]; then
         colorized_echo red "Binary install currently supports SQLite only."
         colorized_echo yellow "Use Dockerized install for MySQL or MariaDB."
-        exit 1
-    fi
-
-    if [ "$rebecca_version" = "dev" ]; then
-        colorized_echo red "Binary install requires a published release asset."
-        colorized_echo yellow "Use Dockerized install for --dev."
         exit 1
     fi
 
@@ -2123,18 +2289,38 @@ install_binary_rebecca() {
     done
 
     binary_arch=$(detect_binary_arch)
-    asset_url=$(get_binary_release_asset_url "$rebecca_version" "$binary_arch")
     tmp_dir=$(mktemp -d)
-    package_path="$tmp_dir/rebecca-binary.tar.gz"
 
-    colorized_echo blue "Downloading Rebecca binary package"
-    curl -fL "$asset_url" -o "$package_path"
+    if [ "$rebecca_version" = "dev" ]; then
+        IFS='|' read -r resolved_version artifact_url < <(get_binary_dev_artifact_metadata "$binary_arch")
+        package_path="$tmp_dir/rebecca-binaries.zip"
+        colorized_echo blue "Downloading Rebecca binary dev artifact"
+        curl -fL "$artifact_url" -o "$package_path"
+        unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
+    else
+        IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$rebecca_version" "$binary_arch")
+        if [ "$binary_source_type" = "split" ]; then
+            colorized_echo blue "Downloading Rebecca binary release assets"
+            curl -fL "$server_asset_url" -o "$tmp_dir/rebecca-server"
+            curl -fL "$cli_asset_url" -o "$tmp_dir/rebecca-cli"
+        else
+            package_path="$tmp_dir/rebecca-binary.tar.gz"
+            colorized_echo blue "Downloading Rebecca binary release package"
+            curl -fL "$server_asset_url" -o "$package_path"
+            tar -xzf "$package_path" -C "$tmp_dir"
+        fi
+    fi
+
+    if [ ! -f "$tmp_dir/rebecca-server" ] || [ ! -f "$tmp_dir/rebecca-cli" ]; then
+        colorized_echo red "Downloaded binary package is incomplete; rebecca-server or rebecca-cli is missing." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
 
     mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR/scripts"
-    tar -xzf "$package_path" -C "$tmp_dir"
     install -m 755 "$tmp_dir/rebecca-server" "$BINARY_SERVER"
     install -m 755 "$tmp_dir/rebecca-cli" "$BINARY_CLI"
-    ln -sf "$BINARY_CLI" /usr/local/bin/rebecca-cli
+    install_binary_cli_launcher
 
     if [ ! -f "$ENV_FILE" ]; then
         colorized_echo blue "Fetching .env file"
@@ -2163,6 +2349,7 @@ install_binary_rebecca() {
         REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
     fi
 
+    write_binary_release_metadata "${resolved_version:-$rebecca_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
     echo "binary" > "$INSTALL_MODE_FILE"
     create_binary_service
     rm -rf "$tmp_dir"
@@ -2284,6 +2471,10 @@ install_command() {
                     colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
                     exit 1
                 fi
+                if [ -z "${2:-}" ]; then
+                    colorized_echo red "Error: --version requires a value."
+                    exit 1
+                fi
                 rebecca_version="$2"
                 rebecca_version_set="true"
                 shift 2
@@ -2317,6 +2508,9 @@ install_command() {
         fi
     fi
     install_mode=$(select_install_mode "$install_mode")
+    if [[ "$rebecca_version_set" != "true" ]]; then
+        rebecca_version=$(select_rebecca_version "" "$install_mode")
+    fi
     detect_os
     if ! command -v jq >/dev/null 2>&1; then
         install_package jq
@@ -2488,7 +2682,7 @@ show_rebecca_logs() {
 
 rebecca_cli() {
     if is_binary_install; then
-        CLI_PROG_NAME="rebecca cli" "$BINARY_CLI" "$@"
+        REBECCA_ENV_FILE="$ENV_FILE" REBECCA_APP_DIR="$APP_DIR" REBECCA_DATA_DIR="$DATA_DIR" CLI_PROG_NAME="rebecca cli" "$BINARY_CLI" "$@"
         return
     fi
 
@@ -2573,6 +2767,9 @@ uninstall_rebecca() {
         systemctl disable --now "$APP_NAME.service" >/dev/null 2>&1 || true
         rm -f "$BINARY_SERVICE_UNIT"
         systemctl daemon-reload
+    fi
+    if [ -f "$BINARY_CLI_LAUNCHER" ] || [ -L "$BINARY_CLI_LAUNCHER" ]; then
+        rm -f "$BINARY_CLI_LAUNCHER"
     fi
     if [ -d "$APP_DIR" ]; then
         colorized_echo yellow "Removing directory: $APP_DIR"
@@ -2779,6 +2976,44 @@ up_command() {
 
 update_command() {
     check_running_as_root
+    local rebecca_version="latest"
+    local rebecca_version_set="false"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dev)
+                if [[ "$rebecca_version_set" == "true" ]]; then
+                    colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
+                    exit 1
+                fi
+                rebecca_version="dev"
+                rebecca_version_set="true"
+                shift
+                ;;
+            --version)
+                if [[ "$rebecca_version_set" == "true" ]]; then
+                    colorized_echo red "Error: Cannot use --dev and --version options simultaneously."
+                    exit 1
+                fi
+                if [ -z "${2:-}" ]; then
+                    colorized_echo red "Error: --version requires a value."
+                    exit 1
+                fi
+                rebecca_version="$2"
+                rebecca_version_set="true"
+                shift 2
+                ;;
+            -h|--help)
+                colorized_echo red "Usage: rebecca update [--dev | --version vX.Y.Z]"
+                exit 0
+                ;;
+            *)
+                colorized_echo red "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
     # Check if rebecca is installed
     if ! is_rebecca_installed; then
         colorized_echo red "Rebecca's not installed!"
@@ -2791,8 +3026,8 @@ update_command() {
     update_rebecca_script
     update_rebecca_service
 
-    colorized_echo blue "Pulling latest version"
-    update_rebecca
+    colorized_echo blue "Pulling requested version: $rebecca_version"
+    update_rebecca "$rebecca_version"
     
     colorized_echo blue "Restarting Rebecca's services"
     down_rebecca
@@ -2899,12 +3134,29 @@ update_rebecca_service() {
     colorized_echo green "Rebecca maintenance service updated and restarted"
 }
 
+set_compose_rebecca_image_tag() {
+    local rebecca_version="$1"
+
+    if ! command -v yq >/dev/null 2>&1; then
+        install_yq
+    fi
+
+    if [ "$rebecca_version" = "latest" ]; then
+        yq -i '.services.rebecca.image = "rebeccapanel/rebecca:latest"' "$COMPOSE_FILE"
+    else
+        yq -i ".services.rebecca.image = \"rebeccapanel/rebecca:${rebecca_version}\"" "$COMPOSE_FILE"
+    fi
+}
+
 update_rebecca() {
+    local rebecca_version="${1:-latest}"
+
     if is_binary_install; then
-        install_binary_rebecca "latest" "sqlite"
+        install_binary_rebecca "$rebecca_version" "sqlite"
         return
     fi
 
+    set_compose_rebecca_image_tag "$rebecca_version"
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
 }
 
@@ -3080,7 +3332,7 @@ usage() {
     colorized_echo yellow "  service-status  $(tput sgr0)- Show maintenance service status"
     colorized_echo yellow "  service-logs    $(tput sgr0)- Show maintenance service logs"
     colorized_echo yellow "  service-uninstall $(tput sgr0)- Uninstall maintenance service"
-    colorized_echo yellow "  update          $(tput sgr0)- Update to latest version"
+    colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific release"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca"
     colorized_echo yellow "  script-install  $(tput sgr0)- Install Rebecca script"
     colorized_echo yellow "  script-update   $(tput sgr0)- Update Rebecca CLI script"
@@ -3104,7 +3356,7 @@ usage() {
     colorized_echo cyan "Install options:"
     colorized_echo magenta "  --mode docker|binary"
     colorized_echo magenta "  --database sqlite|mysql|mariadb (Dockerized mode)"
-    colorized_echo magenta "  --dev or --version vX.Y.Z"
+    colorized_echo magenta "  --dev or --version vX.Y.Z (install/update)"
     echo
     current_version=$(get_current_xray_core_version)
     colorized_echo cyan "Current Xray-core version: $current_version"

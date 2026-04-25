@@ -1,11 +1,12 @@
 name: Telegram Notify on CI / PR / Release
 
 on:
-  # Trigger when Build-dev or Build workflows complete (dev or release)
+  # Trigger when the main CI workflows complete (dev, release, and binary builds)
   workflow_run:
     workflows:
       - Build-dev
       - Build
+      - Binary Build
     types:
       - completed
 
@@ -40,6 +41,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             # ===================== CI SUMMARY AFTER BUILD =====================
             WF_NAME="${{ github.event.workflow_run.name }}"
+            WF_EVENT="${{ github.event.workflow_run.event }}"
             BRANCH_RAW="${{ github.event.workflow_run.head_branch }}"
             BRANCH=$(html_escape "$BRANCH_RAW")
             ACTOR=$(html_escape "${{ github.event.workflow_run.actor.login }}")
@@ -58,6 +60,12 @@ jobs:
 
             if [[ "$WF_NAME" == "Build-dev" ]]; then
               HEADER="$ICON <b>dev build pipeline completed for <code>$BRANCH</code></b>"
+            elif [[ "$WF_NAME" == "Binary Build" ]]; then
+              if [[ "$WF_EVENT" == "release" ]]; then
+                HEADER="$ICON <b>binary build completed for release</b>"
+              else
+                HEADER="$ICON <b>binary build completed for <code>$BRANCH</code></b>"
+              fi
             else
               HEADER="$ICON <b>release build pipeline completed</b>"
             fi
@@ -88,6 +96,7 @@ jobs:
               | map(select(
                   .name == "Build-dev" or
                   .name == "Build" or
+                  .name == "Binary Build" or
                   .name == "Test Database Migrations" or
                   .name == "Code Format Checker" or
                   .name == "API CodeQL" or

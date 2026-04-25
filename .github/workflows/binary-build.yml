@@ -52,9 +52,13 @@ jobs:
             UPLOAD_RELEASE="false"
           fi
 
-          ASSET_NAME="rebecca-${VERSION}-linux-amd64.tar.gz"
+          ARTIFACT_NAME="rebecca-binaries-linux-amd64"
+          SERVER_ASSET_NAME="rebecca-server-${VERSION}-linux-amd64"
+          CLI_ASSET_NAME="rebecca-cli-${VERSION}-linux-amd64"
 
-          echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "server_asset_name=${SERVER_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "cli_asset_name=${CLI_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "upload_release=${UPLOAD_RELEASE}" >> "${GITHUB_OUTPUT}"
 
@@ -111,19 +115,13 @@ jobs:
           uv run bash scripts/build_binary.sh
           ls -lah dist
 
-      - name: Package binaries
-        id: package
-        shell: bash
-        run: |
-          ASSET_NAME="${{ steps.meta.outputs.asset_name }}"
-          tar -C dist -czf "${ASSET_NAME}" rebecca-server rebecca-cli
-          echo "asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package.outputs.asset_name }}
-          path: ${{ steps.package.outputs.asset_name }}
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: |
+            dist/rebecca-server
+            dist/rebecca-cli
 
       - name: Upload release asset
         if: steps.meta.outputs.upload_release == 'true'
@@ -132,4 +130,7 @@ jobs:
         run: |
           gh release view "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1 || \
             gh release create "${{ steps.meta.outputs.release_tag }}" --title "${{ steps.meta.outputs.release_tag }}" --notes "Rebecca ${{ steps.meta.outputs.release_tag }}"
-          gh release upload "${{ steps.meta.outputs.release_tag }}" "${{ steps.package.outputs.asset_name }}" --clobber
+          gh release upload "${{ steps.meta.outputs.release_tag }}" \
+            "dist/rebecca-server#${{ steps.meta.outputs.server_asset_name }}" \
+            "dist/rebecca-cli#${{ steps.meta.outputs.cli_asset_name }}" \
+            --clobber

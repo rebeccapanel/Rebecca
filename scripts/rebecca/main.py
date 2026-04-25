@@ -72,6 +72,8 @@ class Settings:
         self.data_dir = Path(
             os.getenv("REBECCA_DATA_DIR", f"/var/lib/{self.app_name}")
         ).resolve()
+        self.install_mode_file = Path(os.getenv("REBECCA_INSTALL_MODE_FILE", self.app_dir / ".install-mode"))
+        self.install_mode = self._resolve_install_mode()
 
         self.env_file = Path(os.getenv("REBECCA_ENV_FILE", self.app_dir / ".env"))
         self.compose_file = Path(
@@ -79,6 +81,11 @@ class Settings:
         )
         self.compose_project = os.getenv("REBECCA_COMPOSE_PROJECT", self.app_name)
         self.service_name = os.getenv("REBECCA_SERVICE_NAME", self.app_name)
+        self.binary_server = Path(os.getenv("REBECCA_BINARY_SERVER", self.app_dir / "bin" / "rebecca-server")).resolve()
+        self.binary_cli = Path(os.getenv("REBECCA_BINARY_CLI", self.app_dir / "bin" / "rebecca-cli")).resolve()
+        self.binary_metadata_file = Path(
+            os.getenv("REBECCA_BINARY_METADATA_FILE", self.app_dir / ".binary-release.json")
+        ).resolve()
 
         self.node_app_dir = Path(os.getenv("REBECCA_NODE_APP_DIR", "/opt/rebecca-node")).resolve()
         self.node_compose_file = Path(
@@ -87,7 +94,22 @@ class Settings:
         self.node_service_name = os.getenv("REBECCA_NODE_SERVICE_NAME", "rebecca-node")
 
         self.rebecca_cli = self._resolve_rebecca_cli()
-        self.compose_binary = self._resolve_compose_binary()
+        self.compose_binary: Optional[List[str]] = None
+
+    def _resolve_install_mode(self) -> str:
+        requested_mode = (os.getenv("REBECCA_INSTALL_MODE") or "").strip().lower()
+        if requested_mode in {"binary", "docker"}:
+            return requested_mode
+
+        if self.install_mode_file.exists():
+            try:
+                file_mode = self.install_mode_file.read_text(encoding="utf-8").strip().lower()
+            except OSError:
+                file_mode = ""
+            if file_mode in {"binary", "docker"}:
+                return file_mode
+
+        return "docker"
 
     @staticmethod
     def _resolve_rebecca_cli() -> Path:
@@ -116,6 +138,8 @@ class Settings:
         raise RuntimeError("docker compose is not installed or not in PATH")
 
     def compose_cmd(self, *args: str) -> List[str]:
+        if self.compose_binary is None:
+            self.compose_binary = self._resolve_compose_binary()
         return (
             self.compose_binary
             + ["-f", str(self.compose_file), "-p", self.compose_project]
@@ -347,6 +371,35 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
     return env_values
 
 
+def load_json_file(path: Path) -> Dict[str, str]:
+    if not path.exists():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    if isinstance(data, dict):
+        return {str(key): str(value) for key, value in data.items() if isinstance(value, (str, int, float, bool))}
+    return {}
+
+
+def get_binary_panel_info() -> Dict[str, Optional[str]]:
+    metadata = load_json_file(settings.binary_metadata_file)
+    image = (metadata.get("image") or "").strip()
+    tag = (metadata.get("tag") or "").strip()
+
+    if not image:
+        image = "rebecca-server (binary)" if settings.binary_server.exists() else "rebecca (binary)"
+
+    payload: Dict[str, Optional[str]] = {"image": image, "tag": tag or None}
+    asset_url = (metadata.get("asset_url") or "").strip()
+    if asset_url:
+        payload["asset_url"] = asset_url
+    return payload
+
+
 def run_subprocess(
     cmd: List[str],
     *,
@@ -488,6 +541,7 @@ async def health():
         "app_dir": str(settings.app_dir),
         "data_dir": str(settings.data_dir),
         "rebecca_cli": str(settings.rebecca_cli),
+        "install_mode": settings.install_mode,
     }
 
 
@@ -529,6 +583,8 @@ async def ssl_renew(request: Optional[SSLRenewRequest] = None):
 
 @app.get("/version/panel")
 async def panel_version():
+    if settings.install_mode == "binary":
+        return get_binary_panel_info()
     return get_service_image_info(settings.compose_file, settings.service_name)
 
 
