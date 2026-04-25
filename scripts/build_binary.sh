@@ -10,7 +10,13 @@ if [ ! -f "dashboard/build/index.html" ]; then
 fi
 
 if ! python -c "import PyInstaller" >/dev/null 2>&1; then
-    python -m pip install --disable-pip-version-check pyinstaller
+    if python -m pip --version >/dev/null 2>&1; then
+        python -m pip install --disable-pip-version-check pyinstaller
+    else
+        echo "PyInstaller is missing from the active environment." >&2
+        echo "Sync the locked build dependencies first (for example: uv sync --group build)." >&2
+        exit 1
+    fi
 fi
 
 if [[ "${OS:-}" == "Windows_NT" ]]; then

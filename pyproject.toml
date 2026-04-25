@@ -57,6 +57,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+build = [
+    "pyinstaller==6.20.0",
+]
 dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.26.0",
