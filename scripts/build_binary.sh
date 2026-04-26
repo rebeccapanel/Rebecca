@@ -29,6 +29,15 @@ pyinstaller_add_data() {
     printf "%s%s%s" "$1" "$PYINSTALLER_DATA_SEP" "$2"
 }
 
+XRAY_PROTO_HIDDEN_IMPORT_ARGS=()
+while IFS= read -r proto_module; do
+    XRAY_PROTO_HIDDEN_IMPORT_ARGS+=(--hidden-import "$proto_module")
+done < <(
+    find xray_api/proto -type f -name "*.py" -print |
+        sed 's#^\./##; s#/#.#g; s#\.py$##' |
+        sort
+)
+
 COMMON_PYINSTALLER_ARGS=(
     --clean
     --noconfirm
@@ -39,6 +48,7 @@ COMMON_PYINSTALLER_ARGS=(
     --collect-submodules app
     --collect-submodules alembic
     --collect-submodules cli
+    --collect-submodules xray_api
     --collect-all alembic
     --collect-all apscheduler
     --collect-all fastapi
@@ -57,11 +67,13 @@ COMMON_PYINSTALLER_ARGS=(
 
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
+    "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-server \
     --add-data "$(pyinstaller_add_data "dashboard/build" "dashboard/build")" \
     packaging/binary_launcher.py
 
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
+    "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-cli \
     rebecca-cli.py
