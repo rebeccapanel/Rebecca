@@ -38,21 +38,12 @@ done < <(
         sort
 )
 
-APP_PROTO_HIDDEN_IMPORT_ARGS=()
-while IFS= read -r proto_module; do
-    APP_PROTO_HIDDEN_IMPORT_ARGS+=(--hidden-import "$proto_module")
-done < <(
-    find app/proto/rebecca -type f -name "*.py" -print |
-        sed 's#^app/proto/##; s#/#.#g; s#\.py$##' |
-        sort
-)
-
 COMMON_PYINSTALLER_ARGS=(
     --clean
     --noconfirm
     --onefile
-    --paths app/proto
     --add-data "$(pyinstaller_add_data "alembic.ini" ".")"
+    --add-data "$(pyinstaller_add_data "app/proto" "app/proto")"
     --add-data "$(pyinstaller_add_data "app/templates" "app/templates")"
     --add-data "$(pyinstaller_add_data "app/db/migrations" "app/db/migrations")"
     --collect-submodules app
@@ -78,7 +69,6 @@ COMMON_PYINSTALLER_ARGS=(
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
-    "${APP_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-server \
     --add-data "$(pyinstaller_add_data "dashboard/build" "dashboard/build")" \
     packaging/binary_launcher.py
@@ -86,6 +76,5 @@ env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
-    "${APP_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-cli \
     rebecca-cli.py
