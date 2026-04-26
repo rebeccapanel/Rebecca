@@ -150,14 +150,14 @@ ensure_valid_app_name
 LAST_XRAY_CORES=5
 
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-master}"
+REBECCA_REF="${REBECCA_REF:-dev}"
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca}"
 REBECCA_NODE_RELEASE_REPO="${REBECCA_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
 REBECCA_NODE_BINARY_DEV_BRANCH="${REBECCA_NODE_BINARY_DEV_BRANCH:-dev}"
 REBECCA_NODE_BINARY_WORKFLOW_NAME="${REBECCA_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
 REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
 
-# Default branch values (master)
+# Default node channel values
 BRANCH="master"
 NODE_SERVICE_SOURCE_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/node_service.py"
 NODE_SERVICE_REQUIREMENTS_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/requirements.txt"
@@ -382,9 +382,13 @@ set_branch_variables() {
         ;;
     esac
     SCRIPT_BRANCH="$BRANCH"
-    REBECCA_REF="$BRANCH"
+    if [ "$BRANCH" = "dev" ]; then
+        REBECCA_REF="dev"
+    else
+        REBECCA_REF="${REBECCA_SCRIPT_REF:-dev}"
+    fi
     REBECCA_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca"
-    SCRIPT_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${BRANCH}/scripts/rebecca/rebecca-node.sh"
+    SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/rebecca-node.sh"
 }
 
 prompt_branch_selection() {

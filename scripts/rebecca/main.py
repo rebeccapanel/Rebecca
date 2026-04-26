@@ -54,7 +54,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 MAINT_SOURCE_URL = os.getenv(
     "REBECCA_MAINT_SOURCE_URL",
-    "https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/main.py",
+    "https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/main.py",
 )
 MAINT_UNIT_NAME = os.getenv("REBECCA_MAINT_UNIT", "rebecca-maint.service")
 
@@ -356,6 +356,22 @@ class XrayUpdateRequest(BaseModel):
 
 class GeoUpdateRequest(BaseModel):
     files: List[Dict[str, str]]
+
+
+# When this module is loaded dynamically (for example in tests via importlib),
+# Pydantic may not be able to resolve future annotations from module globals
+# unless the model schema is rebuilt explicitly.
+_PYDANTIC_TYPES_NAMESPACE = {
+    "Dict": Dict,
+    "EmailStr": EmailStr,
+    "List": List,
+    "Optional": Optional,
+    "str": str,
+}
+SSLRequest.model_rebuild(_types_namespace=_PYDANTIC_TYPES_NAMESPACE)
+SSLRenewRequest.model_rebuild(_types_namespace=_PYDANTIC_TYPES_NAMESPACE)
+XrayUpdateRequest.model_rebuild(_types_namespace=_PYDANTIC_TYPES_NAMESPACE)
+GeoUpdateRequest.model_rebuild(_types_namespace=_PYDANTIC_TYPES_NAMESPACE)
 
 
 def load_env_file(env_path: Path) -> Dict[str, str]:

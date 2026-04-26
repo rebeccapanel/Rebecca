@@ -21,7 +21,7 @@ ENV_FILE="$APP_DIR/.env"
 LAST_XRAY_CORES=10
 CERTS_BASE="/var/lib/$APP_NAME/certs"
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-master}"
+REBECCA_REF="${REBECCA_REF:-dev}"
 REBECCA_RAW_BASE="${REBECCA_RAW_BASE:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}}"
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-${REBECCA_RAW_BASE}/scripts/rebecca}"
 REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
@@ -84,7 +84,7 @@ colorized_echo() {
 }
 
 set_rebecca_source_ref() {
-    local ref="${1:-master}"
+    local ref="${1:-dev}"
     REBECCA_REF="$ref"
     REBECCA_RAW_BASE="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}"
     REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
@@ -98,7 +98,7 @@ set_rebecca_source_for_version() {
             set_rebecca_source_ref "$REBECCA_BINARY_DEV_BRANCH"
             ;;
         *)
-            set_rebecca_source_ref "master"
+            set_rebecca_source_ref "dev"
             ;;
     esac
 }
@@ -807,41 +807,6 @@ urlencode_value() {
     printf '%s' "$value"
 }
 
-add_redis_to_compose() {
-    local compose_file="$1"
-    
-    # Check if Redis service already exists
-    if grep -q "^\s*redis:" "$compose_file" 2>/dev/null; then
-        return 0
-    fi
-    
-    # Add Redis service to docker-compose.yml
-    if command -v yq >/dev/null 2>&1; then
-        yq eval '.services.redis = {
-            "image": "redis:7-alpine",
-            "restart": "unless-stopped",
-            "command": ["redis-server", "--appendonly", "yes"],
-            "volumes": ["/var/lib/rebecca/redis:/data"],
-            "ports": ["6379:6379"]
-        }' -i "$compose_file"
-    else
-        # Fallback: append manually at the end of services section
-        # Find the last service entry and add Redis after it
-        # This works for both mariadb/mysql and sqlite modes
-        cat >> "$compose_file" <<EOF
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - /var/lib/rebecca/redis:/data
-    ports:
-      - "6379:6379"
-EOF
-    fi
-}
-
 add_phpmyadmin_to_compose() {
     local compose_file="$1"
 
@@ -879,59 +844,6 @@ add_phpmyadmin_to_compose() {
     depends_on:
       - mysql
 EOF
-    fi
-}
-
-configure_redis_env() {
-    # Ensure Redis configuration section exists in .env
-    if ! grep -q "# Redis configuration" "$ENV_FILE" 2>/dev/null; then
-        echo "" >> "$ENV_FILE"
-        echo "# Redis configuration for subscription caching" >> "$ENV_FILE"
-    fi
-    
-    # Set Redis environment variables
-    set_env_value "REDIS_ENABLED" "true"
-    set_env_value "REDIS_HOST" "127.0.0.1"
-    set_env_value "REDIS_PORT" "6379"
-    set_env_value "REDIS_DB" "0"
-    # REDIS_PASSWORD is optional, leave it empty by default
-    if ! grep -qE "^[[:space:]]*#?[[:space:]]*REDIS_PASSWORD[[:space:]]*=" "$ENV_FILE" 2>/dev/null; then
-        echo "REDIS_PASSWORD = " >> "$ENV_FILE"
-    fi
-    set_env_value "REDIS_AUTO_START" "true"
-    
-    # Create Redis data directory
-    mkdir -p /var/lib/rebecca/redis
-}
-
-enable_redis() {
-    check_running_as_root
-    
-    if ! is_rebecca_installed; then
-        colorized_echo red "Rebecca is not installed. Please install Rebecca first."
-        exit 1
-    fi
-    
-    detect_compose
-    
-    colorized_echo blue "Enabling Redis for subscription caching..."
-    
-    # Add Redis service to docker-compose.yml
-    add_redis_to_compose "$COMPOSE_FILE"
-    colorized_echo green "Redis service added to docker-compose.yml"
-    
-    # Configure Redis in .env
-    configure_redis_env
-    colorized_echo green "Redis configuration added to .env file"
-    
-    # Restart services if running
-    if is_rebecca_up; then
-        colorized_echo blue "Restarting services to apply Redis configuration..."
-        down_rebecca
-        up_rebecca
-        colorized_echo green "Services restarted. Redis is now enabled."
-    else
-        colorized_echo green "Redis enabled. Start services with: rebecca up"
     fi
 }
 
@@ -2132,11 +2044,6 @@ EOF
     curl -sL "$FILES_URL_PREFIX/xray_config.json" -o "$DATA_DIR/xray_config.json"
     colorized_echo green "File saved in $DATA_DIR/xray_config.json"
     
-    # Keep Redis disabled in the installation flow.
-    set_env_value "REDIS_ENABLED" "false"
-    set_env_value "REDIS_AUTO_START" "false"
-    colorized_echo blue "Redis is disabled by default in installer flow."
-    
     colorized_echo green "Rebecca's files downloaded successfully"
 }
 
@@ -2415,8 +2322,6 @@ install_binary_rebecca() {
     upsert_env_assignment "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
     upsert_env_assignment "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
     upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "sqlite:///${DATA_DIR}/db.sqlite3"
-    set_env_value "REDIS_ENABLED" "false"
-    set_env_value "REDIS_AUTO_START" "false"
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
         colorized_echo blue "Fetching xray config file"
@@ -3368,7 +3273,6 @@ print_menu() {
         "backup:Manual backup launch"
         "backup-service:Backup service (Telegram + cron job)"
         "core-update:Update/Change Xray core"
-        "enable-redis:Enable Redis for subscription caching"
         "enable-phpmyadmin:Add phpMyAdmin to docker-compose and restart services"
         "edit:Edit docker-compose.yml"
         "edit-env:Edit environment file"
@@ -3413,12 +3317,11 @@ map_choice_to_command() {
         18) echo "backup" ;;
         19) echo "backup-service" ;;
         20) echo "core-update" ;;
-        21) echo "enable-redis" ;;
-        22) echo "enable-phpmyadmin" ;;
-        23) echo "edit" ;;
-        24) echo "edit-env" ;;
-        25) echo "ssl" ;;
-        26) echo "help" ;;
+        21) echo "enable-phpmyadmin" ;;
+        22) echo "edit" ;;
+        23) echo "edit-env" ;;
+        24) echo "ssl" ;;
+        25) echo "help" ;;
         *) echo "$1" ;;
     esac
 }
@@ -3453,7 +3356,6 @@ usage() {
     colorized_echo yellow "  backup          $(tput sgr0)- Manual backup launch"
     colorized_echo yellow "  backup-service  $(tput sgr0)- Rebecca Backupservice to backup to TG, and a new job in crontab"
     colorized_echo yellow "  core-update     $(tput sgr0)- Update/Change Xray core"
-    colorized_echo yellow "  enable-redis    $(tput sgr0)- Enable Redis for subscription caching"
     colorized_echo yellow "  enable-phpmyadmin $(tput sgr0)- Add phpMyAdmin to docker-compose.yml and restart services"
     colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml (via nano or vi editor)"
     colorized_echo yellow "  edit-env        $(tput sgr0)- Edit environment file (via nano or vi editor)"
@@ -3501,7 +3403,6 @@ dispatch_command() {
         script-update|update-script) install_rebecca_script "$@" ;;
         script-uninstall|uninstall-script) uninstall_rebecca_script "$@" ;;
         core-update) update_core_command "$@" ;;
-        enable-redis) enable_redis "$@" ;;
         enable-phpmyadmin) enable_phpmyadmin "$@" ;;
         ssl) ssl_command "$@" ;;
         edit) edit_command "$@" ;;

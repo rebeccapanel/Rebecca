@@ -7,7 +7,7 @@ OLD_DATA_DIR="/var/lib/marzban"
 NEW_DATA_DIR="/var/lib/rebecca"
 OLD_SERVICE_NAME="marzban"
 NEW_SERVICE_NAME="rebecca"
-SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh"
 
 PANEL_IMAGE_REPO="rebeccapanel/rebecca"
 DEFAULT_IMAGE_TAG="latest"

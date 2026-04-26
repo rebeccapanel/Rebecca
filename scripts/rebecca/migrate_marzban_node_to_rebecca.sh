@@ -4,7 +4,7 @@ set -euo pipefail
 NODE_SEARCH_BASE="/opt"
 NODE_IMAGE_REPO="rebeccapanel/rebecca-node"
 DEFAULT_IMAGE_TAG="latest"
-NODE_SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-node.sh"
+NODE_SCRIPT_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node.sh"
 
 declare -a NODE_PATHS=()
 declare -a NODE_NAMES=()
