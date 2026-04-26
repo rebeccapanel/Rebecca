@@ -11,6 +11,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAINTENANCE_SERVICE_PATH = PROJECT_ROOT / "scripts" / "rebecca" / "main.py"
 REBECCA_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "rebecca" / "rebecca.sh"
+REBECCA_CLI_PATH = PROJECT_ROOT / "rebecca-cli.py"
 
 
 def _load_module_from_path(module_path: Path, module_name: str):
@@ -77,3 +78,22 @@ def test_maintenance_service_supports_binary_mode_without_docker(tmp_path: Path,
     panel_info = asyncio.run(module.panel_version())
     assert panel_info["image"] == "rebecca-server (binary)"
     assert panel_info["tag"] == "v1.2.3"
+
+
+def test_cli_help_skips_dashboard_runtime(tmp_path: Path):
+    env = os.environ.copy()
+    env["REBECCA_ENV_FILE"] = str(tmp_path / ".env")
+    env["SQLALCHEMY_DATABASE_URL"] = f"sqlite:///{tmp_path / 'cli.db'}"
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(PROJECT_ROOT) if not existing_pythonpath else f"{PROJECT_ROOT}{os.pathsep}{existing_pythonpath}"
+
+    result = subprocess.run(
+        [sys.executable, str(REBECCA_CLI_PATH), "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "admin" in result.stdout

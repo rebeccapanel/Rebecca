@@ -2,6 +2,7 @@
 import os  # noqa
 import sys  # noqa
 
+os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 sys.path.insert(0, os.getcwd())  # noqa
 
 try:
