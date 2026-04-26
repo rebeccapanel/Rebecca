@@ -98,7 +98,6 @@ def _host_to_dict(host: "ProxyHost", service_ids: Optional[Sequence[int]] = None
 def rebuild_service_hosts_cache() -> None:
     """
     Populate service_hosts_cache for all service_ids with deterministic ordering.
-    Also updates Redis cache.
     """
     global service_hosts_cache_ts, config
     with _hosts_cache_lock:
@@ -172,19 +171,6 @@ def rebuild_service_hosts_cache() -> None:
         service_hosts_cache.update(cache)
         service_hosts_cache_ts = time.time()
 
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service_host_map
-
-                for service_id, host_map in cache.items():
-                    cache_service_host_map(service_id, host_map)
-            except Exception as e:
-                logger = logging.getLogger("uvicorn.error")
-                logger.warning(f"Failed to update Redis cache for service hosts: {e}")
-
 
 def get_service_host_map(service_id: Optional[int], force_rebuild: bool = False) -> Dict[str, list]:
     """
@@ -219,25 +205,11 @@ if TYPE_CHECKING:
 
 
 def invalidate_service_hosts_cache() -> None:
-    """
-    Clear cached hosts so they will be rebuilt on next access.
-    Also invalidates Redis cache.
-    """
+    """Clear cached hosts so they will be rebuilt on next access."""
     global service_hosts_cache_ts
     with _hosts_cache_lock:
         service_hosts_cache.clear()
         service_hosts_cache_ts = None
-
-        # Invalidate Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import invalidate_service_host_map_cache
-
-                invalidate_service_host_map_cache()
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
 
 
 @DictStorage

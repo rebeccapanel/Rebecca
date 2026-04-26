@@ -31,8 +31,6 @@ from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
-from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
-from app.redis.client import get_redis
 
 # region Helpers
 
@@ -852,7 +850,7 @@ def get_users(
     from app.services import user_service
 
     if links:
-        # Generating share links requires DB-loaded proxies/inbounds; skip Redis fast path.
+        # Generating share links requires DB-loaded proxies/inbounds.
         response = user_service.get_users_list_db_only(
             db,
             offset=offset,
@@ -870,42 +868,22 @@ def get_users(
             include_links=True,
         )
     else:
-        use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
-        if use_db_only:
-            logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
-            response = user_service.get_users_list_db_only(
-                db,
-                offset=offset,
-                limit=limit,
-                username=username,
-                search=search,
-                status=status,
-                sort=sort,
-                advanced_filters=advanced_filters,
-                service_id=service_id,
-                dbadmin=dbadmin,
-                owners=owners,
-                users_limit=users_limit,
-                active_total=active_total,
-                include_links=False,
-            )
-        else:
-            response = user_service.get_users_list(
-                db,
-                offset=offset,
-                limit=limit,
-                username=username,
-                search=search,
-                status=status,
-                sort=sort,
-                advanced_filters=advanced_filters,
-                service_id=service_id,
-                dbadmin=dbadmin,
-                owners=owners,
-                users_limit=users_limit,
-                active_total=active_total,
-                include_links=False,
-            )
+        response = user_service.get_users_list(
+            db,
+            offset=offset,
+            limit=limit,
+            username=username,
+            search=search,
+            status=status,
+            sort=sort,
+            advanced_filters=advanced_filters,
+            service_id=service_id,
+            dbadmin=dbadmin,
+            owners=owners,
+            users_limit=users_limit,
+            active_total=active_total,
+            include_links=False,
+        )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return _sanitize_users_response(admin, response)
 
@@ -1086,13 +1064,6 @@ def perform_users_bulk_action(
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
-
-    try:
-        from app.redis.cache import invalidate_user_cache
-
-        invalidate_user_cache()
-    except Exception:
-        pass
 
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)

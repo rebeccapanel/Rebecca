@@ -135,24 +135,7 @@ def _pick_available_port(config: dict, *, min_port: int = 10000, max_port: int =
 
 
 def _refresh_inbounds_cache(db: Session) -> None:
-    from config import REDIS_ENABLED
-
-    if not REDIS_ENABLED:
-        return
-    try:
-        from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-        from app.reb_node.config import XRayConfig
-
-        raw_config = crud.get_xray_config(db)
-        xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
-        inbounds_dict = {
-            "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-            "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
-        }
-        cache_inbounds(inbounds_dict)
-        invalidate_service_host_map_cache()
-    except Exception:
-        pass
+    del db
 
 
 @threaded_function
@@ -302,29 +285,6 @@ def create_service(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Service not available")
     xray.hosts.update()
 
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
-
-            # Invalidate and rebuild cache
-            invalidate_service_host_map_cache()
-            invalidate_inbounds_cache()
-            rebuild_service_hosts_cache()
-            # Re-cache all service host maps
-            from app.reb_node import state as xray_state
-
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
-
     return _service_to_detail(db, service)
 
 
@@ -369,29 +329,6 @@ def modify_service(
         import threading
 
         threading.Thread(target=xray.hosts.update, daemon=True).start()
-
-        # Update Redis cache (non-blocking best-effort)
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-                from app.reb_node.state import rebuild_service_hosts_cache
-                from app.redis.cache import cache_service_host_map
-
-                # Invalidate and rebuild cache
-                invalidate_service_host_map_cache()
-                invalidate_inbounds_cache()
-                rebuild_service_hosts_cache()
-                # Re-cache all service host maps
-                from app.reb_node import state as xray_state
-
-                for service_id in xray_state.service_hosts_cache.keys():
-                    host_map = xray_state.service_hosts_cache.get(service_id)
-                    if host_map:
-                        cache_service_host_map(service_id, host_map)
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
 
     return _service_to_detail(db, service)
 
@@ -518,29 +455,6 @@ def delete_service(
     for dbuser in transferred_users:
         core_operations.update_user(dbuser=dbuser)
     xray.hosts.update()
-
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import invalidate_service_host_map_cache, invalidate_inbounds_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
-
-            # Invalidate and rebuild cache
-            invalidate_service_host_map_cache()
-            invalidate_inbounds_cache()
-            rebuild_service_hosts_cache()
-            # Re-cache all service host maps
-            from app.reb_node import state as xray_state
-
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
 
 
 @router.post("/{service_id}/reset-usage", response_model=ServiceDetail)
@@ -814,13 +728,6 @@ def perform_service_users_action(
         if isinstance(exc, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=str(exc))
-
-    try:
-        from app.redis.cache import invalidate_user_cache
-
-        invalidate_user_cache()
-    except Exception:
-        pass
 
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)

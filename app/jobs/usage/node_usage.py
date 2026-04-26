@@ -13,7 +13,7 @@ from app.utils import report
 from config import DISABLE_RECORDING_NODE_USAGE
 
 
-"""Node and master usage pipeline: aggregate outbound stats, cache snapshots, enforce limits, and persist to DB."""
+"""Node and master usage pipeline: aggregate outbound stats, enforce limits, and persist to DB."""
 
 # region Limit helpers (node and master)
 
@@ -97,59 +97,32 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
     status_change_payload = None
     created_at = hour_bucket()
 
-    from app.redis.client import get_redis
-    from app.redis.pending_backup import save_usage_snapshots_backup
-    from config import REDIS_ENABLED
-
-    redis_client = get_redis() if REDIS_ENABLED else None
-    if redis_client:
-        from app.redis.cache import cache_node_usage_snapshot
-
-        cache_node_usage_snapshot(node_id, created_at, total_up, total_down)
-        save_usage_snapshots_backup(
-            [],
-            [{"node_id": node_id, "created_at": created_at.isoformat(), "uplink": total_up, "downlink": total_down}],
+    with GetDB() as db:
+        select_stmt = select(NodeUsage.node_id).where(
+            and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at)
         )
+        notfound = db.execute(select_stmt).first() is None
+        if notfound:
+            stmt = insert(NodeUsage).values(created_at=created_at, node_id=node_id, uplink=0, downlink=0)
+            safe_execute(db, stmt)
+
+        stmt = (
+            update(NodeUsage)
+            .values(uplink=NodeUsage.uplink + bindparam("up"), downlink=NodeUsage.downlink + bindparam("down"))
+            .where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
+        )
+        safe_execute(db, stmt, params)
 
         if node_id is not None and (total_up or total_down):
-            with GetDB() as db:
-                dbnode = db.query(Node).filter(Node.id == node_id).with_for_update().first()
-                if dbnode:
-                    limited_triggered, limit_cleared, status_change_payload = _update_node_limits(
-                        db, dbnode, total_up, total_down
-                    )
+            dbnode = db.query(Node).filter(Node.id == node_id).with_for_update().first()
+            if dbnode:
+                limited_triggered, limit_cleared, status_change_payload = _update_node_limits(
+                    db, dbnode, total_up, total_down
+                )
         elif node_id is None and (total_up or total_down):
-            with GetDB() as db:
-                limited_triggered, limit_cleared, status_change_payload = _update_master_limits(
-                    db, total_up, total_down
-                )
-    else:
-        with GetDB() as db:
-            select_stmt = select(NodeUsage.node_id).where(
-                and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at)
+            limited_triggered, limit_cleared, status_change_payload = _update_master_limits(
+                db, total_up, total_down
             )
-            notfound = db.execute(select_stmt).first() is None
-            if notfound:
-                stmt = insert(NodeUsage).values(created_at=created_at, node_id=node_id, uplink=0, downlink=0)
-                safe_execute(db, stmt)
-
-            stmt = (
-                update(NodeUsage)
-                .values(uplink=NodeUsage.uplink + bindparam("up"), downlink=NodeUsage.downlink + bindparam("down"))
-                .where(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
-            )
-            safe_execute(db, stmt, params)
-
-            if node_id is not None and (total_up or total_down):
-                dbnode = db.query(Node).filter(Node.id == node_id).with_for_update().first()
-                if dbnode:
-                    limited_triggered, limit_cleared, status_change_payload = _update_node_limits(
-                        db, dbnode, total_up, total_down
-                    )
-            elif node_id is None and (total_up or total_down):
-                limited_triggered, limit_cleared, status_change_payload = _update_master_limits(
-                    db, total_up, total_down
-                )
 
     if status_change_payload:
         node_resp, prev_status = status_change_payload

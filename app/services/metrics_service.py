@@ -1,25 +1,18 @@
 """
 Metrics/usage service layer.
 
-Routers delegate here to fetch chart/usage data. This module decides between
-Redis (fast path) and DB (crud) and caches chart responses in Redis when
-possible. If Redis is disabled or unavailable, it gracefully falls back to DB.
+Routers delegate here to fetch chart/usage data from database-backed crud helpers.
 """
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from config import REDIS_ENABLED
 from app.db import crud, Session
 from app.db.models import Admin as AdminModel, Service as ServiceModel, User as UserModel
 from app.models.admin import admin_uses_created_traffic_limit
-from app.redis.client import get_redis
-from app.runtime import logger
 
-# TTL (seconds) for cached chart responses
 _CACHE_TTL_SECONDS = 300
 
 
@@ -31,38 +24,13 @@ def _dt_str(dt: datetime | str | None) -> str:
     return str(dt)
 
 
-def _redis():
-    if not REDIS_ENABLED:
-        return None
-    try:
-        return get_redis()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("metrics_service: redis unavailable: %s", exc)
-        return None
-
-
 def _cache_get(key: str):
-    r = _redis()
-    if not r:
-        return None
-    try:
-        raw = r.get(key)
-        if not raw:
-            return None
-        return json.loads(raw)
-    except Exception as exc:
-        logger.debug("metrics_service: cache get failed for %s: %s", key, exc)
-        return None
+    del key
+    return None
 
 
 def _cache_set(key: str, value: Any, ttl: int = _CACHE_TTL_SECONDS):
-    r = _redis()
-    if not r:
-        return
-    try:
-        r.setex(key, ttl, json.dumps(value, default=str))
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("metrics_service: cache set failed for %s: %s", key, exc)
+    del key, value, ttl
 
 
 # ---------------------------------------------------------------------------

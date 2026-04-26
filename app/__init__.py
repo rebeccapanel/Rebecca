@@ -98,10 +98,6 @@ if not SKIP_RUNTIME_INIT:
 
 
 if not SKIP_RUNTIME_INIT:
-    from app.redis import init_redis, get_redis
-    from app.redis.subscription import warmup_subscription_cache
-    from app.utils.system import start_redis_if_configured
-
     def _trigger_node_autoconnect(config=None):
         """
         Fire-and-forget connect requests for all enabled nodes.
@@ -175,72 +171,8 @@ if not SKIP_RUNTIME_INIT:
                 f"you can't use /{XRAY_SUBSCRIPTION_PATH}/ as subscription path it reserved for {app.title}"
             )
 
-        # Start Redis if configured to do so
-        start_redis_if_configured()
-
-        # Initialize Redis connection
-        init_redis()
-
         # Start scheduler first (so server can start quickly)
         scheduler.start()
-
-        # Warm up caches if Redis is available
-        redis_client = get_redis()
-        if redis_client:
-            logger.info("Redis is available, warming up caches...")
-
-            # Restore pending backups to Redis first
-            try:
-                from app.redis.pending_backup import restore_all_backups_to_redis
-
-                restore_all_backups_to_redis()
-            except Exception as e:
-                logger.warning(f"Failed to restore backups to Redis: {e}", exc_info=True)
-
-            try:
-                from app.redis.cache import warmup_users_cache
-
-                logger.info("Warming up users cache (this may take a moment)...")
-                total, cached = warmup_users_cache()
-                logger.info(f"Users cache warmup completed: {cached}/{total} users cached")
-            except Exception as e:
-                logger.error(f"Failed to warmup users cache: {e}", exc_info=True)
-
-            # Warm up other caches in background (non-critical)
-            def warmup_caches_async():
-                try:
-                    total, cached = warmup_subscription_cache()
-                    logger.info(f"Subscription cache warmup completed: {cached}/{total} users cached")
-                except Exception as e:
-                    logger.warning(f"Failed to warmup subscription cache: {e}", exc_info=True)
-
-                # Warmup usage cache gradually (to avoid DB overload)
-                try:
-                    from app.redis.cache import warmup_all_usages_gradually
-
-                    total, cached = warmup_all_usages_gradually()
-                    logger.info(f"Usage cache warmup completed: {cached}/{total} records cached")
-                except Exception as e:
-                    logger.warning(f"Failed to warmup usage cache: {e}", exc_info=True)
-
-                # Warmup services, inbounds, and hosts cache
-                try:
-                    from app.redis.cache import warmup_services_inbounds_hosts_cache
-
-                    services_count, inbounds_count, hosts_count = warmup_services_inbounds_hosts_cache()
-                    logger.info(
-                        f"Services/inbounds/hosts cache warmup completed: {services_count} services, {inbounds_count} inbounds, {hosts_count} hosts"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to warmup services/inbounds/hosts cache: {e}", exc_info=True)
-
-            # Run non-critical warmup in background thread
-            import threading
-
-            warmup_thread = threading.Thread(target=warmup_caches_async, daemon=True)
-            warmup_thread.start()
-        else:
-            logger.info("Redis is not available, validation will use database only")
 
         # Ensure config is generated, master core is started (when available), and nodes attempt to connect.
         try:

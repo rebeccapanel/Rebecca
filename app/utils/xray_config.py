@@ -20,30 +20,6 @@ def restart_xray_and_invalidate_cache(startup_config=None):
     xray.invalidate_service_hosts_cache()
     xray.hosts.update()
 
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
-            from app.reb_node import state as xray_state
-
-            inbounds_dict = {
-                "inbounds_by_tag": {tag: inbound for tag, inbound in xray.config.inbounds_by_tag.items()},
-                "inbounds_by_protocol": {proto: tags for proto, tags in xray.config.inbounds_by_protocol.items()},
-            }
-            cache_inbounds(inbounds_dict)
-            invalidate_service_host_map_cache()
-            rebuild_service_hosts_cache()
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
-
     for node_id, node in list(xray.nodes.items()):
         if node.connected:
             xray.operations.restart_node(node_id, startup_config)
@@ -117,30 +93,6 @@ def soft_reload_panel():
     # Invalidate caches to force refresh on next access
     xray.invalidate_service_hosts_cache()
     xray.hosts.update()
-
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
-            from app.reb_node import state as xray_state
-
-            inbounds_dict = {
-                "inbounds_by_tag": {tag: inbound for tag, inbound in xray.config.inbounds_by_tag.items()},
-                "inbounds_by_protocol": {proto: tags for proto, tags in xray.config.inbounds_by_protocol.items()},
-            }
-            cache_inbounds(inbounds_dict)
-            invalidate_service_host_map_cache()
-            rebuild_service_hosts_cache()
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
 
     # Reconnect all nodes (like in startup, but without restarting their cores)
     logger.info("Reconnecting nodes")

@@ -305,13 +305,12 @@ def process_inbounds_and_tags(
         service_ids = [service_id]
 
     from app.services.data_access import get_inbounds_by_tag_cached
-    from config import REDIS_ENABLED
 
     logger = logging.getLogger(__name__)
 
     if inbounds_by_tag is None:
         inbounds_by_tag = {}
-    if not inbounds_by_tag and REDIS_ENABLED:
+    if not inbounds_by_tag:
         try:
             with GetDB() as db:
                 inbounds_by_tag = get_inbounds_by_tag_cached(db, force_refresh=force_refresh)
@@ -372,13 +371,6 @@ def process_inbounds_and_tags(
         if refreshed_inbounds:
             return
         refreshed_inbounds = True
-        try:
-            from app.redis.cache import invalidate_inbounds_cache, invalidate_service_host_map_cache
-
-            invalidate_inbounds_cache()
-            invalidate_service_host_map_cache()
-        except Exception:
-            pass
         try:
             xray.invalidate_service_hosts_cache()
         except Exception:

@@ -228,16 +228,6 @@ class ServiceRepository:
             self.apply_service_to_user(user, service, allowed_inbounds)
             updated_users.append(user)
         self.db.flush()
-        # Ensure cached users don't keep stale excluded_inbounds after host/service changes.
-        try:
-            from app.redis.cache import invalidate_user_cache
-
-            for user in updated_users:
-                if user.id is None or not user.username:
-                    continue
-                invalidate_user_cache(username=user.username, user_id=user.id)
-        except Exception:
-            pass
         return updated_users
 
     def get_allowed_inbounds(self, service: Service) -> Dict[ProxyTypes, Set[str]]:
@@ -325,19 +315,6 @@ class ServiceRepository:
         self.db.commit()
         self.db.refresh(service)
 
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
-
-                cache_service(service)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
-
         return service
 
     def update(
@@ -374,19 +351,6 @@ class ServiceRepository:
         self.db.commit()
         self.db.refresh(service)
 
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
-
-                cache_service(service)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
-
         return service, allowed_before, allowed_after
 
     def remove(
@@ -421,22 +385,8 @@ class ServiceRepository:
             else:
                 raise ValueError("Invalid delete mode")
 
-        service_id = service.id
         self.db.delete(service)
         self.db.commit()
-
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import invalidate_service_cache, invalidate_service_host_map_cache
-
-                invalidate_service_cache(service_id=service_id)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
 
         return deleted_users, transferred_users
 

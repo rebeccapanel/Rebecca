@@ -1,8 +1,7 @@
 """
 User service layer.
 
-Routers call into this module; it decides between Redis and DB,
-applies business rules, and keeps caches in sync.
+Routers call into this module to apply user business rules and build API responses.
 """
 
 import json
@@ -11,22 +10,14 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Union
 
 
-from app.db import crud, Session, GetDB
+from app.db import crud, Session
 from app.db.models import User, Admin
 from app.models.user import UserListItem, UserResponse, UserStatus, UsersResponse, UserCreate, UserModify
 from app.models.proxy import ProxyTypes
-from app.redis.repositories import user_cache
-from app.redis.cache import get_user_pending_usage_state
 from app.runtime import logger
 from app.utils.subscription_links import build_subscription_links
 from app.subscription.share import generate_v2ray_links
 from app.utils.credentials import UUID_PROTOCOLS, uuid_to_key
-from app.services.cache_adapter import (
-    merge_pending_usage as _merge_pending_usage_model,
-    get_user_from_cache,
-    upsert_user_cache,
-    invalidate_user_cache as _invalidate_user_cache,
-)
 from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
 from app.db.models import ServiceHostLink
 from app.db.crud.user import ONLINE_ACTIVE_WINDOW, OFFLINE_STALE_WINDOW, UPDATE_STALE_WINDOW, STATUS_FILTER_MAP
@@ -232,36 +223,11 @@ def _build_links_context(db: Session, users: List[User]) -> dict:
 
 
 def _apply_pending_usage_to_dict(user_dict: dict) -> None:
-    try:
-        uid = user_dict.get("id")
-        if not uid:
-            return
-        pending_total, pending_online = get_user_pending_usage_state(uid)
-        if pending_total:
-            user_dict["used_traffic"] = (user_dict.get("used_traffic") or 0) + pending_total
-            user_dict["lifetime_used_traffic"] = (user_dict.get("lifetime_used_traffic") or 0) + pending_total
-        if pending_online:
-            current_online = user_dict.get("online_at")
-            if isinstance(current_online, datetime):
-                current_dt = current_online
-            elif isinstance(current_online, str):
-                try:
-                    current_dt = datetime.fromisoformat(current_online)
-                except Exception:
-                    current_dt = None
-            else:
-                current_dt = None
-            if not current_dt or pending_online > current_dt:
-                user_dict["online_at"] = pending_online.isoformat()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("Failed to merge pending usage for user %s: %s", user_dict.get("username"), exc)
+    del user_dict
 
 
 def _apply_pending_usage_to_model(user: User) -> None:
-    try:
-        _merge_pending_usage_model(user)
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("Failed to merge pending usage for user %s: %s", getattr(user, "username", None), exc)
+    del user
 
 
 def _filter_users_raw(
@@ -525,236 +491,6 @@ def get_users_list(
         active_total=active_total,
         include_links=False,
     )
-    db_closed = False
-    dbadmin_in_use = dbadmin
-
-    def _release_db_connection():
-        nonlocal db_closed
-        if not db_closed:
-            try:
-                db.close()
-            except Exception:
-                pass
-            db_closed = True
-
-    # Redis-first path - always use Redis when available
-    from app.redis.client import get_redis
-    from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
-    import time
-
-    start_time = time.perf_counter()
-    redis_client = get_redis()
-
-    logger.debug(
-        f"Redis check: REDIS_ENABLED={REDIS_ENABLED}, REDIS_USERS_CACHE_ENABLED={REDIS_USERS_CACHE_ENABLED}, redis_client={'available' if redis_client else 'None'}"
-    )
-
-    if REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and redis_client:
-        try:
-            cache_start = time.perf_counter()
-            all_users = user_cache.get_users_raw(db=db)
-            cache_time = time.perf_counter() - cache_start
-            logger.debug(
-                f"Redis cache retrieval took {cache_time:.3f}s, got {len(all_users) if all_users else 0} users"
-            )
-
-            if not all_users:
-                # If cache is empty, try to warm it up from DB and retry
-                logger.warning("User cache is empty, attempting to warm up from database...")
-                try:
-                    from app.redis.cache import warmup_users_cache
-
-                    warmup_start = time.perf_counter()
-                    total, cached = warmup_users_cache()
-                    warmup_time = time.perf_counter() - warmup_start
-                    logger.info(f"Warmup completed in {warmup_time:.3f}s: {cached}/{total} users cached")
-                    all_users = user_cache.get_users_raw(db=db)
-                    if not all_users:
-                        raise RuntimeError("User cache still empty after warmup")
-                except Exception as warmup_exc:
-                    logger.error(f"Failed to warmup users cache: {warmup_exc}", exc_info=True)
-                    # Fall through to DB fallback only if warmup fails
-                    raise RuntimeError("User cache empty and warmup failed")
-
-            if all_users and len(all_users) > 0:
-                # We won't need the request-scoped DB connection anymore on the Redis path;
-                # release it early so long-running filters don't hold a pool slot.
-                _release_db_connection()
-                filter_start = time.perf_counter()
-                logger.debug(
-                    f"Filtering {len(all_users)} users with filters: dbadmin={dbadmin.id if dbadmin else None}, owners={owners}, status={status}, service_id={service_id}, advanced_filters={advanced_filters}"
-                )
-                filtered = _filter_users_raw(
-                    all_users,
-                    username=username,
-                    search=search,
-                    status=status,
-                    dbadmin=dbadmin,
-                    owners=owners,
-                    service_id=service_id,
-                    advanced_filters=advanced_filters,
-                )
-                logger.debug(f"After filtering: {len(filtered)} users remain")
-
-                if len(filtered) == 0 and dbadmin:
-                    admin_user_count = sum(1 for u in all_users if u.get("admin_id") == dbadmin.id)
-                    if admin_user_count == 0:
-                        logger.warning(
-                            f"Cache returned {len(all_users)} users but none belong to admin {dbadmin.username}, "
-                            "falling back to DB to verify"
-                        )
-                        raise RuntimeError("Cache may be corrupted - no users found for admin")
-
-                _sort_users_raw(filtered, sort)
-                total = len(filtered)
-                if offset:
-                    filtered = filtered[offset:]
-                if limit:
-                    filtered = filtered[:limit]
-                if active_total is None and dbadmin:
-                    active_total = len(
-                        [
-                            u
-                            for u in all_users
-                            if u.get("admin_id") == dbadmin.id and u.get("status") == UserStatus.active.value
-                        ]
-                    )
-                items = [_map_raw_to_list_item(u, include_links=False) for u in filtered]
-                filter_time = time.perf_counter() - filter_start
-                total_time = time.perf_counter() - start_time
-                # Fetch aggregate stats from DB to reflect current filters
-                status_breakdown: dict = {}
-                usage_total: Optional[int] = None
-                online_total: Optional[int] = None
-                try:
-                    from app.db import GetDB as _GetDB
-
-                    with _GetDB() as stats_db:
-                        status_breakdown = crud.get_users_status_breakdown(
-                            db=stats_db,
-                            search=search,
-                            status=status,
-                            admin=dbadmin_in_use,
-                            admins=owners,
-                            advanced_filters=advanced_filters,
-                            service_id=service_id,
-                        )
-                        usage_total = crud.get_users_usage_sum(
-                            db=stats_db,
-                            search=search,
-                            status=status,
-                            admin=dbadmin_in_use,
-                            admins=owners,
-                            advanced_filters=advanced_filters,
-                            service_id=service_id,
-                        )
-                        online_total = crud.get_users_online_count(
-                            db=stats_db,
-                            search=search,
-                            status=status,
-                            admin=dbadmin_in_use,
-                            admins=owners,
-                            advanced_filters=advanced_filters,
-                            service_id=service_id,
-                        )
-                except Exception as stats_exc:
-                    logger.debug("Failed to compute user stats on Redis path: %s", stats_exc)
-                logger.info(
-                    f"Users list from Redis completed in {total_time:.3f}s (cache: {cache_time:.3f}s, filter: {filter_time:.3f}s)"
-                )
-                return UsersResponse(
-                    users=items,
-                    link_templates={},
-                    total=total,
-                    active_total=active_total,
-                    users_limit=users_limit,
-                    status_breakdown=status_breakdown,
-                    usage_total=usage_total,
-                    online_total=online_total,
-                )
-            elif all_users is not None and len(all_users) == 0:
-                # Cache exists but is empty - this could mean no users in DB or cache issue
-                logger.warning("Cache returned empty list, falling back to DB to verify")
-                raise RuntimeError("Cache returned empty list")
-        except Exception as exc:
-            logger.error(f"Users list Redis path failed: {exc}", exc_info=True)
-            # Only fallback to DB if Redis is not available or cache is truly broken
-            if not redis_client:
-                logger.warning("Redis not available, falling back to database")
-            else:
-                # Redis is available but cache failed - this is unexpected, log it
-                logger.error("Redis available but cache retrieval failed, falling back to database")
-    else:
-        logger.warning(
-            f"Redis not enabled or not available: REDIS_ENABLED={REDIS_ENABLED}, REDIS_USERS_CACHE_ENABLED={REDIS_USERS_CACHE_ENABLED}, redis_client={'available' if redis_client else 'None'}"
-        )
-
-    # DB fallback path (only when Redis is disabled or unavailable)
-    _release_db_connection()
-    with GetDB() as db_fallback:
-        dbadmin_in_use = dbadmin
-        if dbadmin and getattr(dbadmin, "id", None) is not None:
-            try:
-                dbadmin_in_use = db_fallback.query(Admin).get(dbadmin.id)
-            except Exception:
-                dbadmin_in_use = dbadmin
-
-        users, count = crud.get_users(
-            db=db_fallback,
-            offset=offset,
-            limit=limit,
-            search=search,
-            usernames=username,
-            status=status,
-            sort=sort,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-            admin=dbadmin_in_use,
-            admins=owners,
-            return_with_count=True,
-        )
-        for user in users:
-            _apply_pending_usage_to_model(user)
-        items = [_map_user_to_list_item(u) for u in users]
-        if active_total is None and dbadmin_in_use:
-            active_total = crud.get_users_count(db_fallback, status=UserStatus.active, admin=dbadmin_in_use)
-        status_breakdown = crud.get_users_status_breakdown(
-            db=db_fallback,
-            search=search,
-            status=status,
-            admin=dbadmin_in_use,
-            admins=owners,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-        )
-        usage_total = crud.get_users_usage_sum(
-            db=db_fallback,
-            search=search,
-            status=status,
-            admin=dbadmin_in_use,
-            admins=owners,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-        )
-        online_total = crud.get_users_online_count(
-            db=db_fallback,
-            search=search,
-            status=status,
-            admin=dbadmin_in_use,
-            admins=owners,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-        )
-        return UsersResponse(
-            users=items,
-            link_templates={},
-            total=count,
-            active_total=active_total,
-            users_limit=users_limit,
-            status_breakdown=status_breakdown,
-            usage_total=usage_total,
-            online_total=online_total,
-        )
 
 
 def get_users_list_db_only(
@@ -774,10 +510,7 @@ def get_users_list_db_only(
     active_total: Optional[int],
     include_links: bool = False,
 ) -> UsersResponse:
-    """
-    Fast-path DB-only users list for when Redis is unavailable/disabled.
-    Mirrors the DB fallback of get_users_list but skips any Redis probing/warmup.
-    """
+    """Build a user list directly from database queries."""
     if include_links:
         users, count = crud.get_users(
             db=db,
@@ -864,45 +597,22 @@ def get_users_list_db_only(
 
 
 def get_user_detail(username: str, db: Session) -> Optional[UserResponse]:
-    cached = get_user_from_cache(username=username, db=db)
-    if cached:
-        try:
-            return UserResponse.model_validate(cached)
-        except Exception:
-            pass
     dbuser = crud.get_user(db, username=username)
     if not dbuser:
         return None
-    try:
-        upsert_user_cache(dbuser)
-    except Exception:
-        pass
-    _apply_pending_usage_to_model(dbuser)
     return UserResponse.model_validate(dbuser)
 
 
 def create_user(db: Session, payload: UserCreate, admin=None, service=None) -> UserResponse:
     dbuser = crud.create_user(db, payload, admin=admin, service=service)
-    try:
-        upsert_user_cache(dbuser)
-    except Exception:
-        pass
     return UserResponse.model_validate(dbuser)
 
 
 def update_user(db: Session, dbuser: User, payload: UserModify) -> UserResponse:
     updated = crud.update_user(db, dbuser, payload)
-    try:
-        upsert_user_cache(updated)
-    except Exception:
-        pass
     return UserResponse.model_validate(updated)
 
 
 def delete_user(db: Session, dbuser: User):
     crud.remove_user(db, dbuser)
-    try:
-        _invalidate_user_cache(username=dbuser.username, user_id=dbuser.id)
-    except Exception:
-        pass
     return dbuser

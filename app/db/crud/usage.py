@@ -84,14 +84,6 @@ def _get_usage_data(
     elif entity_type == "all_nodes":
         pass  # No specific filter
 
-    # Try to get from Redis cache first
-    from app.redis.cache import get_user_usages_from_cache
-    from app.redis.client import get_redis
-    from config import REDIS_ENABLED
-
-    redis_client = get_redis() if REDIS_ENABLED else None
-    use_redis_cache = redis_client is not None
-
     # Build query
     query = db.query(NodeUserUsage)
     if user_ids is not None:
@@ -106,15 +98,6 @@ def _get_usage_data(
         query = query.filter(node_filter)
 
     query = query.filter(NodeUserUsage.created_at >= start_aware, NodeUserUsage.created_at <= end_aware)
-
-    # If using Redis and querying for specific users, try cache first
-    if use_redis_cache and user_ids and len(user_ids) == 1 and entity_type == "user":
-        # Try to get from cache for single user queries
-        cached_usages = get_user_usages_from_cache(user_ids, None, start_aware, end_aware)
-        if cached_usages:
-            # Convert cached data to NodeUserUsage-like objects for processing
-            # This is a simplified approach - full implementation would need to convert properly
-            pass  # For now, fall through to DB query
 
     # Get node lookup
     _ensure_master_state(db, for_update=False)
@@ -512,19 +495,6 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     db.commit()
     db.refresh(dbuser)
-
-    # Update user in Redis cache and mark for sync
-    try:
-        from app.redis.cache import cache_user
-        import logging
-
-        logger = logging.getLogger(__name__)
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to update user in Redis cache: {e}")
 
     return dbuser
 

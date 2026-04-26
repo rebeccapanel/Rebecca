@@ -169,16 +169,6 @@ USE_CUSTOM_JSON_FOR_HAPP = config("USE_CUSTOM_JSON_FOR_HAPP", default=False, cas
 
 ACTIVE_STATUS_TEXT = config("ACTIVE_STATUS_TEXT", default="Active")
 
-# Redis configuration
-REDIS_ENABLED = config("REDIS_ENABLED", cast=_cast_bool_compat, default=False)
-REDIS_HOST = config("REDIS_HOST", default="127.0.0.1")
-REDIS_PORT = config("REDIS_PORT", cast=int, default=6379)
-REDIS_DB = config("REDIS_DB", cast=int, default=0)
-REDIS_PASSWORD = config("REDIS_PASSWORD", default=None)
-REDIS_AUTO_START = config("REDIS_AUTO_START", cast=_cast_bool_compat, default=False)
-_redis_enabled = config("REDIS_ENABLED", cast=_cast_bool_compat, default=False)
-REDIS_USERS_CACHE_ENABLED = config("REDIS_USERS_CACHE_ENABLED", cast=_cast_bool_compat, default=_redis_enabled)
-REDIS_SYNC_INTERVAL = config("REDIS_SYNC_INTERVAL", cast=int, default=180)  # 3 minutes default
 EXPIRED_STATUS_TEXT = config("EXPIRED_STATUS_TEXT", default="Expired")
 LIMITED_STATUS_TEXT = config("LIMITED_STATUS_TEXT", default="Limited")
 DISABLED_STATUS_TEXT = config("DISABLED_STATUS_TEXT", default="Disabled")

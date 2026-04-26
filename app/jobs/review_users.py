@@ -17,65 +17,15 @@ from app.db.models import User
 from app.models.user import UserResponse, UserStatus
 from app.utils import report
 from config import JOB_REVIEW_USERS_BATCH_SIZE, JOB_REVIEW_USERS_INTERVAL
-from app.redis.client import get_redis
-from app.redis.cache import get_user_pending_usage_state
 
 _review_lock = threading.Lock()
 
-REDIS_REVIEW_LAST_ACTIVE_ID = "job:review:last_active_id"
-REDIS_REVIEW_LAST_ON_HOLD_ID = "job:review:last_on_hold_id"
-
-
-def _redis():
-    try:
-        return get_redis()
-    except Exception:
-        return None
-
-
-def _get_last_id(key: str) -> Optional[int]:
-    client = _redis()
-    if not client:
-        return None
-    value = client.get(key)
-    if not value:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _set_last_id(key: str, value: int) -> None:
-    client = _redis()
-    if not client:
-        return
-    try:
-        client.set(key, str(value))
-    except Exception:
-        return
+_last_active_id: Optional[int] = None
+_last_on_hold_id: Optional[int] = None
 
 
 def _get_user_used_traffic(user: User) -> int:
-    # Combine DB usage with any pending deltas in Redis (not yet synced to DB).
-    base_usage = user.used_traffic or 0
-    try:
-        pending_total, _ = get_user_pending_usage_state(user.id) if user.id is not None else (0, None)
-        base_usage += pending_total
-    except Exception:
-        pass
-
-    # Allow overriding with a dedicated Redis key if present.
-    client = _redis()
-    if client and user.id is not None:
-        key = f"user:{user.id}:used_traffic"
-        value = client.get(key)
-        if value is not None:
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                pass
-    return base_usage
+    return user.used_traffic or 0
 
 
 def _is_user_limited(user: User) -> bool:
@@ -107,6 +57,7 @@ def reset_user_by_next_report(db: Session, user: User):
 
 
 def review():
+    global _last_active_id, _last_on_hold_id
     if not _review_lock.acquire(blocking=False):
         logger.debug("Review job skipped because a previous run is still in progress")
         return
@@ -117,10 +68,10 @@ def review():
     try:
         with GetDB() as db:
             try:
-                last_active_id: Optional[int] = _get_last_id(REDIS_REVIEW_LAST_ACTIVE_ID)
+                last_active_id: Optional[int] = _last_active_id
                 active_batch = _batch_users_by_status(db, UserStatus.active, after_id=last_active_id)
                 if not active_batch:
-                    _set_last_id(REDIS_REVIEW_LAST_ACTIVE_ID, 0)
+                    _last_active_id = None
                 else:
                     for user in active_batch:
                         limited = _is_user_limited(user)
@@ -183,15 +134,15 @@ def review():
                             break
 
                     if last_active_id is not None:
-                        _set_last_id(REDIS_REVIEW_LAST_ACTIVE_ID, last_active_id)
+                        _last_active_id = last_active_id
 
                 if datetime.now(timezone.utc).timestamp() - started_at > max_run_seconds:
                     return
 
-                last_on_hold_id: Optional[int] = _get_last_id(REDIS_REVIEW_LAST_ON_HOLD_ID)
+                last_on_hold_id: Optional[int] = _last_on_hold_id
                 on_hold_batch = _batch_users_by_status(db, UserStatus.on_hold, after_id=last_on_hold_id)
                 if not on_hold_batch:
-                    _set_last_id(REDIS_REVIEW_LAST_ON_HOLD_ID, 0)
+                    _last_on_hold_id = None
                 else:
                     for user in on_hold_batch:
                         if user.edit_at:
@@ -199,16 +150,7 @@ def review():
                         else:
                             base_time = datetime.timestamp(user.created_at)
 
-                        pending_online = None
-                        try:
-                            if user.id is not None:
-                                _, pending_online = get_user_pending_usage_state(user.id)
-                        except Exception:
-                            pending_online = None
-
                         effective_online = user.online_at
-                        if pending_online and (not effective_online or pending_online > effective_online):
-                            effective_online = pending_online
 
                         status = None
                         if effective_online and base_time <= datetime.timestamp(effective_online):
@@ -247,7 +189,7 @@ def review():
                             break
 
                     if last_on_hold_id is not None:
-                        _set_last_id(REDIS_REVIEW_LAST_ON_HOLD_ID, last_on_hold_id)
+                        _last_on_hold_id = last_on_hold_id
             except OperationalError as exc:
                 logger.error(f"Review job aborted due to database error: {exc}")
                 db.rollback()
