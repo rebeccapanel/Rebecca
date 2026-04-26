@@ -43,12 +43,15 @@ COMMON_PYINSTALLER_ARGS=(
     --collect-all apscheduler
     --collect-all fastapi
     --collect-all jinja2
+    --collect-all bcrypt
+    --collect-all passlib
     --collect-all pydantic
     --collect-all sqlalchemy
     --collect-all starlette
     --collect-all uvicorn
     --hidden-import dashboard
     --hidden-import main
+    --hidden-import passlib.handlers.bcrypt
     --hidden-import pymysql
 )
 
