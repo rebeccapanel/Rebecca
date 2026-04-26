@@ -39,9 +39,16 @@ def run_migrations() -> None:
             os.environ["REBECCA_SKIP_RUNTIME_INIT"] = previous_skip_runtime_init
 
 
+def clear_migration_imports() -> None:
+    for module_name in list(sys.modules):
+        if module_name == "app" or module_name.startswith("app."):
+            sys.modules.pop(module_name, None)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     run_migrations()
+    clear_migration_imports()
     runpy.run_module("main", run_name="__main__")
 
 
