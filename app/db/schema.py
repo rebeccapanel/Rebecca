@@ -49,5 +49,37 @@ def ensure_users_credential_key_column() -> None:
         logger.error("Unexpected error while adding 'credential_key' column: %s", exc)
 
 
+def ensure_users_subadress_column() -> None:
+    """
+    Ensure the users table contains the subadress column used for 3x-ui compatibility.
+
+    Some installations might skip Alembic migrations; rather than crashing,
+    attempt to add the missing column automatically so the application can start.
+    """
+    try:
+        with engine.connect() as connection:
+            columns = _get_columns(connection, "users")
+    except SQLAlchemyError as exc:
+        logger.warning("Unable to inspect 'users' table for subadress column: %s", exc)
+        return
+    except Exception as exc:  # pragma: no cover - safety net
+        logger.warning("Unexpected error inspecting 'users' table: %s", exc)
+        return
+
+    if "subadress" in columns:
+        return
+
+    try:
+        with engine.begin() as connection:
+            logger.info("Adding missing 'subadress' column to 'users' table")
+            connection.execute(text("ALTER TABLE users ADD COLUMN subadress VARCHAR(255) NOT NULL DEFAULT ''"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_users_subadress ON users (subadress)"))
+    except SQLAlchemyError as exc:
+        logger.error("Failed to add 'subadress' column automatically: %s", exc)
+    except Exception as exc:  # pragma: no cover - safety net
+        logger.error("Unexpected error while adding 'subadress' column: %s", exc)
+
+
 def ensure_core_schema() -> None:
     ensure_users_credential_key_column()
+    ensure_users_subadress_column()

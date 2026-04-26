@@ -88,6 +88,7 @@ import {
 } from "utils/toastHandler";
 import { JsonEditor } from "../components/JsonEditor";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
+import { ThreeXUiDatabaseImportPanel } from "../components/ThreeXUiDatabaseImportPanel";
 
 type EventToggleItem = {
 	key: string;
@@ -870,7 +871,7 @@ export const IntegrationSettingsPage = () => {
 	);
 
 	const integrationTabKeys = useMemo(
-		() => ["panel", "telegram", "subscriptions", "template-creator"],
+		() => ["panel", "telegram", "subscriptions", "database", "template-creator"],
 		[],
 	);
 	const splitHash = useCallback(() => {
@@ -1349,6 +1350,7 @@ export const IntegrationSettingsPage = () => {
 					<Tab>{t("settings.panel.tabTitle")}</Tab>
 					<Tab>{t("settings.telegram")}</Tab>
 					<Tab>{t("settings.subscriptions.tabTitle")}</Tab>
+					<Tab>{t("settings.database.tabTitle", "DATABASE")}</Tab>
 					<Tab>
 						{t("settings.templates.tabTitle")}
 					</Tab>
@@ -3308,6 +3310,9 @@ export const IntegrationSettingsPage = () => {
 								</VStack>
 							</form>
 						)}
+					</TabPanel>
+					<TabPanel px={{ base: 0, md: 2 }}>
+						<ThreeXUiDatabaseImportPanel />
 					</TabPanel>
 					<TabPanel px={{ base: 0, md: 2 }}>
 						<VStack align="stretch" spacing={6}>

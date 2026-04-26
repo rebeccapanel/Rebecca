@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from app.db import GetDB, crud
+
 
 def _create_user_payload(auth_client, username: str) -> dict:
     with patch(
@@ -158,3 +160,50 @@ def test_custom_primary_path_supports_key_routes_info_usage_and_client_types(aut
     custom_client = auth_client.get(f"/customsub/custom_path_user/{credential_key}/v2ray")
     assert custom_client.status_code == 200, custom_client.text
     assert custom_client.text == baseline_client.text
+
+
+def test_subadress_subscription_route_and_info_fallback(auth_client):
+    created = _create_user_payload(auth_client, "legacy_sub_user")
+    credential_key = created["credential_key"]
+
+    with GetDB() as db:
+        dbuser = crud.get_user(db, "legacy_sub_user")
+        dbuser.subadress = "legacy3xsub01"
+        db.commit()
+
+    baseline = auth_client.get(f"/sub/{credential_key}")
+    assert baseline.status_code == 200, baseline.text
+
+    compat = auth_client.get("/sub/legacy3xsub01")
+    assert compat.status_code == 200, compat.text
+    assert compat.text == baseline.text
+
+    info = auth_client.get("/sub/legacy3xsub01/info")
+    assert info.status_code == 200, info.text
+    payload = info.json()
+    assert payload["username"] == "legacy_sub_user"
+    assert "subadress" not in payload
+
+
+def test_subadress_is_not_accepted_in_normal_user_create_flow(auth_client):
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        response = auth_client.post(
+            "/api/user",
+            json={
+                "username": "hidden_subadress_user",
+                "proxies": {"vmess": {"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"}},
+                "subadress": "should-not-persist",
+            },
+        )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert "subadress" not in payload
+
+    with GetDB() as db:
+        dbuser = crud.get_user(db, "hidden_subadress_user")
+        assert dbuser is not None
+        assert dbuser.subadress == ""

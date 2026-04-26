@@ -221,6 +221,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(34, collation="NOCASE"), index=True)
     credential_key = Column(String(64), nullable=True)
+    subadress = Column(String(255), nullable=False, default="", server_default=text("''"), index=True)
     flow = Column(String(128), nullable=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)

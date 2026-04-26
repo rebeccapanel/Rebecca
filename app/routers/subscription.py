@@ -10,6 +10,7 @@ from app.dependencies import (
     get_validated_sub,
     get_validated_sub_by_key,
     get_validated_sub_by_key_only,
+    get_validated_sub_by_subadress,
     validate_dates,
 )
 from app.models.user import SubscriptionUserResponse, UserResponse
@@ -307,6 +308,14 @@ def _get_user_by_identifier(identifier: str, db: Session) -> UserResponse:
                     raise
                 if token_error is None:
                     token_error = exc
+
+        try:
+            return get_validated_sub_by_subadress(subadress=candidate, db=db)
+        except HTTPException as exc:
+            if exc.status_code not in (400, 404):
+                raise
+            if token_error is None:
+                token_error = exc
 
     if token_error:
         raise token_error

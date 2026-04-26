@@ -181,3 +181,148 @@ class SubscriptionCertificateIssueRequest(BaseModel):
 
 class SubscriptionCertificateRenewRequest(BaseModel):
     domain: Optional[str] = None
+
+
+class ThreeXUiUsernameConflictMode(str, Enum):
+    rename = "rename"
+    skip = "skip"
+    overwrite = "overwrite"
+
+
+class ThreeXUiDuplicateSubadressSourceMode(str, Enum):
+    keep_first = "keep_first"
+    skip_all = "skip_all"
+
+
+class ThreeXUiDuplicateSubadressExistingMode(str, Enum):
+    skip = "skip"
+    overwrite = "overwrite"
+
+
+class ThreeXUiOverrideMode(str, Enum):
+    none = "none"
+    add = "add"
+    replace = "replace"
+
+
+class ThreeXUiImportJobStatus(str, Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class ThreeXUiImportAdminOption(BaseModel):
+    id: int
+    username: str
+
+
+class ThreeXUiImportServiceOption(BaseModel):
+    id: int
+    name: str
+    admin_ids: List[int] = Field(default_factory=list)
+    supported_protocols: List[str] = Field(default_factory=list)
+
+
+class ThreeXUiUsernameConflictItem(BaseModel):
+    username: str
+    source_count: int = 1
+    existing_usernames: List[str] = Field(default_factory=list)
+
+
+class ThreeXUiInboundPreview(BaseModel):
+    inbound_id: int
+    remark: str
+    protocol: str
+    raw_client_count: int = 0
+    importable_client_count: int = 0
+    username_conflicts: List[ThreeXUiUsernameConflictItem] = Field(default_factory=list)
+
+
+class ThreeXUiExistingUserRef(BaseModel):
+    id: int
+    username: str
+
+
+class ThreeXUiSubadressOccurrence(BaseModel):
+    inbound_id: int
+    inbound_remark: str
+    protocol: str
+    username: str
+    email: Optional[str] = None
+
+
+class ThreeXUiDuplicateSubadressGroup(BaseModel):
+    subadress: str
+    source_count: int = 0
+    occurrences: List[ThreeXUiSubadressOccurrence] = Field(default_factory=list)
+    existing_users: List[ThreeXUiExistingUserRef] = Field(default_factory=list)
+
+
+class ThreeXUiPreviewResponse(BaseModel):
+    preview_id: str
+    source_inbounds: int = 0
+    supported_inbounds: int = 0
+    source_clients: int = 0
+    importable_clients: int = 0
+    skipped_unsupported: int = 0
+    skipped_invalid: int = 0
+    inbounds: List[ThreeXUiInboundPreview] = Field(default_factory=list)
+    duplicate_subaddresses: List[ThreeXUiDuplicateSubadressGroup] = Field(default_factory=list)
+    admins: List[ThreeXUiImportAdminOption] = Field(default_factory=list)
+    services: List[ThreeXUiImportServiceOption] = Field(default_factory=list)
+
+
+class ThreeXUiInboundImportConfig(BaseModel):
+    inbound_id: int
+    admin_id: int
+    service_id: Optional[int] = None
+    username_conflict_mode: ThreeXUiUsernameConflictMode = ThreeXUiUsernameConflictMode.rename
+    expire_override_mode: ThreeXUiOverrideMode = ThreeXUiOverrideMode.none
+    expire_override_seconds: Optional[int] = None
+    traffic_override_mode: ThreeXUiOverrideMode = ThreeXUiOverrideMode.none
+    traffic_override_bytes: Optional[int] = None
+
+
+class ThreeXUiDuplicateSubadressPolicy(BaseModel):
+    source_conflict_mode: ThreeXUiDuplicateSubadressSourceMode = (
+        ThreeXUiDuplicateSubadressSourceMode.keep_first
+    )
+    existing_conflict_mode: ThreeXUiDuplicateSubadressExistingMode = (
+        ThreeXUiDuplicateSubadressExistingMode.overwrite
+    )
+
+
+class ThreeXUiImportRequest(BaseModel):
+    preview_id: str
+    inbounds: List[ThreeXUiInboundImportConfig] = Field(default_factory=list)
+    duplicate_subaddress_policy: ThreeXUiDuplicateSubadressPolicy = Field(
+        default_factory=ThreeXUiDuplicateSubadressPolicy
+    )
+
+
+class ThreeXUiImportJobResult(BaseModel):
+    total_clients: int = 0
+    processed_clients: int = 0
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    renamed: int = 0
+    skipped_username_conflicts: int = 0
+    skipped_subaddress_conflicts: int = 0
+    updated_by_username_overwrite: int = 0
+    updated_by_subaddress_overwrite: int = 0
+    updated_by_credential_key: int = 0
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ThreeXUiImportJobResponse(BaseModel):
+    job_id: str
+    preview_id: str
+    status: ThreeXUiImportJobStatus
+    progress_current: int = 0
+    progress_total: int = 0
+    message: Optional[str] = None
+    result: Optional[ThreeXUiImportJobResult] = None
+    created_at: datetime
+    updated_at: datetime
