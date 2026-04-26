@@ -66,11 +66,28 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Login to Docker Hub
+        id: dockerhub_login
         if: steps.image_tags.outputs.dockerhub_enabled == 'true'
+        continue-on-error: true
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Finalize image tags
+        id: final_image_tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          tags="ghcr.io/rebeccapanel/rebecca:latest"$'\n'"ghcr.io/rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          if [[ "${{ steps.dockerhub_login.outcome }}" == "success" ]]; then
+            tags="${tags}"$'\n'"rebeccapanel/rebecca:latest"$'\n'"rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -85,4 +102,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image_tags.outputs.tags }}
+          tags: ${{ steps.final_image_tags.outputs.tags }}
