@@ -72,6 +72,8 @@ def test_maintenance_service_supports_binary_mode_without_docker(tmp_path: Path,
     module = _load_module_from_path(MAINTENANCE_SERVICE_PATH, f"rebecca_maintenance_{uuid.uuid4().hex}")
 
     assert module.settings.install_mode == "binary"
+    ssl_request = module.SSLRequest(email="admin@example.com", domains=["example.com"])
+    assert ssl_request.email == "admin@example.com"
     panel_info = asyncio.run(module.panel_version())
     assert panel_info["image"] == "rebecca-server (binary)"
     assert panel_info["tag"] == "v1.2.3"
