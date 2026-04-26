@@ -28,6 +28,7 @@ REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
 REBECCA_BINARY_DEV_BRANCH="${REBECCA_BINARY_DEV_BRANCH:-dev}"
 REBECCA_BINARY_WORKFLOW_NAME="${REBECCA_BINARY_WORKFLOW_NAME:-binary-build}"
 INSTALL_MODE_FILE="$APP_DIR/.install-mode"
+CHANNEL_FILE="$APP_DIR/.channel"
 BINARY_BIN_DIR="$APP_DIR/bin"
 BINARY_SERVER="$BINARY_BIN_DIR/rebecca-server"
 BINARY_CLI="$BINARY_BIN_DIR/rebecca-cli"
@@ -79,6 +80,26 @@ colorized_echo() {
         *)
             echo "${text}"
         ;;
+    esac
+}
+
+set_rebecca_source_ref() {
+    local ref="${1:-master}"
+    REBECCA_REF="$ref"
+    REBECCA_RAW_BASE="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}"
+    REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
+    SERVICE_SOURCE_URL="$REBECCA_SCRIPT_BASE_URL/main.py"
+    SERVICE_REQUIREMENTS_URL="$REBECCA_SCRIPT_BASE_URL/maintenance_requirements.txt"
+}
+
+set_rebecca_source_for_version() {
+    case "${1:-latest}" in
+        dev)
+            set_rebecca_source_ref "$REBECCA_BINARY_DEV_BRANCH"
+            ;;
+        *)
+            set_rebecca_source_ref "master"
+            ;;
     esac
 }
 
@@ -245,6 +266,11 @@ get_install_mode() {
         return
     fi
 
+    if [ -x "$BINARY_SERVER" ] || [ -f "$BINARY_SERVICE_UNIT" ]; then
+        echo "binary"
+        return
+    fi
+
     echo "docker"
 }
 
@@ -322,7 +348,54 @@ select_rebecca_version() {
     esac
 }
 
+write_rebecca_channel() {
+    local channel="${1:-latest}"
+    mkdir -p "$APP_DIR"
+    echo "$channel" > "$CHANNEL_FILE"
+}
+
+get_installed_rebecca_channel() {
+    local channel
+    local image_tag
+    local metadata_tag
+
+    if [ -f "$CHANNEL_FILE" ]; then
+        channel=$(tr -d '[:space:]' < "$CHANNEL_FILE")
+        if [ -n "$channel" ]; then
+            echo "$channel"
+            return
+        fi
+    fi
+
+    if [ -f "$BINARY_METADATA_FILE" ]; then
+        metadata_tag=$(sed -nE 's/.*"tag"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$BINARY_METADATA_FILE" | head -n 1)
+        if [[ "$metadata_tag" == dev-* ]]; then
+            echo "dev"
+            return
+        elif [ -n "$metadata_tag" ] && [ "$metadata_tag" != "latest" ]; then
+            echo "$metadata_tag"
+            return
+        fi
+    fi
+
+    if [ -f "$COMPOSE_FILE" ]; then
+        image_tag=$(grep -E "image:.*rebeccapanel/rebecca:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*rebeccapanel\/rebecca:([^"[:space:]]+).*/\1/')
+        if [ -n "$image_tag" ]; then
+            echo "$image_tag"
+            return
+        fi
+    fi
+
+    echo "latest"
+}
+
 install_rebecca_script() {
+    local source_version="${1:-}"
+    if [ -n "$source_version" ]; then
+        set_rebecca_source_for_version "$source_version"
+    elif is_rebecca_installed; then
+        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+    fi
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/rebecca.sh"
     colorized_echo blue "Installing rebecca script"
     curl -fsSL "$SCRIPT_URL" | install -m 755 /dev/stdin /usr/local/bin/rebecca
@@ -331,6 +404,12 @@ install_rebecca_script() {
 
 install_rebecca_service() {
     check_running_as_root
+    local source_version="${1:-}"
+    if [ -n "$source_version" ]; then
+        set_rebecca_source_for_version "$source_version"
+    elif is_rebecca_installed; then
+        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+    fi
     colorized_echo blue "Installing Rebecca maintenance service"
 
     detect_os
@@ -1741,7 +1820,7 @@ get_current_xray_core_version() {
     fi
 
     CONTAINER_NAME="$APP_NAME"
-    if docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+    if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
         version_output=$(docker exec "$CONTAINER_NAME" xray -version 2>/dev/null)
         if [ $? -eq 0 ]; then
             version=$(echo "$version_output" | head -n1 | awk '{print $2}')
@@ -1783,6 +1862,7 @@ update_core_command() {
 install_rebecca() {
     local rebecca_version=$1
     local database_type=$2
+    set_rebecca_source_for_version "$rebecca_version"
     # Fetch releases
     FILES_URL_PREFIX="$REBECCA_RAW_BASE"
     
@@ -2280,6 +2360,7 @@ install_binary_rebecca() {
         colorized_echo yellow "Use Dockerized install for MySQL or MariaDB."
         exit 1
     fi
+    set_rebecca_source_for_version "$rebecca_version"
 
     detect_os
     for package in curl jq tar gzip unzip; do
@@ -2480,6 +2561,10 @@ install_command() {
                 shift 2
             ;;
             --mode)
+                if [ -z "${2:-}" ]; then
+                    colorized_echo red "Error: --mode requires docker or binary."
+                    exit 1
+                fi
                 install_mode=$(normalize_install_mode "$2")
                 shift 2
             ;;
@@ -2511,6 +2596,7 @@ install_command() {
     if [[ "$rebecca_version_set" != "true" ]]; then
         rebecca_version=$(select_rebecca_version "" "$install_mode")
     fi
+    set_rebecca_source_for_version "$rebecca_version"
     detect_os
     if ! command -v jq >/dev/null 2>&1; then
         install_package jq
@@ -2518,7 +2604,7 @@ install_command() {
     if ! command -v curl >/dev/null 2>&1; then
         install_package curl
     fi
-    install_rebecca_script
+    install_rebecca_script "$rebecca_version"
 
     if [ "$install_mode" = "docker" ]; then
         if ! command -v docker >/dev/null 2>&1; then
@@ -2557,6 +2643,7 @@ install_command() {
                 install_rebecca "$rebecca_version" "$database_type"
                 echo "docker" > "$INSTALL_MODE_FILE"
             fi
+            write_rebecca_channel "$rebecca_version"
             echo "Installing $rebecca_version version"
         else
             echo "Version $rebecca_version does not exist. Please enter a valid version (e.g. v0.5.2)"
@@ -2568,7 +2655,7 @@ install_command() {
     fi
     prompt_ssl_setup
     set +e
-    install_rebecca_service
+    install_rebecca_service "$rebecca_version"
     service_status=$?
     set -e
     if [ "$service_status" -ne 0 ]; then
@@ -2976,7 +3063,7 @@ up_command() {
 
 update_command() {
     check_running_as_root
-    local rebecca_version="latest"
+    local rebecca_version=""
     local rebecca_version_set="false"
 
     while [[ $# -gt 0 ]]; do
@@ -3019,15 +3106,21 @@ update_command() {
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
-    
+
+    if [[ "$rebecca_version_set" != "true" ]]; then
+        rebecca_version=$(get_installed_rebecca_channel)
+    fi
+    set_rebecca_source_for_version "$rebecca_version"
+
     detect_compose
     
     colorized_echo blue "Updating Rebecca CLI and maintenance service..."
-    update_rebecca_script
-    update_rebecca_service
+    update_rebecca_script "$rebecca_version"
+    update_rebecca_service "$rebecca_version"
 
     colorized_echo blue "Pulling requested version: $rebecca_version"
     update_rebecca "$rebecca_version"
+    write_rebecca_channel "$rebecca_version"
     
     colorized_echo blue "Restarting Rebecca's services"
     down_rebecca
@@ -3040,6 +3133,12 @@ update_command() {
 }
 
 update_rebecca_script() {
+    local source_version="${1:-}"
+    if [ -n "$source_version" ]; then
+        set_rebecca_source_for_version "$source_version"
+    elif is_rebecca_installed; then
+        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+    fi
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/rebecca.sh"
     colorized_echo blue "Updating rebecca script"
     curl -fsSL "$SCRIPT_URL" | install -m 755 /dev/stdin /usr/local/bin/rebecca
@@ -3048,12 +3147,18 @@ update_rebecca_script() {
 
 update_rebecca_service() {
     check_running_as_root
+    local source_version="${1:-}"
+    if [ -n "$source_version" ]; then
+        set_rebecca_source_for_version "$source_version"
+    elif is_rebecca_installed; then
+        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
+    fi
 
     colorized_echo blue "Updating Rebecca maintenance service"
 
     if [ ! -d "$SERVICE_DIR" ]; then
         colorized_echo yellow "Service directory not found; installing service instead"
-        install_rebecca_service
+        install_rebecca_service "$source_version"
         return
     fi
 
@@ -3086,7 +3191,7 @@ update_rebecca_service() {
 
     if [ ! -x "$PYTHON_BIN" ]; then
         colorized_echo yellow "Virtualenv missing, reinstalling maintenance service..."
-        install_rebecca_service
+        install_rebecca_service "$source_version"
         return
     fi
 
@@ -3187,6 +3292,12 @@ check_editor() {
 edit_command() {
     detect_os
     check_editor
+    if is_binary_install; then
+        mkdir -p "$(dirname "$ENV_FILE")"
+        touch "$ENV_FILE"
+        $EDITOR "$ENV_FILE"
+        return
+    fi
     if [ -f "$COMPOSE_FILE" ]; then
         $EDITOR "$COMPOSE_FILE"
     else

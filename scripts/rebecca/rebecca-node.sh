@@ -5,6 +5,9 @@ APP_NAME_FROM_ARG=0
 INSTALL_DIR="/opt"
 NODE_DISCOVERY_BASE="/opt"
 SKIP_SERVICE_UPDATE=0
+INSTALL_MODE_REQUESTED=""
+NODE_VERSION_REQUESTED=""
+NODE_VERSION_SET=0
 
 SCRIPT_NAME=$(basename "$0")
 SCRIPT_BASENAME="${SCRIPT_NAME%.*}"
@@ -41,8 +44,15 @@ set_app_context() {
     DATA_MAIN_DIR="/var/lib/$APP_NAME"
     COMPOSE_FILE="$APP_DIR/docker-compose.yml"
     BRANCH_FILE="$APP_DIR/.branch"
+    INSTALL_MODE_FILE="$APP_DIR/.install-mode"
     CERT_FILE="$DATA_DIR/cert.pem"
     ENV_FILE="$APP_DIR/.env"
+
+    BINARY_BIN_DIR="$APP_DIR/bin"
+    BINARY_NODE="$BINARY_BIN_DIR/rebecca-node"
+    BINARY_NODE_SERVICE="$BINARY_BIN_DIR/rebecca-node-service"
+    BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
+    BINARY_SERVICE_UNIT="/etc/systemd/system/${APP_NAME}.service"
 
     NODE_SERVICE_DIR="/usr/local/share/${APP_NAME}-maintenance"
     NODE_SERVICE_FILE="$NODE_SERVICE_DIR/main.py"
@@ -64,6 +74,44 @@ while [[ $# -gt 0 ]]; do
         --skip-service-update)
             SKIP_SERVICE_UPDATE=1
             shift
+        ;;
+        --mode)
+            if [ -z "${2:-}" ]; then
+                echo "Error: --mode requires docker or binary."
+                exit 1
+            fi
+            INSTALL_MODE_REQUESTED="${2:-}"
+            shift 2
+        ;;
+        --binary)
+            INSTALL_MODE_REQUESTED="binary"
+            shift
+        ;;
+        --docker|--dockerized)
+            INSTALL_MODE_REQUESTED="docker"
+            shift
+        ;;
+        --dev)
+            if [ "$NODE_VERSION_SET" -eq 1 ] && [ "$NODE_VERSION_REQUESTED" != "dev" ]; then
+                echo "Error: Cannot use --dev and --version options simultaneously."
+                exit 1
+            fi
+            NODE_VERSION_REQUESTED="dev"
+            NODE_VERSION_SET=1
+            shift
+        ;;
+        --version)
+            if [ "$NODE_VERSION_SET" -eq 1 ]; then
+                echo "Error: Cannot use --dev and --version options simultaneously."
+                exit 1
+            fi
+            if [ -z "${2:-}" ]; then
+                echo "Error: --version requires a value."
+                exit 1
+            fi
+            NODE_VERSION_REQUESTED="${2:-}"
+            NODE_VERSION_SET=1
+            shift 2
         ;;
         --name)
             if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "install-service" || "$COMMAND" == "service-install" || "$COMMAND" == "script-install" ]]; then
@@ -104,6 +152,10 @@ LAST_XRAY_CORES=5
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
 REBECCA_REF="${REBECCA_REF:-master}"
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca}"
+REBECCA_NODE_RELEASE_REPO="${REBECCA_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
+REBECCA_NODE_BINARY_DEV_BRANCH="${REBECCA_NODE_BINARY_DEV_BRANCH:-dev}"
+REBECCA_NODE_BINARY_WORKFLOW_NAME="${REBECCA_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
+REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
 
 # Default branch values (master)
 BRANCH="master"
@@ -163,9 +215,33 @@ set_env_value() {
     fi
 }
 
+get_env_value() {
+    local key="$1"
+    if [ ! -f "$ENV_FILE" ]; then
+        return
+    fi
+
+    grep -E "^[[:space:]]*${key}[[:space:]]*=" "$ENV_FILE" 2>/dev/null \
+        | tail -n 1 \
+        | sed -E 's/^[^=]+=//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//'
+}
+
 persist_rebecca_node_service_env() {
-    local host="${REBECCA_NODE_SCRIPT_HOST:-127.0.0.1}"
-    local port="${REBECCA_NODE_SCRIPT_PORT:-3100}"
+    local saved_host
+    local saved_port
+    local host
+    local port
+
+    saved_host=$(get_env_value "REBECCA_NODE_SCRIPT_HOST")
+    saved_port=$(get_env_value "REBECCA_NODE_SCRIPT_PORT")
+    host="${REBECCA_NODE_SCRIPT_HOST:-${saved_host:-127.0.0.1}}"
+    port="${REBECCA_NODE_SCRIPT_PORT:-}"
+    if [ -n "$saved_port" ] && { [ -z "$port" ] || [ "$port" = "3100" ]; }; then
+        port="$saved_port"
+    fi
+    port="${port:-3100}"
+    REBECCA_NODE_SCRIPT_PORT="$port"
+
     set_env_value "REBECCA_NODE_SCRIPT_HOST" "$host"
     set_env_value "REBECCA_NODE_SCRIPT_PORT" "$port"
 }
@@ -182,6 +258,24 @@ extract_container_name() {
     fi
 }
 
+add_discovered_node_instance() {
+    local dir="$1"
+    local name="$2"
+    local existing
+
+    for existing in "${DISCOVERED_NODE_PATHS[@]}"; do
+        if [ "$existing" = "$dir" ]; then
+            return
+        fi
+    done
+
+    if [ -z "$name" ]; then
+        name=$(basename "$dir")
+    fi
+    DISCOVERED_NODE_PATHS+=("$dir")
+    DISCOVERED_NODE_NAMES+=("$name")
+}
+
 discover_node_instances() {
     DISCOVERED_NODE_PATHS=()
     DISCOVERED_NODE_NAMES=()
@@ -195,9 +289,20 @@ discover_node_instances() {
         if [ -z "$name" ]; then
             name=$(basename "$dir")
         fi
-        DISCOVERED_NODE_PATHS+=("$dir")
-        DISCOVERED_NODE_NAMES+=("$name")
+        add_discovered_node_instance "$dir" "$name"
     done < <(find "$NODE_DISCOVERY_BASE" -mindepth 1 -maxdepth 2 -type f -name "docker-compose.yml" -print0 2>/dev/null || true)
+
+    while IFS= read -r -d '' mode_file; do
+        local dir
+        dir=$(dirname "$mode_file")
+        add_discovered_node_instance "$dir" "$(basename "$dir")"
+    done < <(find "$NODE_DISCOVERY_BASE" -mindepth 1 -maxdepth 2 -type f -name ".install-mode" -print0 2>/dev/null || true)
+
+    while IFS= read -r -d '' binary_file; do
+        local dir
+        dir=$(dirname "$(dirname "$binary_file")")
+        add_discovered_node_instance "$dir" "$(basename "$dir")"
+    done < <(find "$NODE_DISCOVERY_BASE" -mindepth 2 -maxdepth 3 -type f -path "*/bin/rebecca-node" -print0 2>/dev/null || true)
 }
 
 prompt_node_selection() {
@@ -277,6 +382,8 @@ set_branch_variables() {
         ;;
     esac
     SCRIPT_BRANCH="$BRANCH"
+    REBECCA_REF="$BRANCH"
+    REBECCA_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca"
     SCRIPT_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${BRANCH}/scripts/rebecca/rebecca-node.sh"
 }
 
@@ -302,6 +409,113 @@ prompt_branch_selection() {
         fi
     fi
     colorized_echo blue "Selected branch: $BRANCH (image tag: $IMAGE_TAG)"
+}
+
+normalize_install_mode() {
+    local mode
+    mode=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
+    case "$mode" in
+        docker|dockerized|compose)
+            echo "docker"
+        ;;
+        binary|bin|native)
+            echo "binary"
+        ;;
+        "")
+            echo ""
+        ;;
+        *)
+            colorized_echo red "Invalid install mode: $1" >&2
+            colorized_echo yellow "Valid modes are: docker, binary" >&2
+            exit 1
+        ;;
+    esac
+}
+
+get_install_mode() {
+    if [ -f "$INSTALL_MODE_FILE" ]; then
+        normalize_install_mode "$(tr -d '[:space:]' < "$INSTALL_MODE_FILE")"
+        return
+    fi
+    if [ -x "$BINARY_NODE" ] || [ -f "$BINARY_SERVICE_UNIT" ]; then
+        echo "binary"
+        return
+    fi
+    echo "docker"
+}
+
+is_binary_install() {
+    [ "$(get_install_mode)" = "binary" ]
+}
+
+select_install_mode() {
+    local requested_mode
+    requested_mode=$(normalize_install_mode "${1:-${REBECCA_NODE_INSTALL_MODE:-}}")
+
+    if [ -n "$requested_mode" ]; then
+        echo "$requested_mode"
+        return
+    fi
+
+    if [ ! -t 0 ]; then
+        echo "docker"
+        return
+    fi
+
+    colorized_echo cyan "Select Rebecca-node installation mode:" >&2
+    colorized_echo yellow "  1) Dockerized" >&2
+    colorized_echo yellow "  2) Binary (native systemd service, no Docker)" >&2
+    read -r -p "Install mode [1]: " install_mode_answer
+
+    case "$install_mode_answer" in
+        2|binary|Binary|bin|native)
+            echo "binary"
+        ;;
+        ""|1|docker|Docker|dockerized|compose)
+            echo "docker"
+        ;;
+        *)
+            colorized_echo red "Invalid install mode selection."
+            exit 1
+        ;;
+    esac
+}
+
+select_node_version() {
+    local requested_version="${1:-}"
+    local install_mode="${2:-docker}"
+
+    if [ -n "$requested_version" ]; then
+        echo "$requested_version"
+        return
+    fi
+
+    if [ ! -t 0 ]; then
+        echo "latest"
+        return
+    fi
+
+    colorized_echo cyan "Select Rebecca-node release channel for ${install_mode} mode:" >&2
+    colorized_echo yellow "  1) latest" >&2
+    if [ "$install_mode" = "binary" ]; then
+        colorized_echo yellow "  2) dev (latest successful binary build from ${REBECCA_NODE_BINARY_DEV_BRANCH})" >&2
+    else
+        colorized_echo yellow "  2) dev (Docker image tag dev)" >&2
+    fi
+    read -r -p "Release channel [1]: " node_version_answer
+
+    case "$node_version_answer" in
+        2|dev|Dev)
+            echo "dev"
+        ;;
+        ""|1|latest|Latest|stable|Stable)
+            echo "latest"
+        ;;
+        *)
+            colorized_echo red "Invalid release channel selection."
+            exit 1
+        ;;
+    esac
 }
 
 BRANCH="master"
@@ -422,6 +636,313 @@ install_docker() {
     colorized_echo green "Docker installed successfully"
 }
 
+detect_node_binary_arch() {
+    case "$(uname -m)" in
+        amd64|x86_64)
+            echo "amd64"
+        ;;
+        *)
+            colorized_echo red "Rebecca-node binary install currently supports linux/amd64 only." >&2
+            colorized_echo yellow "Use Dockerized install on this architecture." >&2
+            exit 1
+        ;;
+    esac
+}
+
+get_node_binary_release_asset_metadata() {
+    local node_version="$1"
+    local binary_arch="$2"
+    local release_api
+    local release_payload
+    local resolved_tag
+    local node_asset_name
+    local service_asset_name
+    local node_asset_url
+    local service_asset_url
+
+    if [ "$node_version" = "latest" ]; then
+        release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/latest"
+    else
+        release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${node_version}"
+    fi
+
+    release_payload=$(curl -fsSL "$release_api") || {
+        colorized_echo red "Unable to read Rebecca-node release metadata: $release_api" >&2
+        exit 1
+    }
+
+    resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
+    node_asset_name="rebecca-node-${resolved_tag}-linux-${binary_arch}"
+    service_asset_name="rebecca-node-service-${resolved_tag}-linux-${binary_arch}"
+
+    node_asset_url=$(echo "$release_payload" | jq -r --arg name "$node_asset_name" '
+        .assets[]?
+        | select(.name == $name)
+        | .browser_download_url
+    ' | head -n 1)
+
+    service_asset_url=$(echo "$release_payload" | jq -r --arg name "$service_asset_name" '
+        .assets[]?
+        | select(.name == $name)
+        | .browser_download_url
+    ' | head -n 1)
+
+    if [ -z "$node_asset_url" ] || [ "$node_asset_url" = "null" ] || [ -z "$service_asset_url" ] || [ "$service_asset_url" = "null" ]; then
+        colorized_echo red "No Rebecca-node binary release assets found for linux-${binary_arch}." >&2
+        colorized_echo yellow "Use --dev after the dev binary workflow succeeds, or use Dockerized install." >&2
+        exit 1
+    fi
+
+    printf '%s|%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url" "$service_asset_url"
+}
+
+get_node_binary_dev_artifact_metadata() {
+    local binary_arch="$1"
+    local workflow_runs_api
+    local workflow_runs_payload
+    local latest_run_json
+    local run_id
+    local head_sha
+    local artifacts_api
+    local artifacts_payload
+    local artifact_name
+    local artifact_url
+
+    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?branch=${REBECCA_NODE_BINARY_DEV_BRANCH}&status=success&event=push&per_page=20"
+    workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
+        colorized_echo red "Unable to read Rebecca-node binary workflow metadata: $workflow_runs_api" >&2
+        exit 1
+    }
+
+    latest_run_json=$(echo "$workflow_runs_payload" | jq -c '
+        .workflow_runs[]?
+        | select(.head_branch == "'"${REBECCA_NODE_BINARY_DEV_BRANCH}"'" and .conclusion == "success")
+    ' | head -n 1)
+
+    if [ -z "$latest_run_json" ]; then
+        colorized_echo red "No successful Rebecca-node binary workflow run was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
+        exit 1
+    fi
+
+    run_id=$(echo "$latest_run_json" | jq -r '.id // empty')
+    head_sha=$(echo "$latest_run_json" | jq -r '.head_sha // empty')
+    artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+    artifacts_payload=$(curl -fsSL "$artifacts_api") || {
+        colorized_echo red "Unable to read Rebecca-node binary workflow artifacts: $artifacts_api" >&2
+        exit 1
+    }
+
+    artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
+        [
+            .artifacts[]?
+            | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
+        ]
+        | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
+        | .[0].name // empty
+    ')
+
+    if [ -z "$artifact_name" ]; then
+        colorized_echo red "No usable Rebecca-node binary dev artifact was found for workflow run ${run_id}." >&2
+        exit 1
+    fi
+
+    artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+    printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+}
+
+write_node_binary_release_metadata() {
+    local resolved_version="$1"
+    local binary_arch="$2"
+    local asset_url="$3"
+
+    jq -n \
+        --arg image "rebecca-node (binary)" \
+        --arg tag "$resolved_version" \
+        --arg asset_url "$asset_url" \
+        --arg arch "linux-${binary_arch}" \
+        --arg node_binary "$BINARY_NODE" \
+        --arg service_binary "$BINARY_NODE_SERVICE" \
+        --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{
+            install_mode: "binary",
+            image: $image,
+            tag: $tag,
+            asset_url: $asset_url,
+            arch: $arch,
+            node_binary: $node_binary,
+            service_binary: $service_binary,
+            installed_at: $installed_at
+        }' > "$BINARY_METADATA_FILE"
+}
+
+create_binary_rebecca_node_service() {
+    cat > "$BINARY_SERVICE_UNIT" <<EOF
+[Unit]
+Description=Rebecca-node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$APP_DIR
+Environment=REBECCA_NODE_APP_NAME=$APP_NAME
+Environment=REBECCA_NODE_APP_DIR=$APP_DIR
+Environment=REBECCA_NODE_DATA_DIR=$DATA_DIR
+Environment=REBECCA_DATA_DIR=$DATA_DIR
+Environment=REBECCA_NODE_INSTALL_MODE=binary
+Environment=REBECCA_NODE_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
+ExecStart=$BINARY_NODE
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+}
+
+install_latest_xray_for_binary_node() {
+    mkdir -p "$APP_DIR/scripts" "$DATA_DIR/xray-core"
+    colorized_echo blue "Installing Xray core for binary node"
+    curl -fsSL "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
+    chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
+    REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
+}
+
+configure_binary_node_env() {
+    mkdir -p "$DATA_DIR" "$APP_DIR"
+    echo "$BRANCH" > "$BRANCH_FILE"
+
+    if [ ! -s "$CERT_FILE" ]; then
+        : > "$CERT_FILE"
+        echo -e "Please paste the content of the Client Certificate, press ENTER on a new line when finished: "
+        while IFS= read -r line; do
+            if [[ -z $line ]]; then
+                break
+            fi
+            echo "$line" >>"$CERT_FILE"
+        done
+        colorized_echo green "Certificate saved to $CERT_FILE"
+    fi
+
+    get_occupied_ports
+
+    if ! grep -qE '^[[:space:]]*SERVICE_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
+        while true; do
+            read -p "Enter the SERVICE_PORT (default 62050): " -r SERVICE_PORT
+            if [[ -z "$SERVICE_PORT" ]]; then
+                SERVICE_PORT=62050
+            fi
+            if [[ "$SERVICE_PORT" -ge 1 && "$SERVICE_PORT" -le 65535 ]]; then
+                if is_port_occupied "$SERVICE_PORT"; then
+                    colorized_echo red "Port $SERVICE_PORT is already in use. Please enter another port."
+                else
+                    break
+                fi
+            else
+                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
+            fi
+        done
+        set_env_value "SERVICE_PORT" "$SERVICE_PORT"
+    fi
+    SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
+    SERVICE_PORT="${SERVICE_PORT:-62050}"
+    set_env_value "SERVICE_PORT" "$SERVICE_PORT"
+
+    if ! grep -qE '^[[:space:]]*XRAY_API_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
+        while true; do
+            read -p "Enter the XRAY_API_PORT (default 62051): " -r XRAY_API_PORT
+            if [[ -z "$XRAY_API_PORT" ]]; then
+                XRAY_API_PORT=62051
+            fi
+            if [[ "$XRAY_API_PORT" -ge 1 && "$XRAY_API_PORT" -le 65535 ]]; then
+                if is_port_occupied "$XRAY_API_PORT"; then
+                    colorized_echo red "Port $XRAY_API_PORT is already in use. Please enter another port."
+                elif [[ "$XRAY_API_PORT" -eq "$SERVICE_PORT" ]]; then
+                    colorized_echo red "Port $XRAY_API_PORT cannot be the same as SERVICE_PORT. Please enter another port."
+                else
+                    break
+                fi
+            else
+                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
+            fi
+        done
+        set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
+    fi
+    XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
+    XRAY_API_PORT="${XRAY_API_PORT:-62051}"
+    set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
+
+    set_env_value "REBECCA_DATA_DIR" "$DATA_DIR"
+    set_env_value "SSL_CLIENT_CERT_FILE" "$CERT_FILE"
+    set_env_value "SSL_CERT_FILE" "$DATA_DIR/ssl_cert.pem"
+    set_env_value "SSL_KEY_FILE" "$DATA_DIR/ssl_key.pem"
+    set_env_value "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
+    set_env_value "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
+    set_env_value "SERVICE_PROTOCOL" "rest"
+    persist_rebecca_node_service_env
+}
+
+install_binary_rebecca_node() {
+    local node_version="$1"
+    local configure="${2:-1}"
+    local binary_arch
+    local resolved_version
+    local node_asset_url
+    local service_asset_url
+    local artifact_url
+    local tmp_dir
+    local package_path
+
+    detect_os
+    for package in curl jq unzip; do
+        if ! command -v "$package" >/dev/null 2>&1; then
+            install_package "$package"
+        fi
+    done
+
+    binary_arch=$(detect_node_binary_arch)
+    tmp_dir=$(mktemp -d)
+
+    if [ "$node_version" = "dev" ]; then
+        IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
+        package_path="$tmp_dir/rebecca-node-binaries.zip"
+        colorized_echo blue "Downloading Rebecca-node binary dev artifact"
+        curl -fL "$artifact_url" -o "$package_path"
+        unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
+    else
+        IFS='|' read -r resolved_version node_asset_url service_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
+        colorized_echo blue "Downloading Rebecca-node binary release assets"
+        curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
+        curl -fL "$service_asset_url" -o "$tmp_dir/rebecca-node-service"
+    fi
+
+    if [ ! -f "$tmp_dir/rebecca-node" ] || [ ! -f "$tmp_dir/rebecca-node-service" ]; then
+        colorized_echo red "Downloaded binary package is incomplete; rebecca-node or rebecca-node-service is missing." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR"
+    install -m 755 "$tmp_dir/rebecca-node" "$BINARY_NODE"
+    install -m 755 "$tmp_dir/rebecca-node-service" "$BINARY_NODE_SERVICE"
+
+    if [ "$configure" = "1" ]; then
+        configure_binary_node_env
+        install_latest_xray_for_binary_node
+    elif [ ! -x "$DATA_DIR/xray-core/xray" ]; then
+        install_latest_xray_for_binary_node
+    fi
+
+    write_node_binary_release_metadata "${resolved_version:-$node_version}" "$binary_arch" "${artifact_url:-${node_asset_url:-}}"
+    echo "binary" > "$INSTALL_MODE_FILE"
+    create_binary_rebecca_node_service
+    rm -rf "$tmp_dir"
+    colorized_echo green "Rebecca-node binary files installed successfully"
+}
+
 cleanup_node_service_on_failure() {
     local exit_code=$?
     colorized_echo yellow "Maintenance service installation failed, continuing without service..."
@@ -459,6 +980,11 @@ install_rebecca_node_service() {
     if ! is_rebecca_node_installed; then
         colorized_echo red "Rebecca-node '$APP_NAME' not installed at $APP_DIR"
         exit 1
+    fi
+
+    if is_binary_install; then
+        install_rebecca_node_service_binary
+        return
     fi
 
     colorized_echo blue "Installing Rebecca-node maintenance service for $APP_NAME"
@@ -609,8 +1135,61 @@ EOF
     colorized_echo magenta "  View logs: journalctl -u $NODE_SERVICE_UNIT_NAME -f"
 }
 
+install_rebecca_node_service_binary() {
+    if [ ! -x "$BINARY_NODE_SERVICE" ]; then
+        colorized_echo red "Rebecca-node maintenance binary not found at $BINARY_NODE_SERVICE"
+        colorized_echo yellow "Run '$APP_NAME install --binary' or '$APP_NAME update' first."
+        exit 1
+    fi
+
+    ensure_node_script_port
+    mkdir -p "$NODE_SERVICE_DIR"
+
+    local legacy_service="/etc/systemd/system/rebecca-node-maint.service"
+    if [ -f "$legacy_service" ] && [ "$NODE_SERVICE_UNIT_NAME" != "rebecca-node-maint.service" ]; then
+        systemctl disable --now rebecca-node-maint.service >/dev/null 2>&1 || true
+        rm -f "$legacy_service"
+    fi
+
+    cat > "$NODE_SERVICE_UNIT" <<EOF
+[Unit]
+Description=Rebecca-node Maintenance API for $APP_NAME
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$APP_DIR
+Environment=REBECCA_NODE_SCRIPT_HOST=127.0.0.1
+Environment=REBECCA_NODE_SCRIPT_PORT=$REBECCA_NODE_SCRIPT_PORT
+Environment=REBECCA_NODE_SCRIPT_BIN=/usr/local/bin/$APP_NAME
+ExecStart=$BINARY_NODE_SERVICE
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    if ! systemctl enable --now "$NODE_SERVICE_UNIT_NAME" 2>/dev/null; then
+        colorized_echo red "Failed to enable/start maintenance service"
+        return 1
+    fi
+    persist_rebecca_node_service_env
+    colorized_echo green "Rebecca-node maintenance service installed and started for $APP_NAME"
+}
+
 update_rebecca_node_service() {
     check_running_as_root
+
+    if is_binary_install; then
+        install_rebecca_node_service_binary
+        systemctl restart "$NODE_SERVICE_UNIT_NAME"
+        colorized_echo green "Rebecca-node maintenance service updated for $APP_NAME"
+        return
+    fi
 
     if [ ! -d "$NODE_SERVICE_DIR" ]; then
         colorized_echo red "Maintenance service is not installed for $APP_NAME"
@@ -732,7 +1311,19 @@ is_port_occupied() {
 }
 
 ensure_node_script_port() {
-    local start_port="${REBECCA_NODE_SCRIPT_PORT:-3100}"
+    local saved_port
+    local start_port
+
+    saved_port=$(get_env_value "REBECCA_NODE_SCRIPT_PORT")
+    if [ -n "$saved_port" ] && { [ -z "${REBECCA_NODE_SCRIPT_PORT:-}" ] || [ "$REBECCA_NODE_SCRIPT_PORT" = "3100" ]; }; then
+        REBECCA_NODE_SCRIPT_PORT="$saved_port"
+    fi
+    start_port="${REBECCA_NODE_SCRIPT_PORT:-3100}"
+
+    if [ -f "$NODE_SERVICE_UNIT" ] && systemctl is-active --quiet "$NODE_SERVICE_UNIT_NAME" 2>/dev/null; then
+        REBECCA_NODE_SCRIPT_PORT="$start_port"
+        return
+    fi
 
     get_occupied_ports
 
@@ -829,7 +1420,8 @@ services:
     restart: always
     network_mode: host
     environment:
-      SSL_CLIENT_CERT_FILE: "/var/lib/marzban-node/cert.pem"
+      REBECCA_DATA_DIR: "/var/lib/rebecca-node"
+      SSL_CLIENT_CERT_FILE: "/var/lib/rebecca-node/cert.pem"
       SERVICE_PORT: "$SERVICE_PORT"
       XRAY_API_PORT: "$XRAY_API_PORT"
       SERVICE_PROTOCOL: "$SERVICE_PROTOCOL_VALUE"
@@ -850,6 +1442,11 @@ uninstall_rebecca_node_script() {
 }
 
 uninstall_rebecca_node() {
+    if [ -f "$BINARY_SERVICE_UNIT" ]; then
+        systemctl disable --now "$APP_NAME.service" >/dev/null 2>&1 || true
+        rm -f "$BINARY_SERVICE_UNIT"
+        systemctl daemon-reload
+    fi
     if [ -d "$APP_DIR" ]; then
         colorized_echo yellow "Removing directory: $APP_DIR"
         rm -r "$APP_DIR"
@@ -877,18 +1474,34 @@ uninstall_rebecca_node_data_files() {
 }
 
 up_rebecca_node() {
+    if is_binary_install; then
+        systemctl enable --now "$APP_NAME.service"
+        return
+    fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" up -d --remove-orphans
 }
 
 down_rebecca_node() {
+    if is_binary_install; then
+        systemctl stop "$APP_NAME.service"
+        return
+    fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" down
 }
 
 show_rebecca_node_logs() {
+    if is_binary_install; then
+        journalctl -u "$APP_NAME.service" --no-pager
+        return
+    fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" logs
 }
 
 follow_rebecca_node_logs() {
+    if is_binary_install; then
+        journalctl -u "$APP_NAME.service" -f
+        return
+    fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" logs -f
 }
 
@@ -898,11 +1511,39 @@ update_rebecca_node_script() {
 }
 
 update_rebecca_node() {
+    local requested_version="${1:-}"
+    if is_binary_install; then
+        local node_version="${requested_version:-latest}"
+        if [ -z "$requested_version" ] && [ "$BRANCH" = "dev" ]; then
+            node_version="dev"
+        fi
+        install_binary_rebecca_node "$node_version" "0"
+        return
+    fi
+
+    if [ -n "$requested_version" ]; then
+        case "$requested_version" in
+            dev)
+                set_branch_variables dev
+            ;;
+            latest|"")
+                set_branch_variables master
+            ;;
+            *)
+                set_branch_variables master
+                DOCKER_IMAGE="rebeccapanel/rebecca-node:${requested_version}"
+            ;;
+        esac
+        echo "$BRANCH" > "$BRANCH_FILE"
+        if [ -f "$COMPOSE_FILE" ]; then
+            sed -i "s|^[[:space:]]*image:.*rebeccapanel/rebecca-node.*|    image: $DOCKER_IMAGE|" "$COMPOSE_FILE"
+        fi
+    fi
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
 }
 
 is_rebecca_node_installed() {
-    if [ -d $APP_DIR ]; then
+    if [ -d "$APP_DIR" ]; then
         return 0
     else
         return 1
@@ -910,6 +1551,10 @@ is_rebecca_node_installed() {
 }
 
 is_rebecca_node_up() {
+    if is_binary_install; then
+        systemctl is-active --quiet "$APP_NAME.service"
+        return
+    fi
     if [ -z "$($COMPOSE -f $COMPOSE_FILE ps -q -a)" ]; then
         return 1
     else
@@ -919,6 +1564,9 @@ is_rebecca_node_up() {
 
 install_command() {
     check_running_as_root
+    local install_mode
+    local node_version
+
     # Check if rebecca is already installed
     if is_rebecca_node_installed; then
         colorized_echo red "Rebecca-node is already installed at $APP_DIR"
@@ -928,20 +1576,47 @@ install_command() {
             exit 1
         fi
     fi
+    install_mode=$(select_install_mode "$INSTALL_MODE_REQUESTED")
+    if [ "$NODE_VERSION_SET" -eq 1 ]; then
+        node_version="$NODE_VERSION_REQUESTED"
+    else
+        node_version=$(select_node_version "" "$install_mode")
+    fi
+    case "$node_version" in
+        dev)
+            set_branch_variables dev
+        ;;
+        latest|"")
+            set_branch_variables master
+            node_version="latest"
+        ;;
+        *)
+            set_branch_variables master
+        ;;
+    esac
+    colorized_echo blue "Selected install mode: $install_mode"
+    colorized_echo blue "Selected release channel: $node_version"
+
     detect_os
-    prompt_branch_selection
     if ! command -v jq >/dev/null 2>&1; then
         install_package jq
     fi
     if ! command -v curl >/dev/null 2>&1; then
         install_package curl
     fi
-    if ! command -v docker >/dev/null 2>&1; then
-        install_docker
+    if [ "$install_mode" = "docker" ]; then
+        if ! command -v docker >/dev/null 2>&1; then
+            install_docker
+        fi
+        detect_compose
     fi
-    detect_compose
     install_rebecca_node_script
-    install_rebecca_node
+    if [ "$install_mode" = "binary" ]; then
+        install_binary_rebecca_node "$node_version" "1"
+    else
+        install_rebecca_node
+        echo "docker" > "$INSTALL_MODE_FILE"
+    fi
     set +e
     install_rebecca_node_service
     service_status=$?
@@ -952,18 +1627,22 @@ install_command() {
     fi
     up_rebecca_node
     follow_rebecca_node_logs
+    SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
+    XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
     echo "Use your IP: $NODE_IP and defaults ports: $SERVICE_PORT and $XRAY_API_PORT to setup your Rebecca Main Panel"
 }
 
 uninstall_command() {
     check_running_as_root
+    local install_mode
+    install_mode=$(get_install_mode)
     local node_exists=0
     if is_rebecca_node_installed; then
         node_exists=1
     fi
 
     local service_exists=0
-    if [ -f "$NODE_SERVICE_UNIT" ] || [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
+    if [ -f "$NODE_SERVICE_UNIT" ] || [ -f "$BINARY_SERVICE_UNIT" ] || [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
         service_exists=1
     fi
 
@@ -979,7 +1658,9 @@ uninstall_command() {
     fi
 
     if [ "$node_exists" -eq 1 ]; then
-        detect_compose
+        if [ "$install_mode" != "binary" ]; then
+            detect_compose
+        fi
         if is_rebecca_node_up; then
             down_rebecca_node
         fi
@@ -990,7 +1671,9 @@ uninstall_command() {
 
     if [ "$node_exists" -eq 1 ]; then
         uninstall_rebecca_node
-        uninstall_rebecca_node_docker_images
+        if [ "$install_mode" != "binary" ]; then
+            uninstall_rebecca_node_docker_images
+        fi
 
         read -p "Do you want to remove Rebecca-node data files too ($DATA_DIR)? (y/n) "
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -1038,7 +1721,9 @@ up_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if is_rebecca_node_up; then
         colorized_echo red "Rebecca-node's already up"
@@ -1058,7 +1743,9 @@ down_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_node_up; then
         colorized_echo red "Rebecca-node already down"
@@ -1102,7 +1789,9 @@ restart_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     down_rebecca_node
     up_rebecca_node
@@ -1117,7 +1806,9 @@ status_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_node_up; then
         echo -n "Status: "
@@ -1128,6 +1819,11 @@ status_command() {
     echo -n "Status: "
     colorized_echo green "Up"
     
+    if is_binary_install; then
+        systemctl status "$APP_NAME.service" --no-pager
+        return
+    fi
+
     json=$($COMPOSE -f $COMPOSE_FILE ps -a --format=json)
     services=$(echo "$json" | jq -r 'if type == "array" then .[] else . end | .Service')
     states=$(echo "$json" | jq -r 'if type == "array" then .[] else . end | .State')
@@ -1178,7 +1874,9 @@ logs_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_node_up; then
         colorized_echo red "Rebecca-node is not up."
@@ -1194,12 +1892,34 @@ logs_command() {
 
 update_command() {
     check_running_as_root
+    local node_version=""
+
     if ! is_rebecca_node_installed; then
         colorized_echo red "Rebecca-node not installed!"
         exit 1
     fi
 
-    detect_compose
+    if [ "$NODE_VERSION_SET" -eq 1 ]; then
+        node_version="${NODE_VERSION_REQUESTED:-latest}"
+        case "$node_version" in
+            dev)
+                set_branch_variables dev
+            ;;
+            latest|"")
+                set_branch_variables master
+                node_version="latest"
+            ;;
+            *)
+                set_branch_variables master
+                DOCKER_IMAGE="rebeccapanel/rebecca-node:${node_version}"
+            ;;
+        esac
+        echo "$BRANCH" > "$BRANCH_FILE"
+    fi
+
+    if ! is_binary_install; then
+        detect_compose
+    fi
 
     update_rebecca_node_script
 
@@ -1212,12 +1932,19 @@ update_command() {
     unit=$(resolve_node_service_unit_name)
     if [ "$skip_service_update" -eq 1 ]; then
         colorized_echo yellow "Skipping maintenance service self-update for this run"
-    elif [ -n "$unit" ]; then
+    elif [ -n "$unit" ] && ! is_binary_install; then
         update_rebecca_node_service
     fi
 
-    colorized_echo blue "Pulling latest node image $DOCKER_IMAGE"
-    update_rebecca_node
+    if is_binary_install; then
+        colorized_echo blue "Updating Rebecca-node binary files"
+    else
+        colorized_echo blue "Pulling node image $DOCKER_IMAGE"
+    fi
+    update_rebecca_node "$node_version"
+    if is_binary_install && [ "$skip_service_update" -ne 1 ]; then
+        update_rebecca_node_service
+    fi
 
     colorized_echo blue "Restarting Rebecca-node services"
     down_rebecca_node
@@ -1398,7 +2125,7 @@ get_current_xray_core_version() {
 
     # If local binary is not found or failed, check in the Docker container
     CONTAINER_NAME="$APP_NAME"
-    if docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+    if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
         version_output=$(docker exec "$CONTAINER_NAME" xray -version 2>/dev/null)
         if [ $? -eq 0 ]; then
             # Extract the version number from the first line
@@ -1497,6 +2224,15 @@ update_core_command() {
     check_running_as_root
     get_xray_core
 
+    if is_binary_install; then
+        set_env_value "XRAY_EXECUTABLE_PATH" "$DATA_MAIN_DIR/xray-core/xray"
+        set_env_value "XRAY_ASSETS_PATH" "$DATA_MAIN_DIR/xray-core"
+        colorized_echo red "Restarting Rebecca-node..."
+        systemctl restart "$APP_NAME.service"
+        colorized_echo blue "Installation of XRAY-CORE version $selected_version completed."
+        return
+    fi
+
     if ! command -v yq &>/dev/null; then
         echo "yq is not installed. Installing yq..."
         install_yq
@@ -1535,6 +2271,11 @@ check_editor() {
 edit_command() {
     detect_os
     check_editor
+    if is_binary_install; then
+        ensure_env_file
+        $EDITOR "$ENV_FILE"
+        return
+    fi
     if [ -f "$COMPOSE_FILE" ]; then
         $EDITOR "$COMPOSE_FILE"
     else
@@ -1611,18 +2352,22 @@ usage() {
     colorized_echo green "  service-status  $(tput sgr0)- Show maintenance service status"
     colorized_echo green "  service-logs    $(tput sgr0)- Show maintenance service logs"
     colorized_echo green "  service-uninstall $(tput sgr0)- Uninstall maintenance service"
-    colorized_echo yellow "  update          $(tput sgr0)- Update to latest version"
+    colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific version"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca-node"
     colorized_echo blue "  script-install  $(tput sgr0)- Install Rebecca-node script"
     colorized_echo blue "  script-update   $(tput sgr0)- Update Rebecca-node CLI script"
     colorized_echo blue "  script-uninstall  $(tput sgr0)- Uninstall Rebecca-node script"
-    colorized_echo yellow "  edit            $(tput sgr0)– Edit docker-compose.yml (via nano or vi)"
+    colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml or binary .env (via nano or vi)"
     colorized_echo yellow "  core-update     $(tput sgr0)– Update/Change Xray core"
     
     echo
     colorized_echo cyan "Node Information:"
     colorized_echo magenta "  Cert file path: $CERT_FILE"
     colorized_echo magenta "  Node IP: $NODE_IP"
+    echo
+    colorized_echo cyan "Install/update options:"
+    colorized_echo magenta "  --mode docker|binary, --binary, --docker"
+    colorized_echo magenta "  --dev or --version vX.Y.Z"
     echo
     current_version=$(get_current_xray_core_version)
     colorized_echo cyan "Current Xray-core version: " 1  # 1 for bold
@@ -1634,6 +2379,9 @@ usage() {
     if [ -f "$COMPOSE_FILE" ]; then
         SERVICE_PORT=$(awk -F': ' '/SERVICE_PORT:/ {gsub(/"/, "", $2); print $2}' "$COMPOSE_FILE")
         XRAY_API_PORT=$(awk -F': ' '/XRAY_API_PORT:/ {gsub(/"/, "", $2); print $2}' "$COMPOSE_FILE")
+    elif [ -f "$ENV_FILE" ]; then
+        SERVICE_PORT=$(get_env_value "SERVICE_PORT")
+        XRAY_API_PORT=$(get_env_value "XRAY_API_PORT")
     fi
     
     SERVICE_PORT=${SERVICE_PORT:-$DEFAULT_SERVICE_PORT}
@@ -1691,7 +2439,7 @@ print_menu() {
         "script-update:Update Rebecca-node CLI script"
         "script-uninstall:Uninstall Rebecca-node script"
         "core-update:Update/Change Xray core"
-        "edit:Edit docker-compose.yml"
+        "edit:Edit docker-compose.yml or binary .env"
         "help:Show this help message"
     )
     local idx=1
