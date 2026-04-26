@@ -34,15 +34,6 @@ def register_usage_jobs():
         id="record_node_usages",
         replace_existing=True,
     )
-    scheduler.add_job(
-        record_outbound_traffic,
-        "interval",
-        seconds=JOB_RECORD_NODE_USAGES_INTERVAL,  # Use same interval as node usages
-        coalesce=True,
-        max_instances=1,
-        id="record_outbound_traffic",
-        replace_existing=True,
-    )
 
 
 # endregion
@@ -52,6 +43,7 @@ def register_usage_jobs():
 __all__ = [
     "record_node_stats",
     "record_node_usages",
+    "record_outbound_traffic",
     "record_user_stats",
     "record_user_usages",
     "register_usage_jobs",

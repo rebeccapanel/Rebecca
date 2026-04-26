@@ -6,9 +6,11 @@ from sqlalchemy import and_, bindparam, insert, select, update
 from app.db import GetDB, crud
 from app.db.models import Node, NodeUsage, System
 from app.jobs.usage.collectors import get_outbounds_stats
+from app.jobs.usage.delivery_buffer import usage_delivery_buffer
+from app.jobs.usage.outbound_traffic import record_outbound_traffic_from_params
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
 from app.models.node import NodeResponse, NodeStatus
-from app.runtime import xray
+from app.runtime import logger, xray
 from app.utils import report
 from config import DISABLE_RECORDING_NODE_USAGE
 
@@ -157,7 +159,13 @@ def record_node_usages():
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {node_id: executor.submit(get_outbounds_stats, api) for node_id, api in api_instances.items()}
-    api_params = {node_id: future.result() for node_id, future in futures.items()}
+    api_params = {}
+    for node_id, future in futures.items():
+        try:
+            api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, future.result())
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"Failed to get outbound stats from node {node_id}: {exc}")
+            api_params[node_id] = usage_delivery_buffer.pending_outbound_stats(node_id)
 
     total_up = 0
     total_down = 0
@@ -173,11 +181,16 @@ def record_node_usages():
         stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
         safe_execute(db, stmt)
 
+    record_outbound_traffic_from_params(api_params)
+
     if DISABLE_RECORDING_NODE_USAGE:
+        usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
         return
 
     for node_id, params in api_params.items():
         record_node_stats(params, node_id)
+
+    usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
 
 
 # endregion

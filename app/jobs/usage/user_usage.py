@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
+from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
 from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.user import UserResponse, UserStatus
@@ -52,10 +53,10 @@ def _collect_usage_params(api_instances):
     api_params = {}
     for node_id, future in futures.items():
         try:
-            api_params[node_id] = future.result(timeout=30)
+            api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, future.result(timeout=30))
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
-            api_params[node_id] = []
+            api_params[node_id] = usage_delivery_buffer.pending_user_stats(node_id)
             try:
                 future.cancel()
             except Exception:
@@ -524,11 +525,14 @@ def record_user_usages():
         report.admin_data_limit_reached(event["admin"], event["limit"], event["current"])
 
     if DISABLE_RECORDING_NODE_USAGE:
+        usage_delivery_buffer.ack_user_stats_for(api_params.keys())
         return
 
     # Write per-node/hour snapshots.
     for node_id, params in api_params.items():
         record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
+
+    usage_delivery_buffer.ack_user_stats_for(api_params.keys())
 
 
 # endregion

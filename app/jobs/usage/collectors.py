@@ -59,7 +59,7 @@ def get_outbounds_stats(api: XRayAPI, cache_ttl: int = 10):
             api.query_stats("outbound>>>", reset=True, timeout=_OUTBOUND_STATS_TIMEOUT_SECONDS),
         ):
             # Skip API outbound
-            if stat.name == "api":
+            if stat.name.lower() == "api":
                 continue
 
             tag = stat.name
