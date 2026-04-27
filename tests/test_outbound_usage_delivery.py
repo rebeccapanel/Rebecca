@@ -8,6 +8,7 @@ from app.db.models import NodeUsage, OutboundTraffic, System
 app.runtime.scheduler = SimpleNamespace(add_job=lambda *args, **kwargs: None)
 
 from app.jobs.usage import node_usage, outbound_traffic
+from app.jobs.usage import user_usage
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from tests.conftest import TestingSessionLocal
 
@@ -60,6 +61,71 @@ def test_record_node_usages_persists_master_and_node_outbound_traffic(monkeypatc
         db.commit()
         db.close()
         usage_delivery_buffer.clear()
+
+
+def test_record_node_usages_acks_node_buffer_after_persist(monkeypatch):
+    usage_delivery_buffer.clear()
+
+    class BufferedNode:
+        connected = True
+        started = True
+        usage_coefficient = 1
+
+        def __init__(self):
+            self.acked = []
+
+        def collect_outbound_stats(self):
+            return {"batch_id": "node-batch-1", "stats": [{"tag": "proxy", "up": 7, "down": 11}]}
+
+        def ack_outbound_stats(self, batch_id):
+            self.acked.append(batch_id)
+
+    node = BufferedNode()
+    fake_xray = SimpleNamespace(
+        core=SimpleNamespace(available=False, started=False),
+        api=None,
+        nodes={1: node},
+        config={"outbounds": [{"tag": "proxy", "protocol": "freedom"}]},
+    )
+    monkeypatch.setattr(node_usage, "xray", fake_xray)
+    monkeypatch.setattr(outbound_traffic, "xray", fake_xray)
+    monkeypatch.setattr(node_usage, "DISABLE_RECORDING_NODE_USAGE", True)
+
+    db = TestingSessionLocal()
+    try:
+        db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+    node_usage.record_node_usages()
+
+    db = TestingSessionLocal()
+    try:
+        record = db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").first()
+        assert record is not None
+        assert record.uplink == 7
+        assert record.downlink == 11
+        assert node.acked == ["node-batch-1"]
+    finally:
+        db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").delete(synchronize_session=False)
+        db.commit()
+        db.close()
+        usage_delivery_buffer.clear()
+
+
+def test_collect_usage_params_uses_node_user_buffer(monkeypatch):
+    usage_delivery_buffer.clear()
+
+    class BufferedNode:
+        def collect_user_stats(self):
+            return {"batch_id": "user-batch-1", "stats": [{"uid": "42", "value": 123}]}
+
+    api_params, node_batches = user_usage._collect_usage_params({1: BufferedNode()})
+
+    assert api_params == {1: [{"uid": "42", "value": 123}]}
+    assert node_batches == {1: "user-batch-1"}
+    usage_delivery_buffer.clear()
 
 
 def test_outbound_usage_buffer_rolls_back_partial_persist_until_retry_succeeds(monkeypatch):

@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Union
 
 from sqlalchemy import and_, bindparam, insert, select, update
@@ -84,6 +85,39 @@ def _update_master_limits(db, total_up: int, total_down: int, *, commit: bool = 
 
 
 # endregion
+
+
+def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) in (404, 405)
+
+
+def _collect_node_outbound_stats(node):
+    if not hasattr(node, "collect_outbound_stats"):
+        return {"stats": get_outbounds_stats(node.api), "node_batch_id": ""}
+    try:
+        payload = node.collect_outbound_stats()
+        return {
+            "stats": payload.get("stats") or [],
+            "node_batch_id": payload.get("batch_id") or "",
+        }
+    except Exception as exc:
+        if not _is_missing_node_usage_endpoint(exc):
+            raise
+
+    return {"stats": get_outbounds_stats(node.api), "node_batch_id": ""}
+
+
+def _ack_node_outbound_batches(node_batches: dict[int, str]) -> None:
+    for node_id, batch_id in node_batches.items():
+        if not batch_id:
+            continue
+        node = xray.nodes.get(node_id)
+        if not node:
+            continue
+        try:
+            node.ack_outbound_stats(batch_id)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning(f"Failed to ack outbound usage batch {batch_id} for node {node_id}: {exc}")
 
 
 # region Per-node/master snapshots and persistence
@@ -213,23 +247,28 @@ def _dispatch_node_limit_events(status_events):
 
 
 def record_node_usages():
-    api_instances = {}
+    collectors = {}
     try:
         if getattr(xray.core, "available", False) and getattr(xray.core, "started", False):
-            api_instances[None] = xray.api
+            collectors[None] = partial(get_outbounds_stats, xray.api)
     except Exception:
         # Skip master core if it's unavailable; still record from nodes
         pass
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
-            api_instances[node_id] = node.api
+            collectors[node_id] = partial(_collect_node_outbound_stats, node)
 
     with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {node_id: executor.submit(get_outbounds_stats, api) for node_id, api in api_instances.items()}
+        futures = {node_id: executor.submit(collector) for node_id, collector in collectors.items()}
     api_params = {}
+    node_batches = {}
     for node_id, future in futures.items():
         try:
-            api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, future.result())
+            result = future.result()
+            if isinstance(result, dict):
+                node_batches[node_id] = result.get("node_batch_id") or ""
+                result = result.get("stats") or []
+            api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get outbound stats from node {node_id}: {exc}")
             api_params[node_id] = usage_delivery_buffer.pending_outbound_stats(node_id)
@@ -242,10 +281,12 @@ def record_node_usages():
             total_down += param["down"]
 
     if not (total_up or total_down):
+        _ack_node_outbound_batches(node_batches)
         return
 
     status_events = _persist_node_usage_batch(api_params, total_up, total_down)
     usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
+    _ack_node_outbound_batches(node_batches)
     _dispatch_node_limit_events(status_events)
 
 

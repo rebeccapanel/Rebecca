@@ -37,23 +37,61 @@ def _build_api_instances():
 
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
-            api_instances[node_id] = node.api
+            api_instances[node_id] = node
             usage_coefficient[node_id] = node.usage_coefficient
 
     return api_instances, usage_coefficient
 
 
+def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) in (404, 405)
+
+
+def _collect_user_stats(source):
+    if not hasattr(source, "collect_user_stats"):
+        return {"stats": get_users_stats(source), "node_batch_id": ""}
+    try:
+        payload = source.collect_user_stats()
+        return {
+            "stats": payload.get("stats") or [],
+            "node_batch_id": payload.get("batch_id") or "",
+        }
+    except Exception as exc:
+        if not _is_missing_node_usage_endpoint(exc):
+            raise
+
+    return {"stats": get_users_stats(source.api), "node_batch_id": ""}
+
+
+def _ack_node_user_batches(node_batches: dict[int, str]) -> None:
+    for node_id, batch_id in node_batches.items():
+        if not batch_id:
+            continue
+        node = xray.nodes.get(node_id)
+        if not node:
+            continue
+        try:
+            node.ack_user_stats(batch_id)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning(f"Failed to ack user usage batch {batch_id} for node {node_id}: {exc}")
+
+
 def _collect_usage_params(api_instances):
     if not api_instances:
-        return {}
+        return {}, {}
 
     executor = ThreadPoolExecutor(max_workers=10)
-    futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
+    futures = {node_id: executor.submit(_collect_user_stats, source) for node_id, source in api_instances.items()}
 
     api_params = {}
+    node_batches = {}
     for node_id, future in futures.items():
         try:
-            api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, future.result(timeout=30))
+            result = future.result(timeout=30)
+            if isinstance(result, dict):
+                node_batches[node_id] = result.get("node_batch_id") or ""
+                result = result.get("stats") or []
+            api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
             api_params[node_id] = usage_delivery_buffer.pending_user_stats(node_id)
@@ -67,7 +105,7 @@ def _collect_usage_params(api_instances):
     except TypeError:
         executor.shutdown(wait=False)
 
-    return api_params
+    return api_params, node_batches
 
 
 def _aggregate_user_usage(api_params, usage_coefficient):
@@ -537,10 +575,11 @@ def record_user_usages():
     api_instances, usage_coefficient = _build_api_instances()
     if not api_instances:
         return
-    api_params = _collect_usage_params(api_instances)
+    api_params, node_batches = _collect_usage_params(api_instances)
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)
     if not users_usage:
+        _ack_node_user_batches(node_batches)
         return
 
     user_ids = [int(entry["uid"]) for entry in users_usage]
@@ -556,6 +595,7 @@ def record_user_usages():
 
     if DISABLE_RECORDING_NODE_USAGE:
         usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+        _ack_node_user_batches(node_batches)
         return
 
     # Write per-node/hour snapshots.
@@ -563,6 +603,7 @@ def record_user_usages():
         record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
 
     usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+    _ack_node_user_batches(node_batches)
 
 
 # endregion

@@ -2,6 +2,7 @@
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 from app.db import GetDB
 from app.db.models import OutboundTraffic
@@ -117,14 +118,47 @@ def record_outbound_traffic_from_params(api_params: dict) -> None:
         )
 
 
+def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) in (404, 405)
+
+
+def _collect_node_outbound_stats(node):
+    if not hasattr(node, "collect_outbound_stats"):
+        return {"stats": get_outbounds_stats(node.api), "node_batch_id": ""}
+    try:
+        payload = node.collect_outbound_stats()
+        return {
+            "stats": payload.get("stats") or [],
+            "node_batch_id": payload.get("batch_id") or "",
+        }
+    except Exception as exc:
+        if not _is_missing_node_usage_endpoint(exc):
+            raise
+
+    return {"stats": get_outbounds_stats(node.api), "node_batch_id": ""}
+
+
+def _ack_node_outbound_batches(node_batches: dict[int, str]) -> None:
+    for node_id, batch_id in node_batches.items():
+        if not batch_id:
+            continue
+        node = xray.nodes.get(node_id)
+        if not node:
+            continue
+        try:
+            node.ack_outbound_stats(batch_id)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning("Failed to ack outbound usage batch %s for node %s: %s", batch_id, node_id, exc)
+
+
 def record_outbound_traffic():
     """Record outbound traffic statistics to database."""
     try:
         # Collect API instances (master core + nodes)
-        api_instances = {}
+        collectors = {}
         try:
             if getattr(xray.core, "available", False) and getattr(xray.core, "started", False):
-                api_instances[None] = xray.api
+                collectors[None] = partial(get_outbounds_stats, xray.api)
         except Exception:
             # Skip master core if it's unavailable; still record from nodes
             pass
@@ -132,19 +166,24 @@ def record_outbound_traffic():
         # Add node API instances
         for node_id, node in list(xray.nodes.items()):
             if node.connected and node.started:
-                api_instances[node_id] = node.api
+                collectors[node_id] = partial(_collect_node_outbound_stats, node)
 
-        if not api_instances:
+        if not collectors:
             logger.debug("No Xray API instances available for outbound traffic recording")
             return
 
         # Get outbound stats from all API instances in parallel
         api_params = {}
+        node_batches = {}
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {node_id: executor.submit(get_outbounds_stats, api) for node_id, api in api_instances.items()}
+            futures = {node_id: executor.submit(collector) for node_id, collector in collectors.items()}
             for node_id, future in futures.items():
                 try:
-                    api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, future.result())
+                    result = future.result()
+                    if isinstance(result, dict):
+                        node_batches[node_id] = result.get("node_batch_id") or ""
+                        result = result.get("stats") or []
+                    api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, result)
                 except Exception as e:
                     logger.warning(
                         f"Failed to get outbound stats from {'master' if node_id is None else f'node {node_id}'}: {e}"
@@ -157,6 +196,7 @@ def record_outbound_traffic():
 
         record_outbound_traffic_from_params(api_params)
         usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
+        _ack_node_outbound_batches(node_batches)
 
     except Exception as e:
         logger.error(f"Failed to record outbound traffic: {e}", exc_info=True)

@@ -754,6 +754,62 @@ class ReSTXRayNode:
         self._ensure_connected()
         self.make_request("/update_geo", timeout=300, files=files)
 
+    def collect_outbound_stats(self) -> dict:
+        """Collect reset outbound stats through the node-side delivery buffer."""
+        self._ensure_connected()
+        response = self.make_request("/usage/outbounds", timeout=45)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid outbound usage response from node")
+
+        stats = []
+        for item in response.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            tag = str(item.get("tag") or "").strip()
+            if not tag:
+                continue
+            stats.append(
+                {
+                    "tag": tag,
+                    "up": int(item.get("up") or 0),
+                    "down": int(item.get("down") or 0),
+                }
+            )
+        return {"batch_id": str(response.get("batch_id") or ""), "stats": stats}
+
+    def ack_outbound_stats(self, batch_id: str):
+        """Acknowledge a node-side outbound usage batch after DB commit."""
+        self._ensure_connected()
+        batch_id = str(batch_id or "").strip()
+        if not batch_id:
+            return None
+        return self.make_request("/usage/outbounds/ack", timeout=30, batch_id=batch_id, report_runtime_error=False)
+
+    def collect_user_stats(self) -> dict:
+        """Collect reset user stats through the node-side delivery buffer."""
+        self._ensure_connected()
+        response = self.make_request("/usage/users", timeout=60)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid user usage response from node")
+
+        stats = []
+        for item in response.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            uid = str(item.get("uid") or "").strip()
+            if not uid:
+                continue
+            stats.append({"uid": uid, "value": int(item.get("value") or 0)})
+        return {"batch_id": str(response.get("batch_id") or ""), "stats": stats}
+
+    def ack_user_stats(self, batch_id: str):
+        """Acknowledge a node-side user usage batch after DB commit."""
+        self._ensure_connected()
+        batch_id = str(batch_id or "").strip()
+        if not batch_id:
+            return None
+        return self.make_request("/usage/users/ack", timeout=30, batch_id=batch_id, report_runtime_error=False)
+
     def get_access_logs(self, max_lines: int = 500) -> list[str]:
         """
         Fetch access logs from node.
