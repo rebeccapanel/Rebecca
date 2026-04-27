@@ -1,13 +1,16 @@
-import glob
-import importlib.util
-from os.path import basename, dirname, join
+import importlib
 
-modules = glob.glob(join(dirname(__file__), "*.py"))
 
-for file in modules:
-    name = basename(file).replace(".py", "")
-    if name.startswith("_"):
-        continue
+JOB_MODULES = (
+    "0_xray_core",
+    "add_db_users",
+    "record_usages",
+    "remove_expired_users",
+    "reset_user_data_usage",
+    "review_users",
+    "send_notifications",
+)
 
-    spec = importlib.util.spec_from_file_location(name, file)
-    spec.loader.exec_module(importlib.util.module_from_spec(spec))
+
+for module_name in JOB_MODULES:
+    importlib.import_module(f"{__name__}.{module_name}")
