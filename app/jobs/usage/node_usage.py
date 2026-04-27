@@ -7,7 +7,7 @@ from app.db import GetDB, crud
 from app.db.models import Node, NodeUsage, System
 from app.jobs.usage.collectors import get_outbounds_stats
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
-from app.jobs.usage.outbound_traffic import record_outbound_traffic_from_params
+from app.jobs.usage.outbound_traffic import _persist_outbound_traffic
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
 from app.models.node import NodeResponse, NodeStatus
 from app.runtime import logger, xray
@@ -20,7 +20,7 @@ from config import DISABLE_RECORDING_NODE_USAGE
 # region Limit helpers (node and master)
 
 
-def _update_node_limits(db, dbnode: Node, total_up: int, total_down: int):
+def _update_node_limits(db, dbnode: Node, total_up: int, total_down: int, *, commit: bool = True):
     limited_triggered = False
     limit_cleared = False
     status_change_payload = None
@@ -50,11 +50,12 @@ def _update_node_limits(db, dbnode: Node, total_up: int, total_down: int):
             limit_cleared = True
             status_change_payload = (NodeResponse.model_validate(dbnode), previous_status)
 
-    db.commit()
+    if commit:
+        db.commit()
     return limited_triggered, limit_cleared, status_change_payload
 
 
-def _update_master_limits(db, total_up: int, total_down: int):
+def _update_master_limits(db, total_up: int, total_down: int, *, commit: bool = True):
     limited_triggered = False
     limit_cleared = False
     status_change_payload = None
@@ -77,7 +78,8 @@ def _update_master_limits(db, total_up: int, total_down: int):
             master_record.message = None
             master_record.updated_at = utcnow_naive()
 
-    db.commit()
+    if commit:
+        db.commit()
     return limited_triggered, limit_cleared, status_change_payload
 
 
@@ -142,6 +144,71 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
 # endregion
 
 
+def _persist_node_stats_in_session(db, params: list, node_id: Union[int, None], created_at):
+    if not params:
+        return False, False, None
+
+    total_up = sum(item.get("up", 0) for item in params)
+    total_down = sum(item.get("down", 0) for item in params)
+
+    usage_query = db.query(NodeUsage).filter(
+        and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at)
+    )
+    usage_row = usage_query.with_for_update().first()
+    if usage_row is None:
+        usage_row = NodeUsage(created_at=created_at, node_id=node_id, uplink=0, downlink=0)
+        db.add(usage_row)
+        db.flush()
+
+    usage_row.uplink = int(usage_row.uplink or 0) + total_up
+    usage_row.downlink = int(usage_row.downlink or 0) + total_down
+
+    if node_id is not None and (total_up or total_down):
+        dbnode = db.query(Node).filter(Node.id == node_id).with_for_update().first()
+        if dbnode:
+            return _update_node_limits(db, dbnode, total_up, total_down, commit=False)
+    elif node_id is None and (total_up or total_down):
+        return _update_master_limits(db, total_up, total_down, commit=False)
+
+    return False, False, None
+
+
+def _persist_node_usage_batch(api_params: dict, total_up: int, total_down: int):
+    created_at = hour_bucket()
+    status_events = []
+
+    with GetDB() as db:
+        stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
+        db.execute(stmt)
+
+        _persist_outbound_traffic(db, api_params)
+
+        if not DISABLE_RECORDING_NODE_USAGE:
+            for node_id, params in api_params.items():
+                limited, cleared, payload = _persist_node_stats_in_session(db, params, node_id, created_at)
+                if limited or cleared or payload:
+                    status_events.append((node_id, limited, cleared, payload))
+
+        db.commit()
+
+    return status_events
+
+
+def _dispatch_node_limit_events(status_events):
+    for node_id, limited_triggered, limit_cleared, status_change_payload in status_events:
+        if status_change_payload:
+            node_resp, prev_status = status_change_payload
+            report.node_status_change(node_resp, previous_status=prev_status)
+
+        if limited_triggered:
+            try:
+                xray.operations.remove_node(node_id)
+            except Exception:
+                pass
+        elif limit_cleared:
+            xray.operations.connect_node(node_id)
+
+
 # region Job entrypoint
 
 
@@ -177,20 +244,9 @@ def record_node_usages():
     if not (total_up or total_down):
         return
 
-    with GetDB() as db:
-        stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
-        safe_execute(db, stmt)
-
-    record_outbound_traffic_from_params(api_params)
-
-    if DISABLE_RECORDING_NODE_USAGE:
-        usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
-        return
-
-    for node_id, params in api_params.items():
-        record_node_stats(params, node_id)
-
+    status_events = _persist_node_usage_batch(api_params, total_up, total_down)
     usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
+    _dispatch_node_limit_events(status_events)
 
 
 # endregion

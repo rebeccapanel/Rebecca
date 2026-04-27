@@ -52,53 +52,60 @@ def _apply_metadata(record: OutboundTraffic, outbound_config: dict | None, tag: 
         record.port = metadata["port"]
 
 
-def record_outbound_traffic_from_params(api_params: dict) -> None:
-    """Persist already-collected outbound stats without querying/resetting Xray again."""
+def _persist_outbound_traffic(db, api_params: dict) -> tuple[int, int, int]:
     stats_by_tag = _aggregate_by_tag(api_params)
     if not stats_by_tag:
+        return 0, 0, 0
+
+    outbounds_by_tag = _load_outbound_configs()
+    records_updated = 0
+    records_created = 0
+
+    for tag, stat in stats_by_tag.items():
+        up = int(stat.get("up") or 0)
+        down = int(stat.get("down") or 0)
+        if not (up or down):
+            continue
+
+        outbound_config = outbounds_by_tag.get(tag)
+        outbound_id = generate_outbound_id(outbound_config) if outbound_config else f"tag_{tag}"
+        existing = db.query(OutboundTraffic).filter(OutboundTraffic.outbound_id == outbound_id).first()
+        if existing is None:
+            existing = db.query(OutboundTraffic).filter(OutboundTraffic.tag == tag).first()
+
+        if existing:
+            existing.uplink = int(existing.uplink or 0) + up
+            existing.downlink = int(existing.downlink or 0) + down
+            existing.outbound_id = outbound_id
+            _apply_metadata(existing, outbound_config, tag)
+            records_updated += 1
+            continue
+
+        metadata = extract_outbound_metadata(outbound_config) if outbound_config else {}
+        db.add(
+            OutboundTraffic(
+                outbound_id=outbound_id,
+                tag=metadata.get("tag") or tag,
+                protocol=metadata.get("protocol"),
+                address=metadata.get("address"),
+                port=metadata.get("port"),
+                uplink=up,
+                downlink=down,
+            )
+        )
+        records_created += 1
+
+    return records_updated, records_created, len(stats_by_tag)
+
+
+def record_outbound_traffic_from_params(api_params: dict) -> None:
+    """Persist already-collected outbound stats without querying/resetting Xray again."""
+    if not any(api_params.values()):
         logger.debug("No valid outbound stats with tags found")
         return
 
-    outbounds_by_tag = _load_outbound_configs()
-
     with GetDB() as db:
-        records_updated = 0
-        records_created = 0
-
-        for tag, stat in stats_by_tag.items():
-            up = int(stat.get("up") or 0)
-            down = int(stat.get("down") or 0)
-            if not (up or down):
-                continue
-
-            outbound_config = outbounds_by_tag.get(tag)
-            outbound_id = generate_outbound_id(outbound_config) if outbound_config else f"tag_{tag}"
-            existing = db.query(OutboundTraffic).filter(OutboundTraffic.outbound_id == outbound_id).first()
-            if existing is None:
-                existing = db.query(OutboundTraffic).filter(OutboundTraffic.tag == tag).first()
-
-            if existing:
-                existing.uplink = int(existing.uplink or 0) + up
-                existing.downlink = int(existing.downlink or 0) + down
-                existing.outbound_id = outbound_id
-                _apply_metadata(existing, outbound_config, tag)
-                records_updated += 1
-                continue
-
-            metadata = extract_outbound_metadata(outbound_config) if outbound_config else {}
-            db.add(
-                OutboundTraffic(
-                    outbound_id=outbound_id,
-                    tag=metadata.get("tag") or tag,
-                    protocol=metadata.get("protocol"),
-                    address=metadata.get("address"),
-                    port=metadata.get("port"),
-                    uplink=up,
-                    downlink=down,
-                )
-            )
-            records_created += 1
-
+        records_updated, records_created, stats_count = _persist_outbound_traffic(db, api_params)
         db.commit()
 
     if records_updated > 0 or records_created > 0:
@@ -106,7 +113,7 @@ def record_outbound_traffic_from_params(api_params: dict) -> None:
             "Recorded outbound traffic: %s updated, %s created, %s outbounds",
             records_updated,
             records_created,
-            len(stats_by_tag),
+            stats_count,
         )
 
 
