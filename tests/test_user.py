@@ -668,6 +668,80 @@ def test_due_active_user_is_expired_without_new_usage_samples(auth_client: TestC
         db.close()
 
 
+def test_limited_user_seen_in_usage_stats_is_purged_from_runtime(auth_client: TestClient):
+    username = f"stale_limited_{uuid4().hex[:8]}"
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "expire": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            "data_limit": 1024,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    from app import runtime
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        dbuser.used_traffic = 2048
+        dbuser.status = UserStatus.limited
+        db.commit()
+
+        runtime.xray.operations.remove_user.reset_mock()
+        user_usage = _load_user_usage_module()
+        user_usage._enforce_user_limits_and_expiry(db, [dbuser.id])
+        db.refresh(dbuser)
+
+        assert dbuser.status == UserStatus.limited
+        runtime.xray.operations.remove_user.assert_called_once()
+    finally:
+        db.close()
+
+
+def test_disabled_user_seen_in_usage_stats_is_purged_without_status_change(auth_client: TestClient):
+    username = f"stale_disabled_{uuid4().hex[:8]}"
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "expire": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            "data_limit": 1024,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    from app import runtime
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        dbuser.used_traffic = 2048
+        dbuser.status = UserStatus.disabled
+        db.commit()
+
+        runtime.xray.operations.remove_user.reset_mock()
+        user_usage = _load_user_usage_module()
+        user_usage._enforce_user_limits_and_expiry(db, [dbuser.id])
+        db.refresh(dbuser)
+
+        assert dbuser.status == UserStatus.disabled
+        runtime.xray.operations.remove_user.assert_called_once()
+    finally:
+        db.close()
+
+
 def test_auto_renew_triggers_on_data_limit(auth_client: TestClient):
     username = f"auto_data_{uuid4().hex[:8]}"
     initial_limit = 512 * 1024 * 1024

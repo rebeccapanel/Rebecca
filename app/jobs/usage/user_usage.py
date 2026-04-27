@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
-from sqlalchemy import and_, bindparam, func, insert, or_, select, update
+from sqlalchemy import and_, bindparam, case, func, insert, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
@@ -155,6 +155,15 @@ def _apply_on_hold_activation(user: User, *, now_dt: datetime) -> None:
     user.on_hold_timeout = None
 
 
+def _user_status_value(user: User) -> str:
+    status = getattr(user, "status", None)
+    return getattr(status, "value", status)
+
+
+def _is_runtime_user(user: User) -> bool:
+    return _user_status_value(user) in {UserStatus.active.value, UserStatus.on_hold.value}
+
+
 def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     """
     Ensure users crossing their data/time limits are moved to limited/expired immediately.
@@ -173,8 +182,14 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
 
     changed: List[User] = []
     activated: List[User] = []
+    users_to_remove_from_xray: List[User] = []
     for user in users:
         now_dt = datetime.now(timezone.utc)
+
+        if not _is_runtime_user(user):
+            users_to_remove_from_xray.append(user)
+            continue
+
         if _should_reactivate_on_hold(user, now_ts=now_ts):
             _apply_on_hold_activation(user, now_dt=now_dt)
             activated.append(user)
@@ -206,13 +221,19 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     if changed or activated:
         db.commit()
 
+    if changed or activated or users_to_remove_from_xray:
         changed_ids = {user.id for user in changed}
-        for user in changed:
+        removed_ids = set()
+        for user in [*changed, *users_to_remove_from_xray]:
+            if user.id in removed_ids:
+                continue
+            removed_ids.add(user.id)
             try:
                 xray.operations.remove_user(user)
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
 
+        for user in changed:
             try:
                 report.status_change(
                     username=user.username,
@@ -406,7 +427,16 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
         stmt = (
             update(User)
             .where(User.id == bindparam("uid"))
-            .values(used_traffic=User.used_traffic + bindparam("value"), online_at=utcnow_naive())
+            .values(
+                used_traffic=User.used_traffic + bindparam("value"),
+                online_at=case(
+                    (
+                        User.status.in_([UserStatus.active, UserStatus.on_hold]),
+                        utcnow_naive(),
+                    ),
+                    else_=User.online_at,
+                ),
+            )
         )
         safe_execute(db, stmt, users_usage)
 
