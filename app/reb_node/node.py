@@ -479,7 +479,7 @@ class ReSTXRayNode:
                     except ValueError:
                         data = {}
 
-                    if res.status_code == 200:
+                    if 200 <= res.status_code < 300:
                         return data
 
                     detail = data.get("detail") if isinstance(data, dict) else None
