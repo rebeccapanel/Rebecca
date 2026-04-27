@@ -2030,6 +2030,7 @@ EOF
 install_binary_rebecca() {
     local rebecca_version="$1"
     local database_type="$2"
+    local configure_database="${3:-1}"
     local binary_arch
     local binary_source_type
     local resolved_version
@@ -2091,7 +2092,9 @@ install_binary_rebecca() {
     upsert_env_assignment "XRAY_JSON" "$DATA_DIR/xray_config.json"
     upsert_env_assignment "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
     upsert_env_assignment "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
-    configure_binary_database "$database_type"
+    if [ "$configure_database" = "1" ]; then
+        configure_binary_database "$database_type"
+    fi
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
         colorized_echo blue "Fetching xray config file"
@@ -2990,7 +2993,7 @@ update_rebecca() {
     local rebecca_version="${1:-latest}"
 
     if is_binary_install; then
-        install_binary_rebecca "$rebecca_version" "$(get_configured_database_type)"
+        install_binary_rebecca "$rebecca_version" "$(get_configured_database_type)" "0"
         return
     fi
 
