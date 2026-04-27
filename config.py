@@ -129,8 +129,6 @@ XRAY_SUBSCRIPTION_URL_PREFIX = ""  # subscription prefix now comes from DB
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
 XRAY_JSON = config("XRAY_JSON", default="/var/lib/rebecca/xray_config.json")
 XRAY_LOG_DIR = config("XRAY_LOG_DIR", default="").strip()
-MAINTENANCE_API_BASE_URL = config("MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3000").rstrip("/")
-NODE_MAINTENANCE_API_BASE_URL = config("NODE_MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3100").rstrip("/")
 
 ADS_SOURCE_URL = "https://raw.githubusercontent.com/rebeccapanel/rebecca-ads/main/ads.json"
 ADS_CACHE_TTL_SECONDS = 86400  # 24 hours

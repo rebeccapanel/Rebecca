@@ -573,7 +573,7 @@ def restart_node_service(
     dbnode: NodeResponse = Depends(get_node),
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Trigger the Rebecca-node maintenance service to restart containers on a node."""
+    """Trigger the Rebecca-node binary service to restart on a node."""
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
@@ -595,7 +595,7 @@ def update_node_service(
     dbnode: NodeResponse = Depends(get_node),
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Trigger the Rebecca-node maintenance service to update node containers."""
+    """Trigger the Rebecca-node binary service to update itself on a node."""
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")

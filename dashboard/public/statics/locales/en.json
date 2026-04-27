@@ -1095,7 +1095,7 @@
 	"settings.panel.tabTitle": "Panel",
 	"settings.panel.useNobetciTitle": "Enable Nobetci integration",
 	"settings.panel.useNobetciDescription": "Show Nobetci options when creating or editing nodes.",
-	"settings.panel.maintenanceActionsDescription": "Use the maintenance service to pull the latest images and restart the containers from the panel.",
+	"settings.panel.maintenanceActionsDescription": "Use the on-host Rebecca CLI to update and restart the installed panel.",
 	"settings.panel.updateAction": "Update panel",
 	"settings.panel.updateTriggered": "Panel update started",
 	"settings.panel.restartAction": "Restart panel",

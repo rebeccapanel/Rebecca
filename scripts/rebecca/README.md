@@ -65,20 +65,6 @@ Install only the node CLI:
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node.sh)" @ install-script
 ```
 
-## Maintenance Service
-
-Install only the Rebecca maintenance API:
-
-```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install-service
-```
-
-Install only the Rebecca Node maintenance API:
-
-```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node.sh)" @ install-service --name rebecca-node
-```
-
 ## Migration Helpers
 
 Panel migration:

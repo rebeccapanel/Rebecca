@@ -50,30 +50,21 @@ set_app_context() {
 
     BINARY_BIN_DIR="$APP_DIR/bin"
     BINARY_NODE="$BINARY_BIN_DIR/rebecca-node"
-    BINARY_NODE_SERVICE="$BINARY_BIN_DIR/rebecca-node-service"
     BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
     BINARY_SERVICE_UNIT="/etc/systemd/system/${APP_NAME}.service"
 
     NODE_SERVICE_DIR="/usr/local/share/${APP_NAME}-maintenance"
-    NODE_SERVICE_FILE="$NODE_SERVICE_DIR/main.py"
-    NODE_SERVICE_REQUIREMENTS="$NODE_SERVICE_DIR/requirements.txt"
     NODE_SERVICE_UNIT="/etc/systemd/system/${APP_NAME}-maint.service"
     NODE_SERVICE_UNIT_NAME="${APP_NAME}-maint.service"
 }
-
-NODE_SERVICE_DIR_CREATED="0"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
     
     case $key in
-        install|update|uninstall|up|down|restart|status|logs|core-update|install-script|update-script|uninstall-script|install-service|uninstall-service|service-status|service-logs|edit|service-install|service-update|service-uninstall|script-install|script-update|script-uninstall|help)
+        install|update|uninstall|up|down|restart|status|logs|core-update|install-script|update-script|uninstall-script|uninstall-service|edit|service-uninstall|script-install|script-update|script-uninstall|help)
             COMMAND="$1"
             shift # past argument
-        ;;
-        --skip-service-update)
-            SKIP_SERVICE_UPDATE=1
-            shift
         ;;
         --mode)
             if [ -z "${2:-}" ]; then
@@ -114,12 +105,12 @@ while [[ $# -gt 0 ]]; do
             shift 2
         ;;
         --name)
-            if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "install-service" || "$COMMAND" == "service-install" || "$COMMAND" == "script-install" ]]; then
+            if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "script-install" ]]; then
                 APP_NAME="$2"
                 APP_NAME_FROM_ARG=1
                 shift # past argument
             else
-                echo "Error: --name parameter is only allowed with 'install', 'install-script', or 'install-service' commands."
+                echo "Error: --name parameter is only allowed with 'install' or 'install-script' commands."
                 exit 1
             fi
             shift # past value
@@ -138,7 +129,7 @@ if [ -z "$NODE_IP" ]; then
     NODE_IP=$(curl -s -6 ifconfig.io)
 fi
 
-if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "install-service" ]] && [ -z "$APP_NAME" ]; then
+if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" ]] && [ -z "$APP_NAME" ]; then
     APP_NAME="$SCRIPT_BASENAME"
 fi
 # Set script name if APP_NAME is not set
@@ -159,14 +150,7 @@ REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebe
 
 # Default node channel values
 BRANCH="master"
-NODE_SERVICE_SOURCE_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/node_service.py"
-NODE_SERVICE_REQUIREMENTS_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/requirements.txt"
 SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/rebecca-node.sh"
-
-# Set port if missing
-if [ -z "${REBECCA_NODE_SCRIPT_PORT:-}" ]; then
-    REBECCA_NODE_SCRIPT_PORT="3100"
-fi
 
 colorized_echo() {
     local color=$1
@@ -224,26 +208,6 @@ get_env_value() {
     grep -E "^[[:space:]]*${key}[[:space:]]*=" "$ENV_FILE" 2>/dev/null \
         | tail -n 1 \
         | sed -E 's/^[^=]+=//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//'
-}
-
-persist_rebecca_node_service_env() {
-    local saved_host
-    local saved_port
-    local host
-    local port
-
-    saved_host=$(get_env_value "REBECCA_NODE_SCRIPT_HOST")
-    saved_port=$(get_env_value "REBECCA_NODE_SCRIPT_PORT")
-    host="${REBECCA_NODE_SCRIPT_HOST:-${saved_host:-127.0.0.1}}"
-    port="${REBECCA_NODE_SCRIPT_PORT:-}"
-    if [ -n "$saved_port" ] && { [ -z "$port" ] || [ "$port" = "3100" ]; }; then
-        port="$saved_port"
-    fi
-    port="${port:-3100}"
-    REBECCA_NODE_SCRIPT_PORT="$port"
-
-    set_env_value "REBECCA_NODE_SCRIPT_HOST" "$host"
-    set_env_value "REBECCA_NODE_SCRIPT_PORT" "$port"
 }
 
 extract_container_name() {
@@ -339,28 +303,6 @@ prompt_node_selection() {
     done
 }
 
-resolve_node_service_unit_name() {
-    if [ -f "$NODE_SERVICE_UNIT" ]; then
-        echo "$NODE_SERVICE_UNIT_NAME"
-        return
-    fi
-    if [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
-        echo "rebecca-node-maint.service"
-        return
-    fi
-    echo "$NODE_SERVICE_UNIT_NAME"
-}
-
-if [[ "$COMMAND" == "install-service" && "$APP_NAME_FROM_ARG" -eq 0 ]]; then
-    if [ "$APP_NAME" = "rebecca-node" ]; then
-        prompt_node_selection
-    else
-        if [ -z "${APP_DIR:-}" ] || [ ! -d "$APP_DIR" ]; then
-            APP_DIR="$INSTALL_DIR/$APP_NAME"
-        fi
-    fi
-fi
-
 set_app_context
 
 set_branch_variables() {
@@ -370,15 +312,11 @@ set_branch_variables() {
             BRANCH="dev"
             IMAGE_TAG="dev"
             DOCKER_IMAGE="rebeccapanel/rebecca-node:dev"
-            NODE_SERVICE_SOURCE_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/dev/node_service.py"
-            NODE_SERVICE_REQUIREMENTS_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/dev/requirements.txt"
         ;;
         *)
             BRANCH="master"
             IMAGE_TAG="latest"
             DOCKER_IMAGE="rebeccapanel/rebecca-node:latest"
-            NODE_SERVICE_SOURCE_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/node_service.py"
-            NODE_SERVICE_REQUIREMENTS_URL="https://raw.githubusercontent.com/rebeccapanel/Rebecca-node/master/requirements.txt"
         ;;
     esac
     SCRIPT_BRANCH="$BRANCH"
@@ -662,9 +600,7 @@ get_node_binary_release_asset_metadata() {
     local release_payload
     local resolved_tag
     local node_asset_name
-    local service_asset_name
     local node_asset_url
-    local service_asset_url
 
     if [ "$node_version" = "latest" ]; then
         release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/latest"
@@ -679,7 +615,6 @@ get_node_binary_release_asset_metadata() {
 
     resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
     node_asset_name="rebecca-node-${resolved_tag}-linux-${binary_arch}"
-    service_asset_name="rebecca-node-service-${resolved_tag}-linux-${binary_arch}"
 
     node_asset_url=$(echo "$release_payload" | jq -r --arg name "$node_asset_name" '
         .assets[]?
@@ -687,19 +622,13 @@ get_node_binary_release_asset_metadata() {
         | .browser_download_url
     ' | head -n 1)
 
-    service_asset_url=$(echo "$release_payload" | jq -r --arg name "$service_asset_name" '
-        .assets[]?
-        | select(.name == $name)
-        | .browser_download_url
-    ' | head -n 1)
-
-    if [ -z "$node_asset_url" ] || [ "$node_asset_url" = "null" ] || [ -z "$service_asset_url" ] || [ "$service_asset_url" = "null" ]; then
+    if [ -z "$node_asset_url" ] || [ "$node_asset_url" = "null" ]; then
         colorized_echo red "No Rebecca-node binary release assets found for linux-${binary_arch}." >&2
         colorized_echo yellow "Use --dev after the dev binary workflow succeeds, or use Dockerized install." >&2
         exit 1
     fi
 
-    printf '%s|%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url" "$service_asset_url"
+    printf '%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url"
 }
 
 get_node_binary_dev_artifact_metadata() {
@@ -767,7 +696,6 @@ write_node_binary_release_metadata() {
         --arg asset_url "$asset_url" \
         --arg arch "linux-${binary_arch}" \
         --arg node_binary "$BINARY_NODE" \
-        --arg service_binary "$BINARY_NODE_SERVICE" \
         --arg installed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{
             install_mode: "binary",
@@ -776,7 +704,6 @@ write_node_binary_release_metadata() {
             asset_url: $asset_url,
             arch: $arch,
             node_binary: $node_binary,
-            service_binary: $service_binary,
             installed_at: $installed_at
         }' > "$BINARY_METADATA_FILE"
 }
@@ -888,7 +815,6 @@ configure_binary_node_env() {
     set_env_value "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
     set_env_value "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
     set_env_value "SERVICE_PROTOCOL" "rest"
-    persist_rebecca_node_service_env
 }
 
 install_binary_rebecca_node() {
@@ -897,7 +823,6 @@ install_binary_rebecca_node() {
     local binary_arch
     local resolved_version
     local node_asset_url
-    local service_asset_url
     local artifact_url
     local tmp_dir
     local package_path
@@ -919,21 +844,19 @@ install_binary_rebecca_node() {
         curl -fL "$artifact_url" -o "$package_path"
         unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
     else
-        IFS='|' read -r resolved_version node_asset_url service_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
+        IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
         colorized_echo blue "Downloading Rebecca-node binary release assets"
         curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
-        curl -fL "$service_asset_url" -o "$tmp_dir/rebecca-node-service"
     fi
 
-    if [ ! -f "$tmp_dir/rebecca-node" ] || [ ! -f "$tmp_dir/rebecca-node-service" ]; then
-        colorized_echo red "Downloaded binary package is incomplete; rebecca-node or rebecca-node-service is missing." >&2
+    if [ ! -f "$tmp_dir/rebecca-node" ]; then
+        colorized_echo red "Downloaded binary package is incomplete; rebecca-node is missing." >&2
         rm -rf "$tmp_dir"
         exit 1
     fi
 
     mkdir -p "$BINARY_BIN_DIR" "$DATA_DIR" "$APP_DIR"
     install -m 755 "$tmp_dir/rebecca-node" "$BINARY_NODE"
-    install -m 755 "$tmp_dir/rebecca-node-service" "$BINARY_NODE_SERVICE"
 
     if [ "$configure" = "1" ]; then
         configure_binary_node_env
@@ -947,305 +870,6 @@ install_binary_rebecca_node() {
     create_binary_rebecca_node_service
     rm -rf "$tmp_dir"
     colorized_echo green "Rebecca-node binary files installed successfully"
-}
-
-cleanup_node_service_on_failure() {
-    local exit_code=$?
-    colorized_echo yellow "Maintenance service installation failed, continuing without service..."
-
-    local unit_file="$NODE_SERVICE_UNIT"
-    local legacy_file="/etc/systemd/system/rebecca-node-maint.service"
-    local target_unit=""
-    local target_file=""
-
-    if [ -f "$unit_file" ]; then
-        target_unit="$NODE_SERVICE_UNIT_NAME"
-        target_file="$unit_file"
-    elif [ -f "$legacy_file" ]; then
-        target_unit="rebecca-node-maint.service"
-        target_file="$legacy_file"
-    fi
-
-    if [ -n "$target_unit" ]; then
-        systemctl disable --now "$target_unit" >/dev/null 2>&1 || true
-        rm -f "$target_file"
-        systemctl daemon-reload >/dev/null 2>&1 || true
-    fi
-
-    if [ "$NODE_SERVICE_DIR_CREATED" = "1" ]; then
-        rm -rf "$NODE_SERVICE_DIR"
-    fi
-
-    # Don't exit, just return with error code
-    return "$exit_code"
-}
-
-install_rebecca_node_service() {
-    check_running_as_root
-
-    if ! is_rebecca_node_installed; then
-        colorized_echo red "Rebecca-node '$APP_NAME' not installed at $APP_DIR"
-        exit 1
-    fi
-
-    if is_binary_install; then
-        install_rebecca_node_service_binary
-        return
-    fi
-
-    colorized_echo blue "Installing Rebecca-node maintenance service for $APP_NAME"
-
-    detect_os
-    if ! command -v curl >/dev/null 2>&1; then
-        install_package curl
-    fi
-    if ! command -v python3 >/dev/null 2>&1; then
-        install_package python3
-    fi
-    if ! command -v pip3 >/dev/null 2>&1 && ! command -v pip >/dev/null 2>&1; then
-        install_package python3-pip || true
-    fi
-
-    if [ -d "$NODE_SERVICE_DIR" ]; then
-        NODE_SERVICE_DIR_CREATED="0"
-    else
-        NODE_SERVICE_DIR_CREATED="1"
-    fi
-    mkdir -p "$NODE_SERVICE_DIR"
-
-    local legacy_service="/etc/systemd/system/rebecca-node-maint.service"
-    if [ -f "$legacy_service" ] && [ "$NODE_SERVICE_UNIT_NAME" != "rebecca-node-maint.service" ]; then
-        systemctl disable --now rebecca-node-maint.service >/dev/null 2>&1 || true
-        rm -f "$legacy_service"
-    fi
-
-    colorized_echo blue "Downloading node maintenance service from $NODE_SERVICE_SOURCE_URL"
-    if ! curl -sSL "$NODE_SERVICE_SOURCE_URL" -o "$NODE_SERVICE_FILE"; then
-        colorized_echo red "Failed to download service file from $NODE_SERVICE_SOURCE_URL"
-        cleanup_node_service_on_failure
-        return 1
-    fi
-    if head -n 1 "$NODE_SERVICE_FILE" | grep -qi "<!DOCTYPE\|<html"; then
-        colorized_echo red "Downloaded service file is not valid Python"
-        rm -f "$NODE_SERVICE_FILE"
-        cleanup_node_service_on_failure
-        return 1
-    fi
-
-    PYTHON3_BIN=$(command -v python3)
-    if [ -z "$PYTHON3_BIN" ]; then
-        colorized_echo red "python3 is required but was not found."
-        cleanup_node_service_on_failure
-        return 1
-    fi
-
-    local VENV_DIR="$NODE_SERVICE_DIR/venv"
-    if [ -d "$VENV_DIR" ]; then
-        rm -rf "$VENV_DIR"
-    fi
-
-    colorized_echo blue "Creating virtualenv at $VENV_DIR"
-    if ! "$PYTHON3_BIN" -m venv "$VENV_DIR"; then
-        colorized_echo yellow "venv creation failed, installing python-venv package..."
-        ensure_python3_venv
-        "$PYTHON3_BIN" -m venv "$VENV_DIR"
-    fi
-
-    PYTHON_BIN="$VENV_DIR/bin/python"
-
-    trap 'cleanup_node_service_on_failure' ERR
-
-    colorized_echo blue "Downloading requirements from $NODE_SERVICE_REQUIREMENTS_URL"
-    if curl -sSL "$NODE_SERVICE_REQUIREMENTS_URL" -o "$NODE_SERVICE_REQUIREMENTS"; then
-        if head -n 1 "$NODE_SERVICE_REQUIREMENTS" | grep -qi "<!DOCTYPE\\|<html"; then
-            colorized_echo yellow "requirements.txt is HTML, using fallback packages"
-            rm -f "$NODE_SERVICE_REQUIREMENTS"
-        else
-            colorized_echo green "Requirements file downloaded successfully"
-        fi
-    else
-        colorized_echo yellow "Failed to download requirements.txt, using fallback packages"
-        rm -f "$NODE_SERVICE_REQUIREMENTS"
-    fi
-
-    colorized_echo blue "Installing Python dependencies inside venv..."
-    "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null 2>&1 || true
-
-    install_fallback_packages() {
-        "$PYTHON_BIN" -m pip install --force-reinstall --no-cache-dir \
-            'typing-extensions==4.12.2' \
-            'pydantic-core==2.27.2' \
-            'pydantic==2.10.5' \
-            'fastapi==0.115.2' \
-            'uvicorn[standard]==0.27.0.post1' \
-            'PyYAML==6.0.2' \
-            'python-multipart==0.0.9' \
-            'email-validator==2.2.0'
-    }
-
-    if [ -f "$NODE_SERVICE_REQUIREMENTS" ]; then
-        if ! "$PYTHON_BIN" -m pip install -r "$NODE_SERVICE_REQUIREMENTS" --force-reinstall --no-cache-dir; then
-            colorized_echo yellow "Failed to install from requirements.txt, using fallback pinned packages"
-            if ! install_fallback_packages; then
-                colorized_echo red "Failed to install maintenance dependencies"
-                cleanup_node_service_on_failure
-                return 1
-            fi
-        fi
-    else
-        if ! install_fallback_packages; then
-            colorized_echo red "Failed to install maintenance dependencies"
-            cleanup_node_service_on_failure
-            return 1
-        fi
-    fi
-
-    ensure_node_script_port
-
-    cat > "$NODE_SERVICE_UNIT" <<EOF
-[Unit]
-Description=Rebecca-node Maintenance API for $APP_NAME
-After=network-online.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$NODE_SERVICE_DIR
-Environment=REBECCA_NODE_APP_NAME=$APP_NAME
-Environment=REBECCA_NODE_APP_DIR=$APP_DIR
-Environment=REBECCA_NODE_DATA_DIR=$DATA_DIR
-Environment=REBECCA_NODE_SCRIPT_PORT=$REBECCA_NODE_SCRIPT_PORT
-Environment=REBECCA_NODE_SCRIPT_BIN=/usr/local/bin/$APP_NAME
-ExecStart=$PYTHON_BIN $NODE_SERVICE_FILE
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    if ! systemctl enable --now "$NODE_SERVICE_UNIT_NAME" 2>/dev/null; then
-        colorized_echo red "Failed to enable/start maintenance service"
-        trap - ERR
-        cleanup_node_service_on_failure
-        return 1
-    fi
-    persist_rebecca_node_service_env
-    trap - ERR
-    colorized_echo green "Rebecca-node maintenance service installed and started for $APP_NAME"
-    echo
-    colorized_echo cyan "Service Information:"
-    colorized_echo magenta "  Service name: $NODE_SERVICE_UNIT_NAME"
-    colorized_echo magenta "  Service port: $REBECCA_NODE_SCRIPT_PORT"
-    colorized_echo magenta "  Check status: systemctl status $NODE_SERVICE_UNIT_NAME"
-    colorized_echo magenta "  View logs: journalctl -u $NODE_SERVICE_UNIT_NAME -f"
-}
-
-install_rebecca_node_service_binary() {
-    if [ ! -x "$BINARY_NODE_SERVICE" ]; then
-        colorized_echo red "Rebecca-node maintenance binary not found at $BINARY_NODE_SERVICE"
-        colorized_echo yellow "Run '$APP_NAME install --binary' or '$APP_NAME update' first."
-        exit 1
-    fi
-
-    ensure_node_script_port
-    mkdir -p "$NODE_SERVICE_DIR"
-
-    local legacy_service="/etc/systemd/system/rebecca-node-maint.service"
-    if [ -f "$legacy_service" ] && [ "$NODE_SERVICE_UNIT_NAME" != "rebecca-node-maint.service" ]; then
-        systemctl disable --now rebecca-node-maint.service >/dev/null 2>&1 || true
-        rm -f "$legacy_service"
-    fi
-
-    cat > "$NODE_SERVICE_UNIT" <<EOF
-[Unit]
-Description=Rebecca-node Maintenance API for $APP_NAME
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$APP_DIR
-Environment=REBECCA_NODE_SCRIPT_HOST=127.0.0.1
-Environment=REBECCA_NODE_SCRIPT_PORT=$REBECCA_NODE_SCRIPT_PORT
-Environment=REBECCA_NODE_SCRIPT_BIN=/usr/local/bin/$APP_NAME
-ExecStart=$BINARY_NODE_SERVICE
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    if ! systemctl enable --now "$NODE_SERVICE_UNIT_NAME" 2>/dev/null; then
-        colorized_echo red "Failed to enable/start maintenance service"
-        return 1
-    fi
-    persist_rebecca_node_service_env
-    colorized_echo green "Rebecca-node maintenance service installed and started for $APP_NAME"
-}
-
-update_rebecca_node_service() {
-    check_running_as_root
-
-    if is_binary_install; then
-        install_rebecca_node_service_binary
-        systemctl restart "$NODE_SERVICE_UNIT_NAME"
-        colorized_echo green "Rebecca-node maintenance service updated for $APP_NAME"
-        return
-    fi
-
-    if [ ! -d "$NODE_SERVICE_DIR" ]; then
-        colorized_echo red "Maintenance service is not installed for $APP_NAME"
-        exit 1
-    fi
-
-    detect_os
-    if ! command -v curl >/dev/null 2>&1; then
-        install_package curl
-    fi
-
-    colorized_echo blue "Updating node maintenance service for $APP_NAME"
-
-    if ! curl -sSL "$NODE_SERVICE_SOURCE_URL" -o "$NODE_SERVICE_FILE"; then
-        colorized_echo red "Failed to download service file from $NODE_SERVICE_SOURCE_URL"
-        exit 1
-    fi
-    if head -n 1 "$NODE_SERVICE_FILE" | grep -qi "<!DOCTYPE\|<html"; then
-        colorized_echo red "Downloaded service file is not valid Python"
-        rm -f "$NODE_SERVICE_FILE"
-        exit 1
-    fi
-
-    if curl -sSL "$NODE_SERVICE_REQUIREMENTS_URL" -o "$NODE_SERVICE_REQUIREMENTS"; then
-        if head -n 1 "$NODE_SERVICE_REQUIREMENTS" | grep -qi "<!DOCTYPE\|<html"; then
-            colorized_echo yellow "requirements.txt is HTML, keeping existing deps"
-            rm -f "$NODE_SERVICE_REQUIREMENTS"
-        fi
-    else
-        rm -f "$NODE_SERVICE_REQUIREMENTS"
-    fi
-
-    local VENV_DIR="$NODE_SERVICE_DIR/venv"
-    PYTHON_BIN="$VENV_DIR/bin/python"
-    PIP_BIN="$VENV_DIR/bin/pip"
-
-    if [ ! -x "$PYTHON_BIN" ]; then
-        colorized_echo yellow "Virtualenv missing, reinstalling maintenance service..."
-        install_rebecca_node_service
-        return
-    fi
-
-    "$PIP_BIN" install --upgrade pip >/dev/null 2>&1 || true
-
-    if [ -f "$NODE_SERVICE_REQUIREMENTS" ]; then
-        "$PIP_BIN" install -r "$NODE_SERVICE_REQUIREMENTS" --force-reinstall --no-cache-dir || true
-    fi
-
-    systemctl restart "$NODE_SERVICE_UNIT_NAME"
-    colorized_echo green "Rebecca-node maintenance service updated for $APP_NAME"
 }
 
 uninstall_rebecca_node_service() {
@@ -1314,35 +938,6 @@ is_port_occupied() {
     else
         return 1
     fi
-}
-
-ensure_node_script_port() {
-    local saved_port
-    local start_port
-
-    saved_port=$(get_env_value "REBECCA_NODE_SCRIPT_PORT")
-    if [ -n "$saved_port" ] && { [ -z "${REBECCA_NODE_SCRIPT_PORT:-}" ] || [ "$REBECCA_NODE_SCRIPT_PORT" = "3100" ]; }; then
-        REBECCA_NODE_SCRIPT_PORT="$saved_port"
-    fi
-    start_port="${REBECCA_NODE_SCRIPT_PORT:-3100}"
-
-    if [ -f "$NODE_SERVICE_UNIT" ] && systemctl is-active --quiet "$NODE_SERVICE_UNIT_NAME" 2>/dev/null; then
-        REBECCA_NODE_SCRIPT_PORT="$start_port"
-        return
-    fi
-
-    get_occupied_ports
-
-    local candidate_port="$start_port"
-    while is_port_occupied "$candidate_port"; do
-        candidate_port=$((candidate_port + 1))
-    done
-
-    if [ "$candidate_port" != "$start_port" ]; then
-        colorized_echo yellow "Port $start_port is in use; using $candidate_port for maintenance API"
-    fi
-
-    REBECCA_NODE_SCRIPT_PORT="$candidate_port"
 }
 
 install_rebecca_node() {
@@ -1622,14 +1217,6 @@ install_command() {
     else
         install_rebecca_node
         echo "docker" > "$INSTALL_MODE_FILE"
-    fi
-    set +e
-    install_rebecca_node_service
-    service_status=$?
-    set -e
-    if [ "$service_status" -ne 0 ]; then
-        colorized_echo yellow "Warning: Maintenance service installation failed, but node installation will continue."
-        colorized_echo yellow "You can install the service later with: $APP_NAME install-service"
     fi
     up_rebecca_node
     follow_rebecca_node_logs
@@ -1929,28 +1516,12 @@ update_command() {
 
     update_rebecca_node_script
 
-    local skip_service_update="$SKIP_SERVICE_UPDATE"
-    if [ "${REBECCA_NODE_SKIP_SERVICE_UPDATE:-0}" = "1" ]; then
-        skip_service_update=1
-    fi
-
-    local unit
-    unit=$(resolve_node_service_unit_name)
-    if [ "$skip_service_update" -eq 1 ]; then
-        colorized_echo yellow "Skipping maintenance service self-update for this run"
-    elif [ -n "$unit" ] && ! is_binary_install; then
-        update_rebecca_node_service
-    fi
-
     if is_binary_install; then
         colorized_echo blue "Updating Rebecca-node binary files"
     else
         colorized_echo blue "Pulling node image $DOCKER_IMAGE"
     fi
     update_rebecca_node "$node_version"
-    if is_binary_install && [ "$skip_service_update" -ne 1 ]; then
-        update_rebecca_node_service
-    fi
 
     colorized_echo blue "Restarting Rebecca-node services"
     down_rebecca_node
@@ -2290,54 +1861,6 @@ edit_command() {
     fi
 }
 
-service_status_command() {
-    local unit_file="$NODE_SERVICE_UNIT"
-    local fallback_file="/etc/systemd/system/rebecca-node-maint.service"
-    local target_unit
-    target_unit=$(resolve_node_service_unit_name)
-
-    if [ "$target_unit" = "$NODE_SERVICE_UNIT_NAME" ] && [ ! -f "$unit_file" ]; then
-        target_unit=""
-    fi
-    if [ -z "$target_unit" ] && [ -f "$fallback_file" ]; then
-        target_unit="rebecca-node-maint.service"
-    fi
-
-    if [ -z "$target_unit" ]; then
-        colorized_echo red "Rebecca-node maintenance service is not installed"
-        colorized_echo yellow "Install it with: $APP_NAME service-install"
-        exit 1
-    fi
-
-    colorized_echo blue "================================"
-    colorized_echo cyan "Rebecca-node Maintenance Service Status"
-    colorized_echo blue "================================"
-    systemctl status "$target_unit" --no-pager
-}
-
-service_logs_command() {
-    local unit
-    unit=$(resolve_node_service_unit_name)
-    local unit_file="$NODE_SERVICE_UNIT"
-    local fallback_file="/etc/systemd/system/rebecca-node-maint.service"
-    if [ "$unit" = "$NODE_SERVICE_UNIT_NAME" ] && [ ! -f "$unit_file" ]; then
-        unit=""
-    fi
-    if [ -z "$unit" ] && [ -f "$fallback_file" ]; then
-        unit="rebecca-node-maint.service"
-    fi
-
-    if [ -z "$unit" ]; then
-        colorized_echo red "Rebecca-node maintenance service is not installed"
-        colorized_echo yellow "Install it with: $APP_NAME service-install"
-        exit 1
-    fi
-
-    colorized_echo blue "Showing Rebecca-node maintenance service logs (Ctrl+C to exit)..."
-    journalctl -u "$unit" -f
-}
-
-
 usage() {
     colorized_echo blue "================================"
     colorized_echo magenta "       $APP_NAME Node CLI Help"
@@ -2353,11 +1876,7 @@ usage() {
     colorized_echo yellow "  status          $(tput sgr0)– Show status"
     colorized_echo yellow "  logs            $(tput sgr0)– Show logs"
     colorized_echo yellow "  install         $(tput sgr0)- Install/reinstall Rebecca-node"
-    colorized_echo green "  service-install $(tput sgr0)- Install maintenance service"
-    colorized_echo green "  service-update  $(tput sgr0)- Update maintenance service"
-    colorized_echo green "  service-status  $(tput sgr0)- Show maintenance service status"
-    colorized_echo green "  service-logs    $(tput sgr0)- Show maintenance service logs"
-    colorized_echo green "  service-uninstall $(tput sgr0)- Uninstall maintenance service"
+    colorized_echo green "  service-uninstall $(tput sgr0)- Remove legacy maintenance service"
     colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific version"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca-node"
     colorized_echo blue "  script-install  $(tput sgr0)- Install Rebecca-node script"
@@ -2397,7 +1916,6 @@ usage() {
     colorized_echo magenta "  Service port: $SERVICE_PORT"
     colorized_echo magenta "  API port: $XRAY_API_PORT"
     
-    # Check maintenance service status
     local summary_unit=""
     if [ -f "$NODE_SERVICE_UNIT" ]; then
         summary_unit="$NODE_SERVICE_UNIT_NAME"
@@ -2407,16 +1925,14 @@ usage() {
 
     if [ -n "$summary_unit" ]; then
         echo
-        colorized_echo cyan "Maintenance Service:"
+        colorized_echo cyan "Legacy Maintenance Service:"
         if systemctl is-active --quiet "$summary_unit"; then
             colorized_echo green "  Status: Active (running)"
         else
             colorized_echo red "  Status: Inactive"
         fi
         colorized_echo magenta "  Service: $summary_unit"
-        colorized_echo magenta "  Port: $REBECCA_NODE_SCRIPT_PORT"
-        colorized_echo magenta "  Check status: $APP_NAME service-status"
-        colorized_echo magenta "  View logs: $APP_NAME service-logs"
+        colorized_echo magenta "  Remove: $APP_NAME service-uninstall"
     fi
     
     colorized_echo blue "================================="
@@ -2434,11 +1950,7 @@ print_menu() {
         "status:Show status"
         "logs:Show logs"
         "install:Install/reinstall Rebecca-node"
-        "service-install:Install maintenance service"
-        "service-update:Update maintenance service"
-        "service-status:Show maintenance service status"
-        "service-logs:Show maintenance service logs"
-        "service-uninstall:Uninstall maintenance service"
+        "service-uninstall:Remove legacy maintenance service"
         "update:Update to latest version"
         "uninstall:Uninstall Rebecca-node"
         "script-install:Install Rebecca-node script"
@@ -2472,19 +1984,15 @@ map_choice_to_command() {
         4) echo "status" ;;
         5) echo "logs" ;;
         6) echo "install" ;;
-        7) echo "service-install" ;;
-        8) echo "service-update" ;;
-        9) echo "service-status" ;;
-        10) echo "service-logs" ;;
-        11) echo "service-uninstall" ;;
-        12) echo "update" ;;
-        13) echo "uninstall" ;;
-        14) echo "script-install" ;;
-        15) echo "script-update" ;;
-        16) echo "script-uninstall" ;;
-        17) echo "core-update" ;;
-        18) echo "edit" ;;
-        19) echo "help" ;;
+        7) echo "service-uninstall" ;;
+        8) echo "update" ;;
+        9) echo "uninstall" ;;
+        10) echo "script-install" ;;
+        11) echo "script-update" ;;
+        12) echo "script-uninstall" ;;
+        13) echo "core-update" ;;
+        14) echo "edit" ;;
+        15) echo "help" ;;
         *) echo "$1" ;;
     esac
 }
@@ -2505,15 +2013,11 @@ dispatch_command() {
         install-script|script-install) install_rebecca_node_script ;;
         update-script|script-update) install_rebecca_node_script ;;
         uninstall-script|script-uninstall) uninstall_rebecca_node_script ;;
-        install-service|service-install) install_rebecca_node_service ;;
         uninstall-service|service-uninstall)
             uninstall_rebecca_node_service
-            colorized_echo green "Rebecca-node maintenance service uninstalled successfully"
+            colorized_echo green "Legacy Rebecca-node maintenance service removed successfully"
         ;;
-        service-status) service_status_command ;;
-        service-logs) service_logs_command ;;
         edit) edit_command ;;
-        update-service|service-update) update_rebecca_node_service ;;
         help) usage ;;
         *) usage ;;
     esac

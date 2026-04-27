@@ -706,10 +706,10 @@ class ReSTXRayNode:
         self.make_request("/update_core", timeout=300, version=version)
 
     def restart_host_service(self):
-        """Ask the remote node to restart its Rebecca services via maintenance API."""
+        """Ask the remote node binary service to restart itself."""
         self._ensure_connected()
         try:
-            return self.make_request("/maintenance/restart", timeout=300, report_runtime_error=False)
+            return self.make_request("/service/restart", timeout=300, report_runtime_error=False)
         except NodeAPIError as exc:
             if not _is_expected_maintenance_disconnect(exc.detail):
                 raise
@@ -721,26 +721,26 @@ class ReSTXRayNode:
             self._set_health_cache(False, False)
             return {
                 "status": "accepted",
-                "detail": "Node maintenance restart triggered. Reconnect will be attempted automatically.",
+                "detail": "Node service restart triggered. Reconnect will be attempted automatically.",
             }
 
     def update_host_service(self):
-        """Ask the remote node to run the Rebecca-node update workflow via maintenance API."""
+        """Ask the remote node binary service to run the Rebecca-node update workflow."""
         self._ensure_connected()
         try:
-            return self.make_request("/maintenance/update", timeout=900, report_runtime_error=False)
+            return self.make_request("/service/update", timeout=900, report_runtime_error=False)
         except NodeAPIError as exc:
             if not _is_expected_maintenance_disconnect(exc.detail):
                 raise
 
-            # Older maintenance services may self-terminate with -15 during updates.
+            # The node service can terminate while systemd replaces/restarts it.
             self._session_id = None
             self._api = None
             self._started = False
             self._set_health_cache(False, False)
             return {
                 "status": "accepted",
-                "detail": "Node maintenance update triggered. Reconnect will be attempted automatically.",
+                "detail": "Node service update triggered. Reconnect will be attempted automatically.",
             }
 
     def update_geo(self, files: list[dict]):

@@ -37,28 +37,8 @@ BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
 BINARY_ARTIFACT_PREFIX="${BINARY_ARTIFACT_PREFIX:-rebecca-binaries}"
 BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
 SERVICE_DIR="/usr/local/share/rebecca-maintenance"
-SERVICE_FILE="$SERVICE_DIR/main.py"
-SERVICE_REQUIREMENTS="$SERVICE_DIR/requirements.txt"
 SERVICE_UNIT="/etc/systemd/system/rebecca-maint.service"
-SERVICE_SOURCE_URL="$REBECCA_SCRIPT_BASE_URL/main.py"
-SERVICE_REQUIREMENTS_URL="$REBECCA_SCRIPT_BASE_URL/maintenance_requirements.txt"
-SERVICE_DIR_CREATED="0"
-if [ -z "$REBECCA_SCRIPT_PORT" ]; then
-    REBECCA_SCRIPT_PORT="3000"
-fi
 PARSED_DOMAINS=()
-MAINT_FALLBACK_PACKAGES=(
-    "typing-extensions==4.12.2"
-    "pydantic-core==2.27.2"
-    "pydantic==2.10.5"
-    "fastapi==0.115.2"
-    "uvicorn[standard]==0.27.0.post1"
-    "PyYAML==6.0.2"
-    "python-multipart==0.0.9"
-    "email-validator==2.2.0"
-    "pymysql>=1.0.0"
-)
-PIP_NO_RECORD_REGEX="uninstall-no-record-file|no RECORD file was found"
 
 colorized_echo() {
     local color=$1
@@ -88,8 +68,6 @@ set_rebecca_source_ref() {
     REBECCA_REF="$ref"
     REBECCA_RAW_BASE="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}"
     REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
-    SERVICE_SOURCE_URL="$REBECCA_SCRIPT_BASE_URL/main.py"
-    SERVICE_REQUIREMENTS_URL="$REBECCA_SCRIPT_BASE_URL/maintenance_requirements.txt"
 }
 
 set_rebecca_source_for_version() {
@@ -101,39 +79,6 @@ set_rebecca_source_for_version() {
             set_rebecca_source_ref "dev"
             ;;
     esac
-}
-
-pip_install_with_recovery() {
-    local python_bin="$1"
-    shift
-    local pip_args=("$@")
-    local log_file
-    log_file=$(mktemp)
-
-    if "$python_bin" -m pip "${pip_args[@]}" >"$log_file" 2>&1; then
-        cat "$log_file"
-        rm -f "$log_file"
-        return 0
-    fi
-
-    cat "$log_file"
-    if grep -Eqi "$PIP_NO_RECORD_REGEX" "$log_file"; then
-        colorized_echo yellow "Detected pip metadata issue (missing RECORD). Retrying with --ignore-installed..."
-        if "$python_bin" -m pip "${pip_args[@]}" --ignore-installed >"$log_file" 2>&1; then
-            cat "$log_file"
-            rm -f "$log_file"
-            return 0
-        fi
-        cat "$log_file"
-    fi
-
-    rm -f "$log_file"
-    return 1
-}
-
-install_maintenance_fallback_packages() {
-    local python_bin="$1"
-    pip_install_with_recovery "$python_bin" install --upgrade --no-cache-dir "${MAINT_FALLBACK_PACKAGES[@]}"
 }
 
 check_running_as_root() {
@@ -404,137 +349,6 @@ install_rebecca_script() {
     colorized_echo green "rebecca script installed successfully"
 }
 
-install_rebecca_service() {
-    check_running_as_root
-    local source_version="${1:-}"
-    if [ -n "$source_version" ]; then
-        set_rebecca_source_for_version "$source_version"
-    elif is_rebecca_installed; then
-        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
-    fi
-    colorized_echo blue "Installing Rebecca maintenance service"
-
-    detect_os
-
-    if ! command -v curl >/dev/null 2>&1; then
-        install_package curl
-    fi
-    if ! command -v python3 >/dev/null 2>&1; then
-        install_package python3
-    fi
-    if ! command -v pip3 >/dev/null 2>&1 && ! command -v pip >/dev/null 2>&1; then
-        install_package python3-pip || true
-    fi
-
-    if [ -d "$SERVICE_DIR" ]; then
-        SERVICE_DIR_CREATED="0"
-    else
-        SERVICE_DIR_CREATED="1"
-    fi
-    mkdir -p "$SERVICE_DIR"
-    curl -sSL "$SERVICE_SOURCE_URL" -o "$SERVICE_FILE"
-
-    if head -n 1 "$SERVICE_FILE" | grep -qi "<!DOCTYPE\|<html"; then
-        colorized_echo red "Downloaded maintenance service file is not valid Python"
-        rm -f "$SERVICE_FILE"
-        cleanup_on_failure
-        return 1
-    fi
-
-    PYTHON3_BIN=$(command -v python3)
-    if [ -z "$PYTHON3_BIN" ]; then
-        colorized_echo red "python3 is required but was not found."
-        cleanup_on_failure
-        return 1
-    fi
-
-    VENV_DIR="$SERVICE_DIR/venv"
-    colorized_echo blue "Creating maintenance virtualenv at $VENV_DIR"
-    if ! "$PYTHON3_BIN" -m venv "$VENV_DIR"; then
-        colorized_echo yellow "Python venv creation failed, trying to install python venv package..."
-        ensure_python3_venv
-        "$PYTHON3_BIN" -m venv "$VENV_DIR"
-    fi
-    PYTHON_BIN="$VENV_DIR/bin/python"
-
-    trap 'cleanup_on_failure' ERR
-
-    colorized_echo blue "Downloading maintenance requirements from $SERVICE_REQUIREMENTS_URL..."
-    if curl -sSL "$SERVICE_REQUIREMENTS_URL" -o "$SERVICE_REQUIREMENTS"; then
-        if head -n 1 "$SERVICE_REQUIREMENTS" | grep -qi "<!DOCTYPE\\|<html"; then
-            colorized_echo yellow "Failed to download requirements (HTML received); using fallback packages"
-            rm -f "$SERVICE_REQUIREMENTS"
-        else
-            colorized_echo green "Requirements file downloaded successfully"
-        fi
-    else
-        colorized_echo yellow "Unable to download requirements.txt; falling back to predefined packages"
-        rm -f "$SERVICE_REQUIREMENTS"
-    fi
-
-    colorized_echo blue "Installing Python dependencies inside maintenance virtualenv..."
-    "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null 2>&1 || true
-
-    if [ -f "$SERVICE_REQUIREMENTS" ]; then
-        if ! pip_install_with_recovery "$PYTHON_BIN" install -r "$SERVICE_REQUIREMENTS" --break-system-packages --upgrade --no-cache-dir; then
-            colorized_echo yellow "Failed to install using downloaded requirements. Falling back to pinned packages."
-            install_maintenance_fallback_packages "$PYTHON_BIN" || {
-                colorized_echo red "Failed to install maintenance service dependencies."
-                cleanup_on_failure
-                return 1
-            }
-        fi
-    else
-        install_maintenance_fallback_packages "$PYTHON_BIN" || {
-            colorized_echo red "Failed to install maintenance service dependencies."
-            cleanup_on_failure
-            return 1
-        }
-    fi
-
-    cat > "$SERVICE_UNIT" <<EOF
-[Unit]
-Description=Rebecca Maintenance API
-After=network-online.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$SERVICE_DIR
-Environment=REBECCA_APP_NAME=$APP_NAME
-Environment=REBECCA_APP_DIR=$APP_DIR
-Environment=REBECCA_DATA_DIR=$DATA_DIR
-Environment=REBECCA_ENV_FILE=$ENV_FILE
-Environment=REBECCA_INSTALL_MODE_FILE=$INSTALL_MODE_FILE
-Environment=REBECCA_BINARY_SERVER=$BINARY_SERVER
-Environment=REBECCA_BINARY_CLI=$BINARY_CLI
-Environment=REBECCA_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
-Environment=REBECCA_COMPOSE_FILE=$COMPOSE_FILE
-Environment=REBECCA_BACKUP_DIR=$APP_DIR/backup
-Environment=REBECCA_SERVICE_NAME=$APP_NAME
-Environment=REBECCA_NODE_APP_DIR=/opt/rebecca-node
-Environment=REBECCA_NODE_COMPOSE_FILE=/opt/rebecca-node/docker-compose.yml
-Environment=REBECCA_NODE_SERVICE_NAME=rebecca-node
-Environment=REBECCA_SCRIPT_PORT=$REBECCA_SCRIPT_PORT
-ExecStart=$PYTHON_BIN $SERVICE_FILE
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    if ! systemctl enable --now rebecca-maint.service 2>/dev/null; then
-        colorized_echo red "Failed to enable/start maintenance service"
-        trap - ERR
-        cleanup_on_failure
-        return 1
-    fi
-    persist_rebecca_service_env
-    trap - ERR
-    colorized_echo green "Rebecca maintenance service installed and started"
-}
-
 uninstall_rebecca_service() {
     if [ -f "$SERVICE_UNIT" ]; then
         systemctl disable --now rebecca-maint.service >/dev/null 2>&1 || true
@@ -544,20 +358,6 @@ uninstall_rebecca_service() {
     if [ -d "$SERVICE_DIR" ]; then
         rm -rf "$SERVICE_DIR"
     fi
-}
-
-cleanup_on_failure() {
-    local exit_code=$?
-    colorized_echo yellow "Maintenance service installation failed, continuing without service..."
-
-    systemctl disable --now rebecca-maint.service >/dev/null 2>&1 || true
-    rm -f "$SERVICE_UNIT"
-    if [ "$SERVICE_DIR_CREATED" = "1" ]; then
-        rm -rf "$SERVICE_DIR"
-    fi
-
-    # Don't exit, just return with error code
-    return "$exit_code"
 }
 
 trim_string() {
@@ -855,7 +655,9 @@ enable_phpmyadmin() {
         exit 1
     fi
 
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
 
     colorized_echo blue "Adding phpMyAdmin to docker-compose.yml..."
     add_phpmyadmin_to_compose "$COMPOSE_FILE"
@@ -865,29 +667,6 @@ enable_phpmyadmin() {
     down_rebecca
     up_rebecca
     colorized_echo green "Rebecca restarted successfully."
-}
-
-persist_rebecca_service_env() {
-    local host="${REBECCA_SCRIPT_HOST:-127.0.0.1}"
-    local port="${REBECCA_SCRIPT_PORT:-3000}"
-    local allowed="${REBECCA_SCRIPT_ALLOWED_HOSTS:-127.0.0.1,::1,localhost}"
-    
-    # Ensure .env file exists
-    if [ ! -f "$ENV_FILE" ]; then
-        mkdir -p "$(dirname "$ENV_FILE")"
-        touch "$ENV_FILE"
-    fi
-    
-    if ! grep -q "Rebecca maintenance service (scripts/rebecca/main.py)" "$ENV_FILE" 2>/dev/null; then
-        {
-            echo ""
-            echo "# Rebecca maintenance service (scripts/rebecca/main.py)"
-        } >> "$ENV_FILE"
-    fi
-    set_env_value "REBECCA_SCRIPT_HOST" "$host"
-    set_env_value "REBECCA_SCRIPT_PORT" "$port"
-    set_env_value "REBECCA_MAINT_PORT" "$port"
-    set_env_value "REBECCA_SCRIPT_ALLOWED_HOSTS" "$allowed"
 }
 
 sync_ssl_env_paths() {
@@ -2425,12 +2204,6 @@ prompt_for_rebecca_password() {
 install_command() {
     check_running_as_root
 
-    if [[ "${1:-}" == "service" ]]; then
-        shift
-        install_rebecca_service "$@"
-        return
-    fi
-
     # Default values
     database_type="sqlite"
     rebecca_version="latest"
@@ -2561,14 +2334,6 @@ install_command() {
         exit 1
     fi
     prompt_ssl_setup
-    set +e
-    install_rebecca_service "$rebecca_version"
-    service_status=$?
-    set -e
-    if [ "$service_status" -ne 0 ]; then
-        colorized_echo yellow "Warning: Maintenance service installation failed, but Rebecca installation will continue."
-        colorized_echo yellow "You can install the service later with: rebecca install service"
-    fi
     up_rebecca
     follow_rebecca_logs
 }
@@ -2723,7 +2488,9 @@ uninstall_command() {
     fi
 
     if [ "$app_exists" -eq 1 ]; then
-        detect_compose
+        if [ "$install_mode" != "binary" ]; then
+            detect_compose
+        fi
         if is_rebecca_up; then
             down_rebecca
         fi
@@ -2745,7 +2512,7 @@ uninstall_command() {
             colorized_echo green "Rebecca uninstalled successfully"
         fi
     else
-        colorized_echo green "Rebecca maintenance service and script removed"
+        colorized_echo green "Legacy Rebecca maintenance service and script removed"
     fi
 }
 
@@ -3021,11 +2788,10 @@ update_command() {
 
     detect_compose
     
-    colorized_echo blue "Updating Rebecca CLI and maintenance service..."
+    colorized_echo blue "Updating Rebecca CLI..."
     update_rebecca_script "$rebecca_version"
-    update_rebecca_service "$rebecca_version"
 
-    colorized_echo blue "Pulling requested version: $rebecca_version"
+    colorized_echo blue "Updating requested version: $rebecca_version"
     update_rebecca "$rebecca_version"
     write_rebecca_channel "$rebecca_version"
     
@@ -3050,100 +2816,6 @@ update_rebecca_script() {
     colorized_echo blue "Updating rebecca script"
     curl -fsSL "$SCRIPT_URL" | install -m 755 /dev/stdin /usr/local/bin/rebecca
     colorized_echo green "rebecca script updated successfully"
-}
-
-update_rebecca_service() {
-    check_running_as_root
-    local source_version="${1:-}"
-    if [ -n "$source_version" ]; then
-        set_rebecca_source_for_version "$source_version"
-    elif is_rebecca_installed; then
-        set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
-    fi
-
-    colorized_echo blue "Updating Rebecca maintenance service"
-
-    if [ ! -d "$SERVICE_DIR" ]; then
-        colorized_echo yellow "Service directory not found; installing service instead"
-        install_rebecca_service "$source_version"
-        return
-    fi
-
-    detect_os
-    if ! command -v curl >/dev/null 2>&1; then
-        install_package curl
-    fi
-
-    if ! curl -sSL "$SERVICE_SOURCE_URL" -o "$SERVICE_FILE"; then
-        colorized_echo red "Failed to download maintenance main.py"
-        exit 1
-    fi
-    if head -n 1 "$SERVICE_FILE" | grep -qi "<!DOCTYPE\|<html"; then
-        colorized_echo red "Downloaded maintenance service file is not valid Python"
-        rm -f "$SERVICE_FILE"
-        exit 1
-    fi
-
-    if curl -sSL "$SERVICE_REQUIREMENTS_URL" -o "$SERVICE_REQUIREMENTS"; then
-        if head -n 1 "$SERVICE_REQUIREMENTS" | grep -qi "<!DOCTYPE\|<html"; then
-            colorized_echo yellow "requirements.txt is HTML, keeping existing deps"
-            rm -f "$SERVICE_REQUIREMENTS"
-        fi
-    else
-        rm -f "$SERVICE_REQUIREMENTS"
-    fi
-
-    VENV_DIR="$SERVICE_DIR/venv"
-    PYTHON_BIN="$VENV_DIR/bin/python"
-
-    if [ ! -x "$PYTHON_BIN" ]; then
-        colorized_echo yellow "Virtualenv missing, reinstalling maintenance service..."
-        install_rebecca_service "$source_version"
-        return
-    fi
-
-    # Clean pip cache before updating to prevent disk space issues
-    colorized_echo blue "Cleaning pip cache..."
-    "$PYTHON_BIN" -m pip cache purge >/dev/null 2>&1 || true
-
-    # Uninstall old packages to free up disk space before installing new ones
-    # Skip essential packages (pip, setuptools, wheel) as they are required
-    colorized_echo blue "Uninstalling old packages to free disk space..."
-    installed_packages=$("$PYTHON_BIN" -m pip list --format=freeze 2>/dev/null | cut -d'=' -f1 | grep -v "^pip$\|^setuptools$\|^wheel$" || true)
-    if [ -n "$installed_packages" ]; then
-        echo "$installed_packages" | while IFS= read -r package; do
-            if [ -n "$package" ]; then
-                "$PYTHON_BIN" -m pip uninstall -y "$package" >/dev/null 2>&1 || true
-            fi
-        done
-    fi
-
-    "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null 2>&1 || true
-
-    if [ -f "$SERVICE_REQUIREMENTS" ]; then
-        colorized_echo blue "Installing updated packages..."
-        if ! pip_install_with_recovery "$PYTHON_BIN" install -r "$SERVICE_REQUIREMENTS" --upgrade --no-cache-dir; then
-            colorized_echo yellow "Failed to install using downloaded requirements. Falling back to pinned packages."
-            if ! install_maintenance_fallback_packages "$PYTHON_BIN"; then
-                colorized_echo red "Failed to install maintenance service dependencies."
-                exit 1
-            fi
-        fi
-    else
-        colorized_echo yellow "requirements.txt not available; using pinned fallback packages."
-        if ! install_maintenance_fallback_packages "$PYTHON_BIN"; then
-            colorized_echo red "Failed to install maintenance service dependencies."
-            exit 1
-        fi
-    fi
-
-    # Clean pip cache again after installation to free up disk space
-    colorized_echo blue "Cleaning pip cache after installation..."
-    "$PYTHON_BIN" -m pip cache purge >/dev/null 2>&1 || true
-
-    systemctl daemon-reload
-    systemctl restart rebecca-maint.service
-    colorized_echo green "Rebecca maintenance service updated and restarted"
 }
 
 set_compose_rebecca_image_tag() {
@@ -3224,30 +2896,6 @@ edit_env_command() {
     fi
 }
 
-service_status_command() {
-    if [ ! -f "$SERVICE_UNIT" ]; then
-        colorized_echo red "Rebecca maintenance service is not installed"
-        colorized_echo yellow "Install it with: rebecca service-install"
-        exit 1
-    fi
-
-    colorized_echo blue "================================"
-    colorized_echo cyan "Rebecca Maintenance Service Status"
-    colorized_echo blue "================================"
-    systemctl status rebecca-maint.service --no-pager
-}
-
-service_logs_command() {
-    if [ ! -f "$SERVICE_UNIT" ]; then
-        colorized_echo red "Rebecca maintenance service is not installed"
-        colorized_echo yellow "Install it with: rebecca service-install"
-        exit 1
-    fi
-
-    colorized_echo blue "Showing Rebecca maintenance service logs (Ctrl+C to exit)..."
-    journalctl -u rebecca-maint.service -f
-}
-
 print_menu() {
     colorized_echo blue "=============================="
     colorized_echo magenta "           Rebecca Menu"
@@ -3260,11 +2908,7 @@ print_menu() {
         "logs:Show logs"
         "cli:Rebecca CLI"
         "install:Install Rebecca"
-        "service-install:Install maintenance service"
-        "service-update:Update maintenance service"
-        "service-status:Show maintenance service status"
-        "service-logs:Show maintenance service logs"
-        "service-uninstall:Uninstall maintenance service"
+        "service-uninstall:Remove legacy maintenance service"
         "update:Update to latest version"
         "uninstall:Uninstall Rebecca"
         "script-install:Install Rebecca script"
@@ -3304,24 +2948,20 @@ map_choice_to_command() {
         5) echo "logs" ;;
         6) echo "cli" ;;
         7) echo "install" ;;
-        8) echo "service-install" ;;
-        9) echo "service-update" ;;
-        10) echo "service-status" ;;
-        11) echo "service-logs" ;;
-        12) echo "service-uninstall" ;;
-        13) echo "update" ;;
-        14) echo "uninstall" ;;
-        15) echo "script-install" ;;
-        16) echo "script-update" ;;
-        17) echo "script-uninstall" ;;
-        18) echo "backup" ;;
-        19) echo "backup-service" ;;
-        20) echo "core-update" ;;
-        21) echo "enable-phpmyadmin" ;;
-        22) echo "edit" ;;
-        23) echo "edit-env" ;;
-        24) echo "ssl" ;;
-        25) echo "help" ;;
+        8) echo "service-uninstall" ;;
+        9) echo "update" ;;
+        10) echo "uninstall" ;;
+        11) echo "script-install" ;;
+        12) echo "script-update" ;;
+        13) echo "script-uninstall" ;;
+        14) echo "backup" ;;
+        15) echo "backup-service" ;;
+        16) echo "core-update" ;;
+        17) echo "enable-phpmyadmin" ;;
+        18) echo "edit" ;;
+        19) echo "edit-env" ;;
+        20) echo "ssl" ;;
+        21) echo "help" ;;
         *) echo "$1" ;;
     esac
 }
@@ -3343,11 +2983,7 @@ usage() {
     colorized_echo yellow "  logs            $(tput sgr0)- Show logs"
     colorized_echo yellow "  cli             $(tput sgr0)- Rebecca CLI"
     colorized_echo yellow "  install         $(tput sgr0)- Install Rebecca"
-    colorized_echo yellow "  service-install $(tput sgr0)- Install maintenance service"
-    colorized_echo yellow "  service-update  $(tput sgr0)- Update maintenance service binary"
-    colorized_echo yellow "  service-status  $(tput sgr0)- Show maintenance service status"
-    colorized_echo yellow "  service-logs    $(tput sgr0)- Show maintenance service logs"
-    colorized_echo yellow "  service-uninstall $(tput sgr0)- Uninstall maintenance service"
+    colorized_echo yellow "  service-uninstall $(tput sgr0)- Remove legacy maintenance service"
     colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific release"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca"
     colorized_echo yellow "  script-install  $(tput sgr0)- Install Rebecca script"
@@ -3392,11 +3028,7 @@ dispatch_command() {
         backup) backup_command "$@" ;;
         backup-service) backup_service "$@" ;;
         install) install_command "$@" ;;
-        service-install|install-service) install_rebecca_service "$@" ;;
-        service-update|update-service) update_rebecca_service "$@" ;;
         service-uninstall|uninstall-service) uninstall_rebecca_service "$@" ;;
-        service-status) service_status_command "$@" ;;
-        service-logs) service_logs_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
         script-install|install-script) install_rebecca_script "$@" ;;

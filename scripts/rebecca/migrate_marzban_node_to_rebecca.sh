@@ -310,18 +310,6 @@ install_node_cli() {
     log "Installed $SELECTED_NAME CLI at $target"
 }
 
-install_node_service() {
-    if ! command -v "$SELECTED_NAME" >/dev/null 2>&1; then
-        warn "$SELECTED_NAME CLI not available; skipping maintenance service installation."
-        return
-    fi
-    if "$SELECTED_NAME" install-service >/dev/null 2>&1; then
-        log "$SELECTED_NAME maintenance service installed successfully."
-    else
-        warn "Failed to install maintenance service via $SELECTED_NAME CLI."
-    fi
-}
-
 main() {
     require_root
     parse_arguments "$@"
@@ -343,7 +331,6 @@ main() {
     rewrite_env_file
     disable_legacy_service
     install_node_cli
-    install_node_service
 
     log "Migration complete. Manage this node using '${SELECTED_NAME} up/down/...'."
     

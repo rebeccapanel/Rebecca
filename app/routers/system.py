@@ -31,9 +31,9 @@ from app.models.system import (
 )
 from app.models.user import UserStatus
 from app.utils import responses
+from app.utils.binary_control import get_binary_runtime_info, schedule_rebecca_cli
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
-from app.utils.maintenance import maintenance_request
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
@@ -59,19 +59,6 @@ _panel_history = {
 
 _PANEL_PROCESS = psutil.Process(os.getpid())
 _PANEL_PROCESS.cpu_percent(interval=None)
-
-
-def _try_maintenance_json(path: str) -> dict | None:
-    try:
-        resp = maintenance_request("GET", path, timeout=20)
-    except HTTPException as exc:
-        if exc.status_code in (404, 502, 503):
-            return None
-        raise
-    try:
-        return resp.json()
-    except Exception:
-        return None
 
 
 def _queue_xray_restart(bg: BackgroundTasks) -> None:
@@ -308,24 +295,22 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
 
 @router.get("/maintenance/info", responses={403: responses._403})
 def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Return maintenance service insights (panel/node images)."""
-    panel_info = _try_maintenance_json("/version/panel")
-    node_info = _try_maintenance_json("/version/node")
-    return {"panel": panel_info, "node": node_info}
+    """Return local binary/runtime information for host-installed panels."""
+    return {"panel": get_binary_runtime_info(), "node": None}
 
 
 @router.post("/maintenance/update", responses={403: responses._403})
 def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Trigger the maintenance service to pull the latest panel/node images."""
-    maintenance_request("POST", "/update")
-    return {"status": "ok"}
+    """Schedule an on-host Rebecca update via the installed CLI."""
+    schedule_rebecca_cli(["update"])
+    return {"status": "accepted"}
 
 
 @router.post("/maintenance/restart", responses={403: responses._403})
 def restart_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Ask the maintenance service to restart the Rebecca stack."""
-    maintenance_request("POST", "/restart")
-    return {"status": "ok"}
+    """Schedule an on-host Rebecca restart via the installed CLI."""
+    schedule_rebecca_cli(["restart", "-n"])
+    return {"status": "accepted"}
 
 
 @router.post("/maintenance/soft-reload", responses={403: responses._403})

@@ -6,6 +6,7 @@ import ipaddress
 import socket
 import subprocess
 import threading
+import re
 from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
@@ -41,6 +42,7 @@ import platform
 import zipfile
 import io
 import stat
+from urllib.parse import urlparse
 
 router = APIRouter(tags=["Core"], prefix="/api", responses={401: responses._401})
 
@@ -48,6 +50,47 @@ GITHUB_RELEASES = "https://api.github.com/repos/XTLS/Xray-core/releases"
 GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"
 OUTBOUND_TEST_DEFAULT_URL = "https://www.google.com/generate_204"
 _OUTBOUND_TEST_LOCK = threading.Lock()
+_ALLOWED_GEO_FILENAMES = {"geoip.dat", "geosite.dat"}
+_XRAY_RELEASE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+._A-Za-z0-9]*)?$")
+
+
+def _validate_release_tag(tag: str) -> str:
+    tag = (tag or "").strip()
+    if not _XRAY_RELEASE_TAG_RE.fullmatch(tag):
+        raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+    return tag
+
+
+def _validate_download_url(url: str, *, field_name: str = "url") -> str:
+    url = (url or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=422, detail=f"{field_name} must be an http(s) URL")
+
+    try:
+        resolved = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name} hostname cannot be resolved") from exc
+
+    for result in resolved:
+        address = result[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            raise HTTPException(status_code=422, detail=f"{field_name} resolves to a private or reserved address")
+    return url
+
+
+def _safe_geo_filename(name: str) -> str:
+    filename = os.path.basename((name or "").strip())
+    if filename not in _ALLOWED_GEO_FILENAMES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Geo file name must be one of: {', '.join(sorted(_ALLOWED_GEO_FILENAMES))}",
+        )
+    return filename
 
 
 def _resolve_template_files(template_index_url: str, template_name: str) -> list[dict]:
@@ -55,7 +98,7 @@ def _resolve_template_files(template_index_url: str, template_name: str) -> list
     Fetch template index and return file list. If template_name is empty, pick the first template.
     """
     try:
-        r = requests.get(template_index_url, timeout=60)
+        r = requests.get(_validate_download_url(template_index_url, field_name="template_index_url"), timeout=60)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -99,7 +142,11 @@ def _install_xray_zip(zip_bytes: bytes, target_dir: Path) -> Path:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-            archive.extractall(tmp_path)
+            for member in archive.infolist():
+                member_path = (tmp_path / member.filename).resolve()
+                if not str(member_path).startswith(str(tmp_path.resolve()) + os.sep):
+                    raise HTTPException(status_code=400, detail="Unsafe path in Xray archive")
+                archive.extract(member, tmp_path)
 
         candidates = [
             tmp_path / "xray",
@@ -141,8 +188,8 @@ def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
     dest.mkdir(parents=True, exist_ok=True)
     saved = []
     for item in files:
-        name = (item.get("name") or "").strip()
-        url = (item.get("url") or "").strip()
+        name = _safe_geo_filename(item.get("name") or "")
+        url = _validate_download_url(item.get("url") or "")
         if not name or not url:
             raise HTTPException(status_code=422, detail="Each file must include name and url.")
         try:
@@ -151,7 +198,9 @@ def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Failed to download {name}: {exc}")
         try:
-            path = dest / name
+            path = (dest / name).resolve()
+            if not str(path).startswith(str(dest.resolve()) + os.sep):
+                raise HTTPException(status_code=422, detail="Invalid geo file path")
             path.write_bytes(r.content)
             saved.append({"name": name, "path": str(path)})
         except Exception as exc:
@@ -536,15 +585,19 @@ def update_core_version(
     payload: dict = Body(..., examples={"default": {"version": "v1.8.11", "persist_env": True}}),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Update Xray core binary via maintenance service."""
+    """Update the local Xray core binary in binary/host installs."""
     tag = payload.get("version")
     if not tag or not isinstance(tag, str):
         raise HTTPException(422, detail="version is required (e.g. v1.8.11)")
+    tag = _validate_release_tag(tag)
 
     persist_env = bool(payload.get("persist_env", True))
 
     asset_name = _detect_asset_name()
-    url = f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{asset_name}"
+    url = _validate_download_url(
+        f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{asset_name}",
+        field_name="release_url",
+    )
     try:
         resp = requests.get(url, timeout=180)
         resp.raise_for_status()
@@ -581,7 +634,7 @@ def update_core_version(
         pass
 
     return {
-        "detail": f"Core assets updated to {tag}. Restart Rebecca to apply the new binary.",
+        "detail": f"Core assets updated to {tag}. Restart Xray to apply the new binary.",
         "version": xray.core.version,
     }
 
@@ -623,7 +676,7 @@ def list_geo_templates(index_url: str = "", admin: Admin = Depends(Admin.check_s
     if not url:
         raise HTTPException(422, detail="index_url is required (or set GEO_TEMPLATES_INDEX_URL).")
     try:
-        r = requests.get(url, timeout=60)
+        r = requests.get(_validate_download_url(url, field_name="index_url"), timeout=60)
         r.raise_for_status()
         data = r.json()
     except Exception as e:

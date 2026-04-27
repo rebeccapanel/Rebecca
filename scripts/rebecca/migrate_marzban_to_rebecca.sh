@@ -261,18 +261,6 @@ install_rebecca_cli() {
     log "Installed Rebecca CLI to /usr/local/bin/rebecca"
 }
 
-install_rebecca_service_unit() {
-    if ! command -v rebecca >/dev/null 2>&1; then
-        warn "Rebecca CLI not found; skipping maintenance service installation."
-        return
-    fi
-    if rebecca install-service >/dev/null 2>&1; then
-        log "Rebecca maintenance service installed successfully."
-    else
-        warn "Failed to install maintenance service via rebecca CLI."
-    fi
-}
-
 rerun_install_service_script() {
     local script_path="$NEW_APP_DIR/install_service.sh"
     if [ ! -f "$script_path" ]; then
@@ -495,7 +483,6 @@ main() {
 
     migrate_systemd_service
     install_rebecca_cli
-    install_rebecca_service_unit
     rerun_install_service_script
     
     # Update Xray config addresses before restarting

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal
 from app.templates import _get_env
-from app.utils.maintenance import maintenance_request
+from app.utils.binary_control import run_rebecca_cli
 
 DEFAULT_SUBSCRIPTION_URL_PREFIX = ""
 DEFAULT_SUBSCRIPTION_PROFILE_TITLE = "Subscription"
@@ -581,7 +581,7 @@ class SubscriptionSettingsService:
 
 
 class SubscriptionCertificateService:
-    """Manage SSL certificates through maintenance service and database records."""
+    """Manage SSL certificates through the on-host Rebecca CLI and database records."""
 
     @staticmethod
     def _normalize_domains(domains: Sequence[str]) -> List[str]:
@@ -696,9 +696,16 @@ class SubscriptionCertificateService:
         db: Optional[Session] = None,
     ) -> SubscriptionDomainData:
         normalized_domains = cls._normalize_domains(domains)
-        payload = {"email": email, "domains": normalized_domains}
-
-        maintenance_request("POST", "/ssl/issue", json=payload)
+        run_rebecca_cli(
+            [
+                "ssl",
+                "issue",
+                f"--email={email}",
+                f"--domains={','.join(normalized_domains)}",
+                "--non-interactive",
+            ],
+            timeout=900,
+        )
 
         metadata = cls._metadata_for_domain(normalized_domains[0])
         alt_names = metadata.get("domains") or normalized_domains[1:]
@@ -732,8 +739,10 @@ class SubscriptionCertificateService:
         domain: Optional[str] = None,
         db: Optional[Session] = None,
     ) -> Optional[SubscriptionDomainData]:
-        payload = {"domain": domain} if domain else {}
-        maintenance_request("POST", "/ssl/renew", json=payload or None)
+        cmd = ["ssl", "renew"]
+        if domain:
+            cmd.append(f"--domain={domain}")
+        run_rebecca_cli(cmd, timeout=900)
 
         if not domain:
             return None

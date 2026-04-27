@@ -1,25 +1,13 @@
-import asyncio
-import importlib.util
 import json
 import os
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAINTENANCE_SERVICE_PATH = PROJECT_ROOT / "scripts" / "rebecca" / "main.py"
 REBECCA_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "rebecca" / "rebecca.sh"
 REBECCA_CLI_PATH = PROJECT_ROOT / "rebecca-cli.py"
-
-
-def _load_module_from_path(module_path: Path, module_name: str):
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_config_loads_env_from_installed_binary_layout(tmp_path: Path):
@@ -51,13 +39,13 @@ def test_config_loads_env_from_installed_binary_layout(tmp_path: Path):
     assert result.stdout.strip() == expected_url
 
 
-def test_maintenance_service_supports_binary_mode_without_docker(tmp_path: Path, monkeypatch):
+def test_binary_runtime_info_supports_binary_mode_without_docker(tmp_path: Path, monkeypatch):
     app_dir = tmp_path / "rebecca"
     app_dir.mkdir()
-    (app_dir / ".install-mode").write_text("binary\n", encoding="utf-8")
     (app_dir / ".binary-release.json").write_text(
         json.dumps(
             {
+                "install_mode": "binary",
                 "image": "rebecca-server (binary)",
                 "tag": "v1.2.3",
                 "asset_url": "https://example.invalid/rebecca-linux-amd64.tar.gz",
@@ -69,15 +57,14 @@ def test_maintenance_service_supports_binary_mode_without_docker(tmp_path: Path,
     monkeypatch.setenv("REBECCA_APP_DIR", str(app_dir))
     monkeypatch.setenv("REBECCA_SCRIPT_BIN", str(REBECCA_SCRIPT_PATH))
     monkeypatch.setenv("REBECCA_INSTALL_MODE", "binary")
+    monkeypatch.setenv("REBECCA_BINARY_METADATA_FILE", str(app_dir / ".binary-release.json"))
 
-    module = _load_module_from_path(MAINTENANCE_SERVICE_PATH, f"rebecca_maintenance_{uuid.uuid4().hex}")
+    from app.utils.binary_control import get_binary_runtime_info
 
-    assert module.settings.install_mode == "binary"
-    ssl_request = module.SSLRequest(email="admin@example.com", domains=["example.com"])
-    assert ssl_request.email == "admin@example.com"
-    panel_info = asyncio.run(module.panel_version())
-    assert panel_info["image"] == "rebecca-server (binary)"
-    assert panel_info["tag"] == "v1.2.3"
+    panel_info = get_binary_runtime_info()
+    assert panel_info["mode"] == "binary"
+    assert panel_info["binary"]["image"] == "rebecca-server (binary)"
+    assert panel_info["binary"]["tag"] == "v1.2.3"
 
 
 def test_cli_help_skips_dashboard_runtime(tmp_path: Path):
