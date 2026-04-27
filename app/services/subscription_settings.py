@@ -525,23 +525,42 @@ class SubscriptionSettingsService:
         return cls.build_subscription_bases(settings, salt=salt)[0]
 
     @classmethod
-    def build_subscription_bases(cls, settings: EffectiveSubscriptionSettings, *, salt: Optional[str] = None) -> List[str]:
+    def build_subscription_bases(
+        cls,
+        settings: EffectiveSubscriptionSettings,
+        *,
+        salt: Optional[str] = None,
+        request_origin: Optional[str] = None,
+    ) -> List[str]:
         prefix = settings.subscription_url_prefix or ""
         if salt:
             prefix = prefix.replace("*", salt)
         path = (settings.subscription_path or "sub").strip("/")
+        ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
+        prefix_from_request = False
+        if not prefix and ports:
+            prefix = request_origin or ""
+            prefix_from_request = bool(prefix)
+            try:
+                from app.utils.request_context import get_subscription_request_origin
+
+                prefix = prefix or get_subscription_request_origin() or ""
+                prefix_from_request = bool(prefix)
+            except Exception:
+                prefix = prefix or ""
+
         if not prefix:
             return [f"/{path}"]
 
-        bases = [f"{prefix.rstrip('/')}/{path}"]
-        ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
+        bases = []
         if ports and prefix.startswith("http"):
             from urllib.parse import urlsplit, urlunsplit
 
             parts = urlsplit(prefix)
             host = parts.hostname or ""
+            host_for_netloc = f"[{host}]" if ":" in host and not host.startswith("[") else host
             for p in ports:
-                netloc = f"{host}:{p}"
+                netloc = f"{host_for_netloc}:{p}"
                 if parts.username:
                     auth = parts.username + ((":" + (parts.password or "")) if parts.password else "")
                     netloc = f"{auth}@{netloc}"
@@ -553,6 +572,11 @@ class SubscriptionSettingsService:
                 )
                 if alt not in bases:
                     bases.append(alt)
+        base = f"{prefix.rstrip('/')}/{path}"
+        if base not in bases and not (prefix_from_request and ports):
+            bases.insert(0, base)
+        if not bases:
+            bases.append(base)
         return bases
 
 

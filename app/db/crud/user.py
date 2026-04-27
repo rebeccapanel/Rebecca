@@ -1398,11 +1398,11 @@ def update_user(
         dbuser.status = modify.status
     if "data_limit" in modify.model_fields_set:
         dbuser.data_limit = modify.data_limit or None
-        if dbuser.status not in (UserStatus.expired, UserStatus.disabled):
+        status_value = _status_to_str(dbuser.status)
+        if status_value in (UserStatus.active.value, UserStatus.limited.value):
             dbuser.status = (
                 UserStatus.active
                 if (not dbuser.data_limit or dbuser.used_traffic < dbuser.data_limit)
-                and dbuser.status != UserStatus.on_hold
                 else UserStatus.limited
             )
     if "expire" in modify.model_fields_set:
@@ -1423,10 +1423,10 @@ def update_user(
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
     if "ip_limit" in modify.model_fields_set:
         dbuser.ip_limit = modify.ip_limit
-    if modify.on_hold_timeout is not None:
+    if "on_hold_timeout" in modify.model_fields_set:
         dbuser.on_hold_timeout = modify.on_hold_timeout
-    if modify.on_hold_expire_duration is not None:
-        dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
+    if "on_hold_expire_duration" in modify.model_fields_set:
+        dbuser.on_hold_expire_duration = modify.on_hold_expire_duration or None
 
     if getattr(modify, "next_plans", None) is not None:
         dbuser.next_plans = [

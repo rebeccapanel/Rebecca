@@ -3,7 +3,7 @@ from unittest.mock import patch
 from app.db import GetDB, crud
 
 
-def _create_user_payload(auth_client, username: str) -> dict:
+def _create_user_payload(auth_client, username: str, *, headers: dict | None = None) -> dict:
     with patch(
         "app.routers.user.xray.config.inbounds_by_protocol",
         {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
@@ -12,7 +12,7 @@ def _create_user_payload(auth_client, username: str) -> dict:
             "username": username,
             "proxies": {"vmess": {"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"}},
         }
-        resp = auth_client.post("/api/user", json=payload)
+        resp = auth_client.post("/api/user", json=payload, headers=headers or {})
         assert resp.status_code == 201, resp.text
         return resp.json()
 
@@ -122,6 +122,67 @@ def test_user_responses_use_db_subscription_path_and_multi_ports(auth_client):
         f"https://sub.example.com/mysub/multi_port_user/{credential_key}"
     )
     assert list_user["subscription_urls"]["key@443"].startswith("https://sub.example.com:443/mysub/")
+
+
+def test_subscription_ports_use_request_host_when_prefix_is_empty(auth_client):
+    panel_resp = auth_client.put(
+        "/api/settings/panel",
+        json={"default_subscription_type": "key"},
+    )
+    assert panel_resp.status_code == 200, panel_resp.text
+
+    settings_resp = auth_client.put(
+        "/api/settings/subscriptions",
+        json={
+            "subscription_url_prefix": "",
+            "subscription_path": "mysub",
+            "subscription_ports": [8443, 9443],
+        },
+    )
+    assert settings_resp.status_code == 200, settings_resp.text
+
+    created = _create_user_payload(
+        auth_client,
+        "request_port_user",
+        headers={
+            "host": "panel.example.com:2096",
+            "x-forwarded-proto": "https",
+        },
+    )
+    credential_key = created["credential_key"]
+
+    assert created["subscription_url"].startswith(f"https://panel.example.com:8443/mysub/{credential_key}")
+    assert created["subscription_urls"]["key"].startswith(f"https://panel.example.com:8443/mysub/{credential_key}")
+    assert created["subscription_urls"]["key@9443"].startswith(
+        f"https://panel.example.com:9443/mysub/{credential_key}"
+    )
+    assert "panel.example.com:2096" not in created["subscription_url"]
+
+    detail_resp = auth_client.get(
+        "/api/user/request_port_user",
+        headers={
+            "host": "panel.example.com:2096",
+            "x-forwarded-proto": "https",
+        },
+    )
+    assert detail_resp.status_code == 200, detail_resp.text
+    detail = detail_resp.json()
+    assert detail["subscription_url"].startswith(f"https://panel.example.com:8443/mysub/{credential_key}")
+    assert detail["subscription_urls"]["key@9443"].startswith(
+        f"https://panel.example.com:9443/mysub/{credential_key}"
+    )
+
+    list_resp = auth_client.get(
+        "/api/users",
+        params=[("username", "request_port_user")],
+        headers={
+            "host": "panel.example.com:2096",
+            "x-forwarded-proto": "https",
+        },
+    )
+    assert list_resp.status_code == 200, list_resp.text
+    list_user = list_resp.json()["users"][0]
+    assert list_user["subscription_url"].startswith(f"https://panel.example.com:8443/mysub/{credential_key}")
 
 
 def test_custom_primary_path_supports_key_routes_info_usage_and_client_types(auth_client):

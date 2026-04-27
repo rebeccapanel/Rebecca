@@ -226,7 +226,7 @@ const formatUser = (user: User): FormType => {
 		flow: user.flow ?? "",
 
 		data_limit: user.data_limit
-			? Number((user.data_limit / 1073741824).toFixed(5))
+			? Number((user.data_limit / BYTES_PER_GB).toFixed(5))
 			: user.data_limit,
 
 		ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
@@ -244,7 +244,7 @@ const formatUser = (user: User): FormType => {
 		next_plan_enabled: Boolean(nextPlan),
 
 		next_plan_data_limit: nextPlan?.data_limit
-			? Number((nextPlan.data_limit / 1073741824).toFixed(5))
+			? Number((nextPlan.data_limit / BYTES_PER_GB).toFixed(5))
 			: null,
 
 		next_plan_expire: nextPlan?.expire ?? null,
@@ -327,6 +327,36 @@ const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
 const usernameRegex = /^[A-Za-z0-9_]{3,32}$/;
+const BYTES_PER_GB = 1073741824;
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+
+const normalizeDecimalText = (value: string) =>
+	value
+		.replace(/[۰-۹]/g, (digit) => String(PERSIAN_DIGITS.indexOf(digit)))
+		.replace(/[٠-٩]/g, (digit) => String(ARABIC_DIGITS.indexOf(digit)))
+		.replace(/[٫٬,]/g, ".")
+		.trim();
+
+const parseDecimalInput = (value: unknown): number | null => {
+	if (value === null || typeof value === "undefined") {
+		return null;
+	}
+	const raw = String(value).trim();
+	if (!raw) {
+		return null;
+	}
+	const normalized = normalizeDecimalText(raw);
+	if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+		return Number.NaN;
+	}
+	const parsed = Number(normalized);
+	return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
+const gigabytesToBytes = (gigabytes: number) =>
+	Math.round(gigabytes * BYTES_PER_GB);
+
 const buildSchema = (isEditing: boolean) => {
 	const baseSchema = {
 		username: isEditing
@@ -389,19 +419,22 @@ const buildSchema = (isEditing: boolean) => {
 
 		data_limit: z
 
-			.string()
+			.union([z.string(), z.number(), z.null()])
 
-			.min(0)
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
+					return 0;
+				}
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative data limit.",
+					});
+					return z.NEVER;
+				}
 
-			.or(z.number())
-
-			.nullable()
-
-			.transform((str) => {
-				if (str)
-					return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
-
-				return 0;
+				return gigabytesToBytes(parsed);
 			}),
 
 		expire: z.number().nullable(),
@@ -442,18 +475,20 @@ const buildSchema = (isEditing: boolean) => {
 
 			.union([z.string(), z.number(), z.null()])
 
-			.transform((value) => {
-				if (value === null || value === "" || typeof value === "undefined") {
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
 					return null;
 				}
-
-				const parsed = Number(value);
-
-				if (Number.isNaN(parsed)) {
-					return null;
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative data limit.",
+					});
+					return z.NEVER;
 				}
 
-				return Math.max(0, parsed);
+				return parsed;
 			}),
 
 		next_plan_expire: z
@@ -816,7 +851,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		const parsedLimit =
 			autoRenewDataValue.trim() === ""
 				? null
-				: Number.parseFloat(autoRenewDataValue.trim());
+				: parseDecimalInput(autoRenewDataValue.trim());
 		if (
 			parsedLimit !== null &&
 			(!Number.isFinite(parsedLimit) ||
@@ -1116,19 +1151,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const remainingDataInfo = useMemo(() => {
 		if (!isEditing || !editingUser || !canViewTraffic) return null;
 		const rawLimit = dataLimit;
-		const parsedLimit =
-			rawLimit === null ||
-			typeof rawLimit === "undefined" ||
-			(Number.isNaN(Number(rawLimit)) && String(rawLimit).trim() === "")
-				? null
-				: Number(rawLimit);
+		const parsedLimit = parseDecimalInput(rawLimit);
 		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
 			return {
 				label: t("userDialog.remainingDataLabel"),
 				value: t("userDialog.remainingDataUnlimited"),
 			};
 		}
-		const limitBytes = parsedLimit * 1073741824;
+		const limitBytes = parsedLimit * BYTES_PER_GB;
 		const usedBytes = editingUser.used_traffic ?? 0;
 		const remainingBytes = Math.max(limitBytes - usedBytes, 0);
 		return {
@@ -1455,7 +1485,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
 			// If unlimited (0) is requested but not allowed, show error
 			if (dataLimitBytes === 0 && !allowUnlimitedData) {
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.unlimitedNotAllowed", {
 					max: maxGb,
 				});
@@ -1469,8 +1499,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			}
 			// If exceeds max limit, show error
 			if (dataLimitBytes > 0 && dataLimitBytes > maxDataLimitPerUser) {
-				const originalGb = (dataLimitBytes / 1073741824).toFixed(2);
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const originalGb = (dataLimitBytes / BYTES_PER_GB).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.dataLimitExceedsMax", {
 					original: originalGb,
 					max: maxGb,
@@ -1488,7 +1518,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		// Validate next_plan data_limit (don't auto-normalize, show error instead)
 		const normalizedNextPlanDataLimit =
 			next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
-				? Number((Number(next_plan_data_limit) * 1073741824).toFixed(5))
+				? gigabytesToBytes(Number(next_plan_data_limit))
 				: 0;
 
 		if (
@@ -1497,10 +1527,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			normalizedNextPlanDataLimit > 0
 		) {
 			if (normalizedNextPlanDataLimit > maxDataLimitPerUser) {
-				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(
+				const originalGb = (normalizedNextPlanDataLimit / BYTES_PER_GB).toFixed(
 					2,
 				);
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.nextPlanDataLimitExceedsMax", {
 					original: originalGb,
 					max: maxGb,
@@ -1522,7 +1552,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			maxDataLimitPerUser !== null &&
 			maxDataLimitPerUser !== undefined
 		) {
-			const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+			const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 			const errorMessage = t("userDialog.nextPlanUnlimitedNotAllowed", {
 				max: maxGb,
 			});

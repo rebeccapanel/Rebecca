@@ -27,6 +27,7 @@ from app.models.user import (
 )
 from app.utils import report, responses
 from app.utils.credentials import ensure_user_credential_key
+from app.utils.request_context import get_request_origin, use_subscription_request_origin
 from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
@@ -217,6 +218,29 @@ def _sanitize_users_response(admin: Admin, response: UsersResponse) -> UsersResp
     return response
 
 
+def _create_user_response(request: Request, dbuser) -> UserCreateResponse:
+    with use_subscription_request_origin(request):
+        user = UserCreateResponse.model_validate(dbuser)
+        return _refresh_subscription_links(user, request)
+
+
+def _user_response(request: Request, dbuser) -> UserResponse:
+    with use_subscription_request_origin(request):
+        user = UserResponse.model_validate(dbuser)
+        return _refresh_subscription_links(user, request)
+
+
+def _refresh_subscription_links(user, request: Request):
+    links = build_subscription_links(user, request_origin=get_request_origin(request))
+    if not links:
+        return user
+    user.subscription_urls = {key: value for key, value in links.items() if key != "primary"}
+    user.subscription_url = links.get("primary") or next(iter(user.subscription_urls.values()), "")
+    if getattr(user, "credential_key", None):
+        user.key_subscription_url = user.subscription_urls.get("key")
+    return user
+
+
 # endregion
 
 # region User CRUD
@@ -385,7 +409,7 @@ def add_user(
             raise HTTPException(status_code=409, detail="User already exists")
 
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
-        user = UserCreateResponse.model_validate(dbuser)
+        user = _create_user_response(request, dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
         if user.next_plans or user.next_plan:
             total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
@@ -475,7 +499,7 @@ def add_user(
         raise HTTPException(status_code=409, detail="User already exists")
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
-    user = UserCreateResponse.model_validate(dbuser)
+    user = _create_user_response(request, dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
     return _sanitize_user_response(admin, user)
@@ -488,11 +512,12 @@ def add_user(
 
 @router.get("/user/{username}", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
 def get_user(
+    request: Request,
     dbuser: UserResponse = Depends(get_validated_user),
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get user information"""
-    return _sanitize_user_response(admin, UserResponse.model_validate(dbuser))
+    return _sanitize_user_response(admin, _user_response(request, dbuser))
 
 
 @router.put(
@@ -507,6 +532,7 @@ def get_user(
 )
 def modify_user(
     modified_user: UserModify,
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UsersResponse = Depends(get_validated_user),
@@ -661,7 +687,7 @@ def modify_user(
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
@@ -731,6 +757,7 @@ def remove_user(
     "/user/{username}/reset", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def reset_user_data_usage(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -749,7 +776,7 @@ def reset_user_data_usage(
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset')
@@ -760,6 +787,7 @@ def reset_user_data_usage(
     "/user/{username}/revoke_sub", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def revoke_user_subscription(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -772,7 +800,7 @@ def revoke_user_subscription(
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}" subscription revoked')
@@ -789,6 +817,7 @@ def revoke_user_subscription(
     "/users", response_model=UsersResponse, responses={400: responses._400, 403: responses._403, 404: responses._404}
 )
 def get_users(
+    request: Request,
     offset: int = None,
     limit: int = None,
     username: List[str] = Query(None),
@@ -849,41 +878,46 @@ def get_users(
 
     from app.services import user_service
 
+    request_origin = get_request_origin(request)
     if links:
         # Generating share links requires DB-loaded proxies/inbounds.
-        response = user_service.get_users_list_db_only(
-            db,
-            offset=offset,
-            limit=limit,
-            username=username,
-            search=search,
-            status=status,
-            sort=sort,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-            dbadmin=dbadmin,
-            owners=owners,
-            users_limit=users_limit,
-            active_total=active_total,
-            include_links=True,
-        )
+        with use_subscription_request_origin(request):
+            response = user_service.get_users_list_db_only(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=True,
+                request_origin=request_origin,
+            )
     else:
-        response = user_service.get_users_list(
-            db,
-            offset=offset,
-            limit=limit,
-            username=username,
-            search=search,
-            status=status,
-            sort=sort,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-            dbadmin=dbadmin,
-            owners=owners,
-            users_limit=users_limit,
-            active_total=active_total,
-            include_links=False,
-        )
+        with use_subscription_request_origin(request):
+            response = user_service.get_users_list(
+                db,
+                offset=offset,
+                limit=limit,
+                username=username,
+                search=search,
+                status=status,
+                sort=sort,
+                advanced_filters=advanced_filters,
+                service_id=service_id,
+                dbadmin=dbadmin,
+                owners=owners,
+                users_limit=users_limit,
+                active_total=active_total,
+                include_links=False,
+                request_origin=request_origin,
+            )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return _sanitize_users_response(admin, response)
 
@@ -1098,6 +1132,7 @@ def get_user_usage(
     "/user/{username}/active-next", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def active_next_plan(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -1123,7 +1158,7 @@ def active_next_plan(
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(
         report.user_data_reset_by_next,
         user=user,
@@ -1164,6 +1199,7 @@ def get_users_usage(
 @router.put("/user/{username}/set-owner", response_model=UserResponse)
 def set_owner(
     admin_username: str,
+    request: Request,
     dbuser: UserResponse = Depends(get_validated_user),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -1174,7 +1210,7 @@ def set_owner(
         raise HTTPException(status_code=404, detail="Admin not found")
 
     dbuser = crud.set_owner(db, dbuser, new_admin)
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
 
     logger.info(f'{user.username}"owner successfully set to{admin.username}')
 

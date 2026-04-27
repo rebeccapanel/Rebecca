@@ -29,6 +29,7 @@ def _compute_subscription_links(
     *,
     admin=None,
     admin_id: Optional[int] = None,
+    request_origin: Optional[str] = None,
 ) -> tuple[str, dict]:
     """
     Compute subscription links for list items without constructing heavy models.
@@ -36,7 +37,7 @@ def _compute_subscription_links(
     """
     try:
         payload = SimpleNamespace(username=username, credential_key=credential_key, admin=admin, admin_id=admin_id)
-        links = build_subscription_links(payload)
+        links = build_subscription_links(payload, request_origin=request_origin)
         primary = links.get("primary", "")
         return primary or "", links
     except Exception as exc:
@@ -112,6 +113,7 @@ def _map_raw_to_list_item(
     raw: dict,
     include_links: bool = False,
     admin_lookup: Optional[Dict[int, Admin]] = None,
+    request_origin: Optional[str] = None,
 ) -> UserListItem:
     admin_obj = None
     if admin_lookup:
@@ -121,6 +123,7 @@ def _map_raw_to_list_item(
         raw.get("credential_key"),
         admin=admin_obj,
         admin_id=raw.get("admin_id"),
+        request_origin=request_origin,
     )
     return UserListItem(
         username=raw.get("username"),
@@ -143,10 +146,16 @@ def _map_raw_to_list_item(
 
 
 def _map_user_to_list_item(
-    user: User, include_links: bool = False, link_context: Optional[dict] = None
+    user: User,
+    include_links: bool = False,
+    link_context: Optional[dict] = None,
+    request_origin: Optional[str] = None,
 ) -> UserListItem:
     subscription_url, subscription_urls = _compute_subscription_links(
-        getattr(user, "username", ""), getattr(user, "credential_key", None), admin=getattr(user, "admin", None)
+        getattr(user, "username", ""),
+        getattr(user, "credential_key", None),
+        admin=getattr(user, "admin", None),
+        request_origin=request_origin,
     )
     links: List[str] = []
     if include_links:
@@ -455,6 +464,7 @@ def get_users_list(
     users_limit: Optional[int],
     active_total: Optional[int],
     include_links: bool = False,
+    request_origin: Optional[str] = None,
 ) -> UsersResponse:
     if include_links:
         return get_users_list_db_only(
@@ -472,6 +482,7 @@ def get_users_list(
             users_limit=users_limit,
             active_total=active_total,
             include_links=include_links,
+            request_origin=request_origin,
         )
 
     # SQL-first path for list responses to avoid heavy Python-side filtering on large datasets.
@@ -490,6 +501,7 @@ def get_users_list(
         users_limit=users_limit,
         active_total=active_total,
         include_links=False,
+        request_origin=request_origin,
     )
 
 
@@ -509,6 +521,7 @@ def get_users_list_db_only(
     users_limit: Optional[int],
     active_total: Optional[int],
     include_links: bool = False,
+    request_origin: Optional[str] = None,
 ) -> UsersResponse:
     """Build a user list directly from database queries."""
     if include_links:
@@ -531,7 +544,15 @@ def get_users_list_db_only(
         for user in users:
             _apply_pending_usage_to_model(user)
         link_context = _build_links_context(db, users)
-        items = [_map_user_to_list_item(u, include_links=include_links, link_context=link_context) for u in users]
+        items = [
+            _map_user_to_list_item(
+                u,
+                include_links=include_links,
+                link_context=link_context,
+                request_origin=request_origin,
+            )
+            for u in users
+        ]
     else:
         users, count = crud.get_users_list_rows(
             db=db,
@@ -551,7 +572,15 @@ def get_users_list_db_only(
         for user in users:
             _apply_pending_usage_to_dict(user)
         admin_lookup = _build_admin_lookup(db, users)
-        items = [_map_raw_to_list_item(u, include_links=False, admin_lookup=admin_lookup) for u in users]
+        items = [
+            _map_raw_to_list_item(
+                u,
+                include_links=False,
+                admin_lookup=admin_lookup,
+                request_origin=request_origin,
+            )
+            for u in users
+        ]
 
     if active_total is None and dbadmin:
         active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)

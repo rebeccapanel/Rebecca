@@ -86,10 +86,42 @@ jobs:
             COMMIT_URL_ESC=$(html_escape "$COMMIT_URL_RAW")
 
             # --- Fetch status of all relevant workflows for this commit ---
-            RUNS_JSON=$(curl -s \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$SHA&per_page=20")
+            fetch_runs() {
+              curl -s \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${{ github.repository }}/actions/runs?head_sha=$SHA&per_page=20"
+            }
+
+            RUNS_JSON=$(fetch_runs)
+            if [[ "$WF_NAME" == "Build-dev" ]]; then
+              for attempt in {1..30}; do
+                BINARY_SEEN=$(echo "$RUNS_JSON" | jq -r '
+                  [.workflow_runs[]? | select(.name == "Binary Build")] | length > 0
+                ')
+                PENDING_COUNT=$(echo "$RUNS_JSON" | jq -r '
+                  [
+                    .workflow_runs[]?
+                    | select(
+                        .name == "Build-dev" or
+                        .name == "Binary Build" or
+                        .name == "Test Database Migrations" or
+                        .name == "Code Format Checker" or
+                        .name == "API CodeQL"
+                      )
+                    | select(.status != "completed")
+                  ] | length
+                ')
+                if [[ "$BINARY_SEEN" == "true" && "$PENDING_COUNT" == "0" ]]; then
+                  break
+                fi
+                if [[ "$attempt" == "30" ]]; then
+                  break
+                fi
+                sleep 20
+                RUNS_JSON=$(fetch_runs)
+              done
+            fi
 
             BASE64_ROWS=$(echo "$RUNS_JSON" | jq -r '
               .workflow_runs

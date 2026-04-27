@@ -40,6 +40,7 @@ def build_subscription_links(
     user: UserResponse,
     *,
     preferred: Optional[str] = None,
+    request_origin: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Build all available subscription URLs for a user and select primary based on preferred type.
@@ -66,7 +67,11 @@ def build_subscription_links(
                     pass
 
         effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
-        url_prefixes = SubscriptionSettingsService.build_subscription_bases(effective_settings, salt=salt)
+        url_prefixes = SubscriptionSettingsService.build_subscription_bases(
+            effective_settings,
+            salt=salt,
+            request_origin=request_origin,
+        )
         url_prefix = url_prefixes[0]
     except Exception:
         url_prefix = "/sub"

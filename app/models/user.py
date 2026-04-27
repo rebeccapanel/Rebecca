@@ -694,6 +694,10 @@ class UserResponse(User):
     def validate_subscription_url(self):
         if _skip_expensive_computations.get():
             return self
+        if self.subscription_url and self.subscription_urls:
+            if self.credential_key and not self.key_subscription_url:
+                self.key_subscription_url = self.subscription_urls.get("key")  # type: ignore[attr-defined]
+            return self
         try:
             from app.utils.subscription_links import build_subscription_links
 
