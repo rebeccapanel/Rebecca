@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,20 @@ def run_rebecca_cli(args: list[str], *, timeout: int = 900) -> dict[str, str]:
 
 def schedule_rebecca_cli(args: list[str]) -> None:
     command = [_resolve_rebecca_cli(), *args]
+    if os.name != "nt":
+        systemd_run = shutil.which("systemd-run")
+        if systemd_run:
+            unit = f"rebecca-host-action-{time.time_ns()}"
+            command = [
+                systemd_run,
+                "--unit",
+                unit,
+                "--collect",
+                "--description",
+                "Rebecca host action",
+                "--",
+                *command,
+            ]
     popen_kwargs: dict[str, Any] = {}
     if os.name != "nt":
         popen_kwargs["start_new_session"] = True
