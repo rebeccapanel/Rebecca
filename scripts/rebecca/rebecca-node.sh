@@ -640,7 +640,7 @@ get_node_binary_dev_artifact_metadata() {
     local artifact_url
     local nightly_workflow
 
-    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?branch=${REBECCA_NODE_BINARY_DEV_BRANCH}&status=completed&event=push&per_page=20"
+    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?status=completed&event=push&per_page=20"
     workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
         colorized_echo red "Unable to read Rebecca-node binary workflow metadata: $workflow_runs_api" >&2
         exit 1
