@@ -4,6 +4,7 @@ import traceback
 from app.runtime import app, logger, scheduler, xray
 from app.db import GetDB, crud
 from app.models.node import NodeStatus
+from app.utils.xray_targets import get_node_runtime_config
 from config import JOB_CORE_HEALTH_CHECK_INTERVAL
 from xray_api import exc as xray_exc
 
@@ -14,6 +15,7 @@ _last_auto_reconnect_attempt: dict[int, float] = {}
 
 def core_health_check():
     config = None
+    master_raw_config = None
     now = time.time()
 
     # main core: only attempt to (re)start when binary is available
@@ -66,7 +68,19 @@ def core_health_check():
                 if not config:
                     config = xray.config.include_db_users()
                 _last_auto_reconnect_attempt[node_id] = now
-                xray.operations.connect_node(node_id, config, force=True)
+                with GetDB() as db:
+                    dbnode = crud.get_node_by_id(db, node_id)
+                    node_config = (
+                        get_node_runtime_config(
+                            db,
+                            dbnode,
+                            api_port=xray.config.api_port,
+                            master_config=master_raw_config,
+                        ).include_db_users()
+                        if dbnode
+                        else config
+                    )
+                xray.operations.connect_node(node_id, node_config, force=True)
             continue
 
         _last_auto_reconnect_attempt.pop(node_id, None)
@@ -90,12 +104,40 @@ def core_health_check():
             except (ConnectionError, xray_exc.XrayError, AssertionError):
                 if not config:
                     config = xray.config.include_db_users()
-                xray.operations.restart_node(node_id, config)
+                with GetDB() as db:
+                    if master_raw_config is None:
+                        master_raw_config = crud.get_xray_config(db)
+                    dbnode = crud.get_node_by_id(db, node_id)
+                    node_config = (
+                        get_node_runtime_config(
+                            db,
+                            dbnode,
+                            api_port=xray.config.api_port,
+                            master_config=master_raw_config,
+                        ).include_db_users()
+                        if dbnode
+                        else config
+                    )
+                xray.operations.restart_node(node_id, node_config)
 
         if not connected:
             if not config:
                 config = xray.config.include_db_users()
-            xray.operations.connect_node(node_id, config)
+            with GetDB() as db:
+                if master_raw_config is None:
+                    master_raw_config = crud.get_xray_config(db)
+                dbnode = crud.get_node_by_id(db, node_id)
+                node_config = (
+                    get_node_runtime_config(
+                        db,
+                        dbnode,
+                        api_port=xray.config.api_port,
+                        master_config=master_raw_config,
+                    ).include_db_users()
+                    if dbnode
+                    else config
+                )
+            xray.operations.connect_node(node_id, node_config)
 
 
 def start_core():
@@ -133,14 +175,23 @@ def start_core():
     logger.info("Starting nodes Xray core")
     try:
         with GetDB() as db:
+            master_raw_config = crud.get_xray_config(db)
             dbnodes = crud.get_nodes(db=db, enabled=True)
-            node_ids = [dbnode.id for dbnode in dbnodes]
+            node_configs = {
+                dbnode.id: get_node_runtime_config(
+                    db,
+                    dbnode,
+                    api_port=xray.config.api_port,
+                    master_config=master_raw_config,
+                ).include_db_users()
+                for dbnode in dbnodes
+            }
             for dbnode in dbnodes:
                 crud.update_node_status(db, dbnode, NodeStatus.connecting)
 
-        for node_id in node_ids:
+        for node_id, node_config in node_configs.items():
             try:
-                xray.operations.connect_node(node_id, config)
+                xray.operations.connect_node(node_id, node_config)
             except Exception as e:
                 logger.error(f"Failed to connect to node {node_id}: {e}")
                 traceback.print_exc()

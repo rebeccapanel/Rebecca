@@ -52,10 +52,22 @@ def test_record_node_usages_persists_master_and_node_outbound_traffic(monkeypatc
 
     db = TestingSessionLocal()
     try:
-        record = db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").first()
-        assert record is not None
-        assert record.uplink == 110
-        assert record.downlink == 220
+        master_record = (
+            db.query(OutboundTraffic)
+            .filter(OutboundTraffic.tag == "proxy", OutboundTraffic.target_id == "master")
+            .first()
+        )
+        node_record = (
+            db.query(OutboundTraffic)
+            .filter(OutboundTraffic.tag == "proxy", OutboundTraffic.target_id == "node:1")
+            .first()
+        )
+        assert master_record is not None
+        assert master_record.uplink == 10
+        assert master_record.downlink == 20
+        assert node_record is not None
+        assert node_record.uplink == 100
+        assert node_record.downlink == 200
     finally:
         db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").delete(synchronize_session=False)
         db.commit()
@@ -102,7 +114,11 @@ def test_record_node_usages_acks_node_buffer_after_persist(monkeypatch):
 
     db = TestingSessionLocal()
     try:
-        record = db.query(OutboundTraffic).filter(OutboundTraffic.tag == "proxy").first()
+        record = (
+            db.query(OutboundTraffic)
+            .filter(OutboundTraffic.tag == "proxy", OutboundTraffic.target_id == "node:1")
+            .first()
+        )
         assert record is not None
         assert record.uplink == 7
         assert record.downlink == 11

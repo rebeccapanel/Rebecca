@@ -12,8 +12,9 @@ from app.db.models import (
     Node,
     NodeUsage,
     NodeUserUsage,
+    OutboundTraffic,
 )
-from app.models.node import NodeCreate, NodeModify, NodeStatus
+from app.models.node import NodeCreate, NodeModify, NodeStatus, XrayConfigMode
 
 # MasterSettingsService not available in current project structure
 MASTER_NODE_NAME = "Master"
@@ -141,6 +142,8 @@ def create_node(db: Session, node: NodeCreate) -> Node:
         proxy_port=proxy_port,
         proxy_username=proxy_username,
         proxy_password=proxy_password,
+        xray_config_mode=getattr(node, "xray_config_mode", XrayConfigMode.default) or XrayConfigMode.default,
+        xray_config=getattr(node, "xray_config", None),
     )
     db.add(dbnode)
     db.flush()
@@ -181,6 +184,7 @@ def remove_node(db: Session, dbnode: Node) -> Node:
     """Removes a node from the database."""
     db.query(NodeUsage).filter(NodeUsage.node_id == dbnode.id).delete(synchronize_session=False)
     db.query(NodeUserUsage).filter(NodeUserUsage.node_id == dbnode.id).delete(synchronize_session=False)
+    db.query(OutboundTraffic).filter(OutboundTraffic.node_id == dbnode.id).delete(synchronize_session=False)
     db.delete(dbnode)
     db.commit()
     return dbnode
@@ -207,6 +211,13 @@ def update_node(db: Session, dbnode: Node, modify: NodeModify) -> Node:
         dbnode.status = NodeStatus.connecting
     if modify.usage_coefficient is not None:
         dbnode.usage_coefficient = modify.usage_coefficient
+    if getattr(modify, "xray_config_mode", None) is not None:
+        dbnode.xray_config_mode = modify.xray_config_mode
+        if modify.xray_config_mode == XrayConfigMode.default:
+            dbnode.xray_config = None
+    if getattr(modify, "xray_config", None) is not None:
+        dbnode.xray_config = modify.xray_config
+        dbnode.xray_config_mode = XrayConfigMode.custom
     data_limit_updated = False
     if modify.data_limit is not None:
         dbnode.data_limit, data_limit_updated = modify.data_limit, True

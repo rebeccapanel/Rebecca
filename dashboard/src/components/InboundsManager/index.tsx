@@ -29,6 +29,7 @@ import {
 	useToast,
 } from "@chakra-ui/react";
 import { PencilIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
 import {
 	type FC,
@@ -57,6 +58,7 @@ export const InboundsManager: FC = () => {
 	const { t } = useTranslation();
 	const toast = useToast();
 	const [inbounds, setInbounds] = useState<RawInbound[]>([]);
+	const [configTargets, setConfigTargets] = useState<CoreConfigTarget[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isMutating, setIsMutating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -76,9 +78,13 @@ export const InboundsManager: FC = () => {
 	const loadInbounds = useCallback(() => {
 		setIsLoading(true);
 		setError(null);
-		fetch<RawInbound[]>("/inbounds/full")
-			.then((data) => {
+		Promise.all([
+			fetch<RawInbound[]>("/inbounds/full"),
+			fetch<{ targets: CoreConfigTarget[] }>("/core/config/targets"),
+		])
+			.then(([data, targetsResponse]) => {
 				setInbounds(data || []);
+				setConfigTargets(targetsResponse?.targets || []);
 			})
 			.catch(() => {
 				setError(t("inbounds.error.load", "Unable to load inbounds"));
@@ -103,6 +109,13 @@ export const InboundsManager: FC = () => {
 			);
 		});
 	}, [inbounds, filter]);
+	const targetNameById = useMemo(
+		() =>
+			Object.fromEntries(
+				configTargets.map((target) => [target.id, target.name || target.id]),
+			),
+		[configTargets],
+	);
 
 	const openCreate = () => {
 		setDrawerMode("create");
@@ -129,15 +142,29 @@ export const InboundsManager: FC = () => {
 		try {
 			const normalizedTag = (values.tag || "").trim().toLowerCase();
 			const isEditMode = mode === "edit";
+			const selectedTargets = new Set(
+				values.targetIds?.length ? values.targetIds : ["master"],
+			);
 			const tagExists = inbounds.some(
 				(inb) =>
 					(inb.tag || "").trim().toLowerCase() === normalizedTag &&
 					(!isEditMode || inb.tag !== initial?.tag),
 			);
 			const portExists = inbounds.some(
-				(inb) =>
-					inb.port?.toString() === values.port &&
-					(!isEditMode || inb.tag !== initial?.tag),
+				(inb) => {
+					if (isEditMode && inb.tag === initial?.tag) {
+						return false;
+					}
+					const inboundTargets = inb.effective_targets?.length
+						? inb.effective_targets
+						: inb.targets?.length
+							? inb.targets
+							: ["master"];
+					return (
+						inb.port?.toString() === values.port &&
+						inboundTargets.some((targetId) => selectedTargets.has(targetId))
+					);
+				},
 			);
 			if (tagExists) {
 				throw new Error(
@@ -150,7 +177,10 @@ export const InboundsManager: FC = () => {
 				);
 			}
 
-			const payload = buildInboundPayload(values, { initial: initial ?? null });
+			const payload = {
+				...buildInboundPayload(values, { initial: initial ?? null }),
+				targets: values.targetIds?.length ? values.targetIds : ["master"],
+			};
 			const url =
 				mode === "create"
 					? "/inbounds"
@@ -372,6 +402,7 @@ export const InboundsManager: FC = () => {
 								<Th>{t("inbounds.network", "Network")}</Th>
 								<Th>{t("inbounds.security", "Security")}</Th>
 								<Th>{t("inbounds.sniffing", "Sniffing")}</Th>
+								<Th>{t("inbounds.targets", "Targets")}</Th>
 								<Th width="120px">{t("actions", "Actions")}</Th>
 							</Tr>
 						</Thead>
@@ -410,6 +441,18 @@ export const InboundsManager: FC = () => {
 													{t("inbounds.sniffingDisabled", "Sniffing disabled")}
 												</Tag>
 											)}
+										</Td>
+										<Td>
+											<HStack spacing={1} wrap="wrap">
+												{(inbound.targets?.length
+													? inbound.targets
+													: ["master"]
+												).map((targetId) => (
+													<Tag key={targetId} size="sm">
+														{targetNameById[targetId] || targetId}
+													</Tag>
+												))}
+											</HStack>
 										</Td>
 										<Td>
 											<HStack spacing={2}>
@@ -491,6 +534,16 @@ export const InboundsManager: FC = () => {
 											</Tag>
 										)}
 									</HStack>
+									<HStack spacing={2} wrap="wrap">
+										{(inbound.targets?.length
+											? inbound.targets
+											: ["master"]
+										).map((targetId) => (
+											<Tag key={targetId} size="sm">
+												{targetNameById[targetId] || targetId}
+											</Tag>
+										))}
+									</HStack>
 								</Stack>
 							</Box>
 						);
@@ -504,6 +557,7 @@ export const InboundsManager: FC = () => {
 				initialValue={selected}
 				isSubmitting={isMutating}
 				existingInbounds={inbounds}
+				configTargets={configTargets}
 				onClose={onClose}
 				onSubmit={handleSubmit}
 				onDelete={selected ? () => handleDelete(selected) : undefined}
@@ -516,6 +570,7 @@ export const InboundsManager: FC = () => {
 				initialValue={cloneTarget}
 				isSubmitting={isMutating}
 				existingInbounds={inbounds}
+				configTargets={configTargets}
 				onClose={() => {
 					cloneDrawer.onClose();
 					setCloneTarget(null);

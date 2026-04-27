@@ -389,12 +389,18 @@ class UserCreate(User):
 
     @property
     def excluded_inbounds(self):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         excluded = {}
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in self.proxies:
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
             excluded[proxy_type] = []
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+            for inbound in inbound_map.values():
+                if inbound.get("protocol") != proxy_type_value:
+                    continue
                 if inbound["tag"] not in self.inbounds.get(proxy_type, []):
                     excluded[proxy_type].append(inbound["tag"])
 
@@ -402,13 +408,17 @@ class UserCreate(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
-        from app.runtime import xray
-        from app.services.data_access import get_service_host_map_cached
+        from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
         from app.db import GetDB
         from app.models.proxy import ProxyTypes
 
         proxies = values.data.get("proxies", {})
         service_id = values.data.get("service_id")
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
+
+        def protocol_tags(protocol: str) -> list[str]:
+            return [tag for tag, inbound in inbound_map.items() if inbound.get("protocol") == protocol]
 
         # delete inbounds that are for protocols not activated
         for proxy_type in list(inbounds.keys()):
@@ -431,7 +441,7 @@ class UserCreate(User):
             if tags:
                 # Validate that all specified tags exist
                 for tag in tags:
-                    if tag not in xray.config.inbounds_by_tag:
+                    if tag not in inbound_map:
                         raise ValueError(f"Inbound {tag} doesn't exist")
                     # For no-service mode, also check if tag has enabled hosts
                     # Only validate if host_map is available and tag exists in it
@@ -462,18 +472,15 @@ class UserCreate(User):
                                     enabled_inbound_tags.add(tag)
 
                             protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                            protocol_inbounds = xray.config.inbounds_by_protocol.get(protocol_str, [])
-                            enabled_tags = [i["tag"] for i in protocol_inbounds if i["tag"] in enabled_inbound_tags]
+                            enabled_tags = [tag for tag in protocol_tags(protocol_str) if tag in enabled_inbound_tags]
                             inbounds[proxy_type] = enabled_tags
                     except Exception:
                         # If we can't get host_map (e.g., in tests), fall back to all inbounds
                         protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                        inbounds[proxy_type] = [
-                            i["tag"] for i in xray.config.inbounds_by_protocol.get(protocol_str, [])
-                        ]
+                        inbounds[proxy_type] = protocol_tags(protocol_str)
                 else:
                     protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                    inbounds[proxy_type] = [i["tag"] for i in xray.config.inbounds_by_protocol.get(protocol_str, [])]
+                    inbounds[proxy_type] = protocol_tags(protocol_str)
 
         return inbounds
 
@@ -524,12 +531,18 @@ class UserModify(User):
 
     @property
     def excluded_inbounds(self):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         excluded = {}
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in self.inbounds:
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
             excluded[proxy_type] = []
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+            for inbound in inbound_map.values():
+                if inbound.get("protocol") != proxy_type_value:
+                    continue
                 if inbound["tag"] not in self.inbounds.get(proxy_type, []):
                     excluded[proxy_type].append(inbound["tag"])
 
@@ -537,7 +550,11 @@ class UserModify(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
 
         # check with inbounds, "proxies" is optional on modifying
         # so inbounds particularly can be modified
@@ -547,7 +564,7 @@ class UserModify(User):
                 #     raise ValueError(f"{proxy_type} inbounds cannot be empty")
 
                 for tag in tags:
-                    if tag not in xray.config.inbounds_by_tag:
+                    if tag not in inbound_map:
                         raise ValueError(f"Inbound {tag} doesn't exist")
 
         return inbounds

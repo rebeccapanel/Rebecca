@@ -66,6 +66,7 @@ export const NodeSchema = z
 		usage_coefficient: z
 			.number()
 			.or(z.string().transform((v) => parseFloat(v))),
+		xray_config_mode: z.enum(["default", "custom"]).optional(),
 		data_limit: z
 			.number()
 			.nullable()
@@ -155,6 +156,7 @@ export const getNodeDefaultValues = (): NodeType => ({
 	xray_version: "",
 	node_service_version: "",
 	usage_coefficient: 1,
+	xray_config_mode: "default",
 	data_limit: null,
 	uplink: 0,
 	downlink: 0,

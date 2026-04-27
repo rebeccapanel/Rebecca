@@ -20,6 +20,11 @@ class GeoMode(str, Enum):
     custom = "custom"
 
 
+class XrayConfigMode(str, Enum):
+    default = "default"
+    custom = "custom"
+
+
 class NodeProxyType(str, Enum):
     http = "http"
     socks5 = "socks5"
@@ -98,6 +103,8 @@ class Node(BaseModel):
 class NodeCreate(Node):
     add_as_new_host: bool = True
     geo_mode: GeoMode = GeoMode.default
+    xray_config_mode: XrayConfigMode = XrayConfigMode.default
+    xray_config: Optional[dict] = None
     # Optional per-node certificate pair; when omitted, the backend will generate one
     certificate: Optional[str] = None
     certificate_key: Optional[str] = None
@@ -136,6 +143,8 @@ class NodeModify(Node):
     status: Optional[NodeStatus] = Field(default=None, json_schema_extra={"nullable": True})
     usage_coefficient: Optional[float] = Field(default=None, json_schema_extra={"nullable": True})
     geo_mode: Optional[GeoMode] = Field(default=None, json_schema_extra={"nullable": True})
+    xray_config_mode: Optional[XrayConfigMode] = Field(default=None, json_schema_extra={"nullable": True})
+    xray_config: Optional[dict] = Field(default=None, json_schema_extra={"nullable": True})
     data_limit: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
     use_nobetci: Optional[bool] = Field(default=None, json_schema_extra={"nullable": True})
     nobetci_port: Optional[int] = Field(default=None, json_schema_extra={"nullable": True})
@@ -184,6 +193,7 @@ class NodeResponse(Node):
     status: NodeStatus
     message: Optional[str] = None
     geo_mode: GeoMode
+    xray_config_mode: XrayConfigMode = XrayConfigMode.default
     uplink: int = 0
     downlink: int = 0
     has_custom_certificate: bool = False

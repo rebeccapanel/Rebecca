@@ -401,8 +401,10 @@ export const CoreSettingsPage: FC = () => {
 		fetchCoreSettings,
 		updateConfig,
 		config,
+		configTargets,
 		isPostLoading,
 		restartCore,
+		updateConfigTargetMode,
 	} = useCoreSettings();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const { onEditingCore } = useDashboard();
@@ -507,6 +509,12 @@ export const CoreSettingsPage: FC = () => {
 	const [warpOptionValue, setWarpOptionValue] = useState<string>("");
 	const [warpCustomDomain, setWarpCustomDomain] = useState<string>("");
 	const [activeTab, setActiveTab] = useState<number>(0);
+	const [selectedTarget, setSelectedTarget] = useState("master");
+	const [isChangingTargetMode, setIsChangingTargetMode] = useState(false);
+	const selectedTargetInfo = useMemo(
+		() => configTargets.find((target) => target.id === selectedTarget),
+		[configTargets, selectedTarget],
+	);
 	const tabKeys = useMemo(
 		() => [
 			"basic",
@@ -659,7 +667,7 @@ export const CoreSettingsPage: FC = () => {
 		}
 
 		onEditingCore(true);
-		fetchCoreSettings()
+		fetchCoreSettings(selectedTarget)
 			.then(() => {
 				console.log("Core settings fetched successfully");
 			})
@@ -674,7 +682,14 @@ export const CoreSettingsPage: FC = () => {
 				});
 			});
 		return () => onEditingCore(false);
-	}, [canManageXraySettings, fetchCoreSettings, onEditingCore, toast, t]);
+	}, [
+		canManageXraySettings,
+		fetchCoreSettings,
+		onEditingCore,
+		selectedTarget,
+		toast,
+		t,
+	]);
 
 	useEffect(() => {
 		if (config) {
@@ -757,7 +772,7 @@ export const CoreSettingsPage: FC = () => {
 	);
 
 	const handleOnSave = form.handleSubmit(({ config: submittedConfig }: any) => {
-		updateConfig(submittedConfig)
+		updateConfig(submittedConfig, selectedTarget)
 			.then(() => {
 				form.reset({ config: submittedConfig });
 				initialConfigStringRef.current = serializeConfig(submittedConfig);
@@ -786,6 +801,22 @@ export const CoreSettingsPage: FC = () => {
 			});
 	});
 
+	const handleTargetModeChange = async (checked: boolean) => {
+		if (!selectedTargetInfo?.node_id) {
+			return;
+		}
+		setIsChangingTargetMode(true);
+		try {
+			await updateConfigTargetMode(
+				selectedTargetInfo.node_id,
+				checked ? "custom" : "default",
+			);
+			await fetchCoreSettings(selectedTarget);
+		} finally {
+			setIsChangingTargetMode(false);
+		}
+	};
+
 	const fetchOutboundsTraffic = useCallback(async () => {
 		const response = await apiFetch<{ success: boolean; obj: any }>(
 			"/panel/xray/getOutboundsTraffic",
@@ -795,17 +826,24 @@ export const CoreSettingsPage: FC = () => {
 		}
 	}, []);
 
-	const _resetOutboundTraffic = async (index: number) => {
+	const _resetOutboundTraffic = async (
+		index: number,
+		scope: "target" | "all" = "target",
+	) => {
 		const payload: Record<string, string | undefined> = {};
 		if (index < 0) {
 			payload.outbound_id = "-all-";
 			payload.tag = "-alltags-";
+			if (scope === "target") {
+				payload.target_id = selectedTarget;
+			}
 		} else {
 			const outboundId = outboundIds[index];
 			if (outboundId) {
 				payload.outbound_id = outboundId;
 			}
 			payload.tag = outboundData[index]?.tag;
+			payload.target_id = selectedTarget;
 		}
 		const cleanedPayload = Object.fromEntries(
 			Object.entries(payload).filter(([, value]) => value !== undefined),
@@ -1353,9 +1391,12 @@ export const CoreSettingsPage: FC = () => {
 
 	const findOutboundTraffic = (outbound: any, index: number) => {
 		const outboundId = outboundIds[index];
+		const targetTraffic = outboundsTraffic.filter(
+			(t) => (t.target_id || "master") === selectedTarget,
+		);
 		const traffic = outboundId
-			? outboundsTraffic.find((t) => t.outbound_id === outboundId)
-			: outboundsTraffic.find((t) => t.tag === outbound.tag);
+			? targetTraffic.find((t) => t.outbound_id === outboundId)
+			: targetTraffic.find((t) => t.tag === outbound.tag);
 		return traffic
 			? `${SizeFormatter.sizeFormat(traffic.up)} / ${SizeFormatter.sizeFormat(traffic.down)}`
 			: `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`;
@@ -1853,6 +1894,39 @@ export const CoreSettingsPage: FC = () => {
 					flexWrap="wrap"
 					w="full"
 				>
+					<FormControl maxW={{ base: "full", sm: "260px" }}>
+						<FormLabel>{t("core.configTarget", "Target")}</FormLabel>
+						<Select
+							size="sm"
+							value={selectedTarget}
+							onChange={(event) => setSelectedTarget(event.target.value)}
+						>
+							{configTargets.map((target) => (
+								<option key={target.id} value={target.id}>
+									{target.type === "master"
+										? target.name
+										: `${target.name} (${target.mode})`}
+								</option>
+							))}
+							{configTargets.length === 0 && (
+								<option value="master">Master</option>
+							)}
+						</Select>
+					</FormControl>
+					{selectedTargetInfo?.type === "node" && (
+						<FormControl display="flex" alignItems="center" w="auto">
+							<FormLabel mb={0}>
+								{t("core.customNodeConfig", "Custom config")}
+							</FormLabel>
+							<Switch
+								isChecked={selectedTargetInfo.mode === "custom"}
+								isDisabled={isChangingTargetMode}
+								onChange={(event) =>
+									handleTargetModeChange(event.target.checked)
+								}
+							/>
+						</FormControl>
+					)}
 					<Button
 						size="sm"
 						colorScheme="primary"
@@ -1867,7 +1941,7 @@ export const CoreSettingsPage: FC = () => {
 						size="sm"
 						leftIcon={<ReloadIconStyled />}
 						isLoading={isRestarting}
-						onClick={() => handleRestartCore()}
+						onClick={() => handleRestartCore(selectedTarget)}
 						variant="outline"
 						w={{ base: "full", sm: "auto" }}
 					>
@@ -2549,6 +2623,21 @@ export const CoreSettingsPage: FC = () => {
 									onClick={fetchOutboundsTraffic}
 								>
 									{t("refresh")}
+								</Button>
+								<Button
+									size="xs"
+									variant="ghost"
+									onClick={() => _resetOutboundTraffic(-1, "target")}
+								>
+									{t("pages.xray.outbound.resetTarget", "Reset target")}
+								</Button>
+								<Button
+									size="xs"
+									variant="ghost"
+									colorScheme="red"
+									onClick={() => _resetOutboundTraffic(-1, "all")}
+								>
+									{t("pages.xray.outbound.resetAll", "Reset all")}
 								</Button>
 								<Input
 									size="xs"

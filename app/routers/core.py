@@ -30,9 +30,18 @@ from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
 from app.utils.system import get_public_ip, get_public_ipv6
 from app.utils.outbound import extract_outbound_metadata, generate_outbound_id
-from app.utils.xray_config import apply_config_and_restart
+from app.models.node import XrayConfigMode
+from app.utils.xray_config import apply_config_and_restart, apply_target_config_and_restart, restart_xray_targets
+from app.utils.xray_targets import (
+    MASTER_TARGET_ID,
+    get_target_raw_config,
+    list_config_targets,
+    node_target_id,
+    parse_target_id,
+    set_node_xray_config_mode,
+    get_node_effective_raw_config,
+)
 from app.utils.binary_control import require_binary_runtime
-from app.reb_node import XRayConfig
 
 import os
 import shutil
@@ -512,18 +521,20 @@ def get_server_ips(admin: Admin = Depends(Admin.get_current)):
 
 
 @router.post("/core/restart", responses={403: responses._403})
-def restart_core(bg: BackgroundTasks, admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Restart the core and all connected nodes."""
-    from app.utils.xray_config import restart_xray_and_invalidate_cache
+def restart_core(
+    bg: BackgroundTasks,
+    target: str | None = None,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Restart the selected core target."""
+    if target:
+        kind, node_id = parse_target_id(target)
+        if kind != MASTER_TARGET_ID and not crud.get_node_by_id(db, node_id):
+            raise HTTPException(status_code=404, detail="Node not found")
 
     def _restart():
-        # Perform heavy restart work in background so API returns quickly
-        restart_xray_and_invalidate_cache()
-        startup_config = xray.config.include_db_users()
-
-        for node_id, node in list(xray.nodes.items()):
-            if node.connected:
-                xray.operations.restart_node(node_id, startup_config)
+        restart_xray_targets({target} if target else None)
 
     bg.add_task(_restart)
 
@@ -532,18 +543,57 @@ def restart_core(bg: BackgroundTasks, admin: Admin = Depends(Admin.check_sudo_ad
 
 @router.get("/core/config", responses={403: responses._403})
 def get_core_config(
+    target: str = MASTER_TARGET_ID,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Get the current core configuration."""
-    return crud.get_xray_config(db)
+    return get_target_raw_config(db, target)
 
 
 @router.put("/core/config", responses={403: responses._403})
-def modify_core_config(payload: dict, admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
+def modify_core_config(
+    payload: dict,
+    target: str = MASTER_TARGET_ID,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+) -> dict:
     """Modify the core configuration and restart the core."""
-    apply_config_and_restart(payload)
+    if target == MASTER_TARGET_ID:
+        apply_config_and_restart(payload)
+    else:
+        apply_target_config_and_restart(target, payload)
     return payload
+
+
+@router.get("/core/config/targets", responses={403: responses._403})
+def get_core_config_targets(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    return {"targets": list_config_targets(db)}
+
+
+@router.put("/core/config/targets/{node_id}/mode", responses={403: responses._403})
+def modify_node_config_mode(
+    node_id: int,
+    bg: BackgroundTasks,
+    payload: dict = Body(...),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    raw_mode = str(payload.get("mode") or "").strip()
+    try:
+        mode = XrayConfigMode(raw_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Xray config mode") from exc
+
+    set_node_xray_config_mode(db, node_id, mode)
+
+    def _restart():
+        restart_xray_targets({node_target_id(node_id)})
+
+    bg.add_task(_restart)
+    return {"target": node_target_id(node_id), "mode": mode.value}
 
 
 def _update_env_envfile(env_path: Path, key: str, value: str) -> str:
@@ -1203,68 +1253,88 @@ def test_outbound(
     return {"success": True, "obj": result}
 
 
+def _iter_outbound_config_targets(db: Session) -> list[tuple[str, int | None, str, dict]]:
+    master_config = crud.get_xray_config(db)
+    targets = [(MASTER_TARGET_ID, None, "Master", master_config)]
+    for node in crud.get_nodes(db):
+        targets.append(
+            (
+                node_target_id(node.id),
+                node.id,
+                node.name,
+                get_node_effective_raw_config(node, master_config),
+            )
+        )
+    return targets
+
+
 def _sync_outbound_records(db: Session) -> None:
     """
     Ensure we have OutboundTraffic rows for every outbound in the current Xray config.
     This lets us persist traffic per outbound ID (config-based) instead of mutable tags.
     """
-    try:
-        outbounds_config = (xray.config or {}).get("outbounds", [])
-    except Exception:
-        outbounds_config = []
-    if not outbounds_config:
-        return
-
     existing_rows = db.query(OutboundTraffic).all()
-    existing_by_id = {row.outbound_id: row for row in existing_rows}
-    existing_by_tag = {row.tag: row for row in existing_rows if row.tag}
+    existing_by_id = {(row.target_id or MASTER_TARGET_ID, row.outbound_id): row for row in existing_rows}
+    existing_by_tag = {(row.target_id or MASTER_TARGET_ID, row.tag): row for row in existing_rows if row.tag}
     updated = False
 
-    for outbound in outbounds_config:
-        if not isinstance(outbound, dict):
-            continue
+    for target_id, node_id, _target_name, target_config in _iter_outbound_config_targets(db):
+        outbounds_config = target_config.get("outbounds", []) if isinstance(target_config, dict) else []
+        for outbound in outbounds_config:
+            if not isinstance(outbound, dict):
+                continue
 
-        outbound_id = generate_outbound_id(outbound)
-        metadata = extract_outbound_metadata(outbound)
-        record = existing_by_id.get(outbound_id) or (metadata.get("tag") and existing_by_tag.get(metadata["tag"]))
-
-        if record:
-            if record.outbound_id != outbound_id:
-                record.outbound_id = outbound_id
-                existing_by_id[outbound_id] = record
-                updated = True
-            if metadata.get("tag") is not None and record.tag != metadata["tag"]:
-                old_tag = record.tag
-                record.tag = metadata["tag"]
-                if old_tag:
-                    existing_by_tag.pop(old_tag, None)
-                if record.tag:
-                    existing_by_tag[record.tag] = record
-                updated = True
-            if metadata.get("protocol") is not None and record.protocol != metadata["protocol"]:
-                record.protocol = metadata["protocol"]
-                updated = True
-            if metadata.get("address") is not None and record.address != metadata["address"]:
-                record.address = metadata["address"]
-                updated = True
-            if metadata.get("port") is not None and record.port != metadata["port"]:
-                record.port = metadata["port"]
-                updated = True
-        else:
-            record = OutboundTraffic(
-                outbound_id=outbound_id,
-                tag=metadata.get("tag"),
-                protocol=metadata.get("protocol"),
-                address=metadata.get("address"),
-                port=metadata.get("port"),
-                uplink=0,
-                downlink=0,
+            outbound_id = generate_outbound_id(outbound)
+            metadata = extract_outbound_metadata(outbound)
+            record = existing_by_id.get((target_id, outbound_id)) or (
+                metadata.get("tag") and existing_by_tag.get((target_id, metadata["tag"]))
             )
-            db.add(record)
-            existing_by_id[outbound_id] = record
-            if record.tag:
-                existing_by_tag[record.tag] = record
-            updated = True
+
+            if record:
+                if record.target_id != target_id:
+                    record.target_id = target_id
+                    updated = True
+                if record.node_id != node_id:
+                    record.node_id = node_id
+                    updated = True
+                if record.outbound_id != outbound_id:
+                    record.outbound_id = outbound_id
+                    existing_by_id[(target_id, outbound_id)] = record
+                    updated = True
+                if metadata.get("tag") is not None and record.tag != metadata["tag"]:
+                    old_tag = record.tag
+                    record.tag = metadata["tag"]
+                    if old_tag:
+                        existing_by_tag.pop((target_id, old_tag), None)
+                    if record.tag:
+                        existing_by_tag[(target_id, record.tag)] = record
+                    updated = True
+                if metadata.get("protocol") is not None and record.protocol != metadata["protocol"]:
+                    record.protocol = metadata["protocol"]
+                    updated = True
+                if metadata.get("address") is not None and record.address != metadata["address"]:
+                    record.address = metadata["address"]
+                    updated = True
+                if metadata.get("port") is not None and record.port != metadata["port"]:
+                    record.port = metadata["port"]
+                    updated = True
+            else:
+                record = OutboundTraffic(
+                    target_id=target_id,
+                    node_id=node_id,
+                    outbound_id=outbound_id,
+                    tag=metadata.get("tag"),
+                    protocol=metadata.get("protocol"),
+                    address=metadata.get("address"),
+                    port=metadata.get("port"),
+                    uplink=0,
+                    downlink=0,
+                )
+                db.add(record)
+                existing_by_id[(target_id, outbound_id)] = record
+                if record.tag:
+                    existing_by_tag[(target_id, record.tag)] = record
+                updated = True
 
     if updated:
         db.commit()
@@ -1275,11 +1345,16 @@ def get_outbounds_traffic(admin: Admin = Depends(Admin.check_sudo_admin), db: Se
     """Get outbound traffic statistics from database."""
     _sync_outbound_records(db)
     outbounds = db.query(OutboundTraffic).all()
+    target_names = {target_id: name for target_id, _node_id, name, _config in _iter_outbound_config_targets(db)}
     # Return as array for frontend compatibility
     result = []
     for outbound in outbounds:
+        target_id = outbound.target_id or MASTER_TARGET_ID
         result.append(
             {
+                "target_id": target_id,
+                "target_name": target_names.get(target_id, target_id),
+                "node_id": outbound.node_id,
                 "tag": outbound.tag,
                 "protocol": outbound.protocol,
                 "address": outbound.address,
@@ -1301,13 +1376,25 @@ def reset_outbounds_traffic(
     """Reset outbound traffic statistics."""
     outbound_id = payload.get("outbound_id")
     tag = payload.get("tag")
+    target_id = payload.get("target_id")
 
     if outbound_id == "-all-" or tag == "-alltags-":
-        # Reset all outbounds
-        db.query(OutboundTraffic).update({"uplink": 0, "downlink": 0})
+        query = db.query(OutboundTraffic)
+        if target_id:
+            query = query.filter(OutboundTraffic.target_id == target_id)
+        query.update({"uplink": 0, "downlink": 0})
+    elif outbound_id and target_id:
+        db.query(OutboundTraffic).filter(
+            OutboundTraffic.target_id == target_id,
+            OutboundTraffic.outbound_id == outbound_id,
+        ).update({"uplink": 0, "downlink": 0})
     elif outbound_id:
         # Reset specific outbound by outbound_id
         db.query(OutboundTraffic).filter(OutboundTraffic.outbound_id == outbound_id).update(
+            {"uplink": 0, "downlink": 0}
+        )
+    elif tag and target_id:
+        db.query(OutboundTraffic).filter(OutboundTraffic.target_id == target_id, OutboundTraffic.tag == tag).update(
             {"uplink": 0, "downlink": 0}
         )
     elif tag:

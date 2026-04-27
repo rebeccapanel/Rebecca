@@ -37,6 +37,7 @@ import {
 	TabPanel,
 	TabPanels,
 	Tabs,
+	Tag,
 	Text,
 	Tooltip,
 	useColorModeValue,
@@ -49,6 +50,7 @@ import {
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { JsonEditor } from "components/JsonEditor";
+import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { shadowsocksMethods } from "constants/Proxies";
 import {
 	type FC,
@@ -96,6 +98,7 @@ type Props = {
 	initialValue: RawInbound | null;
 	isSubmitting: boolean;
 	existingInbounds: RawInbound[];
+	configTargets: CoreConfigTarget[];
 	onClose: () => void;
 	onSubmit: (values: InboundFormValues) => Promise<void>;
 	onDelete?: () => void;
@@ -240,6 +243,7 @@ export const InboundFormModal: FC<Props> = ({
 	initialValue,
 	isSubmitting,
 	existingInbounds,
+	configTargets,
 	onClose,
 	onSubmit,
 	onDelete,
@@ -332,6 +336,8 @@ export const InboundFormModal: FC<Props> = ({
 	const vlessSelectedAuth =
 		useWatch({ control, name: "vlessSelectedAuth" }) || "";
 	const formValues = useWatch({ control }) as InboundFormValues;
+	const targetIds =
+		useWatch({ control, name: "targetIds" }) || watch("targetIds") || [];
 	const isCloneMode = mode === "clone";
 	const isEditMode = mode === "edit";
 
@@ -424,6 +430,21 @@ export const InboundFormModal: FC<Props> = ({
 			(option) => option !== "http" && option !== "socks",
 		);
 	}, [isEditMode]);
+	const availableTargets = useMemo<CoreConfigTarget[]>(
+		() =>
+			configTargets.length
+				? configTargets
+				: [
+						{
+							id: "master",
+							type: "master",
+							name: "Master",
+							node_id: null,
+							mode: "custom",
+						},
+					],
+		[configTargets],
+	);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -500,10 +521,9 @@ export const InboundFormModal: FC<Props> = ({
 		const trimmedTag = (tagValue || "").trim();
 		if (isEditMode) {
 			setTagError(null);
-			setPortError(null);
-			return;
 		}
 		if (
+			!isEditMode &&
 			trimmedTag &&
 			existingInbounds.some(
 				(inb) =>
@@ -514,9 +534,23 @@ export const InboundFormModal: FC<Props> = ({
 		} else {
 			setTagError(null);
 		}
+		const selectedTargets = new Set(targetIds?.length ? targetIds : ["master"]);
 		if (
 			portValue &&
-			existingInbounds.some((inb) => inb.port?.toString() === portValue)
+			existingInbounds.some((inb) => {
+				if (isEditMode && inb.tag === initialValue?.tag) {
+					return false;
+				}
+				const inboundTargets = inb.effective_targets?.length
+					? inb.effective_targets
+					: inb.targets?.length
+						? inb.targets
+						: ["master"];
+				return (
+					inb.port?.toString() === portValue &&
+					inboundTargets.some((targetId) => selectedTargets.has(targetId))
+				);
+			})
 		) {
 			setPortError(
 				t("inbounds.error.portExists", "Inbound port already exists"),
@@ -524,7 +558,7 @@ export const InboundFormModal: FC<Props> = ({
 		} else {
 			setPortError(null);
 		}
-	}, [existingInbounds, portValue, tagValue, t, isEditMode]);
+	}, [existingInbounds, portValue, tagValue, t, isEditMode, targetIds, initialValue]);
 
 	const renderSockoptNumberInput = useCallback(
 		(name: keyof SockoptFormValues, label: string) => (
@@ -709,6 +743,10 @@ export const InboundFormModal: FC<Props> = ({
 					throw new Error("Invalid JSON payload");
 				}
 				const mapped = rawInboundToFormValues(parsed as RawInbound);
+				const currentTargets = form.getValues("targetIds");
+				if (currentTargets?.length) {
+					mapped.targetIds = currentTargets;
+				}
 				updatingFromJsonRef.current = true;
 				reset(mapped);
 				setJsonError(null);
@@ -716,7 +754,7 @@ export const InboundFormModal: FC<Props> = ({
 				setJsonError(error instanceof Error ? error.message : "Invalid JSON");
 			}
 		},
-		[reset],
+		[form, reset],
 	);
 
 	const handleGenerateShortId = useCallback(async () => {
@@ -894,6 +932,7 @@ export const InboundFormModal: FC<Props> = ({
 						<TabList>
 							<Tab>{t("form")}</Tab>
 							<Tab>{t("json")}</Tab>
+							<Tab>{t("inbounds.targets", "Targets")}</Tab>
 						</TabList>
 						<TabPanels>
 							<TabPanel px={0}>
@@ -2842,6 +2881,51 @@ export const InboundFormModal: FC<Props> = ({
 										/>
 									</Box>
 								</VStack>
+							</TabPanel>
+							<TabPanel px={0}>
+								<Controller
+									control={control}
+									name="targetIds"
+									rules={{
+										validate: (value) =>
+											Boolean(value?.length) ||
+											t("inbounds.error.targetsRequired", "Select a target"),
+									}}
+									render={({ field }) => (
+										<CheckboxGroup
+											value={field.value || []}
+											onChange={(value) => field.onChange(value)}
+										>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+												{availableTargets.map((target) => (
+													<Box
+														key={target.id}
+														borderWidth="1px"
+														borderColor={sectionBorder}
+														borderRadius="md"
+														p={3}
+													>
+														<Checkbox value={target.id}>
+															<HStack spacing={2}>
+																<Text>{target.name}</Text>
+																<Tag size="sm" colorScheme="gray">
+																	{target.type === "master"
+																		? "Master"
+																		: target.mode}
+																</Tag>
+															</HStack>
+														</Checkbox>
+													</Box>
+												))}
+											</SimpleGrid>
+											{errors.targetIds && (
+												<Text fontSize="xs" color="red.500" mt={2}>
+													{String(errors.targetIds.message)}
+												</Text>
+											)}
+										</CheckboxGroup>
+									)}
+								/>
 							</TabPanel>
 						</TabPanels>
 					</Tabs>

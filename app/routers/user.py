@@ -632,8 +632,12 @@ def modify_user(
         )
 
     if modified_user.service_id is not None:
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in modified_user.proxies:
-            if not xray.config.inbounds_by_protocol.get(proxy_type):
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
+            if not any(inbound.get("protocol") == proxy_type_value for inbound in inbound_map.values()):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Protocol {proxy_type} is disabled on your server",

@@ -33,7 +33,16 @@ from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.binary_control import get_binary_runtime_info, require_binary_runtime, schedule_rebecca_cli
 from app.utils.system import cpu_usage, realtime_bandwidth
-from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
+from app.reb_node.config import XRayConfig
+from app.utils.xray_config import restart_xray_and_invalidate_cache, restart_xray_targets
+from app.utils.xray_targets import (
+    MASTER_TARGET_ID,
+    ensure_target_configs_for_mutation,
+    iter_stored_raw_configs,
+    node_target_id,
+    parse_target_id,
+    persist_mutated_target_configs,
+)
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
@@ -61,10 +70,13 @@ _PANEL_PROCESS = psutil.Process(os.getpid())
 _PANEL_PROCESS.cpu_percent(interval=None)
 
 
-def _queue_xray_restart(bg: BackgroundTasks) -> None:
+def _queue_xray_restart(bg: BackgroundTasks, target_ids: set[str] | None = None) -> None:
     def _restart() -> None:
         try:
-            restart_xray_and_invalidate_cache()
+            if target_ids:
+                restart_xray_targets(target_ids)
+            else:
+                restart_xray_and_invalidate_cache()
         except Exception as exc:  # pragma: no cover - best effort background task
             logger.error("Failed to restart Xray after inbound change: %s", exc)
 
@@ -330,9 +342,23 @@ def soft_reload_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_a
 
 
 @router.get("/inbounds", response_model=Dict[ProxyTypes, List[ProxyInbound]])
-def get_inbounds(admin: Admin = Depends(Admin.get_current)):
+def get_inbounds(admin: Admin = Depends(Admin.get_current), db: Session = Depends(get_db)):
     """Retrieve inbound configurations grouped by protocol."""
-    return xray.config.inbounds_by_protocol
+    result: Dict[ProxyTypes, List[ProxyInbound]] = {}
+    seen_tags: set[str] = set()
+    for _target_id, raw_config in iter_stored_raw_configs(db):
+        try:
+            config = XRayConfig(raw_config, api_port=xray.config.api_port)
+        except Exception:
+            continue
+        for protocol, inbounds in config.inbounds_by_protocol.items():
+            for inbound in inbounds:
+                tag = inbound.get("tag")
+                if not tag or tag in seen_tags:
+                    continue
+                seen_tags.add(tag)
+                result.setdefault(protocol, []).append(inbound)
+    return result
 
 
 @router.get(
@@ -344,8 +370,7 @@ def get_inbounds_full(
     db: Session = Depends(get_db),
 ):
     """Return detailed inbound definitions for manageable protocols."""
-    config = _load_config(db)
-    return [_sanitize_inbound(inbound) for inbound in _managed_inbounds(config)]
+    return _all_manageable_inbounds_with_targets(db)
 
 
 @router.get(
@@ -500,11 +525,14 @@ def get_inbound_detail(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    inbound = _get_inbound_by_tag(config, tag)
+    inbound = None
+    for item in _all_manageable_inbounds_with_targets(db):
+        if item.get("tag") == tag:
+            inbound = item
+            break
     if inbound is None:
         raise HTTPException(status_code=404, detail="Inbound not found")
-    return _sanitize_inbound(inbound)
+    return inbound
 
 
 @router.post(
@@ -517,22 +545,30 @@ def create_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
+    payload = deepcopy(payload)
+    target_ids = _extract_target_ids(payload)
     inbound = _prepare_inbound_payload(payload)
     tag = inbound["tag"]
-    config = _load_config(db)
 
-    if any(existing.get("tag") == tag for existing in config.get("inbounds", [])):
+    if _direct_targets_for_inbound(db, tag):
         raise HTTPException(status_code=400, detail=f"Inbound {tag} already exists")
 
-    config.setdefault("inbounds", []).append(inbound)
-    apply_config(config)
-    _queue_xray_restart(bg)
+    configs = ensure_target_configs_for_mutation(db, target_ids)
+    for target_id, config in configs.items():
+        _validate_port_available(config, inbound, target_id)
+        _upsert_inbound_in_config(config, inbound)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is created
     xray.hosts.update()
 
-    return _sanitize_inbound(inbound)
+    return _sanitize_inbound(
+        inbound,
+        targets=sorted(_direct_targets_for_inbound(db, tag)),
+        effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+    )
 
 
 @router.put(
@@ -546,21 +582,33 @@ def update_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    index = _find_inbound_index(config, tag)
-    if index is None:
+    current_targets = _direct_targets_for_inbound(db, tag)
+    if not current_targets:
         raise HTTPException(status_code=404, detail="Inbound not found")
 
+    payload = deepcopy(payload)
+    target_ids = _extract_target_ids(payload, default_targets=current_targets)
     inbound = _prepare_inbound_payload(payload, enforce_tag=tag)
-    config["inbounds"][index] = inbound
-    apply_config(config)
-    _queue_xray_restart(bg)
+    changed_targets = current_targets | target_ids
+    configs = ensure_target_configs_for_mutation(db, changed_targets)
+    for target_id, config in configs.items():
+        if target_id in target_ids:
+            _validate_port_available(config, inbound, target_id, old_tag=tag)
+            _upsert_inbound_in_config(config, inbound, old_tag=tag)
+        else:
+            _remove_inbound_from_config(config, tag)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is updated
     xray.hosts.update()
 
-    return _sanitize_inbound(inbound)
+    return _sanitize_inbound(
+        inbound,
+        targets=sorted(_direct_targets_for_inbound(db, tag)),
+        effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+    )
 
 
 @router.delete(
@@ -573,19 +621,24 @@ def delete_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    index = _find_inbound_index(config, tag)
-    if index is None:
+    current_targets = _direct_targets_for_inbound(db, tag)
+    if not current_targets:
         raise HTTPException(status_code=404, detail="Inbound not found")
 
-    inbound = config["inbounds"][index]
+    inbound = None
+    for _target_id, config in iter_stored_raw_configs(db):
+        inbound = _get_inbound_by_tag(config, tag)
+        if inbound:
+            break
     if not _is_manageable_inbound(inbound):
         raise HTTPException(status_code=400, detail="This inbound cannot be managed via the dashboard")
 
     affected_services = crud.remove_hosts_for_inbound(db, tag)
-    del config["inbounds"][index]
-    apply_config(config)
-    _queue_xray_restart(bg)
+    configs = ensure_target_configs_for_mutation(db, current_targets)
+    for config in configs.values():
+        _remove_inbound_from_config(config, tag)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     try:
         crud.delete_inbound(db, tag)
@@ -702,8 +755,11 @@ def modify_hosts(
 ):
     """Modify proxy hosts and update the configuration."""
     _ensure_hosts_permission(admin)
+    from app.services.data_access import get_inbounds_by_tag_cached
+
+    inbound_map = get_inbounds_by_tag_cached(db)
     for inbound_tag in modified_hosts:
-        if inbound_tag not in xray.config.inbounds_by_tag:
+        if inbound_tag not in inbound_map:
             raise HTTPException(status_code=400, detail=f"Inbound {inbound_tag} doesn't exist")
 
     # Collect all host IDs that are present in the payload to prevent deletion
@@ -742,11 +798,130 @@ def modify_hosts(
     _queue_hosts_cache_refresh(bg)
     _queue_service_users_refresh(bg, affected_service_ids)
 
-    return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
+    return {tag: crud.get_hosts(db, tag) for tag in inbound_map}
 
 
 def _load_config(db: Session) -> dict:
     return deepcopy(crud.get_xray_config(db))
+
+
+def _target_from_payload_item(item) -> str | None:
+    if isinstance(item, str):
+        target_id = item.strip()
+    elif isinstance(item, dict):
+        target_id = str(item.get("id") or item.get("target_id") or "").strip()
+    else:
+        return None
+    if not target_id:
+        return None
+    parse_target_id(target_id)
+    return target_id
+
+
+def _extract_target_ids(payload: dict, default_targets: set[str] | None = None) -> set[str]:
+    raw_targets = payload.pop("targets", None)
+    if raw_targets is None:
+        raw_targets = payload.pop("target_ids", None)
+    if raw_targets is None:
+        return set(default_targets or {MASTER_TARGET_ID})
+    if not isinstance(raw_targets, list):
+        raise HTTPException(status_code=400, detail="targets must be a list")
+
+    target_ids = []
+    for item in raw_targets:
+        target_id = _target_from_payload_item(item)
+        if target_id:
+            target_ids.append(target_id)
+    if not target_ids:
+        raise HTTPException(status_code=400, detail="At least one target is required")
+    return set(target_ids)
+
+
+def _config_has_inbound(config: dict, tag: str) -> bool:
+    return any(isinstance(inbound, dict) and inbound.get("tag") == tag for inbound in config.get("inbounds", []))
+
+
+def _direct_targets_for_inbound(db: Session, tag: str) -> set[str]:
+    targets = set()
+    for target_id, config in iter_stored_raw_configs(db):
+        if _config_has_inbound(config, tag):
+            targets.add(target_id)
+    return targets
+
+
+def _effective_targets_for_inbound(db: Session, tag: str) -> set[str]:
+    targets = set()
+    master_has_inbound = False
+    for target_id, config in iter_stored_raw_configs(db):
+        if _config_has_inbound(config, tag):
+            targets.add(target_id)
+            if target_id == MASTER_TARGET_ID:
+                master_has_inbound = True
+    if master_has_inbound:
+        from app.utils.xray_targets import node_config_mode
+        from app.models.node import XrayConfigMode
+
+        for node in crud.get_nodes(db):
+            if node_config_mode(node) == XrayConfigMode.default:
+                targets.add(node_target_id(node.id))
+    return targets
+
+
+def _port_key(inbound: dict) -> str:
+    return str(inbound.get("port") or "").strip()
+
+
+def _validate_port_available(config: dict, inbound: dict, target_id: str, old_tag: str | None = None) -> None:
+    wanted_port = _port_key(inbound)
+    if not wanted_port:
+        return
+    for existing in config.get("inbounds", []):
+        if not isinstance(existing, dict):
+            continue
+        if old_tag and existing.get("tag") == old_tag:
+            continue
+        if _port_key(existing) == wanted_port:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port {wanted_port} is already used in target {target_id}",
+            )
+
+
+def _remove_inbound_from_config(config: dict, tag: str) -> bool:
+    inbounds = config.get("inbounds")
+    if not isinstance(inbounds, list):
+        return False
+    original_len = len(inbounds)
+    config["inbounds"] = [inbound for inbound in inbounds if not (isinstance(inbound, dict) and inbound.get("tag") == tag)]
+    return len(config["inbounds"]) != original_len
+
+
+def _upsert_inbound_in_config(config: dict, inbound: dict, old_tag: str | None = None) -> None:
+    config.setdefault("inbounds", [])
+    for index, existing in enumerate(config["inbounds"]):
+        if isinstance(existing, dict) and existing.get("tag") == (old_tag or inbound["tag"]):
+            config["inbounds"][index] = deepcopy(inbound)
+            return
+    config["inbounds"].append(deepcopy(inbound))
+
+
+def _all_manageable_inbounds_with_targets(db: Session) -> list[dict]:
+    result: dict[str, dict] = {}
+    for _target_id, config in iter_stored_raw_configs(db):
+        for inbound in config.get("inbounds", []):
+            if isinstance(inbound, dict) and _is_manageable_inbound(inbound):
+                result.setdefault(str(inbound["tag"]), deepcopy(inbound))
+
+    sanitized = []
+    for tag, inbound in result.items():
+        sanitized.append(
+            _sanitize_inbound(
+                inbound,
+                targets=sorted(_direct_targets_for_inbound(db, tag)),
+                effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+            )
+        )
+    return sanitized
 
 
 def _is_manageable_inbound(inbound: dict) -> bool:
@@ -777,13 +952,21 @@ def _find_inbound_index(config: dict, tag: str) -> int | None:
     return None
 
 
-def _sanitize_inbound(inbound: dict) -> dict:
+def _sanitize_inbound(
+    inbound: dict,
+    targets: list[str] | None = None,
+    effective_targets: list[str] | None = None,
+) -> dict:
     sanitized = deepcopy(inbound)
     settings = sanitized.get("settings")
     if isinstance(settings, dict):
         settings["clients"] = []
     else:
         sanitized["settings"] = {"clients": []}
+    if targets is not None:
+        sanitized["targets"] = targets
+    if effective_targets is not None:
+        sanitized["effective_targets"] = effective_targets
     return sanitized
 
 

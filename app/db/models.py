@@ -24,7 +24,7 @@ from sqlalchemy.sql.expression import select, text
 
 from app.db.base import Base
 from app.models.admin import AdminRole, AdminStatus, AdminTrafficLimitMode
-from app.models.node import NodeStatus, GeoMode
+from app.models.node import NodeStatus, GeoMode, XrayConfigMode
 from app.models.proxy import (
     ProxyHostALPN,
     ProxyHostFingerprint,
@@ -311,7 +311,14 @@ class User(Base):
 
     @property
     def inbounds(self):
-        from app.runtime import xray  # lazy import to avoid circular dependency
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
+
+        def protocol_inbounds(protocol: str):
+            return [inbound for inbound in inbound_map.values() if inbound.get("protocol") == protocol]
 
         _ = {}
         if self.service_id is not None:
@@ -339,7 +346,6 @@ class User(Base):
                 allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
             if not allowed_tags:
                 try:
-                    from app.db import GetDB
                     from app.db import models as db_models
 
                     with GetDB() as db:
@@ -361,7 +367,7 @@ class User(Base):
                 proxy_key = proxy.type
                 proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
                 _[proxy_key] = []
-                for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
+                for inbound in protocol_inbounds(proxy_key_str):
                     if inbound["tag"] in allowed_tags:
                         _[proxy_key].append(inbound["tag"])
             return _
@@ -371,7 +377,7 @@ class User(Base):
             proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
             _[proxy_key] = []
             excluded_tags = [i.tag for i in proxy.excluded_inbounds]
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
+            for inbound in protocol_inbounds(proxy_key_str):
                 if inbound["tag"] not in excluded_tags:
                     _[proxy_key].append(inbound["tag"])
 
@@ -678,6 +684,13 @@ class Node(Base):
     proxy_password = Column(String(255), nullable=True, default=None)
     certificate = Column(Text, nullable=True)  # Node-specific certificate (PEM format)
     certificate_key = Column(Text, nullable=True)  # Node-specific certificate key (PEM format)
+    xray_config_mode = Column(
+        Enum(XrayConfigMode),
+        nullable=False,
+        default=XrayConfigMode.default,
+        server_default=XrayConfigMode.default.value,
+    )
+    xray_config = Column(JSON, nullable=True)
 
 
 class MasterNodeState(Base):
@@ -719,10 +732,12 @@ class NodeUsage(Base):
 
 class OutboundTraffic(Base):
     __tablename__ = "outbound_traffic"
-    __table_args__ = (UniqueConstraint("outbound_id"),)
+    __table_args__ = (UniqueConstraint("target_id", "outbound_id", name="uq_outbound_traffic_target_outbound"),)
 
     id = Column(Integer, primary_key=True)
-    outbound_id = Column(String(256), unique=True, nullable=False, index=True)  # Unique ID for outbound (not tag)
+    target_id = Column(String(64), nullable=False, default="master", server_default=text("'master'"), index=True)
+    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=True, index=True)
+    outbound_id = Column(String(256), nullable=False, index=True)  # Unique ID for outbound (not tag)
     tag = Column(String(256), nullable=True, index=True)  # Outbound tag for reference
     protocol = Column(String(64), nullable=True)  # Protocol type (vmess, vless, etc.)
     address = Column(String(256), nullable=True)  # Server address

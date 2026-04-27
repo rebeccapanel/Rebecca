@@ -124,13 +124,15 @@ class ServiceRepository:
 
     @staticmethod
     def compute_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
-        from app.runtime import xray
+        from sqlalchemy.orm import object_session
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         allowed: Dict[ProxyTypes, Set[str]] = {}
         if service is None:
             return allowed
 
-        inbound_map = xray.config.inbounds_by_tag
+        db = object_session(service)
+        inbound_map = get_inbounds_by_tag_cached(db) if db is not None else {}
 
         for link in service.host_links:
             host = link.host
@@ -157,8 +159,6 @@ class ServiceRepository:
         service: Service,
         allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
     ) -> None:
-        from app.runtime import xray
-
         if allowed_inbounds is None:
             allowed_inbounds = self.compute_allowed_inbounds(service)
 
@@ -197,7 +197,13 @@ class ServiceRepository:
                         preserve_existing_uuid=True,
                     )
 
-            available_tags = {inbound["tag"] for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])}
+            from app.services.data_access import get_inbounds_by_tag_cached
+
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
+            inbound_map = get_inbounds_by_tag_cached(self.db)
+            available_tags = {
+                tag for tag, inbound in inbound_map.items() if inbound.get("protocol") == proxy_type_value
+            }
             excluded_tags = sorted(available_tags - set(allowed_tags))
             inbound_objs = [get_or_create_inbound(self.db, tag) for tag in excluded_tags]
             if proxy.id is None:

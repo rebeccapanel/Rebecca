@@ -43,11 +43,14 @@ _PENDING_CERTS: dict[str, dict[str, str]] = {}
 def add_host_if_needed(new_node: NodeCreate, db: Session):
     """Add a host if specified in the new node settings."""
     if new_node.add_as_new_host:
+        from app.utils.xray_targets import collect_all_inbound_tags
+
         host = ProxyHost(
             remark=f"{new_node.name} ({{USERNAME}}) [{{PROTOCOL}} - {{TRANSPORT}}]",
             address=new_node.address,
         )
-        for inbound_tag in xray.config.inbounds_by_tag:
+        inbound_tags = collect_all_inbound_tags(db) or set(xray.config.inbounds_by_tag)
+        for inbound_tag in inbound_tags:
             crud.add_host(db, inbound_tag, host)
         xray.hosts.update()
 
