@@ -638,8 +638,9 @@ get_node_binary_dev_artifact_metadata() {
     local artifacts_payload
     local artifact_name
     local artifact_url
+    local nightly_workflow
 
-    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?branch=${REBECCA_NODE_BINARY_DEV_BRANCH}&status=success&event=push&per_page=20"
+    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?branch=${REBECCA_NODE_BINARY_DEV_BRANCH}&status=completed&event=push&per_page=20"
     workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
         colorized_echo red "Unable to read Rebecca-node binary workflow metadata: $workflow_runs_api" >&2
         exit 1
@@ -677,7 +678,12 @@ get_node_binary_dev_artifact_metadata() {
         exit 1
     fi
 
-    artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+    nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
+    case "$nightly_workflow" in
+        *.yml|*.yaml) ;;
+        *) nightly_workflow="${nightly_workflow}.yml" ;;
+    esac
+    artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
     printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
 }
 
