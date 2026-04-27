@@ -38,6 +38,23 @@ done < <(
         sort
 )
 
+JOB_HIDDEN_IMPORT_ARGS=(
+    --hidden-import app.jobs.xray_core
+    --hidden-import app.jobs.add_db_users
+    --hidden-import app.jobs.record_usages
+    --hidden-import app.jobs.remove_expired_users
+    --hidden-import app.jobs.reset_user_data_usage
+    --hidden-import app.jobs.review_users
+    --hidden-import app.jobs.send_notifications
+    --hidden-import app.jobs.usage
+    --hidden-import app.jobs.usage.collectors
+    --hidden-import app.jobs.usage.delivery_buffer
+    --hidden-import app.jobs.usage.node_usage
+    --hidden-import app.jobs.usage.outbound_traffic
+    --hidden-import app.jobs.usage.user_usage
+    --hidden-import app.jobs.usage.utils
+)
+
 COMMON_PYINSTALLER_ARGS=(
     --clean
     --noconfirm
@@ -69,6 +86,7 @@ COMMON_PYINSTALLER_ARGS=(
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
+    "${JOB_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-server \
     --add-data "$(pyinstaller_add_data "dashboard/build" "dashboard/build")" \
     packaging/binary_launcher.py
@@ -76,5 +94,6 @@ env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
     "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
+    "${JOB_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-cli \
     rebecca-cli.py
