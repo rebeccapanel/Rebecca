@@ -55,6 +55,7 @@ export const NodeSchema = z
 			.or(z.string().transform((v) => parseFloat(v))),
 		xray_version: z.string().nullable().optional(),
 		node_service_version: z.string().nullable().optional(),
+		node_install_mode: z.string().nullable().optional(),
 		id: z.number().nullable().optional(),
 		status: z
 			.enum(["connected", "connecting", "error", "disabled", "limited"])

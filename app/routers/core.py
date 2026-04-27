@@ -31,6 +31,7 @@ from app.utils import responses
 from app.utils.system import get_public_ip, get_public_ipv6
 from app.utils.outbound import extract_outbound_metadata, generate_outbound_id
 from app.utils.xray_config import apply_config_and_restart
+from app.utils.binary_control import require_binary_runtime
 from app.reb_node import XRayConfig
 
 import os
@@ -586,6 +587,7 @@ def update_core_version(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Update the local Xray core binary in binary/host installs."""
+    require_binary_runtime()
     tag = payload.get("version")
     if not tag or not isinstance(tag, str):
         raise HTTPException(422, detail="version is required (e.g. v1.8.11)")
@@ -725,6 +727,7 @@ def apply_geo_assets(
     db: Session = Depends(get_db),
 ):
     """Download and apply geo assets."""
+    require_binary_runtime()
     mode = (payload.get("mode") or "default").strip().lower()
     files = payload.get("files") or []
 

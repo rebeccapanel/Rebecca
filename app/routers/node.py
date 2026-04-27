@@ -25,7 +25,8 @@ from app.models.node import (
 from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
-from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT
+from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _validate_download_url
+from app.utils.binary_control import require_binary_runtime
 from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
     generate_certificate,
@@ -52,6 +53,10 @@ def add_host_if_needed(new_node: NodeCreate, db: Session):
 
 
 MASTER_NODE_NAME = "Master"
+NODE_BINARY_REQUIRED_DETAIL = (
+    "This node host-level action is available only when the node is installed in binary mode. "
+    "Migrate the node to the binary version before using update, restart, core, or geo actions from the web UI."
+)
 
 
 def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeResponse:
@@ -60,6 +65,7 @@ def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeRespons
     runtime_node = xray.nodes.get(node_response.id)
     if runtime_node:
         node_response.node_service_version = getattr(runtime_node, "node_version", None)
+        node_response.node_install_mode = getattr(runtime_node, "install_mode", None)
     return node_response
 
 
@@ -94,6 +100,11 @@ def _augment_node_cert_fields(
         }
     )
     return updated
+
+
+def _require_node_binary_runtime(node) -> None:
+    if getattr(node, "install_mode", None) != "binary":
+        raise HTTPException(status_code=409, detail=NODE_BINARY_REQUIRED_DETAIL)
 
 
 def _build_master_response(master: DBMasterNodeState) -> MasterNodeResponse:
@@ -462,6 +473,7 @@ def update_node_core(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Ask a node to update/switch its Xray-core to a specific version, then restart node core."""
+    require_binary_runtime()
     version = payload.get("version")
     if not version or not isinstance(version, str):
         raise HTTPException(status_code=422, detail="version is required")
@@ -469,6 +481,7 @@ def update_node_core(
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -506,6 +519,7 @@ def update_node_geo(
     Download and install geo assets on a specific node (custom mode).
     Supports direct files list or template selection.
     """
+    require_binary_runtime()
     files = payload.get("files") or []
     mode = (payload.get("mode") or "").strip().lower()
     template_index_url = (
@@ -515,7 +529,7 @@ def update_node_geo(
 
     if not files and (mode == "template" or template_name):
         try:
-            r = requests.get(template_index_url, timeout=60)
+            r = requests.get(_validate_download_url(template_index_url, field_name="template_index_url"), timeout=60)
             r.raise_for_status()
             data = r.json()
         except Exception as e:
@@ -538,6 +552,7 @@ def update_node_geo(
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -574,9 +589,11 @@ def restart_node_service(
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Trigger the Rebecca-node binary service to restart on a node."""
+    require_binary_runtime()
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -596,9 +613,11 @@ def update_node_service(
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Trigger the Rebecca-node binary service to update itself on a node."""
+    require_binary_runtime()
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,

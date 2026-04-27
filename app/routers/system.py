@@ -31,7 +31,7 @@ from app.models.system import (
 )
 from app.models.user import UserStatus
 from app.utils import responses
-from app.utils.binary_control import get_binary_runtime_info, schedule_rebecca_cli
+from app.utils.binary_control import get_binary_runtime_info, require_binary_runtime, schedule_rebecca_cli
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
 from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
@@ -302,6 +302,7 @@ def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
 @router.post("/maintenance/update", responses={403: responses._403})
 def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Schedule an on-host Rebecca update via the installed CLI."""
+    require_binary_runtime()
     schedule_rebecca_cli(["update"])
     return {"status": "accepted"}
 
@@ -309,6 +310,7 @@ def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)
 @router.post("/maintenance/restart", responses={403: responses._403})
 def restart_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Schedule an on-host Rebecca restart via the installed CLI."""
+    require_binary_runtime()
     schedule_rebecca_cli(["restart", "-n"])
     return {"status": "accepted"}
 

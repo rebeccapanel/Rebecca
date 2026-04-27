@@ -63,8 +63,22 @@ def test_binary_runtime_info_supports_binary_mode_without_docker(tmp_path: Path,
 
     panel_info = get_binary_runtime_info()
     assert panel_info["mode"] == "binary"
+    assert panel_info["image"] == "rebecca-server (binary)"
+    assert panel_info["tag"] == "v1.2.3"
     assert panel_info["binary"]["image"] == "rebecca-server (binary)"
     assert panel_info["binary"]["tag"] == "v1.2.3"
+
+
+def test_runtime_info_defaults_to_docker_without_binary_marker(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("REBECCA_APP_DIR", str(tmp_path / "rebecca"))
+    monkeypatch.delenv("REBECCA_INSTALL_MODE", raising=False)
+    monkeypatch.delenv("REBECCA_BINARY_METADATA_FILE", raising=False)
+
+    from app.utils.binary_control import get_binary_runtime_info, is_binary_runtime
+
+    panel_info = get_binary_runtime_info()
+    assert panel_info["mode"] == "docker"
+    assert is_binary_runtime() is False
 
 
 def test_cli_help_skips_dashboard_runtime(tmp_path: Path):

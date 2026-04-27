@@ -180,6 +180,7 @@ class NodeResponse(Node):
     id: int
     xray_version: Optional[str] = None
     node_service_version: Optional[str] = None
+    node_install_mode: Optional[str] = None
     status: NodeStatus
     message: Optional[str] = None
     geo_mode: GeoMode

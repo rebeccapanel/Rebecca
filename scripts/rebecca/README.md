@@ -1,6 +1,6 @@
 # Rebecca Installer Scripts
 
-Installer and maintenance scripts for Rebecca, Rebecca Node, and migration helpers.
+Installer, lifecycle, and migration scripts for Rebecca and Rebecca Node.
 
 ## Install Rebecca
 

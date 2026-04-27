@@ -52,17 +52,13 @@ set_app_context() {
     BINARY_NODE="$BINARY_BIN_DIR/rebecca-node"
     BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
     BINARY_SERVICE_UNIT="/etc/systemd/system/${APP_NAME}.service"
-
-    NODE_SERVICE_DIR="/usr/local/share/${APP_NAME}-maintenance"
-    NODE_SERVICE_UNIT="/etc/systemd/system/${APP_NAME}-maint.service"
-    NODE_SERVICE_UNIT_NAME="${APP_NAME}-maint.service"
 }
 
 while [[ $# -gt 0 ]]; do
     key="$1"
     
     case $key in
-        install|update|uninstall|up|down|restart|status|logs|core-update|install-script|update-script|uninstall-script|uninstall-service|edit|service-uninstall|script-install|script-update|script-uninstall|help)
+        install|update|uninstall|up|down|restart|status|logs|core-update|install-script|update-script|uninstall-script|edit|script-install|script-update|script-uninstall|help)
             COMMAND="$1"
             shift # past argument
         ;;
@@ -872,27 +868,6 @@ install_binary_rebecca_node() {
     colorized_echo green "Rebecca-node binary files installed successfully"
 }
 
-uninstall_rebecca_node_service() {
-    local target_unit=""
-    local target_file=""
-    if [ -f "$NODE_SERVICE_UNIT" ]; then
-        target_unit="$NODE_SERVICE_UNIT_NAME"
-        target_file="$NODE_SERVICE_UNIT"
-    elif [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
-        target_unit="rebecca-node-maint.service"
-        target_file="/etc/systemd/system/rebecca-node-maint.service"
-    fi
-
-    if [ -n "$target_unit" ]; then
-        systemctl disable --now "$target_unit" >/dev/null 2>&1 || true
-        rm -f "$target_file"
-        systemctl daemon-reload
-    fi
-    if [ -d "$NODE_SERVICE_DIR" ]; then
-        rm -rf "$NODE_SERVICE_DIR"
-    fi
-}
-
 install_rebecca_node_script() {
     colorized_echo blue "Installing $APP_NAME script from $SCRIPT_URL"
     TARGET_PATH="/usr/local/bin/$APP_NAME"
@@ -1235,7 +1210,7 @@ uninstall_command() {
     fi
 
     local service_exists=0
-    if [ -f "$NODE_SERVICE_UNIT" ] || [ -f "$BINARY_SERVICE_UNIT" ] || [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
+    if [ -f "$BINARY_SERVICE_UNIT" ]; then
         service_exists=1
     fi
 
@@ -1259,7 +1234,6 @@ uninstall_command() {
         fi
     fi
 
-    uninstall_rebecca_node_service
     uninstall_rebecca_node_script
 
     if [ "$node_exists" -eq 1 ]; then
@@ -1876,7 +1850,6 @@ usage() {
     colorized_echo yellow "  status          $(tput sgr0)– Show status"
     colorized_echo yellow "  logs            $(tput sgr0)– Show logs"
     colorized_echo yellow "  install         $(tput sgr0)- Install/reinstall Rebecca-node"
-    colorized_echo green "  service-uninstall $(tput sgr0)- Remove legacy maintenance service"
     colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific version"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca-node"
     colorized_echo blue "  script-install  $(tput sgr0)- Install Rebecca-node script"
@@ -1916,25 +1889,6 @@ usage() {
     colorized_echo magenta "  Service port: $SERVICE_PORT"
     colorized_echo magenta "  API port: $XRAY_API_PORT"
     
-    local summary_unit=""
-    if [ -f "$NODE_SERVICE_UNIT" ]; then
-        summary_unit="$NODE_SERVICE_UNIT_NAME"
-    elif [ -f "/etc/systemd/system/rebecca-node-maint.service" ]; then
-        summary_unit="rebecca-node-maint.service"
-    fi
-
-    if [ -n "$summary_unit" ]; then
-        echo
-        colorized_echo cyan "Legacy Maintenance Service:"
-        if systemctl is-active --quiet "$summary_unit"; then
-            colorized_echo green "  Status: Active (running)"
-        else
-            colorized_echo red "  Status: Inactive"
-        fi
-        colorized_echo magenta "  Service: $summary_unit"
-        colorized_echo magenta "  Remove: $APP_NAME service-uninstall"
-    fi
-    
     colorized_echo blue "================================="
     echo
 }
@@ -1950,7 +1904,6 @@ print_menu() {
         "status:Show status"
         "logs:Show logs"
         "install:Install/reinstall Rebecca-node"
-        "service-uninstall:Remove legacy maintenance service"
         "update:Update to latest version"
         "uninstall:Uninstall Rebecca-node"
         "script-install:Install Rebecca-node script"
@@ -1984,15 +1937,14 @@ map_choice_to_command() {
         4) echo "status" ;;
         5) echo "logs" ;;
         6) echo "install" ;;
-        7) echo "service-uninstall" ;;
-        8) echo "update" ;;
-        9) echo "uninstall" ;;
-        10) echo "script-install" ;;
-        11) echo "script-update" ;;
-        12) echo "script-uninstall" ;;
-        13) echo "core-update" ;;
-        14) echo "edit" ;;
-        15) echo "help" ;;
+        7) echo "update" ;;
+        8) echo "uninstall" ;;
+        9) echo "script-install" ;;
+        10) echo "script-update" ;;
+        11) echo "script-uninstall" ;;
+        12) echo "core-update" ;;
+        13) echo "edit" ;;
+        14) echo "help" ;;
         *) echo "$1" ;;
     esac
 }
@@ -2013,10 +1965,6 @@ dispatch_command() {
         install-script|script-install) install_rebecca_node_script ;;
         update-script|script-update) install_rebecca_node_script ;;
         uninstall-script|script-uninstall) uninstall_rebecca_node_script ;;
-        uninstall-service|service-uninstall)
-            uninstall_rebecca_node_service
-            colorized_echo green "Legacy Rebecca-node maintenance service removed successfully"
-        ;;
         edit) edit_command ;;
         help) usage ;;
         *) usage ;;

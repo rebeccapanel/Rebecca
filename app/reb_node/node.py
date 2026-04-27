@@ -303,6 +303,7 @@ class ReSTXRayNode:
         self._api = None
         self._started = False
         self.node_version = None
+        self.install_mode = None
         self._tls_target_name = "rebeccapanel"
         self._grpc_root_cert: Optional[bytes] = None
 
@@ -581,6 +582,7 @@ class ReSTXRayNode:
         node_version = version_res.get("node_version")
         if node_version:
             self.node_version = node_version
+        self.install_mode = version_res.get("install_mode") or version_res.get("mode") or self.install_mode
         self._set_health_cache(True, bool(version_res.get("started", False)))
 
     def disconnect(self):
@@ -596,6 +598,7 @@ class ReSTXRayNode:
         node_version = res.get("node_version")
         if node_version:
             self.node_version = node_version
+        self.install_mode = res.get("install_mode") or res.get("mode") or self.install_mode
         return res.get("core_version")
 
     def start(self, config: XRayConfig):

@@ -10,6 +10,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
+HOST_OPERATION_DISABLED_DETAIL = (
+    "This host-level action is available only on binary installations. "
+    "Migrate this panel to the binary version before using update, restart, core, or geo actions from the web UI."
+)
+
 
 def _resolve_rebecca_cli() -> str:
     candidates = [
@@ -35,6 +40,14 @@ def _metadata_path() -> Path:
     return app_dir / ".binary-release.json"
 
 
+def _install_mode_file() -> Path:
+    configured = os.getenv("REBECCA_INSTALL_MODE_FILE", "").strip()
+    if configured:
+        return Path(configured)
+    app_dir = Path(os.getenv("REBECCA_APP_DIR", "/opt/rebecca"))
+    return app_dir / ".install-mode"
+
+
 def _read_metadata() -> dict[str, Any] | None:
     path = _metadata_path()
     if not path.exists():
@@ -48,12 +61,31 @@ def _read_metadata() -> dict[str, Any] | None:
 
 def get_binary_runtime_info() -> dict[str, Any]:
     metadata = _read_metadata() or {}
+    mode = os.getenv("REBECCA_INSTALL_MODE", "").strip().lower()
+    if not mode:
+        try:
+            mode = _install_mode_file().read_text(encoding="utf-8").strip().lower()
+        except Exception:
+            mode = ""
+    mode = mode or metadata.get("install_mode") or "docker"
     return {
-        "mode": os.getenv("REBECCA_INSTALL_MODE", metadata.get("install_mode", "unknown")),
+        "mode": mode,
+        "install_mode": mode,
         "service": _service_name(),
+        "image": metadata.get("image") or ("rebecca-server (binary)" if mode == "binary" else "rebeccapanel/rebecca"),
+        "tag": metadata.get("tag"),
         "python": sys.version.split()[0],
         "binary": metadata,
     }
+
+
+def is_binary_runtime() -> bool:
+    return get_binary_runtime_info().get("mode") == "binary"
+
+
+def require_binary_runtime() -> None:
+    if not is_binary_runtime():
+        raise HTTPException(status_code=409, detail=HOST_OPERATION_DISABLED_DETAIL)
 
 
 def run_rebecca_cli(args: list[str], *, timeout: int = 900) -> dict[str, str]:

@@ -136,7 +136,7 @@ const decodeToggleKey = (key: string) =>
 	key.replace(new RegExp(TOGGLE_KEY_PLACEHOLDER, "g"), ".");
 
 type MaintenanceInfo = {
-	panel?: { image?: string; tag?: string } | null;
+	panel?: { image?: string; tag?: string; mode?: string; install_mode?: string } | null;
 	node?: { image?: string; tag?: string } | null;
 };
 
@@ -658,6 +658,11 @@ export const IntegrationSettingsPage = () => {
 
 	const [activeMaintenanceAction, setActiveMaintenanceAction] =
 		useState<MaintenanceAction | null>(null);
+	const panelInstallMode =
+		maintenanceInfoQuery.data?.panel?.mode ||
+		maintenanceInfoQuery.data?.panel?.install_mode ||
+		"docker";
+	const hostActionsAvailable = panelInstallMode === "binary";
 
 	useEffect(() => {
 		if (!activeMaintenanceAction) {
@@ -1527,8 +1532,24 @@ export const IntegrationSettingsPage = () => {
 									</Stack>
 									<Stack spacing={2} mt={4}>
 										<Text fontSize="sm" color="gray.500">
-											{t("settings.panel.maintenanceActionsDescription")}
+											{hostActionsAvailable
+												? t("settings.panel.maintenanceActionsDescription")
+												: t(
+														"settings.panel.binaryMigrationRequiredDescription",
+														"Host-level update, restart, core, and geo actions are available only after migrating this installation to binary mode.",
+													)}
 										</Text>
+										{!hostActionsAvailable && (
+											<Alert status="warning" variant="subtle" borderRadius="md">
+												<AlertIcon />
+												<Text fontSize="sm">
+													{t(
+														"settings.panel.binaryMigrationRequired",
+														"This panel is running in Docker mode. Migrate to the binary version before using these actions from the web UI.",
+													)}
+												</Text>
+											</Alert>
+										)}
 										{activeMaintenanceAction && (
 											<Alert status="info" variant="subtle" borderRadius="md">
 												<AlertIcon />
@@ -1548,6 +1569,7 @@ export const IntegrationSettingsPage = () => {
 												leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
 												onClick={() => updateMutation.mutate()}
 												isLoading={updateMutation.isLoading}
+												isDisabled={!hostActionsAvailable}
 											>
 												{t("settings.panel.updateAction")}
 											</Button>
@@ -1568,6 +1590,7 @@ export const IntegrationSettingsPage = () => {
 												}
 												onClick={() => restartMutation.mutate()}
 												isLoading={restartMutation.isLoading}
+												isDisabled={!hostActionsAvailable}
 											>
 												{t("settings.panel.restartAction")}
 											</Button>

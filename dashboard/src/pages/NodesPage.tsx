@@ -164,6 +164,10 @@ type VersionDialogTarget =
 
 type GeoDialogTarget = { type: "master" } | { type: "node"; node: NodeType };
 
+type MaintenanceInfo = {
+	panel?: { mode?: string; install_mode?: string } | null;
+};
+
 export const NodesPage: FC = () => {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
@@ -298,6 +302,17 @@ export const NodesPage: FC = () => {
 			enabled: canManageNodes,
 		},
 	);
+	const { data: maintenanceInfo } = useQuery<MaintenanceInfo>(
+		["maintenance-info"],
+		() => apiFetch<MaintenanceInfo>("/maintenance/info"),
+		{
+			refetchOnWindowFocus: false,
+			enabled: canManageNodes,
+		},
+	);
+	const panelInstallMode =
+		maintenanceInfo?.panel?.mode || maintenanceInfo?.panel?.install_mode || "docker";
+	const hostActionsAvailable = panelInstallMode === "binary";
 	const latestNodeRelease = useQuery({
 		queryKey: ["node-latest-release"],
 		queryFn: async () => {
@@ -1148,6 +1163,7 @@ export const NodesPage: FC = () => {
 					colorScheme="primary"
 					onClick={() => setVersionDialogTarget({ type: "master" })}
 					isLoading={updatingMasterCore}
+					isDisabled={!hostActionsAvailable}
 					flex={{ base: "1", sm: "0 1 auto" }}
 					minW={{ base: "full", sm: "auto" }}
 					whiteSpace="normal"
@@ -1160,6 +1176,7 @@ export const NodesPage: FC = () => {
 					variant="outline"
 					onClick={() => setGeoDialogTarget({ type: "master" })}
 					isLoading={updatingMasterGeo}
+					isDisabled={!hostActionsAvailable}
 					flex={{ base: "1", sm: "0 1 auto" }}
 					minW={{ base: "full", sm: "auto" }}
 					whiteSpace="normal"
@@ -1340,7 +1357,7 @@ export const NodesPage: FC = () => {
 							variant="outline"
 							size="sm"
 							onClick={() => setVersionDialogTarget({ type: "bulk" })}
-							isDisabled={!hasConnectedNodes}
+							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
 							w={{ base: "auto", sm: "auto" }}
 							px={{ base: 4, sm: 4 }}
 						>
@@ -1359,6 +1376,18 @@ export const NodesPage: FC = () => {
 					</Stack>
 				</Stack>
 			</Stack>
+
+			{!hostActionsAvailable && (
+				<Alert status="warning" variant="subtle" borderRadius="md">
+					<AlertIcon />
+					<AlertDescription>
+						{t(
+							"nodes.binaryMigrationRequired",
+							"Core, geo, restart, and update actions are disabled in Docker mode. Migrate the panel and nodes to binary mode to use host-level controls from the web UI.",
+						)}
+					</AlertDescription>
+				</Alert>
+			)}
 
 			{isLoading ? (
 				<SimpleGrid columns={nodeGridColumns} spacing={4}>
@@ -1458,6 +1487,8 @@ export const NodesPage: FC = () => {
 								isUpdatingService &&
 								nodeId != null &&
 								updatingServiceNodeId === nodeId;
+							const nodeHostActionsAvailable =
+								hostActionsAvailable && node.node_install_mode === "binary";
 							const statusBadge = (
 								<NodeModalStatusBadge status={status} compact />
 							);
@@ -1543,7 +1574,7 @@ export const NodesPage: FC = () => {
 														setVersionDialogTarget({ type: "node", node })
 													}
 													isLoading={isCoreUpdating}
-													isDisabled={!nodeId}
+													isDisabled={!nodeId || !nodeHostActionsAvailable}
 												>
 													{t("nodes.updateCoreAction")}
 												</Button>
@@ -1555,7 +1586,7 @@ export const NodesPage: FC = () => {
 													nodeId && setGeoDialogTarget({ type: "node", node })
 												}
 												isLoading={isGeoUpdating}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t("nodes.updateGeoAction", "Update geo")}
 											</Button>
@@ -1565,7 +1596,7 @@ export const NodesPage: FC = () => {
 												colorScheme="orange"
 												onClick={() => handleRestartNodeService(node)}
 												isLoading={isRestartingMaintenance}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t(
 													"nodes.restartServiceAction",
@@ -1578,7 +1609,7 @@ export const NodesPage: FC = () => {
 												colorScheme="teal"
 												onClick={() => handleUpdateNodeService(node)}
 												isLoading={isUpdatingMaintenance}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t("nodes.updateServiceAction", "Update node service")}
 											</Button>

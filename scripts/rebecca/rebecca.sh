@@ -36,8 +36,6 @@ BINARY_CLI_LAUNCHER="/usr/local/bin/rebecca-cli"
 BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
 BINARY_ARTIFACT_PREFIX="${BINARY_ARTIFACT_PREFIX:-rebecca-binaries}"
 BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
-SERVICE_DIR="/usr/local/share/rebecca-maintenance"
-SERVICE_UNIT="/etc/systemd/system/rebecca-maint.service"
 PARSED_DOMAINS=()
 
 colorized_echo() {
@@ -349,17 +347,6 @@ install_rebecca_script() {
     colorized_echo green "rebecca script installed successfully"
 }
 
-uninstall_rebecca_service() {
-    if [ -f "$SERVICE_UNIT" ]; then
-        systemctl disable --now rebecca-maint.service >/dev/null 2>&1 || true
-        rm -f "$SERVICE_UNIT"
-        systemctl daemon-reload
-    fi
-    if [ -d "$SERVICE_DIR" ]; then
-        rm -rf "$SERVICE_DIR"
-    fi
-}
-
 trim_string() {
     local value="$1"
     value="${value#"${value%%[![:space:]]*}"}"
@@ -559,6 +546,16 @@ set_env_value() {
     else
         echo "${key} = \"${value}\"" >> "$ENV_FILE"
     fi
+}
+
+get_env_value() {
+    local key="$1"
+    if [ ! -f "$ENV_FILE" ]; then
+        return
+    fi
+    grep -E "^[[:space:]]*#?[[:space:]]*${key}[[:space:]]*=" "$ENV_FILE" 2>/dev/null \
+        | tail -n 1 \
+        | sed -E 's/^[^=]+=//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//'
 }
 
 escape_dotenv_double_quoted() {
@@ -1699,7 +1696,7 @@ services:
         condition: service_healthy
 
   mysql:
-    image: mysql:lts
+    image: mysql:8.4
     env_file: .env
     network_mode: host
     restart: always
@@ -1719,8 +1716,7 @@ services:
       - --host-cache-size=0                       # Disables host cache to prevent DNS issues
       - --innodb-open-files=1024                  # Sets the limit for InnoDB open files
       - --innodb-buffer-pool-size=256M            # Allocates buffer pool size for InnoDB
-      - --innodb-log-file-size=64M                # Sets InnoDB log file size to balance log retention and performance
-      - --innodb-log-files-in-group=2             # Uses two log files to balance recovery and disk I/O
+      - --innodb-redo-log-capacity=128M           # Sets redo log capacity to balance recovery and disk I/O
       - --general_log=0                           # Disables general query log for lower disk usage
       - --slow_query_log=1                        # Enables slow query log for performance analysis
       - --slow_query_log_file=/var/lib/mysql/slow.log # Logs slow queries for troubleshooting
@@ -2043,11 +2039,6 @@ install_binary_rebecca() {
     local tmp_dir
     local package_path=""
 
-    if [ "$database_type" != "sqlite" ]; then
-        colorized_echo red "Binary install currently supports SQLite only."
-        colorized_echo yellow "Use Dockerized install for MySQL or MariaDB."
-        exit 1
-    fi
     set_rebecca_source_for_version "$rebecca_version"
 
     detect_os
@@ -2100,20 +2091,24 @@ install_binary_rebecca() {
     upsert_env_assignment "XRAY_JSON" "$DATA_DIR/xray_config.json"
     upsert_env_assignment "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
     upsert_env_assignment "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
-    upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "sqlite:///${DATA_DIR}/db.sqlite3"
+    configure_binary_database "$database_type"
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
         colorized_echo blue "Fetching xray config file"
-        curl -fsSL "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" || {
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" || {
             rm -f "$DATA_DIR/xray_config.json"
             colorized_echo yellow "No bundled xray_config.json found; Rebecca will use its built-in default."
         }
     fi
 
-    curl -fsSL "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
-    chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
-    if [ ! -x "$DATA_DIR/xray-core/xray" ]; then
-        REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
+    if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"; then
+        chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
+        if [ ! -x "$DATA_DIR/xray-core/xray" ]; then
+            REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
+        fi
+    else
+        rm -f "$APP_DIR/scripts/install_latest_xray.sh"
+        colorized_echo yellow "Could not fetch Xray installer script; Rebecca will start and Xray can be installed later with core-update."
     fi
 
     write_binary_release_metadata "${resolved_version:-$rebecca_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
@@ -2150,7 +2145,9 @@ status_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_up; then
         echo -n "Status: "
@@ -2184,6 +2181,14 @@ status_command() {
 
 
 prompt_for_rebecca_password() {
+    if [ -n "${MYSQL_PASSWORD:-}" ]; then
+        return
+    fi
+    if [ ! -t 0 ]; then
+        MYSQL_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+        colorized_echo green "A secure database password has been generated automatically."
+        return
+    fi
     colorized_echo cyan "This password will be used to access the database and should be strong."
     colorized_echo cyan "If you do not enter a custom password, a secure 20-character password will be generated automatically."
 
@@ -2199,6 +2204,149 @@ prompt_for_rebecca_password() {
 
     # Пауза 3 секунды перед продолжением
     sleep 3
+}
+
+sql_escape_literal() {
+    printf "%s" "$1" | sed "s/'/''/g"
+}
+
+get_configured_database_type() {
+    local flavor
+    local db_url
+    flavor=$(get_env_value "REBECCA_DATABASE_FLAVOR")
+    case "$flavor" in
+        mysql|mariadb|sqlite)
+            echo "$flavor"
+            return
+        ;;
+    esac
+
+    db_url=$(get_env_value "SQLALCHEMY_DATABASE_URL")
+    if [[ "$db_url" == sqlite* ]]; then
+        echo "sqlite"
+    elif [[ "$db_url" == mysql* ]]; then
+        if [ -d "/var/lib/mysql" ] && command -v mariadb >/dev/null 2>&1 && ! command -v mysqld >/dev/null 2>&1; then
+            echo "mariadb"
+        else
+            echo "mysql"
+        fi
+    else
+        echo "sqlite"
+    fi
+}
+
+mysql_root_command() {
+    if command -v mysql >/dev/null 2>&1; then
+        mysql --protocol=socket -uroot "$@"
+    elif command -v mariadb >/dev/null 2>&1; then
+        mariadb --protocol=socket -uroot "$@"
+    else
+        return 1
+    fi
+}
+
+install_host_database() {
+    local database_type="$1"
+    local package_name
+    local service_name
+    local config_file
+
+    case "$database_type" in
+        mysql)
+            package_name="mysql-server"
+            service_name="mysql"
+            config_file="/etc/mysql/mysql.conf.d/rebecca.cnf"
+        ;;
+        mariadb)
+            package_name="mariadb-server"
+            service_name="mariadb"
+            config_file="/etc/mysql/mariadb.conf.d/60-rebecca.cnf"
+        ;;
+        *)
+            return 0
+        ;;
+    esac
+
+    detect_os
+    if ! command -v mysql >/dev/null 2>&1 && ! command -v mariadb >/dev/null 2>&1; then
+        install_package "$package_name" || {
+            if [ "$database_type" = "mysql" ]; then
+                install_package default-mysql-server
+            else
+                return 1
+            fi
+        }
+    fi
+
+    systemctl enable --now "$service_name" >/dev/null 2>&1 || systemctl enable --now mysql >/dev/null 2>&1 || true
+
+    mkdir -p "$(dirname "$config_file")"
+    cat > "$config_file" <<EOF
+[mysqld]
+bind-address=127.0.0.1
+skip-name-resolve=ON
+local-infile=0
+symbolic-links=0
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+max_connections=200
+EOF
+    systemctl restart "$service_name" >/dev/null 2>&1 || systemctl restart mysql >/dev/null 2>&1 || true
+
+    if [ -z "${MYSQL_PASSWORD:-}" ]; then
+        prompt_for_rebecca_password
+    fi
+    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)}"
+    MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)}"
+    local escaped_password
+    escaped_password=$(sql_escape_literal "$MYSQL_PASSWORD")
+
+    local sql_file
+    sql_file=$(mktemp)
+    cat > "$sql_file" <<EOF
+CREATE DATABASE IF NOT EXISTS \`rebecca\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'rebecca'@'127.0.0.1' IDENTIFIED BY '${escaped_password}';
+CREATE USER IF NOT EXISTS 'rebecca'@'localhost' IDENTIFIED BY '${escaped_password}';
+ALTER USER 'rebecca'@'127.0.0.1' IDENTIFIED BY '${escaped_password}';
+ALTER USER 'rebecca'@'localhost' IDENTIFIED BY '${escaped_password}';
+GRANT ALL PRIVILEGES ON \`rebecca\`.* TO 'rebecca'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON \`rebecca\`.* TO 'rebecca'@'localhost';
+DELETE FROM mysql.user WHERE User='';
+DROP DATABASE IF EXISTS test;
+FLUSH PRIVILEGES;
+EOF
+    if ! mysql_root_command < "$sql_file"; then
+        rm -f "$sql_file"
+        colorized_echo red "Failed to configure local $database_type. Make sure root can access MySQL/MariaDB through the local socket."
+        exit 1
+    fi
+    rm -f "$sql_file"
+
+    local mysql_password_url_encoded
+    mysql_password_url_encoded=$(urlencode_value "$MYSQL_PASSWORD")
+    upsert_env_assignment "REBECCA_DATABASE_FLAVOR" "$database_type"
+    upsert_env_assignment "MYSQL_DATABASE" "rebecca"
+    upsert_env_assignment "MYSQL_USER" "rebecca"
+    upsert_env_assignment "MYSQL_PASSWORD" "$MYSQL_PASSWORD"
+    upsert_env_assignment "MYSQL_ROOT_PASSWORD" "$MYSQL_ROOT_PASSWORD"
+    upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "mysql+pymysql://rebecca:${mysql_password_url_encoded}@127.0.0.1:3306/rebecca"
+}
+
+configure_binary_database() {
+    local database_type="${1:-sqlite}"
+    case "$database_type" in
+        sqlite|"")
+            upsert_env_assignment "REBECCA_DATABASE_FLAVOR" "sqlite"
+            upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "sqlite:///${DATA_DIR}/db.sqlite3"
+        ;;
+        mysql|mariadb)
+            install_host_database "$database_type"
+        ;;
+        *)
+            colorized_echo red "Unsupported database type for binary install: $database_type"
+            exit 1
+        ;;
+    esac
 }
 
 install_command() {
@@ -2471,12 +2619,7 @@ uninstall_command() {
         app_exists=1
     fi
 
-    local service_exists=0
-    if [ -f "$SERVICE_UNIT" ]; then
-        service_exists=1
-    fi
-
-    if [ "$app_exists" -eq 0 ] && [ "$service_exists" -eq 0 ]; then
+    if [ "$app_exists" -eq 0 ]; then
         colorized_echo red "Rebecca's not installed!"
         exit 1
     fi
@@ -2496,7 +2639,6 @@ uninstall_command() {
         fi
     fi
     uninstall_rebecca_script
-    uninstall_rebecca_service
 
     if [ "$app_exists" -eq 1 ]; then
         uninstall_rebecca
@@ -2512,7 +2654,7 @@ uninstall_command() {
             colorized_echo green "Rebecca uninstalled successfully"
         fi
     else
-        colorized_echo green "Legacy Rebecca maintenance service and script removed"
+        colorized_echo green "Legacy Rebecca script removed"
     fi
 }
 
@@ -2596,7 +2738,9 @@ restart_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     down_rebecca
     up_rebecca
@@ -2639,7 +2783,9 @@ logs_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_up; then
         colorized_echo red "Rebecca is not up."
@@ -2661,7 +2807,9 @@ down_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_up; then
         colorized_echo red "Rebecca's already down"
@@ -2678,7 +2826,9 @@ cli_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if ! is_rebecca_up; then
         colorized_echo red "Rebecca is not up."
@@ -2722,7 +2872,9 @@ up_command() {
         exit 1
     fi
     
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     if is_rebecca_up; then
         colorized_echo red "Rebecca's already up"
@@ -2786,7 +2938,9 @@ update_command() {
     fi
     set_rebecca_source_for_version "$rebecca_version"
 
-    detect_compose
+    if ! is_binary_install; then
+        detect_compose
+    fi
     
     colorized_echo blue "Updating Rebecca CLI..."
     update_rebecca_script "$rebecca_version"
@@ -2836,12 +2990,210 @@ update_rebecca() {
     local rebecca_version="${1:-latest}"
 
     if is_binary_install; then
-        install_binary_rebecca "$rebecca_version" "sqlite"
+        install_binary_rebecca "$rebecca_version" "$(get_configured_database_type)"
         return
     fi
 
     set_compose_rebecca_image_tag "$rebecca_version"
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" pull
+}
+
+migration_sqlite_path() {
+    local db_url
+    db_url=$(get_env_value "SQLALCHEMY_DATABASE_URL")
+    case "$db_url" in
+        sqlite:////*)
+            printf "/%s\n" "${db_url#sqlite:////}"
+        ;;
+        sqlite:///*)
+            printf "%s\n" "${db_url#sqlite:///}"
+        ;;
+        *)
+            printf "%s/db.sqlite3\n" "$DATA_DIR"
+        ;;
+    esac
+}
+
+detect_docker_database_type() {
+    if [ -f "$COMPOSE_FILE" ] && grep -qi "image:.*mariadb" "$COMPOSE_FILE"; then
+        echo "mariadb"
+    elif [ -f "$COMPOSE_FILE" ] && grep -qi "image:.*mysql" "$COMPOSE_FILE"; then
+        echo "mysql"
+    else
+        local db_url
+        db_url=$(get_env_value "SQLALCHEMY_DATABASE_URL")
+        if [[ "$db_url" == mysql* ]]; then
+            echo "mysql"
+        else
+            echo "sqlite"
+        fi
+    fi
+}
+
+dump_docker_database() {
+    local database_type="$1"
+    local backup_dir="$2"
+    local root_password
+    local container_id
+
+    case "$database_type" in
+        mysql)
+            root_password=$(get_env_value "MYSQL_ROOT_PASSWORD")
+            container_id=$($COMPOSE -f "$COMPOSE_FILE" -p "$APP_NAME" ps -q mysql)
+            if [ -z "$container_id" ]; then
+                colorized_echo red "MySQL container not found."
+                exit 1
+            fi
+            docker exec "$container_id" mysqldump -uroot -p"$root_password" --single-transaction --routines --events --triggers rebecca > "$backup_dir/db.sql"
+        ;;
+        mariadb)
+            root_password=$(get_env_value "MYSQL_ROOT_PASSWORD")
+            container_id=$($COMPOSE -f "$COMPOSE_FILE" -p "$APP_NAME" ps -q mariadb)
+            if [ -z "$container_id" ]; then
+                colorized_echo red "MariaDB container not found."
+                exit 1
+            fi
+            docker exec "$container_id" sh -c 'command -v mariadb-dump >/dev/null 2>&1 && exec mariadb-dump "$@" || exec mysqldump "$@"' sh -uroot -p"$root_password" --single-transaction --routines --events --triggers rebecca > "$backup_dir/db.sql"
+        ;;
+        sqlite)
+            local sqlite_path
+            sqlite_path=$(migration_sqlite_path)
+            if [ ! -f "$sqlite_path" ]; then
+                colorized_echo red "SQLite database not found at $sqlite_path"
+                exit 1
+            fi
+            cp "$sqlite_path" "$backup_dir/db.sqlite3"
+        ;;
+    esac
+}
+
+import_binary_database_backup() {
+    local database_type="$1"
+    local backup_dir="$2"
+    case "$database_type" in
+        sqlite)
+            if [ -f "$backup_dir/db.sqlite3" ]; then
+                mkdir -p "$DATA_DIR"
+                install -m 600 "$backup_dir/db.sqlite3" "$DATA_DIR/db.sqlite3"
+            fi
+        ;;
+        mysql|mariadb)
+            if [ -f "$backup_dir/db.sql" ]; then
+                mysql_root_command -e "DROP DATABASE IF EXISTS \`rebecca\`; CREATE DATABASE \`rebecca\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+                mysql_root_command rebecca < "$backup_dir/db.sql"
+            fi
+        ;;
+    esac
+}
+
+migrate_docker_to_binary_command() {
+    check_running_as_root
+    local rebecca_version=""
+    local rebecca_version_set="false"
+    local yes="false"
+    local database_type=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dev)
+                rebecca_version="dev"
+                rebecca_version_set="true"
+                shift
+            ;;
+            --version)
+                rebecca_version="$2"
+                rebecca_version_set="true"
+                shift 2
+            ;;
+            --database)
+                database_type="$2"
+                shift 2
+            ;;
+            -y|--yes)
+                yes="true"
+                shift
+            ;;
+            -h|--help)
+                colorized_echo red "Usage: rebecca migrate-binary [--database sqlite|mysql|mariadb] [--dev | --version vX.Y.Z] [-y]"
+                exit 0
+            ;;
+            *)
+                colorized_echo red "Unknown option: $1"
+                exit 1
+            ;;
+        esac
+    done
+
+    if ! is_rebecca_installed || [ ! -f "$COMPOSE_FILE" ]; then
+        colorized_echo red "Docker installation not found at $APP_DIR"
+        exit 1
+    fi
+    if is_binary_install; then
+        colorized_echo yellow "Rebecca is already in binary mode."
+        exit 0
+    fi
+    if [ "$rebecca_version_set" != "true" ]; then
+        rebecca_version=$(get_installed_rebecca_channel)
+    fi
+    database_type="${database_type:-$(detect_docker_database_type)}"
+    case "$database_type" in
+        sqlite|mysql|mariadb) ;;
+        *)
+            colorized_echo red "Unsupported database type: $database_type"
+            exit 1
+        ;;
+    esac
+
+    if [ "$yes" != "true" ]; then
+        colorized_echo yellow "This will migrate Rebecca from Docker to binary mode using $database_type."
+        read -p "Continue? (y/n) "
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            colorized_echo red "Aborted"
+            exit 1
+        fi
+    fi
+
+    detect_compose
+    local backup_dir="/opt/rebecca-docker-to-binary-backups/$(date -u +%Y%m%d%H%M%S)"
+    mkdir -p "$backup_dir"
+    cp "$ENV_FILE" "$backup_dir/.env" 2>/dev/null || true
+    cp "$COMPOSE_FILE" "$backup_dir/docker-compose.yml" 2>/dev/null || true
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --exclude mysql --exclude xray-core "$DATA_DIR/" "$backup_dir/rebecca-data/" 2>/dev/null || true
+    else
+        mkdir -p "$backup_dir/rebecca-data"
+        cp -a "$DATA_DIR/." "$backup_dir/rebecca-data/" 2>/dev/null || true
+        rm -rf "$backup_dir/rebecca-data/mysql" "$backup_dir/rebecca-data/xray-core" 2>/dev/null || true
+    fi
+
+    if [ "$database_type" = "sqlite" ] && is_rebecca_up; then
+        down_rebecca
+    fi
+    if [ "$database_type" != "sqlite" ] && ! is_rebecca_up; then
+        up_rebecca
+        sleep 8
+    fi
+
+    colorized_echo blue "Dumping Docker database to $backup_dir"
+    dump_docker_database "$database_type" "$backup_dir"
+
+    if is_rebecca_up; then
+        down_rebecca
+    fi
+    mv "$COMPOSE_FILE" "$COMPOSE_FILE.docker-migrated" 2>/dev/null || true
+
+    colorized_echo blue "Installing Rebecca binary files"
+    MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(get_env_value "MYSQL_PASSWORD")}"
+    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(get_env_value "MYSQL_ROOT_PASSWORD")}"
+    install_binary_rebecca "$rebecca_version" "$database_type"
+
+    colorized_echo blue "Importing database backup into binary installation"
+    import_binary_database_backup "$database_type" "$backup_dir"
+
+    write_rebecca_channel "$rebecca_version"
+    echo "binary" > "$INSTALL_MODE_FILE"
+    up_rebecca
+    colorized_echo green "Migration to binary mode completed. Backup kept at $backup_dir"
 }
 
 prune_unused_docker_images() {
@@ -2908,7 +3260,6 @@ print_menu() {
         "logs:Show logs"
         "cli:Rebecca CLI"
         "install:Install Rebecca"
-        "service-uninstall:Remove legacy maintenance service"
         "update:Update to latest version"
         "uninstall:Uninstall Rebecca"
         "script-install:Install Rebecca script"
@@ -2916,6 +3267,7 @@ print_menu() {
         "script-uninstall:Uninstall Rebecca script"
         "backup:Manual backup launch"
         "backup-service:Backup service (Telegram + cron job)"
+        "migrate-binary:Migrate Docker install to binary"
         "core-update:Update/Change Xray core"
         "enable-phpmyadmin:Add phpMyAdmin to docker-compose and restart services"
         "edit:Edit docker-compose.yml"
@@ -2948,14 +3300,14 @@ map_choice_to_command() {
         5) echo "logs" ;;
         6) echo "cli" ;;
         7) echo "install" ;;
-        8) echo "service-uninstall" ;;
-        9) echo "update" ;;
-        10) echo "uninstall" ;;
-        11) echo "script-install" ;;
-        12) echo "script-update" ;;
-        13) echo "script-uninstall" ;;
-        14) echo "backup" ;;
-        15) echo "backup-service" ;;
+        8) echo "update" ;;
+        9) echo "uninstall" ;;
+        10) echo "script-install" ;;
+        11) echo "script-update" ;;
+        12) echo "script-uninstall" ;;
+        13) echo "backup" ;;
+        14) echo "backup-service" ;;
+        15) echo "migrate-binary" ;;
         16) echo "core-update" ;;
         17) echo "enable-phpmyadmin" ;;
         18) echo "edit" ;;
@@ -2983,7 +3335,6 @@ usage() {
     colorized_echo yellow "  logs            $(tput sgr0)- Show logs"
     colorized_echo yellow "  cli             $(tput sgr0)- Rebecca CLI"
     colorized_echo yellow "  install         $(tput sgr0)- Install Rebecca"
-    colorized_echo yellow "  service-uninstall $(tput sgr0)- Remove legacy maintenance service"
     colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific release"
     colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca"
     colorized_echo yellow "  script-install  $(tput sgr0)- Install Rebecca script"
@@ -2991,6 +3342,7 @@ usage() {
     colorized_echo yellow "  script-uninstall  $(tput sgr0)- Uninstall Rebecca script"
     colorized_echo yellow "  backup          $(tput sgr0)- Manual backup launch"
     colorized_echo yellow "  backup-service  $(tput sgr0)- Rebecca Backupservice to backup to TG, and a new job in crontab"
+    colorized_echo yellow "  migrate-binary  $(tput sgr0)- Migrate Docker install to binary"
     colorized_echo yellow "  core-update     $(tput sgr0)- Update/Change Xray core"
     colorized_echo yellow "  enable-phpmyadmin $(tput sgr0)- Add phpMyAdmin to docker-compose.yml and restart services"
     colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml (via nano or vi editor)"
@@ -3006,7 +3358,7 @@ usage() {
     echo
     colorized_echo cyan "Install options:"
     colorized_echo magenta "  --mode docker|binary"
-    colorized_echo magenta "  --database sqlite|mysql|mariadb (Dockerized mode)"
+    colorized_echo magenta "  --database sqlite|mysql|mariadb"
     colorized_echo magenta "  --dev or --version vX.Y.Z (install/update)"
     echo
     current_version=$(get_current_xray_core_version)
@@ -3027,8 +3379,8 @@ dispatch_command() {
         cli) cli_command "$@" ;;
         backup) backup_command "$@" ;;
         backup-service) backup_service "$@" ;;
+        migrate-binary|migrate-to-binary) migrate_docker_to_binary_command "$@" ;;
         install) install_command "$@" ;;
-        service-uninstall|uninstall-service) uninstall_rebecca_service "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
         script-install|install-script) install_rebecca_script "$@" ;;
