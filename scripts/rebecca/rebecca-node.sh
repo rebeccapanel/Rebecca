@@ -639,16 +639,23 @@ get_node_binary_dev_artifact_metadata() {
     local artifact_name
     local artifact_url
     local nightly_workflow
+    local workflow_path
 
-    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/workflows/${REBECCA_NODE_BINARY_WORKFLOW_NAME}.yml/runs?status=completed&event=push&per_page=20"
+    nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
+    case "$nightly_workflow" in
+        *.yml|*.yaml) ;;
+        *) nightly_workflow="${nightly_workflow}.yml" ;;
+    esac
+    workflow_path=".github/workflows/${nightly_workflow}"
+    workflow_runs_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs?per_page=50"
     workflow_runs_payload=$(curl -fsSL "$workflow_runs_api") || {
         colorized_echo red "Unable to read Rebecca-node binary workflow metadata: $workflow_runs_api" >&2
         exit 1
     }
 
-    latest_run_json=$(echo "$workflow_runs_payload" | jq -c '
+    latest_run_json=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
         .workflow_runs[]?
-        | select(.head_branch == "'"${REBECCA_NODE_BINARY_DEV_BRANCH}"'" and .conclusion == "success")
+        | select(.head_branch == $branch and .event == "push" and .conclusion == "success" and .path == $workflow_path)
     ' | head -n 1)
 
     if [ -z "$latest_run_json" ]; then
@@ -678,11 +685,6 @@ get_node_binary_dev_artifact_metadata() {
         exit 1
     fi
 
-    nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
-    case "$nightly_workflow" in
-        *.yml|*.yaml) ;;
-        *) nightly_workflow="${nightly_workflow}.yml" ;;
-    esac
     artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
     printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
 }
