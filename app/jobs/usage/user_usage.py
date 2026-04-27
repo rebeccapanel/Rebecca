@@ -431,7 +431,7 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                 used_traffic=User.used_traffic + bindparam("value"),
                 online_at=case(
                     (
-                        User.status.in_([UserStatus.active, UserStatus.on_hold]),
+                        or_(User.status == UserStatus.active, User.status == UserStatus.on_hold),
                         utcnow_naive(),
                     ),
                     else_=User.online_at,
