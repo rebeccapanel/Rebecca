@@ -55,8 +55,11 @@ const formatNumberValue = (value: number) =>
 	numberWithCommas(value) ?? value.toString();
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
-	// Remove leading 'v' or 'vv', remove '-alpha', '-beta', '-rc' etc. suffixes, and trim
-	return value.trim().replace(/^v+/i, "").split(/[-_]/)[0].trim();
+	const trimmed = value.trim();
+	if (trimmed.toLowerCase().startsWith("dev-")) {
+		return trimmed.toLowerCase();
+	}
+	return trimmed.replace(/^v+/i, "").split(/[-_]/)[0].trim();
 };
 
 const HISTORY_INTERVALS = [
@@ -887,29 +890,6 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const [historyInterval, setHistoryInterval] = useState(
 		HISTORY_INTERVALS[0].seconds,
 	);
-	const latestPanelRelease = useQuery({
-		queryKey: ["panel-latest-release"],
-		queryFn: async () => {
-			const response = await window.fetch(
-				"https://api.github.com/repos/rebeccapanel/Rebecca/releases/latest",
-				{ headers: { Accept: "application/vnd.github+json" } },
-			);
-			if (!response.ok) throw new Error("Failed to load latest panel release");
-			return response.json();
-		},
-		refetchOnWindowFocus: false,
-		staleTime: 5 * 60 * 1000,
-		retry: 1,
-	});
-
-	const latestPanelVersion =
-		latestPanelRelease.data?.tag_name || latestPanelRelease.data?.name || "";
-	const currentPanelVersion = systemData?.version || version || "";
-	const _isPanelUpdateAvailable =
-		normalizeVersion(latestPanelVersion) &&
-		normalizeVersion(currentPanelVersion) &&
-		normalizeVersion(latestPanelVersion) !==
-			normalizeVersion(currentPanelVersion);
 
 	const canSeeGlobal =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;

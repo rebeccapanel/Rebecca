@@ -190,6 +190,8 @@ class NodeResponse(Node):
     xray_version: Optional[str] = None
     node_service_version: Optional[str] = None
     node_install_mode: Optional[str] = None
+    node_binary_tag: Optional[str] = None
+    node_update_channel: Optional[str] = None
     status: NodeStatus
     message: Optional[str] = None
     geo_mode: GeoMode

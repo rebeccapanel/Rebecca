@@ -304,8 +304,22 @@ class ReSTXRayNode:
         self._started = False
         self.node_version = None
         self.install_mode = None
+        self.node_binary_tag = None
+        self.update_channel = None
         self._tls_target_name = "rebeccapanel"
         self._grpc_root_cert: Optional[bytes] = None
+
+    def _apply_service_metadata(self, payload: dict):
+        node_version = payload.get("node_version")
+        if node_version:
+            self.node_version = node_version
+        self.install_mode = payload.get("install_mode") or payload.get("mode") or self.install_mode
+        binary_tag = payload.get("node_binary_tag") or payload.get("binary_tag")
+        if binary_tag:
+            self.node_binary_tag = binary_tag
+        update_channel = payload.get("update_channel")
+        if update_channel:
+            self.update_channel = update_channel
 
     def _register_runtime_error(self, detail: str) -> None:
         """Best-effort bridge to master error reporting/status handling."""
@@ -577,12 +591,8 @@ class ReSTXRayNode:
         res = self.make_request("/connect", timeout=60)
         self._session_id = res["session_id"]
 
-        # Get node version after connecting
         version_res = self.make_request("/", timeout=60)
-        node_version = version_res.get("node_version")
-        if node_version:
-            self.node_version = node_version
-        self.install_mode = version_res.get("install_mode") or version_res.get("mode") or self.install_mode
+        self._apply_service_metadata(version_res)
         self._set_health_cache(True, bool(version_res.get("started", False)))
 
     def disconnect(self):
@@ -595,10 +605,7 @@ class ReSTXRayNode:
     def get_version(self):
         self._ensure_connected()
         res = self.make_request("/", timeout=60)
-        node_version = res.get("node_version")
-        if node_version:
-            self.node_version = node_version
-        self.install_mode = res.get("install_mode") or res.get("mode") or self.install_mode
+        self._apply_service_metadata(res)
         return res.get("core_version")
 
     def start(self, config: XRayConfig):
@@ -727,11 +734,16 @@ class ReSTXRayNode:
                 "detail": "Node service restart triggered. Reconnect will be attempted automatically.",
             }
 
-    def update_host_service(self):
+    def update_host_service(self, channel: str | None = None, version: str | None = None):
         """Ask the remote node binary service to run the Rebecca-node update workflow."""
         self._ensure_connected()
+        params = {}
+        if channel:
+            params["channel"] = channel
+        if version:
+            params["version"] = version
         try:
-            return self.make_request("/service/update", timeout=900, report_runtime_error=False)
+            return self.make_request("/service/update", timeout=900, report_runtime_error=False, **params)
         except NodeAPIError as exc:
             if not _is_expected_maintenance_disconnect(exc.detail):
                 raise

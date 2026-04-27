@@ -65,8 +65,19 @@ def test_binary_runtime_info_supports_binary_mode_without_docker(tmp_path: Path,
     assert panel_info["mode"] == "binary"
     assert panel_info["image"] == "rebecca-server (binary)"
     assert panel_info["tag"] == "v1.2.3"
+    assert panel_info["channel"] == "latest"
     assert panel_info["binary"]["image"] == "rebecca-server (binary)"
     assert panel_info["binary"]["tag"] == "v1.2.3"
+
+
+def test_build_rebecca_update_args_supports_release_and_dev_channels():
+    from app.utils.binary_control import build_rebecca_update_args
+
+    assert build_rebecca_update_args() == ["update"]
+    assert build_rebecca_update_args(channel="latest") == ["update", "--version", "latest"]
+    assert build_rebecca_update_args(channel="dev") == ["update", "--dev"]
+    assert build_rebecca_update_args(version="v1.2.3") == ["update", "--version", "v1.2.3"]
+    assert build_rebecca_update_args(version="latest") == ["update", "--version", "latest"]
 
 
 def test_runtime_info_defaults_to_docker_without_binary_marker(tmp_path: Path, monkeypatch):

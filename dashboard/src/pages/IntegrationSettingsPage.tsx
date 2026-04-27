@@ -135,12 +135,31 @@ const encodeToggleKey = (key: string) =>
 const decodeToggleKey = (key: string) =>
 	key.replace(new RegExp(TOGGLE_KEY_PLACEHOLDER, "g"), ".");
 
+type UpdateStatus = {
+	current?: string | null;
+	channel?: string;
+	available?: boolean;
+	target?: string | null;
+	latest_release?: { tag?: string | null } | null;
+	latest_dev?: { tag?: string | null } | null;
+	error?: string | null;
+};
+
 type MaintenanceInfo = {
-	panel?: { image?: string; tag?: string; mode?: string; install_mode?: string } | null;
+	panel?: {
+		image?: string;
+		tag?: string;
+		mode?: string;
+		install_mode?: string;
+		channel?: string;
+		update?: UpdateStatus;
+	} | null;
 	node?: { image?: string; tag?: string } | null;
+	node_update?: UpdateStatus | null;
 };
 
 type MaintenanceAction = "update" | "restart" | "soft-reload";
+type UpdateChannel = "current" | "latest" | "dev";
 
 const flattenEventToggleValues = (
 	source: Record<string, unknown>,
@@ -663,6 +682,22 @@ export const IntegrationSettingsPage = () => {
 		maintenanceInfoQuery.data?.panel?.install_mode ||
 		"docker";
 	const hostActionsAvailable = panelInstallMode === "binary";
+	const [selectedUpdateChannel, setSelectedUpdateChannel] =
+		useState<UpdateChannel>("current");
+	const panelUpdateInfo = maintenanceInfoQuery.data?.panel?.update;
+	const selectedUpdateTarget =
+		selectedUpdateChannel === "dev"
+			? panelUpdateInfo?.latest_dev?.tag
+			: selectedUpdateChannel === "latest"
+				? panelUpdateInfo?.latest_release?.tag
+				: panelUpdateInfo?.target;
+
+	useEffect(() => {
+		const channel = maintenanceInfoQuery.data?.panel?.channel;
+		if (channel === "dev" || channel === "latest") {
+			setSelectedUpdateChannel(channel);
+		}
+	}, [maintenanceInfoQuery.data?.panel?.channel]);
 
 	useEffect(() => {
 		if (!activeMaintenanceAction) {
@@ -746,9 +781,10 @@ export const IntegrationSettingsPage = () => {
 			| "/maintenance/update"
 			| "/maintenance/restart"
 			| "/maintenance/soft-reload",
+		body?: Record<string, unknown>,
 	): Promise<{ wentOffline: boolean }> => {
 		try {
-			await apiFetch(path, { method: "POST", timeout: 3000 });
+			await apiFetch(path, { method: "POST", body, timeout: 3000 });
 			return { wentOffline: false };
 		} catch (error: any) {
 			const isLikelyPanelOffline = !error?.response;
@@ -784,7 +820,10 @@ export const IntegrationSettingsPage = () => {
 	};
 
 	const updateMutation = useMutation(
-		() => triggerMaintenanceAction("/maintenance/update"),
+		() =>
+			triggerMaintenanceAction("/maintenance/update", {
+				channel: selectedUpdateChannel,
+			}),
 		{
 			retry: false,
 			onMutate: () => setActiveMaintenanceAction("update"),
@@ -795,6 +834,21 @@ export const IntegrationSettingsPage = () => {
 			},
 		},
 	);
+
+	const handlePanelUpdateClick = () => {
+		if (selectedUpdateChannel === "dev") {
+			const confirmed = window.confirm(
+				t(
+					"settings.panel.devChannelConfirm",
+					"You are switching/updating this panel to the dev channel. Dev builds are not stable and can include unfinished changes, breaking migrations, or temporary bugs. Continue?",
+				),
+			);
+			if (!confirmed) {
+				return;
+			}
+		}
+		updateMutation.mutate();
+	};
 
 	const restartMutation = useMutation(
 		() => triggerMaintenanceAction("/maintenance/restart"),
@@ -1550,6 +1604,97 @@ export const IntegrationSettingsPage = () => {
 												</Text>
 											</Alert>
 										)}
+										{hostActionsAvailable && panelUpdateInfo?.available && (
+											<Alert status="success" variant="subtle" borderRadius="md">
+												<AlertIcon />
+												<Text fontSize="sm">
+													{t(
+														"settings.panel.updateAvailableNotice",
+														"Update available: {{current}} -> {{target}}",
+														{
+															current:
+																panelUpdateInfo.current ||
+																maintenanceInfoQuery.data?.panel?.tag ||
+																t("settings.panel.versionUnknown"),
+															target:
+																selectedUpdateTarget ||
+																panelUpdateInfo.target ||
+																t("settings.panel.versionUnknown"),
+														},
+													)}
+												</Text>
+											</Alert>
+										)}
+										{hostActionsAvailable && panelUpdateInfo?.error && (
+											<Alert status="warning" variant="subtle" borderRadius="md">
+												<AlertIcon />
+												<Text fontSize="sm">
+													{t(
+														"settings.panel.updateCheckFailed",
+														"Could not check for updates: {{error}}",
+														{ error: panelUpdateInfo.error },
+													)}
+												</Text>
+											</Alert>
+										)}
+										{hostActionsAvailable && (
+											<FormControl maxW={{ base: "full", md: "360px" }}>
+												<FormLabel fontSize="sm">
+													{t(
+														"settings.panel.updateChannel",
+														"Update channel",
+													)}
+												</FormLabel>
+												<Select
+													size="sm"
+													value={selectedUpdateChannel}
+													onChange={(event) =>
+														setSelectedUpdateChannel(
+															event.target.value as UpdateChannel,
+														)
+													}
+												>
+													<option value="current">
+														{t(
+															"settings.panel.updateChannelCurrent",
+															"Current installed channel",
+														)}
+													</option>
+													<option value="latest">
+														{t(
+															"settings.panel.updateChannelLatest",
+															"Latest release",
+														)}
+													</option>
+													<option value="dev">
+														{t("settings.panel.updateChannelDev", "Dev build")}
+													</option>
+												</Select>
+												<FormHelperText>
+													{selectedUpdateTarget
+														? t(
+																"settings.panel.updateTargetHint",
+																"Target: {{version}}",
+																{ version: selectedUpdateTarget },
+															)
+														: t(
+																"settings.panel.updateTargetUnknown",
+																"Target version is not available yet.",
+															)}
+												</FormHelperText>
+											</FormControl>
+										)}
+										{hostActionsAvailable && selectedUpdateChannel === "dev" && (
+											<Alert status="warning" variant="subtle" borderRadius="md">
+												<AlertIcon />
+												<Text fontSize="sm">
+													{t(
+														"settings.panel.devChannelWarning",
+														"Dev builds are not stable. They can include unfinished changes, migrations in progress, and temporary bugs.",
+													)}
+												</Text>
+											</Alert>
+										)}
 										{activeMaintenanceAction && (
 											<Alert status="info" variant="subtle" borderRadius="md">
 												<AlertIcon />
@@ -1567,7 +1712,7 @@ export const IntegrationSettingsPage = () => {
 												size="sm"
 												colorScheme="yellow"
 												leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
-												onClick={() => updateMutation.mutate()}
+												onClick={handlePanelUpdateClick}
 												isLoading={updateMutation.isLoading}
 												isDisabled={!hostActionsAvailable}
 											>

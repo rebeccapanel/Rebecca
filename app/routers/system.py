@@ -12,7 +12,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func
 
@@ -31,7 +31,13 @@ from app.models.system import (
 )
 from app.models.user import UserStatus
 from app.utils import responses
-from app.utils.binary_control import get_binary_runtime_info, require_binary_runtime, schedule_rebecca_cli
+from app.utils.binary_control import (
+    build_rebecca_update_args,
+    get_binary_runtime_info,
+    require_binary_runtime,
+    schedule_rebecca_cli,
+)
+from app.utils.update_check import get_binary_update_status
 from app.utils.system import cpu_usage, realtime_bandwidth
 from app.reb_node.config import XRayConfig
 from app.utils.xray_config import restart_xray_and_invalidate_cache, restart_xray_targets
@@ -308,14 +314,33 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
 @router.get("/maintenance/info", responses={403: responses._403})
 def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
     """Return local binary/runtime information for host-installed panels."""
-    return {"panel": get_binary_runtime_info(), "node": None}
+    panel = get_binary_runtime_info()
+    panel["update"] = get_binary_update_status(
+        "rebeccapanel/Rebecca",
+        panel.get("tag"),
+        channel=panel.get("channel"),
+    )
+    return {
+        "panel": panel,
+        "node": None,
+        "node_update": get_binary_update_status("rebeccapanel/Rebecca-node", None),
+    }
 
 
 @router.post("/maintenance/update", responses={403: responses._403})
-def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
+def update_panel_from_maintenance(
+    payload: dict | None = Body(default=None),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
     """Schedule an on-host Rebecca update via the installed CLI."""
     require_binary_runtime()
-    schedule_rebecca_cli(["update"])
+    payload = payload or {}
+    schedule_rebecca_cli(
+        build_rebecca_update_args(
+            channel=payload.get("channel"),
+            version=payload.get("version"),
+        )
+    )
     return {"status": "accepted"}
 
 

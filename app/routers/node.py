@@ -26,7 +26,7 @@ from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
 from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _validate_download_url
-from app.utils.binary_control import require_binary_runtime
+from app.utils.binary_control import build_rebecca_update_args, require_binary_runtime
 from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
     generate_certificate,
@@ -69,6 +69,8 @@ def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeRespons
     if runtime_node:
         node_response.node_service_version = getattr(runtime_node, "node_version", None)
         node_response.node_install_mode = getattr(runtime_node, "install_mode", None)
+        node_response.node_binary_tag = getattr(runtime_node, "node_binary_tag", None)
+        node_response.node_update_channel = getattr(runtime_node, "update_channel", None)
     return node_response
 
 
@@ -612,6 +614,7 @@ def restart_node_service(
 @router.post("/node/{node_id}/service/update", responses={403: responses._403, 404: responses._404})
 def update_node_service(
     node_id: int,
+    payload: dict | None = Body(default=None),
     dbnode: NodeResponse = Depends(get_node),
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
@@ -621,11 +624,15 @@ def update_node_service(
     if not node:
         raise HTTPException(404, detail="Node not connected")
     _require_node_binary_runtime(node)
+    payload = payload or {}
+    channel = payload.get("channel")
+    version = payload.get("version")
+    build_rebecca_update_args(channel=channel, version=version)
 
     _node_operation_or_raise(
         node_id=node_id,
         node_name=dbnode.name,
-        action=node.update_host_service,
+        action=lambda: node.update_host_service(channel=channel, version=version),
         failure_message=f"Unable to update Rebecca-node service for {dbnode.name}",
     )
     startup_config = xray.config.include_db_users()

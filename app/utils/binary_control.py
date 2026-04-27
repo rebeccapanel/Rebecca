@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
+
+from app.utils.update_check import infer_update_channel
 
 HOST_OPERATION_DISABLED_DETAIL = (
     "This host-level action is available only on binary installations. "
@@ -69,12 +72,14 @@ def get_binary_runtime_info() -> dict[str, Any]:
         except Exception:
             mode = ""
     mode = mode or metadata.get("install_mode") or "docker"
+    tag = metadata.get("tag")
     return {
         "mode": mode,
         "install_mode": mode,
         "service": _service_name(),
         "image": metadata.get("image") or ("rebecca-server (binary)" if mode == "binary" else "rebeccapanel/rebecca"),
-        "tag": metadata.get("tag"),
+        "tag": tag,
+        "channel": infer_update_channel(tag),
         "python": sys.version.split()[0],
         "binary": metadata,
     }
@@ -109,6 +114,33 @@ def run_rebecca_cli(args: list[str], *, timeout: int = 900) -> dict[str, str]:
         raise HTTPException(status_code=500, detail=detail)
 
     return {"stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+
+
+_RELEASE_VERSION_PATTERN = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-+._A-Za-z0-9]*)?$")
+
+
+def build_rebecca_update_args(channel: str | None = None, version: str | None = None) -> list[str]:
+    args = ["update"]
+    normalized_version = str(version or "").strip()
+    normalized_channel = str(channel or "").strip().lower()
+
+    if normalized_version:
+        if normalized_version == "latest":
+            return [*args, "--version", "latest"]
+        if normalized_version == "dev":
+            return [*args, "--dev"]
+        if not _RELEASE_VERSION_PATTERN.fullmatch(normalized_version):
+            raise HTTPException(status_code=422, detail="Invalid update version")
+        return [*args, "--version", normalized_version]
+
+    if normalized_channel in {"", "current", "auto"}:
+        return args
+    if normalized_channel == "dev":
+        return [*args, "--dev"]
+    if normalized_channel in {"latest", "stable", "release"}:
+        return [*args, "--version", "latest"]
+
+    raise HTTPException(status_code=422, detail="Invalid update channel")
 
 
 def schedule_rebecca_cli(args: list[str]) -> None:
