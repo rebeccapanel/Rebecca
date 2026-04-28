@@ -75,10 +75,10 @@ jobs:
             platform: linux/arm64
             image: python:3.13-trixie
           - asset_arch: armv5
-            platform: linux/arm/v5
+            platform: linux/arm/v7
             image: python:3.13-trixie
           - asset_arch: armv6
-            platform: linux/arm/v5
+            platform: linux/arm/v7
             image: python:3.13-trixie
           - asset_arch: armv7
             platform: linux/arm/v7
@@ -123,21 +123,19 @@ jobs:
             "${BUILD_IMAGE}" \
             bash -lc '
               set -euo pipefail
-              if [ "${ASSET_ARCH}" != "armv5" ] && [ "${ASSET_ARCH}" != "armv6" ]; then
-                export DEBIAN_FRONTEND=noninteractive
-                apt-get update
-                apt-get install -y --no-install-recommends \
-                  bash \
-                  build-essential \
-                  ca-certificates \
-                  curl \
-                  gcc \
-                  git \
-                  libffi-dev \
-                  libssl-dev \
-                  pkg-config \
-                  zlib1g-dev
-              fi
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                bash \
+                build-essential \
+                ca-certificates \
+                curl \
+                gcc \
+                git \
+                libffi-dev \
+                libssl-dev \
+                pkg-config \
+                zlib1g-dev
               case "${ASSET_ARCH}" in
                 386|s390x)
                   apt-get install -y --no-install-recommends cargo rustc
