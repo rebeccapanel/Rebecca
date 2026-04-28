@@ -2029,6 +2029,15 @@ detect_binary_arch() {
         arm64|aarch64)
             echo "arm64"
             ;;
+        i386|i486|i586|i686)
+            echo "386"
+            ;;
+        armv5l|armv5tel|armv5tejl)
+            echo "armv5"
+            ;;
+        armv6l|armv6)
+            echo "armv6"
+            ;;
         armv7l|armv7)
             echo "armv7"
             ;;
@@ -2055,7 +2064,9 @@ get_binary_release_asset_metadata() {
     local server_asset_url
     local cli_asset_url
     local package_asset_url
+    local os_asset_url
     local legacy_asset_url
+    local package_asset_name
     local server_asset_name
     local cli_asset_name
 
@@ -2071,17 +2082,29 @@ get_binary_release_asset_metadata() {
     }
 
     resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
+    package_asset_name="rebecca-linux-${binary_arch}.tar.gz"
     server_asset_name="rebecca-server-${resolved_tag}-linux-${binary_arch}"
     cli_asset_name="rebecca-cli-${resolved_tag}-linux-${binary_arch}"
 
-    package_asset_url=$(echo "$release_payload" | jq -r '
+    package_asset_url=$(echo "$release_payload" | jq -r --arg name "$package_asset_name" '
         .assets[]?
-        | select(.name == "rebecca-os")
+        | select(.name == $name)
         | .browser_download_url
     ' | head -n 1)
 
     if [ -n "$package_asset_url" ] && [ "$package_asset_url" != "null" ]; then
         printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$package_asset_url"
+        return
+    fi
+
+    os_asset_url=$(echo "$release_payload" | jq -r '
+        .assets[]?
+        | select(.name == "rebecca-os")
+        | .browser_download_url
+    ' | head -n 1)
+
+    if [ -n "$os_asset_url" ] && [ "$os_asset_url" != "null" ]; then
+        printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$os_asset_url"
         return
     fi
 
