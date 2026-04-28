@@ -110,8 +110,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          docker pull --platform "${BUILD_PLATFORM}" "${BUILD_IMAGE}"
+
           set +e
           docker run --rm \
+            --pull never \
             --platform "${BUILD_PLATFORM}" \
             -e ASSET_ARCH="${ASSET_ARCH}" \
             -e ASSET_NAME="${ASSET_NAME}" \
