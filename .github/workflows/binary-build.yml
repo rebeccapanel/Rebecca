@@ -120,18 +120,21 @@ jobs:
             "${BUILD_IMAGE}" \
             bash -lc '
               set -euo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                bash \
-                build-essential \
-                ca-certificates \
-                curl \
-                gcc \
-                git \
-                libffi-dev \
-                libssl-dev \
-                pkg-config \
-                zlib1g-dev
+              if [ "${ASSET_ARCH}" != "armv5" ] && [ "${ASSET_ARCH}" != "armv6" ]; then
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update
+                apt-get install -y --no-install-recommends \
+                  bash \
+                  build-essential \
+                  ca-certificates \
+                  curl \
+                  gcc \
+                  git \
+                  libffi-dev \
+                  libssl-dev \
+                  pkg-config \
+                  zlib1g-dev
+              fi
               case "${ASSET_ARCH}" in
                 386|s390x)
                   apt-get install -y --no-install-recommends cargo rustc
