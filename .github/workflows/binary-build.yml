@@ -63,25 +63,25 @@ jobs:
         include:
           - asset_arch: "386"
             platform: linux/386
-            image: i386/python:3.13-trixie
+            image: python:3.13-trixie
           - asset_arch: amd64
             platform: linux/amd64
             image: python:3.13-trixie
           - asset_arch: arm64
             platform: linux/arm64
-            image: arm64v8/python:3.13-trixie
+            image: python:3.13-trixie
           - asset_arch: armv5
             platform: linux/arm/v5
-            image: arm32v5/python:3.13-trixie
+            image: python:3.13-trixie
           - asset_arch: armv6
             platform: linux/arm/v6
-            image: arm32v6/python:3.13-trixie
+            image: python:3.13-trixie
           - asset_arch: armv7
             platform: linux/arm/v7
-            image: arm32v7/python:3.13-trixie
+            image: python:3.13-trixie
           - asset_arch: s390x
             platform: linux/s390x
-            image: s390x/python:3.13-trixie
+            image: python:3.13-trixie
 
     steps:
       - name: Checkout
