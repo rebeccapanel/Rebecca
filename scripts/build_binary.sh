@@ -76,10 +76,12 @@ COMMON_PYINSTALLER_ARGS=(
     --collect-all pydantic
     --collect-all sqlalchemy
     --collect-all starlette
+    --collect-all setuptools
     --collect-all uvicorn
     --hidden-import dashboard
     --hidden-import main
     --hidden-import passlib.handlers.bcrypt
+    --hidden-import pkg_resources
     --hidden-import pymysql
 )
 
