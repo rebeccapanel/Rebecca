@@ -813,6 +813,8 @@ class ThreeXUiImportService:
             return source_expire_seconds + inbound_config.expire_override_seconds
         if inbound_config.expire_override_seconds <= 0:
             return None
+        if inbound_config.expire_override_seconds < 1_000_000_000:
+            return int(datetime.now(UTC).timestamp()) + inbound_config.expire_override_seconds
         return inbound_config.expire_override_seconds
 
     @classmethod

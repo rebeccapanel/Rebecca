@@ -368,6 +368,176 @@ def test_3xui_import_skips_disabled_inbound_config(auth_client, tmp_path):
         assert crud.get_user(db, skipped_client["email"]) is None
 
 
+def test_3xui_import_assigns_selected_service(auth_client, tmp_path):
+    owner = _create_admin("service_owner")
+    service = _create_service("target_service", admin_ids=[owner.id])
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp() * 1000)
+    source_client = _build_client(
+        protocol="vless",
+        email=f"service_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=f"sub-service-{uuid.uuid4().hex[:8]}",
+        total_bytes=2 * 1024**3,
+        expire_ms=future_ms,
+    )
+    source_db = tmp_path / "service_mapping.db"
+    _build_3xui_db(
+        source_db,
+        [{"id": 51, "remark": "Service Mapping", "protocol": "vless", "clients": [source_client]}],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {
+                    "inbound_id": 51,
+                    "admin_id": owner.id,
+                    "service_id": service.id,
+                    "username_conflict_mode": "rename",
+                }
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 1
+
+    with GetDB() as db:
+        imported = crud.get_user(db, source_client["email"])
+        assert imported is not None
+        assert imported.admin_id == owner.id
+        assert imported.service_id == service.id
+
+
+def test_3xui_import_renames_username_conflicts(auth_client, tmp_path):
+    owner = _create_admin("rename_owner")
+    username = f"rename_{uuid.uuid4().hex[:8]}@example.com"
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp() * 1000)
+    with GetDB() as db:
+        existing = db_models.User(
+            username=username,
+            credential_key="rename-existing-key",
+            status=UserStatus.active,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            proxies=[db_models.Proxy(type="vless", settings={"id": str(uuid.uuid4())}, excluded_inbounds=[])],
+        )
+        db.add(existing)
+        db.commit()
+
+    source_client = _build_client(
+        protocol="vless",
+        email=username,
+        sub_id=f"sub-rename-{uuid.uuid4().hex[:8]}",
+        total_bytes=2 * 1024**3,
+        expire_ms=future_ms,
+    )
+    source_db = tmp_path / "rename_conflict.db"
+    _build_3xui_db(
+        source_db,
+        [{"id": 61, "remark": "Rename Conflict", "protocol": "vless", "clients": [source_client]}],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {"inbound_id": 61, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "rename"}
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 1
+    assert job["result"]["renamed"] == 1
+
+    with GetDB() as db:
+        imported = (
+            db.query(db_models.User)
+            .filter(db_models.User.subadress == source_client["subId"])
+            .filter(db_models.User.status != UserStatus.deleted)
+            .first()
+        )
+        assert imported is not None
+        assert imported.username != username
+        assert imported.username.startswith(username[:28])
+
+
+def test_3xui_import_skips_username_conflicts(auth_client, tmp_path):
+    owner = _create_admin("skip_username_owner")
+    username = f"skipname_{uuid.uuid4().hex[:8]}@example.com"
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp() * 1000)
+    with GetDB() as db:
+        existing = db_models.User(
+            username=username,
+            credential_key="skip-existing-key",
+            status=UserStatus.active,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            proxies=[db_models.Proxy(type="vmess", settings={"id": str(uuid.uuid4())}, excluded_inbounds=[])],
+        )
+        db.add(existing)
+        db.commit()
+
+    source_client = _build_client(
+        protocol="vmess",
+        email=username,
+        sub_id=f"sub-skip-name-{uuid.uuid4().hex[:8]}",
+        total_bytes=2 * 1024**3,
+        expire_ms=future_ms,
+    )
+    source_db = tmp_path / "skip_username.db"
+    _build_3xui_db(
+        source_db,
+        [{"id": 62, "remark": "Skip Username", "protocol": "vmess", "clients": [source_client]}],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {"inbound_id": 62, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "skip"}
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 0
+    assert job["result"]["skipped_username_conflicts"] == 1
+
+    with GetDB() as db:
+        assert (
+            db.query(db_models.User)
+            .filter(db_models.User.subadress == source_client["subId"])
+            .filter(db_models.User.status != UserStatus.deleted)
+            .count()
+        ) == 0
+
+
 def test_3xui_import_overwrites_existing_username(auth_client, tmp_path):
     owner = _create_admin("overwrite_owner")
     future_ms = int((datetime.now(timezone.utc) + timedelta(days=14)).timestamp() * 1000)
@@ -511,3 +681,205 @@ def test_3xui_import_keeps_first_duplicate_subaddress(auth_client, tmp_path):
             .count()
         )
         assert count == 1
+
+
+def test_3xui_import_skips_all_source_duplicate_subaddresses(auth_client, tmp_path):
+    owner = _create_admin("dup_skip_all_owner")
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=5)).timestamp() * 1000)
+    subadress = f"dup-skip-all-{uuid.uuid4().hex[:8]}"
+    first_client = _build_client(
+        protocol="vmess",
+        email=f"first_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=subadress,
+        total_bytes=1 * 1024**3,
+        expire_ms=future_ms,
+    )
+    second_client = _build_client(
+        protocol="trojan",
+        email=f"second_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=subadress,
+        total_bytes=1 * 1024**3,
+        expire_ms=future_ms,
+    )
+    source_db = tmp_path / "dup_skip_all.db"
+    _build_3xui_db(
+        source_db,
+        [
+            {"id": 71, "remark": "First", "protocol": "vmess", "clients": [first_client]},
+            {"id": 72, "remark": "Second", "protocol": "trojan", "clients": [second_client]},
+        ],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {"inbound_id": 71, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "rename"},
+                {"inbound_id": 72, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "rename"},
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "skip_all",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 0
+    assert job["result"]["skipped_subaddress_conflicts"] == 2
+
+    with GetDB() as db:
+        assert (
+            db.query(db_models.User)
+            .filter(db_models.User.subadress == subadress)
+            .filter(db_models.User.status != UserStatus.deleted)
+            .count()
+        ) == 0
+
+
+def test_3xui_import_skips_existing_subaddress_conflict(auth_client, tmp_path):
+    owner = _create_admin("existing_sub_owner")
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=5)).timestamp() * 1000)
+    subadress = f"existing-sub-{uuid.uuid4().hex[:8]}"
+    with GetDB() as db:
+        existing = db_models.User(
+            username=f"existing_{uuid.uuid4().hex[:8]}",
+            credential_key="existing-sub-key",
+            subadress=subadress,
+            status=UserStatus.active,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            proxies=[db_models.Proxy(type="vless", settings={"id": str(uuid.uuid4())}, excluded_inbounds=[])],
+        )
+        db.add(existing)
+        db.commit()
+
+    source_client = _build_client(
+        protocol="vless",
+        email=f"existing_source_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=subadress,
+        total_bytes=1 * 1024**3,
+        expire_ms=future_ms,
+    )
+    source_db = tmp_path / "existing_sub_skip.db"
+    _build_3xui_db(
+        source_db,
+        [{"id": 73, "remark": "Existing Sub", "protocol": "vless", "clients": [source_client]}],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {"inbound_id": 73, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "rename"}
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "skip",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 0
+    assert job["result"]["skipped_subaddress_conflicts"] == 1
+
+    with GetDB() as db:
+        assert crud.get_user(db, source_client["email"]) is None
+
+
+def test_3xui_import_applies_traffic_and_expire_overrides(auth_client, tmp_path):
+    owner = _create_admin("override_owner")
+    source_expire = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
+    source_expire_ms = source_expire * 1000
+    add_client = _build_client(
+        protocol="vless",
+        email=f"add_override_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=f"sub-add-{uuid.uuid4().hex[:8]}",
+        total_bytes=1 * 1024**3,
+        expire_ms=source_expire_ms,
+    )
+    replace_client = _build_client(
+        protocol="vless",
+        email=f"replace_override_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=f"sub-replace-{uuid.uuid4().hex[:8]}",
+        total_bytes=1 * 1024**3,
+        expire_ms=source_expire_ms,
+    )
+    source_db = tmp_path / "overrides.db"
+    _build_3xui_db(
+        source_db,
+        [
+            {"id": 81, "remark": "Add Overrides", "protocol": "vless", "clients": [add_client]},
+            {"id": 82, "remark": "Replace Overrides", "protocol": "vless", "clients": [replace_client]},
+        ],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    replace_before = int(datetime.now(timezone.utc).timestamp())
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {
+                    "inbound_id": 81,
+                    "admin_id": owner.id,
+                    "service_id": None,
+                    "username_conflict_mode": "rename",
+                    "expire_override_mode": "add",
+                    "expire_override_seconds": 86400,
+                    "traffic_override_mode": "add",
+                    "traffic_override_bytes": 2 * 1024**3,
+                },
+                {
+                    "inbound_id": 82,
+                    "admin_id": owner.id,
+                    "service_id": None,
+                    "username_conflict_mode": "rename",
+                    "expire_override_mode": "replace",
+                    "expire_override_seconds": 2 * 86400,
+                    "traffic_override_mode": "replace",
+                    "traffic_override_bytes": 5 * 1024**3,
+                },
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["created"] == 2
+
+    with GetDB() as db:
+        add_user = (
+            db.query(db_models.User)
+            .filter(db_models.User.subadress == add_client["subId"])
+            .filter(db_models.User.status != UserStatus.deleted)
+            .first()
+        )
+        replace_user = (
+            db.query(db_models.User)
+            .filter(db_models.User.subadress == replace_client["subId"])
+            .filter(db_models.User.status != UserStatus.deleted)
+            .first()
+        )
+        assert add_user is not None
+        assert replace_user is not None
+        assert add_user.data_limit == 3 * 1024**3
+        assert add_user.expire == source_expire + 86400
+        assert replace_user.data_limit == 5 * 1024**3
+        assert replace_before + 2 * 86400 <= replace_user.expire <= int(datetime.now(timezone.utc).timestamp()) + 2 * 86400
+        assert replace_user.status == UserStatus.active
