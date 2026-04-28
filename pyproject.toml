@@ -47,6 +47,7 @@ dependencies = [
     "qrcode==7.4.2",
     "requests==2.32.3",
     "rich==13.7.1",
+    "setuptools==80.9.0",
     "sqlalchemy==2.0.36",
     "starlette==0.40.0",
     "typer==0.7.0",
