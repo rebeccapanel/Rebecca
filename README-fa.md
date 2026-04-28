@@ -100,18 +100,19 @@
 
 # راهنمای نصب
 
-با دستور زیر رِبِکا را نصب کنید. نصاب از شما می‌پرسد نصب داکرایز می‌خواهید یا نصب باینری:
+برای نصب داکر رِبِکا از این اسکریپت استفاده کنید:
 
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install
 ```
 
-برای نصب خودکار، mode را صریح مشخص کنید:
+برای نصب باینری رِبِکا از این اسکریپت جدا استفاده کنید:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode docker
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install
 ```
+
+این دو اسکریپت عمدا جدا هستند. اسکریپت داکر فقط نصب docker-compose را مدیریت می‌کند و اسکریپت باینری، asset منتشرشده را به صورت سرویس native systemd نصب می‌کند.
 
 حالت داکرایز از SQLite، MySQL و MariaDB پشتیبانی می‌کند. با دستور زیر رِبِکا را با دیتابیس MySQL نصب کنید:
 
@@ -125,10 +126,10 @@ sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mariadb
 ```
 
-حالت باینری به صورت سرویس native systemd نصب می‌شود و فعلا برای نصب سبک با SQLite منتشر می‌شود. بیلدهای ریلیز برای لینوکس روی معماری‌های `amd64`، `arm64`، `armv7`، `ppc64le` و `s390x` ساخته می‌شوند و نصاب asset مناسب را خودکار انتخاب می‌کند:
+حالت باینری به صورت سرویس native systemd نصب می‌شود. بیلدهای ریلیز برای لینوکس روی معماری‌های `386`، `amd64`، `arm64`، `armv5`، `armv6`، `armv7` و `s390x` ساخته می‌شوند و نصاب asset مناسب را خودکار انتخاب می‌کند:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install
 ```
 
 وقتی نصب تمام شد:

@@ -4,26 +4,27 @@ Installer, lifecycle, and migration scripts for Rebecca and Rebecca Node.
 
 ## Install Rebecca
 
-Default installation asks for the installation mode, then asks whether you want the `latest` or `dev` channel:
+Docker and binary installers are intentionally separate.
+
+Docker install:
 
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install
 ```
 
-Use an explicit mode for automated provisioning:
+Binary install:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode docker
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install
 ```
 
-Binary mode installs the published Linux release asset for the current machine. Release assets are built for `amd64`, `arm64`, `armv7`, `ppc64le`, and `s390x`.
+Binary mode installs the published Linux release asset for the current machine.
 
 Install the dev channel explicitly:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode docker --dev
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary --dev
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --dev
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install --dev
 ```
 
 Dockerized mode supports SQLite, MySQL, and MariaDB:
@@ -37,6 +38,7 @@ Install a specific release:
 
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --version v0.5.2
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install --version v0.5.2
 ```
 
 Update to the dev channel or a specific release:
@@ -54,9 +56,18 @@ sudo rebecca core-update
 
 ## Install Rebecca Node
 
+Docker node install:
+
 ```bash
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node.sh)" @ install
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node.sh)" @ install --name rebecca-node2
+```
+
+Binary node install:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node-binary.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-node-binary.sh)" @ install --name rebecca-node2
 ```
 
 Install only the node CLI:
