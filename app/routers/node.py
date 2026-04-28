@@ -25,7 +25,7 @@ from app.models.node import (
 from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
-from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _validate_download_url
+from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _resolve_geo_template_index_url
 from app.utils.binary_control import build_rebecca_update_args, require_binary_runtime
 from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
@@ -534,7 +534,8 @@ def update_node_geo(
 
     if not files and (mode == "template" or template_name):
         try:
-            r = requests.get(_validate_download_url(template_index_url, field_name="template_index_url"), timeout=60)
+            index_url = _resolve_geo_template_index_url(template_index_url, field_name="template_index_url")
+            r = requests.get(index_url, timeout=60)
             r.raise_for_status()
             data = r.json()
         except Exception as e:

@@ -12,7 +12,7 @@ from copy import deepcopy
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
 from starlette.websockets import WebSocketDisconnect
 
-from app.runtime import xray
+from app.runtime import logger, xray
 from app.services import access_insights
 from app.db import Session, get_db, crud, GetDB
 from app.db.models import OutboundTraffic
@@ -61,11 +61,23 @@ GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-tem
 OUTBOUND_TEST_DEFAULT_URL = "https://www.google.com/generate_204"
 _OUTBOUND_TEST_LOCK = threading.Lock()
 _ALLOWED_GEO_FILENAMES = {"geoip.dat", "geosite.dat"}
-_XRAY_RELEASE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+._A-Za-z0-9]*)?$")
+_XRAY_RELEASE_TAG_RE = re.compile(r"^v[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}(?:[-+._A-Za-z0-9]{0,48})?$")
+_XRAY_ARCHIVE_MEMBERS = {
+    "xray": "xray",
+    "Xray": "Xray",
+    "xray.exe": "xray.exe",
+    "Xray.exe": "Xray.exe",
+    "geoip.dat": "geoip.dat",
+    "geosite.dat": "geosite.dat",
+    "LICENSE": "LICENSE",
+    "README.md": "README.md",
+}
 
 
 def _validate_release_tag(tag: str) -> str:
     tag = (tag or "").strip()
+    if len(tag) > 64:
+        raise HTTPException(status_code=422, detail="Invalid Xray release tag")
     if not _XRAY_RELEASE_TAG_RE.fullmatch(tag):
         raise HTTPException(status_code=422, detail="Invalid Xray release tag")
     return tag
@@ -93,14 +105,47 @@ def _validate_download_url(url: str, *, field_name: str = "url") -> str:
     return url
 
 
+def _resolve_geo_template_index_url(candidate_url: str = "", *, field_name: str = "template_index_url") -> str:
+    configured_url = os.getenv("GEO_TEMPLATES_INDEX_URL", "").strip()
+    requested_url = (candidate_url or "").strip()
+
+    if not requested_url:
+        return _validate_download_url(configured_url, field_name=field_name) if configured_url else GEO_TEMPLATES_INDEX_DEFAULT
+
+    if requested_url == GEO_TEMPLATES_INDEX_DEFAULT:
+        return GEO_TEMPLATES_INDEX_DEFAULT
+
+    if configured_url and requested_url == configured_url:
+        return _validate_download_url(configured_url, field_name=field_name)
+
+    raise HTTPException(
+        status_code=422,
+        detail=f"{field_name} must be empty, the default template index, or the configured GEO_TEMPLATES_INDEX_URL",
+    )
+
+
 def _safe_geo_filename(name: str) -> str:
-    filename = os.path.basename((name or "").strip())
-    if filename not in _ALLOWED_GEO_FILENAMES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Geo file name must be one of: {', '.join(sorted(_ALLOWED_GEO_FILENAMES))}",
-        )
-    return filename
+    filename = os.path.basename((name or "").strip().replace("\\", "/"))
+    if filename == "geoip.dat":
+        return "geoip.dat"
+    if filename == "geosite.dat":
+        return "geosite.dat"
+    raise HTTPException(
+        status_code=422,
+        detail=f"Geo file name must be one of: {', '.join(sorted(_ALLOWED_GEO_FILENAMES))}",
+    )
+
+
+def _safe_xray_archive_member(name: str) -> str | None:
+    normalized = (name or "").replace("\\", "/").strip()
+    parts = [part for part in normalized.split("/") if part]
+    if not parts:
+        return None
+    if normalized.startswith("/") or any(part == ".." for part in parts):
+        raise HTTPException(status_code=400, detail="Unsafe path in Xray archive")
+    if len(parts) != 1:
+        return None
+    return _XRAY_ARCHIVE_MEMBERS.get(parts[0])
 
 
 def _resolve_template_files(template_index_url: str, template_name: str) -> list[dict]:
@@ -108,7 +153,8 @@ def _resolve_template_files(template_index_url: str, template_name: str) -> list
     Fetch template index and return file list. If template_name is empty, pick the first template.
     """
     try:
-        r = requests.get(_validate_download_url(template_index_url, field_name="template_index_url"), timeout=60)
+        index_url = _resolve_geo_template_index_url(template_index_url, field_name="template_index_url")
+        r = requests.get(index_url, timeout=60)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -153,10 +199,14 @@ def _install_xray_zip(zip_bytes: bytes, target_dir: Path) -> Path:
         tmp_path = Path(tmpdir)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
             for member in archive.infolist():
-                member_path = (tmp_path / member.filename).resolve()
-                if not str(member_path).startswith(str(tmp_path.resolve()) + os.sep):
-                    raise HTTPException(status_code=400, detail="Unsafe path in Xray archive")
-                archive.extract(member, tmp_path)
+                output_name = _safe_xray_archive_member(member.filename)
+                if not output_name:
+                    continue
+                output_path = tmp_path / output_name
+                if member.is_dir():
+                    continue
+                with archive.open(member) as source, output_path.open("wb") as destination:
+                    shutil.copyfileobj(source, destination)
 
         candidates = [
             tmp_path / "xray",
@@ -208,8 +258,11 @@ def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Failed to download {name}: {exc}")
         try:
-            path = (dest / name).resolve()
-            if not str(path).startswith(str(dest.resolve()) + os.sep):
+            if name == "geoip.dat":
+                path = (dest / "geoip.dat").resolve()
+            elif name == "geosite.dat":
+                path = (dest / "geosite.dat").resolve()
+            else:
                 raise HTTPException(status_code=422, detail="Invalid geo file path")
             path.write_bytes(r.content)
             saved.append({"name": name, "path": str(path)})
@@ -724,11 +777,9 @@ def _resolve_assets_path_master(persist_env: bool) -> Path:
 @router.get("/core/geo/templates", responses={403: responses._403})
 def list_geo_templates(index_url: str = "", admin: Admin = Depends(Admin.check_sudo_admin)):
     """Fetch and list geo templates."""
-    url = index_url.strip() or os.getenv("GEO_TEMPLATES_INDEX_URL", "").strip()
-    if not url:
-        raise HTTPException(422, detail="index_url is required (or set GEO_TEMPLATES_INDEX_URL).")
+    url = _resolve_geo_template_index_url(index_url, field_name="index_url")
     try:
-        r = requests.get(_validate_download_url(url, field_name="index_url"), timeout=60)
+        r = requests.get(url, timeout=60)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -1118,7 +1169,7 @@ def _measure_outbound_delay(proxy_port: int, test_url: str) -> tuple[int, int]:
         response.close()
         return delay_ms, status_code
     except requests.RequestException as exc:
-        raise RuntimeError(f"Request failed: {exc}") from exc
+        raise RuntimeError("Request failed") from exc
     finally:
         session.close()
 
@@ -1140,7 +1191,7 @@ def _measure_direct_delay(test_url: str) -> tuple[int, int]:
         response.close()
         return delay_ms, status_code
     except requests.RequestException as exc:
-        raise RuntimeError(f"Direct request failed: {exc}") from exc
+        raise RuntimeError("Direct request failed") from exc
     finally:
         session.close()
 
@@ -1210,12 +1261,15 @@ def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_pro
             "delay": delay,
             "statusCode": status_code,
         }
-    except FileNotFoundError as exc:
-        return {"success": False, "error": f"Failed to start test xray instance: {exc}"}
+    except FileNotFoundError:
+        logger.warning("Failed to start test xray instance: executable not found", exc_info=True)
+        return {"success": False, "error": "Failed to start test xray instance"}
     except RuntimeError as exc:
+        logger.warning("Outbound connectivity test request failed: %s", exc, exc_info=True)
         return {"success": False, "error": str(exc)}
-    except Exception as exc:
-        return {"success": False, "error": f"Outbound test failed: {exc}"}
+    except Exception:
+        logger.warning("Outbound test failed", exc_info=True)
+        return {"success": False, "error": "Outbound test failed"}
     finally:
         if process is not None:
             _stop_test_process(process)

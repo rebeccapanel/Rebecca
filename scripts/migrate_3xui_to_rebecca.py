@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
+import hmac
 import json
 import os
 import re
@@ -37,6 +37,7 @@ SUPPORTED_PROTOCOLS = {
 USERNAME_ALLOWED_CHARS = re.compile(r"[^a-zA-Z0-9_.@-]")
 MAX_USERNAME_LEN = 32
 NOTE_MAX_LEN = 500
+KEY_DERIVATION_NAMESPACE = b"rebecca-3xui-migration-v1"
 
 
 @dataclass
@@ -142,7 +143,7 @@ def _convert_expire_to_seconds(value: Any) -> Optional[int]:
 
 def _build_deterministic_key(protocol: ProxyTypes, password: str, email: str, subadress: str, inbound_id: int) -> str:
     seed = f"3xui:{protocol.value}:{password}:{email}:{subadress}:{inbound_id}"
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
+    return hmac.new(KEY_DERIVATION_NAMESPACE, seed.encode("utf-8"), "sha256").hexdigest()[:32]
 
 
 def _sanitize_username(value: str) -> str:
@@ -414,7 +415,7 @@ def _get_existing_user(db: Session, source: SourceClient) -> Optional[db_models.
         .all()
     )
     if len(matches) > 1:
-        raise ValueError(f"Multiple Rebecca users already use credential_key '{source.credential_key}'")
+        raise ValueError("Multiple Rebecca users already use the same imported credential key")
     return matches[0] if matches else None
 
 
