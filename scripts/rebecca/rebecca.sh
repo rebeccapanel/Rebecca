@@ -36,6 +36,8 @@ BINARY_CLI_LAUNCHER="/usr/local/bin/rebecca-cli"
 BINARY_METADATA_FILE="$APP_DIR/.binary-release.json"
 BINARY_ARTIFACT_PREFIX="${BINARY_ARTIFACT_PREFIX:-rebecca-binaries}"
 BINARY_SERVICE_UNIT="/etc/systemd/system/$APP_NAME.service"
+CERTBOT_VENV_DIR="$APP_DIR/certbot-venv"
+CERTBOT_BIN=""
 PARSED_DOMAINS=()
 
 colorized_echo() {
@@ -397,6 +399,29 @@ is_valid_ip() {
     return 1
 }
 
+ssl_cert_id_for_name() {
+    local value="$1"
+    value=$(echo "$value" | tr ':' '_' | tr '/' '_')
+    printf '%s' "$value"
+}
+
+detect_public_ip() {
+    local ip=""
+    local urls=(
+        "https://api.ipify.org"
+        "https://ifconfig.me/ip"
+        "https://checkip.amazonaws.com"
+    )
+    for url in "${urls[@]}"; do
+        ip=$(curl -fsS4 --max-time 5 "$url" 2>/dev/null | tr -d '[:space:]' || true)
+        if [ -n "$ip" ] && is_valid_ip "$ip"; then
+            printf '%s' "$ip"
+            return 0
+        fi
+    done
+    return 1
+}
+
 install_ssl_dependencies() {
     detect_os
     local packages=("curl" "socat" "certbot" "openssl")
@@ -415,6 +440,50 @@ ensure_acme_sh() {
             source "$HOME/.bashrc"
         fi
     fi
+}
+
+certbot_supports_ip_certificates() {
+    local certbot_bin="$1"
+    "$certbot_bin" --help all 2>/dev/null | grep -q -- "--ip-address" \
+        && "$certbot_bin" --help all 2>/dev/null | grep -q -- "--preferred-profile"
+}
+
+find_certbot_with_ip_support() {
+    if command -v certbot >/dev/null 2>&1 && certbot_supports_ip_certificates "$(command -v certbot)"; then
+        CERTBOT_BIN="$(command -v certbot)"
+        return 0
+    fi
+
+    if [ -x "$CERTBOT_VENV_DIR/bin/certbot" ] && certbot_supports_ip_certificates "$CERTBOT_VENV_DIR/bin/certbot"; then
+        CERTBOT_BIN="$CERTBOT_VENV_DIR/bin/certbot"
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_certbot_ip_support() {
+    if find_certbot_with_ip_support; then
+        return 0
+    fi
+
+    colorized_echo yellow "Installed certbot does not support IP certificates. Installing a modern certbot in $CERTBOT_VENV_DIR"
+    detect_os
+    if ! command -v python3 >/dev/null 2>&1; then
+        install_package python3
+    fi
+    ensure_python3_venv
+    python3 -m venv "$CERTBOT_VENV_DIR"
+    "$CERTBOT_VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
+    "$CERTBOT_VENV_DIR/bin/python" -m pip install --upgrade "certbot>=5.4.0" >/dev/null
+
+    if ! certbot_supports_ip_certificates "$CERTBOT_VENV_DIR/bin/certbot"; then
+        colorized_echo red "The installed certbot still does not support --ip-address and --preferred-profile."
+        return 1
+    fi
+
+    CERTBOT_BIN="$CERTBOT_VENV_DIR/bin/certbot"
+    return 0
 }
 
 SSL_CERT_DIR=""
@@ -473,6 +542,56 @@ issue_ssl_with_certbot() {
     return 0
 }
 
+issue_ssl_public_ip() {
+    local email="$1"
+    shift
+    local ips=("$@")
+
+    if [ ${#ips[@]} -eq 0 ]; then
+        colorized_echo red "At least one IP address is required for Let's Encrypt IP SSL."
+        return 1
+    fi
+
+    ensure_certbot_ip_support || return 1
+
+    local primary="${ips[0]}"
+    local cert_id
+    cert_id=$(ssl_cert_id_for_name "$primary")
+    SSL_CERT_DIR="$CERTS_BASE/$cert_id"
+    mkdir -p "$SSL_CERT_DIR"
+
+    local certbot_args=(
+        certonly
+        --standalone
+        --non-interactive
+        --agree-tos
+        --email "$email"
+        --preferred-profile shortlived
+        --cert-name "$cert_id"
+    )
+    local ip
+    for ip in "${ips[@]}"; do
+        certbot_args+=(--ip-address "$ip")
+    done
+
+    local deploy_hook
+    deploy_hook="mkdir -p '$SSL_CERT_DIR' && cp '/etc/letsencrypt/live/$cert_id/privkey.pem' '$SSL_CERT_DIR/privkey.pem' && cp '/etc/letsencrypt/live/$cert_id/fullchain.pem' '$SSL_CERT_DIR/fullchain.pem' && systemctl restart '$APP_NAME.service' >/dev/null 2>&1 || true"
+    certbot_args+=(--deploy-hook "$deploy_hook")
+
+    "$CERTBOT_BIN" "${certbot_args[@]}" || return 1
+
+    cat "/etc/letsencrypt/live/$cert_id/privkey.pem" > "$SSL_CERT_DIR/privkey.pem"
+    cat "/etc/letsencrypt/live/$cert_id/fullchain.pem" > "$SSL_CERT_DIR/fullchain.pem"
+
+    echo "provider=letsencrypt-ip" > "$SSL_CERT_DIR/.metadata"
+    echo "email=$email" >> "$SSL_CERT_DIR/.metadata"
+    echo "domains=${ips[*]}" >> "$SSL_CERT_DIR/.metadata"
+    echo "certbot_cert_name=$cert_id" >> "$SSL_CERT_DIR/.metadata"
+    echo "validity=shortlived" >> "$SSL_CERT_DIR/.metadata"
+    echo "issued_at=$(date -u +%s)" >> "$SSL_CERT_DIR/.metadata"
+    return 0
+}
+
 issue_ssl_self_signed_ip() {
     local email="$1"
     shift
@@ -490,7 +609,7 @@ issue_ssl_self_signed_ip() {
 
     local primary="${ips[0]}"
     local cert_id
-    cert_id=$(echo "$primary" | tr ':' '_')
+    cert_id=$(ssl_cert_id_for_name "$primary")
     SSL_CERT_DIR="$CERTS_BASE/$cert_id"
     mkdir -p "$SSL_CERT_DIR"
 
@@ -704,15 +823,29 @@ perform_ssl_issue() {
     install_ssl_dependencies
     mkdir -p "$CERTS_BASE"
 
-    if [ "$has_ip" -eq 1 ] || [ "$preferred" = "self-signed" ]; then
+    if [ "$has_ip" -eq 1 ]; then
         if [ "$has_domain" -eq 1 ]; then
-            colorized_echo red "self-signed provider is only allowed with IP addresses."
+            colorized_echo red "IP certificates cannot be mixed with domain names."
             return 1
         fi
-        issue_ssl_self_signed_ip "$email" "${domains[@]}" || return 1
-        provider_used="self-signed"
-        sync_ssl_env_paths "$SSL_CERT_DIR" "self-signed"
-        colorized_echo green "Self-signed SSL certificate generated at $SSL_CERT_DIR for IP(s): ${domains[*]}"
+        case "$preferred" in
+            letsencrypt-ip|ip|public-ip|shortlived|certbot-ip)
+                issue_ssl_public_ip "$email" "${domains[@]}" || return 1
+                provider_used="letsencrypt-ip"
+                sync_ssl_env_paths "$SSL_CERT_DIR" "public"
+                colorized_echo green "Public short-lived IP SSL certificate installed at $SSL_CERT_DIR for IP(s): ${domains[*]}"
+                ;;
+            auto|self-signed)
+                issue_ssl_self_signed_ip "$email" "${domains[@]}" || return 1
+                provider_used="self-signed"
+                sync_ssl_env_paths "$SSL_CERT_DIR" "self-signed"
+                colorized_echo green "Self-signed SSL certificate generated at $SSL_CERT_DIR for IP(s): ${domains[*]}"
+                ;;
+            *)
+                colorized_echo red "IP SSL requires --provider letsencrypt-ip or --provider self-signed."
+                return 1
+                ;;
+        esac
         
         if is_rebecca_installed; then
             detect_compose
@@ -725,6 +858,11 @@ perform_ssl_issue() {
         fi
         
         return 0
+    fi
+
+    if [ "$preferred" = "self-signed" ] || [ "$preferred" = "letsencrypt-ip" ] || [ "$preferred" = "ip" ] || [ "$preferred" = "public-ip" ] || [ "$preferred" = "shortlived" ] || [ "$preferred" = "certbot-ip" ]; then
+        colorized_echo red "Provider $preferred is only valid for IP address certificates."
+        return 1
     fi
 
     if [ "$preferred" = "acme" ]; then
@@ -799,9 +937,48 @@ prompt_ssl_setup() {
     if [[ ! "$ssl_answer" =~ ^[Yy]$ ]]; then
         return
     fi
+
+    colorized_echo cyan "Select SSL certificate type:"
+    echo "  1) Domain certificate (Let's Encrypt, regular public SSL)"
+    echo "  2) Temporary public IP certificate (Let's Encrypt short-lived, about 6 days)"
+    echo "  3) Self-signed IP certificate (browser warning, local fallback)"
+    read -p "Select option [1]: " ssl_mode
+    ssl_mode="${ssl_mode:-1}"
+
     read -p "Enter email for certificate notifications: " ssl_email
-    read -p "Enter domain(s) separated by comma: " ssl_domains
-    if ! ssl_command issue --email "$ssl_email" --domains "$ssl_domains" --non-interactive; then
+
+    local ssl_domains=""
+    local ssl_provider="auto"
+    case "$ssl_mode" in
+        2)
+            local detected_ip=""
+            detected_ip=$(detect_public_ip || true)
+            if [ -n "$detected_ip" ]; then
+                read -p "Enter server public IP [$detected_ip]: " ssl_domains
+                ssl_domains="${ssl_domains:-$detected_ip}"
+            else
+                read -p "Enter server public IP: " ssl_domains
+            fi
+            ssl_provider="letsencrypt-ip"
+            ;;
+        3)
+            local detected_self_ip=""
+            detected_self_ip=$(detect_public_ip || true)
+            if [ -n "$detected_self_ip" ]; then
+                read -p "Enter server IP [$detected_self_ip]: " ssl_domains
+                ssl_domains="${ssl_domains:-$detected_self_ip}"
+            else
+                read -p "Enter server IP: " ssl_domains
+            fi
+            ssl_provider="self-signed"
+            ;;
+        *)
+            read -p "Enter domain(s) separated by comma: " ssl_domains
+            ssl_provider="auto"
+            ;;
+    esac
+
+    if ! ssl_command issue --email "$ssl_email" --domains "$ssl_domains" --provider "$ssl_provider" --non-interactive; then
         colorized_echo yellow "SSL setup skipped due to input/issuance error. You can retry with: rebecca ssl issue"
     fi
 }
@@ -809,6 +986,7 @@ prompt_ssl_setup() {
 ssl_issue() {
     local email=""
     local domains_input=""
+    local ip_input=""
     local provider="auto"
     local interactive=true
 
@@ -830,6 +1008,20 @@ ssl_issue() {
                 domains_input="$2"
                 shift 2
                 ;;
+            --ip-address=*|--ip=*)
+                ip_input="${1#*=}"
+                if [ "$provider" = "auto" ]; then
+                    provider="letsencrypt-ip"
+                fi
+                shift
+                ;;
+            --ip-address|--ip)
+                ip_input="$2"
+                if [ "$provider" = "auto" ]; then
+                    provider="letsencrypt-ip"
+                fi
+                shift 2
+                ;;
             --provider=*)
                 provider="${1#*=}"
                 shift
@@ -849,16 +1041,20 @@ ssl_issue() {
         esac
     done
 
+    if [ -n "$ip_input" ]; then
+        domains_input="$ip_input"
+    fi
+
     if [ "$interactive" = true ]; then
         if [ -z "$email" ]; then
             read -p "Enter email address: " email
         fi
         if [ -z "$domains_input" ]; then
-            read -p "Enter domain(s) separated by comma: " domains_input
+            read -p "Enter domain(s) or IP address(es) separated by comma: " domains_input
         fi
     else
         if [ -z "$email" ] || [ -z "$domains_input" ]; then
-            colorized_echo red "Email and domains are required when using non-interactive mode."
+            colorized_echo red "Email and domains/IP addresses are required when using non-interactive mode."
             return 1
         fi
     fi
@@ -945,6 +1141,9 @@ ssl_command() {
             ;;
         *)
             colorized_echo blue "Usage: rebecca ssl <issue|renew> [options]"
+            colorized_echo magenta "  Issue domain SSL: rebecca ssl issue --email you@example.com --domains example.com"
+            colorized_echo magenta "  Issue public IP SSL: rebecca ssl issue --email you@example.com --ip-address 203.0.113.10"
+            colorized_echo magenta "  Issue self-signed IP SSL: rebecca ssl issue --email you@example.com --domains 203.0.113.10 --provider self-signed"
             ;;
     esac
 }
