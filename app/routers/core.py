@@ -1086,16 +1086,14 @@ def _wait_for_test_port(
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         if process.poll() is not None:
-            details = _collect_process_output(process)
-            if not details:
-                details = f"exit code {process.returncode}"
-            return False, f"Xray process exited: {details}"
+            _collect_process_output(process)
+            return False, "Xray test instance exited before it was ready"
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.1):
                 return True, ""
         except OSError:
             time.sleep(0.05)
-    return False, f"Xray failed to start listening on test port {port}"
+    return False, "Xray test instance did not become ready"
 
 
 def _stop_test_process(process: subprocess.Popen) -> None:
@@ -1219,8 +1217,8 @@ def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_pro
         try:
             delay, status_code = _measure_direct_delay(_get_outbound_test_url())
             return {"success": True, "delay": delay, "statusCode": status_code}
-        except RuntimeError as exc:
-            return {"success": False, "error": str(exc)}
+        except RuntimeError:
+            return {"success": False, "error": "Direct request failed"}
 
     if not xray or not getattr(xray, "core", None):
         return {"success": False, "error": "Xray runtime is not available"}
@@ -1235,8 +1233,8 @@ def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_pro
 
     try:
         test_port = _find_available_test_port()
-    except OSError as exc:
-        return {"success": False, "error": f"Failed to find available test port: {exc}"}
+    except OSError:
+        return {"success": False, "error": "Failed to find available test port"}
 
     test_config = _build_outbound_test_config(outbound_tag, all_outbounds, test_port)
     process = None
@@ -1277,9 +1275,9 @@ def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_pro
     except FileNotFoundError:
         logger.warning("Failed to start test xray instance: executable not found", exc_info=True)
         return {"success": False, "error": "Failed to start test xray instance"}
-    except RuntimeError as exc:
-        logger.warning("Outbound connectivity test request failed: %s", exc, exc_info=True)
-        return {"success": False, "error": str(exc)}
+    except RuntimeError:
+        logger.warning("Outbound connectivity test request failed", exc_info=True)
+        return {"success": False, "error": "Request failed"}
     except Exception:
         logger.warning("Outbound test failed", exc_info=True)
         return {"success": False, "error": "Outbound test failed"}
@@ -1307,6 +1305,12 @@ def _public_outbound_test_result(result: dict) -> dict:
         return {"success": False, "error": "Xray executable path is not configured"}
     if error == "Failed to create stdin pipe for test Xray process":
         return {"success": False, "error": "Failed to create stdin pipe for test Xray process"}
+    if error == "Failed to find available test port":
+        return {"success": False, "error": "Failed to find available test port"}
+    if error == "Xray test instance exited before it was ready":
+        return {"success": False, "error": "Xray test instance exited before it was ready"}
+    if error == "Xray test instance did not become ready":
+        return {"success": False, "error": "Xray test instance did not become ready"}
     if error == "Request failed":
         return {"success": False, "error": "Request failed"}
     if error == "Direct request failed":

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hmac
 import json
 import os
 import re
@@ -12,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import Session, sessionmaker
@@ -37,7 +36,6 @@ SUPPORTED_PROTOCOLS = {
 USERNAME_ALLOWED_CHARS = re.compile(r"[^a-zA-Z0-9_.@-]")
 MAX_USERNAME_LEN = 32
 NOTE_MAX_LEN = 500
-KEY_DERIVATION_NAMESPACE = b"rebecca-3xui-migration-v1"
 
 
 @dataclass
@@ -143,7 +141,7 @@ def _convert_expire_to_seconds(value: Any) -> Optional[int]:
 
 def _build_deterministic_key(protocol: ProxyTypes, email: str, subadress: str, inbound_id: int) -> str:
     seed = f"3xui:{protocol.value}:{email}:{subadress}:{inbound_id}"
-    return hmac.new(KEY_DERIVATION_NAMESPACE, seed.encode("utf-8"), "sha256").hexdigest()[:32]
+    return uuid5(NAMESPACE_URL, seed).hex
 
 
 def _sanitize_username(value: str) -> str:
@@ -229,8 +227,8 @@ def _load_traffic_rows(connection: sqlite3.Connection) -> dict[str, dict[str, An
             email = _clean_text(row["email"]).lower()
             if email:
                 rows[email] = dict(row)
-    except Exception as exc:
-        _warn(f"Failed to load client_traffics table: {exc}")
+    except Exception:
+        _warn("Failed to load client_traffics table.")
     return rows
 
 
@@ -319,19 +317,14 @@ def load_3xui_clients(source_db: str) -> tuple[list[SourceClient], Stats]:
                 if normalized_subadress:
                     if normalized_subadress in seen_subaddresses:
                         stats.skipped_duplicate_subadress += 1
-                        _warn(
-                            f"Skipping client {email or '<no-email>'} from inbound {inbound_remark}: "
-                            f"duplicate subId/subadress '{subadress}' cannot be represented safely."
-                        )
+                        _warn("Skipping client because duplicate subId/subadress cannot be represented safely.")
                         continue
                     seen_subaddresses.add(normalized_subadress)
 
                 proxy_settings, error = _extract_proxy_settings(protocol, raw_client, inbound_settings)
                 if error:
                     stats.skipped_unsupported += 1
-                    _warn(
-                        f"Skipping client {email or '<no-email>'} from inbound {inbound_remark}: {error}."
-                    )
+                    _warn("Skipping client because its proxy settings are unsupported or incomplete.")
                     continue
 
                 if protocol in {ProxyTypes.VMess, ProxyTypes.VLESS}:
