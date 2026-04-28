@@ -121,12 +121,14 @@ jobs:
                 bash \
                 build-essential \
                 ca-certificates \
+                cargo \
                 curl \
                 gcc \
                 git \
                 libffi-dev \
                 libssl-dev \
                 pkg-config \
+                rustc \
                 zlib1g-dev
               python -m pip install --disable-pip-version-check --upgrade pip wheel
               python -m pip install --disable-pip-version-check . pyinstaller==6.20.0
