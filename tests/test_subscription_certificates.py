@@ -1,3 +1,6 @@
+from pathlib import PurePath
+
+
 def _patch_cli(monkeypatch, calls):
     from app.services import subscription_settings
 
@@ -25,7 +28,7 @@ def test_issue_certificate_creates_record(auth_client, monkeypatch):
     data, calls = _issue_sample_certificate(auth_client, monkeypatch)
 
     assert data["domain"] == "example.com"
-    assert data["path"].endswith("example.com/")
+    assert PurePath(data["path"]).name == "example.com"
     assert data["alt_names"] == ["www.example.com"]
     assert data["admin_id"] is None
     assert calls and calls[0]["args"][:2] == ["ssl", "issue"]
