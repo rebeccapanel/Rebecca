@@ -6,7 +6,6 @@ import ipaddress
 import socket
 import subprocess
 import threading
-import re
 from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
@@ -61,7 +60,6 @@ GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-tem
 OUTBOUND_TEST_DEFAULT_URL = "https://www.google.com/generate_204"
 _OUTBOUND_TEST_LOCK = threading.Lock()
 _ALLOWED_GEO_FILENAMES = {"geoip.dat", "geosite.dat"}
-_XRAY_RELEASE_TAG_RE = re.compile(r"^v[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}(?:[-+._A-Za-z0-9]{0,48})?$")
 _XRAY_ARCHIVE_MEMBERS = {
     "xray": "xray",
     "Xray": "Xray",
@@ -76,9 +74,24 @@ _XRAY_ARCHIVE_MEMBERS = {
 
 def _validate_release_tag(tag: str) -> str:
     tag = (tag or "").strip()
-    if len(tag) > 64:
+    if len(tag) > 64 or not tag.startswith("v"):
         raise HTTPException(status_code=422, detail="Invalid Xray release tag")
-    if not _XRAY_RELEASE_TAG_RE.fullmatch(tag):
+
+    allowed_suffix_chars = set("-+._") | set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    rest = tag[1:]
+    for index in range(3):
+        digits = []
+        while rest and rest[0].isdigit():
+            digits.append(rest[0])
+            rest = rest[1:]
+        if not digits or len(digits) > 5:
+            raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+        if index < 2:
+            if not rest.startswith("."):
+                raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+            rest = rest[1:]
+
+    if len(rest) > 48 or any(char not in allowed_suffix_chars for char in rest):
         raise HTTPException(status_code=422, detail="Invalid Xray release tag")
     return tag
 
@@ -1275,6 +1288,34 @@ def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_pro
             _stop_test_process(process)
 
 
+def _public_outbound_test_result(result: dict) -> dict:
+    if not isinstance(result, dict):
+        return {"success": False, "error": "Outbound test failed"}
+    if result.get("success"):
+        return {
+            "success": True,
+            "delay": result.get("delay"),
+            "statusCode": result.get("statusCode"),
+        }
+
+    error = result.get("error")
+    if error == "Xray runtime is not available":
+        return {"success": False, "error": "Xray runtime is not available"}
+    if error == "Xray core is not available":
+        return {"success": False, "error": "Xray core is not available"}
+    if error == "Xray executable path is not configured":
+        return {"success": False, "error": "Xray executable path is not configured"}
+    if error == "Failed to create stdin pipe for test Xray process":
+        return {"success": False, "error": "Failed to create stdin pipe for test Xray process"}
+    if error == "Request failed":
+        return {"success": False, "error": "Request failed"}
+    if error == "Direct request failed":
+        return {"success": False, "error": "Direct request failed"}
+    if error == "Failed to start test xray instance":
+        return {"success": False, "error": "Failed to start test xray instance"}
+    return {"success": False, "error": "Outbound test failed"}
+
+
 @router.post("/panel/xray/testOutbound", responses={403: responses._403})
 def test_outbound(
     payload: dict = Body(...),
@@ -1304,7 +1345,7 @@ def test_outbound(
     finally:
         _OUTBOUND_TEST_LOCK.release()
 
-    return {"success": True, "obj": result}
+    return {"success": True, "obj": _public_outbound_test_result(result)}
 
 
 def _iter_outbound_config_targets(db: Session) -> list[tuple[str, int | None, str, dict]]:

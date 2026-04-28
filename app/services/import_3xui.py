@@ -313,7 +313,6 @@ class ThreeXUiImportService:
                     else:
                         credential_key = _build_deterministic_key(
                             protocol,
-                            _clean_text(proxy_settings.get("password")),
                             email,
                             subadress,
                             inbound_id,

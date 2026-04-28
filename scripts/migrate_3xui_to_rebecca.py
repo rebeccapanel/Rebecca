@@ -141,8 +141,8 @@ def _convert_expire_to_seconds(value: Any) -> Optional[int]:
     return max(ms_value // 1000, 0)
 
 
-def _build_deterministic_key(protocol: ProxyTypes, password: str, email: str, subadress: str, inbound_id: int) -> str:
-    seed = f"3xui:{protocol.value}:{password}:{email}:{subadress}:{inbound_id}"
+def _build_deterministic_key(protocol: ProxyTypes, email: str, subadress: str, inbound_id: int) -> str:
+    seed = f"3xui:{protocol.value}:{email}:{subadress}:{inbound_id}"
     return hmac.new(KEY_DERIVATION_NAMESPACE, seed.encode("utf-8"), "sha256").hexdigest()[:32]
 
 
@@ -339,7 +339,6 @@ def load_3xui_clients(source_db: str) -> tuple[list[SourceClient], Stats]:
                 else:
                     credential_key = _build_deterministic_key(
                         protocol,
-                        _clean_text(proxy_settings.get("password")),
                         email,
                         subadress,
                         inbound_id,
@@ -456,9 +455,9 @@ def migrate_3xui_users(
         for source in clients:
             try:
                 existing = _get_existing_user(db, source)
-            except ValueError as exc:
+            except ValueError:
                 stats.skipped += 1
-                _warn(str(exc))
+                _warn("Skipping client because an imported credential key already exists more than once.")
                 continue
 
             resolved_status = _resolve_status(
