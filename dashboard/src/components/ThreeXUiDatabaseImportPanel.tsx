@@ -4,6 +4,7 @@ import {
 	Badge,
 	Box,
 	Button,
+	Checkbox,
 	Divider,
 	FormControl,
 	FormHelperText,
@@ -38,6 +39,7 @@ import {
 } from "utils/toastHandler";
 
 type InboundConfigState = {
+	importEnabled: boolean;
 	adminId: string;
 	serviceId: string;
 	usernameConflictMode: "rename" | "skip" | "overwrite";
@@ -57,6 +59,7 @@ const buildDefaultInboundConfig = (
 		preview.inbounds.map((inbound) => [
 			inbound.inbound_id,
 			{
+				importEnabled: true,
 				adminId: defaultAdminId,
 				serviceId: "",
 				usernameConflictMode: "rename",
@@ -148,7 +151,13 @@ export const ThreeXUiDatabaseImportPanel = () => {
 		if (!preview || preview.importable_clients === 0) {
 			return false;
 		}
-		return preview.inbounds.every((inbound) => {
+		const enabledInbounds = preview.inbounds.filter(
+			(inbound) => inboundConfigs[inbound.inbound_id]?.importEnabled,
+		);
+		if (enabledInbounds.length === 0) {
+			return false;
+		}
+		return enabledInbounds.every((inbound) => {
 			const config = inboundConfigs[inbound.inbound_id];
 			return Boolean(config?.adminId);
 		});
@@ -206,6 +215,20 @@ export const ThreeXUiDatabaseImportPanel = () => {
 		const inbounds: ThreeXUiInboundImportConfig[] = [];
 		for (const inbound of preview.inbounds) {
 			const config = inboundConfigs[inbound.inbound_id];
+			if (!config?.importEnabled) {
+				inbounds.push({
+					inbound_id: inbound.inbound_id,
+					import_enabled: false,
+					admin_id: null,
+					service_id: null,
+					username_conflict_mode: "rename",
+					expire_override_mode: "none",
+					expire_override_seconds: null,
+					traffic_override_mode: "none",
+					traffic_override_bytes: null,
+				});
+				continue;
+			}
 			if (!config?.adminId) {
 				toast({
 					status: "warning",
@@ -251,6 +274,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 
 			inbounds.push({
 				inbound_id: inbound.inbound_id,
+				import_enabled: true,
 				admin_id: Number(config.adminId),
 				service_id: config.serviceId ? Number(config.serviceId) : null,
 				username_conflict_mode: config.usernameConflictMode,
@@ -532,6 +556,31 @@ export const ThreeXUiDatabaseImportPanel = () => {
 						{preview.inbounds.map((inbound) => {
 							const config = inboundConfigs[inbound.inbound_id];
 							const services = servicesForInbound(inbound);
+							const importEnabled = config?.importEnabled !== false;
+							const sourceParts = [
+								inbound.source_port
+									? t("settings.database.sourcePort", "Port: {{port}}", {
+											port: inbound.source_port,
+									  })
+									: null,
+								inbound.source_tag
+									? t("settings.database.sourceTag", "Tag: {{tag}}", {
+											tag: inbound.source_tag,
+									  })
+									: null,
+								inbound.network
+									? t("settings.database.sourceNetwork", "Network: {{network}}", {
+											network: inbound.network,
+									  })
+									: null,
+								inbound.security
+									? t(
+											"settings.database.sourceSecurity",
+											"Security: {{security}}",
+											{ security: inbound.security },
+									  )
+									: null,
+							].filter(Boolean);
 							return (
 								<Box
 									key={inbound.inbound_id}
@@ -554,14 +603,31 @@ export const ThreeXUiDatabaseImportPanel = () => {
 														},
 													)}
 												</Text>
+												{sourceParts.length > 0 ? (
+													<Text fontSize="sm" color="gray.500">
+														{sourceParts.join(" | ")}
+													</Text>
+												) : null}
 											</Box>
-											<Badge colorScheme="blue">
-												ID #{inbound.inbound_id}
-											</Badge>
+											<HStack>
+												<Checkbox
+													isChecked={importEnabled}
+													onChange={(event) =>
+														updateInboundConfig(inbound.inbound_id, {
+															importEnabled: event.target.checked,
+														})
+													}
+												>
+													{t("settings.database.importInbound", "Import")}
+												</Checkbox>
+												<Badge colorScheme={importEnabled ? "blue" : "gray"}>
+													ID #{inbound.inbound_id}
+												</Badge>
+											</HStack>
 										</HStack>
 
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl isRequired>
+											<FormControl isRequired={importEnabled} isDisabled={!importEnabled}>
 												<FormLabel>
 													{t("settings.database.ownerAdmin", "Owner admin")}
 												</FormLabel>
@@ -587,7 +653,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 													))}
 												</Select>
 											</FormControl>
-											<FormControl>
+											<FormControl isDisabled={!importEnabled}>
 												<FormLabel>
 													{t(
 														"settings.database.targetService",
@@ -601,7 +667,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 															serviceId: event.target.value,
 														})
 													}
-													isDisabled={!config?.adminId}
+													isDisabled={!importEnabled || !config?.adminId}
 												>
 													<option value="">
 														{t(
@@ -625,7 +691,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 										</SimpleGrid>
 
 										<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-											<FormControl>
+											<FormControl isDisabled={!importEnabled}>
 												<FormLabel>
 													{t(
 														"settings.database.usernamePolicy",
@@ -661,7 +727,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 													</option>
 												</Select>
 											</FormControl>
-											<FormControl>
+											<FormControl isDisabled={!importEnabled}>
 												<FormLabel>
 													{t(
 														"settings.database.expireMode",
@@ -689,7 +755,9 @@ export const ThreeXUiDatabaseImportPanel = () => {
 												</Select>
 											</FormControl>
 											<FormControl
-												isDisabled={config?.expireOverrideMode === "none"}
+												isDisabled={
+													!importEnabled || config?.expireOverrideMode === "none"
+												}
 											>
 												<FormLabel>
 													{t(
@@ -712,7 +780,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 										</SimpleGrid>
 
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl>
+											<FormControl isDisabled={!importEnabled}>
 												<FormLabel>
 													{t(
 														"settings.database.trafficMode",
@@ -740,7 +808,9 @@ export const ThreeXUiDatabaseImportPanel = () => {
 												</Select>
 											</FormControl>
 											<FormControl
-												isDisabled={config?.trafficOverrideMode === "none"}
+												isDisabled={
+													!importEnabled || config?.trafficOverrideMode === "none"
+												}
 											>
 												<FormLabel>
 													{t(

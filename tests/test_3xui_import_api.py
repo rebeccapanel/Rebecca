@@ -20,8 +20,11 @@ def _build_3xui_db(path, inbounds):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 enable INTEGER NOT NULL,
                 remark TEXT,
+                port INTEGER,
                 protocol TEXT NOT NULL,
-                settings TEXT NOT NULL
+                settings TEXT NOT NULL,
+                stream_settings TEXT,
+                tag TEXT
             )
             """
         )
@@ -40,13 +43,20 @@ def _build_3xui_db(path, inbounds):
 
         for inbound in inbounds:
             conn.execute(
-                "INSERT INTO inbounds (id, enable, remark, protocol, settings) VALUES (?, ?, ?, ?, ?)",
+                """
+                INSERT INTO inbounds
+                    (id, enable, remark, port, protocol, settings, stream_settings, tag)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     inbound["id"],
                     1 if inbound.get("enable", True) else 0,
                     inbound["remark"],
+                    inbound.get("port"),
                     inbound["protocol"],
                     json.dumps({"clients": inbound["clients"], **(inbound.get("extra_settings") or {})}),
+                    json.dumps(inbound.get("stream_settings") or {}),
+                    inbound.get("tag"),
                 ),
             )
             for traffic in inbound.get("traffics", []):
@@ -186,7 +196,10 @@ def test_3xui_preview_reports_conflicts_and_options(auth_client, tmp_path):
             {
                 "id": 1,
                 "remark": "VMess Preview",
+                "port": 443,
+                "tag": "source-vmess-443",
                 "protocol": "vmess",
+                "stream_settings": {"network": "ws", "security": "tls"},
                 "clients": [vmess_client],
                 "traffics": [{"email": duplicate_username, "up": 10, "down": 20}],
             },
@@ -218,6 +231,10 @@ def test_3xui_preview_reports_conflicts_and_options(auth_client, tmp_path):
 
     inbound_map = {item["inbound_id"]: item for item in payload["inbounds"]}
     assert inbound_map[1]["protocol"] == "vmess"
+    assert inbound_map[1]["source_port"] == 443
+    assert inbound_map[1]["source_tag"] == "source-vmess-443"
+    assert inbound_map[1]["network"] == "ws"
+    assert inbound_map[1]["security"] == "tls"
     assert inbound_map[1]["raw_client_count"] == 1
     assert inbound_map[1]["importable_client_count"] == 1
     assert inbound_map[1]["username_conflicts"][0]["username"] == duplicate_username
@@ -270,6 +287,85 @@ def test_3xui_import_rejects_admin_service_mismatch(auth_client, tmp_path):
 
     assert response.status_code == 400, response.text
     assert response.json()["detail"] == "Selected admin is not linked to the selected service"
+
+
+def test_3xui_import_skips_disabled_inbound_config(auth_client, tmp_path):
+    owner = _create_admin("skip_inbound_owner")
+    future_ms = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp() * 1000)
+    imported_client = _build_client(
+        protocol="vless",
+        email=f"keep_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=f"sub-keep-{uuid.uuid4().hex[:8]}",
+        total_bytes=2 * 1024**3,
+        expire_ms=future_ms,
+    )
+    skipped_client = _build_client(
+        protocol="vless",
+        email=f"skip_{uuid.uuid4().hex[:8]}@example.com",
+        sub_id=f"sub-skip-{uuid.uuid4().hex[:8]}",
+        total_bytes=2 * 1024**3,
+        expire_ms=future_ms,
+    )
+
+    source_db = tmp_path / "skip_inbound.db"
+    _build_3xui_db(
+        source_db,
+        [
+            {
+                "id": 41,
+                "remark": "Import Me",
+                "port": 443,
+                "protocol": "vless",
+                "clients": [imported_client],
+            },
+            {
+                "id": 42,
+                "remark": "Skip Me",
+                "port": 8443,
+                "protocol": "vless",
+                "clients": [skipped_client],
+            },
+        ],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {
+                    "inbound_id": 41,
+                    "import_enabled": True,
+                    "admin_id": owner.id,
+                    "service_id": None,
+                    "username_conflict_mode": "rename",
+                },
+                {
+                    "inbound_id": 42,
+                    "import_enabled": False,
+                    "admin_id": None,
+                    "service_id": None,
+                    "username_conflict_mode": "rename",
+                },
+            ],
+            "duplicate_subaddress_policy": {
+                "source_conflict_mode": "keep_first",
+                "existing_conflict_mode": "overwrite",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed", job
+    assert job["result"]["total_clients"] == 2
+    assert job["result"]["created"] == 1
+    assert job["result"]["skipped"] == 1
+
+    with GetDB() as db:
+        assert crud.get_user(db, imported_client["email"]) is not None
+        assert crud.get_user(db, skipped_client["email"]) is None
 
 
 def test_3xui_import_overwrites_existing_username(auth_client, tmp_path):

@@ -234,6 +234,10 @@ class ThreeXUiInboundPreview(BaseModel):
     inbound_id: int
     remark: str
     protocol: str
+    source_tag: Optional[str] = None
+    source_port: Optional[int] = None
+    network: Optional[str] = None
+    security: Optional[str] = None
     raw_client_count: int = 0
     importable_client_count: int = 0
     username_conflicts: List[ThreeXUiUsernameConflictItem] = Field(default_factory=list)
@@ -275,7 +279,8 @@ class ThreeXUiPreviewResponse(BaseModel):
 
 class ThreeXUiInboundImportConfig(BaseModel):
     inbound_id: int
-    admin_id: int
+    import_enabled: bool = True
+    admin_id: Optional[int] = None
     service_id: Optional[int] = None
     username_conflict_mode: ThreeXUiUsernameConflictMode = ThreeXUiUsernameConflictMode.rename
     expire_override_mode: ThreeXUiOverrideMode = ThreeXUiOverrideMode.none

@@ -174,6 +174,10 @@ export interface ThreeXUiInboundPreview {
 	inbound_id: number;
 	remark: string;
 	protocol: string;
+	source_tag: string | null;
+	source_port: number | null;
+	network: string | null;
+	security: string | null;
 	raw_client_count: number;
 	importable_client_count: number;
 	username_conflicts: ThreeXUiUsernameConflictItem[];
@@ -210,7 +214,8 @@ export interface ThreeXUiPreviewResponse {
 
 export interface ThreeXUiInboundImportConfig {
 	inbound_id: number;
-	admin_id: number;
+	import_enabled?: boolean;
+	admin_id?: number | null;
 	service_id?: number | null;
 	username_conflict_mode: ThreeXUiUsernameConflictMode;
 	expire_override_mode?: ThreeXUiOverrideMode;

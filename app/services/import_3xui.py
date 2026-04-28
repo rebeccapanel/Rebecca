@@ -161,6 +161,10 @@ class _InboundScan:
     inbound_id: int
     remark: str
     protocol: ProxyTypes
+    source_tag: Optional[str]
+    source_port: Optional[int]
+    network: Optional[str]
+    security: Optional[str]
     raw_client_count: int
     order: int
     importable_clients: list[_ParsedClient] = field(default_factory=list)
@@ -238,7 +242,18 @@ class ThreeXUiImportService:
         connection.row_factory = sqlite3.Row
         try:
             traffic_by_email = _load_traffic_rows(connection)
-            rows = connection.execute("SELECT id, enable, remark, protocol, settings FROM inbounds").fetchall()
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(inbounds)").fetchall()
+                if isinstance(row["name"], str)
+            }
+            select_columns = ["id", "enable", "remark", "protocol", "settings"]
+            for optional_column in ("port", "tag", "stream_settings"):
+                if optional_column in columns:
+                    select_columns.append(optional_column)
+                else:
+                    select_columns.append(f"NULL AS {optional_column}")
+            rows = connection.execute(f"SELECT {', '.join(select_columns)} FROM inbounds").fetchall()
             source_inbounds = len(rows)
             source_clients = 0
             skipped_unsupported = 0
@@ -266,10 +281,16 @@ class ThreeXUiImportService:
                 inbound_id = _coerce_int(row["id"], 0)
                 inbound_remark = _clean_text(row["remark"]) or f"Inbound #{inbound_id}"
                 inbound_enabled = _coerce_bool(row["enable"])
+                stream_settings = _parse_json(row["stream_settings"])
+                source_port_raw = _coerce_int(row["port"], 0)
                 inbound_scan = _InboundScan(
                     inbound_id=inbound_id,
                     remark=inbound_remark,
                     protocol=protocol,
+                    source_tag=_clean_text(row["tag"]) or None,
+                    source_port=source_port_raw if source_port_raw > 0 else None,
+                    network=_clean_text(stream_settings.get("network")) or None,
+                    security=_clean_text(stream_settings.get("security")) or None,
                     raw_client_count=raw_client_count,
                     order=inbound_order,
                 )
@@ -484,6 +505,10 @@ class ThreeXUiImportService:
                     inbound_id=inbound.inbound_id,
                     remark=inbound.remark,
                     protocol=inbound.protocol.value,
+                    source_tag=inbound.source_tag,
+                    source_port=inbound.source_port,
+                    network=inbound.network,
+                    security=inbound.security,
                     raw_client_count=inbound.raw_client_count,
                     importable_client_count=len(inbound.importable_clients),
                     username_conflicts=conflicts,
@@ -582,20 +607,28 @@ class ThreeXUiImportService:
         if expected_inbound_ids != provided_inbound_ids:
             raise HTTPException(status_code=400, detail="Import config must include every detected inbound exactly once")
 
+        enabled_items = [item for item in payload.inbounds if item.import_enabled]
+        missing_admin_config = next((item for item in enabled_items if item.admin_id is None), None)
+        if missing_admin_config is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Admin is required for inbound {missing_admin_config.inbound_id}",
+            )
+
         admins = {
             admin.id: admin
             for admin in (
                 db.query(db_models.Admin)
-                .filter(db_models.Admin.id.in_([item.admin_id for item in payload.inbounds]))
+                .filter(db_models.Admin.id.in_([item.admin_id for item in enabled_items if item.admin_id is not None]))
                 .all()
             )
             if admin.id is not None
         }
-        missing_admins = sorted({item.admin_id for item in payload.inbounds if item.admin_id not in admins})
+        missing_admins = sorted({item.admin_id for item in enabled_items if item.admin_id not in admins})
         if missing_admins:
             raise HTTPException(status_code=404, detail=f"Admin not found: {missing_admins[0]}")
 
-        service_ids = [item.service_id for item in payload.inbounds if item.service_id is not None]
+        service_ids = [item.service_id for item in enabled_items if item.service_id is not None]
         services = {}
         if service_ids:
             rows = (
@@ -609,7 +642,7 @@ class ThreeXUiImportService:
             if missing_services:
                 raise HTTPException(status_code=404, detail=f"Service not found: {missing_services[0]}")
 
-        for item in payload.inbounds:
+        for item in enabled_items:
             if item.service_id is None:
                 continue
             service = services[item.service_id]
@@ -817,8 +850,10 @@ class ThreeXUiImportService:
         job_id: str,
     ) -> ThreeXUiImportJobResult:
         config_by_inbound = {item.inbound_id: item for item in payload.inbounds}
-        admin_ids = {item.admin_id for item in payload.inbounds}
-        service_ids = {item.service_id for item in payload.inbounds if item.service_id is not None}
+        enabled_inbound_ids = {item.inbound_id for item in payload.inbounds if item.import_enabled}
+        enabled_clients = [client for client in parsed.importable_clients if client.inbound_id in enabled_inbound_ids]
+        admin_ids = {item.admin_id for item in payload.inbounds if item.import_enabled and item.admin_id is not None}
+        service_ids = {item.service_id for item in payload.inbounds if item.import_enabled and item.service_id is not None}
 
         admins = {
             admin.id: admin
@@ -836,17 +871,17 @@ class ThreeXUiImportService:
             if service.id is not None
         }
 
-        by_username = cls._existing_users_by_username(db, (client.normalized_username for client in parsed.importable_clients))
+        by_username = cls._existing_users_by_username(db, (client.normalized_username for client in enabled_clients))
         by_subadress = cls._existing_users_by_subadress(
-            db, (client.normalized_subadress for client in parsed.importable_clients)
+            db, (client.normalized_subadress for client in enabled_clients)
         )
         by_credential = cls._existing_users_by_credential_key(
-            db, (client.normalized_credential_key for client in parsed.importable_clients)
+            db, (client.normalized_credential_key for client in enabled_clients)
         )
         reserved_usernames = set(by_username.keys())
 
         source_subaddress_counts: dict[str, int] = {}
-        for client in parsed.importable_clients:
+        for client in enabled_clients:
             if client.normalized_subadress:
                 source_subaddress_counts[client.normalized_subadress] = (
                     source_subaddress_counts.get(client.normalized_subadress, 0) + 1
@@ -857,6 +892,12 @@ class ThreeXUiImportService:
 
         for client in sorted(parsed.importable_clients, key=lambda item: (item.inbound_order, item.client_order)):
             inbound_config = config_by_inbound[client.inbound_id]
+            if not inbound_config.import_enabled:
+                result.skipped += 1
+                result.processed_clients += 1
+                cls._update_job(job_id, progress_current=result.processed_clients, progress_total=result.total_clients)
+                continue
+
             admin = admins[inbound_config.admin_id]
             service = services.get(inbound_config.service_id) if inbound_config.service_id is not None else None
 
