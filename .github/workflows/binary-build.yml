@@ -78,7 +78,7 @@ jobs:
             platform: linux/arm/v5
             image: python:3.13-trixie
           - asset_arch: armv6
-            platform: linux/arm/v6
+            platform: linux/arm/v5
             image: python:3.13-trixie
           - asset_arch: armv7
             platform: linux/arm/v7
@@ -134,8 +134,8 @@ jobs:
                 pkg-config \
                 rustc \
                 zlib1g-dev
-              case "$(uname -m)" in
-                i386|i486|i586|i686|s390x)
+              case "${ASSET_ARCH}" in
+                386|s390x)
                   ;;
                 *)
                   curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
