@@ -4,13 +4,16 @@ import tempfile
 import uuid
 
 TEST_DB_PATH = Path(tempfile.gettempdir()) / f"rebecca_test_{uuid.uuid4().hex}.sqlite"
-TEST_DATABASE_URL = os.getenv("REBECCA_TEST_DATABASE_URL", f"sqlite:///{TEST_DB_PATH}")
+TEST_DATABASE_URL = (
+    os.getenv("REBECCA_TEST_DATABASE_URL")
+    or os.getenv("SQLALCHEMY_DATABASE_URL")
+    or f"sqlite:///{TEST_DB_PATH}"
+)
+EXTERNAL_TEST_DATABASE = bool(os.getenv("REBECCA_TEST_DATABASE_URL"))
 
 os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
-if os.getenv("REBECCA_TEST_DATABASE_URL"):
-    os.environ["SQLALCHEMY_DATABASE_URL"] = TEST_DATABASE_URL
-else:
-    os.environ.setdefault("SQLALCHEMY_DATABASE_URL", TEST_DATABASE_URL)
+# Keep the application engine and the pytest fixture engine on the same database.
+os.environ["SQLALCHEMY_DATABASE_URL"] = TEST_DATABASE_URL
 
 import sys
 import warnings
@@ -120,16 +123,25 @@ with (
     # Import models to register tables
 
 
-connect_args = {"check_same_thread": False} if TEST_DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(TEST_DATABASE_URL, connect_args=connect_args)
+engine_kwargs = {}
+if TEST_DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+elif EXTERNAL_TEST_DATABASE:
+    # Use per-statement visibility for cross-session assertions on MySQL/MariaDB.
+    engine_kwargs["isolation_level"] = "READ COMMITTED"
+    engine_kwargs["pool_pre_ping"] = True
+
+engine = create_engine(TEST_DATABASE_URL, **engine_kwargs)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def db_engine():
-    Base.metadata.create_all(bind=engine)
+    if not EXTERNAL_TEST_DATABASE:
+        Base.metadata.create_all(bind=engine)
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    if not EXTERNAL_TEST_DATABASE:
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture(scope="session", autouse=True)

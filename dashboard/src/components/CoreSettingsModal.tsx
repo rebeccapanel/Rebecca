@@ -358,7 +358,7 @@ const CoreSettingModalContent: FC = () => {
 										})}
 									/>
 								}
-								onClick={() => handleRestartCore()}
+								onClick={() => handleRestartCore(undefined)}
 							>
 								{t(isRestarting ? "core.restarting" : "core.restartCore")}
 							</Button>

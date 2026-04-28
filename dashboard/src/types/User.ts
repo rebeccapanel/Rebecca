@@ -1,4 +1,9 @@
-import type { AdminPermissions, AdminRole, AdminStatus } from "./Admin";
+import type {
+	AdminPermissions,
+	AdminRole,
+	AdminStatus,
+	AdminTrafficLimitMode,
+} from "./Admin";
 
 export type Status =
 	| "active"
@@ -148,6 +153,10 @@ export type UserApi = {
 	telegram_id: number | string;
 	username: string;
 	users_usage?: number | null;
+	created_traffic?: number | null;
+	data_limit?: number | null;
+	traffic_limit_mode?: AdminTrafficLimitMode;
+	show_user_traffic?: boolean;
 	status?: AdminStatus;
 	disabled_reason?: string | null;
 };

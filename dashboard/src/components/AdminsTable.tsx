@@ -81,9 +81,9 @@ import {
 	AdminManagementPermission,
 	AdminRole,
 	AdminStatus,
+	AdminTrafficLimitMode,
 	UserPermissionToggle,
 } from "types/Admin";
-import { getAdminExpireMap } from "utils/adminExpireStorage";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
@@ -93,6 +93,7 @@ import {
 import AdminPermissionsModal from "./AdminPermissionsModal";
 
 const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
+const ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted";
 
 const iconProps = {
 	baseStyle: {
@@ -161,22 +162,30 @@ const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 
 type AdminUsageSliderProps = {
 	used: number;
+	createdTraffic?: number | null;
 	total: number | null;
 	lifetimeUsage: number | null;
+	trafficLimitMode?: AdminTrafficLimitMode;
 	isRTL?: boolean;
 };
 
 const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 	used,
+	createdTraffic,
 	total,
 	lifetimeUsage,
+	trafficLimitMode,
 	isRTL = false,
 }) => {
 	const { t } = useTranslation();
+	const effectiveUsage =
+		trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
+			? (createdTraffic ?? 0)
+			: used;
 	const isUnlimited = total === 0 || total === null;
 	const percentage = isUnlimited
 		? 0
-		: Math.min((used / (total || 1)) * 100, 100);
+		: Math.min((effectiveUsage / (total || 1)) * 100, 100);
 	const reached = !isUnlimited && percentage >= 100;
 
 	return (
@@ -214,7 +223,7 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 			>
 				<Text className="rb-usage-pair">
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{formatBytes(used, 2)}
+						{formatBytes(effectiveUsage, 2)}
 					</chakra.span>{" "}
 					/{" "}
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
@@ -227,6 +236,18 @@ const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
 						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 							{formatBytes(lifetimeUsage, 2)}
 						</chakra.span>
+					</Text>
+				)}
+				{createdTraffic !== null && createdTraffic !== undefined && (
+					<Text color="orange.500" _dark={{ color: "orange.300" }}>
+						{t("admins.details.createdTraffic", "Created traffic")}:{" "}
+						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{formatBytes(createdTraffic, 2)}
+						</chakra.span>
+						{" · "}
+						{trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
+							? t("admins.createdTrafficMode", "Created traffic")
+							: t("admins.usedTrafficMode", "Used traffic")}
 					</Text>
 				)}
 			</HStack>
@@ -330,7 +351,6 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
-	const adminExpireMap = useMemo(() => getAdminExpireMap(), []);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
@@ -1020,7 +1040,11 @@ export const AdminsTable: FC<TableProps> = (props) => {
 								? String(admin.users_limit)
 								: "∞";
 						const activeLabel = `${admin.active_users ?? 0}/${usersLimitLabel}`;
-						const usageLabel = `${formatBytes(admin.users_usage ?? 0)} / ${
+						const effectiveUsage =
+							admin.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
+								? (admin.created_traffic ?? 0)
+								: (admin.users_usage ?? 0);
+						const usageLabel = `${formatBytes(effectiveUsage)} / ${
 							admin.data_limit && admin.data_limit > 0
 								? formatBytes(admin.data_limit)
 								: "∞"
@@ -1030,22 +1054,33 @@ export const AdminsTable: FC<TableProps> = (props) => {
 							canManageThisAdmin && admin.username !== currentAdminUsername;
 						const showDisableAction =
 							canChangeStatus && admin.status !== AdminStatus.Disabled;
-						const hasLimitDisabledReason =
+						const hasDataLimitDisabledReason =
 							admin.disabled_reason === ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+						const hasTimeLimitDisabledReason =
+							admin.disabled_reason === ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY;
 						const disabledReasonLabel = admin.disabled_reason
-							? hasLimitDisabledReason
+							? hasDataLimitDisabledReason
 								? t(
 										"admins.disabledReason.dataLimitExceeded",
 										"Your data limit has been reached",
 									)
+								: hasTimeLimitDisabledReason
+									? t(
+											"admins.disabledReason.timeLimitExceeded",
+											"Your account time limit has expired",
+										)
 								: admin.disabled_reason
 							: null;
 						const showEnableAction =
 							canChangeStatus &&
 							admin.status === AdminStatus.Disabled &&
-							!hasLimitDisabledReason;
+							!hasDataLimitDisabledReason &&
+							!hasTimeLimitDisabledReason;
 						const showDeleteAction = canChangeStatus;
-						const adminExpireAt = adminExpireMap[admin.username];
+						const adminExpireAt =
+							typeof admin.expire === "number" && admin.expire > 0
+								? admin.expire
+								: null;
 
 						return (
 							<Box
@@ -1117,8 +1152,10 @@ export const AdminsTable: FC<TableProps> = (props) => {
 											<AdminUsageSlider
 												isRTL={isRTL}
 												used={admin.users_usage ?? 0}
+												createdTraffic={admin.created_traffic ?? 0}
 												total={admin.data_limit ?? null}
 												lifetimeUsage={admin.lifetime_usage ?? null}
+												trafficLimitMode={admin.traffic_limit_mode}
 											/>
 											{admin.status === AdminStatus.Disabled &&
 												disabledReasonLabel && (
@@ -1748,24 +1785,36 @@ export const AdminsTable: FC<TableProps> = (props) => {
 															const showDisableAction =
 																canChangeStatus &&
 																admin.status !== AdminStatus.Disabled;
-															const hasLimitDisabledReason =
+															const hasDataLimitDisabledReason =
 																admin.disabled_reason ===
 																ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY;
+															const hasTimeLimitDisabledReason =
+																admin.disabled_reason ===
+																ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY;
 															const disabledReasonLabel = admin.disabled_reason
-																? hasLimitDisabledReason
+																? hasDataLimitDisabledReason
 																	? t(
 																			"admins.disabledReason.dataLimitExceeded",
 																			"Your data limit has been reached",
 																		)
+																	: hasTimeLimitDisabledReason
+																		? t(
+																				"admins.disabledReason.timeLimitExceeded",
+																				"Your account time limit has expired",
+																			)
 																	: admin.disabled_reason
 																: null;
 															const showEnableAction =
 																canChangeStatus &&
 																admin.status === AdminStatus.Disabled &&
-																!hasLimitDisabledReason;
+																!hasDataLimitDisabledReason &&
+																!hasTimeLimitDisabledReason;
 															const showDeleteAction = canChangeStatus;
 															const adminExpireAt =
-																adminExpireMap[admin.username];
+																typeof admin.expire === "number" &&
+																admin.expire > 0
+																	? admin.expire
+																	: null;
 
 															const cells = {
 																username: (
@@ -1915,10 +1964,12 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																		<AdminUsageSlider
 																			isRTL={isRTL}
 																			used={admin.users_usage ?? 0}
+																			createdTraffic={admin.created_traffic ?? 0}
 																			total={admin.data_limit ?? null}
 																			lifetimeUsage={
 																				admin.lifetime_usage ?? null
 																			}
+																			trafficLimitMode={admin.traffic_limit_mode}
 																		/>
 																	</Td>
 																),

@@ -89,6 +89,10 @@ import type {
 import { getConfigLabelFromLink } from "utils/configLabel";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
+import {
+	canViewUserTraffic,
+	isUserManagementLocked,
+} from "utils/adminTraffic";
 import { generateUserLinks } from "utils/userLinks";
 
 import { z } from "zod";
@@ -222,7 +226,7 @@ const formatUser = (user: User): FormType => {
 		flow: user.flow ?? "",
 
 		data_limit: user.data_limit
-			? Number((user.data_limit / 1073741824).toFixed(5))
+			? Number((user.data_limit / BYTES_PER_GB).toFixed(5))
 			: user.data_limit,
 
 		ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
@@ -240,7 +244,7 @@ const formatUser = (user: User): FormType => {
 		next_plan_enabled: Boolean(nextPlan),
 
 		next_plan_data_limit: nextPlan?.data_limit
-			? Number((nextPlan.data_limit / 1073741824).toFixed(5))
+			? Number((nextPlan.data_limit / BYTES_PER_GB).toFixed(5))
 			: null,
 
 		next_plan_expire: nextPlan?.expire ?? null,
@@ -323,6 +327,36 @@ const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
 const usernameRegex = /^[A-Za-z0-9_]{3,32}$/;
+const BYTES_PER_GB = 1073741824;
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+
+const normalizeDecimalText = (value: string) =>
+	value
+		.replace(/[۰-۹]/g, (digit) => String(PERSIAN_DIGITS.indexOf(digit)))
+		.replace(/[٠-٩]/g, (digit) => String(ARABIC_DIGITS.indexOf(digit)))
+		.replace(/[٫٬,]/g, ".")
+		.trim();
+
+const parseDecimalInput = (value: unknown): number | null => {
+	if (value === null || typeof value === "undefined") {
+		return null;
+	}
+	const raw = String(value).trim();
+	if (!raw) {
+		return null;
+	}
+	const normalized = normalizeDecimalText(raw);
+	if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+		return Number.NaN;
+	}
+	const parsed = Number(normalized);
+	return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
+const gigabytesToBytes = (gigabytes: number) =>
+	Math.round(gigabytes * BYTES_PER_GB);
+
 const buildSchema = (isEditing: boolean) => {
 	const baseSchema = {
 		username: isEditing
@@ -385,19 +419,22 @@ const buildSchema = (isEditing: boolean) => {
 
 		data_limit: z
 
-			.string()
+			.union([z.string(), z.number(), z.null()])
 
-			.min(0)
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
+					return 0;
+				}
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative data limit.",
+					});
+					return z.NEVER;
+				}
 
-			.or(z.number())
-
-			.nullable()
-
-			.transform((str) => {
-				if (str)
-					return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
-
-				return 0;
+				return gigabytesToBytes(parsed);
 			}),
 
 		expire: z.number().nullable(),
@@ -438,18 +475,20 @@ const buildSchema = (isEditing: boolean) => {
 
 			.union([z.string(), z.number(), z.null()])
 
-			.transform((value) => {
-				if (value === null || value === "" || typeof value === "undefined") {
+			.transform((value, ctx) => {
+				const parsed = parseDecimalInput(value);
+				if (parsed === null) {
 					return null;
 				}
-
-				const parsed = Number(value);
-
-				if (Number.isNaN(parsed)) {
-					return null;
+				if (!Number.isFinite(parsed) || parsed < 0) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Enter a valid non-negative data limit.",
+					});
+					return z.NEVER;
 				}
 
-				return Math.max(0, parsed);
+				return parsed;
 			}),
 
 		next_plan_expire: z
@@ -812,7 +851,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		const parsedLimit =
 			autoRenewDataValue.trim() === ""
 				? null
-				: Number.parseFloat(autoRenewDataValue.trim());
+				: parseDecimalInput(autoRenewDataValue.trim());
 		if (
 			parsedLimit !== null &&
 			(!Number.isFinite(parsedLimit) ||
@@ -896,29 +935,39 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const services = useServicesStore((state) => state.services);
 	const servicesLoading = useServicesStore((state) => state.isLoading);
 	const { userData, getUserIsSuccess } = useGetUser();
-	const hasElevatedRole = Boolean(
+	const hasPrivilegedRole = Boolean(
 		getUserIsSuccess &&
 			(userData.role === AdminRole.Sudo ||
 				userData.role === AdminRole.FullAccess),
 	);
+	const hasFullAccess = Boolean(
+		getUserIsSuccess && userData.role === AdminRole.FullAccess,
+	);
+	const userManagementLocked = isUserManagementLocked(userData);
+	const canViewTraffic = canViewUserTraffic(userData);
 	const canSetFlow =
-		hasElevatedRole ||
+		hasPrivilegedRole ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.SetFlow]);
 	const canSetCustomKey =
-		hasElevatedRole ||
+		hasPrivilegedRole ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.AllowCustomKey]);
-	const _canCreateUsers =
-		hasElevatedRole ||
+	const canCreateUsers =
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
 	const canDeleteUsers =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
 	const canResetUsage =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
 	const canRevokeSubscription =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
+	const canDeleteUsersVisible = canDeleteUsers && !userManagementLocked;
+	const canResetUsageVisible =
+		canResetUsage && canViewTraffic && !userManagementLocked;
+	const canRevokeSubscriptionVisible =
+		canRevokeSubscription && !userManagementLocked;
 	const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
 		null,
 	);
@@ -928,11 +977,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		? (services.find((service) => service.id === selectedServiceId) ?? null)
 		: null;
 	const isServiceManagedUser = Boolean(editingUser?.service_id);
-	const nonSudoSingleService = !hasElevatedRole && services.length === 1;
-	const showServiceSelector = hasElevatedRole || services.length !== 1;
+	const nonSudoSingleService = !hasPrivilegedRole && services.length === 1;
+	const showServiceSelector = hasPrivilegedRole || services.length !== 1;
 	const useTwoColumns = showServiceSelector && services.length > 0;
 	const shouldCenterForm = !useTwoColumns;
-	const shouldCompactModal = !hasElevatedRole && services.length === 0;
+	const shouldCompactModal = !hasPrivilegedRole && services.length === 0;
 	const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
 		enabled: isOpen,
 		staleTime: 5 * 60 * 1000,
@@ -980,7 +1029,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (isEditing) {
 			if (editingUser?.service_id) {
 				setSelectedServiceId(editingUser.service_id);
-			} else if (hasElevatedRole) {
+			} else if (hasPrivilegedRole) {
 				setSelectedServiceId(null);
 			} else if (services.length) {
 				setSelectedServiceId(services[0]?.id ?? null);
@@ -990,13 +1039,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		} else if (!isOpen) {
 			setSelectedServiceId(null);
 		}
-	}, [isEditing, editingUser, isOpen, hasElevatedRole, services]);
+	}, [isEditing, editingUser, isOpen, hasPrivilegedRole, services]);
 
 	useEffect(() => {
-		if (!isEditing && isOpen && hasServices && !hasElevatedRole) {
+		if (!isEditing && isOpen && hasServices && !hasPrivilegedRole) {
 			setSelectedServiceId((current) => current ?? services[0]?.id ?? null);
 		}
-	}, [services, isEditing, isOpen, hasServices, hasElevatedRole]);
+	}, [services, isEditing, isOpen, hasServices, hasPrivilegedRole]);
 
 	useEffect(() => {
 		if (!isEditing && isOpen && !hasServices) {
@@ -1100,21 +1149,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	}, [copiedConfigIndex]);
 
 	const remainingDataInfo = useMemo(() => {
-		if (!isEditing || !editingUser) return null;
+		if (!isEditing || !editingUser || !canViewTraffic) return null;
 		const rawLimit = dataLimit;
-		const parsedLimit =
-			rawLimit === null ||
-			typeof rawLimit === "undefined" ||
-			(Number.isNaN(Number(rawLimit)) && String(rawLimit).trim() === "")
-				? null
-				: Number(rawLimit);
+		const parsedLimit = parseDecimalInput(rawLimit);
 		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
 			return {
 				label: t("userDialog.remainingDataLabel"),
 				value: t("userDialog.remainingDataUnlimited"),
 			};
 		}
-		const limitBytes = parsedLimit * 1073741824;
+		const limitBytes = parsedLimit * BYTES_PER_GB;
 		const usedBytes = editingUser.used_traffic ?? 0;
 		const remainingBytes = Math.max(limitBytes - usedBytes, 0);
 		return {
@@ -1124,7 +1168,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					? t("userDialog.remainingDataLimited")
 					: formatBytes(remainingBytes, 2),
 		};
-	}, [isEditing, editingUser, dataLimit, t]);
+	}, [canViewTraffic, isEditing, editingUser, dataLimit, t]);
 
 	const formatLink = useCallback((link?: string | null) => {
 		if (!link) return "";
@@ -1145,18 +1189,43 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			key: t("userDialog.links.subscriptionKey", "Key"),
 			token: t("userDialog.links.subscriptionToken", "Token"),
 		};
+		const orderIndex = new Map(order.map((key, index) => [key, index]));
 
-		const results: Array<{ key: string; label: string; url: string }> = [];
-		order.forEach((key) => {
-			const value = urls[key];
-			if (!value) {
-				return;
-			}
-			const url = formatLink(value);
-			if (url) {
-				results.push({ key, label: labels[key], url });
-			}
-		});
+		const results = Object.entries(urls)
+			.map(([key, value]) => {
+				const url = formatLink(value);
+				if (!url) {
+					return null;
+				}
+
+				const [baseKeyRaw, variant] = key.split("@", 2);
+				const baseKey = baseKeyRaw as (typeof order)[number];
+				const baseLabel = labels[baseKey] ?? baseKeyRaw;
+				const label = variant ? `${baseLabel} (${variant})` : baseLabel;
+
+				return {
+					key,
+					label,
+					url,
+					order: orderIndex.get(baseKey) ?? order.length,
+					variant: variant ?? "",
+				};
+			})
+			.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+			.sort((a, b) => {
+				if (a.order !== b.order) {
+					return a.order - b.order;
+				}
+				const aHasVariant = a.variant !== "";
+				const bHasVariant = b.variant !== "";
+				if (aHasVariant !== bHasVariant) {
+					return aHasVariant ? 1 : -1;
+				}
+				return a.variant.localeCompare(b.variant, undefined, {
+					numeric: true,
+				});
+			})
+			.map(({ key, label, url }) => ({ key, label, url }));
 
 		if (results.length === 0 && editingUser.subscription_url) {
 			const fallback = formatLink(editingUser.subscription_url);
@@ -1197,7 +1266,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
-		if (index === 1 && !usageFetched && editingUser) {
+		const usageTabIndex = isEditing && canViewTraffic ? 1 : -1;
+		if (index === usageTabIndex && !usageFetched && editingUser) {
 			fetchUsageWithFilter({
 				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
 			});
@@ -1210,6 +1280,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		name: "expire",
 	});
+
+	const expireHelperText = useMemo(() => {
+		if (!expireValue) {
+			return null;
+		}
+		const { status, time } = relativeExpiryDate(expireValue);
+		return t(status, { time });
+	}, [expireValue, t]);
 
 	const _nextPlanDataLimit = useWatch({
 		control: form.control,
@@ -1348,6 +1426,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (limitReached) {
 			return;
 		}
+		if (userManagementLocked) {
+			return;
+		}
 
 		setLoading(true);
 
@@ -1393,7 +1474,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		const maxDataLimitPerUser =
 			userData?.permissions?.users?.max_data_limit_per_user;
 		const allowUnlimitedData =
-			hasElevatedRole ||
+			hasFullAccess ||
 			Boolean(
 				userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData],
 			);
@@ -1404,7 +1485,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
 			// If unlimited (0) is requested but not allowed, show error
 			if (dataLimitBytes === 0 && !allowUnlimitedData) {
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.unlimitedNotAllowed", {
 					max: maxGb,
 				});
@@ -1418,8 +1499,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			}
 			// If exceeds max limit, show error
 			if (dataLimitBytes > 0 && dataLimitBytes > maxDataLimitPerUser) {
-				const originalGb = (dataLimitBytes / 1073741824).toFixed(2);
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const originalGb = (dataLimitBytes / BYTES_PER_GB).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.dataLimitExceedsMax", {
 					original: originalGb,
 					max: maxGb,
@@ -1437,7 +1518,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		// Validate next_plan data_limit (don't auto-normalize, show error instead)
 		const normalizedNextPlanDataLimit =
 			next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
-				? Number((Number(next_plan_data_limit) * 1073741824).toFixed(5))
+				? gigabytesToBytes(Number(next_plan_data_limit))
 				: 0;
 
 		if (
@@ -1446,10 +1527,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			normalizedNextPlanDataLimit > 0
 		) {
 			if (normalizedNextPlanDataLimit > maxDataLimitPerUser) {
-				const originalGb = (normalizedNextPlanDataLimit / 1073741824).toFixed(
+				const originalGb = (normalizedNextPlanDataLimit / BYTES_PER_GB).toFixed(
 					2,
 				);
-				const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 				const errorMessage = t("userDialog.nextPlanDataLimitExceedsMax", {
 					original: originalGb,
 					max: maxGb,
@@ -1471,7 +1552,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			maxDataLimitPerUser !== null &&
 			maxDataLimitPerUser !== undefined
 		) {
-			const maxGb = (maxDataLimitPerUser / 1073741824).toFixed(2);
+			const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
 			const errorMessage = t("userDialog.nextPlanUnlimitedNotAllowed", {
 				max: maxGb,
 			});
@@ -1502,12 +1583,12 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				: 0;
 
 		if (!isEditing) {
-			const effectiveServiceId = hasElevatedRole
+			const effectiveServiceId = hasPrivilegedRole
 				? selectedServiceId
 				: (selectedServiceId ??
 					(nonSudoSingleService ? (services[0]?.id ?? null) : null));
 
-			if (!hasElevatedRole && !effectiveServiceId) {
+			if (!hasPrivilegedRole && !effectiveServiceId) {
 				setError(t("userDialog.selectService", "Please choose a service"));
 				setLoading(false);
 				return;
@@ -1702,7 +1783,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		if (typeof selectedServiceId !== "undefined") {
 			if (selectedServiceId === null) {
-				if (hasElevatedRole) {
+				if (hasPrivilegedRole) {
 					body.service_id = null;
 				}
 			} else if (selectedServiceId !== editingUser?.service_id) {
@@ -1782,7 +1863,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const handleResetUsage = () => {
-		if (!canResetUsage) {
+		if (!canResetUsageVisible) {
 			return;
 		}
 		useDashboard.setState({
@@ -1791,7 +1872,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const handleRevokeSubscription = () => {
-		if (!canRevokeSubscription) {
+		if (!canRevokeSubscriptionVisible) {
 			return;
 		}
 		useDashboard.setState({
@@ -1799,7 +1880,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		});
 	};
 
-	const disabled = loading || limitReached;
+	const disabled = loading || limitReached || userManagementLocked;
 	const submitDisabled = disabled || !form.formState.isValid;
 
 	const isOnHold = userStatus === "on_hold";
@@ -2031,6 +2112,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										</AlertDescription>
 									</Alert>
 								)}
+								{userManagementLocked && (
+									<Alert status="warning" mb={4} borderRadius="md">
+										<AlertIcon />
+										<AlertDescription>
+											{t(
+												"userDialog.managementLocked",
+												"User management is locked because the created traffic limit has been reached. Only disable and enable actions remain available.",
+											)}
+										</AlertDescription>
+									</Alert>
+								)}
 
 								<Tabs
 									index={activeTab}
@@ -2041,7 +2133,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								>
 									<TabList>
 										<Tab>{t("userDialog.tabs.edit", "Edit")}</Tab>
-										{isEditing && (
+										{isEditing && canViewTraffic && (
 											<Tab>{t("userDialog.tabs.usage", "Usage")}</Tab>
 										)}
 										{isEditing && (
@@ -2217,7 +2309,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		{`${usernameValue?.length ?? 0}/32`}
 																	</FormHelperText>
 																	{isEditing &&
-																		hasElevatedRole &&
+																		hasPrivilegedRole &&
 																		editingUser?.admin_username && (
 																			<FormHelperText
 																				fontSize="xs"
@@ -2472,25 +2564,40 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		: Boolean(form.formState.errors.expire)
 																}
 															>
-																<Stack
-																	direction={{ base: "column", md: "row" }}
-																	align={{ base: "stretch", md: "flex-end" }}
-																	gap={{ base: 2, md: 4 }}
+																<Grid
+																	templateColumns={{
+																		base: "1fr",
+																		md: "minmax(0, 1fr) auto",
+																	}}
+																	templateAreas={{
+																		base: isOnHold
+																			? `"label" "field" "button"`
+																			: `"label" "field" "helper" "button"`,
+																		md: isOnHold
+																			? `"label ."
+																			   "field button"`
+																			: `"label ."
+																			   "field button"
+																			   "helper ."`,
+																	}}
+																	rowGap={2}
+																	columnGap={{ base: 0, md: 4 }}
 																	w="full"
-																	flexWrap={{ base: "wrap", md: "nowrap" }}
+																	minW={0}
 																>
-																	<Box flex="1" minW={0}>
-																		<FormLabel
-																			mb={2}
-																			textAlign={isRTL ? "right" : "left"}
-																		>
-																			{isOnHold
-																				? t("expires.days", "Expires in (days)")
-																				: t(
-																						"expires.selectDate",
-																						"Select expiration date",
-																					)}
-																		</FormLabel>
+																	<FormLabel
+																		gridArea="label"
+																		mb={0}
+																		textAlign={isRTL ? "right" : "left"}
+																	>
+																		{isOnHold
+																			? t("expires.days", "Expires in (days)")
+																			: t(
+																					"expires.selectDate",
+																					"Select expiration date",
+																				)}
+																	</FormLabel>
+																	<Box gridArea="field" minW={0}>
 																		{isOnHold ? (
 																			<Controller
 																				control={form.control}
@@ -2535,8 +2642,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				name="expire"
 																				control={form.control}
 																				render={({ field }) => {
-																					const { status, time } =
-																						relativeExpiryDate(field.value);
 																					const selectedDate = field.value
 																						? dayjs.unix(field.value).toDate()
 																						: null;
@@ -2569,45 +2674,44 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																					};
 
 																					return (
-																						<Box w="full" minW={0}>
-																							<DateTimePicker
-																								value={selectedDate}
-																								onChange={handleDateChange}
-																								placeholder={t(
-																									"expires.selectDate",
-																									"Select expiration date",
-																								)}
-																								disabled={disabled}
-																								minDate={new Date()}
-																								quickSelects={quickExpiryOptions.map(
-																									(option) => ({
-																										label: option.label,
-																										onClick: () => {
-																											const newDate = dayjs()
-																												.add(
-																													option.amount,
-																													option.unit,
-																												)
-																												.endOf("day");
-																											handleDateChange(
-																												newDate.toDate(),
-																											);
-																										},
-																									}),
-																								)}
-																							/>
-																							{field.value ? (
-																								<FormHelperText>
-																									{t(status, { time })}
-																								</FormHelperText>
-																							) : null}
-																						</Box>
+																						<DateTimePicker
+																							value={selectedDate}
+																							onChange={handleDateChange}
+																							placeholder={t(
+																								"expires.selectDate",
+																								"Select expiration date",
+																							)}
+																							disabled={disabled}
+																							minDate={new Date()}
+																							quickSelects={quickExpiryOptions.map(
+																								(option) => ({
+																									label: option.label,
+																									onClick: () => {
+																										const newDate = dayjs()
+																											.add(
+																												option.amount,
+																												option.unit,
+																											)
+																											.endOf("day");
+																										handleDateChange(
+																											newDate.toDate(),
+																										);
+																									},
+																								}),
+																							)}
+																						/>
 																					);
 																				}}
 																			/>
 																		)}
 																	</Box>
+																	{!isOnHold && expireHelperText ? (
+																		<FormHelperText gridArea="helper" mt={0}>
+																			{expireHelperText}
+																		</FormHelperText>
+																	) : null}
 																	<Button
+																		gridArea="button"
 																		size="sm"
 																		variant={isOnHold ? "solid" : "outline"}
 																		colorScheme={isOnHold ? "primary" : "gray"}
@@ -2636,14 +2740,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		minW={{ base: "100%", md: "auto" }}
 																		alignSelf={{
 																			base: "stretch",
-																			md: "flex-end",
+																			md: "end",
+																		}}
+																		justifySelf={{
+																			base: "stretch",
+																			md: "start",
 																		}}
 																		flexShrink={0}
 																		h="32px"
 																	>
 																		{t("onHold.button")}
 																	</Button>
-																</Stack>
+																</Grid>
 																{isOnHold ? (
 																	<FormErrorMessage>
 																		{
@@ -2712,7 +2820,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 												{showServiceSelector && (
 													<GridItem mt={useTwoColumns ? 0 : 4}>
-														<FormControl isRequired={!hasElevatedRole}>
+														<FormControl isRequired={!hasPrivilegedRole}>
 															<FormLabel>
 																{t("userDialog.selectServiceLabel", "Service")}
 															</FormLabel>
@@ -2756,7 +2864,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																</HStack>
 															) : hasServices ? (
 																<VStack align="stretch" spacing={3}>
-																	{hasElevatedRole && (
+																	{hasPrivilegedRole && (
 																		<Box
 																			role="button"
 																			tabIndex={disabled ? -1 : 0}
@@ -3610,7 +3718,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 												</Alert>
 											)}
 										</TabPanel>
-										{isEditing && (
+										{isEditing && canViewTraffic && (
 											<TabPanel px={0} pt={4}>
 												<VStack gap={4}>
 													<UsageFilter
@@ -3929,7 +4037,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 									>
 										{isEditing && (
 											<>
-												{canDeleteUsers && (
+												{canDeleteUsersVisible && (
 													<Tooltip label={t("delete")} placement="top">
 														<IconButton
 															aria-label="Delete"
@@ -3947,13 +4055,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													</Tooltip>
 												)}
 
-												{canResetUsage && (
+												{canResetUsageVisible && (
 													<Button onClick={handleResetUsage} size="sm">
 														{t("userDialog.resetUsage")}
 													</Button>
 												)}
 
-												{canRevokeSubscription && (
+												{canRevokeSubscriptionVisible && (
 													<Button onClick={handleRevokeSubscription} size="sm">
 														{t("userDialog.revokeSubscription")}
 													</Button>

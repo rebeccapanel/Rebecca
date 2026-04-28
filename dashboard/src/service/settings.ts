@@ -76,11 +76,11 @@ export interface SubscriptionTemplateSettings {
 	use_custom_json_for_streisand: boolean;
 	use_custom_json_for_happ: boolean;
 	subscription_path: string;
+	subscription_aliases: string[];
+	subscription_ports: number[];
 }
 
-export type SubscriptionTemplateSettingsUpdatePayload = Partial<
-	Omit<SubscriptionTemplateSettings, "subscription_path">
->;
+export type SubscriptionTemplateSettingsUpdatePayload = Partial<SubscriptionTemplateSettings>;
 
 export interface AdminSubscriptionSettings {
 	id: number;
@@ -129,6 +129,135 @@ export interface CertificateIssuePayload {
 
 export interface CertificateRenewPayload {
 	domain?: string | null;
+}
+
+export type ThreeXUiUsernameConflictMode =
+	| "rename"
+	| "skip"
+	| "overwrite";
+
+export type ThreeXUiDuplicateSubaddressSourceMode =
+	| "keep_first"
+	| "skip_all";
+
+export type ThreeXUiDuplicateSubaddressExistingMode =
+	| "skip"
+	| "overwrite";
+
+export type ThreeXUiOverrideMode = "none" | "add" | "replace";
+
+export type ThreeXUiImportJobStatus =
+	| "pending"
+	| "running"
+	| "completed"
+	| "failed";
+
+export interface ThreeXUiImportAdminOption {
+	id: number;
+	username: string;
+}
+
+export interface ThreeXUiImportServiceOption {
+	id: number;
+	name: string;
+	admin_ids: number[];
+	supported_protocols: string[];
+}
+
+export interface ThreeXUiUsernameConflictItem {
+	username: string;
+	source_count: number;
+	existing_usernames: string[];
+}
+
+export interface ThreeXUiInboundPreview {
+	inbound_id: number;
+	remark: string;
+	protocol: string;
+	source_tag: string | null;
+	source_port: number | null;
+	network: string | null;
+	security: string | null;
+	raw_client_count: number;
+	importable_client_count: number;
+	username_conflicts: ThreeXUiUsernameConflictItem[];
+}
+
+export interface ThreeXUiSubaddressOccurrence {
+	inbound_id: number;
+	inbound_remark: string;
+	protocol: string;
+	username: string;
+	email: string | null;
+}
+
+export interface ThreeXUiDuplicateSubaddressGroup {
+	subadress: string;
+	source_count: number;
+	occurrences: ThreeXUiSubaddressOccurrence[];
+	existing_users: Array<{ id: number; username: string }>;
+}
+
+export interface ThreeXUiPreviewResponse {
+	preview_id: string;
+	source_inbounds: number;
+	supported_inbounds: number;
+	source_clients: number;
+	importable_clients: number;
+	skipped_unsupported: number;
+	skipped_invalid: number;
+	inbounds: ThreeXUiInboundPreview[];
+	duplicate_subaddresses: ThreeXUiDuplicateSubaddressGroup[];
+	admins: ThreeXUiImportAdminOption[];
+	services: ThreeXUiImportServiceOption[];
+}
+
+export interface ThreeXUiInboundImportConfig {
+	inbound_id: number;
+	import_enabled?: boolean;
+	admin_id?: number | null;
+	service_id?: number | null;
+	username_conflict_mode: ThreeXUiUsernameConflictMode;
+	expire_override_mode?: ThreeXUiOverrideMode;
+	expire_override_seconds?: number | null;
+	traffic_override_mode?: ThreeXUiOverrideMode;
+	traffic_override_bytes?: number | null;
+}
+
+export interface ThreeXUiImportRequest {
+	preview_id: string;
+	inbounds: ThreeXUiInboundImportConfig[];
+	duplicate_subaddress_policy: {
+		source_conflict_mode: ThreeXUiDuplicateSubaddressSourceMode;
+		existing_conflict_mode: ThreeXUiDuplicateSubaddressExistingMode;
+	};
+}
+
+export interface ThreeXUiImportJobResult {
+	total_clients: number;
+	processed_clients: number;
+	created: number;
+	updated: number;
+	skipped: number;
+	renamed: number;
+	skipped_username_conflicts: number;
+	skipped_subaddress_conflicts: number;
+	updated_by_username_overwrite: number;
+	updated_by_subaddress_overwrite: number;
+	updated_by_credential_key: number;
+	warnings: string[];
+}
+
+export interface ThreeXUiImportJobResponse {
+	job_id: string;
+	preview_id: string;
+	status: ThreeXUiImportJobStatus;
+	progress_current: number;
+	progress_total: number;
+	message: string | null;
+	result: ThreeXUiImportJobResult | null;
+	created_at: string;
+	updated_at: string;
 }
 
 export const getPanelSettings = async (): Promise<PanelSettingsResponse> => {
@@ -203,4 +332,30 @@ export const renewSubscriptionCertificate = async (
 		method: "POST",
 		body: JSON.stringify(payload),
 	});
+};
+
+export const previewThreeXUiDatabase = async (
+	file: File,
+): Promise<ThreeXUiPreviewResponse> => {
+	const body = new FormData();
+	body.append("file", file);
+	return apiFetch("/settings/database/3xui/preview", {
+		method: "POST",
+		body,
+	});
+};
+
+export const startThreeXUiImport = async (
+	payload: ThreeXUiImportRequest,
+): Promise<ThreeXUiImportJobResponse> => {
+	return apiFetch("/settings/database/3xui/import", {
+		method: "POST",
+		body: JSON.stringify(payload),
+	});
+};
+
+export const getThreeXUiImportJob = async (
+	jobId: string,
+): Promise<ThreeXUiImportJobResponse> => {
+	return apiFetch(`/settings/database/3xui/jobs/${jobId}`);
 };

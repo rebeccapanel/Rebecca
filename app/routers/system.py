@@ -12,7 +12,7 @@ from typing import Dict, List, Union
 
 import commentjson
 import psutil
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func
 
@@ -22,20 +22,34 @@ from app.db import Session, crud, get_db
 from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost, ServiceHostLink
 from app.models.admin import Admin, AdminRole, AdminStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
+from app.services import metrics_service
 from app.models.system import (
     AdminOverviewStats,
     PersonalUsageStats,
-    RedisStats,
     SystemStats,
     UsageStats,
 )
 from app.models.user import UserStatus
 from app.utils import responses
+from app.utils.binary_control import (
+    build_rebecca_update_args,
+    get_binary_runtime_info,
+    require_binary_runtime,
+    schedule_rebecca_cli,
+)
+from app.utils.update_check import get_binary_update_status
 from app.utils.system import cpu_usage, realtime_bandwidth
-from app.utils.xray_config import apply_config, restart_xray_and_invalidate_cache
-from app.utils.maintenance import maintenance_request
-from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG, REDIS_ENABLED
-from app.redis.client import get_redis
+from app.reb_node.config import XRayConfig
+from app.utils.xray_config import restart_xray_and_invalidate_cache, restart_xray_targets
+from app.utils.xray_targets import (
+    MASTER_TARGET_ID,
+    ensure_target_configs_for_mutation,
+    iter_stored_raw_configs,
+    node_target_id,
+    parse_target_id,
+    persist_mutated_target_configs,
+)
+from config import XRAY_EXECUTABLE_PATH, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 logger = logging.getLogger(__name__)
@@ -62,23 +76,13 @@ _PANEL_PROCESS = psutil.Process(os.getpid())
 _PANEL_PROCESS.cpu_percent(interval=None)
 
 
-def _try_maintenance_json(path: str) -> dict | None:
-    try:
-        resp = maintenance_request("GET", path, timeout=20)
-    except HTTPException as exc:
-        if exc.status_code in (404, 502, 503):
-            return None
-        raise
-    try:
-        return resp.json()
-    except Exception:
-        return None
-
-
-def _queue_xray_restart(bg: BackgroundTasks) -> None:
+def _queue_xray_restart(bg: BackgroundTasks, target_ids: set[str] | None = None) -> None:
     def _restart() -> None:
         try:
-            restart_xray_and_invalidate_cache()
+            if target_ids:
+                restart_xray_targets(target_ids)
+            else:
+                restart_xray_and_invalidate_cache()
         except Exception as exc:  # pragma: no cover - best effort background task
             logger.error("Failed to restart Xray after inbound change: %s", exc)
 
@@ -196,7 +200,7 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
     if dbadmin and admin.role in (AdminRole.sudo, AdminRole.full_access):
         personal_total_users = crud.get_users_count(db, admin=dbadmin)
 
-    consumed_bytes = int(getattr(dbadmin, "users_usage", 0) or 0)
+    consumed_bytes = metrics_service.get_admin_effective_usage_total(dbadmin) if dbadmin else 0
     built_bytes = int(getattr(dbadmin, "lifetime_usage", 0) or 0)
     reset_bytes = max(built_bytes - consumed_bytes, 0)
     personal_usage = PersonalUsageStats(
@@ -224,118 +228,16 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
         top_admin_username=None,
         top_admin_usage=0,
     )
-    top_admin = (
-        db.query(AdminModel)
-        .filter(AdminModel.status != AdminStatus.deleted)
-        .order_by(AdminModel.users_usage.desc())
-        .first()
-    )
+    top_admin = None
+    top_admin_usage = 0
+    for candidate in db.query(AdminModel).filter(AdminModel.status != AdminStatus.deleted).all():
+        candidate_usage = metrics_service.get_admin_effective_usage_total(candidate)
+        if top_admin is None or candidate_usage > top_admin_usage:
+            top_admin = candidate
+            top_admin_usage = candidate_usage
     if top_admin:
         admin_overview.top_admin_username = top_admin.username
-        admin_overview.top_admin_usage = int(top_admin.users_usage or 0)
-
-    # Get Redis stats
-    redis_stats = None
-    if REDIS_ENABLED:
-        redis_client = get_redis()
-        redis_connected = False
-        redis_memory_used = 0
-        redis_memory_total = 0
-        redis_memory_percent = 0.0
-        redis_uptime_seconds = 0
-        redis_version = None
-        redis_keys_count = 0
-        redis_keys_cached = 0
-        redis_commands_processed = 0
-        redis_hits = 0
-        redis_misses = 0
-        redis_hit_rate = 0.0
-
-        if redis_client:
-            try:
-                redis_client.ping()
-                redis_connected = True
-
-                # Get Redis INFO
-                info = redis_client.info()
-                stats_info = redis_client.info("stats")
-
-                # Memory stats
-                redis_memory_used = int(info.get("used_memory", 0))
-                redis_memory_total = int(info.get("maxmemory", 0))
-                if redis_memory_total == 0:
-                    redis_memory_total = redis_memory_used if redis_memory_used > 0 else 1
-                    redis_memory_percent = 0.0  # No limit set, so percentage is not meaningful
-                else:
-                    redis_memory_percent = (redis_memory_used / redis_memory_total) * 100.0
-
-                # Uptime
-                redis_uptime_seconds = int(info.get("uptime_in_seconds", 0))
-
-                # Version
-                redis_version = info.get("redis_version")
-
-                try:
-                    redis_keys_count = redis_client.dbsize()
-                except Exception:
-                    db0_info = info.get("db0")
-                    if isinstance(db0_info, dict):
-                        redis_keys_count = int(db0_info.get("keys", 0))
-                    elif isinstance(db0_info, str):
-                        try:
-                            for part in db0_info.split(","):
-                                if part.startswith("keys="):
-                                    redis_keys_count = int(part.split("=")[1])
-                                    break
-                        except Exception:
-                            pass
-                    else:
-                        redis_keys_count = 0
-
-                # Count cached subscription keys
-                try:
-                    from app.redis.subscription import REDIS_KEY_PREFIX_USERNAME
-
-                    pattern = f"{REDIS_KEY_PREFIX_USERNAME}*"
-                    redis_keys_cached = len(redis_client.keys(pattern))
-                except Exception:
-                    redis_keys_cached = 0
-
-                redis_commands_processed = int(stats_info.get("total_commands_processed", 0))
-
-                # Cache hits/misses (from keyspace stats)
-                redis_hits = int(stats_info.get("keyspace_hits", 0))
-                redis_misses = int(stats_info.get("keyspace_misses", 0))
-                total_requests = redis_hits + redis_misses
-                if total_requests > 0:
-                    redis_hit_rate = (redis_hits / total_requests) * 100.0
-                else:
-                    redis_hit_rate = 0.0
-
-            except Exception as e:
-                logger.debug(f"Failed to get Redis stats: {e}")
-                redis_connected = False
-
-        redis_stats = RedisStats(
-            enabled=True,
-            connected=redis_connected,
-            memory_used=redis_memory_used,
-            memory_total=redis_memory_total,
-            memory_percent=redis_memory_percent,
-            uptime_seconds=redis_uptime_seconds,
-            version=redis_version,
-            keys_count=redis_keys_count,
-            keys_cached=redis_keys_cached,
-            commands_processed=redis_commands_processed,
-            hits=redis_hits,
-            misses=redis_misses,
-            hit_rate=redis_hit_rate,
-        )
-    else:
-        redis_stats = RedisStats(
-            enabled=False,
-            connected=False,
-        )
+        admin_overview.top_admin_usage = int(top_admin_usage or 0)
 
     # Get last Telegram error (only for sudo/full_access admins)
     last_telegram_error = None
@@ -406,30 +308,48 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
         admin_overview=admin_overview,
         last_xray_error=last_xray_error,
         last_telegram_error=last_telegram_error,
-        redis_stats=redis_stats,
     )
 
 
 @router.get("/maintenance/info", responses={403: responses._403})
 def get_maintenance_info(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Return maintenance service insights (panel/node images)."""
-    panel_info = _try_maintenance_json("/version/panel")
-    node_info = _try_maintenance_json("/version/node")
-    return {"panel": panel_info, "node": node_info}
+    """Return local binary/runtime information for host-installed panels."""
+    panel = get_binary_runtime_info()
+    panel["update"] = get_binary_update_status(
+        "rebeccapanel/Rebecca",
+        panel.get("tag"),
+        channel=panel.get("channel"),
+    )
+    return {
+        "panel": panel,
+        "node": None,
+        "node_update": get_binary_update_status("rebeccapanel/Rebecca-node", None),
+    }
 
 
 @router.post("/maintenance/update", responses={403: responses._403})
-def update_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Trigger the maintenance service to pull the latest panel/node images."""
-    maintenance_request("POST", "/update")
-    return {"status": "ok"}
+def update_panel_from_maintenance(
+    payload: dict | None = Body(default=None),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Schedule an on-host Rebecca update via the installed CLI."""
+    require_binary_runtime()
+    payload = payload or {}
+    schedule_rebecca_cli(
+        build_rebecca_update_args(
+            channel=payload.get("channel"),
+            version=payload.get("version"),
+        )
+    )
+    return {"status": "accepted"}
 
 
 @router.post("/maintenance/restart", responses={403: responses._403})
 def restart_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Ask the maintenance service to restart the Rebecca stack."""
-    maintenance_request("POST", "/restart")
-    return {"status": "ok"}
+    """Schedule an on-host Rebecca restart via the installed CLI."""
+    require_binary_runtime()
+    schedule_rebecca_cli(["restart", "-n"])
+    return {"status": "accepted"}
 
 
 @router.post("/maintenance/soft-reload", responses={403: responses._403})
@@ -447,9 +367,23 @@ def soft_reload_panel_from_maintenance(admin: Admin = Depends(Admin.check_sudo_a
 
 
 @router.get("/inbounds", response_model=Dict[ProxyTypes, List[ProxyInbound]])
-def get_inbounds(admin: Admin = Depends(Admin.get_current)):
+def get_inbounds(admin: Admin = Depends(Admin.get_current), db: Session = Depends(get_db)):
     """Retrieve inbound configurations grouped by protocol."""
-    return xray.config.inbounds_by_protocol
+    result: Dict[ProxyTypes, List[ProxyInbound]] = {}
+    seen_tags: set[str] = set()
+    for _target_id, raw_config in iter_stored_raw_configs(db):
+        try:
+            config = XRayConfig(raw_config, api_port=xray.config.api_port)
+        except Exception:
+            continue
+        for protocol, inbounds in config.inbounds_by_protocol.items():
+            for inbound in inbounds:
+                tag = inbound.get("tag")
+                if not tag or tag in seen_tags:
+                    continue
+                seen_tags.add(tag)
+                result.setdefault(protocol, []).append(inbound)
+    return result
 
 
 @router.get(
@@ -461,8 +395,7 @@ def get_inbounds_full(
     db: Session = Depends(get_db),
 ):
     """Return detailed inbound definitions for manageable protocols."""
-    config = _load_config(db)
-    return [_sanitize_inbound(inbound) for inbound in _managed_inbounds(config)]
+    return _all_manageable_inbounds_with_targets(db)
 
 
 @router.get(
@@ -544,19 +477,6 @@ def generate_reality_keypair(
         raise HTTPException(status_code=500, detail=f"Failed to generate key pair: {str(exc)}") from exc
 
 
-@router.get("/system/redis-status")
-def redis_status(admin: Admin = Depends(Admin.check_sudo_admin)):
-    enabled = bool(REDIS_ENABLED)
-    connected = False
-    client = get_redis() if enabled else None
-    if client:
-        try:
-            connected = bool(client.ping())
-        except Exception:
-            connected = False
-    return {"enabled": enabled, "connected": connected}
-
-
 @router.get(
     "/xray/reality-shortid",
     responses={403: responses._403},
@@ -630,11 +550,14 @@ def get_inbound_detail(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    inbound = _get_inbound_by_tag(config, tag)
+    inbound = None
+    for item in _all_manageable_inbounds_with_targets(db):
+        if item.get("tag") == tag:
+            inbound = item
+            break
     if inbound is None:
         raise HTTPException(status_code=404, detail="Inbound not found")
-    return _sanitize_inbound(inbound)
+    return inbound
 
 
 @router.post(
@@ -647,41 +570,30 @@ def create_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
+    payload = deepcopy(payload)
+    target_ids = _extract_target_ids(payload)
     inbound = _prepare_inbound_payload(payload)
     tag = inbound["tag"]
-    config = _load_config(db)
 
-    if any(existing.get("tag") == tag for existing in config.get("inbounds", [])):
+    if _direct_targets_for_inbound(db, tag):
         raise HTTPException(status_code=400, detail=f"Inbound {tag} already exists")
 
-    config.setdefault("inbounds", []).append(inbound)
-    apply_config(config)
-    _queue_xray_restart(bg)
+    configs = ensure_target_configs_for_mutation(db, target_ids)
+    for target_id, config in configs.items():
+        _validate_port_available(config, inbound, target_id)
+        _upsert_inbound_in_config(config, inbound)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is created
     xray.hosts.update()
 
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-            from app.reb_node.config import XRayConfig
-
-            raw_config = crud.get_xray_config(db)
-            xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
-            inbounds_dict = {
-                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
-            }
-            cache_inbounds(inbounds_dict)
-            invalidate_service_host_map_cache()
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
-
-    return _sanitize_inbound(inbound)
+    return _sanitize_inbound(
+        inbound,
+        targets=sorted(_direct_targets_for_inbound(db, tag)),
+        effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+    )
 
 
 @router.put(
@@ -695,40 +607,33 @@ def update_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    index = _find_inbound_index(config, tag)
-    if index is None:
+    current_targets = _direct_targets_for_inbound(db, tag)
+    if not current_targets:
         raise HTTPException(status_code=404, detail="Inbound not found")
 
+    payload = deepcopy(payload)
+    target_ids = _extract_target_ids(payload, default_targets=current_targets)
     inbound = _prepare_inbound_payload(payload, enforce_tag=tag)
-    config["inbounds"][index] = inbound
-    apply_config(config)
-    _queue_xray_restart(bg)
+    changed_targets = current_targets | target_ids
+    configs = ensure_target_configs_for_mutation(db, changed_targets)
+    for target_id, config in configs.items():
+        if target_id in target_ids:
+            _validate_port_available(config, inbound, target_id, old_tag=tag)
+            _upsert_inbound_in_config(config, inbound, old_tag=tag)
+        else:
+            _remove_inbound_from_config(config, tag)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     crud.get_or_create_inbound(db, tag)
     # Ensure hosts cache is updated after inbound is updated
     xray.hosts.update()
 
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-            from app.reb_node.config import XRayConfig
-
-            raw_config = crud.get_xray_config(db)
-            xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
-            inbounds_dict = {
-                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
-            }
-            cache_inbounds(inbounds_dict)
-            invalidate_service_host_map_cache()
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
-
-    return _sanitize_inbound(inbound)
+    return _sanitize_inbound(
+        inbound,
+        targets=sorted(_direct_targets_for_inbound(db, tag)),
+        effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+    )
 
 
 @router.delete(
@@ -741,19 +646,24 @@ def delete_inbound(
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ):
-    config = _load_config(db)
-    index = _find_inbound_index(config, tag)
-    if index is None:
+    current_targets = _direct_targets_for_inbound(db, tag)
+    if not current_targets:
         raise HTTPException(status_code=404, detail="Inbound not found")
 
-    inbound = config["inbounds"][index]
+    inbound = None
+    for _target_id, config in iter_stored_raw_configs(db):
+        inbound = _get_inbound_by_tag(config, tag)
+        if inbound:
+            break
     if not _is_manageable_inbound(inbound):
         raise HTTPException(status_code=400, detail="This inbound cannot be managed via the dashboard")
 
     affected_services = crud.remove_hosts_for_inbound(db, tag)
-    del config["inbounds"][index]
-    apply_config(config)
-    _queue_xray_restart(bg)
+    configs = ensure_target_configs_for_mutation(db, current_targets)
+    for config in configs.values():
+        _remove_inbound_from_config(config, tag)
+    persist_mutated_target_configs(db, configs)
+    _queue_xray_restart(bg, set(configs.keys()))
 
     try:
         crud.delete_inbound(db, tag)
@@ -772,34 +682,6 @@ def delete_inbound(
 
     db.commit()
     xray.hosts.update()
-
-    # Update Redis cache
-    from config import REDIS_ENABLED
-
-    if REDIS_ENABLED:
-        try:
-            from app.redis.cache import cache_inbounds, invalidate_service_host_map_cache
-            from app.reb_node.config import XRayConfig
-
-            raw_config = crud.get_xray_config(db)
-            xray_config = XRayConfig(raw_config, api_port=xray.config.api_port)
-            inbounds_dict = {
-                "inbounds_by_tag": {tag: inbound for tag, inbound in xray_config.inbounds_by_tag.items()},
-                "inbounds_by_protocol": {proto: tags for proto, tags in xray_config.inbounds_by_protocol.items()},
-            }
-            cache_inbounds(inbounds_dict)
-            invalidate_service_host_map_cache()
-            from app.reb_node.state import rebuild_service_hosts_cache
-            from app.redis.cache import cache_service_host_map
-            from app.reb_node import state as xray_state
-
-            rebuild_service_hosts_cache()
-            for service_id in xray_state.service_hosts_cache.keys():
-                host_map = xray_state.service_hosts_cache.get(service_id)
-                if host_map:
-                    cache_service_host_map(service_id, host_map)
-        except Exception:
-            pass  # Don't fail if Redis is unavailable
 
     for user in users_to_refresh.values():
         xray.operations.update_user(dbuser=user)
@@ -898,8 +780,11 @@ def modify_hosts(
 ):
     """Modify proxy hosts and update the configuration."""
     _ensure_hosts_permission(admin)
+    from app.services.data_access import get_inbounds_by_tag_cached
+
+    inbound_map = get_inbounds_by_tag_cached(db)
     for inbound_tag in modified_hosts:
-        if inbound_tag not in xray.config.inbounds_by_tag:
+        if inbound_tag not in inbound_map:
             raise HTTPException(status_code=400, detail=f"Inbound {inbound_tag} doesn't exist")
 
     # Collect all host IDs that are present in the payload to prevent deletion
@@ -938,11 +823,130 @@ def modify_hosts(
     _queue_hosts_cache_refresh(bg)
     _queue_service_users_refresh(bg, affected_service_ids)
 
-    return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
+    return {tag: crud.get_hosts(db, tag) for tag in inbound_map}
 
 
 def _load_config(db: Session) -> dict:
     return deepcopy(crud.get_xray_config(db))
+
+
+def _target_from_payload_item(item) -> str | None:
+    if isinstance(item, str):
+        target_id = item.strip()
+    elif isinstance(item, dict):
+        target_id = str(item.get("id") or item.get("target_id") or "").strip()
+    else:
+        return None
+    if not target_id:
+        return None
+    parse_target_id(target_id)
+    return target_id
+
+
+def _extract_target_ids(payload: dict, default_targets: set[str] | None = None) -> set[str]:
+    raw_targets = payload.pop("targets", None)
+    if raw_targets is None:
+        raw_targets = payload.pop("target_ids", None)
+    if raw_targets is None:
+        return set(default_targets or {MASTER_TARGET_ID})
+    if not isinstance(raw_targets, list):
+        raise HTTPException(status_code=400, detail="targets must be a list")
+
+    target_ids = []
+    for item in raw_targets:
+        target_id = _target_from_payload_item(item)
+        if target_id:
+            target_ids.append(target_id)
+    if not target_ids:
+        raise HTTPException(status_code=400, detail="At least one target is required")
+    return set(target_ids)
+
+
+def _config_has_inbound(config: dict, tag: str) -> bool:
+    return any(isinstance(inbound, dict) and inbound.get("tag") == tag for inbound in config.get("inbounds", []))
+
+
+def _direct_targets_for_inbound(db: Session, tag: str) -> set[str]:
+    targets = set()
+    for target_id, config in iter_stored_raw_configs(db):
+        if _config_has_inbound(config, tag):
+            targets.add(target_id)
+    return targets
+
+
+def _effective_targets_for_inbound(db: Session, tag: str) -> set[str]:
+    targets = set()
+    master_has_inbound = False
+    for target_id, config in iter_stored_raw_configs(db):
+        if _config_has_inbound(config, tag):
+            targets.add(target_id)
+            if target_id == MASTER_TARGET_ID:
+                master_has_inbound = True
+    if master_has_inbound:
+        from app.utils.xray_targets import node_config_mode
+        from app.models.node import XrayConfigMode
+
+        for node in crud.get_nodes(db):
+            if node_config_mode(node) == XrayConfigMode.default:
+                targets.add(node_target_id(node.id))
+    return targets
+
+
+def _port_key(inbound: dict) -> str:
+    return str(inbound.get("port") or "").strip()
+
+
+def _validate_port_available(config: dict, inbound: dict, target_id: str, old_tag: str | None = None) -> None:
+    wanted_port = _port_key(inbound)
+    if not wanted_port:
+        return
+    for existing in config.get("inbounds", []):
+        if not isinstance(existing, dict):
+            continue
+        if old_tag and existing.get("tag") == old_tag:
+            continue
+        if _port_key(existing) == wanted_port:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port {wanted_port} is already used in target {target_id}",
+            )
+
+
+def _remove_inbound_from_config(config: dict, tag: str) -> bool:
+    inbounds = config.get("inbounds")
+    if not isinstance(inbounds, list):
+        return False
+    original_len = len(inbounds)
+    config["inbounds"] = [inbound for inbound in inbounds if not (isinstance(inbound, dict) and inbound.get("tag") == tag)]
+    return len(config["inbounds"]) != original_len
+
+
+def _upsert_inbound_in_config(config: dict, inbound: dict, old_tag: str | None = None) -> None:
+    config.setdefault("inbounds", [])
+    for index, existing in enumerate(config["inbounds"]):
+        if isinstance(existing, dict) and existing.get("tag") == (old_tag or inbound["tag"]):
+            config["inbounds"][index] = deepcopy(inbound)
+            return
+    config["inbounds"].append(deepcopy(inbound))
+
+
+def _all_manageable_inbounds_with_targets(db: Session) -> list[dict]:
+    result: dict[str, dict] = {}
+    for _target_id, config in iter_stored_raw_configs(db):
+        for inbound in config.get("inbounds", []):
+            if isinstance(inbound, dict) and _is_manageable_inbound(inbound):
+                result.setdefault(str(inbound["tag"]), deepcopy(inbound))
+
+    sanitized = []
+    for tag, inbound in result.items():
+        sanitized.append(
+            _sanitize_inbound(
+                inbound,
+                targets=sorted(_direct_targets_for_inbound(db, tag)),
+                effective_targets=sorted(_effective_targets_for_inbound(db, tag)),
+            )
+        )
+    return sanitized
 
 
 def _is_manageable_inbound(inbound: dict) -> bool:
@@ -973,13 +977,21 @@ def _find_inbound_index(config: dict, tag: str) -> int | None:
     return None
 
 
-def _sanitize_inbound(inbound: dict) -> dict:
+def _sanitize_inbound(
+    inbound: dict,
+    targets: list[str] | None = None,
+    effective_targets: list[str] | None = None,
+) -> dict:
     sanitized = deepcopy(inbound)
     settings = sanitized.get("settings")
     if isinstance(settings, dict):
         settings["clients"] = []
     else:
         sanitized["settings"] = {"clients": []}
+    if targets is not None:
+        sanitized["targets"] = targets
+    if effective_targets is not None:
+        sanitized["effective_targets"] = effective_targets
     return sanitized
 
 

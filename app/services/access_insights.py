@@ -14,8 +14,7 @@ import requests
 from urllib.parse import urlsplit, urlunsplit
 
 from app.runtime import xray
-from config import XRAY_ASSETS_PATH, XRAY_LOG_DIR, REDIS_ENABLED
-from app.redis.client import get_redis
+from config import XRAY_ASSETS_PATH, XRAY_LOG_DIR
 from app.proto.rebecca.app.router import config_pb2
 
 
@@ -945,8 +944,6 @@ def build_access_insights(
     isp_cache: dict[str, tuple[str, str]] = {}
     unmatched_entries: list[dict[str, Any]] = []
     unmatched_seen: set[tuple[str, Optional[str]]] = set()
-    redis_client = get_redis() if REDIS_ENABLED else None
-
     cutoff = _utcnow() - timedelta(seconds=window_seconds)
     total_matches = 0
 
@@ -974,24 +971,7 @@ def build_access_insights(
         cache_key = (dest, dest_ip)
         platform = platform_cache.get(cache_key)
         if platform is None:
-            redis_key = None
-            if dest or dest_ip:
-                redis_key = f"access:platform:{dest or ''}:{dest_ip or ''}"
-            if redis_client and redis_key:
-                try:
-                    cached = redis_client.get(redis_key)
-                    if cached:
-                        platform = cached.decode() if isinstance(cached, bytes) else cached
-                except Exception:
-                    platform = None
-
-            if platform is None:
-                platform = guess_platform(dest, dest_ip, assets)
-                if redis_client and redis_key and platform:
-                    try:
-                        redis_client.setex(redis_key, 3600, platform)
-                    except Exception:
-                        pass
+            platform = guess_platform(dest, dest_ip, assets)
             platform_cache[cache_key] = platform
 
         entry["platform"] = platform
@@ -1370,8 +1350,6 @@ def build_multi_node_insights(
     users_by_platform: dict[str, set[str]] = {}
     platform_cache: dict[tuple[Any, Any], Optional[str]] = {}
     isp_cache: dict[str, tuple[str, str]] = {}
-    redis_client = get_redis() if REDIS_ENABLED else None
-
     total_matches = 0
     search_lower = (search or "").strip().lower()
     source_statuses: list[dict[str, Any]] = []
@@ -1428,23 +1406,9 @@ def build_multi_node_insights(
             cache_key = (dest, dest_ip)
             platform = platform_cache.get(cache_key)
 
-            if platform is None and redis_client:
-                redis_key = f"access:platform:{dest or ''}:{dest_ip or ''}"
-                try:
-                    cached = redis_client.get(redis_key)
-                    if cached:
-                        platform = cached.decode() if isinstance(cached, bytes) else cached
-                except Exception:
-                    pass
-
             if platform is None:
                 platform = guess_platform(dest, dest_ip, assets)
                 platform_cache[cache_key] = platform
-                if redis_client:
-                    try:
-                        redis_client.setex(f"access:platform:{dest or ''}:{dest_ip or ''}", 3600, platform)
-                    except Exception:
-                        pass
 
             entry["platform"] = platform
             entry["node_name"] = source.node_name

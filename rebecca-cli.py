@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 import os  # noqa
-import readline  # noqa
 import sys  # noqa
 
+os.environ.setdefault("REBECCA_SKIP_RUNTIME_INIT", "1")
 sys.path.insert(0, os.getcwd())  # noqa
+
+try:
+    import readline  # noqa: F401
+except ModuleNotFoundError:
+    readline = None  # noqa: F841
 
 import typer
 from typer._completion_shared import Shells

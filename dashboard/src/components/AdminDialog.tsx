@@ -8,7 +8,6 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
-	Icon,
 	IconButton,
 	Input,
 	InputGroup,
@@ -23,13 +22,13 @@ import {
 	Radio,
 	RadioGroup,
 	SimpleGrid,
+	Stack,
 	Tab,
 	TabList,
 	TabPanel,
 	TabPanels,
 	Tabs,
 	Text,
-	useDisclosure,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -43,7 +42,6 @@ import { useAdminsStore } from "contexts/AdminsContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
-	type ElementType,
 	type FC,
 	useCallback,
 	useEffect,
@@ -52,21 +50,18 @@ import {
 } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { IconType } from "react-icons";
-import { GiTronArrow } from "react-icons/gi";
-import { SiTether, SiTon } from "react-icons/si";
 import { fetch } from "service/http";
 import type {
 	AdminCreatePayload,
 	AdminPermissions,
 	AdminUpdatePayload,
 } from "types/Admin";
-import { AdminRole, AdminStatus } from "types/Admin";
-import type { ServiceSummary } from "types/Service";
 import {
-	getAdminExpire,
-	setAdminExpire as setAdminExpireStorage,
-} from "utils/adminExpireStorage";
+	AdminRole,
+	AdminStatus,
+	AdminTrafficLimitMode,
+} from "types/Admin";
+import type { ServiceSummary } from "types/Service";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import {
 	generateErrorMessage,
@@ -78,46 +73,13 @@ import AdminPermissionsModal from "./AdminPermissionsModal";
 import { DateTimePicker } from "./DateTimePicker";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
-const iconAs = (icon: IconType) => icon as unknown as ElementType;
-
-type DonationWallet = {
-	key: string;
-	label: string;
-	address: string;
-	icon: IconType;
-	color: string;
-};
-
-const DONATION_WALLETS: DonationWallet[] = [
-	{
-		key: "trx",
-		label: "TRX",
-		address: "TAZSGTDrFwgFWUFUpvMW2uMZHpy365ETYE",
-		icon: GiTronArrow,
-		color: "red.500",
-	},
-	{
-		key: "ton",
-		label: "TON",
-		address: "UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa",
-		icon: SiTon,
-		color: "blue.500",
-	},
-	{
-		key: "usdt",
-		label: "USDT (BEP20)",
-		address: "0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D",
-		icon: SiTether,
-		color: "green.500",
-	},
-];
 
 const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Standard]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -151,8 +113,8 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Reseller]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -186,8 +148,8 @@ const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Sudo]: {
 		users: {
 			create: true,
-			delete: true,
-			reset_usage: true,
+			delete: false,
+			reset_usage: false,
 			revoke: true,
 			create_on_hold: true,
 			allow_unlimited_data: true,
@@ -302,6 +264,8 @@ type AdminFormValues = {
 	password?: string;
 	telegram_id?: string;
 	role: AdminRole;
+	traffic_limit_mode: AdminTrafficLimitMode;
+	show_user_traffic: boolean;
 	permissions: AdminPermissions;
 	maxDataLimitPerUserGb?: string;
 	data_limit?: string;
@@ -333,11 +297,6 @@ export const AdminDialog: FC = () => {
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
 	const toast = useToast();
-	const {
-		isOpen: isDonateDialogOpen,
-		onOpen: openDonateDialog,
-		onClose: closeDonateDialog,
-	} = useDisclosure();
 	const {
 		admins,
 		adminInDialog: adminFromStore,
@@ -399,6 +358,10 @@ export const AdminDialog: FC = () => {
 						t("admins.validation.telegramNumeric"),
 					),
 				role: z.nativeEnum(AdminRole).optional(),
+				traffic_limit_mode: z
+					.nativeEnum(AdminTrafficLimitMode)
+					.default(AdminTrafficLimitMode.UsedTraffic),
+				show_user_traffic: z.boolean().default(true),
 				data_limit: z
 					.string()
 					.trim()
@@ -450,6 +413,8 @@ export const AdminDialog: FC = () => {
 			password: "",
 			telegram_id: "",
 			role: AdminRole.Standard,
+			traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
+			show_user_traffic: true,
 			permissions: clonePermissions(AdminRole.Standard),
 			maxDataLimitPerUserGb: "",
 			data_limit: "",
@@ -550,9 +515,14 @@ export const AdminDialog: FC = () => {
 	}, [generateRandomString, setValue]);
 	const { errors, isSubmitting } = formState;
 	const watchRole = watch("role");
+	const watchTrafficLimitMode = watch("traffic_limit_mode");
 	const _hideExtendedPermissions = watchRole === AdminRole.Standard;
 	const permissionsValue = watch("permissions");
+	const showUserTrafficValue = watch("show_user_traffic");
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
+	const isFullAccessRole = watchRole === AdminRole.FullAccess;
+	const isCreatedTrafficMode =
+		watchTrafficLimitMode === AdminTrafficLimitMode.CreatedTraffic;
 
 	const resetPermissionsToRole = useCallback(() => {
 		const role = watchRole ?? AdminRole.Standard;
@@ -565,6 +535,23 @@ export const AdminDialog: FC = () => {
 			setValue("permissions", next, { shouldDirty: true });
 		},
 		[setValue],
+	);
+
+	const handleUserPermissionToggle = useCallback(
+		(key: "delete" | "reset_usage", next: boolean) => {
+			setValue(
+				"permissions",
+				{
+					...permissionsValue,
+					users: {
+						...permissionsValue.users,
+						[key]: next,
+					},
+				},
+				{ shouldDirty: true },
+			);
+		},
+		[permissionsValue, setValue],
 	);
 
 	const handleMaxDataLimitChange = useCallback(
@@ -585,15 +572,16 @@ export const AdminDialog: FC = () => {
 			setAdminExpireDate(null);
 			return;
 		}
-		if (admin?.username) {
-			const stored = getAdminExpire(admin.username);
+		if (admin) {
 			setAdminExpireDate(
-				typeof stored === "number" ? dayjs.unix(stored).toDate() : null,
+				typeof admin.expire === "number" && admin.expire > 0
+					? dayjs.unix(admin.expire).toDate()
+					: null,
 			);
 			return;
 		}
 		setAdminExpireDate(null);
-	}, [admin?.username, isOpen]);
+	}, [admin, isOpen]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -625,6 +613,9 @@ export const AdminDialog: FC = () => {
 						? String(admin.telegram_id)
 						: "",
 				role: nextRole,
+				traffic_limit_mode:
+					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
+				show_user_traffic: admin?.show_user_traffic ?? true,
 				permissions: nextPermissions,
 				maxDataLimitPerUserGb: formatBytesToGbString(
 					nextPermissions.users.max_data_limit_per_user,
@@ -647,6 +638,15 @@ export const AdminDialog: FC = () => {
 			setPermissionsModalOpen(false);
 		}
 	}, [isOpen]);
+
+	useEffect(() => {
+		if (watchRole === AdminRole.FullAccess) {
+			setValue("traffic_limit_mode", AdminTrafficLimitMode.UsedTraffic, {
+				shouldDirty: true,
+			});
+			setValue("show_user_traffic", true, { shouldDirty: true });
+		}
+	}, [setValue, watchRole]);
 
 	const handleFormSubmit = handleSubmit(async (values) => {
 		const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
@@ -725,12 +725,20 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					traffic_limit_mode:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.traffic_limit_mode,
+					show_user_traffic:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.show_user_traffic,
+					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
 						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
-				setAdminExpireStorage(createdAdmin.username, expireValue);
 				const requestedServices = values.services ?? [];
 				let shouldFetch = true;
 				let serviceSyncError: unknown = null;
@@ -766,6 +774,10 @@ export const AdminDialog: FC = () => {
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
+					permissions:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.permissions,
 					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
@@ -773,6 +785,15 @@ export const AdminDialog: FC = () => {
 					data_limit: values.data_limit
 						? Number(values.data_limit) * GB_IN_BYTES
 						: undefined,
+					traffic_limit_mode:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.traffic_limit_mode,
+					show_user_traffic:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.show_user_traffic,
+					expire: expireValue,
 					users_limit: values.users_limit
 						? Number(values.users_limit)
 						: undefined,
@@ -781,7 +802,6 @@ export const AdminDialog: FC = () => {
 					payload.password = values.password;
 				}
 				await updateAdmin(admin.username, payload);
-				setAdminExpireStorage(admin.username, expireValue);
 				generateSuccessMessage(
 					t("admins.updateSuccess", "Admin updated"),
 					toast,
@@ -979,6 +999,74 @@ export const AdminDialog: FC = () => {
 					{errors.telegram_id?.message as string}
 				</FormErrorMessage>
 			</FormControl>
+			{!isFullAccessRole && (
+				<VStack align="stretch" spacing={3}>
+					<Checkbox
+						isChecked={isCreatedTrafficMode}
+						onChange={(event) =>
+							setValue(
+								"traffic_limit_mode",
+								event.target.checked
+									? AdminTrafficLimitMode.CreatedTraffic
+									: AdminTrafficLimitMode.UsedTraffic,
+								{ shouldDirty: true },
+							)
+						}
+					>
+						{t(
+							"admins.limitByCreatedTraffic",
+							"Limit admin by created traffic",
+						)}
+					</Checkbox>
+					{isCreatedTrafficMode && (
+						<Stack spacing={2} pl={1}>
+							<Checkbox
+								isChecked={Boolean(showUserTrafficValue)}
+								onChange={(event) =>
+									setValue(
+										"show_user_traffic",
+										event.target.checked,
+										{ shouldDirty: true },
+									)
+								}
+							>
+								{t(
+									"admins.showUserTraffic",
+									"Admin can view user traffic",
+								)}
+							</Checkbox>
+							<Checkbox
+								isChecked={Boolean(permissionsValue.users.delete)}
+								onChange={(event) =>
+									handleUserPermissionToggle(
+										"delete",
+										event.target.checked,
+									)
+								}
+							>
+								{t("admins.permissions.deleteUser", "Delete user")}
+							</Checkbox>
+							<Checkbox
+								isChecked={Boolean(permissionsValue.users.reset_usage)}
+								onChange={(event) =>
+									handleUserPermissionToggle(
+										"reset_usage",
+										event.target.checked,
+									)
+								}
+							>
+								{t("admins.permissions.resetUsage", "Reset usage")}
+							</Checkbox>
+							<Text fontSize="xs" color="gray.500">
+								{t(
+									"admins.createdTrafficModeHint",
+									"These options stay synced with the Permissions tab.",
+								)}
+							</Text>
+						</Stack>
+					)}
+				</VStack>
+			)}
 			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 				<FormControl isInvalid={!!errors.data_limit}>
 					<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
@@ -1015,18 +1103,6 @@ export const AdminDialog: FC = () => {
 					</Text>
 				</FormControl>
 			</SimpleGrid>
-			<VStack align={isRTL ? "flex-end" : "flex-start"} spacing={1}>
-				<Button size="sm" variant="outline" onClick={openDonateDialog}>
-					{t("common.comingSoon", "Coming soon")}
-				</Button>
-				<Text
-					fontSize="xs"
-					color="gray.500"
-					textAlign={isRTL ? "right" : "left"}
-				>
-					{t("admins.expireDonateHint", "Support the release by donating.")}
-				</Text>
-			</VStack>
 			<FormControl>
 				<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
 				<DateTimePicker
@@ -1041,10 +1117,7 @@ export const AdminDialog: FC = () => {
 					</FormHelperText>
 				) : (
 					<FormHelperText>
-						{t(
-							"admins.expireVisualOnly",
-							"This setting is visual only for now.",
-						)}
+						{t("admins.expireHint", "Leave empty for no time limit.")}
 					</FormHelperText>
 				)}
 			</FormControl>
@@ -1225,66 +1298,6 @@ export const AdminDialog: FC = () => {
 									: t("save", "Save")}
 							</Button>
 						</HStack>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
-			<Modal isOpen={isDonateDialogOpen} onClose={closeDonateDialog} isCentered>
-				<ModalOverlay />
-				<ModalContent dir={isRTL ? "rtl" : "ltr"}>
-					<ModalHeader>{t("common.comingSoon", "Coming soon")}</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
-						<VStack align="stretch" spacing={4}>
-							<Text
-								fontSize="sm"
-								color="gray.600"
-								_dark={{ color: "gray.400" }}
-							>
-								{t(
-									"admins.expireDonateDescription",
-									"If you'd like, you can donate to speed up development.",
-								)}
-							</Text>
-							<Text fontWeight="semibold">
-								{t("admins.expireWalletsLabel", "Wallets")}
-							</Text>
-							<VStack align="stretch" spacing={3}>
-								{DONATION_WALLETS.map((wallet) => (
-									<Box
-										key={wallet.key}
-										borderWidth="1px"
-										borderRadius="md"
-										p={3}
-										_dark={{ borderColor: "whiteAlpha.300" }}
-									>
-										<HStack spacing={3} align="flex-start">
-											<Icon
-												as={iconAs(wallet.icon)}
-												color={wallet.color}
-												boxSize={5}
-											/>
-											<VStack align="flex-start" spacing={1} w="full">
-												<Text fontWeight="semibold">{wallet.label}</Text>
-												<Text
-													fontFamily="mono"
-													fontSize="xs"
-													color="gray.600"
-													_dark={{ color: "gray.400" }}
-													dir="ltr"
-													sx={{ unicodeBidi: "isolate" }}
-													wordBreak="break-all"
-												>
-													{wallet.address}
-												</Text>
-											</VStack>
-										</HStack>
-									</Box>
-								))}
-							</VStack>
-						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						<Button onClick={closeDonateDialog}>{t("close")}</Button>
 					</ModalFooter>
 				</ModalContent>
 			</Modal>

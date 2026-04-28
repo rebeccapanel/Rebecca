@@ -12,8 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -L https://github.com/rebeccapanel/Rebecca-scripts/raw/master/install_latest_xray.sh | bash \
+COPY scripts/rebecca/install_latest_xray.sh /tmp/install_latest_xray.sh
+
+RUN bash /tmp/install_latest_xray.sh \
     && apt-get remove --purge -y curl unzip \
+    && rm -f /tmp/install_latest_xray.sh \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build

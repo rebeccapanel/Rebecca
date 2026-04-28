@@ -41,6 +41,11 @@ class AdminRole(str, Enum):
     full_access = "full_access"
 
 
+class AdminTrafficLimitMode(str, Enum):
+    used_traffic = "used_traffic"
+    created_traffic = "created_traffic"
+
+
 class UserPermission(str, Enum):
     create = "create"
     delete = "delete"
@@ -142,12 +147,49 @@ class AdminPermissions(BaseModel):
         return AdminPermissions.model_validate(_merge(payload, overrides))
 
 
+def _resolve_traffic_limit_mode(value: Optional[AdminTrafficLimitMode]) -> AdminTrafficLimitMode:
+    if value:
+        return value
+    return AdminTrafficLimitMode.used_traffic
+
+
+def admin_uses_created_traffic_limit(admin_like: Any) -> bool:
+    role = getattr(admin_like, "role", None)
+    if role == AdminRole.full_access:
+        return False
+    mode = _resolve_traffic_limit_mode(getattr(admin_like, "traffic_limit_mode", None))
+    return mode == AdminTrafficLimitMode.created_traffic
+
+
+def admin_can_view_user_traffic(admin_like: Any) -> bool:
+    role = getattr(admin_like, "role", None)
+    if role == AdminRole.full_access:
+        return True
+    if not admin_uses_created_traffic_limit(admin_like):
+        return True
+    return bool(getattr(admin_like, "show_user_traffic", True))
+
+
+def admin_created_traffic_limit_reached(admin_like: Any) -> bool:
+    if not admin_uses_created_traffic_limit(admin_like):
+        return False
+    limit = int(getattr(admin_like, "data_limit", 0) or 0)
+    if limit <= 0:
+        return False
+    created_traffic = int(getattr(admin_like, "created_traffic", 0) or 0)
+    return created_traffic >= limit
+
+
+def admin_user_management_locked(admin_like: Any) -> bool:
+    return admin_created_traffic_limit_reached(admin_like)
+
+
 ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
     AdminRole.standard: AdminPermissions(
         users=UserPermissionSettings(
             create=True,
-            delete=True,
-            reset_usage=True,
+            delete=False,
+            reset_usage=False,
             revoke=True,
             create_on_hold=True,
             allow_unlimited_data=True,
@@ -181,8 +223,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
     AdminRole.reseller: AdminPermissions(
         users=UserPermissionSettings(
             create=True,
-            delete=True,
-            reset_usage=True,
+            delete=False,
+            reset_usage=False,
             revoke=True,
             create_on_hold=True,
             allow_unlimited_data=True,
@@ -215,8 +257,8 @@ ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
     AdminRole.sudo: AdminPermissions(
         users=UserPermissionSettings(
             create=True,
-            delete=True,
-            reset_usage=True,
+            delete=False,
+            reset_usage=False,
             revoke=True,
             create_on_hold=True,
             allow_unlimited_data=True,
@@ -331,10 +373,24 @@ class Admin(BaseModel):
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin's links")
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
+    created_traffic: Optional[int] = Field(None, description="Total traffic created for this admin's users in bytes")
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit for admin in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
+    )
+    traffic_limit_mode: AdminTrafficLimitMode = Field(
+        default=AdminTrafficLimitMode.used_traffic,
+        description="How the admin data limit is enforced",
+    )
+    show_user_traffic: bool = Field(
+        True,
+        description="Whether the admin can view user traffic details when created-traffic mode is enabled",
+    )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
     )
     users_limit: Optional[int] = Field(
         None,
@@ -392,11 +448,33 @@ class Admin(BaseModel):
     def normalize_subscription_settings(self):
         if self.subscription_settings is None:
             self.subscription_settings = {}
+        self.traffic_limit_mode = _resolve_traffic_limit_mode(self.traffic_limit_mode)
+        if self.created_traffic is None:
+            self.created_traffic = 0
+        if self.has_full_access:
+            self.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
+            self.show_user_traffic = True
         return self
 
     @property
     def has_full_access(self) -> bool:
         return self.role == AdminRole.full_access
+
+    @property
+    def uses_created_traffic_limit(self) -> bool:
+        return admin_uses_created_traffic_limit(self)
+
+    @property
+    def can_view_user_traffic(self) -> bool:
+        return admin_can_view_user_traffic(self)
+
+    @property
+    def created_traffic_limit_reached(self) -> bool:
+        return admin_created_traffic_limit_reached(self)
+
+    @property
+    def user_management_locked(self) -> bool:
+        return admin_user_management_locked(self)
 
     def ensure_user_permission(self, action: Union[UserPermission, str]) -> None:
         permission = UserPermission(action) if isinstance(action, str) else action
@@ -504,6 +582,16 @@ class Admin(BaseModel):
         if isinstance(v, int):  # Allow integers directly
             return v
         raise ValueError("must be an integer or a float, not a string")  # Reject strings
+
+    @field_validator("created_traffic", mode="before")
+    def cast_created_traffic_to_int(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, int):
+            return v
+        raise ValueError("must be an integer or a float, not a string")
 
     @classmethod
     def get_admin(cls, token: str, db: Session):
@@ -624,6 +712,14 @@ class AdminModify(BaseModel):
     permissions: Optional[AdminPermissions] = Field(
         default=None, description="Fine-grained permission overrides for this admin"
     )
+    traffic_limit_mode: Optional[AdminTrafficLimitMode] = Field(
+        default=None,
+        description="How the admin data limit should be enforced",
+    )
+    show_user_traffic: Optional[bool] = Field(
+        default=None,
+        description="Whether the admin can view user traffic details in created-traffic mode",
+    )
     services: Optional[List[int]] = Field(default=None, description="Replace admin's services with this list of IDs")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
@@ -632,6 +728,11 @@ class AdminModify(BaseModel):
         None,
         description="Maximum data limit in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
+    )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
     )
     users_limit: Optional[int] = Field(
         None,
@@ -651,6 +752,14 @@ class AdminPartialModify(AdminModify):
     permissions: Optional[AdminPermissions] = Field(
         default=None, description="Fine-grained permission overrides for this admin"
     )
+    traffic_limit_mode: Optional[AdminTrafficLimitMode] = Field(
+        default=None,
+        description="How the admin data limit should be enforced",
+    )
+    show_user_traffic: Optional[bool] = Field(
+        default=None,
+        description="Whether the admin can view user traffic details in created-traffic mode",
+    )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -658,6 +767,11 @@ class AdminPartialModify(AdminModify):
         None,
         description="Maximum data limit in bytes (null = unlimited)",
         json_schema_extra={"example": 107374182400},
+    )
+    expire: Optional[int] = Field(
+        None,
+        description="Admin expiration as unix timestamp in UTC (null = no time limit)",
+        json_schema_extra={"example": 1767225600},
     )
     users_limit: Optional[int] = Field(
         None,

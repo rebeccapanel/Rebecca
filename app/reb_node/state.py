@@ -52,8 +52,21 @@ HOSTS_CACHE_TTL = 900  # 15 minutes
 _hosts_cache_lock = threading.RLock()
 
 
-def _empty_host_map() -> Dict[str, list]:
-    return {tag: [] for tag in config.inbounds_by_tag.keys()}
+def _all_inbound_tags() -> set[str]:
+    tags = set(config.inbounds_by_tag.keys())
+    try:
+        from app.utils.xray_targets import collect_all_inbound_tags
+
+        with GetDB() as db:
+            tags.update(collect_all_inbound_tags(db))
+    except Exception:
+        pass
+    return tags
+
+
+def _empty_host_map(inbound_tags: set[str] | None = None) -> Dict[str, list]:
+    tags = inbound_tags if inbound_tags is not None else _all_inbound_tags()
+    return {tag: [] for tag in tags}
 
 
 def _is_retryable_db_error(err: Exception) -> bool:
@@ -98,11 +111,10 @@ def _host_to_dict(host: "ProxyHost", service_ids: Optional[Sequence[int]] = None
 def rebuild_service_hosts_cache() -> None:
     """
     Populate service_hosts_cache for all service_ids with deterministic ordering.
-    Also updates Redis cache.
     """
     global service_hosts_cache_ts, config
     with _hosts_cache_lock:
-        inbound_tags = set(config.inbounds_by_tag.keys())
+        inbound_tags = _all_inbound_tags()
         if not inbound_tags:
             try:
                 with GetDB() as db:
@@ -116,7 +128,7 @@ def rebuild_service_hosts_cache() -> None:
         max_retries = 3
         attempt = 0
         while True:
-            base_map = _empty_host_map()
+            base_map = _empty_host_map(inbound_tags)
             cache: Dict[Optional[int], Dict[str, list]] = {None: {k: [] for k in base_map}}
 
             host_dicts = []
@@ -164,26 +176,13 @@ def rebuild_service_hosts_cache() -> None:
                 raise
 
         for host_map in cache.values():
-            for tag in config.inbounds_by_tag.keys():
+            for tag in inbound_tags:
                 host_map.setdefault(tag, [])
                 host_map[tag].sort(key=lambda h: (h.get("sort", 0), h.get("id") or 0))
 
         service_hosts_cache.clear()
         service_hosts_cache.update(cache)
         service_hosts_cache_ts = time.time()
-
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service_host_map
-
-                for service_id, host_map in cache.items():
-                    cache_service_host_map(service_id, host_map)
-            except Exception as e:
-                logger = logging.getLogger("uvicorn.error")
-                logger.warning(f"Failed to update Redis cache for service hosts: {e}")
 
 
 def get_service_host_map(service_id: Optional[int], force_rebuild: bool = False) -> Dict[str, list]:
@@ -208,10 +207,10 @@ def get_service_host_map(service_id: Optional[int], force_rebuild: bool = False)
         if host_map is None:
             host_map = _empty_host_map()
         else:
-            for tag in config.inbounds_by_tag.keys():
+            for tag in _all_inbound_tags():
                 host_map.setdefault(tag, [])
 
-        return {tag: list(host_map.get(tag, [])) for tag in config.inbounds_by_tag.keys()}
+        return {tag: list(host_map.get(tag, [])) for tag in _all_inbound_tags()}
 
 
 if TYPE_CHECKING:
@@ -219,25 +218,11 @@ if TYPE_CHECKING:
 
 
 def invalidate_service_hosts_cache() -> None:
-    """
-    Clear cached hosts so they will be rebuilt on next access.
-    Also invalidates Redis cache.
-    """
+    """Clear cached hosts so they will be rebuilt on next access."""
     global service_hosts_cache_ts
     with _hosts_cache_lock:
         service_hosts_cache.clear()
         service_hosts_cache_ts = None
-
-        # Invalidate Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import invalidate_service_host_map_cache
-
-                invalidate_service_host_map_cache()
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
 
 
 @DictStorage

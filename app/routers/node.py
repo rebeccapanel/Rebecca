@@ -25,7 +25,8 @@ from app.models.node import (
 from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
-from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT
+from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _resolve_geo_template_index_url
+from app.utils.binary_control import build_rebecca_update_args, require_binary_runtime
 from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
     generate_certificate,
@@ -42,16 +43,23 @@ _PENDING_CERTS: dict[str, dict[str, str]] = {}
 def add_host_if_needed(new_node: NodeCreate, db: Session):
     """Add a host if specified in the new node settings."""
     if new_node.add_as_new_host:
+        from app.utils.xray_targets import collect_all_inbound_tags
+
         host = ProxyHost(
             remark=f"{new_node.name} ({{USERNAME}}) [{{PROTOCOL}} - {{TRANSPORT}}]",
             address=new_node.address,
         )
-        for inbound_tag in xray.config.inbounds_by_tag:
+        inbound_tags = collect_all_inbound_tags(db) or set(xray.config.inbounds_by_tag)
+        for inbound_tag in inbound_tags:
             crud.add_host(db, inbound_tag, host)
         xray.hosts.update()
 
 
 MASTER_NODE_NAME = "Master"
+NODE_BINARY_REQUIRED_DETAIL = (
+    "This node host-level action is available only when the node is installed in binary mode. "
+    "Migrate the node to the binary version before using update, restart, core, or geo actions from the web UI."
+)
 
 
 def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeResponse:
@@ -60,6 +68,9 @@ def _serialize_node_response(dbnode: Union[DBNode, NodeResponse]) -> NodeRespons
     runtime_node = xray.nodes.get(node_response.id)
     if runtime_node:
         node_response.node_service_version = getattr(runtime_node, "node_version", None)
+        node_response.node_install_mode = getattr(runtime_node, "install_mode", None)
+        node_response.node_binary_tag = getattr(runtime_node, "node_binary_tag", None)
+        node_response.node_update_channel = getattr(runtime_node, "update_channel", None)
     return node_response
 
 
@@ -94,6 +105,11 @@ def _augment_node_cert_fields(
         }
     )
     return updated
+
+
+def _require_node_binary_runtime(node) -> None:
+    if getattr(node, "install_mode", None) != "binary":
+        raise HTTPException(status_code=409, detail=NODE_BINARY_REQUIRED_DETAIL)
 
 
 def _build_master_response(master: DBMasterNodeState) -> MasterNodeResponse:
@@ -462,6 +478,7 @@ def update_node_core(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Ask a node to update/switch its Xray-core to a specific version, then restart node core."""
+    require_binary_runtime()
     version = payload.get("version")
     if not version or not isinstance(version, str):
         raise HTTPException(status_code=422, detail="version is required")
@@ -469,6 +486,7 @@ def update_node_core(
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -478,6 +496,7 @@ def update_node_core(
     )
     startup_config = xray.config.include_db_users()
     xray.operations.restart_node(node_id, startup_config)
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=8)
 
     return {"detail": f"Node {dbnode.name} switched to {version}"}
 
@@ -505,6 +524,7 @@ def update_node_geo(
     Download and install geo assets on a specific node (custom mode).
     Supports direct files list or template selection.
     """
+    require_binary_runtime()
     files = payload.get("files") or []
     mode = (payload.get("mode") or "").strip().lower()
     template_index_url = (
@@ -514,7 +534,8 @@ def update_node_geo(
 
     if not files and (mode == "template" or template_name):
         try:
-            r = requests.get(template_index_url, timeout=60)
+            index_url = _resolve_geo_template_index_url(template_index_url, field_name="template_index_url")
+            r = requests.get(index_url, timeout=60)
             r.raise_for_status()
             data = r.json()
         except Exception as e:
@@ -537,6 +558,7 @@ def update_node_geo(
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -572,10 +594,12 @@ def restart_node_service(
     dbnode: NodeResponse = Depends(get_node),
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Trigger the Rebecca-node maintenance service to restart containers on a node."""
+    """Trigger the Rebecca-node binary service to restart on a node."""
+    require_binary_runtime()
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
 
     _node_operation_or_raise(
         node_id=node_id,
@@ -583,24 +607,35 @@ def restart_node_service(
         action=node.restart_host_service,
         failure_message=f"Unable to restart node service for {dbnode.name}",
     )
+    startup_config = xray.config.include_db_users()
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=10)
     return {"detail": f"Restart requested for node {dbnode.name}"}
 
 
 @router.post("/node/{node_id}/service/update", responses={403: responses._403, 404: responses._404})
 def update_node_service(
     node_id: int,
+    payload: dict | None = Body(default=None),
     dbnode: NodeResponse = Depends(get_node),
     _: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Trigger the Rebecca-node maintenance service to update node containers."""
+    """Trigger the Rebecca-node binary service to update itself on a node."""
+    require_binary_runtime()
     node = xray.nodes.get(node_id)
     if not node:
         raise HTTPException(404, detail="Node not connected")
+    _require_node_binary_runtime(node)
+    payload = payload or {}
+    channel = payload.get("channel")
+    version = payload.get("version")
+    build_rebecca_update_args(channel=channel, version=version)
 
     _node_operation_or_raise(
         node_id=node_id,
         node_name=dbnode.name,
-        action=node.update_host_service,
+        action=lambda: node.update_host_service(channel=channel, version=version),
         failure_message=f"Unable to update Rebecca-node service for {dbnode.name}",
     )
+    startup_config = xray.config.include_db_users()
+    xray.operations.schedule_node_reconnect(node_id, config=startup_config, delay_seconds=20)
     return {"detail": f"Update requested for node {dbnode.name}"}

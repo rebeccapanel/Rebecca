@@ -53,17 +53,20 @@ class UserTemplateResponse(UserTemplate):
     @field_validator("inbounds", mode="before")
     @classmethod
     def validate_inbounds(cls, v):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         final = {}
         inbound_tags = [i.tag for i in v]
-        for protocol, inbounds in xray.config.inbounds_by_protocol.items():
-            for inbound in inbounds:
-                if inbound["tag"] in inbound_tags:
-                    if protocol in final:
-                        final[protocol].append(inbound["tag"])
-                    else:
-                        final[protocol] = [inbound["tag"]]
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
+        for inbound in inbound_map.values():
+            protocol = inbound.get("protocol")
+            if inbound["tag"] in inbound_tags:
+                if protocol in final:
+                    final[protocol].append(inbound["tag"])
+                else:
+                    final[protocol] = [inbound["tag"]]
         return final
 
     model_config = ConfigDict(from_attributes=True)

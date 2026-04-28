@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from app.models.admin import Admin
 from app.models.settings import (
@@ -19,8 +19,12 @@ from app.models.settings import (
     TelegramSettingsResponse,
     TelegramSettingsUpdate,
     TelegramTopicSettings,
+    ThreeXUiImportJobResponse,
+    ThreeXUiImportRequest,
+    ThreeXUiPreviewResponse,
 )
 from app.services.panel_settings import PanelSettingsService
+from app.services.import_3xui import ThreeXUiImportService
 from app.services.subscription_settings import SubscriptionCertificateService, SubscriptionSettingsService
 from app.services.telegram_settings import TelegramSettingsService
 from app.db import crud, get_db, Session
@@ -270,3 +274,43 @@ def renew_certificate(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return SubscriptionCertificate(**vars(cert)) if cert else None
+
+
+@router.post(
+    "/database/3xui/preview",
+    response_model=ThreeXUiPreviewResponse,
+    responses={403: responses._403},
+)
+def preview_3xui_database(
+    file: UploadFile = File(...),
+    _: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    return ThreeXUiImportService.create_preview(file, db)
+
+
+@router.post(
+    "/database/3xui/import",
+    response_model=ThreeXUiImportJobResponse,
+    responses={403: responses._403},
+)
+def start_3xui_import(
+    payload: ThreeXUiImportRequest,
+    bg: BackgroundTasks,
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    job = ThreeXUiImportService.start_import(payload)
+    bg.add_task(ThreeXUiImportService.run_import_job, job.job_id, payload)
+    return job
+
+
+@router.get(
+    "/database/3xui/jobs/{job_id}",
+    response_model=ThreeXUiImportJobResponse,
+    responses={403: responses._403, 404: responses._404},
+)
+def get_3xui_import_job(
+    job_id: str,
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    return ThreeXUiImportService.get_job(job_id)

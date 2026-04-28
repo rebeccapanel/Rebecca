@@ -170,12 +170,33 @@ const BUILTIN_THEMES: ThemeDefinition[] = [
 	{
 		key: "pure-dark",
 		accent: "#1a8ce0",
+		colorModeTarget: "dark",
 		className: "rb-theme-pure-dark",
 	},
-	{ key: "ultra-dark", accent: "#319795", className: "rb-theme-ultra-dark" },
-	{ key: "moontone", accent: "#3b82f6", className: "rb-theme-moontone" },
-	{ key: "purple", accent: "#7c3aed", className: "rb-theme-purple" },
-	{ key: "green", accent: "#10b981", className: "rb-theme-green" },
+	{
+		key: "ultra-dark",
+		accent: "#319795",
+		colorModeTarget: "dark",
+		className: "rb-theme-ultra-dark",
+	},
+	{
+		key: "moontone",
+		accent: "#3b82f6",
+		colorModeTarget: "dark",
+		className: "rb-theme-moontone",
+	},
+	{
+		key: "purple",
+		accent: "#7c3aed",
+		colorModeTarget: "dark",
+		className: "rb-theme-purple",
+	},
+	{
+		key: "green",
+		accent: "#10b981",
+		colorModeTarget: "dark",
+		className: "rb-theme-green",
+	},
 ];
 
 const BUILTIN_THEME_DATA: Record<
@@ -547,7 +568,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const toast = useToast();
-	const { colorMode, toggleColorMode } = useColorMode();
+	const { colorMode, setColorMode } = useColorMode();
 	const createModal = useDisclosure();
 	const importModal = useDisclosure();
 	const themeMenu = useDisclosure();
@@ -763,11 +784,11 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 	const handleSelectBuiltIn = useCallback(
 		(theme: ThemeDefinition) => {
 			if (theme.colorModeTarget && colorMode !== theme.colorModeTarget) {
-				toggleColorMode();
+				setColorMode(theme.colorModeTarget);
 			}
 			setActive(theme.key);
 		},
-		[colorMode, toggleColorMode],
+		[colorMode, setColorMode],
 	);
 
 	const handleSelectCustom = (themeId: string) => {

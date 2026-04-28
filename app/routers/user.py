@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user, validate_dates
-from app.models.admin import Admin, AdminRole, UserPermission
+from app.models.admin import Admin, AdminRole, UserPermission, admin_can_view_user_traffic
 from app.models.user import (
     AdvancedUserAction,
     BulkUsersActionRequest,
@@ -21,17 +21,17 @@ from app.models.user import (
     UserResponse,
     UsersResponse,
     UserStatus,
+    UserListItem,
     UsersUsagesResponse,
     UserUsagesResponse,
 )
 from app.utils import report, responses
 from app.utils.credentials import ensure_user_credential_key
+from app.utils.request_context import get_request_origin, use_subscription_request_origin
 from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
-from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
-from app.redis.client import get_redis
 
 # region Helpers
 
@@ -133,6 +133,114 @@ def _ensure_custom_key_permission(admin: Admin, has_key: bool) -> None:
     )
 
 
+def _ensure_user_management_available(admin: Admin, action: str) -> None:
+    if admin.user_management_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "User management is locked because the created traffic limit has been reached. "
+                f"You can't {action}."
+            ),
+        )
+
+
+def _can_view_user_traffic(admin: Admin) -> bool:
+    return admin.role == AdminRole.full_access or admin_can_view_user_traffic(admin)
+
+
+def _is_disable_enable_only_update(modified_user: UserModify) -> bool:
+    changed_fields = set(modified_user.model_fields_set)
+    if changed_fields != {"status"}:
+        return False
+    status_value = getattr(modified_user.status, "value", modified_user.status)
+    return status_value in {"active", "disabled"}
+
+
+def _owner_uses_created_reset_policy(dbuser) -> bool:
+    owner = getattr(dbuser, "admin", None)
+    if owner is None:
+        return False
+    mode = getattr(owner, "traffic_limit_mode", None)
+    role = getattr(owner, "role", None)
+    mode_value = getattr(mode, "value", mode) or "used_traffic"
+    return role != AdminRole.full_access and mode_value == "created_traffic"
+
+
+def _ensure_reset_usage_allowed(admin: Admin, dbuser) -> None:
+    if not _can_view_user_traffic(admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewing user traffic is disabled.")
+
+    if not _owner_uses_created_reset_policy(dbuser):
+        return
+
+    limit = int(getattr(dbuser, "data_limit", 0) or 0)
+    used = int(getattr(dbuser, "used_traffic", 0) or 0)
+    status_value = getattr(getattr(dbuser, "status", None), "value", getattr(dbuser, "status", None))
+    if limit <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usage reset is only available for users with a finite data limit in created-traffic mode.",
+        )
+    if status_value == UserStatus.limited.value:
+        return
+    if used >= int(limit * 0.9):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Usage reset is only available after the user reaches at least 90% of their traffic limit.",
+    )
+
+
+def _sanitize_user_response(admin: Admin, user: UserResponse) -> UserResponse:
+    if _can_view_user_traffic(admin):
+        return user
+    user.used_traffic = 0
+    user.lifetime_used_traffic = 0
+    return user
+
+
+def _sanitize_users_response(admin: Admin, response: UsersResponse) -> UsersResponse:
+    if _can_view_user_traffic(admin):
+        return response
+    sanitized_items = []
+    for item in response.users:
+        sanitized_items.append(
+            UserListItem(
+                **{
+                    **item.model_dump(),
+                    "used_traffic": 0,
+                    "lifetime_used_traffic": 0,
+                }
+            )
+        )
+    response.users = sanitized_items
+    response.usage_total = None
+    return response
+
+
+def _create_user_response(request: Request, dbuser) -> UserCreateResponse:
+    with use_subscription_request_origin(request):
+        user = UserCreateResponse.model_validate(dbuser)
+        return _refresh_subscription_links(user, request)
+
+
+def _user_response(request: Request, dbuser) -> UserResponse:
+    with use_subscription_request_origin(request):
+        user = UserResponse.model_validate(dbuser)
+        return _refresh_subscription_links(user, request)
+
+
+def _refresh_subscription_links(user, request: Request):
+    links = build_subscription_links(user, request_origin=get_request_origin(request))
+    if not links:
+        return user
+    user.subscription_urls = {key: value for key, value in links.items() if key != "primary"}
+    user.subscription_url = links.get("primary") or next(iter(user.subscription_urls.values()), "")
+    if getattr(user, "credential_key", None):
+        user.key_subscription_url = user.subscription_urls.get("key")
+    return user
+
+
 # endregion
 
 # region User CRUD
@@ -164,6 +272,7 @@ def add_user(
     """
 
     admin.ensure_user_permission(UserPermission.create)
+    _ensure_user_management_available(admin, "create users")
 
     # Convert UserCreate to dict if needed, or use dict directly
     if isinstance(payload, UserCreate):
@@ -300,7 +409,7 @@ def add_user(
             raise HTTPException(status_code=409, detail="User already exists")
 
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
-        user = UserCreateResponse.model_validate(dbuser)
+        user = _create_user_response(request, dbuser)
         report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
         if user.next_plans or user.next_plan:
             total_rules = len(user.next_plans) if getattr(user, "next_plans", None) else 1
@@ -312,7 +421,7 @@ def add_user(
                 total_rules=total_rules,
             )
         logger.info(f'New user "{dbuser.username}" added via service {service.name}')
-        return user
+        return _sanitize_user_response(admin, user)
 
     # No-service mode (Marzban-compatible) ----------------------------------
     try:
@@ -390,10 +499,10 @@ def add_user(
         raise HTTPException(status_code=409, detail="User already exists")
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
-    user = UserCreateResponse.model_validate(dbuser)
+    user = _create_user_response(request, dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
-    return user
+    return _sanitize_user_response(admin, user)
 
 
 # endregion
@@ -402,9 +511,13 @@ def add_user(
 
 
 @router.get("/user/{username}", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
-def get_user(dbuser: UserResponse = Depends(get_validated_user)):
+def get_user(
+    request: Request,
+    dbuser: UserResponse = Depends(get_validated_user),
+    admin: Admin = Depends(Admin.get_current),
+):
     """Get user information"""
-    return dbuser
+    return _sanitize_user_response(admin, _user_response(request, dbuser))
 
 
 @router.put(
@@ -419,6 +532,7 @@ def get_user(dbuser: UserResponse = Depends(get_validated_user)):
 )
 def modify_user(
     modified_user: UserModify,
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UsersResponse = Depends(get_validated_user),
@@ -442,6 +556,9 @@ def modify_user(
     Note: Fields set to `null` or omitted will not be modified.
     """
 
+    if admin.user_management_locked and not _is_disable_enable_only_update(modified_user):
+        _ensure_user_management_available(admin, "modify users")
+
     if "data_limit" in modified_user.model_fields_set and modified_user.data_limit is not None:
         max_limit = admin.permissions.users.max_data_limit_per_user
         if max_limit is not None:
@@ -452,13 +569,13 @@ def modify_user(
                 raise HTTPException(
                     status_code=400, detail=f"Unlimited data is not allowed. Maximum allowed: {max_gb:.2f} GB"
                 )
-                if modified_user.data_limit > 0 and modified_user.data_limit > max_limit:
-                    original_gb = modified_user.data_limit / (1024**3)
-                    max_gb = max_limit / (1024**3)
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
-                    )
+            if modified_user.data_limit > 0 and modified_user.data_limit > max_limit:
+                original_gb = modified_user.data_limit / (1024**3)
+                max_gb = max_limit / (1024**3)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Data limit {original_gb:.2f} GB exceeds maximum {max_gb:.2f} GB. Maximum allowed: {max_gb:.2f} GB",
+                )
     if modified_user.next_plan and modified_user.next_plan.data_limit is not None:
         max_limit = admin.permissions.users.max_data_limit_per_user
         if max_limit is not None:
@@ -515,8 +632,12 @@ def modify_user(
         )
 
     if modified_user.service_id is not None:
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in modified_user.proxies:
-            if not xray.config.inbounds_by_protocol.get(proxy_type):
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
+            if not any(inbound.get("protocol") == proxy_type_value for inbound in inbound_map.values()):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Protocol {proxy_type} is disabled on your server",
@@ -570,7 +691,7 @@ def modify_user(
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
@@ -609,7 +730,7 @@ def modify_user(
         )
         logger.info(f'User "{dbuser.username}" status changed from {old_status} to {user.status}')
 
-    return user
+    return _sanitize_user_response(admin, user)
 
 
 @router.delete("/user/{username}", responses={403: responses._403, 404: responses._404})
@@ -621,6 +742,7 @@ def remove_user(
 ):
     """Remove a user"""
     admin.ensure_user_permission(UserPermission.delete)
+    _ensure_user_management_available(admin, "delete users")
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -639,6 +761,7 @@ def remove_user(
     "/user/{username}/reset", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def reset_user_data_usage(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -646,6 +769,8 @@ def reset_user_data_usage(
 ):
     """Reset user data usage"""
     admin.ensure_user_permission(UserPermission.reset_usage)
+    _ensure_user_management_available(admin, "reset user usage")
+    _ensure_reset_usage_allowed(admin, dbuser)
     try:
         dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -655,17 +780,18 @@ def reset_user_data_usage(
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(report.user_data_usage_reset, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset')
-    return dbuser
+    return _sanitize_user_response(admin, user)
 
 
 @router.post(
     "/user/{username}/revoke_sub", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def revoke_user_subscription(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -673,16 +799,17 @@ def revoke_user_subscription(
 ):
     """Revoke users subscription (Subscription link and proxies)"""
     admin.ensure_user_permission(UserPermission.revoke)
+    _ensure_user_management_available(admin, "revoke user subscriptions")
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(report.user_subscription_revoked, user=user, user_admin=dbuser.admin, by=admin)
 
     logger.info(f'User "{dbuser.username}" subscription revoked')
 
-    return user
+    return _sanitize_user_response(admin, user)
 
 
 # endregion
@@ -694,6 +821,7 @@ def revoke_user_subscription(
     "/users", response_model=UsersResponse, responses={400: responses._400, 403: responses._403, 404: responses._404}
 )
 def get_users(
+    request: Request,
     offset: int = None,
     limit: int = None,
     username: List[str] = Query(None),
@@ -730,6 +858,8 @@ def get_users(
         opts = sort.strip(",").split(",")
         sort = []
         for opt in opts:
+            if opt in {"used_traffic", "-used_traffic"} and not _can_view_user_traffic(admin):
+                raise HTTPException(status_code=403, detail="Viewing user traffic is disabled.")
             try:
                 sort.append(crud.UsersSortingOptions[opt])
             except KeyError:
@@ -752,28 +882,10 @@ def get_users(
 
     from app.services import user_service
 
+    request_origin = get_request_origin(request)
     if links:
-        # Generating share links requires DB-loaded proxies/inbounds; skip Redis fast path.
-        response = user_service.get_users_list_db_only(
-            db,
-            offset=offset,
-            limit=limit,
-            username=username,
-            search=search,
-            status=status,
-            sort=sort,
-            advanced_filters=advanced_filters,
-            service_id=service_id,
-            dbadmin=dbadmin,
-            owners=owners,
-            users_limit=users_limit,
-            active_total=active_total,
-            include_links=True,
-        )
-    else:
-        use_db_only = not (REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis())
-        if use_db_only:
-            logger.debug("Redis unavailable/disabled; using DB-only users list fast path")
+        # Generating share links requires DB-loaded proxies/inbounds.
+        with use_subscription_request_origin(request):
             response = user_service.get_users_list_db_only(
                 db,
                 offset=offset,
@@ -788,9 +900,11 @@ def get_users(
                 owners=owners,
                 users_limit=users_limit,
                 active_total=active_total,
-                include_links=False,
+                include_links=True,
+                request_origin=request_origin,
             )
-        else:
+    else:
+        with use_subscription_request_origin(request):
             response = user_service.get_users_list(
                 db,
                 offset=offset,
@@ -806,9 +920,10 @@ def get_users(
                 users_limit=users_limit,
                 active_total=active_total,
                 include_links=False,
+                request_origin=request_origin,
             )
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
-    return response
+    return _sanitize_users_response(admin, response)
 
 
 @router.post("/users/actions", responses={403: responses._403})
@@ -819,6 +934,11 @@ def perform_users_bulk_action(
 ):
     """Perform advanced bulk operations across all users."""
     admin.ensure_user_permission(UserPermission.advanced_actions)
+    if admin.user_management_locked and payload.action not in (
+        AdvancedUserAction.activate_users,
+        AdvancedUserAction.disable_users,
+    ):
+        _ensure_user_management_available(admin, "run this bulk action")
 
     affected = 0
     detail = "Advanced action applied"
@@ -983,13 +1103,6 @@ def perform_users_bulk_action(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
-    try:
-        from app.redis.cache import invalidate_user_cache
-
-        invalidate_user_cache()
-    except Exception:
-        pass
-
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)
     for node_id, node in list(xray.nodes.items()):
@@ -1007,8 +1120,11 @@ def get_user_usage(
     start: str = "",
     end: str = "",
     db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
 ):
     """Get users usage"""
+    if not _can_view_user_traffic(admin):
+        raise HTTPException(status_code=403, detail="Viewing user traffic is disabled.")
     start, end = validate_dates(start, end)
 
     usages = metrics_service.get_user_usage(db, dbuser, start, end)
@@ -1020,6 +1136,7 @@ def get_user_usage(
     "/user/{username}/active-next", response_model=UserResponse, responses={403: responses._403, 404: responses._404}
 )
 def active_next_plan(
+    request: Request,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
@@ -1027,6 +1144,8 @@ def active_next_plan(
 ):
     """Reset user by next plan"""
     admin.ensure_user_permission(UserPermission.allow_next_plan)
+    _ensure_user_management_available(admin, "activate the next plan")
+    had_next_plan = getattr(dbuser, "next_plan", None) is not None
     try:
         dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
     except UsersLimitReachedError as exc:
@@ -1034,7 +1153,7 @@ def active_next_plan(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
 
-    if dbuser is None or dbuser.next_plan is None:
+    if dbuser is None or not had_next_plan:
         raise HTTPException(
             status_code=404,
             detail="User doesn't have next plan",
@@ -1043,7 +1162,7 @@ def active_next_plan(
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.add_user, dbuser=dbuser)
 
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
     bg.add_task(
         report.user_data_reset_by_next,
         user=user,
@@ -1051,7 +1170,7 @@ def active_next_plan(
     )
 
     logger.info(f'User "{dbuser.username}"\'s usage was reset by next plan')
-    return dbuser
+    return _sanitize_user_response(admin, user)
 
 
 @router.get("/users/usage", response_model=UsersUsagesResponse)
@@ -1063,6 +1182,8 @@ def get_users_usage(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get all users usage"""
+    if not _can_view_user_traffic(admin):
+        raise HTTPException(status_code=403, detail="Viewing user traffic is disabled.")
     start, end = validate_dates(start, end)
 
     admins_filter = owner if admin.role in (AdminRole.sudo, AdminRole.full_access) else [admin.username]
@@ -1082,6 +1203,7 @@ def get_users_usage(
 @router.put("/user/{username}/set-owner", response_model=UserResponse)
 def set_owner(
     admin_username: str,
+    request: Request,
     dbuser: UserResponse = Depends(get_validated_user),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -1092,7 +1214,7 @@ def set_owner(
         raise HTTPException(status_code=404, detail="Admin not found")
 
     dbuser = crud.set_owner(db, dbuser, new_admin)
-    user = UserResponse.model_validate(dbuser)
+    user = _user_response(request, dbuser)
 
     logger.info(f'{user.username}"owner successfully set to{admin.username}')
 
@@ -1130,6 +1252,7 @@ def delete_expired_users(
         raise HTTPException(status_code=404, detail="No expired users found in the specified date range")
 
     admin.ensure_user_permission(UserPermission.delete)
+    _ensure_user_management_available(admin, "delete users")
     crud.remove_users(db, expired_users)
 
     for removed_user in removed_users:

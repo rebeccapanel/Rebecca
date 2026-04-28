@@ -55,6 +55,9 @@ export const NodeSchema = z
 			.or(z.string().transform((v) => parseFloat(v))),
 		xray_version: z.string().nullable().optional(),
 		node_service_version: z.string().nullable().optional(),
+		node_install_mode: z.string().nullable().optional(),
+		node_binary_tag: z.string().nullable().optional(),
+		node_update_channel: z.string().nullable().optional(),
 		id: z.number().nullable().optional(),
 		status: z
 			.enum(["connected", "connecting", "error", "disabled", "limited"])
@@ -65,6 +68,7 @@ export const NodeSchema = z
 		usage_coefficient: z
 			.number()
 			.or(z.string().transform((v) => parseFloat(v))),
+		xray_config_mode: z.enum(["default", "custom"]).optional(),
 		data_limit: z
 			.number()
 			.nullable()
@@ -145,6 +149,10 @@ export const NodeSchema = z
 	});
 
 export type NodeType = z.infer<typeof NodeSchema>;
+type NodeServiceUpdateRequest = NodeType & {
+	channel?: string;
+	version?: string;
+};
 
 export const getNodeDefaultValues = (): NodeType => ({
 	name: "",
@@ -154,6 +162,7 @@ export const getNodeDefaultValues = (): NodeType => ({
 	xray_version: "",
 	node_service_version: "",
 	usage_coefficient: 1,
+	xray_config_mode: "default",
 	data_limit: null,
 	uplink: 0,
 	downlink: 0,
@@ -182,7 +191,7 @@ export type NodeStore = {
 	regenerateNodeCertificate: (node: NodeType) => Promise<NodeType>;
 	reconnectNode: (node: NodeType) => Promise<unknown>;
 	restartNodeService: (node: NodeType) => Promise<unknown>;
-	updateNodeService: (node: NodeType) => Promise<unknown>;
+	updateNodeService: (node: NodeServiceUpdateRequest) => Promise<unknown>;
 	resetNodeUsage: (node: NodeType) => Promise<unknown>;
 	updateMasterNode: (payload: {
 		data_limit: number | null;
@@ -242,6 +251,10 @@ export const useNodes = create<NodeStore>((set, get) => ({
 	updateNodeService(body) {
 		return fetch(`/node/${body.id}/service/update`, {
 			method: "POST",
+			body: {
+				channel: body.channel,
+				version: body.version,
+			},
 		});
 	},
 	resetNodeUsage(body) {

@@ -30,7 +30,6 @@ def _enable_access_insights(monkeypatch):
 
 def test_multi_node_insights_contains_source_node_mapping(monkeypatch):
     _enable_access_insights(monkeypatch)
-    monkeypatch.setattr(access_insights, "REDIS_ENABLED", False)
     monkeypatch.setattr(access_insights, "load_geo_assets", _empty_assets)
     monkeypatch.setattr(access_insights, "guess_platform", lambda host, ip, assets: "other")
     monkeypatch.setattr(access_insights, "classify_isp", lambda ip: ("Unknown", "Unknown"))

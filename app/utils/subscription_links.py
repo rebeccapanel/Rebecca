@@ -1,10 +1,10 @@
 import secrets
 from enum import Enum
 from typing import Dict, Optional
+from urllib.parse import urlsplit
 
 from app.models.user import UserResponse
 from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH
 
 # Lazy/fallback import to avoid hard dependency in environments missing updated settings model
 try:  # pragma: no cover - defensive for mixed deployments
@@ -26,10 +26,21 @@ except Exception:  # pragma: no cover - fallback definitions
             return _Dummy()
 
 
+def _prefix_label(prefix: str) -> str:
+    try:
+        parsed = urlsplit(prefix)
+        if parsed.port:
+            return str(parsed.port)
+    except Exception:
+        pass
+    return prefix
+
+
 def build_subscription_links(
     user: UserResponse,
     *,
     preferred: Optional[str] = None,
+    request_origin: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Build all available subscription URLs for a user and select primary based on preferred type.
@@ -56,18 +67,33 @@ def build_subscription_links(
                     pass
 
         effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
-        url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+        url_prefixes = SubscriptionSettingsService.build_subscription_bases(
+            effective_settings,
+            salt=salt,
+            request_origin=request_origin,
+        )
+        url_prefix = url_prefixes[0]
     except Exception:
-        path = XRAY_SUBSCRIPTION_PATH.strip("/") if XRAY_SUBSCRIPTION_PATH else "sub"
-        url_prefix = f"/{path}"
+        url_prefix = "/sub"
 
     links: Dict[str, str] = {}
+    try:
+        url_prefixes  # type: ignore[name-defined]
+    except Exception:
+        url_prefixes = [url_prefix]
     if user.credential_key:
         links["username-key"] = f"{url_prefix}/{user.username}/{user.credential_key}"
         links["key"] = f"{url_prefix}/{user.credential_key}"
 
     token = create_subscription_token(user.username)
     links["token"] = f"{url_prefix}/{token}"
+
+    for extra_prefix in url_prefixes[1:]:
+        label = _prefix_label(extra_prefix)
+        if user.credential_key:
+            links[f"username-key@{label}"] = f"{extra_prefix}/{user.username}/{user.credential_key}"
+            links[f"key@{label}"] = f"{extra_prefix}/{user.credential_key}"
+        links[f"token@{label}"] = f"{extra_prefix}/{token}"
 
     has_key = bool(user.credential_key)
     if not has_key:

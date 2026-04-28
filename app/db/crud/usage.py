@@ -30,6 +30,7 @@ from .common import MASTER_NODE_NAME
 from .node import _ensure_master_state
 from .user import _status_to_str, _ensure_active_user_capacity, get_user_queryset
 from .admin import _maybe_enable_admin_after_data_limit
+from .admin_traffic import record_admin_created_traffic
 
 # ============================================================================
 
@@ -83,14 +84,6 @@ def _get_usage_data(
     elif entity_type == "all_nodes":
         pass  # No specific filter
 
-    # Try to get from Redis cache first
-    from app.redis.cache import get_user_usages_from_cache
-    from app.redis.client import get_redis
-    from config import REDIS_ENABLED
-
-    redis_client = get_redis() if REDIS_ENABLED else None
-    use_redis_cache = redis_client is not None
-
     # Build query
     query = db.query(NodeUserUsage)
     if user_ids is not None:
@@ -105,15 +98,6 @@ def _get_usage_data(
         query = query.filter(node_filter)
 
     query = query.filter(NodeUserUsage.created_at >= start_aware, NodeUserUsage.created_at <= end_aware)
-
-    # If using Redis and querying for specific users, try cache first
-    if use_redis_cache and user_ids and len(user_ids) == 1 and entity_type == "user":
-        # Try to get from cache for single user queries
-        cached_usages = get_user_usages_from_cache(user_ids, None, start_aware, end_aware)
-        if cached_usages:
-            # Convert cached data to NodeUserUsage-like objects for processing
-            # This is a simplified approach - full implementation would need to convert properly
-            pass  # For now, fall through to DB query
 
     # Get node lookup
     _ensure_master_state(db, for_update=False)
@@ -481,6 +465,13 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
         used_traffic_at_reset=dbuser.used_traffic,
     )
     db.add(usage_log)
+    if (dbuser.data_limit or 0) > 0:
+        record_admin_created_traffic(
+            db,
+            dbuser.admin,
+            int(dbuser.data_limit or 0),
+            action="user_reset_usage",
+        )
 
     dbuser.used_traffic = 0
     dbuser.node_usages.clear()
@@ -504,19 +495,6 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     db.commit()
     db.refresh(dbuser)
-
-    # Update user in Redis cache and mark for sync
-    try:
-        from app.redis.cache import cache_user
-        import logging
-
-        logger = logging.getLogger(__name__)
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to update user in Redis cache: {e}")
 
     return dbuser
 
@@ -589,12 +567,17 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     Returns:
         Admin: The updated admin.
     """
-    if dbadmin.users_usage == 0:
+    if (dbadmin.users_usage or 0) == 0 and (getattr(dbadmin, "created_traffic", 0) or 0) == 0:
         return dbadmin
 
-    usage_log = AdminUsageLogs(admin=dbadmin, used_traffic_at_reset=dbadmin.users_usage)
+    usage_log = AdminUsageLogs(
+        admin=dbadmin,
+        used_traffic_at_reset=dbadmin.users_usage or 0,
+        created_traffic_at_reset=getattr(dbadmin, "created_traffic", 0) or 0,
+    )
     db.add(usage_log)
     dbadmin.users_usage = 0
+    dbadmin.created_traffic = 0
     _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()

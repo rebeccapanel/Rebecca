@@ -88,6 +88,5 @@ export const acknowledgeTutorialIds = (
 	if (!stored.unseen.length) return;
 	const nextUnseen = stored.unseen.filter((id) => !ids.includes(id));
 	if (nextUnseen.length === stored.unseen.length) return;
-	if (!stored.updated) return;
-	writeTutorialStorage(lang, stored.updated, stored.ids, nextUnseen);
+	writeTutorialStorage(lang, stored.updated || "", stored.ids, nextUnseen);
 };

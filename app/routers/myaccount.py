@@ -31,6 +31,7 @@ class MyAccountNodeUsage(BaseModel):
 
 
 class MyAccountResponse(BaseModel):
+    traffic_basis: str
     data_limit: Optional[int]
     used_traffic: int
     remaining_data: Optional[int]
@@ -104,6 +105,7 @@ def get_myaccount(
     summary = metrics_service.get_myaccount_summary_and_charts(db, dbadmin, start_dt, end_dt)
 
     return MyAccountResponse(
+        traffic_basis=summary.get("traffic_basis", "used_traffic"),
         data_limit=summary.get("data_limit"),
         used_traffic=summary.get("used_traffic", 0),
         remaining_data=summary.get("remaining_data"),

@@ -8,6 +8,7 @@ from unittest.mock import patch
 from tests.conftest import TestingSessionLocal
 from app.db import crud
 from app.db.crud.proxy import ProxyInboundRepository
+from app.models.user import UserStatus
 from app.models.proxy import ProxyHost
 from app.models.service import ServiceCreate, ServiceHostAssignment
 
@@ -180,6 +181,102 @@ def test_revoke_user_subscription(auth_client: TestClient):
     assert data["username"] == "testuser6"
 
 
+def test_limited_user_can_be_saved_as_on_hold_with_same_data_limit(auth_client: TestClient):
+    username = f"limited_onhold_{uuid4().hex[:8]}"
+    data_limit = 512 * 1024 * 1024
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        create_resp = auth_client.post(
+            "/api/user",
+            json={
+                "username": username,
+                "proxies": {"vmess": {"id": uuid4().hex}},
+                "data_limit": data_limit,
+                "data_limit_reset_strategy": "no_reset",
+            },
+        )
+        assert create_resp.status_code == 201, create_resp.text
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        dbuser.used_traffic = data_limit
+        dbuser.status = UserStatus.limited
+        db.commit()
+    finally:
+        db.close()
+
+    update_resp = auth_client.put(
+        f"/api/user/{username}",
+        json={
+            "status": "on_hold",
+            "on_hold_expire_duration": 10 * 24 * 60 * 60,
+            "data_limit": data_limit,
+            "data_limit_reset_strategy": "no_reset",
+        },
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["status"] == "on_hold"
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser.status.value == "on_hold"
+        assert dbuser.used_traffic == data_limit
+        assert dbuser.data_limit == data_limit
+    finally:
+        db.close()
+
+
+def test_on_hold_user_stays_on_hold_after_revoke_and_save(auth_client: TestClient):
+    username = f"onhold_revoke_{uuid4().hex[:8]}"
+    data_limit = 512 * 1024 * 1024
+
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        create_resp = auth_client.post(
+            "/api/user",
+            json={
+                "username": username,
+                "proxies": {"vmess": {"id": uuid4().hex}},
+                "status": "on_hold",
+                "on_hold_expire_duration": 10 * 24 * 60 * 60,
+                "data_limit": data_limit,
+                "data_limit_reset_strategy": "no_reset",
+            },
+        )
+        assert create_resp.status_code == 201, create_resp.text
+
+    revoke_resp = auth_client.post(f"/api/user/{username}/revoke_sub")
+    assert revoke_resp.status_code == 200, revoke_resp.text
+    assert revoke_resp.json()["status"] == "on_hold"
+
+    update_resp = auth_client.put(
+        f"/api/user/{username}",
+        json={
+            "status": "on_hold",
+            "on_hold_expire_duration": 10 * 24 * 60 * 60,
+            "data_limit": data_limit,
+            "data_limit_reset_strategy": "no_reset",
+        },
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["status"] == "on_hold"
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser.status.value == "on_hold"
+        assert dbuser.data_limit == data_limit
+    finally:
+        db.close()
+
+
 def test_bulk_user_actions(auth_client: TestClient):
     # Create users first
     with patch(
@@ -267,6 +364,30 @@ def _load_user_usage_module():
 
         collectors.get_users_stats = _noop_get_users_stats
         sys.modules["app.jobs.usage.collectors"] = collectors
+    if "app.jobs.usage.delivery_buffer" not in sys.modules:
+        delivery_buffer_mod = types.ModuleType("app.jobs.usage.delivery_buffer")
+
+        class _NoopUsageDeliveryBuffer:
+            def add_user_stats(self, node_id, samples):
+                return samples or []
+
+            def pending_user_stats(self, node_id):
+                return []
+
+            def ack_user_stats_for(self, node_ids):
+                return None
+
+            def add_outbound_stats(self, node_id, samples):
+                return samples or []
+
+            def pending_outbound_stats(self, node_id):
+                return []
+
+            def ack_outbound_stats_for(self, node_ids):
+                return None
+
+        delivery_buffer_mod.usage_delivery_buffer = _NoopUsageDeliveryBuffer()
+        sys.modules["app.jobs.usage.delivery_buffer"] = delivery_buffer_mod
     if "app.jobs.usage.utils" not in sys.modules:
         utils_mod = types.ModuleType("app.jobs.usage.utils")
 
@@ -547,6 +668,80 @@ def test_due_active_user_is_expired_without_new_usage_samples(auth_client: TestC
         db.close()
 
 
+def test_limited_user_seen_in_usage_stats_is_purged_from_runtime(auth_client: TestClient):
+    username = f"stale_limited_{uuid4().hex[:8]}"
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "expire": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            "data_limit": 1024,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    from app import runtime
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        dbuser.used_traffic = 2048
+        dbuser.status = UserStatus.limited
+        db.commit()
+
+        runtime.xray.operations.remove_user.reset_mock()
+        user_usage = _load_user_usage_module()
+        user_usage._enforce_user_limits_and_expiry(db, [dbuser.id])
+        db.refresh(dbuser)
+
+        assert dbuser.status == UserStatus.limited
+        runtime.xray.operations.remove_user.assert_called_once()
+    finally:
+        db.close()
+
+
+def test_disabled_user_seen_in_usage_stats_is_purged_without_status_change(auth_client: TestClient):
+    username = f"stale_disabled_{uuid4().hex[:8]}"
+    with patch(
+        "app.routers.user.xray.config.inbounds_by_protocol",
+        {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]},
+    ):
+        payload = {
+            "username": username,
+            "proxies": {"vmess": {"id": uuid4().hex}},
+            "expire": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            "data_limit": 1024,
+            "data_limit_reset_strategy": "no_reset",
+        }
+        create_resp = auth_client.post("/api/user", json=payload)
+        assert create_resp.status_code == 201
+
+    from app import runtime
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = crud.get_user(db, username)
+        assert dbuser is not None
+        dbuser.used_traffic = 2048
+        dbuser.status = UserStatus.disabled
+        db.commit()
+
+        runtime.xray.operations.remove_user.reset_mock()
+        user_usage = _load_user_usage_module()
+        user_usage._enforce_user_limits_and_expiry(db, [dbuser.id])
+        db.refresh(dbuser)
+
+        assert dbuser.status == UserStatus.disabled
+        runtime.xray.operations.remove_user.assert_called_once()
+    finally:
+        db.close()
+
+
 def test_auto_renew_triggers_on_data_limit(auth_client: TestClient):
     username = f"auto_data_{uuid4().hex[:8]}"
     initial_limit = 512 * 1024 * 1024
@@ -596,7 +791,7 @@ def test_get_all_users_usage(auth_client: TestClient):
 def test_get_expired_users(auth_client: TestClient):
     # This endpoint has been removed
     response = auth_client.get("/api/users/expired")
-    assert response.status_code == 405  # Method not allowed or endpoint removed
+    assert response.status_code in (404, 405)  # endpoint removed / method not allowed
 
 
 def test_delete_expired_users(auth_client: TestClient):

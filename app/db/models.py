@@ -23,8 +23,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
 
 from app.db.base import Base
-from app.models.admin import AdminRole, AdminStatus
-from app.models.node import NodeStatus, GeoMode
+from app.models.admin import AdminRole, AdminStatus, AdminTrafficLimitMode
+from app.models.node import NodeStatus, GeoMode, XrayConfigMode
 from app.models.proxy import (
     ProxyHostALPN,
     ProxyHostFingerprint,
@@ -62,11 +62,25 @@ class Admin(Base):
     subscription_settings = Column(JSON, nullable=True, default=dict)
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
+    created_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     data_limit = Column(BigInteger, nullable=True, default=None)
+    traffic_limit_mode = Column(
+        Enum(AdminTrafficLimitMode),
+        nullable=False,
+        default=AdminTrafficLimitMode.used_traffic,
+        server_default=AdminTrafficLimitMode.used_traffic.value,
+    )
+    show_user_traffic = Column(Boolean, nullable=False, default=True, server_default=text("1"))
+    expire = Column(Integer, nullable=True, default=None)
     users_limit = Column(Integer, nullable=True, default=None)
     status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
     disabled_reason = Column(String(512), nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
+    created_traffic_logs = relationship(
+        "AdminCreatedTrafficLog",
+        back_populates="admin",
+        cascade="all, delete-orphan",
+    )
     api_keys = relationship(
         "AdminApiKey",
         back_populates="admin",
@@ -88,7 +102,20 @@ class AdminUsageLogs(Base):
     admin_id = Column(Integer, ForeignKey("admins.id"))
     admin = relationship("Admin", back_populates="usage_logs")
     used_traffic_at_reset = Column(BigInteger, nullable=False)
+    created_traffic_at_reset = Column(BigInteger, nullable=False, default=0, server_default="0")
     reset_at = Column(DateTime, default=utcnow)
+
+
+class AdminCreatedTrafficLog(Base):
+    __tablename__ = "admin_created_traffic_logs"
+
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
+    amount = Column(BigInteger, nullable=False)
+    action = Column(String(64), nullable=False, default="unknown", server_default="unknown")
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    admin = relationship("Admin", back_populates="created_traffic_logs")
 
 
 class AdminApiKey(Base):
@@ -149,6 +176,8 @@ class SubscriptionSettings(Base):
         String(512), nullable=False, default="https://t.me/", server_default="https://t.me/"
     )
     subscription_update_interval = Column(String(32), nullable=False, default="12", server_default="12")
+    subscription_path = Column(String(128), nullable=False, default="sub", server_default="sub")
+    subscription_ports = Column(Text, nullable=False, default="[]")
     custom_templates_directory = Column(String(512), nullable=True, default=None)
     clash_subscription_template = Column(String(255), nullable=False, default="clash/default.yml")
     clash_settings_template = Column(String(255), nullable=False, default="clash/settings.yml")
@@ -164,6 +193,7 @@ class SubscriptionSettings(Base):
     use_custom_json_for_v2rayng = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_streisand = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     use_custom_json_for_happ = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    subscription_aliases = Column(Text, nullable=False, default="[]")
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -191,6 +221,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(34, collation="NOCASE"), index=True)
     credential_key = Column(String(64), nullable=True)
+    subadress = Column(String(255), nullable=False, default="", server_default=text("''"), index=True)
     flow = Column(String(128), nullable=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
@@ -280,7 +311,14 @@ class User(Base):
 
     @property
     def inbounds(self):
-        from app.runtime import xray  # lazy import to avoid circular dependency
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
+
+        def protocol_inbounds(protocol: str):
+            return [inbound for inbound in inbound_map.values() if inbound.get("protocol") == protocol]
 
         _ = {}
         if self.service_id is not None:
@@ -308,7 +346,6 @@ class User(Base):
                 allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
             if not allowed_tags:
                 try:
-                    from app.db import GetDB
                     from app.db import models as db_models
 
                     with GetDB() as db:
@@ -330,7 +367,7 @@ class User(Base):
                 proxy_key = proxy.type
                 proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
                 _[proxy_key] = []
-                for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
+                for inbound in protocol_inbounds(proxy_key_str):
                     if inbound["tag"] in allowed_tags:
                         _[proxy_key].append(inbound["tag"])
             return _
@@ -340,7 +377,7 @@ class User(Base):
             proxy_key_str = proxy_key.value if hasattr(proxy_key, "value") else str(proxy_key)
             _[proxy_key] = []
             excluded_tags = [i.tag for i in proxy.excluded_inbounds]
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_key_str, []):
+            for inbound in protocol_inbounds(proxy_key_str):
                 if inbound["tag"] not in excluded_tags:
                     _[proxy_key].append(inbound["tag"])
 
@@ -647,6 +684,13 @@ class Node(Base):
     proxy_password = Column(String(255), nullable=True, default=None)
     certificate = Column(Text, nullable=True)  # Node-specific certificate (PEM format)
     certificate_key = Column(Text, nullable=True)  # Node-specific certificate key (PEM format)
+    xray_config_mode = Column(
+        Enum(XrayConfigMode),
+        nullable=False,
+        default=XrayConfigMode.default,
+        server_default=XrayConfigMode.default.value,
+    )
+    xray_config = Column(JSON, nullable=True)
 
 
 class MasterNodeState(Base):
@@ -688,10 +732,12 @@ class NodeUsage(Base):
 
 class OutboundTraffic(Base):
     __tablename__ = "outbound_traffic"
-    __table_args__ = (UniqueConstraint("outbound_id"),)
+    __table_args__ = (UniqueConstraint("target_id", "outbound_id", name="uq_outbound_traffic_target_outbound"),)
 
     id = Column(Integer, primary_key=True)
-    outbound_id = Column(String(256), unique=True, nullable=False, index=True)  # Unique ID for outbound (not tag)
+    target_id = Column(String(64), nullable=False, default="master", server_default=text("'master'"), index=True)
+    node_id = Column(Integer, ForeignKey("nodes.id"), nullable=True, index=True)
+    outbound_id = Column(String(256), nullable=False, index=True)  # Unique ID for outbound (not tag)
     tag = Column(String(256), nullable=True, index=True)  # Outbound tag for reference
     protocol = Column(String(64), nullable=True)  # Protocol type (vmess, vless, etc.)
     address = Column(String(256), nullable=True)  # Server address

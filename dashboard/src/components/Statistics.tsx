@@ -55,8 +55,11 @@ const formatNumberValue = (value: number) =>
 	numberWithCommas(value) ?? value.toString();
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
-	// Remove leading 'v' or 'vv', remove '-alpha', '-beta', '-rc' etc. suffixes, and trim
-	return value.trim().replace(/^v+/i, "").split(/[-_]/)[0].trim();
+	const trimmed = value.trim();
+	if (trimmed.toLowerCase().startsWith("dev-")) {
+		return trimmed.toLowerCase();
+	}
+	return trimmed.replace(/^v+/i, "").split(/[-_]/)[0].trim();
 };
 
 const HISTORY_INTERVALS = [
@@ -869,132 +872,6 @@ const AdminOverviewCard: FC<{
 	);
 };
 
-const RedisUsageCard: FC<{
-	data?: SystemStats["redis_stats"];
-	t: TFunction;
-}> = ({ data, t }) => {
-	if (!data || !data.enabled) return null;
-
-	const statusColor = data.connected ? "green" : "red";
-	const statusText = data.connected
-		? t("status.connected", "Connected")
-		: t("status.disconnected", "Disconnected");
-	const isWarmedUp = data.connected && data.keys_cached > 0;
-	const warmupStatusColor = isWarmedUp ? "green" : "yellow";
-	const warmupStatusText = isWarmedUp
-		? t("redis.warmedUp", "Warmed Up")
-		: t("redis.notWarmedUp", "Not Warmed Up");
-
-	return (
-		<Card p={5} borderRadius="12px" boxShadow="none">
-			<Stack spacing={4}>
-				<HStack justifyContent="space-between" alignItems="center">
-					<Text fontSize="lg" fontWeight="semibold">
-						{t("redisUsage", "Redis Usage")}
-					</Text>
-					<HStack spacing={2}>
-						<Badge colorScheme={warmupStatusColor}>{warmupStatusText}</Badge>
-						<Badge colorScheme={statusColor}>{statusText}</Badge>
-					</HStack>
-				</HStack>
-				{data.connected ? (
-					<>
-						<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-							<MetricBadge
-								label={t("redisMemoryUsage", "Memory Usage")}
-								value={
-									data.memory_percent > 0
-										? `${data.memory_percent.toFixed(1)}%`
-										: t("noLimit", "No Limit")
-								}
-								colorScheme="blue"
-							/>
-							<MetricBadge
-								label={t("redisUptime", "Uptime")}
-								value={formatDuration(data.uptime_seconds)}
-								colorScheme="green"
-							/>
-						</SimpleGrid>
-						<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-							<MetricBadge
-								label={t("redisMemoryUsed", "Memory Used")}
-								value={
-									data.memory_percent > 0
-										? `${formatBytes(data.memory_used)} / ${formatBytes(data.memory_total)}`
-										: formatBytes(data.memory_used)
-								}
-								valueClassName={
-									data.memory_percent > 0 ? "rb-usage-pair" : undefined
-								}
-								colorScheme="purple"
-							/>
-							{data.version && (
-								<MetricBadge
-									label={t("redisVersion", "Version")}
-									value={`v${data.version}`}
-									colorScheme="gray"
-								/>
-							)}
-						</SimpleGrid>
-						<SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
-							<MetricBadge
-								label={t("redis.keysCached", "Cached Keys")}
-								value={formatNumberValue(data.keys_cached)}
-								colorScheme={isWarmedUp ? "green" : "yellow"}
-							/>
-							<MetricBadge
-								label={t("redis.totalKeys", "Total Keys")}
-								value={formatNumberValue(data.keys_count)}
-								colorScheme="blue"
-							/>
-							<MetricBadge
-								label={t("redis.hitRate", "Hit Rate")}
-								value={`${data.hit_rate.toFixed(1)}%`}
-								colorScheme={
-									data.hit_rate > 80
-										? "green"
-										: data.hit_rate > 50
-											? "yellow"
-											: "orange"
-								}
-							/>
-						</SimpleGrid>
-						<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
-							<MetricBadge
-								label={t("redis.commandsProcessed", "Commands Processed")}
-								value={formatNumberValue(data.commands_processed)}
-								colorScheme="purple"
-							/>
-							<MetricBadge
-								label={t("redis.cacheHits", "Cache Hits/Misses")}
-								value={`${formatNumberValue(data.hits)} / ${formatNumberValue(data.misses)}`}
-								valueClassName="rb-usage-pair"
-								colorScheme="blue"
-							/>
-						</SimpleGrid>
-					</>
-				) : (
-					<Box
-						p={4}
-						borderRadius="md"
-						bg="red.50"
-						borderWidth="1px"
-						borderColor="red.200"
-						_dark={{
-							bg: "rgba(239, 68, 68, 0.1)",
-							borderColor: "red.800",
-						}}
-					>
-						<Text fontSize="sm" color="red.700" _dark={{ color: "red.300" }}>
-							{t("redisNotConnected", "Redis is not connected")}
-						</Text>
-					</Box>
-				)}
-			</Stack>
-		</Card>
-	);
-};
-
 export const Statistics: FC<BoxProps> = (props) => {
 	const { version } = useDashboard();
 	const { userData } = useGetUser();
@@ -1013,29 +890,6 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const [historyInterval, setHistoryInterval] = useState(
 		HISTORY_INTERVALS[0].seconds,
 	);
-	const latestPanelRelease = useQuery({
-		queryKey: ["panel-latest-release"],
-		queryFn: async () => {
-			const response = await window.fetch(
-				"https://api.github.com/repos/rebeccapanel/Rebecca/releases/latest",
-				{ headers: { Accept: "application/vnd.github+json" } },
-			);
-			if (!response.ok) throw new Error("Failed to load latest panel release");
-			return response.json();
-		},
-		refetchOnWindowFocus: false,
-		staleTime: 5 * 60 * 1000,
-		retry: 1,
-	});
-
-	const latestPanelVersion =
-		latestPanelRelease.data?.tag_name || latestPanelRelease.data?.name || "";
-	const currentPanelVersion = systemData?.version || version || "";
-	const _isPanelUpdateAvailable =
-		normalizeVersion(latestPanelVersion) &&
-		normalizeVersion(currentPanelVersion) &&
-		normalizeVersion(latestPanelVersion) !==
-			normalizeVersion(currentPanelVersion);
 
 	const canSeeGlobal =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
@@ -1072,7 +926,6 @@ export const Statistics: FC<BoxProps> = (props) => {
 						t={t}
 						onOpenHistory={openHistory}
 					/>
-					<RedisUsageCard data={systemData.redis_stats} t={t} />
 				</>
 			)}
 			{userCards.length > 0 && (

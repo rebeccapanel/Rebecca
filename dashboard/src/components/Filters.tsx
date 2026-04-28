@@ -54,6 +54,7 @@ import {
 	AdminStatus,
 	UserPermissionToggle,
 } from "types/Admin";
+import { isUserManagementLocked } from "utils/adminTraffic";
 import AdvancedUserActions from "./AdvancedUserActions";
 
 const iconProps = {
@@ -175,20 +176,24 @@ export const Filters: FC<FilterProps> = ({
 	const { t } = useTranslation();
 	const [search, setSearch] = useState("");
 	const { userData } = useGetUser();
-	const hasElevatedRole =
+	const hasPrivilegedRole =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+	const hasFullAccess = userData.role === AdminRole.FullAccess;
+	const userManagementLocked = isUserManagementLocked(userData);
 	const isCurrentAdminDisabled =
-		!hasElevatedRole && userData.status === AdminStatus.Disabled;
+		!hasPrivilegedRole && userData.status === AdminStatus.Disabled;
 	const canManageAdmins = Boolean(
 		userData.permissions?.admin_management?.[AdminManagementPermission.Edit] ||
 			userData.role === AdminRole.FullAccess,
 	);
 	const canCreateUsers =
-		hasElevatedRole ||
+		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
 	const showCreateButton =
 		target === "users"
-			? canCreateUsers && !isCurrentAdminDisabled
+			? canCreateUsers &&
+				!isCurrentAdminDisabled &&
+				!userManagementLocked
 			: canManageAdmins;
 
 	const loading = target === "users" ? usersLoading : adminsLoading;
@@ -206,10 +211,10 @@ export const Filters: FC<FilterProps> = ({
 	}, [fetchServices]);
 
 	useEffect(() => {
-		if (hasElevatedRole) {
+		if (hasPrivilegedRole) {
 			fetchAdmins({ limit: 200, offset: 0 });
 		}
-	}, [fetchAdmins, hasElevatedRole]);
+	}, [fetchAdmins, hasPrivilegedRole]);
 
 	useEffect(() => {
 		const nextSearch = isUserFilters
@@ -293,6 +298,9 @@ export const Filters: FC<FilterProps> = ({
 	const handleCreate = () => {
 		if (target === "users") {
 			if (isCurrentAdminDisabled || !canCreateUsers) {
+				return;
+			}
+			if (userManagementLocked) {
 				return;
 			}
 			onCreateUser(true);
@@ -434,7 +442,7 @@ export const Filters: FC<FilterProps> = ({
 													))}
 												</Select>
 											</Box>
-											{hasElevatedRole && (
+											{hasPrivilegedRole && (
 												<Box>
 													<Text fontSize="sm" fontWeight="semibold" mb={1}>
 														{t("filters.advanced.adminLabel", "Admin filter")}

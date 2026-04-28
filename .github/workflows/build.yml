@@ -5,6 +5,10 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-docker-image:
     runs-on: ubuntu-latest
@@ -40,11 +44,50 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Resolve image tags
+        id: image_tags
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tags="ghcr.io/rebeccapanel/rebecca:latest"$'\n'"ghcr.io/rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          dockerhub_enabled=false
+          if [[ -n "${DOCKERHUB_USERNAME}" && -n "${DOCKERHUB_TOKEN}" ]]; then
+            dockerhub_enabled=true
+            tags="${tags}"$'\n'"rebeccapanel/rebecca:latest"$'\n'"rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          fi
+          echo "dockerhub_enabled=${dockerhub_enabled}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Login to Docker Hub
+        id: dockerhub_login
+        if: steps.image_tags.outputs.dockerhub_enabled == 'true'
+        continue-on-error: true
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Finalize image tags
+        id: final_image_tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          tags="ghcr.io/rebeccapanel/rebecca:latest"$'\n'"ghcr.io/rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          if [[ "${{ steps.dockerhub_login.outcome }}" == "success" ]]; then
+            tags="${tags}"$'\n'"rebeccapanel/rebecca:latest"$'\n'"rebeccapanel/rebecca:${GITHUB_REF_NAME}"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -59,8 +102,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            rebeccapanel/rebecca:latest
-            rebeccapanel/rebecca:${{ github.ref_name }}
-            ghcr.io/rebeccapanel/rebecca:latest
-            ghcr.io/rebeccapanel/rebecca:${{ github.ref_name }}
+          tags: ${{ steps.final_image_tags.outputs.tags }}

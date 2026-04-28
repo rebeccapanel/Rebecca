@@ -61,6 +61,49 @@ class NodeAPIError(Exception):
         self.detail = detail
 
 
+def _detail_to_text(detail) -> str:
+    if detail is None:
+        return ""
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, dict):
+        parts = []
+        for key in ("message", "detail", "stdout", "stderr"):
+            value = detail.get(key)
+            if value:
+                parts.append(str(value))
+        if parts:
+            return " | ".join(parts)
+        try:
+            return json.dumps(detail, ensure_ascii=False)
+        except Exception:
+            return str(detail)
+    if isinstance(detail, list):
+        try:
+            return " | ".join(str(item) for item in detail)
+        except Exception:
+            return str(detail)
+    return str(detail)
+
+
+def _is_expected_maintenance_disconnect(detail) -> bool:
+    text = _detail_to_text(detail).lower()
+    if not text:
+        return False
+
+    expected_tokens = (
+        "failed with exit code -15",
+        "failed with exit code 143",
+        "max retries exceeded",
+        "connection refused",
+        "connection reset by peer",
+        "remote end closed connection",
+        "failed to establish a new connection",
+        "read timed out",
+    )
+    return any(token in text for token in expected_tokens)
+
+
 _GRPC_PROXY_ENV_LOCK = threading.Lock()
 
 
@@ -260,8 +303,23 @@ class ReSTXRayNode:
         self._api = None
         self._started = False
         self.node_version = None
+        self.install_mode = None
+        self.node_binary_tag = None
+        self.update_channel = None
         self._tls_target_name = "rebeccapanel"
         self._grpc_root_cert: Optional[bytes] = None
+
+    def _apply_service_metadata(self, payload: dict):
+        node_version = payload.get("node_version")
+        if node_version:
+            self.node_version = node_version
+        self.install_mode = payload.get("install_mode") or payload.get("mode") or self.install_mode
+        binary_tag = payload.get("node_binary_tag") or payload.get("binary_tag")
+        if binary_tag:
+            self.node_binary_tag = binary_tag
+        update_channel = payload.get("update_channel")
+        if update_channel:
+            self.update_channel = update_channel
 
     def _register_runtime_error(self, detail: str) -> None:
         """Best-effort bridge to master error reporting/status handling."""
@@ -421,7 +479,7 @@ class ReSTXRayNode:
     def refresh_health(self, *, force: bool = True) -> tuple[bool, bool]:
         return self._check_health(force=force)
 
-    def make_request(self, path: str, timeout: int, **params):
+    def make_request(self, path: str, timeout: int, *, report_runtime_error: bool = True, **params):
         payload = {"session_id": self._session_id, **params}
         last_exc: Exception | None = None
 
@@ -435,7 +493,7 @@ class ReSTXRayNode:
                     except ValueError:
                         data = {}
 
-                    if res.status_code == 200:
+                    if 200 <= res.status_code < 300:
                         return data
 
                     detail = data.get("detail") if isinstance(data, dict) else None
@@ -447,7 +505,7 @@ class ReSTXRayNode:
                         self._api = None
                         self._started = False
                         self._set_health_cache(False, False)
-                    if "xray is started already" not in detail_text:
+                    if report_runtime_error and "xray is started already" not in detail_text:
                         self._register_runtime_error(str(detail))
                     raise NodeAPIError(res.status_code, detail)
                 except NodeAPIError:
@@ -461,7 +519,8 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
-                    self._register_runtime_error(str(exc))
+                    if report_runtime_error:
+                        self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 except Exception as exc:
                     last_exc = exc
@@ -469,7 +528,8 @@ class ReSTXRayNode:
                     self._api = None
                     self._started = False
                     self._set_health_cache(False, False)
-                    self._register_runtime_error(str(exc))
+                    if report_runtime_error:
+                        self._register_runtime_error(str(exc))
                     raise NodeAPIError(0, str(exc))
                 finally:
                     if res is not None:
@@ -531,11 +591,8 @@ class ReSTXRayNode:
         res = self.make_request("/connect", timeout=60)
         self._session_id = res["session_id"]
 
-        # Get node version after connecting
         version_res = self.make_request("/", timeout=60)
-        node_version = version_res.get("node_version")
-        if node_version:
-            self.node_version = node_version
+        self._apply_service_metadata(version_res)
         self._set_health_cache(True, bool(version_res.get("started", False)))
 
     def disconnect(self):
@@ -548,9 +605,7 @@ class ReSTXRayNode:
     def get_version(self):
         self._ensure_connected()
         res = self.make_request("/", timeout=60)
-        node_version = res.get("node_version")
-        if node_version:
-            self.node_version = node_version
+        self._apply_service_metadata(res)
         return res.get("core_version")
 
     def start(self, config: XRayConfig):
@@ -661,14 +716,47 @@ class ReSTXRayNode:
         self.make_request("/update_core", timeout=300, version=version)
 
     def restart_host_service(self):
-        """Ask the remote node to restart its Rebecca services via maintenance API."""
+        """Ask the remote node binary service to restart itself."""
         self._ensure_connected()
-        return self.make_request("/maintenance/restart", timeout=300)
+        try:
+            return self.make_request("/service/restart", timeout=300, report_runtime_error=False)
+        except NodeAPIError as exc:
+            if not _is_expected_maintenance_disconnect(exc.detail):
+                raise
 
-    def update_host_service(self):
-        """Ask the remote node to run the Rebecca-node update workflow via maintenance API."""
+            # Maintenance restart can drop this control connection mid-request.
+            self._session_id = None
+            self._api = None
+            self._started = False
+            self._set_health_cache(False, False)
+            return {
+                "status": "accepted",
+                "detail": "Node service restart triggered. Reconnect will be attempted automatically.",
+            }
+
+    def update_host_service(self, channel: str | None = None, version: str | None = None):
+        """Ask the remote node binary service to run the Rebecca-node update workflow."""
         self._ensure_connected()
-        return self.make_request("/maintenance/update", timeout=900)
+        params = {}
+        if channel:
+            params["channel"] = channel
+        if version:
+            params["version"] = version
+        try:
+            return self.make_request("/service/update", timeout=900, report_runtime_error=False, **params)
+        except NodeAPIError as exc:
+            if not _is_expected_maintenance_disconnect(exc.detail):
+                raise
+
+            # The node service can terminate while systemd replaces/restarts it.
+            self._session_id = None
+            self._api = None
+            self._started = False
+            self._set_health_cache(False, False)
+            return {
+                "status": "accepted",
+                "detail": "Node service update triggered. Reconnect will be attempted automatically.",
+            }
 
     def update_geo(self, files: list[dict]):
         """
@@ -677,6 +765,62 @@ class ReSTXRayNode:
         """
         self._ensure_connected()
         self.make_request("/update_geo", timeout=300, files=files)
+
+    def collect_outbound_stats(self) -> dict:
+        """Collect reset outbound stats through the node-side delivery buffer."""
+        self._ensure_connected()
+        response = self.make_request("/usage/outbounds", timeout=45)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid outbound usage response from node")
+
+        stats = []
+        for item in response.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            tag = str(item.get("tag") or "").strip()
+            if not tag:
+                continue
+            stats.append(
+                {
+                    "tag": tag,
+                    "up": int(item.get("up") or 0),
+                    "down": int(item.get("down") or 0),
+                }
+            )
+        return {"batch_id": str(response.get("batch_id") or ""), "stats": stats}
+
+    def ack_outbound_stats(self, batch_id: str):
+        """Acknowledge a node-side outbound usage batch after DB commit."""
+        self._ensure_connected()
+        batch_id = str(batch_id or "").strip()
+        if not batch_id:
+            return None
+        return self.make_request("/usage/outbounds/ack", timeout=30, batch_id=batch_id, report_runtime_error=False)
+
+    def collect_user_stats(self) -> dict:
+        """Collect reset user stats through the node-side delivery buffer."""
+        self._ensure_connected()
+        response = self.make_request("/usage/users", timeout=60)
+        if not isinstance(response, dict):
+            raise NodeAPIError(0, "Invalid user usage response from node")
+
+        stats = []
+        for item in response.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            uid = str(item.get("uid") or "").strip()
+            if not uid:
+                continue
+            stats.append({"uid": uid, "value": int(item.get("value") or 0)})
+        return {"batch_id": str(response.get("batch_id") or ""), "stats": stats}
+
+    def ack_user_stats(self, batch_id: str):
+        """Acknowledge a node-side user usage batch after DB commit."""
+        self._ensure_connected()
+        batch_id = str(batch_id or "").strip()
+        if not batch_id:
+            return None
+        return self.make_request("/usage/users/ack", timeout=30, batch_id=batch_id, report_runtime_error=False)
 
     def get_access_logs(self, max_lines: int = 500) -> list[str]:
         """

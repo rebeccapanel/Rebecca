@@ -25,7 +25,7 @@ import { type ChangeEvent, type FC, useEffect, useMemo, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
-import type { Admin } from "types/Admin";
+import { AdminRole, AdminTrafficLimitMode, type Admin } from "types/Admin";
 import type {
 	ServiceAdminUsage,
 	ServiceAdminUsageResponse,
@@ -207,6 +207,19 @@ const AdminsUsage: FC = () => {
 		);
 		return filtered.length ? filtered : admins;
 	}, [admins, selectedServiceId, serviceAdminUsage]);
+	const selectedAdminRecord = useMemo(
+		() =>
+			filteredAdmins.find((admin) => admin.username === selectedAdmin) ??
+			admins.find((admin) => admin.username === selectedAdmin) ??
+			null,
+		[admins, filteredAdmins, selectedAdmin],
+	);
+	const isCreatedTrafficBasis = Boolean(
+		selectedAdminRecord &&
+			selectedAdminRecord.role !== AdminRole.FullAccess &&
+			selectedAdminRecord.traffic_limit_mode ===
+				AdminTrafficLimitMode.CreatedTraffic,
+	);
 	const serviceUsageTotal = useMemo(
 		() =>
 			serviceAdminUsage.reduce(
@@ -414,11 +427,13 @@ const AdminsUsage: FC = () => {
 	const series = useMemo(
 		() => [
 			{
-				name: t("nodes.usedTrafficSeries", "Used traffic"),
+				name: isCreatedTrafficBasis
+					? t("admins.createdTrafficSeries", "Created traffic")
+					: t("nodes.usedTrafficSeries", "Used traffic"),
 				data: points.map((p) => p.used_traffic),
 			},
 		],
-		[points, t],
+		[isCreatedTrafficBasis, points, t],
 	);
 
 	const chartConfig = useMemo(
@@ -588,13 +603,22 @@ const AdminsUsage: FC = () => {
 				title={
 					<HStack spacing={2} align="center">
 						<Text fontWeight="semibold">
-							{t("admins.dailyUsage", "Daily usage")}
+							{isCreatedTrafficBasis
+								? t("admins.dailyCreatedTraffic", "Daily created traffic")
+								: t("admins.dailyUsage", "Daily usage")}
 						</Text>
 						<Tooltip
-							label={t(
-								"admins.dailyUsageTooltip",
-								"Total data usage per day for the selected admin and time range",
-							)}
+							label={
+								isCreatedTrafficBasis
+									? t(
+											"admins.dailyCreatedTrafficTooltip",
+											"Total created traffic per day for the selected admin and time range",
+										)
+									: t(
+											"admins.dailyUsageTooltip",
+											"Total data usage per day for the selected admin and time range",
+										)
+							}
 						>
 							<InfoIcon
 								color="gray.500"
@@ -643,7 +667,10 @@ const AdminsUsage: FC = () => {
 						<chakra.span fontWeight="medium">
 							{selectedAdmin ?? "-"}
 						</chakra.span>{" "}
-						{t("nodes.totalLabel", "Total")}:{" "}
+						{isCreatedTrafficBasis
+							? t("admins.totalCreatedTraffic", "Total created traffic")
+							: t("nodes.totalLabel", "Total")}
+						:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(total || 0, 2)}
 						</chakra.span>

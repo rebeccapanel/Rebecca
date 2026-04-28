@@ -1,0 +1,136 @@
+name: Binary Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - "**"
+  release:
+    types:
+      - published
+      - prereleased
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-amd64:
+    runs-on: ubuntu-latest
+    env:
+      DASH_DIR: ./dashboard
+      PYTHON_VERSION: "3.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+            UPLOAD_RELEASE="true"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+            UPLOAD_RELEASE="true"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            VERSION="pr-${{ github.event.pull_request.number }}-${GITHUB_SHA::7}"
+            RELEASE_TAG=""
+            UPLOAD_RELEASE="false"
+          else
+            REF_SLUG="$(echo "${GITHUB_REF_NAME}" | tr '/[:space:]' '-' | tr -cd '[:alnum:]._-')"
+            VERSION="${REF_SLUG}-${GITHUB_SHA::7}"
+            RELEASE_TAG=""
+            UPLOAD_RELEASE="false"
+          fi
+
+          ARTIFACT_NAME="rebecca-binaries-linux-amd64"
+          SERVER_ASSET_NAME="rebecca-server-${VERSION}-linux-amd64"
+          CLI_ASSET_NAME="rebecca-cli-${VERSION}-linux-amd64"
+
+          echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "server_asset_name=${SERVER_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "cli_asset_name=${CLI_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "upload_release=${UPLOAD_RELEASE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ env.DASH_DIR }}/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: ${{ env.DASH_DIR }}
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: ${{ env.DASH_DIR }}
+        run: VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
+
+      - name: Create dashboard fallback page
+        working-directory: ${{ env.DASH_DIR }}
+        run: cp ./build/index.html ./build/404.html
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bash \
+            build-essential \
+            curl \
+            gcc \
+            libffi-dev \
+            libssl-dev \
+            pkg-config \
+            zlib1g-dev
+
+      - name: Sync Python dependencies
+        run: |
+          python -m pip install --upgrade pip uv
+          uv sync --frozen --no-dev --group build
+
+      - name: Verify PyInstaller
+        run: |
+          uv run python -m PyInstaller --version
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run bash scripts/build_binary.sh
+          ls -lah dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: |
+            dist/rebecca-server
+            dist/rebecca-cli
+
+      - name: Upload release asset
+        if: steps.meta.outputs.upload_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1 || \
+            gh release create "${{ steps.meta.outputs.release_tag }}" --title "${{ steps.meta.outputs.release_tag }}" --notes "Rebecca ${{ steps.meta.outputs.release_tag }}"
+          gh release upload "${{ steps.meta.outputs.release_tag }}" \
+            "dist/rebecca-server#${{ steps.meta.outputs.server_asset_name }}" \
+            "dist/rebecca-cli#${{ steps.meta.outputs.cli_asset_name }}" \
+            --clobber

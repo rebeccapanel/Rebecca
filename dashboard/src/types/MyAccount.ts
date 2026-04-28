@@ -10,6 +10,7 @@ export type MyAccountNodeUsage = {
 };
 
 export type MyAccountResponse = {
+	traffic_basis: "used_traffic" | "created_traffic";
 	data_limit: number | null;
 	used_traffic: number;
 	remaining_data: number | null;

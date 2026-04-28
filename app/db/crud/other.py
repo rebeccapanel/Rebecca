@@ -124,13 +124,15 @@ class ServiceRepository:
 
     @staticmethod
     def compute_allowed_inbounds(service: Service) -> Dict[ProxyTypes, Set[str]]:
-        from app.runtime import xray
+        from sqlalchemy.orm import object_session
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         allowed: Dict[ProxyTypes, Set[str]] = {}
         if service is None:
             return allowed
 
-        inbound_map = xray.config.inbounds_by_tag
+        db = object_session(service)
+        inbound_map = get_inbounds_by_tag_cached(db) if db is not None else {}
 
         for link in service.host_links:
             host = link.host
@@ -157,8 +159,6 @@ class ServiceRepository:
         service: Service,
         allowed_inbounds: Optional[Dict[ProxyTypes, Set[str]]] = None,
     ) -> None:
-        from app.runtime import xray
-
         if allowed_inbounds is None:
             allowed_inbounds = self.compute_allowed_inbounds(service)
 
@@ -197,7 +197,13 @@ class ServiceRepository:
                         preserve_existing_uuid=True,
                     )
 
-            available_tags = {inbound["tag"] for inbound in xray.config.inbounds_by_protocol.get(proxy_type, [])}
+            from app.services.data_access import get_inbounds_by_tag_cached
+
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
+            inbound_map = get_inbounds_by_tag_cached(self.db)
+            available_tags = {
+                tag for tag, inbound in inbound_map.items() if inbound.get("protocol") == proxy_type_value
+            }
             excluded_tags = sorted(available_tags - set(allowed_tags))
             inbound_objs = [get_or_create_inbound(self.db, tag) for tag in excluded_tags]
             if proxy.id is None:
@@ -228,16 +234,6 @@ class ServiceRepository:
             self.apply_service_to_user(user, service, allowed_inbounds)
             updated_users.append(user)
         self.db.flush()
-        # Ensure cached users don't keep stale excluded_inbounds after host/service changes.
-        try:
-            from app.redis.cache import invalidate_user_cache
-
-            for user in updated_users:
-                if user.id is None or not user.username:
-                    continue
-                invalidate_user_cache(username=user.username, user_id=user.id)
-        except Exception:
-            pass
         return updated_users
 
     def get_allowed_inbounds(self, service: Service) -> Dict[ProxyTypes, Set[str]]:
@@ -325,19 +321,6 @@ class ServiceRepository:
         self.db.commit()
         self.db.refresh(service)
 
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
-
-                cache_service(service)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
-
         return service
 
     def update(
@@ -374,19 +357,6 @@ class ServiceRepository:
         self.db.commit()
         self.db.refresh(service)
 
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import cache_service, invalidate_service_cache, invalidate_service_host_map_cache
-
-                cache_service(service)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
-
         return service, allowed_before, allowed_after
 
     def remove(
@@ -421,22 +391,8 @@ class ServiceRepository:
             else:
                 raise ValueError("Invalid delete mode")
 
-        service_id = service.id
         self.db.delete(service)
         self.db.commit()
-
-        # Update Redis cache
-        from config import REDIS_ENABLED
-
-        if REDIS_ENABLED:
-            try:
-                from app.redis.cache import invalidate_service_cache, invalidate_service_host_map_cache
-
-                invalidate_service_cache(service_id=service_id)
-                invalidate_service_cache()  # Invalidate services list
-                invalidate_service_host_map_cache()  # Invalidate host maps
-            except Exception:
-                pass  # Don't fail if Redis is unavailable
 
         return deleted_users, transferred_users
 

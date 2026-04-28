@@ -3,21 +3,22 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
-from sqlalchemy import and_, bindparam, func, insert, or_, select, update
+from sqlalchemy import and_, bindparam, case, func, insert, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
+from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
-from app.models.admin import Admin as AdminSchema
+from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
 from app.utils import report
 from config import DISABLE_RECORDING_NODE_USAGE
 
 
-"""User/admin/service usage pipeline: collect, aggregate, cache (Redis), and persist (DB) without behavior changes."""
+"""User/admin/service usage pipeline: collect, aggregate, and persist usage in the database."""
 
 # region Collect & aggregate per-user stats from Xray
 
@@ -36,26 +37,64 @@ def _build_api_instances():
 
     for node_id, node in list(xray.nodes.items()):
         if node.connected and node.started:
-            api_instances[node_id] = node.api
+            api_instances[node_id] = node
             usage_coefficient[node_id] = node.usage_coefficient
 
     return api_instances, usage_coefficient
 
 
+def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) in (404, 405)
+
+
+def _collect_user_stats(source):
+    if not hasattr(source, "collect_user_stats"):
+        return {"stats": get_users_stats(source), "node_batch_id": ""}
+    try:
+        payload = source.collect_user_stats()
+        return {
+            "stats": payload.get("stats") or [],
+            "node_batch_id": payload.get("batch_id") or "",
+        }
+    except Exception as exc:
+        if not _is_missing_node_usage_endpoint(exc):
+            raise
+
+    return {"stats": get_users_stats(source.api), "node_batch_id": ""}
+
+
+def _ack_node_user_batches(node_batches: dict[int, str]) -> None:
+    for node_id, batch_id in node_batches.items():
+        if not batch_id:
+            continue
+        node = xray.nodes.get(node_id)
+        if not node:
+            continue
+        try:
+            node.ack_user_stats(batch_id)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning(f"Failed to ack user usage batch {batch_id} for node {node_id}: {exc}")
+
+
 def _collect_usage_params(api_instances):
     if not api_instances:
-        return {}
+        return {}, {}
 
     executor = ThreadPoolExecutor(max_workers=10)
-    futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
+    futures = {node_id: executor.submit(_collect_user_stats, source) for node_id, source in api_instances.items()}
 
     api_params = {}
+    node_batches = {}
     for node_id, future in futures.items():
         try:
-            api_params[node_id] = future.result(timeout=30)
+            result = future.result(timeout=30)
+            if isinstance(result, dict):
+                node_batches[node_id] = result.get("node_batch_id") or ""
+                result = result.get("stats") or []
+            api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
-            api_params[node_id] = []
+            api_params[node_id] = usage_delivery_buffer.pending_user_stats(node_id)
             try:
                 future.cancel()
             except Exception:
@@ -66,7 +105,7 @@ def _collect_usage_params(api_instances):
     except TypeError:
         executor.shutdown(wait=False)
 
-    return api_params
+    return api_params, node_batches
 
 
 def _aggregate_user_usage(api_params, usage_coefficient):
@@ -154,6 +193,15 @@ def _apply_on_hold_activation(user: User, *, now_dt: datetime) -> None:
     user.on_hold_timeout = None
 
 
+def _user_status_value(user: User) -> str:
+    status = getattr(user, "status", None)
+    return getattr(status, "value", status)
+
+
+def _is_runtime_user(user: User) -> bool:
+    return _user_status_value(user) in {UserStatus.active.value, UserStatus.on_hold.value}
+
+
 def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     """
     Ensure users crossing their data/time limits are moved to limited/expired immediately.
@@ -172,8 +220,14 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
 
     changed: List[User] = []
     activated: List[User] = []
+    users_to_remove_from_xray: List[User] = []
     for user in users:
         now_dt = datetime.now(timezone.utc)
+
+        if not _is_runtime_user(user):
+            users_to_remove_from_xray.append(user)
+            continue
+
         if _should_reactivate_on_hold(user, now_ts=now_ts):
             _apply_on_hold_activation(user, now_dt=now_dt)
             activated.append(user)
@@ -205,13 +259,19 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
     if changed or activated:
         db.commit()
 
+    if changed or activated or users_to_remove_from_xray:
         changed_ids = {user.id for user in changed}
-        for user in changed:
+        removed_ids = set()
+        for user in [*changed, *users_to_remove_from_xray]:
+            if user.id in removed_ids:
+                continue
+            removed_ids.add(user.id)
             try:
                 xray.operations.remove_user(user)
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to remove limited/expired user {user.id} from XRay: {exc}")
 
+        for user in changed:
             try:
                 report.status_change(
                     username=user.username,
@@ -221,15 +281,6 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
                 )
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to send status change report for user {user.id}: {exc}")
-
-            # Keep Redis caches in sync (best-effort)
-            try:
-                from app.redis.cache import cache_user, invalidate_user_cache
-
-                invalidate_user_cache(username=user.username, user_id=user.id)
-                cache_user(user, mark_for_sync=True)
-            except Exception:
-                pass
 
         for user in activated:
             if user.id in changed_ids:
@@ -248,15 +299,6 @@ def _enforce_user_limits_and_expiry(db, user_ids: List[int]) -> List[User]:
                 )
             except Exception as exc:  # pragma: no cover - best-effort
                 logger.warning(f"Failed to send activation report for user {user.id}: {exc}")
-
-            # Keep Redis caches in sync (best-effort)
-            try:
-                from app.redis.cache import cache_user, invalidate_user_cache
-
-                invalidate_user_cache(username=user.username, user_id=user.id)
-                cache_user(user, mark_for_sync=True)
-            except Exception:
-                pass
 
     return changed
 
@@ -313,30 +355,64 @@ def _enforce_due_active_users(db, *, batch_size: int = 500) -> int:
     return changed_total
 
 
+def _get_due_active_admin_ids(
+    db, now_ts: Optional[float] = None, *, batch_size: int = 500, after_id: Optional[int] = None
+) -> List[int]:
+    """Return active admins whose time limit has already expired."""
+    if batch_size <= 0:
+        return []
+
+    if now_ts is None:
+        now_ts = datetime.now(timezone.utc).timestamp()
+
+    query = db.query(Admin.id).filter(
+        Admin.status == AdminStatus.active,
+        Admin.expire.isnot(None),
+        Admin.expire > 0,
+        Admin.expire <= now_ts,
+    )
+    if after_id is not None:
+        query = query.filter(Admin.id > after_id)
+
+    rows = query.order_by(Admin.id.asc()).limit(batch_size).all()
+    return [int(row[0]) for row in rows if row and row[0] is not None]
+
+
+def _enforce_due_active_admins(db, *, batch_size: int = 500) -> int:
+    """
+    Enforce time-limit expiry for admins even if no admin/user edit request happens.
+    This keeps account status aligned with the configured admin expiration timestamp.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    changed_total = 0
+    last_id: Optional[int] = None
+
+    while True:
+        due_ids = _get_due_active_admin_ids(db, now_ts=now_ts, batch_size=batch_size, after_id=last_id)
+        if not due_ids:
+            break
+
+        due_admins = db.query(Admin).filter(Admin.id.in_(due_ids)).order_by(Admin.id.asc()).all()
+        batch_changed = False
+        for dbadmin in due_admins:
+            if crud.enforce_admin_time_limit(db, dbadmin, now_ts=now_ts):
+                changed_total += 1
+                batch_changed = True
+
+        if batch_changed:
+            db.commit()
+
+        last_id = due_ids[-1]
+        if len(due_ids) < batch_size:
+            break
+
+    return changed_total
+
+
 # endregion
 
 
-# region Per-node hourly snapshots for users (Redis first, DB fallback)
-
-
-def _cache_user_snapshots(params: list, node_id: Union[int, None], created_at, consumption_factor: int):
-    # Per-node hourly snapshots (Redis) for charts/backups.
-    from app.redis.cache import cache_user_usage_snapshot
-
-    user_snapshots = []
-    for param in params:
-        uid = int(param["uid"])
-        raw_value = param.get("value", 0)
-        try:
-            value = int(float(raw_value)) * consumption_factor
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid usage value for user {uid}: {raw_value}")
-            continue
-        cache_user_usage_snapshot(uid, node_id, created_at, value)
-        user_snapshots.append(
-            {"user_id": uid, "node_id": node_id, "created_at": created_at.isoformat(), "used_traffic": value}
-        )
-    return user_snapshots
+# region Per-node hourly snapshots for users
 
 
 def _persist_user_stats_to_db(params: list, node_id: Union[int, None], created_at, consumption_factor: int):
@@ -372,49 +448,13 @@ def record_user_stats(params: list, node_id: Union[int, None], consumption_facto
         return
 
     created_at = hour_bucket()
-
-    from app.redis.client import get_redis
-    from app.redis.pending_backup import save_usage_snapshots_backup
-    from config import REDIS_ENABLED
-
-    redis_client = get_redis() if REDIS_ENABLED else None
-    if redis_client:
-        # Redis path: cache snapshots + write pending backup.
-        user_snapshots = _cache_user_snapshots(params, node_id, created_at, consumption_factor)
-        save_usage_snapshots_backup(user_snapshots, [])
-        return
-
     _persist_user_stats_to_db(params, node_id, created_at, consumption_factor)
 
 
 # endregion
 
 
-# region Admin/Service aggregates and persistence (Redis or DB)
-
-
-def _cache_usage_updates(users_usage, admin_usage, service_usage):
-    # Redis path: cache per-user delta and backup admin/service aggregates.
-    from app.redis.cache import cache_user_usage_update
-    from app.redis.pending_backup import save_admin_usage_backup, save_service_usage_backup, save_user_usage_backup
-
-    online_at = utcnow_naive()
-
-    user_usage_backup = []
-    for usage in users_usage:
-        user_id = int(usage["uid"])
-        raw_value = usage.get("value", 0)
-        try:
-            value = int(float(raw_value))
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid usage value for user {user_id}: {raw_value}")
-            continue
-        cache_user_usage_update(user_id, value, online_at)
-        user_usage_backup.append({"user_id": user_id, "used_traffic_delta": value, "online_at": online_at.isoformat()})
-
-    save_user_usage_backup(user_usage_backup)
-    save_admin_usage_backup(admin_usage)
-    save_service_usage_backup(service_usage)
+# region Admin/Service aggregates and persistence
 
 
 def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage):
@@ -425,7 +465,16 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
         stmt = (
             update(User)
             .where(User.id == bindparam("uid"))
-            .values(used_traffic=User.used_traffic + bindparam("value"), online_at=utcnow_naive())
+            .values(
+                used_traffic=User.used_traffic + bindparam("value"),
+                online_at=case(
+                    (
+                        or_(User.status == UserStatus.active, User.status == UserStatus.on_hold),
+                        utcnow_naive(),
+                    ),
+                    else_=User.online_at,
+                ),
+            )
         )
         safe_execute(db, stmt, users_usage)
 
@@ -518,51 +567,43 @@ def record_user_usages():
     # Always enforce due limits/expiry first, even if no current usage was collected.
     try:
         with GetDB() as db:
+            _enforce_due_active_admins(db)
             _enforce_due_active_users(db)
     except Exception as exc:  # pragma: no cover - best-effort
-        logger.warning(f"Failed to enforce due active-user limits/expiry: {exc}")
+        logger.warning(f"Failed to enforce due active account limits/expiry: {exc}")
 
     api_instances, usage_coefficient = _build_api_instances()
     if not api_instances:
         return
-    api_params = _collect_usage_params(api_instances)
+    api_params, node_batches = _collect_usage_params(api_instances)
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)
     if not users_usage:
+        _ack_node_user_batches(node_batches)
         return
 
     user_ids = [int(entry["uid"]) for entry in users_usage]
     mapping = _load_user_mapping(user_ids)
     admin_usage, service_usage, admin_service_usage = _collect_admin_service_usage(users_usage, mapping)
 
-    from app.redis.client import get_redis
+    del user_ids
+    admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
 
-    redis_client = get_redis()
-    if redis_client:
-        # Redis mode: push deltas + backup (user/admin/service).
-        _cache_usage_updates(users_usage, admin_usage, service_usage)
-        # Also write-through to DB immediately, then clear pending keys to avoid double-count.
-        admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
-        try:
-            from app.redis.cache import clear_user_pending_usage
-
-            clear_user_pending_usage(user_ids)
-        except Exception:
-            pass
-    else:
-        # DB mode: update user/admin/service/admin-service tables.
-        admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
-
-    # Notify admin limit triggers (only DB path populates events).
+    # Notify admin limit triggers.
     for event in admin_limit_events:
         report.admin_data_limit_reached(event["admin"], event["limit"], event["current"])
 
     if DISABLE_RECORDING_NODE_USAGE:
+        usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+        _ack_node_user_batches(node_batches)
         return
 
-    # Write per-node/hour snapshots (Redis or DB fallback).
+    # Write per-node/hour snapshots.
     for node_id, params in api_params.items():
         record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
+
+    usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+    _ack_node_user_batches(node_batches)
 
 
 # endregion

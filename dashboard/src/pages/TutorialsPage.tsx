@@ -817,16 +817,35 @@ const TutorialsPage: FC = () => {
 		user: UserShape,
 	};
 
+	const getRelatedMenuIds = useCallback(
+		(targetId: string) => {
+			const ids = new Set<string>([targetId]);
+			const parent = menuItems.find(
+				(item) =>
+					item.id === targetId ||
+					item.children?.some((child) => child.id === targetId),
+			);
+			if (!parent) return Array.from(ids);
+			ids.add(parent.id);
+			if (parent.id === targetId && parent.children?.length) {
+				parent.children.forEach((child) => ids.add(child.id));
+			}
+			return Array.from(ids);
+		},
+		[menuItems],
+	);
+
 	const acknowledgeMenuId = useCallback(
-		(id: string) => {
+		(idOrIds: string | string[]) => {
+			const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
 			setNewMenuIds((prev) => {
-				if (!prev.has(id)) return prev;
+				if (!ids.some((id) => prev.has(id))) return prev;
 				const next = new Set(prev);
-				next.delete(id);
+				ids.forEach((id) => next.delete(id));
 				return next;
 			});
 			const langKey = normalizeTutorialLang(i18n.language);
-			acknowledgeTutorialIds(langKey, id);
+			acknowledgeTutorialIds(langKey, ids);
 		},
 		[i18n.language],
 	);
@@ -839,7 +858,9 @@ const TutorialsPage: FC = () => {
 					.filter((entry) => entry.isIntersecting)
 					.sort((a, b) => b.intersectionRatio - a.intersectionRatio);
 				if (visible[0]?.target?.id) {
-					setActiveId(visible[0].target.id);
+					const id = visible[0].target.id;
+					setActiveId(id);
+					acknowledgeMenuId(getRelatedMenuIds(id));
 				}
 			},
 			{
@@ -858,7 +879,7 @@ const TutorialsPage: FC = () => {
 		});
 
 		return () => observer.disconnect();
-	}, [menuItems]);
+	}, [acknowledgeMenuId, getRelatedMenuIds, menuItems]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -915,6 +936,7 @@ const TutorialsPage: FC = () => {
 			focusScrollAttempts.current += 1;
 			const found = scrollToId(focusIdFromQuery);
 			if (found) {
+				acknowledgeMenuId(getRelatedMenuIds(focusIdFromQuery));
 				focusHandledFor.current = focusIdFromQuery;
 				return;
 			}
@@ -931,9 +953,11 @@ const TutorialsPage: FC = () => {
 	}, [
 		activeTab,
 		focusIdFromQuery,
+		getRelatedMenuIds,
 		loading,
 		menuIdSets.admin,
 		menuIdSets.all,
+		acknowledgeMenuId,
 		scrollToId,
 	]);
 
@@ -1262,7 +1286,7 @@ const TutorialsPage: FC = () => {
 																		isExpanded ? undefined : item.id,
 																	);
 																}
-																acknowledgeMenuId(item.id);
+																acknowledgeMenuId(getRelatedMenuIds(item.id));
 																scrollToId(item.id);
 																if (isMobile && !hasChildren) {
 																	toggleMenu();
@@ -1322,7 +1346,9 @@ const TutorialsPage: FC = () => {
 																			_hover={{ bg: menuHoverBg }}
 																			_active={{ bg: menuActiveBg }}
 																			onClick={() => {
-																				acknowledgeMenuId(child.id);
+																				acknowledgeMenuId(
+																					getRelatedMenuIds(child.id),
+																				);
 																				scrollToId(child.id);
 																				if (isMobile) {
 																					toggleMenu();

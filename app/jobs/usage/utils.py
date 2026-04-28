@@ -58,7 +58,6 @@ def safe_execute(db: Session, stmt, params=None, max_retries: int = 3):
     Safely execute a database statement with retry logic for deadlocks and connection pool errors.
 
     If deadlock or connection pool errors occur after max retries, the exception is raised.
-    This allows callers to handle the error appropriately (e.g., keep data in Redis).
     """
     if db.bind.name == "mysql":
         if isinstance(stmt, Insert):

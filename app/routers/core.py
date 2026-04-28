@@ -3,11 +3,15 @@ import time
 import json
 import contextlib
 import ipaddress
+import socket
+import subprocess
+import threading
+from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks
 from starlette.websockets import WebSocketDisconnect
 
-from app.runtime import xray
+from app.runtime import logger, xray
 from app.services import access_insights
 from app.db import Session, get_db, crud, GetDB
 from app.db.models import OutboundTraffic
@@ -25,8 +29,18 @@ from app.services.warp import WarpAccountNotFound, WarpService, WarpServiceError
 from app.utils import responses
 from app.utils.system import get_public_ip, get_public_ipv6
 from app.utils.outbound import extract_outbound_metadata, generate_outbound_id
-from app.utils.xray_config import apply_config_and_restart
-from app.reb_node import XRayConfig
+from app.models.node import XrayConfigMode
+from app.utils.xray_config import apply_config_and_restart, apply_target_config_and_restart, restart_xray_targets
+from app.utils.xray_targets import (
+    MASTER_TARGET_ID,
+    get_target_raw_config,
+    list_config_targets,
+    node_target_id,
+    parse_target_id,
+    set_node_xray_config_mode,
+    get_node_effective_raw_config,
+)
+from app.utils.binary_control import require_binary_runtime
 
 import os
 import shutil
@@ -37,11 +51,114 @@ import platform
 import zipfile
 import io
 import stat
+from urllib.parse import urlparse
 
 router = APIRouter(tags=["Core"], prefix="/api", responses={401: responses._401})
 
 GITHUB_RELEASES = "https://api.github.com/repos/XTLS/Xray-core/releases"
 GEO_TEMPLATES_INDEX_DEFAULT = "https://raw.githubusercontent.com/ppouria/geo-templates/main/index.json"
+OUTBOUND_TEST_DEFAULT_URL = "https://www.google.com/generate_204"
+_OUTBOUND_TEST_LOCK = threading.Lock()
+_ALLOWED_GEO_FILENAMES = {"geoip.dat", "geosite.dat"}
+_XRAY_ARCHIVE_MEMBERS = {
+    "xray": "xray",
+    "Xray": "Xray",
+    "xray.exe": "xray.exe",
+    "Xray.exe": "Xray.exe",
+    "geoip.dat": "geoip.dat",
+    "geosite.dat": "geosite.dat",
+    "LICENSE": "LICENSE",
+    "README.md": "README.md",
+}
+
+
+def _validate_release_tag(tag: str) -> str:
+    tag = (tag or "").strip()
+    if len(tag) > 64 or not tag.startswith("v"):
+        raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+
+    allowed_suffix_chars = set("-+._") | set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    rest = tag[1:]
+    for index in range(3):
+        digits = []
+        while rest and rest[0].isdigit():
+            digits.append(rest[0])
+            rest = rest[1:]
+        if not digits or len(digits) > 5:
+            raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+        if index < 2:
+            if not rest.startswith("."):
+                raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+            rest = rest[1:]
+
+    if len(rest) > 48 or any(char not in allowed_suffix_chars for char in rest):
+        raise HTTPException(status_code=422, detail="Invalid Xray release tag")
+    return tag
+
+
+def _validate_download_url(url: str, *, field_name: str = "url") -> str:
+    url = (url or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=422, detail=f"{field_name} must be an http(s) URL")
+
+    try:
+        resolved = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name} hostname cannot be resolved") from exc
+
+    for result in resolved:
+        address = result[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            raise HTTPException(status_code=422, detail=f"{field_name} resolves to a private or reserved address")
+    return url
+
+
+def _resolve_geo_template_index_url(candidate_url: str = "", *, field_name: str = "template_index_url") -> str:
+    configured_url = os.getenv("GEO_TEMPLATES_INDEX_URL", "").strip()
+    requested_url = (candidate_url or "").strip()
+
+    if not requested_url:
+        return _validate_download_url(configured_url, field_name=field_name) if configured_url else GEO_TEMPLATES_INDEX_DEFAULT
+
+    if requested_url == GEO_TEMPLATES_INDEX_DEFAULT:
+        return GEO_TEMPLATES_INDEX_DEFAULT
+
+    if configured_url and requested_url == configured_url:
+        return _validate_download_url(configured_url, field_name=field_name)
+
+    raise HTTPException(
+        status_code=422,
+        detail=f"{field_name} must be empty, the default template index, or the configured GEO_TEMPLATES_INDEX_URL",
+    )
+
+
+def _safe_geo_filename(name: str) -> str:
+    filename = os.path.basename((name or "").strip().replace("\\", "/"))
+    if filename == "geoip.dat":
+        return "geoip.dat"
+    if filename == "geosite.dat":
+        return "geosite.dat"
+    raise HTTPException(
+        status_code=422,
+        detail=f"Geo file name must be one of: {', '.join(sorted(_ALLOWED_GEO_FILENAMES))}",
+    )
+
+
+def _safe_xray_archive_member(name: str) -> str | None:
+    normalized = (name or "").replace("\\", "/").strip()
+    parts = [part for part in normalized.split("/") if part]
+    if not parts:
+        return None
+    if normalized.startswith("/") or any(part == ".." for part in parts):
+        raise HTTPException(status_code=400, detail="Unsafe path in Xray archive")
+    if len(parts) != 1:
+        return None
+    return _XRAY_ARCHIVE_MEMBERS.get(parts[0])
 
 
 def _resolve_template_files(template_index_url: str, template_name: str) -> list[dict]:
@@ -49,7 +166,8 @@ def _resolve_template_files(template_index_url: str, template_name: str) -> list
     Fetch template index and return file list. If template_name is empty, pick the first template.
     """
     try:
-        r = requests.get(template_index_url, timeout=60)
+        index_url = _resolve_geo_template_index_url(template_index_url, field_name="template_index_url")
+        r = requests.get(index_url, timeout=60)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -93,7 +211,15 @@ def _install_xray_zip(zip_bytes: bytes, target_dir: Path) -> Path:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-            archive.extractall(tmp_path)
+            for member in archive.infolist():
+                output_name = _safe_xray_archive_member(member.filename)
+                if not output_name:
+                    continue
+                output_path = tmp_path / output_name
+                if member.is_dir():
+                    continue
+                with archive.open(member) as source, output_path.open("wb") as destination:
+                    shutil.copyfileobj(source, destination)
 
         candidates = [
             tmp_path / "xray",
@@ -135,8 +261,8 @@ def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
     dest.mkdir(parents=True, exist_ok=True)
     saved = []
     for item in files:
-        name = (item.get("name") or "").strip()
-        url = (item.get("url") or "").strip()
+        name = _safe_geo_filename(item.get("name") or "")
+        url = _validate_download_url(item.get("url") or "")
         if not name or not url:
             raise HTTPException(status_code=422, detail="Each file must include name and url.")
         try:
@@ -145,7 +271,12 @@ def _download_geo_files(dest: Path, files: list[dict]) -> list[dict]:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Failed to download {name}: {exc}")
         try:
-            path = dest / name
+            if name == "geoip.dat":
+                path = (dest / "geoip.dat").resolve()
+            elif name == "geosite.dat":
+                path = (dest / "geosite.dat").resolve()
+            else:
+                raise HTTPException(status_code=422, detail="Invalid geo file path")
             path.write_bytes(r.content)
             saved.append({"name": name, "path": str(path)})
         except Exception as exc:
@@ -456,18 +587,20 @@ def get_server_ips(admin: Admin = Depends(Admin.get_current)):
 
 
 @router.post("/core/restart", responses={403: responses._403})
-def restart_core(bg: BackgroundTasks, admin: Admin = Depends(Admin.check_sudo_admin)):
-    """Restart the core and all connected nodes."""
-    from app.utils.xray_config import restart_xray_and_invalidate_cache
+def restart_core(
+    bg: BackgroundTasks,
+    target: str | None = None,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Restart the selected core target."""
+    if target:
+        kind, node_id = parse_target_id(target)
+        if kind != MASTER_TARGET_ID and not crud.get_node_by_id(db, node_id):
+            raise HTTPException(status_code=404, detail="Node not found")
 
     def _restart():
-        # Perform heavy restart work in background so API returns quickly
-        restart_xray_and_invalidate_cache()
-        startup_config = xray.config.include_db_users()
-
-        for node_id, node in list(xray.nodes.items()):
-            if node.connected:
-                xray.operations.restart_node(node_id, startup_config)
+        restart_xray_targets({target} if target else None)
 
     bg.add_task(_restart)
 
@@ -476,50 +609,79 @@ def restart_core(bg: BackgroundTasks, admin: Admin = Depends(Admin.check_sudo_ad
 
 @router.get("/core/config", responses={403: responses._403})
 def get_core_config(
+    target: str = MASTER_TARGET_ID,
     admin: Admin = Depends(Admin.check_sudo_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Get the current core configuration."""
-    return crud.get_xray_config(db)
+    return get_target_raw_config(db, target)
 
 
 @router.put("/core/config", responses={403: responses._403})
-def modify_core_config(payload: dict, admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
+def modify_core_config(
+    payload: dict,
+    target: str = MASTER_TARGET_ID,
+    admin: Admin = Depends(Admin.check_sudo_admin),
+) -> dict:
     """Modify the core configuration and restart the core."""
-    apply_config_and_restart(payload)
+    if target == MASTER_TARGET_ID:
+        apply_config_and_restart(payload)
+    else:
+        apply_target_config_and_restart(target, payload)
     return payload
+
+
+@router.get("/core/config/targets", responses={403: responses._403})
+def get_core_config_targets(
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    return {"targets": list_config_targets(db)}
+
+
+@router.put("/core/config/targets/{node_id}/mode", responses={403: responses._403})
+def modify_node_config_mode(
+    node_id: int,
+    bg: BackgroundTasks,
+    payload: dict = Body(...),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+    db: Session = Depends(get_db),
+):
+    raw_mode = str(payload.get("mode") or "").strip()
+    try:
+        mode = XrayConfigMode(raw_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Xray config mode") from exc
+
+    set_node_xray_config_mode(db, node_id, mode)
+
+    def _restart():
+        restart_xray_targets({node_target_id(node_id)})
+
+    bg.add_task(_restart)
+    return {"target": node_target_id(node_id), "mode": mode.value}
 
 
 def _update_env_envfile(env_path: Path, key: str, value: str) -> str:
     """Update .env key=value if active, skip if commented, return effective value."""
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     env_path.touch(exist_ok=True)
     lines = env_path.read_text(encoding="utf-8").splitlines()
     found = False
-    current_value = None
 
     for i, ln in enumerate(lines):
         stripped = ln.strip()
-        # commented key
-        if stripped.startswith(f"#{key}="):
-            parts = stripped.split("=", 1)
-            if len(parts) == 2:
-                current_value = parts[1].strip().strip('"').strip("'")
-            found = True
-            break
-
         # active key
         if stripped.startswith(f"{key}="):
             lines[i] = f'{key}="{value}"'
             found = True
-            current_value = value
             break
 
     if not found:
         lines.append(f'{key}="{value}"')
-        current_value = value
 
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return current_value
+    return value
 
 
 @router.get("/core/xray/releases", responses={403: responses._403})
@@ -540,22 +702,28 @@ def update_core_version(
     payload: dict = Body(..., examples={"default": {"version": "v1.8.11", "persist_env": True}}),
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
-    """Update Xray core binary via maintenance service."""
+    """Update the local Xray core binary in binary/host installs."""
+    require_binary_runtime()
     tag = payload.get("version")
     if not tag or not isinstance(tag, str):
         raise HTTPException(422, detail="version is required (e.g. v1.8.11)")
+    tag = _validate_release_tag(tag)
 
     persist_env = bool(payload.get("persist_env", True))
 
     asset_name = _detect_asset_name()
-    url = f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{asset_name}"
+    url = _validate_download_url(
+        f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{asset_name}",
+        field_name="release_url",
+    )
     try:
         resp = requests.get(url, timeout=180)
         resp.raise_for_status()
     except Exception as exc:
         raise HTTPException(502, detail=f"Failed to download Xray release: {exc}")
 
-    base_dir = Path("/var/lib/rebecca/xray-core")
+    data_dir = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca")).resolve()
+    base_dir = (data_dir / "xray-core").resolve()
     base_dir.mkdir(parents=True, exist_ok=True)
 
     if xray.core.started:
@@ -567,28 +735,38 @@ def update_core_version(
     exe_path = _install_xray_zip(resp.content, base_dir)
 
     if persist_env:
-        _update_env_envfile(Path(".env"), "XRAY_EXECUTABLE_PATH", str(exe_path))
+        env_targets = [Path(".env"), data_dir / ".env"]
+        for env_path in env_targets:
+            try:
+                _update_env_envfile(env_path, "XRAY_EXECUTABLE_PATH", str(exe_path))
+                _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(base_dir))
+            except Exception:
+                pass
 
     xray.core.executable_path = str(exe_path)
+    xray.core.assets_path = str(base_dir)
+    xray.core._env["XRAY_LOCATION_ASSET"] = str(base_dir)
     try:
         xray.core.version = xray.core.get_version()
     except Exception:
         pass
 
     return {
-        "detail": f"Core assets updated to {tag}. Restart Rebecca to apply the new binary.",
+        "detail": f"Core assets updated to {tag}. Restart Xray to apply the new binary.",
         "version": xray.core.version,
     }
 
 
 def _resolve_assets_path_master(persist_env: bool) -> Path:
     """Resolve and persist assets directory for master."""
-    target = Path("/var/lib/rebecca/assets").resolve()
-    env_path = Path(".env")
-
-    old_path = _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(target)) if persist_env else None
-    if old_path:
-        target = Path(old_path).resolve()
+    data_dir = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca")).resolve()
+    target = (data_dir / "xray-core").resolve()
+    if persist_env:
+        for env_path in (Path(".env"), data_dir / ".env"):
+            try:
+                _update_env_envfile(env_path, "XRAY_ASSETS_PATH", str(target))
+            except Exception:
+                pass
 
     target.mkdir(parents=True, exist_ok=True)
 
@@ -612,9 +790,7 @@ def _resolve_assets_path_master(persist_env: bool) -> Path:
 @router.get("/core/geo/templates", responses={403: responses._403})
 def list_geo_templates(index_url: str = "", admin: Admin = Depends(Admin.check_sudo_admin)):
     """Fetch and list geo templates."""
-    url = index_url.strip() or os.getenv("GEO_TEMPLATES_INDEX_URL", "").strip()
-    if not url:
-        raise HTTPException(422, detail="index_url is required (or set GEO_TEMPLATES_INDEX_URL).")
+    url = _resolve_geo_template_index_url(index_url, field_name="index_url")
     try:
         r = requests.get(url, timeout=60)
         r.raise_for_status()
@@ -665,6 +841,7 @@ def apply_geo_assets(
     db: Session = Depends(get_db),
 ):
     """Download and apply geo assets."""
+    require_binary_runtime()
     mode = (payload.get("mode") or "default").strip().lower()
     files = payload.get("files") or []
 
@@ -685,6 +862,7 @@ def apply_geo_assets(
     master_assets_dir = _resolve_assets_path_master(persist_env=persist_env)
     saved = _download_geo_files(master_assets_dir, files)
     xray.core.assets_path = str(master_assets_dir)
+    xray.core._env["XRAY_LOCATION_ASSET"] = str(master_assets_dir)
 
     startup_config = xray.config.include_db_users()
 
@@ -840,68 +1018,432 @@ def delete_warp_account(admin: Admin = Depends(Admin.check_sudo_admin), db: Sess
     return {"account": None}
 
 
+def _decode_json_payload(value: object, field_name: str) -> object:
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if not raw_value:
+            raise HTTPException(status_code=400, detail=f"{field_name} parameter is required")
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid {field_name} JSON: {exc}") from exc
+    return value
+
+
+def _extract_outbound_test_payload(payload: dict) -> tuple[dict, list]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid request payload")
+
+    outbound_raw = payload.get("outbound")
+    if outbound_raw is None:
+        raise HTTPException(status_code=400, detail="outbound parameter is required")
+
+    outbound = _decode_json_payload(outbound_raw, "outbound")
+    if not isinstance(outbound, dict):
+        raise HTTPException(status_code=400, detail="outbound must be a JSON object")
+
+    all_outbounds_raw = payload.get("allOutbounds")
+    if all_outbounds_raw in (None, ""):
+        all_outbounds = [outbound]
+    else:
+        all_outbounds = _decode_json_payload(all_outbounds_raw, "allOutbounds")
+        if not isinstance(all_outbounds, list):
+            raise HTTPException(status_code=400, detail="allOutbounds must be a JSON array")
+        if not all_outbounds:
+            all_outbounds = [outbound]
+
+    outbound_tag = outbound.get("tag")
+    if outbound_tag and not any(
+        isinstance(candidate, dict) and candidate.get("tag") == outbound_tag for candidate in all_outbounds
+    ):
+        all_outbounds.append(outbound)
+
+    return outbound, all_outbounds
+
+
+def _find_available_test_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def _collect_process_output(process: subprocess.Popen, timeout_seconds: float = 1.0) -> str:
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return ""
+    except ValueError:
+        return ""
+    output_parts = [part.strip() for part in (stdout, stderr) if isinstance(part, str) and part.strip()]
+    return " | ".join(output_parts)
+
+
+def _wait_for_test_port(
+    process: subprocess.Popen,
+    port: int,
+    timeout_seconds: float = 3.0,
+) -> tuple[bool, str]:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if process.poll() is not None:
+            _collect_process_output(process)
+            return False, "Xray test instance exited before it was ready"
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return True, ""
+        except OSError:
+            time.sleep(0.05)
+    return False, "Xray test instance did not become ready"
+
+
+def _stop_test_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        _collect_process_output(process)
+        return
+    try:
+        process.terminate()
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        with contextlib.suppress(Exception):
+            process.wait(timeout=1)
+    except Exception:
+        with contextlib.suppress(Exception):
+            process.kill()
+    finally:
+        _collect_process_output(process)
+
+
+def _build_outbound_test_config(outbound_tag: str, all_outbounds: list, test_port: int) -> dict:
+    processed_outbounds = []
+    for outbound in deepcopy(all_outbounds):
+        if not isinstance(outbound, dict):
+            processed_outbounds.append(outbound)
+            continue
+        protocol = str(outbound.get("protocol") or "").strip().lower()
+        if protocol == "wireguard":
+            settings = outbound.get("settings")
+            if isinstance(settings, dict):
+                settings["noKernelTun"] = True
+            else:
+                outbound["settings"] = {"noKernelTun": True}
+        processed_outbounds.append(outbound)
+
+    return {
+        "log": {
+            "loglevel": "warning",
+            "access": "none",
+            "error": "none",
+            "dnsLog": False,
+        },
+        "inbounds": [
+            {
+                "tag": "test-inbound",
+                "listen": "127.0.0.1",
+                "port": test_port,
+                "protocol": "socks",
+                "settings": {"auth": "noauth", "udp": True},
+            }
+        ],
+        "outbounds": processed_outbounds,
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+                {
+                    "type": "field",
+                    "outboundTag": outbound_tag,
+                    "network": "tcp,udp",
+                }
+            ],
+        },
+        "policy": {},
+        "stats": {},
+    }
+
+
+def _measure_outbound_delay(proxy_port: int, test_url: str) -> tuple[int, int]:
+    proxy_url = f"socks5h://127.0.0.1:{proxy_port}"
+    session = requests.Session()
+    session.trust_env = False
+    session.proxies.update({"http": proxy_url, "https": proxy_url})
+    session.headers.update({"Accept-Encoding": "identity"})
+    try:
+        warmup_response = session.get(test_url, timeout=10)
+        _ = warmup_response.content
+        warmup_response.close()
+
+        start = time.perf_counter()
+        response = session.get(test_url, timeout=10)
+        delay_ms = int(round((time.perf_counter() - start) * 1000))
+        status_code = response.status_code
+        _ = response.content
+        response.close()
+        return delay_ms, status_code
+    except requests.RequestException as exc:
+        raise RuntimeError("Request failed") from exc
+    finally:
+        session.close()
+
+
+def _measure_direct_delay(test_url: str) -> tuple[int, int]:
+    session = requests.Session()
+    session.trust_env = False
+    session.headers.update({"Accept-Encoding": "identity"})
+    try:
+        warmup_response = session.get(test_url, timeout=10)
+        _ = warmup_response.content
+        warmup_response.close()
+
+        start = time.perf_counter()
+        response = session.get(test_url, timeout=10)
+        delay_ms = int(round((time.perf_counter() - start) * 1000))
+        status_code = response.status_code
+        _ = response.content
+        response.close()
+        return delay_ms, status_code
+    except requests.RequestException as exc:
+        raise RuntimeError("Direct request failed") from exc
+    finally:
+        session.close()
+
+
+def _get_outbound_test_url() -> str:
+    return (os.getenv("XRAY_OUTBOUND_TEST_URL", "") or "").strip() or OUTBOUND_TEST_DEFAULT_URL
+
+
+def _run_outbound_ping_test(outbound_tag: str, all_outbounds: list, outbound_protocol: str = "") -> dict:
+    # Fast path for direct/freedom: no isolated test-xray process required.
+    if (outbound_protocol or "").strip().lower() in {"freedom"} or outbound_tag.lower() == "direct":
+        try:
+            delay, status_code = _measure_direct_delay(_get_outbound_test_url())
+            return {"success": True, "delay": delay, "statusCode": status_code}
+        except RuntimeError:
+            return {"success": False, "error": "Direct request failed"}
+
+    if not xray or not getattr(xray, "core", None):
+        return {"success": False, "error": "Xray runtime is not available"}
+
+    core = xray.core
+    if not getattr(core, "available", False):
+        return {"success": False, "error": "Xray core is not available"}
+
+    executable_path = str(getattr(core, "executable_path", "") or "").strip()
+    if not executable_path:
+        return {"success": False, "error": "Xray executable path is not configured"}
+
+    try:
+        test_port = _find_available_test_port()
+    except OSError:
+        return {"success": False, "error": "Failed to find available test port"}
+
+    test_config = _build_outbound_test_config(outbound_tag, all_outbounds, test_port)
+    process = None
+    try:
+        process_env = os.environ.copy()
+        core_env = getattr(core, "_env", None)
+        if isinstance(core_env, dict):
+            process_env.update({str(key): str(value) for key, value in core_env.items() if value is not None})
+        assets_path = str(getattr(core, "assets_path", "") or "").strip()
+        if assets_path:
+            process_env["XRAY_LOCATION_ASSET"] = assets_path
+
+        process = subprocess.Popen(
+            [executable_path, "run", "-config", "stdin:"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=process_env,
+        )
+
+        if process.stdin is None:
+            return {"success": False, "error": "Failed to create stdin pipe for test Xray process"}
+        process.stdin.write(json.dumps(test_config))
+        process.stdin.flush()
+        process.stdin.close()
+
+        ready, ready_error = _wait_for_test_port(process, test_port, timeout_seconds=3.0)
+        if not ready:
+            return {"success": False, "error": ready_error}
+
+        delay, status_code = _measure_outbound_delay(test_port, _get_outbound_test_url())
+        return {
+            "success": True,
+            "delay": delay,
+            "statusCode": status_code,
+        }
+    except FileNotFoundError:
+        logger.warning("Failed to start test xray instance: executable not found", exc_info=True)
+        return {"success": False, "error": "Failed to start test xray instance"}
+    except RuntimeError:
+        logger.warning("Outbound connectivity test request failed", exc_info=True)
+        return {"success": False, "error": "Request failed"}
+    except Exception:
+        logger.warning("Outbound test failed", exc_info=True)
+        return {"success": False, "error": "Outbound test failed"}
+    finally:
+        if process is not None:
+            _stop_test_process(process)
+
+
+def _public_outbound_test_result(result: dict) -> dict:
+    if not isinstance(result, dict):
+        return {"success": False, "error": "Outbound test failed"}
+    if result.get("success"):
+        return {
+            "success": True,
+            "delay": result.get("delay"),
+            "statusCode": result.get("statusCode"),
+        }
+
+    error = result.get("error")
+    if error == "Xray runtime is not available":
+        return {"success": False, "error": "Xray runtime is not available"}
+    if error == "Xray core is not available":
+        return {"success": False, "error": "Xray core is not available"}
+    if error == "Xray executable path is not configured":
+        return {"success": False, "error": "Xray executable path is not configured"}
+    if error == "Failed to create stdin pipe for test Xray process":
+        return {"success": False, "error": "Failed to create stdin pipe for test Xray process"}
+    if error == "Failed to find available test port":
+        return {"success": False, "error": "Failed to find available test port"}
+    if error == "Xray test instance exited before it was ready":
+        return {"success": False, "error": "Xray test instance exited before it was ready"}
+    if error == "Xray test instance did not become ready":
+        return {"success": False, "error": "Xray test instance did not become ready"}
+    if error == "Request failed":
+        return {"success": False, "error": "Request failed"}
+    if error == "Direct request failed":
+        return {"success": False, "error": "Direct request failed"}
+    if error == "Failed to start test xray instance":
+        return {"success": False, "error": "Failed to start test xray instance"}
+    return {"success": False, "error": "Outbound test failed"}
+
+
+@router.post("/panel/xray/testOutbound", responses={403: responses._403})
+def test_outbound(
+    payload: dict = Body(...),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    outbound, all_outbounds = _extract_outbound_test_payload(payload)
+    outbound_tag = str(outbound.get("tag") or "").strip()
+    outbound_protocol = str(outbound.get("protocol") or "").strip().lower()
+
+    if not outbound_tag:
+        return {"success": True, "obj": {"success": False, "error": "Outbound has no tag"}}
+    if outbound_protocol == "blackhole" or outbound_tag.lower() == "blocked":
+        return {"success": True, "obj": {"success": False, "error": "Blocked/blackhole outbound cannot be tested"}}
+
+    if not _OUTBOUND_TEST_LOCK.acquire(blocking=False):
+        return {
+            "success": True,
+            "obj": {"success": False, "error": "Another outbound test is already running, please wait"},
+        }
+
+    try:
+        result = _run_outbound_ping_test(
+            outbound_tag=outbound_tag,
+            all_outbounds=all_outbounds,
+            outbound_protocol=outbound_protocol,
+        )
+    finally:
+        _OUTBOUND_TEST_LOCK.release()
+
+    if isinstance(result, dict) and result.get("success"):
+        return {
+            "success": True,
+            "obj": {
+                "success": True,
+                "delay": result.get("delay"),
+                "statusCode": result.get("statusCode"),
+            },
+        }
+
+    return {"success": True, "obj": {"success": False, "error": "Outbound test failed"}}
+
+
+def _iter_outbound_config_targets(db: Session) -> list[tuple[str, int | None, str, dict]]:
+    master_config = crud.get_xray_config(db)
+    targets = [(MASTER_TARGET_ID, None, "Master", master_config)]
+    for node in crud.get_nodes(db):
+        targets.append(
+            (
+                node_target_id(node.id),
+                node.id,
+                node.name,
+                get_node_effective_raw_config(node, master_config),
+            )
+        )
+    return targets
+
+
 def _sync_outbound_records(db: Session) -> None:
     """
     Ensure we have OutboundTraffic rows for every outbound in the current Xray config.
     This lets us persist traffic per outbound ID (config-based) instead of mutable tags.
     """
-    try:
-        outbounds_config = (xray.config or {}).get("outbounds", [])
-    except Exception:
-        outbounds_config = []
-    if not outbounds_config:
-        return
-
     existing_rows = db.query(OutboundTraffic).all()
-    existing_by_id = {row.outbound_id: row for row in existing_rows}
-    existing_by_tag = {row.tag: row for row in existing_rows if row.tag}
+    existing_by_id = {(row.target_id or MASTER_TARGET_ID, row.outbound_id): row for row in existing_rows}
+    existing_by_tag = {(row.target_id or MASTER_TARGET_ID, row.tag): row for row in existing_rows if row.tag}
     updated = False
 
-    for outbound in outbounds_config:
-        if not isinstance(outbound, dict):
-            continue
+    for target_id, node_id, _target_name, target_config in _iter_outbound_config_targets(db):
+        outbounds_config = target_config.get("outbounds", []) if isinstance(target_config, dict) else []
+        for outbound in outbounds_config:
+            if not isinstance(outbound, dict):
+                continue
 
-        outbound_id = generate_outbound_id(outbound)
-        metadata = extract_outbound_metadata(outbound)
-        record = existing_by_id.get(outbound_id) or (metadata.get("tag") and existing_by_tag.get(metadata["tag"]))
-
-        if record:
-            if record.outbound_id != outbound_id:
-                record.outbound_id = outbound_id
-                existing_by_id[outbound_id] = record
-                updated = True
-            if metadata.get("tag") is not None and record.tag != metadata["tag"]:
-                old_tag = record.tag
-                record.tag = metadata["tag"]
-                if old_tag:
-                    existing_by_tag.pop(old_tag, None)
-                if record.tag:
-                    existing_by_tag[record.tag] = record
-                updated = True
-            if metadata.get("protocol") is not None and record.protocol != metadata["protocol"]:
-                record.protocol = metadata["protocol"]
-                updated = True
-            if metadata.get("address") is not None and record.address != metadata["address"]:
-                record.address = metadata["address"]
-                updated = True
-            if metadata.get("port") is not None and record.port != metadata["port"]:
-                record.port = metadata["port"]
-                updated = True
-        else:
-            record = OutboundTraffic(
-                outbound_id=outbound_id,
-                tag=metadata.get("tag"),
-                protocol=metadata.get("protocol"),
-                address=metadata.get("address"),
-                port=metadata.get("port"),
-                uplink=0,
-                downlink=0,
+            outbound_id = generate_outbound_id(outbound)
+            metadata = extract_outbound_metadata(outbound)
+            record = existing_by_id.get((target_id, outbound_id)) or (
+                metadata.get("tag") and existing_by_tag.get((target_id, metadata["tag"]))
             )
-            db.add(record)
-            existing_by_id[outbound_id] = record
-            if record.tag:
-                existing_by_tag[record.tag] = record
-            updated = True
+
+            if record:
+                if record.target_id != target_id:
+                    record.target_id = target_id
+                    updated = True
+                if record.node_id != node_id:
+                    record.node_id = node_id
+                    updated = True
+                if record.outbound_id != outbound_id:
+                    record.outbound_id = outbound_id
+                    existing_by_id[(target_id, outbound_id)] = record
+                    updated = True
+                if metadata.get("tag") is not None and record.tag != metadata["tag"]:
+                    old_tag = record.tag
+                    record.tag = metadata["tag"]
+                    if old_tag:
+                        existing_by_tag.pop((target_id, old_tag), None)
+                    if record.tag:
+                        existing_by_tag[(target_id, record.tag)] = record
+                    updated = True
+                if metadata.get("protocol") is not None and record.protocol != metadata["protocol"]:
+                    record.protocol = metadata["protocol"]
+                    updated = True
+                if metadata.get("address") is not None and record.address != metadata["address"]:
+                    record.address = metadata["address"]
+                    updated = True
+                if metadata.get("port") is not None and record.port != metadata["port"]:
+                    record.port = metadata["port"]
+                    updated = True
+            else:
+                record = OutboundTraffic(
+                    target_id=target_id,
+                    node_id=node_id,
+                    outbound_id=outbound_id,
+                    tag=metadata.get("tag"),
+                    protocol=metadata.get("protocol"),
+                    address=metadata.get("address"),
+                    port=metadata.get("port"),
+                    uplink=0,
+                    downlink=0,
+                )
+                db.add(record)
+                existing_by_id[(target_id, outbound_id)] = record
+                if record.tag:
+                    existing_by_tag[(target_id, record.tag)] = record
+                updated = True
 
     if updated:
         db.commit()
@@ -912,11 +1454,16 @@ def get_outbounds_traffic(admin: Admin = Depends(Admin.check_sudo_admin), db: Se
     """Get outbound traffic statistics from database."""
     _sync_outbound_records(db)
     outbounds = db.query(OutboundTraffic).all()
+    target_names = {target_id: name for target_id, _node_id, name, _config in _iter_outbound_config_targets(db)}
     # Return as array for frontend compatibility
     result = []
     for outbound in outbounds:
+        target_id = outbound.target_id or MASTER_TARGET_ID
         result.append(
             {
+                "target_id": target_id,
+                "target_name": target_names.get(target_id, target_id),
+                "node_id": outbound.node_id,
                 "tag": outbound.tag,
                 "protocol": outbound.protocol,
                 "address": outbound.address,
@@ -938,13 +1485,25 @@ def reset_outbounds_traffic(
     """Reset outbound traffic statistics."""
     outbound_id = payload.get("outbound_id")
     tag = payload.get("tag")
+    target_id = payload.get("target_id")
 
     if outbound_id == "-all-" or tag == "-alltags-":
-        # Reset all outbounds
-        db.query(OutboundTraffic).update({"uplink": 0, "downlink": 0})
+        query = db.query(OutboundTraffic)
+        if target_id:
+            query = query.filter(OutboundTraffic.target_id == target_id)
+        query.update({"uplink": 0, "downlink": 0})
+    elif outbound_id and target_id:
+        db.query(OutboundTraffic).filter(
+            OutboundTraffic.target_id == target_id,
+            OutboundTraffic.outbound_id == outbound_id,
+        ).update({"uplink": 0, "downlink": 0})
     elif outbound_id:
         # Reset specific outbound by outbound_id
         db.query(OutboundTraffic).filter(OutboundTraffic.outbound_id == outbound_id).update(
+            {"uplink": 0, "downlink": 0}
+        )
+    elif tag and target_id:
+        db.query(OutboundTraffic).filter(OutboundTraffic.target_id == target_id, OutboundTraffic.tag == tag).update(
             {"uplink": 0, "downlink": 0}
         )
     elif tag:

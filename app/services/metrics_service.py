@@ -1,24 +1,18 @@
 """
 Metrics/usage service layer.
 
-Routers delegate here to fetch chart/usage data. This module decides between
-Redis (fast path) and DB (crud) and caches chart responses in Redis when
-possible. If Redis is disabled or unavailable, it gracefully falls back to DB.
+Routers delegate here to fetch chart/usage data from database-backed crud helpers.
 """
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from config import REDIS_ENABLED
 from app.db import crud, Session
 from app.db.models import Admin as AdminModel, Service as ServiceModel, User as UserModel
-from app.redis.client import get_redis
-from app.runtime import logger
+from app.models.admin import admin_uses_created_traffic_limit
 
-# TTL (seconds) for cached chart responses
 _CACHE_TTL_SECONDS = 300
 
 
@@ -30,38 +24,13 @@ def _dt_str(dt: datetime | str | None) -> str:
     return str(dt)
 
 
-def _redis():
-    if not REDIS_ENABLED:
-        return None
-    try:
-        return get_redis()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("metrics_service: redis unavailable: %s", exc)
-        return None
-
-
 def _cache_get(key: str):
-    r = _redis()
-    if not r:
-        return None
-    try:
-        raw = r.get(key)
-        if not raw:
-            return None
-        return json.loads(raw)
-    except Exception as exc:
-        logger.debug("metrics_service: cache get failed for %s: %s", key, exc)
-        return None
+    del key
+    return None
 
 
 def _cache_set(key: str, value: Any, ttl: int = _CACHE_TTL_SECONDS):
-    r = _redis()
-    if not r:
-        return
-    try:
-        r.setex(key, ttl, json.dumps(value, default=str))
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("metrics_service: cache set failed for %s: %s", key, exc)
+    del key, value, ttl
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +42,26 @@ def get_admin_total_usage(dbadmin: AdminModel) -> int:
     return int(getattr(dbadmin, "users_usage", 0) or 0)
 
 
+def get_admin_total_created_traffic(dbadmin: AdminModel) -> int:
+    return int(getattr(dbadmin, "created_traffic", 0) or 0)
+
+
+def get_admin_effective_usage_total(dbadmin: AdminModel) -> int:
+    if admin_uses_created_traffic_limit(dbadmin):
+        return get_admin_total_created_traffic(dbadmin)
+    return get_admin_total_usage(dbadmin)
+
+
 def get_admin_daily_usage(db: Session, admin: AdminModel, start: datetime, end: datetime) -> List[Dict[str, Any]]:
+    if admin_uses_created_traffic_limit(admin):
+        key = f"metrics:admin_created_daily:{admin.id}:{_dt_str(start)}:{_dt_str(end)}"
+        cached = _cache_get(key)
+        if cached is not None:
+            return cached
+        rows = crud.get_admin_created_traffic_by_day(db, admin, start, end, "day")
+        _cache_set(key, rows)
+        return rows
+
     key = f"metrics:admin_daily:{admin.id}:{_dt_str(start)}:{_dt_str(end)}"
     cached = _cache_get(key)
     if cached is not None:
@@ -92,6 +80,15 @@ def get_admin_usage_chart(
     node_id: Optional[int],
     granularity: str,
 ) -> List[Dict[str, Any]]:
+    if admin_uses_created_traffic_limit(admin):
+        key = f"metrics:admin_created_chart:{admin.id}:{granularity}:{_dt_str(start)}:{_dt_str(end)}"
+        cached = _cache_get(key)
+        if cached is not None:
+            return cached
+        rows = crud.get_admin_created_traffic_by_day(db, admin, start, end, granularity)
+        _cache_set(key, rows)
+        return rows
+
     node_key = "all" if node_id is None else str(node_id)
     key = f"metrics:admin_chart:{admin.id}:{node_key}:{granularity}:{_dt_str(start)}:{_dt_str(end)}"
     cached = _cache_get(key)
@@ -109,6 +106,9 @@ def get_admin_usage_by_nodes(
     start: datetime,
     end: datetime,
 ) -> List[Dict[str, Any]]:
+    if admin_uses_created_traffic_limit(admin):
+        return []
+
     key = f"metrics:admin_nodes:{admin.id}:{_dt_str(start)}:{_dt_str(end)}"
     cached = _cache_get(key)
     if cached is not None:
@@ -130,7 +130,8 @@ def get_myaccount_summary_and_charts(
     start: datetime,
     end: datetime,
 ) -> Dict[str, Any]:
-    used_traffic = get_admin_total_usage(admin)
+    traffic_basis = "created_traffic" if admin_uses_created_traffic_limit(admin) else "used_traffic"
+    used_traffic = get_admin_effective_usage_total(admin)
     data_limit = admin.data_limit
     remaining_data = None if data_limit is None else max(data_limit - used_traffic, 0)
 
@@ -142,6 +143,7 @@ def get_myaccount_summary_and_charts(
     per_node_usage = get_admin_usage_by_nodes(db, admin, start, end)
 
     return {
+        "traffic_basis": traffic_basis,
         "data_limit": data_limit,
         "used_traffic": used_traffic,
         "remaining_data": remaining_data,

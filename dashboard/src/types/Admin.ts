@@ -11,6 +11,11 @@ export enum AdminStatus {
 	Deleted = "deleted",
 }
 
+export enum AdminTrafficLimitMode {
+	UsedTraffic = "used_traffic",
+	CreatedTraffic = "created_traffic",
+}
+
 export enum UserPermissionToggle {
 	Create = "create",
 	Delete = "delete",
@@ -79,7 +84,11 @@ export type Admin = {
 	disabled_reason?: string | null;
 	telegram_id?: number | null;
 	users_usage?: number | null;
+	created_traffic?: number | null;
 	data_limit?: number | null;
+	traffic_limit_mode?: AdminTrafficLimitMode;
+	show_user_traffic?: boolean;
+	expire?: number | null;
 	users_limit?: number | null;
 	users_count?: number | null;
 	active_users?: number | null;
@@ -102,6 +111,10 @@ export type AdminCreatePayload = {
 	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
+	created_traffic?: number | null;
+	traffic_limit_mode?: AdminTrafficLimitMode;
+	show_user_traffic?: boolean;
+	expire?: number | null;
 	users_limit?: number | null;
 };
 
@@ -112,6 +125,10 @@ export type AdminUpdatePayload = {
 	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
+	created_traffic?: number | null;
+	traffic_limit_mode?: AdminTrafficLimitMode;
+	show_user_traffic?: boolean;
+	expire?: number | null;
 	users_limit?: number | null;
 };
 

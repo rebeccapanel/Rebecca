@@ -1,9 +1,6 @@
 <p align="center">
   <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-dark.png">
-      <img width="160" height="160" src="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-light.png">
-    </picture>
+    <img width="160" height="160" src="./dashboard/src/assets/logo.svg" alt="Rebecca logo">
   </a>
 </p>
 
@@ -23,6 +20,9 @@
   </a>
   <a href="#">
     <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
+  </a>
+  <a href="https://t.me/rebeccapanel_rebecca" target="_blank">
+    <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
   </a>
   <a href="#">
     <img src="https://img.shields.io/github/stars/rebeccapanel/Rebecca?style=social" />
@@ -100,21 +100,35 @@
 
 # راهنمای نصب
 
-با دستور زیر رِبِکا را با دیتابیس SQLite نصب کنید:
+با دستور زیر رِبِکا را نصب کنید. نصاب از شما می‌پرسد نصب داکرایز می‌خواهید یا نصب باینری:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install
 ```
 
-با دستور زیر رِبِکا را با دیتابیس MySQL نصب کنید:
+برای نصب خودکار، mode را صریح مشخص کنید:
+
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode docker
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary
+```
+
+حالت داکرایز از SQLite، MySQL و MariaDB پشتیبانی می‌کند. با دستور زیر رِبِکا را با دیتابیس MySQL نصب کنید:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mysql
 ```
 
 با دستور زیر رِبِکا را با دیتابیس MariaDB نصب کنید:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mariadb
+```
+
+حالت باینری به صورت سرویس native systemd نصب می‌شود و فعلا برای نصب سبک با SQLite منتشر می‌شود. بیلدهای ریلیز برای لینوکس روی معماری‌های `amd64`، `arm64`، `armv7`، `ppc64le` و `s390x` ساخته می‌شوند و نصاب asset مناسب را خودکار انتخاب می‌کند:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --mode binary
 ```
 
 وقتی نصب تمام شد:
@@ -308,7 +322,7 @@ server {
 
 نصب آخرین نسخه اسکریپت رِبِکا:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install-script
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install-script
 ```
 
 راه‌اندازی سرویس پشتیبان‌گیری:

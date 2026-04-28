@@ -33,6 +33,7 @@ import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole } from "types/Admin";
+import { isUserManagementLocked } from "utils/adminTraffic";
 import type {
 	AdvancedUserActionPayload,
 	AdvancedUserActionScopeStatus,
@@ -59,6 +60,7 @@ const AdvancedUserActions = () => {
 	const toast = useToast();
 	const { performBulkUserAction } = useDashboard();
 	const { userData } = useGetUser();
+	const userManagementLocked = isUserManagementLocked(userData);
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const [expireDays, setExpireDays] = useState("");
 	const [trafficGb, setTrafficGb] = useState("");
@@ -353,7 +355,7 @@ const AdvancedUserActions = () => {
 
 	const isMobile = useBreakpointValue({ base: true, sm: false }) ?? false;
 
-	if (!canUseAdvanced) {
+	if (!canUseAdvanced || userManagementLocked) {
 		return null;
 	}
 

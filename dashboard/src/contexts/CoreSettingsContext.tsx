@@ -1,15 +1,30 @@
 import { fetch } from "service/http";
 import { create } from "zustand";
 
+export type CoreConfigTarget = {
+	id: string;
+	type: "master" | "node";
+	name: string;
+	node_id: number | null;
+	mode: "default" | "custom";
+	status?: string | null;
+};
+
 type CoreSettingsStore = {
 	isLoading: boolean;
 	isPostLoading: boolean;
-	fetchCoreSettings: () => Promise<void>;
-	updateConfig: (json: any) => Promise<void>;
-	restartCore: () => Promise<void>;
+	fetchCoreSettings: (target?: string) => Promise<void>;
+	fetchConfigTargets: () => Promise<CoreConfigTarget[]>;
+	updateConfig: (json: any, target?: string) => Promise<void>;
+	updateConfigTargetMode: (
+		nodeId: number,
+		mode: "default" | "custom",
+	) => Promise<void>;
+	restartCore: (target?: string) => Promise<void>;
 	version: string | null;
 	started: boolean | null;
 	logs_websocket: string | null;
+	configTargets: CoreConfigTarget[];
 	config: any;
 };
 
@@ -19,8 +34,17 @@ export const useCoreSettings = create<CoreSettingsStore>((set) => ({
 	version: null,
 	started: false,
 	logs_websocket: null,
+	configTargets: [],
 	config: null,
-	fetchCoreSettings: async () => {
+	fetchConfigTargets: async () => {
+		const response = await fetch<{ targets: CoreConfigTarget[] }>(
+			"/core/config/targets",
+		);
+		const targets = response?.targets || [];
+		set({ configTargets: targets });
+		return targets;
+	},
+	fetchCoreSettings: async (target = "master") => {
 		set({ isLoading: true });
 		try {
 			await Promise.all([
@@ -32,7 +56,7 @@ export const useCoreSettings = create<CoreSettingsStore>((set) => ({
 						console.error("Error fetching /core:", error);
 						throw error;
 					}),
-				fetch("/core/config")
+				fetch("/core/config", { query: { target } })
 					.then((config) => {
 						set({ config });
 					})
@@ -40,15 +64,19 @@ export const useCoreSettings = create<CoreSettingsStore>((set) => ({
 						console.error("Error fetching /core/config:", error);
 						throw error;
 					}),
+				fetch<{ targets: CoreConfigTarget[] }>("/core/config/targets").then(
+					(response) => set({ configTargets: response?.targets || [] }),
+				),
 			]);
 		} finally {
 			set({ isLoading: false });
 		}
 	},
-	updateConfig: (body) => {
+	updateConfig: (body, target = "master") => {
 		set({ isPostLoading: true });
 		return fetch("/core/config", {
 			method: "PUT",
+			query: { target },
 			body: JSON.stringify(body),
 			headers: { "Content-Type": "application/json" },
 		})
@@ -59,7 +87,16 @@ export const useCoreSettings = create<CoreSettingsStore>((set) => ({
 			})
 			.finally(() => set({ isPostLoading: false }));
 	},
-	restartCore: () => {
-		return fetch("/core/restart", { method: "POST" });
+	updateConfigTargetMode: (nodeId, mode) => {
+		return fetch(`/core/config/targets/${nodeId}/mode`, {
+			method: "PUT",
+			body: { mode },
+		});
+	},
+	restartCore: (target) => {
+		return fetch("/core/restart", {
+			method: "POST",
+			query: target ? { target } : undefined,
+		});
 	},
 }));

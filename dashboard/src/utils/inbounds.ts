@@ -27,6 +27,8 @@ export type RawInbound = {
 	settings: Record<string, any>;
 	streamSettings?: Record<string, any>;
 	sniffing?: Record<string, any>;
+	targets?: string[];
+	effective_targets?: string[];
 };
 
 type BuildInboundOptions = {
@@ -228,6 +230,8 @@ export type InboundFormValues = {
 	socksAccounts: ProxyAccountForm[];
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
+
+	targetIds: string[];
 };
 
 export const sniffingOptions = [
@@ -642,6 +646,7 @@ export const createDefaultInboundForm = (
 	socksAccounts: [createDefaultProxyAccount()],
 	socksUdpEnabled: false,
 	socksUdpIp: "",
+	targetIds: ["master"],
 });
 
 const fallbackToForm = (fallback: Record<string, any>): FallbackForm => ({
@@ -983,6 +988,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
 

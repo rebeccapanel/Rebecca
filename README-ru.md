@@ -1,9 +1,6 @@
 <p align="center">
-  <a href="https://github.com/rebeccapanel/rebecca" target="_blank" rel="noopener noreferrer">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-dark.png">
-      <img width="160" height="160" src="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/logo-light.png">
-    </picture>
+  <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer">
+    <img width="160" height="160" src="./dashboard/src/assets/logo.svg" alt="Rebecca logo">
   </a>
 </p>
 
@@ -16,22 +13,19 @@
 <br/>
 <p align="center">
     <a href="#">
-        <img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/rebecca/build.yml?style=flat-square" />
+        <img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/Rebecca/build.yml?style=flat-square" />
     </a>
     <a href="https://hub.docker.com/r/rebeccapanel/rebecca" target="_blank">
         <img src="https://img.shields.io/docker/pulls/rebeccapanel/rebecca?style=flat-square&logo=docker" />
     </a>
     <a href="#">
-        <img src="https://img.shields.io/github/license/rebeccapanel/rebecca?style=flat-square" />
+        <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
     </a>
     <a href="https://t.me/rebeccapanel_rebecca" target="_blank">
-        <img src="https://img.shields.io/badge/telegram-group-blue?style=flat-square&logo=telegram" />
+        <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
     </a>
     <a href="#">
-        <img src="https://img.shields.io/badge/twitter-commiunity-blue?style=flat-square&logo=twitter" />
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/stars/rebeccapanel/rebecca?style=social" />
+        <img src="https://img.shields.io/github/stars/rebeccapanel/Rebecca?style=social" />
     </a>
 </p>
 
@@ -54,7 +48,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rebeccapanel/rebecca" target="_blank" rel="noopener noreferrer" >
+  <a href="https://github.com/rebeccapanel/Rebecca" target="_blank" rel="noopener noreferrer" >
     <img src="https://github.com/rebeccapanel/Rebecca-docs/raw/master/screenshots/preview.png" alt="Rebecca screenshots" width="600" height="auto">
   </a>
 </p>
@@ -111,18 +105,18 @@ Rebecca удобен в использовании, многофункциона
 Установка Rebecca с базой данных SQLite (по умолчанию):
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install
 ```
 
 Установка Rebecca с базой данных MySQL:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mysql
 ```
 
 Установка Rebecca с базой данных MariaDB:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mariadb
 ```
 
 Когда установка будет завершена:
@@ -326,7 +320,7 @@ server {
 
 # документация
 
-[Документация Rebecca](https://rebeccapanel.github.io/rebecca/ru/) предоставляет все необходимые руководства для начала работы и доступна на трех языках: фарси, английском и русском. Для полного охвата всех аспектов проекта требуется значительное количество усилий. Мы приветствуем и ценим ваш вклад в улучшение документации. Вы можете внести свой вклад в этот [репозиторий на GitHub](https://github.com/rebeccapanel/rebeccapanel.github.io).
+[Документация Rebecca](https://rebeccapanel.github.io/rebecca/ru/) предоставляет все необходимые руководства для начала работы и доступна на трех языках: фарси, английском и русском. Для полного охвата всех аспектов проекта требуется значительное количество усилий. Мы приветствуем и ценим ваш вклад в улучшение документации. Вы можете внести свой вклад в этот [репозиторий на GitHub](https://github.com/rebeccapanel/Rebeccapanel.github.io).
 
 # API
 
@@ -337,7 +331,7 @@ Rebecca предоставляет REST API, позволяющий разраб
 Всегда полезно регулярно создавать резервные копии файлов Rebecca, чтобы предотвратить потерю данных в случае системных сбоев или случайного удаления. Ниже приведены шаги для создания резервной копии Rebecca:
 
 1. По умолчанию все важные файлы Rebecca сохраняются в папке `/var/lib/rebecca` (в версиях Docker). Скопируйте весь каталог `/var/lib/rebecca` в выбранное вами место резервного копирования, например на внешний жесткий диск или в облачное хранилище.
-2. Кроме того, не забудьте сделать резервную копию файла env, содержащего переменные конфигурации, а также файла конфигурации Xray. Если вы устанавливали Rebecca с помощью rebecca-scripts (рекомендуемый подход к установке), то env и другие конфигурации должны находиться в каталоге `/opt/rebecca/`.
+2. Кроме того, не забудьте сделать резервную копию файла env, содержащего переменные конфигурации, а также файла конфигурации Xray. При стандартной установке env и другие конфигурации находятся в каталоге `/opt/rebecca/`.
 
 Выполнив эти действия, вы сможете обеспечить резервное копирование всех файлов и данных Rebecca, а также переменных конфигурации и конфигурации Xray на случай, если в будущем потребуется их восстановить. Не забывайте регулярно обновлять резервные копии, чтобы поддерживать их в актуальном состоянии.
 
@@ -355,7 +349,7 @@ Rebecca поставляется с встроенным ботом Telegram, к
 Установка последней версии Rebecca:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/rebeccapanel/Rebecca-scripts/raw/master/rebecca.sh)" @ install-script
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install-script
 ```
 
 Настройка сервиса резервного копирования:
@@ -384,8 +378,8 @@ rebecca cli [OPTIONS] COMMAND [ARGS]...
 
 # Rebecca Node
 
-Проект Rebecca представляет [Rebecca-node](https://github.com/rebeccapanel/rebecca-node), который помогает Вам в распределении инфраструктуры. С помощью Rebecca-node можно распределить инфраструктуру по нескольким узлам, получив такие преимущества, как высокая доступность, масштабируемость и гибкость. Rebecca-node позволяет пользователям подключаться к различным серверам, предоставляя им гибкость в выборе, а не ограничиваться только одним сервером.
-Более подробная информация и инструкции по установке приведены в [официальной документации Rebecca-node](https://github.com/rebeccapanel/rebecca-node).
+Проект Rebecca представляет [Rebecca-node](https://github.com/rebeccapanel/Rebecca-node), который помогает Вам в распределении инфраструктуры. С помощью Rebecca-node можно распределить инфраструктуру по нескольким узлам, получив такие преимущества, как высокая доступность, масштабируемость и гибкость. Rebecca-node позволяет пользователям подключаться к различным серверам, предоставляя им гибкость в выборе, а не ограничиваться только одним сервером.
+Более подробная информация и инструкции по установке приведены в [официальной документации Rebecca-node](https://github.com/rebeccapanel/Rebecca-node).
 
 
 # Webhook уведомления
@@ -433,7 +427,7 @@ Body:
 
 Мы ❤️‍🔥 участников проекта! Если вы хотите внести свой вклад, пожалуйста, ознакомьтесь с нашим [Contributing Guidelines](CONTRIBUTING.md) и не стесняйтесь отправлять запросы на исправление ошибок или сообщить о проблеме. Мы также приглашаем вас присоединиться к нашей группе [Telegram](https://t.me/rebeccapanel_rebecca) для получения поддержки.
 
-Проверьте [open issues](https://github.com/rebeccapanel/rebecca/issues), чтобы помочь развитию этого проекта.
+Проверьте [open issues](https://github.com/rebeccapanel/Rebecca/issues), чтобы помочь развитию этого проекта.
 
 <p align="center">
 Спасибо всем участникам, благодаря которым Rebecca становится лучше:

@@ -1,16 +1,19 @@
-def _patch_maintenance(monkeypatch, calls):
+from pathlib import PurePath
+
+
+def _patch_cli(monkeypatch, calls):
     from app.services import subscription_settings
 
-    def _fake(method, path, json=None, **kwargs):
-        calls.append({"method": method, "path": path, "json": json})
-        return {}
+    def _fake(args, **kwargs):
+        calls.append({"args": args, "kwargs": kwargs})
+        return {"stdout": "", "stderr": ""}
 
-    monkeypatch.setattr(subscription_settings, "maintenance_request", _fake)
+    monkeypatch.setattr(subscription_settings, "run_rebecca_cli", _fake)
 
 
 def _issue_sample_certificate(auth_client, monkeypatch):
     calls = []
-    _patch_maintenance(monkeypatch, calls)
+    _patch_cli(monkeypatch, calls)
     payload = {
         "email": "admin@example.com",
         "domains": ["example.com", "www.example.com"],
@@ -25,17 +28,17 @@ def test_issue_certificate_creates_record(auth_client, monkeypatch):
     data, calls = _issue_sample_certificate(auth_client, monkeypatch)
 
     assert data["domain"] == "example.com"
-    assert data["path"].endswith("example.com/")
+    assert PurePath(data["path"]).name == "example.com"
     assert data["alt_names"] == ["www.example.com"]
     assert data["admin_id"] is None
-    assert calls and calls[0]["path"] == "/ssl/issue"
-    assert calls[0]["json"]["domains"][0] == "example.com"
+    assert calls and calls[0]["args"][:2] == ["ssl", "issue"]
+    assert "--domains=example.com,www.example.com" in calls[0]["args"]
 
 
 def test_renew_certificate_updates_record(auth_client, monkeypatch):
     data, _ = _issue_sample_certificate(auth_client, monkeypatch)
     calls = []
-    _patch_maintenance(monkeypatch, calls)
+    _patch_cli(monkeypatch, calls)
 
     resp = auth_client.post(
         "/api/settings/subscriptions/certificates/renew",
@@ -48,13 +51,13 @@ def test_renew_certificate_updates_record(auth_client, monkeypatch):
     assert renewed["path"].endswith(f"{data['domain']}/")
     assert renewed["alt_names"] == data["alt_names"]
     assert "last_renewed_at" in renewed
-    assert calls and calls[0]["path"] == "/ssl/renew"
-    assert calls[0]["json"]["domain"] == data["domain"]
+    assert calls and calls[0]["args"][:2] == ["ssl", "renew"]
+    assert f"--domain={data['domain']}" in calls[0]["args"]
 
 
 def test_renew_all_without_domain(auth_client, monkeypatch):
     calls = []
-    _patch_maintenance(monkeypatch, calls)
+    _patch_cli(monkeypatch, calls)
 
     resp = auth_client.post(
         "/api/settings/subscriptions/certificates/renew",
@@ -62,5 +65,4 @@ def test_renew_all_without_domain(auth_client, monkeypatch):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json() is None
-    assert calls and calls[0]["path"] == "/ssl/renew"
-    assert calls[0]["json"] == {} or calls[0]["json"] is None
+    assert calls and calls[0]["args"] == ["ssl", "renew"]

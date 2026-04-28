@@ -230,13 +230,10 @@ class XRayConfig(dict):
                 # considering string as json
                 config = commentjson.loads(config)
             except (json.JSONDecodeError, ValueError):
-                # considering string as file path
-                with open(config, "r") as file:
-                    config = commentjson.loads(file.read())
+                config = {}
 
         if isinstance(config, PosixPath):
-            with open(config, "r") as file:
-                config = commentjson.loads(file.read())
+            config = {}
 
         if isinstance(config, dict):
             config = deepcopy(config)

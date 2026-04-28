@@ -85,8 +85,11 @@ import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
 
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
-	// Remove leading 'v' or 'vv', remove '-alpha', '-beta', '-rc' etc. suffixes, and trim
-	return value.trim().replace(/^v+/i, "").split(/[-_]/)[0].trim();
+	const trimmed = value.trim();
+	if (trimmed.toLowerCase().startsWith("dev-")) {
+		return trimmed.toLowerCase();
+	}
+	return trimmed.replace(/^v+/i, "").split(/[-_]/)[0].trim();
 };
 
 dayjs.extend(utc);
@@ -163,6 +166,15 @@ type VersionDialogTarget =
 	| { type: "bulk" };
 
 type GeoDialogTarget = { type: "master" } | { type: "node"; node: NodeType };
+
+type MaintenanceInfo = {
+	panel?: { mode?: string; install_mode?: string } | null;
+	node_update?: {
+		channel?: string;
+		latest_release?: { tag?: string | null } | null;
+		latest_dev?: { tag?: string | null } | null;
+	} | null;
+};
 
 export const NodesPage: FC = () => {
 	const { t } = useTranslation();
@@ -298,21 +310,17 @@ export const NodesPage: FC = () => {
 			enabled: canManageNodes,
 		},
 	);
-	const latestNodeRelease = useQuery({
-		queryKey: ["node-latest-release"],
-		queryFn: async () => {
-			const response = await window.fetch(
-				"https://api.github.com/repos/rebeccapanel/Rebecca-node/releases/latest",
-				{ headers: { Accept: "application/vnd.github+json" } },
-			);
-			if (!response.ok) throw new Error("Failed to load latest node release");
-			return response.json();
+	const { data: maintenanceInfo } = useQuery<MaintenanceInfo>(
+		["maintenance-info"],
+		() => apiFetch<MaintenanceInfo>("/maintenance/info"),
+		{
+			refetchOnWindowFocus: false,
+			enabled: canManageNodes,
 		},
-		refetchOnWindowFocus: false,
-		staleTime: 5 * 60 * 1000,
-		retry: 1,
-		enabled: canManageNodes,
-	});
+	);
+	const panelInstallMode =
+		maintenanceInfo?.panel?.mode || maintenanceInfo?.panel?.install_mode || "docker";
+	const hostActionsAvailable = panelInstallMode === "binary";
 
 	useEffect(() => {
 		if (!canManageNodes) {
@@ -345,13 +353,27 @@ export const NodesPage: FC = () => {
 	}, [masterState, masterLimitDirty, masterLimitInput]);
 
 	const currentNodeVersion = useMemo(
-		() =>
-			nodes?.find((nodeItem) => nodeItem.node_service_version)
-				?.node_service_version ?? "",
+		() => {
+			const versionedNode = nodes?.find(
+				(nodeItem) => nodeItem.node_binary_tag || nodeItem.node_service_version,
+			);
+			return (
+				versionedNode?.node_binary_tag ||
+				versionedNode?.node_service_version ||
+				""
+			);
+		},
 		[nodes],
 	);
+	const detectedNodeUpdateChannel =
+		nodes?.find((nodeItem) => nodeItem.node_update_channel)
+			?.node_update_channel ||
+		maintenanceInfo?.node_update?.channel;
+	const nodeUpdateChannel = detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
 	const latestNodeVersion =
-		latestNodeRelease.data?.tag_name || latestNodeRelease.data?.name || "";
+		nodeUpdateChannel === "dev"
+			? maintenanceInfo?.node_update?.latest_dev?.tag || ""
+			: maintenanceInfo?.node_update?.latest_release?.tag || "";
 	const isNodeUpdateAvailable =
 		normalizeVersion(latestNodeVersion) &&
 		normalizeVersion(currentNodeVersion) &&
@@ -658,7 +680,10 @@ export const NodesPage: FC = () => {
 			),
 		);
 		if (!confirmed) return;
-		updateServiceMutate(node);
+		updateServiceMutate({
+			...node,
+			channel: node.node_update_channel === "dev" ? "dev" : nodeUpdateChannel,
+		});
 	};
 
 	const confirmResetUsage = () => {
@@ -1148,6 +1173,7 @@ export const NodesPage: FC = () => {
 					colorScheme="primary"
 					onClick={() => setVersionDialogTarget({ type: "master" })}
 					isLoading={updatingMasterCore}
+					isDisabled={!hostActionsAvailable}
 					flex={{ base: "1", sm: "0 1 auto" }}
 					minW={{ base: "full", sm: "auto" }}
 					whiteSpace="normal"
@@ -1160,6 +1186,7 @@ export const NodesPage: FC = () => {
 					variant="outline"
 					onClick={() => setGeoDialogTarget({ type: "master" })}
 					isLoading={updatingMasterGeo}
+					isDisabled={!hostActionsAvailable}
 					flex={{ base: "1", sm: "0 1 auto" }}
 					minW={{ base: "full", sm: "auto" }}
 					whiteSpace="normal"
@@ -1340,7 +1367,7 @@ export const NodesPage: FC = () => {
 							variant="outline"
 							size="sm"
 							onClick={() => setVersionDialogTarget({ type: "bulk" })}
-							isDisabled={!hasConnectedNodes}
+							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
 							w={{ base: "auto", sm: "auto" }}
 							px={{ base: 4, sm: 4 }}
 						>
@@ -1359,6 +1386,18 @@ export const NodesPage: FC = () => {
 					</Stack>
 				</Stack>
 			</Stack>
+
+			{!hostActionsAvailable && (
+				<Alert status="warning" variant="subtle" borderRadius="md">
+					<AlertIcon />
+					<AlertDescription>
+						{t(
+							"nodes.binaryMigrationRequired",
+							"Core, geo, restart, and update actions are disabled in Docker mode. Migrate the panel and nodes to binary mode to use host-level controls from the web UI.",
+						)}
+					</AlertDescription>
+				</Alert>
+			)}
 
 			{isLoading ? (
 				<SimpleGrid columns={nodeGridColumns} spacing={4}>
@@ -1458,6 +1497,10 @@ export const NodesPage: FC = () => {
 								isUpdatingService &&
 								nodeId != null &&
 								updatingServiceNodeId === nodeId;
+							const nodeHostActionsAvailable =
+								hostActionsAvailable && node.node_install_mode === "binary";
+							const nodeRuntimeVersion =
+								node.node_binary_tag || node.node_service_version;
 							const statusBadge = (
 								<NodeModalStatusBadge status={status} compact />
 							);
@@ -1525,9 +1568,9 @@ export const NodesPage: FC = () => {
 														: t("nodes.versionUnknown", "Version unknown")}
 												</Tag>
 												<Tag colorScheme="green" size="sm">
-													{node.node_service_version
+													{nodeRuntimeVersion
 														? t("nodes.nodeServiceVersionTag", {
-																version: node.node_service_version,
+																version: nodeRuntimeVersion,
 															})
 														: t(
 																"nodes.nodeServiceVersionUnknown",
@@ -1543,7 +1586,7 @@ export const NodesPage: FC = () => {
 														setVersionDialogTarget({ type: "node", node })
 													}
 													isLoading={isCoreUpdating}
-													isDisabled={!nodeId}
+													isDisabled={!nodeId || !nodeHostActionsAvailable}
 												>
 													{t("nodes.updateCoreAction")}
 												</Button>
@@ -1555,7 +1598,7 @@ export const NodesPage: FC = () => {
 													nodeId && setGeoDialogTarget({ type: "node", node })
 												}
 												isLoading={isGeoUpdating}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t("nodes.updateGeoAction", "Update geo")}
 											</Button>
@@ -1565,7 +1608,7 @@ export const NodesPage: FC = () => {
 												colorScheme="orange"
 												onClick={() => handleRestartNodeService(node)}
 												isLoading={isRestartingMaintenance}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t(
 													"nodes.restartServiceAction",
@@ -1578,7 +1621,7 @@ export const NodesPage: FC = () => {
 												colorScheme="teal"
 												onClick={() => handleUpdateNodeService(node)}
 												isLoading={isUpdatingMaintenance}
-												isDisabled={!nodeId}
+												isDisabled={!nodeId || !nodeHostActionsAvailable}
 											>
 												{t("nodes.updateServiceAction", "Update node service")}
 											</Button>

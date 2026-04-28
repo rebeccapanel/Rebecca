@@ -55,6 +55,7 @@ from config import (
 
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
+from .admin_traffic import normalize_admin_created_traffic_delta, record_admin_created_traffic
 
 MASTER_NODE_NAME = "Master"
 
@@ -136,53 +137,14 @@ def _next_plan_table_exists(db: Session) -> bool:
 
 
 def get_user(db: Session, username: Optional[str] = None, user_id: Optional[int] = None) -> Optional[User]:
-    """Retrieves a user by username or user ID. Uses Redis cache if available."""
-    # Try Redis cache first to reduce DB load
-    try:
-        from app.redis.cache import get_cached_user
-
-        cached_user = get_cached_user(username=username, user_id=user_id, db=db)
-        if cached_user:
-            # Refresh from DB to get latest relationships
-            query = get_user_queryset(db)
-            if user_id is not None:
-                db_user = query.filter(User.id == user_id).first()
-            elif username:
-                normalized = username.lower()
-                db_user = query.filter(func.lower(User.username) == normalized).first()
-            else:
-                db_user = None
-
-            if db_user:
-                # Update cache with fresh data and return
-                from app.redis.cache import cache_user
-
-                cache_user(db_user)
-                return db_user
-            return cached_user
-    except Exception as e:
-        _logger.debug(f"Failed to get user from Redis cache: {e}")
-
-    # Fallback to DB
+    """Retrieves a user by username or user ID."""
     query = get_user_queryset(db)
     if user_id is not None:
-        user = query.filter(User.id == user_id).first()
+        return query.filter(User.id == user_id).first()
     elif username:
         normalized = username.lower()
-        user = query.filter(func.lower(User.username) == normalized).first()
-    else:
-        user = None
-
-    # Cache for next time
-    if user:
-        try:
-            from app.redis.cache import cache_user
-
-            cache_user(user)
-        except Exception as e:
-            _logger.debug(f"Failed to cache user in Redis: {e}")
-
-    return user
+        return query.filter(func.lower(User.username) == normalized).first()
+    return None
 
 
 def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
@@ -560,7 +522,7 @@ def _filter_users_in_memory(
     reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
     now: Optional[datetime] = None,
 ) -> List[User]:
-    """Filter users in memory (for Redis cache)."""
+    """Filter an in-memory user collection."""
     if now is None:
         now = datetime.now(timezone.utc)
 
@@ -743,95 +705,10 @@ def get_users(
     return_with_count: bool = False,
     force_db: bool = False,
 ) -> Union[List[User], Tuple[List[User], int]]:
-    """Retrieves users based on various filters and options. Uses Redis cache if available."""
-    # Ensure deterministic ordering (especially for Redis-sourced lists) so pagination is stable
+    """Retrieves users based on various filters and options."""
+    del force_db
     effective_sort = sort if sort else [UsersSortingOptions["-created_at"]]
 
-    # Try to get from Redis cache first
-    if not force_db:
-        try:
-            from app.redis.cache import get_all_users_from_cache
-            from app.redis.client import get_redis
-            from config import REDIS_ENABLED, REDIS_USERS_CACHE_ENABLED
-
-            if REDIS_ENABLED and REDIS_USERS_CACHE_ENABLED and get_redis():
-                # Get all users from Redis (this is fast, just deserializes basic data)
-                all_users = get_all_users_from_cache(db)
-                # If aggregated list missing, ensure it's warmed for next calls
-                try:
-                    from app.redis.cache import REDIS_KEY_USER_LIST_ALL, get_redis, USER_CACHE_TTL, _serialize_user
-
-                    redis_client = get_redis()
-                    if redis_client and all_users:
-                        redis_client.setex(
-                            REDIS_KEY_USER_LIST_ALL,
-                            USER_CACHE_TTL,
-                            json.dumps([_serialize_user(u) for u in all_users]),
-                        )
-                except Exception:
-                    pass
-
-                if all_users:
-                    # Filter in memory (fast operation)
-                    filtered_users = _filter_users_in_memory(
-                        all_users,
-                        usernames=usernames,
-                        search=search,
-                        status=status,
-                        admin=admin,
-                        admins=admins,
-                        advanced_filters=advanced_filters,
-                        service_id=service_id,
-                        reset_strategy=reset_strategy,
-                    )
-
-                    # Sort (fast operation on filtered list)
-                    if effective_sort:
-                        for sort_opt in reversed(effective_sort):  # Apply sorts in reverse order
-                            sort_str = str(sort_opt.value).lower()
-                            reverse = "desc" in sort_str
-
-                            if "username" in sort_str:
-                                filtered_users.sort(key=lambda u: (u.username or "").lower(), reverse=reverse)
-                            elif "created_at" in sort_str:
-                                filtered_users.sort(
-                                    key=lambda u: u.created_at or datetime.min.replace(tzinfo=timezone.utc),
-                                    reverse=reverse,
-                                )
-                            elif "used_traffic" in sort_str:
-                                filtered_users.sort(key=lambda u: getattr(u, "used_traffic", 0) or 0, reverse=reverse)
-                            elif "data_limit" in sort_str:
-                                filtered_users.sort(key=lambda u: u.data_limit or 0, reverse=reverse)
-                            elif "expire" in sort_str:
-                                filtered_users.sort(
-                                    key=lambda u: (
-                                        u.expire or datetime.max.replace(tzinfo=timezone.utc)
-                                        if u.expire
-                                        else datetime.min.replace(tzinfo=timezone.utc)
-                                    ),
-                                    reverse=reverse,
-                                )
-
-                    # Get count before pagination (for return_with_count)
-                    count = len(filtered_users) if return_with_count else None
-
-                    # Pagination BEFORE loading relationships (critical for performance)
-                    if offset:
-                        filtered_users = filtered_users[offset:]
-                    if limit:
-                        filtered_users = filtered_users[:limit]
-
-                    # Redis-first path: return cached users directly (avoid DB round-trips).
-                    final_users = filtered_users or []
-
-                    if return_with_count:
-                        return final_users, count
-                    return final_users
-        except Exception as e:
-            _logger.warning(f"Failed to get users from Redis cache, falling back to DB: {e}")
-            # Ensure we continue to DB fallback even if Redis fails
-
-    # Fallback to direct DB query
     try:
         query = get_user_queryset(db, eager_load=False)
         query = _apply_advanced_user_filters(
@@ -888,15 +765,6 @@ def get_users(
             query = query.limit(limit)
 
         users = query.all()
-
-        # Cache users in Redis for future queries
-        try:
-            from app.redis.cache import cache_user
-
-            for user in users:
-                cache_user(user)
-        except Exception as e:
-            _logger.debug(f"Failed to cache users in Redis: {e}")
 
         if return_with_count:
             return users, count
@@ -1332,7 +1200,6 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
             )
         )
 
-    # Create a fresh User object - ensure it's not from Redis cache (which would have id set)
     dbuser = User(
         username=user.username,
         credential_key=credential_key,
@@ -1353,7 +1220,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         next_plans=plans,
     )
 
-    # Ensure id is None for new user (prevent duplicate key error if object came from Redis cache)
+    # Ensure id is None for new user.
     if hasattr(dbuser, "id") and dbuser.id is not None:
         dbuser.id = None
 
@@ -1368,6 +1235,12 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         _apply_service_to_user(db, dbuser, service, allowed)
         _ensure_admin_service_link(db, admin, service)
     db.add(dbuser)
+    record_admin_created_traffic(
+        db,
+        admin,
+        normalize_admin_created_traffic_delta(None, dbuser.data_limit),
+        action="user_create",
+    )
     db.flush()
 
     db.commit()
@@ -1378,14 +1251,6 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
             _ = list(proxy.excluded_inbounds)
     except Exception as e:  # pragma: no cover - defensive logging
         _logger.debug("Failed to pre-load proxy relationships for user %s: %s", dbuser.username, e)
-
-    # Cache user in Redis and mark for sync
-    try:
-        from app.redis.cache import cache_user
-
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        _logger.warning(f"Failed to cache user in Redis: {e}")
 
     return dbuser
 
@@ -1399,13 +1264,6 @@ def remove_user(db: Session, dbuser: User) -> User:
     physically_deleted = False
     try:
         db.commit()
-        # Invalidate user from Redis cache
-        try:
-            from app.redis.cache import invalidate_user_cache
-
-            invalidate_user_cache(username=dbuser.username, user_id=dbuser.id)
-        except Exception as e:
-            _logger.warning(f"Failed to invalidate user from Redis cache: {e}")
     except DataError as exc:
         db.rollback()
         if not _ensure_user_deleted_status(db):
@@ -1478,6 +1336,7 @@ def update_user(
 ) -> User:
     """Updates a user with new details."""
     original_status_value = _status_to_str(dbuser.status)
+    previous_data_limit = dbuser.data_limit
     credential_key = dbuser.credential_key
     added_proxies: Dict[ProxyTypes, Proxy] = {}
 
@@ -1539,11 +1398,11 @@ def update_user(
         dbuser.status = modify.status
     if "data_limit" in modify.model_fields_set:
         dbuser.data_limit = modify.data_limit or None
-        if dbuser.status not in (UserStatus.expired, UserStatus.disabled):
+        status_value = _status_to_str(dbuser.status)
+        if status_value in (UserStatus.active.value, UserStatus.limited.value):
             dbuser.status = (
                 UserStatus.active
                 if (not dbuser.data_limit or dbuser.used_traffic < dbuser.data_limit)
-                and dbuser.status != UserStatus.on_hold
                 else UserStatus.limited
             )
     if "expire" in modify.model_fields_set:
@@ -1564,10 +1423,10 @@ def update_user(
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
     if "ip_limit" in modify.model_fields_set:
         dbuser.ip_limit = modify.ip_limit
-    if modify.on_hold_timeout is not None:
+    if "on_hold_timeout" in modify.model_fields_set:
         dbuser.on_hold_timeout = modify.on_hold_timeout
-    if modify.on_hold_expire_duration is not None:
-        dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
+    if "on_hold_expire_duration" in modify.model_fields_set:
+        dbuser.on_hold_expire_duration = modify.on_hold_expire_duration or None
 
     if getattr(modify, "next_plans", None) is not None:
         dbuser.next_plans = [
@@ -1620,6 +1479,13 @@ def update_user(
         _ensure_active_user_capacity(db, dbuser.admin, exclude_user_ids=(dbuser.id,))
     dbuser.edit_at = datetime.now(timezone.utc)
 
+    record_admin_created_traffic(
+        db,
+        dbuser.admin,
+        normalize_admin_created_traffic_delta(previous_data_limit, dbuser.data_limit),
+        action="user_limit_update",
+    )
+
     db.commit()
     db.refresh(dbuser)
     # Ensure proxy relationships/excluded inbounds are loaded before returning (background tasks/Xray sync)
@@ -1628,15 +1494,6 @@ def update_user(
             _ = list(proxy.excluded_inbounds)
     except Exception as e:  # pragma: no cover - defensive logging
         _logger.debug("Failed to pre-load proxy relationships for updated user %s: %s", dbuser.username, e)
-
-    # Update user in Redis cache and mark for sync
-    try:
-        from app.redis.cache import cache_user, invalidate_user_cache
-
-        invalidate_user_cache(username=dbuser.username, user_id=dbuser.id)
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        _logger.warning(f"Failed to update user in Redis cache: {e}")
 
     return dbuser
 
@@ -1673,14 +1530,6 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
     db.add(dbuser)
     db.commit()
     db.refresh(dbuser)
-
-    # Update user in Redis cache and mark for sync
-    try:
-        from app.redis.cache import cache_user
-
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        _logger.warning(f"Failed to update user in Redis cache: {e}")
 
     return dbuser
 
@@ -1732,14 +1581,6 @@ def revoke_user_sub(db: Session, dbuser: User) -> User:
 
     db.commit()
     db.refresh(dbuser)
-
-    # Update user in Redis cache and mark for sync
-    try:
-        from app.redis.cache import cache_user
-
-        cache_user(dbuser, mark_for_sync=True)
-    except Exception as e:
-        _logger.warning(f"Failed to update user in Redis cache: {e}")
 
     return dbuser
 
@@ -1975,6 +1816,20 @@ def adjust_all_users_limit(
         query = query.filter(User.status.in_(scope))
     else:
         query = query.filter(User.status == UserStatus.active)
+
+    created_traffic_increments: Dict[int, int] = {}
+    if delta_bytes > 0:
+        increment_rows = (
+            query.with_entities(User.admin_id, func.count(User.id))
+            .group_by(User.admin_id)
+            .all()
+        )
+        created_traffic_increments = {
+            int(admin_id): int(count or 0) * int(delta_bytes)
+            for admin_id, count in increment_rows
+            if admin_id is not None and count
+        }
+
     new_limit = case(
         (User.data_limit + delta_bytes < 0, 0),
         else_=User.data_limit + delta_bytes,
@@ -2000,6 +1855,20 @@ def adjust_all_users_limit(
         synchronize_session=False,
     )
     if affected:
+        if created_traffic_increments:
+            admin_rows = (
+                db.query(Admin)
+                .filter(Admin.id.in_(list(created_traffic_increments.keys())))
+                .all()
+            )
+            admin_map = {int(item.id): item for item in admin_rows if item.id is not None}
+            for admin_id, amount in created_traffic_increments.items():
+                record_admin_created_traffic(
+                    db,
+                    admin_map.get(admin_id),
+                    amount,
+                    action="bulk_limit_increase",
+                )
         db.commit()
     return affected
 
@@ -2054,27 +1923,18 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         active_count = _get_active_users_count(db, admin)
         remaining_slots = max((admin.users_limit or 0) - active_count, 0)
 
-    now_ts = now.timestamp()
     for dbuser in users:
-        target_status: Optional[UserStatus] = None
-
-        if dbuser.expire and dbuser.expire <= now_ts:
-            target_status = UserStatus.expired
+        if dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
+            target_status: Optional[UserStatus] = UserStatus.on_hold
         else:
-            limit = dbuser.data_limit or 0
-            if limit > 0 and dbuser.used_traffic >= limit:
-                target_status = UserStatus.limited
-            elif dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
-                target_status = UserStatus.on_hold
-            else:
-                if remaining_slots is not None:
-                    if remaining_slots <= 0:
-                        # Keep disabled if admin limit is reached.
-                        continue
-                    remaining_slots -= 1
-                target_status = UserStatus.active
+            if remaining_slots is not None:
+                if remaining_slots <= 0:
+                    # Keep disabled if admin limit is reached.
+                    continue
+                remaining_slots -= 1
+            target_status = UserStatus.active
 
-        if target_status and dbuser.status != target_status:
+        if dbuser.status != target_status:
             dbuser.status = target_status
             dbuser.last_status_change = now
 
@@ -2158,13 +2018,6 @@ def update_user_status(db: Session, dbuser: User, status: UserStatus) -> User:
     dbuser.status, dbuser.last_status_change = status, datetime.now(timezone.utc)
     db.commit()
     db.refresh(dbuser)
-    # Keep Redis cache in sync so API responses reflect the new status immediately.
-    try:
-        from app.redis.cache import cache_user
-
-        cache_user(dbuser)
-    except Exception as cache_err:  # pragma: no cover - best effort
-        _logger.debug("Failed to update cached user %s after status change: %s", dbuser.id, cache_err)
     return dbuser
 
 

@@ -1,9 +1,73 @@
 import json
+import os
+import sys
+from pathlib import Path
 
 from decouple import config
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+
+def _iter_env_candidates():
+    explicit_env_file = (os.getenv("REBECCA_ENV_FILE") or "").strip()
+    if explicit_env_file:
+        yield Path(explicit_env_file).expanduser()
+
+    argv0 = (sys.argv[0] or "").strip()
+    if argv0:
+        script_path = Path(argv0).expanduser()
+        if script_path.exists():
+            resolved_script = script_path.resolve()
+            yield resolved_script.parent / ".env"
+            yield resolved_script.parent.parent / ".env"
+
+    if getattr(sys, "frozen", False):
+        executable_path = Path(sys.executable).resolve()
+        yield executable_path.parent / ".env"
+        yield executable_path.parent.parent / ".env"
+
+    yield Path.cwd() / ".env"
+    yield Path(__file__).resolve().with_name(".env")
+
+    discovered = find_dotenv(usecwd=True)
+    if discovered:
+        yield Path(discovered)
+
+
+def _load_environment_file() -> Path | None:
+    seen_paths: set[str] = set()
+    for candidate in _iter_env_candidates():
+        candidate = candidate.expanduser()
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            resolved_candidate = candidate
+
+        normalized = str(resolved_candidate)
+        if normalized in seen_paths:
+            continue
+        seen_paths.add(normalized)
+
+        if resolved_candidate.is_file():
+            load_dotenv(dotenv_path=resolved_candidate, override=False)
+            return resolved_candidate
+
+    return None
+
+
+LOADED_ENV_FILE = _load_environment_file()
+
+
+def _cast_bool_compat(value):
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().lower()
+    if normalized in {"", "0", "false", "no", "off", "release", "prod", "production"}:
+        return False
+    if normalized in {"1", "true", "yes", "on", "debug", "dev", "development"}:
+        return True
+
+    raise ValueError(f"Invalid truth value: {value}")
 
 
 SQLALCHEMY_DATABASE_URL = config("SQLALCHEMY_DATABASE_URL", default="sqlite:///db.sqlite3")
@@ -18,8 +82,8 @@ UVICORN_SSL_KEYFILE = config("UVICORN_SSL_KEYFILE", default=None)
 UVICORN_SSL_CA_TYPE = config("UVICORN_SSL_CA_TYPE", default="public").lower()
 DASHBOARD_PATH = config("DASHBOARD_PATH", default="/dashboard/")
 
-DEBUG = config("DEBUG", default=False, cast=bool)
-DOCS = config("DOCS", default=False, cast=bool)
+DEBUG = config("DEBUG", default=False, cast=_cast_bool_compat)
+DOCS = config("DOCS", default=False, cast=_cast_bool_compat)
 
 ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
 
@@ -32,15 +96,39 @@ VITE_BASE_API = (
 XRAY_FALLBACKS_INBOUND_TAG = config("XRAY_FALLBACKS_INBOUND_TAG", cast=str, default="") or config(
     "XRAY_FALLBACK_INBOUND_TAG", cast=str, default=""
 )
-XRAY_EXECUTABLE_PATH = config("XRAY_EXECUTABLE_PATH", default="/usr/local/bin/xray")
-XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
+REBECCA_DATA_DIR = Path(config("REBECCA_DATA_DIR", default="/var/lib/rebecca")).expanduser()
+PERSISTENT_XRAY_DIR = REBECCA_DATA_DIR / "xray-core"
+PERSISTENT_XRAY_EXECUTABLE = PERSISTENT_XRAY_DIR / "xray"
+
+
+def _resolve_xray_executable_path() -> str:
+    configured = (os.getenv("XRAY_EXECUTABLE_PATH") or "").strip()
+    # In container deployments, always prefer persisted host-mounted core if present.
+    if PERSISTENT_XRAY_EXECUTABLE.exists():
+        return str(PERSISTENT_XRAY_EXECUTABLE)
+    if configured:
+        return configured
+    return str(PERSISTENT_XRAY_EXECUTABLE)
+
+
+def _resolve_xray_assets_path() -> str:
+    configured = (os.getenv("XRAY_ASSETS_PATH") or "").strip()
+    persistent_candidates = [PERSISTENT_XRAY_DIR, REBECCA_DATA_DIR / "assets"]
+    for candidate in persistent_candidates:
+        if (candidate / "geoip.dat").exists() or (candidate / "geosite.dat").exists():
+            return str(candidate)
+    if configured:
+        return configured
+    return str(PERSISTENT_XRAY_DIR)
+
+
+XRAY_EXECUTABLE_PATH = _resolve_xray_executable_path()
+XRAY_ASSETS_PATH = _resolve_xray_assets_path()
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
 XRAY_SUBSCRIPTION_URL_PREFIX = ""  # subscription prefix now comes from DB
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
 XRAY_JSON = config("XRAY_JSON", default="/var/lib/rebecca/xray_config.json")
 XRAY_LOG_DIR = config("XRAY_LOG_DIR", default="").strip()
-MAINTENANCE_API_BASE_URL = config("MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3000").rstrip("/")
-NODE_MAINTENANCE_API_BASE_URL = config("NODE_MAINTENANCE_API_BASE_URL", default="http://127.0.0.1:3100").rstrip("/")
 
 ADS_SOURCE_URL = "https://raw.githubusercontent.com/rebeccapanel/rebecca-ads/main/ads.json"
 ADS_CACHE_TTL_SECONDS = 86400  # 24 hours
@@ -71,31 +159,23 @@ LOGIN_NOTIFY_WHITE_LIST = [
     ip.strip() for ip in config("LOGIN_NOTIFY_WHITE_LIST", default="", cast=str).split(",") if ip.strip()
 ]
 
-USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_V2RAYNG = config("USE_CUSTOM_JSON_FOR_V2RAYNG", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_STREISAND = config("USE_CUSTOM_JSON_FOR_STREISAND", default=False, cast=bool)
-USE_CUSTOM_JSON_FOR_HAPP = config("USE_CUSTOM_JSON_FOR_HAPP", default=False, cast=bool)
+USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_V2RAYNG = config("USE_CUSTOM_JSON_FOR_V2RAYNG", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_STREISAND = config("USE_CUSTOM_JSON_FOR_STREISAND", default=False, cast=_cast_bool_compat)
+USE_CUSTOM_JSON_FOR_HAPP = config("USE_CUSTOM_JSON_FOR_HAPP", default=False, cast=_cast_bool_compat)
 
 ACTIVE_STATUS_TEXT = config("ACTIVE_STATUS_TEXT", default="Active")
 
-# Redis configuration
-REDIS_ENABLED = config("REDIS_ENABLED", cast=bool, default=False)
-REDIS_HOST = config("REDIS_HOST", default="127.0.0.1")
-REDIS_PORT = config("REDIS_PORT", cast=int, default=6379)
-REDIS_DB = config("REDIS_DB", cast=int, default=0)
-REDIS_PASSWORD = config("REDIS_PASSWORD", default=None)
-REDIS_AUTO_START = config("REDIS_AUTO_START", cast=bool, default=False)
-_redis_enabled = config("REDIS_ENABLED", cast=bool, default=False)
-REDIS_USERS_CACHE_ENABLED = config("REDIS_USERS_CACHE_ENABLED", cast=bool, default=_redis_enabled)
-REDIS_SYNC_INTERVAL = config("REDIS_SYNC_INTERVAL", cast=int, default=180)  # 3 minutes default
 EXPIRED_STATUS_TEXT = config("EXPIRED_STATUS_TEXT", default="Expired")
 LIMITED_STATUS_TEXT = config("LIMITED_STATUS_TEXT", default="Limited")
 DISABLED_STATUS_TEXT = config("DISABLED_STATUS_TEXT", default="Disabled")
 ONHOLD_STATUS_TEXT = config("ONHOLD_STATUS_TEXT", default="On-Hold")
 
 USERS_AUTODELETE_DAYS = config("USERS_AUTODELETE_DAYS", default=-1, cast=int)
-USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config("USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=bool)
+USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config(
+    "USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=_cast_bool_compat
+)
 
 
 # USERNAME: PASSWORD
@@ -120,7 +200,7 @@ RECURRENT_NOTIFICATIONS_TIMEOUT = config("RECURRENT_NOTIFICATIONS_TIMEOUT", defa
 # how many times to try after ok response not recevied after sending a notifications
 NUMBER_OF_RECURRENT_NOTIFICATIONS = config("NUMBER_OF_RECURRENT_NOTIFICATIONS", default=3, cast=int)
 
-DISABLE_RECORDING_NODE_USAGE = config("DISABLE_RECORDING_NODE_USAGE", cast=bool, default=False)
+DISABLE_RECORDING_NODE_USAGE = config("DISABLE_RECORDING_NODE_USAGE", cast=_cast_bool_compat, default=False)
 
 # headers: profile-update-interval, support-url, profile-title (DB-driven; keep static defaults)
 SUB_UPDATE_INTERVAL = "12"

@@ -19,8 +19,6 @@ from app.utils.credentials import (
     normalize_flow_value,
 )
 from xray_api.types.account import Account
-from app.utils.jwt import create_subscription_token
-from config import XRAY_SUBSCRIPTION_PATH
 
 # Fallback import to avoid deployment breakage when settings model isn't updated yet
 try:  # pragma: no cover
@@ -391,12 +389,18 @@ class UserCreate(User):
 
     @property
     def excluded_inbounds(self):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         excluded = {}
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in self.proxies:
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
             excluded[proxy_type] = []
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+            for inbound in inbound_map.values():
+                if inbound.get("protocol") != proxy_type_value:
+                    continue
                 if inbound["tag"] not in self.inbounds.get(proxy_type, []):
                     excluded[proxy_type].append(inbound["tag"])
 
@@ -404,13 +408,17 @@ class UserCreate(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
-        from app.runtime import xray
-        from app.services.data_access import get_service_host_map_cached
+        from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
         from app.db import GetDB
         from app.models.proxy import ProxyTypes
 
         proxies = values.data.get("proxies", {})
         service_id = values.data.get("service_id")
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
+
+        def protocol_tags(protocol: str) -> list[str]:
+            return [tag for tag, inbound in inbound_map.items() if inbound.get("protocol") == protocol]
 
         # delete inbounds that are for protocols not activated
         for proxy_type in list(inbounds.keys()):
@@ -433,7 +441,7 @@ class UserCreate(User):
             if tags:
                 # Validate that all specified tags exist
                 for tag in tags:
-                    if tag not in xray.config.inbounds_by_tag:
+                    if tag not in inbound_map:
                         raise ValueError(f"Inbound {tag} doesn't exist")
                     # For no-service mode, also check if tag has enabled hosts
                     # Only validate if host_map is available and tag exists in it
@@ -464,18 +472,15 @@ class UserCreate(User):
                                     enabled_inbound_tags.add(tag)
 
                             protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                            protocol_inbounds = xray.config.inbounds_by_protocol.get(protocol_str, [])
-                            enabled_tags = [i["tag"] for i in protocol_inbounds if i["tag"] in enabled_inbound_tags]
+                            enabled_tags = [tag for tag in protocol_tags(protocol_str) if tag in enabled_inbound_tags]
                             inbounds[proxy_type] = enabled_tags
                     except Exception:
                         # If we can't get host_map (e.g., in tests), fall back to all inbounds
                         protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                        inbounds[proxy_type] = [
-                            i["tag"] for i in xray.config.inbounds_by_protocol.get(protocol_str, [])
-                        ]
+                        inbounds[proxy_type] = protocol_tags(protocol_str)
                 else:
                     protocol_str = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
-                    inbounds[proxy_type] = [i["tag"] for i in xray.config.inbounds_by_protocol.get(protocol_str, [])]
+                    inbounds[proxy_type] = protocol_tags(protocol_str)
 
         return inbounds
 
@@ -526,12 +531,18 @@ class UserModify(User):
 
     @property
     def excluded_inbounds(self):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
 
         excluded = {}
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
         for proxy_type in self.inbounds:
+            proxy_type_value = proxy_type.value if hasattr(proxy_type, "value") else str(proxy_type)
             excluded[proxy_type] = []
-            for inbound in xray.config.inbounds_by_protocol.get(proxy_type, []):
+            for inbound in inbound_map.values():
+                if inbound.get("protocol") != proxy_type_value:
+                    continue
                 if inbound["tag"] not in self.inbounds.get(proxy_type, []):
                     excluded[proxy_type].append(inbound["tag"])
 
@@ -539,7 +550,11 @@ class UserModify(User):
 
     @field_validator("inbounds", mode="before")
     def validate_inbounds(cls, inbounds, values, **kwargs):
-        from app.runtime import xray
+        from app.db import GetDB
+        from app.services.data_access import get_inbounds_by_tag_cached
+
+        with GetDB() as db:
+            inbound_map = get_inbounds_by_tag_cached(db)
 
         # check with inbounds, "proxies" is optional on modifying
         # so inbounds particularly can be modified
@@ -549,7 +564,7 @@ class UserModify(User):
                 #     raise ValueError(f"{proxy_type} inbounds cannot be empty")
 
                 for tag in tags:
-                    if tag not in xray.config.inbounds_by_tag:
+                    if tag not in inbound_map:
                         raise ValueError(f"Inbound {tag} doesn't exist")
 
         return inbounds
@@ -696,71 +711,23 @@ class UserResponse(User):
     def validate_subscription_url(self):
         if _skip_expensive_computations.get():
             return self
-        salt = secrets.token_hex(8)
+        if self.subscription_url and self.subscription_urls:
+            if self.credential_key and not self.key_subscription_url:
+                self.key_subscription_url = self.subscription_urls.get("key")  # type: ignore[attr-defined]
+            return self
         try:
-            from app.services.subscription_settings import SubscriptionSettingsService
+            from app.utils.subscription_links import build_subscription_links
 
-            admin_obj = getattr(self, "admin", None)
-            if admin_obj is None and getattr(self, "admin_id", None):
-                try:
-                    from app.db.base import SessionLocal
-
-                    db = SessionLocal()
-                    admin_obj = db.query(Admin).filter(Admin.id == self.admin_id).first()
-                except Exception:
-                    admin_obj = None
-                finally:
-                    try:
-                        db.close()
-                    except Exception:
-                        pass
-
-            effective_settings = SubscriptionSettingsService.get_effective_settings(admin_obj)
-            url_prefix = SubscriptionSettingsService.build_subscription_base(effective_settings, salt=salt)
+            links = build_subscription_links(self)
         except Exception:
-            url_prefix = f"/{XRAY_SUBSCRIPTION_PATH.strip('/')}"
+            links = {}
 
-        links: Dict[str, str] = {}
-        if self.credential_key:
-            links["username-key"] = f"{url_prefix}/{self.username}/{self.credential_key}"
-            links["key"] = f"{url_prefix}/{self.credential_key}"
-
-        token = create_subscription_token(self.username)
-        links["token"] = f"{url_prefix}/{token}"
-
-        self.subscription_urls = links
-
-        # Lazy import to avoid circular import during Alembic/env loading
-        try:
-            from app.services.panel_settings import PanelSettingsService
-
-            settings = PanelSettingsService.get_settings(ensure_record=True)
-            preferred: str = settings.default_subscription_type or SubscriptionLinkType.key.value
-        except Exception:
-            preferred = SubscriptionLinkType.key.value
-
-        order_map = {
-            SubscriptionLinkType.username_key.value: ["username-key", "token", "key"],
-            SubscriptionLinkType.key.value: ["key", "token", "username-key"],
-            SubscriptionLinkType.token.value: ["token", "key", "username-key"],
-        }
-
-        chosen = None
-        for candidate in order_map.get(preferred, ["key", "username-key", "token"]):
-            if candidate in links:
-                chosen = candidate
-                break
-        if chosen is None and links:
-            chosen = next(iter(links.keys()))
-
-        if chosen:
-            self.subscription_url = links[chosen]
-        else:
-            self.subscription_url = ""
+        self.subscription_urls = {key: value for key, value in links.items() if key != "primary"}
+        self.subscription_url = links.get("primary") or next(iter(self.subscription_urls.values()), "")
 
         # Preserve legacy field for compatibility
         if self.credential_key:
-            self.key_subscription_url = links.get("key")  # type: ignore[attr-defined]
+            self.key_subscription_url = self.subscription_urls.get("key")  # type: ignore[attr-defined]
         return self
 
     @model_validator(mode="after")

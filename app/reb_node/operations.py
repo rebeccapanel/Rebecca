@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Any
 
 import logging
 import time
@@ -21,6 +21,7 @@ from xray_api import exceptions as xray_exceptions
 from xray_api.types.account import Account
 from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
 from app.models.proxy import ProxyTypes
+from app.utils.xray_targets import get_node_runtime_config
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -265,37 +266,85 @@ def _alter_inbound_user(api: XRayAPI, inbound_tag: str, accounts: List[Account])
         _add_account_to_inbound(api, inbound_tag, account)
 
 
+def _connected_node_configs() -> list[tuple[int, XRayNode, Any]]:
+    result = []
+    try:
+        with GetDB() as db:
+            master_config = crud.get_xray_config(db)
+            for node_id, node in list(state.nodes.items()):
+                if not (node.connected and node.started):
+                    continue
+                dbnode = crud.get_node_by_id(db, node_id)
+                if not dbnode:
+                    continue
+                result.append(
+                    (
+                        node_id,
+                        node,
+                        get_node_runtime_config(
+                            db,
+                            dbnode,
+                            api_port=state.config.api_port,
+                            master_config=master_config,
+                        ),
+                    )
+                )
+    except Exception as exc:
+        logger.warning("Failed to load node Xray configs: %s", exc)
+    return result
+
+
+def _node_startup_config(node_id: int):
+    with GetDB() as db:
+        dbnode = crud.get_node_by_id(db, node_id)
+        if not dbnode:
+            return state.config.include_db_users()
+        master_config = crud.get_xray_config(db)
+        return get_node_runtime_config(
+            db,
+            dbnode,
+            api_port=state.config.api_port,
+            master_config=master_config,
+        ).include_db_users()
+
+
 def add_user(dbuser: "DBUser"):
     dbuser = _prepare_user_for_runtime(dbuser)
     if not dbuser:
         return
+
+    # Runtime should only include active / on_hold users.
+    status_value = getattr(getattr(dbuser, "status", None), "value", getattr(dbuser, "status", None))
+    if status_value not in {"active", "on_hold"}:
+        return
+
     user = UserResponse.model_validate(dbuser)
+    node_configs = _connected_node_configs()
 
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
             inbound = state.config.inbounds_by_tag.get(inbound_tag)
-            if not inbound:
-                from app.db import GetDB, crud
-                from app.reb_node.config import XRayConfig
-
-                with GetDB() as db:
-                    raw_config = crud.get_xray_config(db)
-                state.config = XRayConfig(raw_config, api_port=state.config.api_port)
-                inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
-
             try:
                 settings_model = user.proxies[proxy_type]
             except KeyError:
                 continue
 
-            accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
-            if accounts:
-                _add_accounts_to_inbound(state.api, inbound_tag, accounts)
-                for node in list(state.nodes.values()):
-                    if node.connected and node.started:
-                        _add_accounts_to_inbound(node.api, inbound_tag, accounts)
-            else:
-                logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
+            if inbound:
+                accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
+                if accounts:
+                    _add_accounts_to_inbound(state.api, inbound_tag, accounts)
+                else:
+                    logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
+
+            for _node_id, node, node_config in node_configs:
+                node_inbound = node_config.inbounds_by_tag.get(inbound_tag)
+                if not node_inbound:
+                    continue
+                accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, node_inbound)
+                if accounts:
+                    _add_accounts_to_inbound(node.api, inbound_tag, accounts)
+                else:
+                    logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
 
 def remove_user(dbuser: "DBUser"):
@@ -306,9 +355,9 @@ def remove_user(dbuser: "DBUser"):
 
     for inbound_tag in state.config.inbounds_by_tag:
         _remove_user_from_inbound(state.api, inbound_tag, email)
-        for node in list(state.nodes.values()):
-            if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
+    for _node_id, node, node_config in _connected_node_configs():
+        for inbound_tag in node_config.inbounds_by_tag:
+            _remove_user_from_inbound(node.api, inbound_tag, email)
 
 
 def update_user(dbuser: "DBUser"):
@@ -331,9 +380,10 @@ def update_user(dbuser: "DBUser"):
 
     for inbound_tag in state.config.inbounds_by_tag:
         _remove_user_from_inbound(state.api, inbound_tag, email)
-        for node in list(state.nodes.values()):
-            if node.connected and node.started:
-                _remove_user_from_inbound(node.api, inbound_tag, email)
+    node_configs = _connected_node_configs()
+    for _node_id, node, node_config in node_configs:
+        for inbound_tag in node_config.inbounds_by_tag:
+            _remove_user_from_inbound(node.api, inbound_tag, email)
 
     if not user.inbounds:
         logger.warning(
@@ -346,28 +396,27 @@ def update_user(dbuser: "DBUser"):
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
             inbound = state.config.inbounds_by_tag.get(inbound_tag)
-            if not inbound:
-                from app.db import GetDB, crud
-                from app.reb_node.config import XRayConfig
-
-                with GetDB() as db:
-                    raw_config = crud.get_xray_config(db)
-                state.config = XRayConfig(raw_config, api_port=state.config.api_port)
-                inbound = state.config.inbounds_by_tag.get(inbound_tag, {})
-
             try:
                 settings_model = user.proxies[proxy_type]
             except KeyError:
                 continue
 
-            accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
-            if accounts:
-                _add_accounts_to_inbound(state.api, inbound_tag, accounts)
-                for node in list(state.nodes.values()):
-                    if node.connected and node.started:
-                        _add_accounts_to_inbound(node.api, inbound_tag, accounts)
-            else:
-                logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
+            if inbound:
+                accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, inbound)
+                if accounts:
+                    _add_accounts_to_inbound(state.api, inbound_tag, accounts)
+                else:
+                    logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
+
+            for _node_id, node, node_config in node_configs:
+                node_inbound = node_config.inbounds_by_tag.get(inbound_tag)
+                if not node_inbound:
+                    continue
+                accounts = _build_runtime_accounts(dbuser, user, proxy_type, settings_model, node_inbound)
+                if accounts:
+                    _add_accounts_to_inbound(node.api, inbound_tag, accounts)
+                else:
+                    logger.warning(f"User {dbuser.id} has no UUID and no credential_key for {proxy_type} - skipping")
 
 
 def remove_node(node_id: int):
@@ -381,6 +430,8 @@ def remove_node(node_id: int):
                 del state.nodes[node_id]
             except KeyError:
                 pass
+    _last_node_auto_reconnect_attempt.pop(node_id, None)
+    _last_node_error_report.pop(node_id, None)
 
 
 def add_node(dbnode: "DBNode"):
@@ -433,6 +484,37 @@ global _connecting_nodes
 _connecting_nodes = {}
 _NODE_ERROR_NOTIFY_COOLDOWN_SECONDS = 60
 _last_node_error_report: dict[int, tuple[str, float]] = {}
+_NODE_AUTO_RECONNECT_DELAY_SECONDS = 8
+_NODE_AUTO_RECONNECT_COOLDOWN_SECONDS = 20
+_last_node_auto_reconnect_attempt: dict[int, float] = {}
+
+
+@threaded_function
+def _connect_node_after_delay(node_id: int, config=None, *, force: bool = True, delay_seconds: float = 0) -> None:
+    try:
+        wait_seconds = max(float(delay_seconds), 0.0)
+    except (TypeError, ValueError):
+        wait_seconds = 0.0
+
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+    _connect_node_impl(node_id, config=config, force=force)
+
+
+def schedule_node_reconnect(
+    node_id: int,
+    config=None,
+    *,
+    force: bool = True,
+    delay_seconds: float = _NODE_AUTO_RECONNECT_DELAY_SECONDS,
+) -> None:
+    now = time.time()
+    last_attempt = _last_node_auto_reconnect_attempt.get(node_id, 0.0)
+    if now - last_attempt < _NODE_AUTO_RECONNECT_COOLDOWN_SECONDS:
+        return
+
+    _last_node_auto_reconnect_attempt[node_id] = now
+    _connect_node_after_delay(node_id, config=config, force=force, delay_seconds=delay_seconds)
 
 
 def register_node_runtime_error(node_id: int, error: str, *, fallback_name: str | None = None) -> None:
@@ -465,9 +547,11 @@ def register_node_runtime_error(node_id: int, error: str, *, fallback_name: str 
     now = time.time()
     last = _last_node_error_report.get(node_id)
     if last and last[0] == error_text and (now - last[1]) < _NODE_ERROR_NOTIFY_COOLDOWN_SECONDS:
+        schedule_node_reconnect(node_id)
         return
     _last_node_error_report[node_id] = (error_text, now)
     report.node_error(node_name, error_text)
+    schedule_node_reconnect(node_id)
 
 
 def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> None:
@@ -520,11 +604,12 @@ def _connect_node_impl(node_id: int, config=None, *, force: bool = False) -> Non
         logger.info('Connecting to "%s" node', dbnode.name)
 
         if config is None:
-            config = state.config.include_db_users()
+            config = _node_startup_config(node_id)
 
         node.start(config)
         version = node.get_version()
         _change_node_status(node_id, NodeStatus.connected, version=version)
+        _last_node_auto_reconnect_attempt.pop(node_id, None)
         logger.info('Connected to "%s" node, xray run on v%s', dbnode.name, version)
 
     except Exception as e:
@@ -590,7 +675,7 @@ def restart_node(node_id, config=None):
         logger.info(f'Restarting Xray core of "{dbnode.name}" node')
 
         if config is None:
-            config = state.config.include_db_users()
+            config = _node_startup_config(node_id)
 
         node.restart(config)
         logger.info(f'Xray core of "{dbnode.name}" node restarted')
@@ -622,5 +707,6 @@ __all__ = [
     "connect_node",
     "reconnect_node",
     "restart_node",
+    "schedule_node_reconnect",
     "register_node_runtime_error",
 ]
