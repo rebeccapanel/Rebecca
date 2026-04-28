@@ -125,17 +125,16 @@ jobs:
                 bash \
                 build-essential \
                 ca-certificates \
-                cargo \
                 curl \
                 gcc \
                 git \
                 libffi-dev \
                 libssl-dev \
                 pkg-config \
-                rustc \
                 zlib1g-dev
               case "${ASSET_ARCH}" in
                 386|s390x)
+                  apt-get install -y --no-install-recommends cargo rustc
                   ;;
                 *)
                   curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
