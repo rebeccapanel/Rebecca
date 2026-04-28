@@ -149,6 +149,8 @@ jobs:
               esac
               rustc --version
               cargo --version
+              export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+              export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
               python -m pip install --disable-pip-version-check --upgrade pip wheel
               python -m pip install --disable-pip-version-check . pyinstaller==6.20.0
               REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false bash scripts/build_binary.sh
