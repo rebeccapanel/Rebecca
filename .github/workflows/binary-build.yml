@@ -18,6 +18,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dashboard:
     runs-on: ubuntu-latest
@@ -130,6 +134,16 @@ jobs:
                 pkg-config \
                 rustc \
                 zlib1g-dev
+              case "$(uname -m)" in
+                i386|i486|i586|i686|s390x)
+                  ;;
+                *)
+                  curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+                  export PATH="${HOME}/.cargo/bin:${PATH}"
+                  ;;
+              esac
+              rustc --version
+              cargo --version
               python -m pip install --disable-pip-version-check --upgrade pip wheel
               python -m pip install --disable-pip-version-check . pyinstaller==6.20.0
               REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false bash scripts/build_binary.sh
