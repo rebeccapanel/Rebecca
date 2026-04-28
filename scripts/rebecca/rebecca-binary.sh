@@ -2344,6 +2344,7 @@ install_binary_rebecca() {
     local artifact_url
     local tmp_dir
     local package_path=""
+    local dev_package_path=""
 
     set_rebecca_source_for_version "$rebecca_version"
 
@@ -2363,6 +2364,12 @@ install_binary_rebecca() {
         colorized_echo blue "Downloading Rebecca binary dev artifact"
         curl -fL "$artifact_url" -o "$package_path"
         unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
+        dev_package_path="$tmp_dir/rebecca-linux-${binary_arch}.tar.gz"
+        if [ -f "$dev_package_path" ]; then
+            tar -xzf "$dev_package_path" -C "$tmp_dir"
+        elif ls "$tmp_dir"/rebecca-*.tar.gz >/dev/null 2>&1; then
+            tar -xzf "$(ls "$tmp_dir"/rebecca-*.tar.gz | head -n 1)" -C "$tmp_dir"
+        fi
     else
         IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$rebecca_version" "$binary_arch")
         if [ "$binary_source_type" = "split" ]; then
