@@ -2054,6 +2054,7 @@ get_binary_release_asset_metadata() {
     local resolved_tag
     local server_asset_url
     local cli_asset_url
+    local package_asset_url
     local legacy_asset_url
     local server_asset_name
     local cli_asset_name
@@ -2072,6 +2073,17 @@ get_binary_release_asset_metadata() {
     resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
     server_asset_name="rebecca-server-${resolved_tag}-linux-${binary_arch}"
     cli_asset_name="rebecca-cli-${resolved_tag}-linux-${binary_arch}"
+
+    package_asset_url=$(echo "$release_payload" | jq -r '
+        .assets[]?
+        | select(.name == "rebecca-os")
+        | .browser_download_url
+    ' | head -n 1)
+
+    if [ -n "$package_asset_url" ] && [ "$package_asset_url" != "null" ]; then
+        printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$package_asset_url"
+        return
+    fi
 
     server_asset_url=$(echo "$release_payload" | jq -r --arg name "$server_asset_name" '
         .assets[]?

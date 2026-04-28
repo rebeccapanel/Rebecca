@@ -53,12 +53,10 @@ jobs:
           fi
 
           ARTIFACT_NAME="rebecca-binaries-linux-amd64"
-          SERVER_ASSET_NAME="rebecca-server-${VERSION}-linux-amd64"
-          CLI_ASSET_NAME="rebecca-cli-${VERSION}-linux-amd64"
+          RELEASE_ASSET_NAME="rebecca-os"
 
           echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "server_asset_name=${SERVER_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "cli_asset_name=${CLI_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "release_asset_name=${RELEASE_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "upload_release=${UPLOAD_RELEASE}" >> "${GITHUB_OUTPUT}"
 
@@ -113,6 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run bash scripts/build_binary.sh
+          tar -C dist -czf dist/rebecca-os.tar.gz rebecca-server rebecca-cli
           ls -lah dist
 
       - name: Upload artifact
@@ -130,7 +129,8 @@ jobs:
         run: |
           gh release view "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1 || \
             gh release create "${{ steps.meta.outputs.release_tag }}" --title "${{ steps.meta.outputs.release_tag }}" --notes "Rebecca ${{ steps.meta.outputs.release_tag }}"
+          gh release delete-asset "${{ steps.meta.outputs.release_tag }}" "rebecca-server-${{ steps.meta.outputs.release_tag }}-linux-amd64" -y >/dev/null 2>&1 || true
+          gh release delete-asset "${{ steps.meta.outputs.release_tag }}" "rebecca-cli-${{ steps.meta.outputs.release_tag }}-linux-amd64" -y >/dev/null 2>&1 || true
           gh release upload "${{ steps.meta.outputs.release_tag }}" \
-            "dist/rebecca-server#${{ steps.meta.outputs.server_asset_name }}" \
-            "dist/rebecca-cli#${{ steps.meta.outputs.cli_asset_name }}" \
+            "dist/rebecca-os.tar.gz#${{ steps.meta.outputs.release_asset_name }}" \
             --clobber
