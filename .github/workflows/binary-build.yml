@@ -106,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          set +e
           docker run --rm \
             --platform "${BUILD_PLATFORM}" \
             -e ASSET_ARCH="${ASSET_ARCH}" \
@@ -132,7 +133,22 @@ jobs:
               REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false bash scripts/build_binary.sh
               tar -C dist -czf "dist/${ASSET_NAME}" rebecca-server rebecca-cli
               sha256sum "dist/${ASSET_NAME}"
-            '
+            ' 2>&1 | tee "build-${ASSET_ARCH}.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "${status}" -ne 0 ]; then
+            echo "::group::Last ${ASSET_NAME} build log lines"
+            tail -n 120 "build-${ASSET_ARCH}.log" || true
+            echo "::endgroup::"
+            tail -n 20 "build-${ASSET_ARCH}.log" | while IFS= read -r line; do
+              line="${line//'%'/'%25'}"
+              line="${line//$'\r'/'%0D'}"
+              line="${line//$'\n'/'%0A'}"
+              echo "::error title=${ASSET_NAME}::${line}"
+            done
+            exit "${status}"
+          fi
 
       - name: Upload Linux package artifact
         uses: actions/upload-artifact@v4
