@@ -75,8 +75,20 @@ def _log(message: str) -> None:
     print(f"[3xui-migrate] {message}")
 
 
-def _warn(message: str) -> None:
-    print(f"[3xui-migrate][WARN] {message}")
+def _warn_failed_traffic_load() -> None:
+    print("[3xui-migrate][WARN] Failed to load client_traffics table.")
+
+
+def _warn_duplicate_subaddress() -> None:
+    print("[3xui-migrate][WARN] Skipping client because duplicate subId/subadress cannot be represented safely.")
+
+
+def _warn_unsupported_client() -> None:
+    print("[3xui-migrate][WARN] Skipping client because its proxy settings are unsupported or incomplete.")
+
+
+def _warn_duplicate_credential_key() -> None:
+    print("[3xui-migrate][WARN] Skipping client because an imported credential key already exists more than once.")
 
 
 def _parse_json(raw: Any) -> dict[str, Any]:
@@ -228,7 +240,7 @@ def _load_traffic_rows(connection: sqlite3.Connection) -> dict[str, dict[str, An
             if email:
                 rows[email] = dict(row)
     except Exception:
-        _warn("Failed to load client_traffics table.")
+        _warn_failed_traffic_load()
     return rows
 
 
@@ -317,14 +329,14 @@ def load_3xui_clients(source_db: str) -> tuple[list[SourceClient], Stats]:
                 if normalized_subadress:
                     if normalized_subadress in seen_subaddresses:
                         stats.skipped_duplicate_subadress += 1
-                        _warn("Skipping client because duplicate subId/subadress cannot be represented safely.")
+                        _warn_duplicate_subaddress()
                         continue
                     seen_subaddresses.add(normalized_subadress)
 
                 proxy_settings, error = _extract_proxy_settings(protocol, raw_client, inbound_settings)
                 if error:
                     stats.skipped_unsupported += 1
-                    _warn("Skipping client because its proxy settings are unsupported or incomplete.")
+                    _warn_unsupported_client()
                     continue
 
                 if protocol in {ProxyTypes.VMess, ProxyTypes.VLESS}:
@@ -450,7 +462,7 @@ def migrate_3xui_users(
                 existing = _get_existing_user(db, source)
             except ValueError:
                 stats.skipped += 1
-                _warn("Skipping client because an imported credential key already exists more than once.")
+                _warn_duplicate_credential_key()
                 continue
 
             resolved_status = _resolve_status(

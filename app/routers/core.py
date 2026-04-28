@@ -1349,7 +1349,17 @@ def test_outbound(
     finally:
         _OUTBOUND_TEST_LOCK.release()
 
-    return {"success": True, "obj": _public_outbound_test_result(result)}
+    if isinstance(result, dict) and result.get("success"):
+        return {
+            "success": True,
+            "obj": {
+                "success": True,
+                "delay": result.get("delay"),
+                "statusCode": result.get("statusCode"),
+            },
+        }
+
+    return {"success": True, "obj": {"success": False, "error": "Outbound test failed"}}
 
 
 def _iter_outbound_config_targets(db: Session) -> list[tuple[str, int | None, str, dict]]:
