@@ -471,6 +471,7 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
             dbuser.admin,
             int(dbuser.data_limit or 0),
             action="user_reset_usage",
+            service_id=getattr(dbuser, "service_id", None),
         )
 
     dbuser.used_traffic = 0
@@ -567,7 +568,15 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     Returns:
         Admin: The updated admin.
     """
-    if (dbadmin.users_usage or 0) == 0 and (getattr(dbadmin, "created_traffic", 0) or 0) == 0:
+    service_links = list(getattr(dbadmin, "service_links", []) or [])
+    service_usage_total = sum(int(getattr(link, "used_traffic", 0) or 0) for link in service_links)
+    service_created_total = sum(int(getattr(link, "created_traffic", 0) or 0) for link in service_links)
+    if (
+        (dbadmin.users_usage or 0) == 0
+        and (getattr(dbadmin, "created_traffic", 0) or 0) == 0
+        and service_usage_total == 0
+        and service_created_total == 0
+    ):
         return dbadmin
 
     usage_log = AdminUsageLogs(
@@ -578,6 +587,9 @@ def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
     db.add(usage_log)
     dbadmin.users_usage = 0
     dbadmin.created_traffic = 0
+    for link in service_links:
+        link.used_traffic = 0
+        link.created_traffic = 0
     _maybe_enable_admin_after_data_limit(db, dbadmin)
 
     db.commit()

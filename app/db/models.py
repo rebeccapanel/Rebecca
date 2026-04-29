@@ -63,6 +63,7 @@ class Admin(Base):
     users_usage = Column(BigInteger, nullable=False, default=0)
     lifetime_usage = Column(BigInteger, nullable=False, default=0)
     created_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    deleted_users_usage = Column(BigInteger, nullable=False, default=0, server_default="0")
     data_limit = Column(BigInteger, nullable=True, default=None)
     traffic_limit_mode = Column(
         Enum(AdminTrafficLimitMode),
@@ -70,7 +71,10 @@ class Admin(Base):
         default=AdminTrafficLimitMode.used_traffic,
         server_default=AdminTrafficLimitMode.used_traffic.value,
     )
+    use_service_traffic_limits = Column(Boolean, nullable=False, default=False, server_default=text("0"))
     show_user_traffic = Column(Boolean, nullable=False, default=True, server_default=text("1"))
+    delete_user_usage_limit_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    delete_user_usage_limit = Column(BigInteger, nullable=True, default=None)
     expire = Column(Integer, nullable=True, default=None)
     users_limit = Column(Integer, nullable=True, default=None)
     status = Column(Enum(AdminStatus), nullable=False, default=AdminStatus.active, index=True)
@@ -93,6 +97,25 @@ class Admin(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+
+    @property
+    def service_limits(self):
+        return [
+            {
+                "service_id": link.service_id,
+                "traffic_limit_mode": link.traffic_limit_mode,
+                "data_limit": link.data_limit,
+                "created_traffic": int(link.created_traffic or 0),
+                "used_traffic": int(link.used_traffic or 0),
+                "lifetime_used_traffic": int(link.lifetime_used_traffic or 0),
+                "show_user_traffic": bool(link.show_user_traffic),
+                "users_limit": link.users_limit,
+                "delete_user_usage_limit_enabled": bool(link.delete_user_usage_limit_enabled),
+                "delete_user_usage_limit": link.delete_user_usage_limit,
+                "deleted_users_usage": int(link.deleted_users_usage or 0),
+            }
+            for link in self.service_links
+        ]
 
 
 class AdminUsageLogs(Base):
@@ -532,6 +555,19 @@ class AdminServiceLink(Base):
     service_id = Column(Integer, ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
     lifetime_used_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    created_traffic = Column(BigInteger, nullable=False, default=0, server_default="0")
+    deleted_users_usage = Column(BigInteger, nullable=False, default=0, server_default="0")
+    data_limit = Column(BigInteger, nullable=True, default=None)
+    traffic_limit_mode = Column(
+        Enum(AdminTrafficLimitMode),
+        nullable=False,
+        default=AdminTrafficLimitMode.used_traffic,
+        server_default=AdminTrafficLimitMode.used_traffic.value,
+    )
+    show_user_traffic = Column(Boolean, nullable=False, default=True, server_default=text("1"))
+    users_limit = Column(Integer, nullable=True, default=None)
+    delete_user_usage_limit_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    delete_user_usage_limit = Column(BigInteger, nullable=True, default=None)
     created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(
         DateTime,

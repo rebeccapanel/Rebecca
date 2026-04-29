@@ -78,6 +78,7 @@ export const AdminDetailsDrawer = () => {
 	const dataLimitAllocated = admin?.data_limit_allocated ?? 0;
 	const resetBytes = admin?.reset_bytes ?? 0;
 	const unlimitedUsersUsage = admin?.unlimited_users_usage ?? 0;
+	const deletedUsersUsage = admin?.deleted_users_usage ?? 0;
 	const trafficModeLabel =
 		admin?.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
 			? t("admins.createdTrafficMode", "Created traffic")
@@ -263,6 +264,13 @@ export const AdminDetailsDrawer = () => {
 											"Unlimited users usage",
 										)}
 										value={formatBytes(unlimitedUsersUsage, 2)}
+									/>
+									<StatCard
+										label={t(
+											"admins.details.deletedUsersUsage",
+											"Deleted-user usage",
+										)}
+										value={formatBytes(deletedUsersUsage, 2)}
 									/>
 								</SimpleGrid>
 							</Box>

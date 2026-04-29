@@ -32,7 +32,7 @@ import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AdminRole } from "types/Admin";
+import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
 import { isUserManagementLocked } from "utils/adminTraffic";
 import type {
 	AdvancedUserActionPayload,
@@ -89,6 +89,10 @@ const AdvancedUserActions = () => {
 	const canSeeServiceControls = hasScopeSelect;
 	const canUseAdvanced = Boolean(
 		userData.permissions?.users?.advanced_actions ?? true,
+	);
+	const serviceTransferDisabled = Boolean(
+		userData.use_service_traffic_limits ||
+			userData.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic,
 	);
 
 	useEffect(() => {
@@ -481,6 +485,7 @@ const AdvancedUserActions = () => {
 										</FormHelperText>
 									</FormControl>
 
+									{!serviceTransferDisabled && (
 									<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
 										<Stack spacing={3}>
 											<Text fontWeight="semibold">
@@ -532,6 +537,7 @@ const AdvancedUserActions = () => {
 											</Button>
 										</Stack>
 									</Box>
+									)}
 								</>
 							)}
 

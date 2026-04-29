@@ -5,6 +5,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.models.admin import AdminTrafficLimitMode
+
 
 class ServiceHostAssignment(BaseModel):
     host_id: int
@@ -59,7 +61,24 @@ class ServiceAdmin(BaseModel):
     username: str
     used_traffic: int
     lifetime_used_traffic: int
+    traffic_limit_mode: AdminTrafficLimitMode = AdminTrafficLimitMode.used_traffic
+    data_limit: Optional[int] = None
+    created_traffic: int = 0
+    show_user_traffic: bool = True
+    users_limit: Optional[int] = None
+    delete_user_usage_limit_enabled: bool = False
+    delete_user_usage_limit: Optional[int] = None
+    deleted_users_usage: int = 0
     model_config = ConfigDict(from_attributes=True)
+
+
+class ServiceAdminLimitUpdate(BaseModel):
+    traffic_limit_mode: Optional[AdminTrafficLimitMode] = None
+    data_limit: Optional[int] = None
+    show_user_traffic: Optional[bool] = None
+    users_limit: Optional[int] = None
+    delete_user_usage_limit_enabled: Optional[bool] = None
+    delete_user_usage_limit: Optional[int] = None
 
 
 class ServiceBase(BaseModel):

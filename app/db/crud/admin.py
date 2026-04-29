@@ -32,7 +32,14 @@ from app.models.admin import (
     UserPermission,
     AdminTrafficLimitMode,
 )
-from app.models.admin import AdminCreate, AdminModify, AdminPartialModify, ROLE_DEFAULT_PERMISSIONS, AdminPermissions
+from app.models.admin import (
+    AdminCreate,
+    AdminModify,
+    AdminPartialModify,
+    ROLE_DEFAULT_PERMISSIONS,
+    AdminPermissions,
+    AdminServiceTrafficLimitModify,
+)
 from app.models.user import UserStatus
 
 # MasterSettingsService not available in current project structure
@@ -50,24 +57,41 @@ ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted"
 
 
 def _attach_admin_services(db: Session, admins: List[Admin]) -> None:
-    """Populate admin.services with raw service IDs without touching the association proxy."""
+    """Populate admin.services and admin.service_limits without touching the association proxy."""
     if not admins:
         return
     admin_ids = [a.id for a in admins if a.id is not None]
     if not admin_ids:
         return
     links = (
-        db.query(AdminServiceLink.admin_id, AdminServiceLink.service_id)
+        db.query(AdminServiceLink)
         .filter(AdminServiceLink.admin_id.in_(admin_ids))
         .all()
     )
     services_map: Dict[int, List[int]] = {}
-    for admin_id, service_id in links:
-        services_map.setdefault(admin_id, []).append(service_id)
+    limits_map: Dict[int, List[Dict[str, Any]]] = {}
+    for link in links:
+        services_map.setdefault(link.admin_id, []).append(link.service_id)
+        limits_map.setdefault(link.admin_id, []).append(
+            {
+                "service_id": link.service_id,
+                "traffic_limit_mode": link.traffic_limit_mode,
+                "data_limit": link.data_limit,
+                "created_traffic": int(link.created_traffic or 0),
+                "used_traffic": int(link.used_traffic or 0),
+                "lifetime_used_traffic": int(link.lifetime_used_traffic or 0),
+                "show_user_traffic": bool(link.show_user_traffic),
+                "users_limit": link.users_limit,
+                "delete_user_usage_limit_enabled": bool(link.delete_user_usage_limit_enabled),
+                "delete_user_usage_limit": link.delete_user_usage_limit,
+                "deleted_users_usage": int(link.deleted_users_usage or 0),
+            }
+        )
     for admin in admins:
         if admin.id is None:
             continue
         admin.__dict__["services"] = services_map.get(admin.id, [])
+        admin.__dict__["service_limits"] = limits_map.get(admin.id, [])
 
 
 def _sync_admin_services(db: Session, dbadmin: Admin, service_ids: Optional[List[int]]) -> None:
@@ -88,6 +112,45 @@ def _sync_admin_services(db: Session, dbadmin: Admin, service_ids: Optional[List
         valid_services = {sid for (sid,) in db.query(Service.id).filter(Service.id.in_(to_add)).all()}
         for sid in valid_services:
             db.add(AdminServiceLink(admin_id=dbadmin.id, service_id=sid))
+
+
+def _sync_admin_service_limits(
+    db: Session,
+    dbadmin: Admin,
+    service_limits: Optional[List[AdminServiceTrafficLimitModify]],
+) -> None:
+    if service_limits is None or dbadmin.id is None:
+        return
+
+    links = {
+        link.service_id: link
+        for link in db.query(AdminServiceLink).filter(AdminServiceLink.admin_id == dbadmin.id).all()
+    }
+    for item in service_limits:
+        link = links.get(item.service_id)
+        if link is None:
+            continue
+        if "traffic_limit_mode" in item.model_fields_set:
+            link.traffic_limit_mode = item.traffic_limit_mode or AdminTrafficLimitMode.used_traffic
+        if "data_limit" in item.model_fields_set:
+            link.data_limit = item.data_limit
+        if "show_user_traffic" in item.model_fields_set:
+            link.show_user_traffic = bool(item.show_user_traffic)
+        if "users_limit" in item.model_fields_set:
+            link.users_limit = item.users_limit
+        if "delete_user_usage_limit_enabled" in item.model_fields_set:
+            link.delete_user_usage_limit_enabled = bool(item.delete_user_usage_limit_enabled)
+        if "delete_user_usage_limit" in item.model_fields_set:
+            link.delete_user_usage_limit = item.delete_user_usage_limit
+
+
+def _cap_settings_after_permission_change(dbadmin: Admin) -> None:
+    permissions_model = _normalize_permissions_for_role(dbadmin.role, None, dbadmin.permissions)
+    if permissions_model.users.delete:
+        return
+    dbadmin.delete_user_usage_limit_enabled = False
+    for link in list(getattr(dbadmin, "service_links", []) or []):
+        link.delete_user_usage_limit_enabled = False
 
 
 def _normalize_permissions_for_role(
@@ -208,6 +271,8 @@ def _admin_disabled_due_to_manual_reason(dbadmin: Admin) -> bool:
 def _admin_usage_within_limit(dbadmin: Admin) -> bool:
     if dbadmin.role == AdminRole.full_access:
         return True
+    if getattr(dbadmin, "use_service_traffic_limits", False):
+        return True
     if getattr(dbadmin, "traffic_limit_mode", AdminTrafficLimitMode.used_traffic) == AdminTrafficLimitMode.created_traffic:
         return True
     limit = dbadmin.data_limit
@@ -300,6 +365,8 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
     """Ensure admin state reflects assigned data limit; disable admin and their users when usage exceeds limit."""
     if dbadmin.role == AdminRole.full_access:
         return False
+    if getattr(dbadmin, "use_service_traffic_limits", False):
+        return False
     if getattr(dbadmin, "traffic_limit_mode", AdminTrafficLimitMode.used_traffic) == AdminTrafficLimitMode.created_traffic:
         return False
     limit = dbadmin.data_limit
@@ -312,6 +379,44 @@ def enforce_admin_data_limit(db: Session, dbadmin: Admin) -> bool:
         return False
 
     _disable_admin_and_active_users(db, dbadmin, ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY)
+    return True
+
+
+def enforce_admin_service_data_limit(db: Session, link: AdminServiceLink) -> bool:
+    """Disable users for one admin/service pair when that link's used traffic is exhausted."""
+    if not link or getattr(link, "traffic_limit_mode", AdminTrafficLimitMode.used_traffic) == AdminTrafficLimitMode.created_traffic:
+        return False
+    limit = int(getattr(link, "data_limit", 0) or 0)
+    if limit <= 0:
+        return False
+    usage = int(getattr(link, "used_traffic", 0) or 0)
+    if usage < limit:
+        return False
+
+    active_users = (
+        db.query(User.id, User.username)
+        .filter(User.admin_id == link.admin_id, User.service_id == link.service_id)
+        .filter(User.status.in_((UserStatus.active, UserStatus.on_hold)))
+        .all()
+    )
+    if not active_users:
+        return False
+
+    db.query(User).filter(User.id.in_([row.id for row in active_users])).update(
+        {User.status: UserStatus.disabled, User.last_status_change: datetime.now(timezone.utc)},
+        synchronize_session=False,
+    )
+    try:
+        from app.runtime import xray
+    except ImportError:
+        xray = None
+
+    if xray:
+        for user_row in active_users:
+            try:
+                xray.operations.remove_user(dbuser=SimpleNamespace(id=user_row.id, username=user_row.username))
+            except Exception:
+                continue
     return True
 
 
@@ -371,9 +476,17 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         subscription_domain=(admin.subscription_domain or "").strip() or None,
         subscription_settings=admin.subscription_settings or {},
         created_traffic=int(getattr(admin, "created_traffic", 0) or 0),
+        deleted_users_usage=int(getattr(admin, "deleted_users_usage", 0) or 0),
         data_limit=admin.data_limit if admin.data_limit is not None else None,
         traffic_limit_mode=traffic_limit_mode,
+        use_service_traffic_limits=False
+        if role == AdminRole.full_access
+        else bool(getattr(admin, "use_service_traffic_limits", False)),
         show_user_traffic=show_user_traffic,
+        delete_user_usage_limit_enabled=False
+        if not permissions_model.users.delete
+        else bool(getattr(admin, "delete_user_usage_limit_enabled", False)),
+        delete_user_usage_limit=getattr(admin, "delete_user_usage_limit", None),
         expire=_normalize_admin_expire(admin.expire),
         users_limit=admin.users_limit if admin.users_limit is not None else None,
         status=AdminStatus.active,
@@ -382,9 +495,11 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
     db.flush()
     enforce_admin_time_limit(db, dbadmin)
     enforce_admin_data_limit(db, dbadmin)
+    _sync_admin_services(db, dbadmin, admin.services)
+    _sync_admin_service_limits(db, dbadmin, getattr(admin, "service_limits", None))
+    _cap_settings_after_permission_change(dbadmin)
     db.commit()
     db.refresh(dbadmin)
-    _sync_admin_services(db, dbadmin, admin.services)
     _attach_admin_services(db, [dbadmin])
     return dbadmin
 
@@ -444,6 +559,8 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
         dbadmin.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
         dbadmin.show_user_traffic = True
+        dbadmin.use_service_traffic_limits = False
+        dbadmin.delete_user_usage_limit_enabled = False
     elif modified_admin.permissions is not None:
         permissions_model = _normalize_permissions_for_role(
             target_role, modified_admin.permissions, current=dbadmin.permissions
@@ -454,6 +571,12 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.traffic_limit_mode = modified_admin.traffic_limit_mode or AdminTrafficLimitMode.used_traffic
     if "show_user_traffic" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
         dbadmin.show_user_traffic = bool(modified_admin.show_user_traffic)
+    if "use_service_traffic_limits" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.use_service_traffic_limits = bool(modified_admin.use_service_traffic_limits)
+    if "delete_user_usage_limit_enabled" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.delete_user_usage_limit_enabled = bool(modified_admin.delete_user_usage_limit_enabled)
+    if "delete_user_usage_limit" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.delete_user_usage_limit = modified_admin.delete_user_usage_limit
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
@@ -470,21 +593,22 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.expire = _normalize_admin_expire(modified_admin.expire)
     if "users_limit" in modified_admin.model_fields_set:
         new_limit = modified_admin.users_limit
-        if new_limit is not None and new_limit > 0:
+        if new_limit is not None and new_limit > 0 and not bool(getattr(dbadmin, "use_service_traffic_limits", False)):
             active_count = _get_active_users_count(db, dbadmin)
             if active_count > new_limit:
                 raise UsersLimitReachedError(limit=new_limit, current_active=active_count, is_admin_modification=True)
         dbadmin.users_limit = new_limit
-
     enforce_admin_time_limit(db, dbadmin)
     enforce_admin_data_limit(db, dbadmin)
     _maybe_enable_admin_after_data_limit(db, dbadmin)
     _maybe_enable_admin_after_time_limit(db, dbadmin)
 
     _sync_admin_services(db, dbadmin, modified_admin.services)
-    _attach_admin_services(db, [dbadmin])
+    _sync_admin_service_limits(db, dbadmin, modified_admin.service_limits)
+    _cap_settings_after_permission_change(dbadmin)
     db.commit()
     db.refresh(dbadmin)
+    _attach_admin_services(db, [dbadmin])
     return dbadmin
 
 
@@ -497,6 +621,8 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.permissions = ROLE_DEFAULT_PERMISSIONS[AdminRole.full_access].model_dump()
         dbadmin.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
         dbadmin.show_user_traffic = True
+        dbadmin.use_service_traffic_limits = False
+        dbadmin.delete_user_usage_limit_enabled = False
     elif modified_admin.permissions is not None:
         permissions_model = _normalize_permissions_for_role(
             target_role, modified_admin.permissions, current=dbadmin.permissions
@@ -507,6 +633,12 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.traffic_limit_mode = modified_admin.traffic_limit_mode or AdminTrafficLimitMode.used_traffic
     if "show_user_traffic" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
         dbadmin.show_user_traffic = bool(modified_admin.show_user_traffic)
+    if "use_service_traffic_limits" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.use_service_traffic_limits = bool(modified_admin.use_service_traffic_limits)
+    if "delete_user_usage_limit_enabled" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.delete_user_usage_limit_enabled = bool(modified_admin.delete_user_usage_limit_enabled)
+    if "delete_user_usage_limit" in modified_admin.model_fields_set and target_role != AdminRole.full_access:
+        dbadmin.delete_user_usage_limit = modified_admin.delete_user_usage_limit
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
         dbadmin.password_reset_at = datetime.now(timezone.utc)
@@ -523,11 +655,14 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.expire = _normalize_admin_expire(modified_admin.expire)
     if "users_limit" in modified_admin.model_fields_set:
         new_limit = modified_admin.users_limit
-        if new_limit is not None and new_limit > 0:
+        if new_limit is not None and new_limit > 0 and not bool(getattr(dbadmin, "use_service_traffic_limits", False)):
             active_count = _get_active_users_count(db, dbadmin)
             if active_count > new_limit:
                 raise UsersLimitReachedError(limit=new_limit, current_active=active_count, is_admin_modification=True)
         dbadmin.users_limit = new_limit
+    _sync_admin_services(db, dbadmin, modified_admin.services)
+    _sync_admin_service_limits(db, dbadmin, modified_admin.service_limits)
+    _cap_settings_after_permission_change(dbadmin)
 
     enforce_admin_time_limit(db, dbadmin)
     enforce_admin_data_limit(db, dbadmin)
@@ -536,6 +671,7 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
 
     db.commit()
     db.refresh(dbadmin)
+    _attach_admin_services(db, [dbadmin])
     return dbadmin
 
 

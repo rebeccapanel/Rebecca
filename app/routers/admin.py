@@ -42,6 +42,10 @@ class AdminDisablePayload(BaseModel):
     reason: str = Field(..., min_length=3, max_length=512, description="Reason shown to the disabled admin")
 
 
+class DeletedUsersUsageResetPayload(BaseModel):
+    service_id: Optional[int] = None
+
+
 class StandardAdminsBulkPermissionsPayload(BaseModel):
     permissions: List[UserPermission] = Field(..., min_length=1)
     mode: Literal["disable", "restore"] = "disable"
@@ -396,6 +400,33 @@ def reset_admin_usage(
     admin_schema = Admin.model_validate(updated_admin)
     report.admin_usage_reset(admin_schema, current_admin)
     return admin_schema
+
+
+@router.post(
+    "/admin/{username}/deleted-users-usage/reset",
+    response_model=Admin,
+    responses={403: responses._403, 404: responses._404},
+)
+def reset_admin_deleted_users_usage(
+    payload: DeletedUsersUsageResetPayload,
+    dbadmin: Admin = Depends(get_admin_by_username),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Reset the delete-cap accounting counter for an admin or a single assigned service."""
+    if dbadmin.username != current_admin.username:
+        current_admin.ensure_can_manage_admin(Admin.model_validate(dbadmin))
+
+    if payload.service_id is not None:
+        link = crud.get_admin_service_link(db, dbadmin.id, payload.service_id)
+        if not link:
+            raise HTTPException(status_code=404, detail="Admin service link not found")
+        link.deleted_users_usage = 0
+    else:
+        dbadmin.deleted_users_usage = 0
+    db.commit()
+    db.refresh(dbadmin)
+    return Admin.model_validate(dbadmin)
 
 
 @router.get(

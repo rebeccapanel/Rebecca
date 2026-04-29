@@ -154,9 +154,14 @@ export type UserApi = {
 	username: string;
 	users_usage?: number | null;
 	created_traffic?: number | null;
+	deleted_users_usage?: number | null;
 	data_limit?: number | null;
 	traffic_limit_mode?: AdminTrafficLimitMode;
+	use_service_traffic_limits?: boolean;
 	show_user_traffic?: boolean;
+	delete_user_usage_limit_enabled?: boolean;
+	delete_user_usage_limit?: number | null;
+	service_limits?: import("./Admin").AdminServiceTrafficLimit[];
 	status?: AdminStatus;
 	disabled_reason?: string | null;
 };

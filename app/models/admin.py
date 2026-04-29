@@ -157,6 +157,8 @@ def admin_uses_created_traffic_limit(admin_like: Any) -> bool:
     role = getattr(admin_like, "role", None)
     if role == AdminRole.full_access:
         return False
+    if bool(getattr(admin_like, "use_service_traffic_limits", False)):
+        return False
     mode = _resolve_traffic_limit_mode(getattr(admin_like, "traffic_limit_mode", None))
     return mode == AdminTrafficLimitMode.created_traffic
 
@@ -182,6 +184,50 @@ def admin_created_traffic_limit_reached(admin_like: Any) -> bool:
 
 def admin_user_management_locked(admin_like: Any) -> bool:
     return admin_created_traffic_limit_reached(admin_like)
+
+
+class AdminServiceTrafficLimit(BaseModel):
+    service_id: int
+    traffic_limit_mode: AdminTrafficLimitMode = AdminTrafficLimitMode.used_traffic
+    data_limit: Optional[int] = None
+    created_traffic: int = 0
+    used_traffic: int = 0
+    lifetime_used_traffic: int = 0
+    show_user_traffic: bool = True
+    users_limit: Optional[int] = None
+    delete_user_usage_limit_enabled: bool = False
+    delete_user_usage_limit: Optional[int] = None
+    deleted_users_usage: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator(
+        "data_limit",
+        "created_traffic",
+        "used_traffic",
+        "lifetime_used_traffic",
+        "users_limit",
+        "delete_user_usage_limit",
+        "deleted_users_usage",
+        mode="before",
+    )
+    def cast_optional_ints(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, int):
+            return v
+        raise ValueError("must be an integer or a float, not a string")
+
+
+class AdminServiceTrafficLimitModify(BaseModel):
+    service_id: int
+    traffic_limit_mode: Optional[AdminTrafficLimitMode] = None
+    data_limit: Optional[int] = None
+    show_user_traffic: Optional[bool] = None
+    users_limit: Optional[int] = None
+    delete_user_usage_limit_enabled: Optional[bool] = None
+    delete_user_usage_limit: Optional[int] = None
 
 
 ROLE_DEFAULT_PERMISSIONS: Dict[AdminRole, AdminPermissions] = {
@@ -374,6 +420,7 @@ class Admin(BaseModel):
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
     users_usage: Optional[int] = Field(None, description="Total data usage by admin's users in bytes")
     created_traffic: Optional[int] = Field(None, description="Total traffic created for this admin's users in bytes")
+    deleted_users_usage: int = Field(0, description="Traffic credited back after capped user deletes")
     data_limit: Optional[int] = Field(
         None,
         description="Maximum data limit for admin in bytes (null = unlimited)",
@@ -383,9 +430,21 @@ class Admin(BaseModel):
         default=AdminTrafficLimitMode.used_traffic,
         description="How the admin data limit is enforced",
     )
+    use_service_traffic_limits: bool = Field(
+        False,
+        description="Use per-service traffic and user limits instead of the global admin limit",
+    )
     show_user_traffic: bool = Field(
         True,
         description="Whether the admin can view user traffic details when created-traffic mode is enabled",
+    )
+    delete_user_usage_limit_enabled: bool = Field(
+        False,
+        description="Limit deletes in created-traffic mode by the user's current usage",
+    )
+    delete_user_usage_limit: Optional[int] = Field(
+        None,
+        description="Maximum current user usage that can be deleted in created-traffic mode",
     )
     expire: Optional[int] = Field(
         None,
@@ -415,6 +474,7 @@ class Admin(BaseModel):
         None,
         description="Traffic that was reset for this admin's users",
     )
+    service_limits: List[AdminServiceTrafficLimit] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
     @model_validator(mode="before")
@@ -437,6 +497,14 @@ class Admin(BaseModel):
         for key in ("role", "permissions"):
             if key not in source and hasattr(data, key):
                 source[key] = getattr(data, key)
+        if "services" not in source and hasattr(data, "service_links"):
+            source["services"] = [
+                link.service_id
+                for link in getattr(data, "service_links", []) or []
+                if getattr(link, "service_id", None) is not None
+            ]
+        if "service_limits" not in source and hasattr(data, "service_limits"):
+            source["service_limits"] = getattr(data, "service_limits")
         data = source
         role = _resolve_role(data.get("role"))
         permissions = _build_permissions(role, data.get("permissions"))
@@ -448,12 +516,20 @@ class Admin(BaseModel):
     def normalize_subscription_settings(self):
         if self.subscription_settings is None:
             self.subscription_settings = {}
+        if self.service_limits is None:
+            self.service_limits = []
         self.traffic_limit_mode = _resolve_traffic_limit_mode(self.traffic_limit_mode)
         if self.created_traffic is None:
             self.created_traffic = 0
         if self.has_full_access:
             self.traffic_limit_mode = AdminTrafficLimitMode.used_traffic
             self.show_user_traffic = True
+            self.use_service_traffic_limits = False
+            self.delete_user_usage_limit_enabled = False
+        if not self.permissions.users.delete:
+            self.delete_user_usage_limit_enabled = False
+            for service_limit in self.service_limits:
+                service_limit.delete_user_usage_limit_enabled = False
         return self
 
     @property
@@ -593,6 +669,16 @@ class Admin(BaseModel):
             return v
         raise ValueError("must be an integer or a float, not a string")
 
+    @field_validator("deleted_users_usage", mode="before")
+    def cast_deleted_users_usage_to_int(cls, v):
+        if v is None:
+            return 0
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, int):
+            return v
+        raise ValueError("must be an integer or a float, not a string")
+
     @classmethod
     def get_admin(cls, token: str, db: Session):
         payload = get_admin_payload(token)
@@ -700,6 +786,10 @@ class AdminCreate(Admin):
         json_schema_extra={"example": 100},
     )
     services: Optional[List[int]] = Field(default=None, description="Service IDs to assign to this admin")
+    service_limits: Optional[List[AdminServiceTrafficLimitModify]] = Field(
+        default=None,
+        description="Per-service traffic settings for assigned services",
+    )
 
     @property
     def hashed_password(self):
@@ -720,7 +810,23 @@ class AdminModify(BaseModel):
         default=None,
         description="Whether the admin can view user traffic details in created-traffic mode",
     )
+    use_service_traffic_limits: Optional[bool] = Field(
+        default=None,
+        description="Use per-service traffic and user limits instead of global admin traffic settings",
+    )
+    delete_user_usage_limit_enabled: Optional[bool] = Field(
+        default=None,
+        description="Enable current-usage cap before this admin can delete users in created-traffic mode",
+    )
+    delete_user_usage_limit: Optional[int] = Field(
+        default=None,
+        description="Maximum current user usage allowed for deletion in created-traffic mode",
+    )
     services: Optional[List[int]] = Field(default=None, description="Replace admin's services with this list of IDs")
+    service_limits: Optional[List[AdminServiceTrafficLimitModify]] = Field(
+        default=None,
+        description="Per-service traffic settings for assigned services",
+    )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")
     subscription_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -759,6 +865,22 @@ class AdminPartialModify(AdminModify):
     show_user_traffic: Optional[bool] = Field(
         default=None,
         description="Whether the admin can view user traffic details in created-traffic mode",
+    )
+    use_service_traffic_limits: Optional[bool] = Field(
+        default=None,
+        description="Use per-service traffic and user limits instead of global admin traffic settings",
+    )
+    delete_user_usage_limit_enabled: Optional[bool] = Field(
+        default=None,
+        description="Enable current-usage cap before this admin can delete users in created-traffic mode",
+    )
+    delete_user_usage_limit: Optional[int] = Field(
+        default=None,
+        description="Maximum current user usage allowed for deletion in created-traffic mode",
+    )
+    service_limits: Optional[List[AdminServiceTrafficLimitModify]] = Field(
+        default=None,
+        description="Per-service traffic settings for assigned services",
     )
     telegram_id: Optional[int] = Field(None, description="Telegram user ID for notifications")
     subscription_domain: Optional[str] = Field(None, description="Custom subscription domain for this admin")

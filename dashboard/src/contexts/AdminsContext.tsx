@@ -38,6 +38,10 @@ type AdminsStore = {
 	updateAdmin: (username: string, payload: AdminUpdatePayload) => Promise<void>;
 	deleteAdmin: (username: string) => Promise<void>;
 	resetUsage: (username: string) => Promise<void>;
+	resetDeletedUsersUsage: (
+		username: string,
+		serviceId?: number | null,
+	) => Promise<void>;
 	disableAdmin: (username: string, reason: string) => Promise<void>;
 	enableAdmin: (username: string) => Promise<void>;
 	bulkUpdateStandardPermissions: (
@@ -208,6 +212,13 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 	async resetUsage(username) {
 		await fetch(`/admin/usage/reset/${encodeURIComponent(username)}`, {
 			method: "POST",
+		});
+		await get().fetchAdmins(undefined, { force: true });
+	},
+	async resetDeletedUsersUsage(username, serviceId) {
+		await fetch(`/admin/${encodeURIComponent(username)}/deleted-users-usage/reset`, {
+			method: "POST",
+			body: { service_id: serviceId ?? null },
 		});
 		await get().fetchAdmins(undefined, { force: true });
 	},

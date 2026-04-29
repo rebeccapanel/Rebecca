@@ -1,3 +1,5 @@
+import { AdminTrafficLimitMode } from "./Admin";
+
 export type ServiceHost = {
 	id: number;
 	remark: string;
@@ -13,6 +15,14 @@ export type ServiceAdmin = {
 	username: string;
 	used_traffic: number;
 	lifetime_used_traffic: number;
+	traffic_limit_mode: AdminTrafficLimitMode;
+	data_limit?: number | null;
+	created_traffic: number;
+	show_user_traffic: boolean;
+	users_limit?: number | null;
+	delete_user_usage_limit_enabled: boolean;
+	delete_user_usage_limit?: number | null;
+	deleted_users_usage: number;
 };
 
 export type ServiceSummary = {
