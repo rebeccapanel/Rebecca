@@ -1,4 +1,5 @@
 import {
+	Box,
 	Button,
 	ButtonGroup,
 	Popover,
@@ -10,7 +11,7 @@ import {
 	Portal,
 	Text,
 } from "@chakra-ui/react";
-import type { ReactElement, ReactNode } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 type DeleteConfirmPopoverProps = {
@@ -40,7 +41,17 @@ export const DeleteConfirmPopover = ({
 		<Popover placement="top" closeOnBlur isLazy>
 			{({ onClose }) => (
 				<>
-					<PopoverTrigger>{children}</PopoverTrigger>
+					<PopoverTrigger>
+						<Box
+							as="span"
+							display="inline-flex"
+							onClick={(event: MouseEvent<HTMLSpanElement>) =>
+								event.stopPropagation()
+							}
+						>
+							{children}
+						</Box>
+					</PopoverTrigger>
 					<Portal>
 						<PopoverContent
 							w="260px"

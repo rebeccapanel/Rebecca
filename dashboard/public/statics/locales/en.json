@@ -1475,6 +1475,8 @@
 	"userDialog.usersLimitReached": "User limit reached. You have {{active}} active users out of {{limit}} allowed.",
 	"userDialog.dataLimitExceedsMax": "Data limit {{original}} GB exceeds maximum {{max}} GB. Maximum allowed: {{max}} GB",
 	"userDialog.unlimitedNotAllowed": "Unlimited data is not allowed. Maximum allowed: {{max}} GB",
+	"userDialog.createdTrafficUnlimitedNotAllowed": "Unlimited data is not allowed while your admin traffic mode is created traffic.",
+	"userDialog.dataLimitBelowUsedTraffic": "Data limit cannot be lower than this user's used traffic ({{used}}).",
 	"userDialog.nextPlanDataLimitExceedsMax": "Next plan data limit {{original}} GB exceeds maximum {{max}} GB. Maximum allowed: {{max}} GB",
 	"userDialog.nextPlanUnlimitedNotAllowed": "Unlimited data is not allowed for next plan. Maximum allowed: {{max}} GB",
 	"username": "Username",

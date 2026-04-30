@@ -37,6 +37,17 @@ const getServiceLimit = (
 	(admin?.service_limits ?? []).find((item) => item.service_id === serviceId) ??
 	null;
 
+export const getAdminTrafficScope = (
+	admin: AdminTrafficLike | null | undefined,
+	serviceId?: number | null,
+) => {
+	if (!admin) return null;
+	if (admin.use_service_traffic_limits) {
+		return getServiceLimit(admin, serviceId);
+	}
+	return admin;
+};
+
 export const canViewUserTraffic = (
 	admin?: AdminTrafficLike | null,
 	serviceId?: number | null,

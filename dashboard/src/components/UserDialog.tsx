@@ -80,7 +80,11 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
 
 import { getPanelSettings } from "service/settings";
-import { AdminRole, UserPermissionToggle } from "types/Admin";
+import {
+	AdminRole,
+	AdminTrafficLimitMode,
+	UserPermissionToggle,
+} from "types/Admin";
 import type {
 	User,
 	UserCreate,
@@ -93,6 +97,7 @@ import { formatBytes } from "utils/formatByte";
 import {
 	canDeleteUserByTrafficCap,
 	canViewUserTraffic,
+	getAdminTrafficScope,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
 import { generateUserLinks } from "utils/userLinks";
@@ -1052,8 +1057,35 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const selectedService = selectedServiceId
 		? (services.find((service) => service.id === selectedServiceId) ?? null)
 		: null;
-	const isServiceManagedUser = Boolean(editingUser?.service_id);
 	const nonSudoSingleService = !hasPrivilegedRole && services.length === 1;
+	const getEffectiveServiceId = useCallback(() => {
+		if (isEditing) {
+			return editingUser?.service_id ?? null;
+		}
+		if (hasPrivilegedRole) {
+			return selectedServiceId;
+		}
+		return (
+			selectedServiceId ??
+			(nonSudoSingleService ? (services[0]?.id ?? null) : null)
+		);
+	}, [
+		editingUser?.service_id,
+		hasPrivilegedRole,
+		isEditing,
+		nonSudoSingleService,
+		selectedServiceId,
+		services,
+	]);
+	const currentTrafficScope = getAdminTrafficScope(
+		userData,
+		getEffectiveServiceId(),
+	);
+	const isCreatedTrafficScope = Boolean(
+		currentTrafficScope?.traffic_limit_mode ===
+			AdminTrafficLimitMode.CreatedTraffic && !hasPrivilegedRole,
+	);
+	const isServiceManagedUser = Boolean(editingUser?.service_id);
 	const showServiceSelector = hasPrivilegedRole || services.length !== 1;
 	const useTwoColumns = showServiceSelector && services.length > 0;
 	const shouldCenterForm = !useTwoColumns;
@@ -1557,6 +1589,38 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		// data_limit from schema is already in bytes
 		const dataLimitBytes = data_limit || 0;
+		const setDataLimitError = (message: string) => {
+			setError(message);
+			setLoading(false);
+			form.setError("data_limit", {
+				type: "manual",
+				message,
+			});
+		};
+
+		if (isCreatedTrafficScope && dataLimitBytes <= 0) {
+			setDataLimitError(
+				t(
+					"userDialog.createdTrafficUnlimitedNotAllowed",
+					"Unlimited data is not allowed while your admin traffic mode is created traffic.",
+				),
+			);
+			return;
+		}
+
+		if (isCreatedTrafficScope && isEditing && editingUser) {
+			const usedTraffic = Math.max(0, editingUser.used_traffic ?? 0);
+			if (dataLimitBytes > 0 && dataLimitBytes < usedTraffic) {
+				setDataLimitError(
+					t("userDialog.dataLimitBelowUsedTraffic", {
+						used: formatBytes(usedTraffic, 2),
+						defaultValue:
+							"Data limit cannot be lower than this user's used traffic ({{used}}).",
+					}),
+				);
+				return;
+			}
+		}
 
 		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
 			// If unlimited (0) is requested but not allowed, show error
@@ -1565,12 +1629,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				const errorMessage = t("userDialog.unlimitedNotAllowed", {
 					max: maxGb,
 				});
-				setError(errorMessage);
-				setLoading(false);
-				form.setError("data_limit", {
-					type: "manual",
-					message: errorMessage,
-				});
+				setDataLimitError(errorMessage);
 				return;
 			}
 			// If exceeds max limit, show error
@@ -1581,12 +1640,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					original: originalGb,
 					max: maxGb,
 				});
-				setError(errorMessage);
-				setLoading(false);
-				form.setError("data_limit", {
-					type: "manual",
-					message: errorMessage,
-				});
+				setDataLimitError(errorMessage);
 				return;
 			}
 		}

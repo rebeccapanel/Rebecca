@@ -1462,6 +1462,8 @@
 	"userDialog.usersLimitReached": "حداکثر تعداد کاربران رسیده است. شما {{active}} کاربر فعال از {{limit}} مجاز دارید.",
 	"userDialog.dataLimitExceedsMax": "حداکثر حجم {{original}} گیگابایت از حداکثر مجاز {{max}} گیگابایت بیشتر است. حداکثر مجاز: {{max}} گیگابایت",
 	"userDialog.unlimitedNotAllowed": "حجم نامحدود مجاز نیست. حداکثر مجاز: {{max}} گیگابایت",
+	"userDialog.createdTrafficUnlimitedNotAllowed": "در حالت حجم ساخته‌شده، ساخت یا ویرایش کاربر با حجم نامحدود مجاز نیست.",
+	"userDialog.dataLimitBelowUsedTraffic": "حجم کاربر نمی‌تواند کمتر از مصرف فعلی او باشد ({{used}}).",
 	"userDialog.nextPlanDataLimitExceedsMax": "حداکثر حجم پلن بعدی {{original}} گیگابایت از حداکثر مجاز {{max}} گیگابایت بیشتر است. حداکثر مجاز: {{max}} گیگابایت",
 	"userDialog.nextPlanUnlimitedNotAllowed": "حجم نامحدود برای پلن بعدی مجاز نیست. حداکثر مجاز: {{max}} گیگابایت",
 	"username": "نام کاربری",
