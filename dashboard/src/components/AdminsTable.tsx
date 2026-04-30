@@ -91,6 +91,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import AdminPermissionsModal from "./AdminPermissionsModal";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 
 const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
 const ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted";
@@ -352,13 +353,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		openAdminDetails,
 		adminInDetails,
 	} = useAdminsStore();
-	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
-	const {
-		isOpen: isDeleteDialogOpen,
-		onOpen: openDeleteDialog,
-		onClose: closeDeleteDialog,
-	} = useDisclosure();
 	const {
 		isOpen: isDisableDialogOpen,
 		onOpen: openDisableDialog,
@@ -369,7 +364,6 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		onOpen: openPermissionsModal,
 		onClose: closePermissionsModal,
 	} = useDisclosure();
-	const [adminToDelete, setAdminToDelete] = useState<Admin | null>(null);
 	const [adminToDisable, setAdminToDisable] = useState<Admin | null>(null);
 	const [disableReason, setDisableReason] = useState("");
 	const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
@@ -554,18 +548,11 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		}
 	};
 
-	const startDeleteDialog = (admin: Admin) => {
-		setAdminToDelete(admin);
-		openDeleteDialog();
-	};
-
-	const handleDeleteAdmin = async () => {
-		if (!adminToDelete) return;
+	const handleDeleteAdmin = async (admin: Admin) => {
 		try {
-			await deleteAdmin(adminToDelete.username);
+			await deleteAdmin(admin.username);
 			generateSuccessMessage(t("admins.deleteSuccess", "Admin removed"), toast);
-			closeDeleteDialog();
-			setAdminToDelete(null);
+			fetchAdmins();
 		} catch (error) {
 			generateErrorMessage(error, toast);
 		}
@@ -1319,19 +1306,25 @@ export const AdminsTable: FC<TableProps> = (props) => {
 													</Tooltip>
 												)}
 												{showDeleteAction && canManageThisAdmin && (
-													<Tooltip label={t("delete")}>
-														<IconButton
-															aria-label={t("delete")}
-															icon={<TrashIcon width={20} />}
-															variant="ghost"
-															size="sm"
-															colorScheme="red"
-															onClick={(event) => {
-																event.stopPropagation();
-																startDeleteDialog(admin);
-															}}
-														/>
-													</Tooltip>
+													<DeleteConfirmPopover
+														message={t(
+															"admins.confirmDeleteMessage",
+															"Are you sure you want to delete {{username}}?",
+															{ username: admin.username },
+														)}
+														onConfirm={() => handleDeleteAdmin(admin)}
+													>
+														<Tooltip label={t("delete")}>
+															<IconButton
+																aria-label={t("delete")}
+																icon={<TrashIcon width={20} />}
+																variant="ghost"
+																size="sm"
+																colorScheme="red"
+																onClick={(event) => event.stopPropagation()}
+															/>
+														</Tooltip>
+													</DeleteConfirmPopover>
 												)}
 											</HStack>
 										</Stack>
@@ -2192,19 +2185,33 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																				)}
 																			{showDeleteAction &&
 																				canManageThisAdmin && (
-																					<Tooltip label={t("delete")}>
-																						<IconButton
-																							aria-label={t("delete")}
-																							icon={<TrashIcon width={20} />}
-																							variant="ghost"
-																							size="sm"
-																							colorScheme="red"
-																							onClick={(event) => {
-																								event.stopPropagation();
-																								startDeleteDialog(admin);
-																							}}
-																						/>
-																					</Tooltip>
+																					<DeleteConfirmPopover
+																						message={t(
+																							"admins.confirmDeleteMessage",
+																							"Are you sure you want to delete {{username}}?",
+																							{
+																								username: admin.username,
+																							},
+																						)}
+																						onConfirm={() =>
+																							handleDeleteAdmin(admin)
+																						}
+																					>
+																						<Tooltip label={t("delete")}>
+																							<IconButton
+																								aria-label={t("delete")}
+																								icon={
+																									<TrashIcon width={20} />
+																								}
+																								variant="ghost"
+																								size="sm"
+																								colorScheme="red"
+																								onClick={(event) =>
+																									event.stopPropagation()
+																								}
+																							/>
+																						</Tooltip>
+																					</DeleteConfirmPopover>
 																				)}
 																		</HStack>
 																	</Td>
@@ -2373,18 +2380,26 @@ export const AdminsTable: FC<TableProps> = (props) => {
 									</Button>
 								)}
 								{showDelete && (
-									<Button
-										variant="ghost"
-										justifyContent="flex-start"
-										colorScheme="red"
-										leftIcon={<DeleteIcon />}
-										onClick={() => {
-											startDeleteDialog(ctxAdmin);
+									<DeleteConfirmPopover
+										message={t(
+											"admins.confirmDeleteMessage",
+											"Are you sure you want to delete {{username}}?",
+											{ username: ctxAdmin.username },
+										)}
+										onConfirm={async () => {
+											await handleDeleteAdmin(ctxAdmin);
 											closeContextMenu();
 										}}
 									>
-										{t("delete", "Delete")}
-									</Button>
+										<Button
+											variant="ghost"
+											justifyContent="flex-start"
+											colorScheme="red"
+											leftIcon={<DeleteIcon />}
+										>
+											{t("delete", "Delete")}
+										</Button>
+									</DeleteConfirmPopover>
 								)}
 							</Stack>
 						</Box>
@@ -2446,46 +2461,6 @@ export const AdminsTable: FC<TableProps> = (props) => {
 					</ModalFooter>
 				</ModalContent>
 			</Modal>
-
-			<AlertDialog
-				isOpen={isDeleteDialogOpen}
-				leastDestructiveRef={deleteCancelRef}
-				onClose={closeDeleteDialog}
-			>
-				<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
-					<AlertDialogContent
-						bg={dialogBg}
-						borderWidth="1px"
-						borderColor={dialogBorderColor}
-					>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("admins.confirmDeleteTitle", "Delete admin")}
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							{t(
-								"admins.confirmDeleteMessage",
-								"Are you sure you want to delete {{username}}?",
-								{
-									username: adminToDelete?.username ?? "",
-								},
-							)}
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<Button
-								ref={deleteCancelRef}
-								onClick={closeDeleteDialog}
-								variant="ghost"
-								colorScheme="primary"
-							>
-								{t("cancel")}
-							</Button>
-							<Button colorScheme="red" onClick={handleDeleteAdmin} ml={3}>
-								{t("delete")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
 			<AlertDialog
 				isOpen={isDisableDialogOpen}
 				leastDestructiveRef={disableCancelRef}

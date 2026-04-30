@@ -187,6 +187,27 @@ def test_imported_3xui_subadress_is_primary_subscription_link(auth_client):
     assert username_legacy_resp.status_code == 200, username_legacy_resp.text
 
 
+def test_users_search_matches_imported_3xui_subadress(auth_client):
+    with GetDB() as db:
+        imported = db_models.User(
+            username="search_sub_user",
+            credential_key="abcdefabcdefabcdefabcdefabcdef12",
+            subadress="legacy-search-sub",
+            status=UserStatus.active,
+            used_traffic=0,
+            data_limit=0,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            proxies=[],
+        )
+        db.add(imported)
+        db.commit()
+
+    response = auth_client.get("/api/users", params={"search": "legacy-search-sub"})
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [user["username"] for user in payload["users"]] == ["search_sub_user"]
+
+
 def test_service_subscription_links_fallback_to_database_hosts(auth_client):
     inbound = {
         "tag": "svc-vless",

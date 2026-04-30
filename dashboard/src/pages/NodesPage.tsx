@@ -79,7 +79,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
-import { DeleteNodeModal } from "../components/DeleteNodeModal";
+import { DeleteConfirmPopover } from "../components/DeleteConfirmPopover";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
@@ -202,6 +202,7 @@ export const NodesPage: FC = () => {
 		resetNodeUsage,
 		updateMasterNode,
 		resetMasterUsage,
+		deleteNode,
 		setDeletingNode,
 	} = useNodes();
 	const queryClient = useQueryClient();
@@ -418,6 +419,29 @@ export const NodesPage: FC = () => {
 			},
 			onSettled: () => {
 				setEditingNode(null);
+			},
+		},
+	);
+
+	const { isLoading: isDeletingNode, mutate: deleteNodeMutate } = useMutation(
+		async (node: NodeType) => {
+			setDeletingNode(node);
+			return deleteNode();
+		},
+		{
+			onSuccess: (_result, node) => {
+				generateSuccessMessage(
+					t("deleteNode.deleteSuccess", { name: node.name }),
+					toast,
+				);
+				queryClient.invalidateQueries(FetchNodesQueryKey);
+				refetchNodes();
+			},
+			onError: (err) => {
+				generateErrorMessage(err, toast);
+			},
+			onSettled: () => {
+				setDeletingNode(null);
 			},
 		},
 	);
@@ -1798,12 +1822,19 @@ export const NodesPage: FC = () => {
 												icon={<EditIconStyled />}
 												onClick={() => setEditingNode(node)}
 											/>
-											<IconButton
-												aria-label={t("delete")}
-												icon={<DeleteIconStyled />}
-												colorScheme="red"
-												onClick={() => setDeletingNode(node)}
-											/>
+											<DeleteConfirmPopover
+												message={t("deleteNode.prompt", {
+													name: node.name,
+												})}
+												isLoading={isDeletingNode}
+												onConfirm={() => deleteNodeMutate(node)}
+											>
+												<IconButton
+													aria-label={t("delete")}
+													icon={<DeleteIconStyled />}
+													colorScheme="red"
+												/>
+											</DeleteConfirmPopover>
 										</ButtonGroup>
 									</HStack>
 								</VStack>
@@ -2104,9 +2135,6 @@ export const NodesPage: FC = () => {
 					</ModalContent>
 				</Modal>
 			)}
-			<DeleteNodeModal
-				deleteCallback={() => queryClient.invalidateQueries(FetchNodesQueryKey)}
-			/>
 		</VStack>
 	);
 };

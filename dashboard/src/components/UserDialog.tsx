@@ -99,6 +99,7 @@ import { generateUserLinks } from "utils/userLinks";
 
 import { z } from "zod";
 import { DateTimePicker } from "./DateTimePicker";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { DeleteIcon } from "./DeleteUserModal";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
@@ -328,7 +329,7 @@ const CREDENTIAL_KEY_REGEX = /^[0-9a-fA-F]{32}$/;
 
 const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
 
-const usernameRegex = /^[A-Za-z0-9_]{3,32}$/;
+const usernameRegex = /^[A-Za-z0-9._@-]{3,32}$/;
 const BYTES_PER_GB = 1073741824;
 const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
@@ -365,7 +366,7 @@ const buildSchema = (isEditing: boolean) => {
 			? z.string().min(1)
 			: z.string().regex(usernameRegex, {
 					message:
-						"Username only can be 3 to 32 characters and contain a-z, A-Z, 0-9, and underscores in between.",
+						"Username only can be 3 to 32 characters and contain a-z, A-Z, 0-9, underscores, hyphens, dots, or @.",
 				}),
 
 		flow: z
@@ -612,11 +613,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		fetchUserUsage,
 
+		deleteUser,
+
 		onEditingUser,
 
 		createUserWithService,
-
-		onDeletingUser,
 
 		users: usersState,
 
@@ -637,6 +638,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const limitReached = isUserLimitReached && !isEditing;
 
 	const [loading, setLoading] = useState(false);
+	const [deleteLoading, setDeleteLoading] = useState(false);
 
 	const [error, setError] = useState<string | null>("");
 
@@ -683,8 +685,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		const addonColor = colorMode === "dark" ? "gray.200" : "gray.600";
 
 		return (
-			<InputGroup size="sm" dir="ltr" w="full">
-				<Box position="relative" flex="1">
+			<InputGroup size="sm" dir="ltr" w="full" h="32px">
+				<Box position="relative" flex="1" h="32px" minW={0}>
 					<ChakraInput
 						value={args.value}
 						onChange={args.onChange}
@@ -694,6 +696,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 						isDisabled={args.disabled}
 						borderRadius={UNIT_RADIUS}
 						borderEndRadius="0"
+						h="32px"
+						minH="32px"
 						dir="ltr"
 						textAlign={isRTL ? "right" : "left"}
 						pr={args.onStep ? "2.5rem" : undefined}
@@ -705,6 +709,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 							insetInlineEnd="1px"
 							top="1px"
 							bottom="1px"
+							h="30px"
 							borderInlineStartWidth="1px"
 							borderColor={addonBorder}
 							bg={addonBg}
@@ -719,7 +724,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								variant="ghost"
 								size="xs"
 								minW="auto"
+								minH="0"
 								h="50%"
+								p={0}
 								borderRadius="0"
 								isDisabled={args.disabled}
 								onClick={() => args.onStep?.(1)}
@@ -730,7 +737,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								variant="ghost"
 								size="xs"
 								minW="auto"
+								minH="0"
 								h="50%"
+								p={0}
 								borderRadius="0"
 								isDisabled={args.disabled}
 								onClick={() => args.onStep?.(-1)}
@@ -747,6 +756,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					borderEndRadius={UNIT_RADIUS}
 					px={3}
 					fontSize="sm"
+					h="32px"
+					minH="32px"
 					userSelect="none"
 				>
 					{args.unit}
@@ -1945,6 +1956,28 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		});
 	};
 
+	const handleDeleteUser = async () => {
+		if (!canDeleteUsersVisible || !editingUser) {
+			return;
+		}
+		setDeleteLoading(true);
+		try {
+			await deleteUser(editingUser as unknown as UserListItem);
+			toast({
+				title: t("deleteUser.deleteSuccess", {
+					username: editingUser.username,
+				}),
+				status: "success",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			onClose();
+		} finally {
+			setDeleteLoading(false);
+		}
+	};
+
 	const disabled = loading || limitReached || userManagementLocked;
 	const serviceSelectionDisabled = disabled || (isEditing && requiresServiceScope);
 	const submitDisabled = disabled || !form.formState.isValid;
@@ -2251,7 +2284,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																			placement="top"
 																			label={t(
 																				"userDialog.usernameHint",
-																				"Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between.",
+																				"Username only can be 3 to 32 characters and contain a-z, 0-9, underscores, hyphens, dots, or @.",
 																			)}
 																		>
 																			<chakra.span
@@ -4131,21 +4164,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										{isEditing && (
 											<>
 												{canDeleteUsersVisible && (
-													<Tooltip label={t("delete")} placement="top">
-														<IconButton
-															aria-label="Delete"
-															size="sm"
-															onClick={() => {
-																onDeletingUser(
-																	editingUser as unknown as UserListItem,
-																);
-
-																onClose();
-															}}
-														>
-															<DeleteIcon />
-														</IconButton>
-													</Tooltip>
+													<DeleteConfirmPopover
+														message={t("deleteUser.prompt", {
+															username: editingUser?.username ?? "",
+														})}
+														isLoading={deleteLoading}
+														onConfirm={handleDeleteUser}
+													>
+														<Tooltip label={t("delete")} placement="top">
+															<IconButton aria-label="Delete" size="sm">
+																<DeleteIcon />
+															</IconButton>
+														</Tooltip>
+													</DeleteConfirmPopover>
 												)}
 
 												{canResetUsageVisible && (

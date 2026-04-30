@@ -341,7 +341,7 @@ export const Filters: FC<FilterProps> = ({
 							<Tooltip
 								label={t(
 									"users.searchHelp",
-									"Search by username, key, token, UUID, config link, or subscription URL.",
+									"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
 								)}
 								placement="top"
 								hasArrow

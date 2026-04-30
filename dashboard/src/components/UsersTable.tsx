@@ -74,6 +74,7 @@ import { generateUserLinks } from "utils/userLinks";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 
 type TranslateFn = (key: string, defaultValue?: string) => string;
 
@@ -362,7 +363,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		onFilterChange,
 		loading,
 		isUserLimitReached,
-		onDeletingUser,
+		deleteUser,
 		resetDataUsage,
 		revokeSubscription,
 		refetchUsers,
@@ -710,6 +711,29 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			toast({
 				title: t("usersTable.enableUser", "Enable user"),
 				status: "success",
+			});
+			refetchUsers(true);
+		} catch (error: any) {
+			toast({
+				title: error?.data?.detail || error?.message || t("error"),
+				status: "error",
+			});
+		} finally {
+			setContextAction(null);
+			closeContextMenu();
+		}
+	};
+
+	const handleDeleteUser = async (user: UserListItem) => {
+		setContextAction("delete");
+		try {
+			await deleteUser(user);
+			toast({
+				title: t("deleteUser.deleteSuccess", { username: user.username }),
+				status: "success",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
 			});
 			refetchUsers(true);
 		} catch (error: any) {
@@ -1082,7 +1106,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 												onDelete={
 													canDeleteUserActions &&
 													canDeleteUserByTrafficCap(userData, user)
-														? () => onDeletingUser(user)
+														? () => handleDeleteUser(user)
 														: undefined
 												}
 											/>
@@ -1165,7 +1189,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								onDelete={
 									canDeleteUserActions &&
 									canDeleteUserByTrafficCap(userData, user)
-										? () => onDeletingUser(user)
+										? () => handleDeleteUser(user)
 										: undefined
 								}
 								isRTL={isRTL}
@@ -1493,18 +1517,22 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							)}
 						{canDeleteUserActions &&
 							canDeleteUserByTrafficCap(userData, contextMenu.user) && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								colorScheme="red"
-								leftIcon={<DeleteIcon />}
-								onClick={() => {
-									onDeletingUser(contextMenu.user!);
-									closeContextMenu();
-								}}
+							<DeleteConfirmPopover
+								message={t("deleteUser.prompt", {
+									username: contextMenu.user.username,
+								})}
+								isLoading={contextAction === "delete"}
+								onConfirm={() => handleDeleteUser(contextMenu.user!)}
 							>
-								{t("deleteUser.title", "Delete user")}
-							</Button>
+								<Button
+									variant="ghost"
+									justifyContent="flex-start"
+									colorScheme="red"
+									leftIcon={<DeleteIcon />}
+								>
+									{t("deleteUser.title", "Delete user")}
+								</Button>
+							</DeleteConfirmPopover>
 						)}
 					</Stack>
 				</Box>
@@ -1805,7 +1833,7 @@ const MobileUserCard: FC<UserCardProps> = ({
 type ActionButtonsUser = User | UserListItem;
 type ActionButtonsProps = {
 	user: ActionButtonsUser;
-	onDelete?: () => void;
+	onDelete?: () => void | Promise<void>;
 	onEdit?: () => void;
 	isRTL?: boolean;
 };
@@ -1935,18 +1963,23 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				</Tooltip>
 			)}
 			{onDelete && (
-				<Tooltip label={t("deleteUser.title")} placement="top">
-					<IconButton
-						p="0 !important"
-						aria-label="delete user"
-						variant="ghost"
-						colorScheme="red"
-						size={{ base: "sm", md: "md" }}
-						onClick={onDelete}
-					>
-						<DeleteIcon />
-					</IconButton>
-				</Tooltip>
+				<DeleteConfirmPopover
+					message={t("deleteUser.prompt", { username: user.username })}
+					onConfirm={onDelete}
+				>
+					<Tooltip label={t("deleteUser.title")} placement="top">
+						<IconButton
+							p="0 !important"
+							aria-label="delete user"
+							variant="ghost"
+							colorScheme="red"
+							size={{ base: "sm", md: "md" }}
+							onClick={(event) => event.stopPropagation()}
+						>
+							<DeleteIcon />
+						</IconButton>
+					</Tooltip>
+				</DeleteConfirmPopover>
 			)}
 		</HStack>
 	);

@@ -492,6 +492,7 @@ def _apply_search_filter(query: Query, search: Optional[str]) -> Query:
 
     search_clauses = [
         User.username.ilike(like_pattern),
+        User.subadress.ilike(like_pattern),
         User.note.ilike(like_pattern),
         User.credential_key.ilike(like_pattern),
         User.telegram_id.ilike(like_pattern),
@@ -654,6 +655,8 @@ def _filter_users_in_memory(
             if u.username and search_lower in u.username.lower():
                 return True
             if u.note and search_lower in u.note.lower():
+                return True
+            if getattr(u, "subadress", None) and search_lower in str(u.subadress).lower():
                 return True
             if getattr(u, "telegram_id", None) and search_lower in str(u.telegram_id).lower():
                 return True
@@ -834,6 +837,7 @@ def get_users_list_rows(
             User.admin_id.label("admin_id"),
             Admin.username.label("admin_username"),
             User.credential_key.label("credential_key"),
+            User.subadress.label("subadress"),
         )
         .select_from(User)
         .outerjoin(reseted_usage_subq, reseted_usage_subq.c.user_id == User.id)

@@ -49,6 +49,7 @@ import {
 	QuestionMarkCircleIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
+import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
 import { JsonEditor } from "components/JsonEditor";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { shadowsocksMethods } from "constants/Proxies";
@@ -2935,15 +2936,23 @@ export const InboundFormModal: FC<Props> = ({
 				>
 					{isEditMode && onDelete && (
 						<HStack spacing={3}>
-							<Button
-								variant="ghost"
-								colorScheme="red"
-								onClick={onDelete}
+							<DeleteConfirmPopover
+								message={t(
+									"inbounds.confirmDelete",
+									"Are you sure you want to delete this inbound?",
+								)}
 								isLoading={isDeleting}
 								isDisabled={isSubmitting}
+								onConfirm={onDelete}
 							>
-								{t("common.delete", "Delete")}
-							</Button>
+								<Button
+									variant="ghost"
+									colorScheme="red"
+									isDisabled={isSubmitting}
+								>
+									{t("common.delete", "Delete")}
+								</Button>
+							</DeleteConfirmPopover>
 							{onClone && (
 								<Button
 									variant="outline"
