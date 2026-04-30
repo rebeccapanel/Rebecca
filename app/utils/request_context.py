@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from typing import Optional
 
 from fastapi import Request
+from starlette.requests import HTTPConnection
 
 
 subscription_request_origin: ContextVar[Optional[str]] = ContextVar(
@@ -19,8 +20,12 @@ def _first_header_value(value: Optional[str]) -> Optional[str]:
     return value.split(",", 1)[0].strip() or None
 
 
-def get_request_origin(request: Request) -> str:
+def get_request_origin(request: HTTPConnection) -> str:
     proto = _first_header_value(request.headers.get("x-forwarded-proto")) or request.url.scheme
+    if proto == "ws":
+        proto = "http"
+    elif proto == "wss":
+        proto = "https"
     host = _first_header_value(request.headers.get("x-forwarded-host")) or request.headers.get("host")
     if not host:
         host = request.url.netloc
@@ -40,7 +45,7 @@ async def capture_subscription_request_origin(request: Request):
 
 
 @contextmanager
-def use_subscription_request_origin(request: Request):
+def use_subscription_request_origin(request: HTTPConnection):
     token = subscription_request_origin.set(get_request_origin(request))
     try:
         yield

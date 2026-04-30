@@ -3,13 +3,14 @@ from functools import partial
 from typing import Union
 
 from sqlalchemy import and_, bindparam, insert, select, update
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.db import GetDB, crud
 from app.db.models import Node, NodeUsage, System
 from app.jobs.usage.collectors import get_outbounds_stats
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.jobs.usage.outbound_traffic import _persist_outbound_traffic
-from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
+from app.jobs.usage.utils import hour_bucket, is_retryable_db_error, retry_delay, safe_execute, utcnow_naive
 from app.models.node import NodeResponse, NodeStatus
 from app.runtime import logger, xray
 from app.utils import report
@@ -208,24 +209,33 @@ def _persist_node_stats_in_session(db, params: list, node_id: Union[int, None], 
 
 
 def _persist_node_usage_batch(api_params: dict, total_up: int, total_down: int):
-    created_at = hour_bucket()
-    status_events = []
+    max_retries = 8
+    tries = 0
+    while True:
+        created_at = hour_bucket()
+        status_events = []
+        try:
+            with GetDB() as db:
+                stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
+                db.execute(stmt)
 
-    with GetDB() as db:
-        stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
-        db.execute(stmt)
+                _persist_outbound_traffic(db, api_params)
 
-        _persist_outbound_traffic(db, api_params)
+                if not DISABLE_RECORDING_NODE_USAGE:
+                    for node_id, params in api_params.items():
+                        limited, cleared, payload = _persist_node_stats_in_session(db, params, node_id, created_at)
+                        if limited or cleared or payload:
+                            status_events.append((node_id, limited, cleared, payload))
 
-        if not DISABLE_RECORDING_NODE_USAGE:
-            for node_id, params in api_params.items():
-                limited, cleared, payload = _persist_node_stats_in_session(db, params, node_id, created_at)
-                if limited or cleared or payload:
-                    status_events.append((node_id, limited, cleared, payload))
+                db.commit()
 
-        db.commit()
-
-    return status_events
+            return status_events
+        except (OperationalError, SQLTimeoutError) as exc:
+            tries += 1
+            if not is_retryable_db_error(exc) or tries >= max_retries:
+                raise
+            logger.warning("Retryable database error while recording node usage, retrying (%s/%s)...", tries, max_retries)
+            retry_delay(tries)
 
 
 def _dispatch_node_limit_events(status_events):
