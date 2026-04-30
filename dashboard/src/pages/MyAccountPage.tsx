@@ -330,6 +330,68 @@ const ServiceLimitPanel: React.FC<{
 	);
 };
 
+const ServiceBalanceCard: React.FC<{
+	service: MyAccountServiceLimit;
+	t: (key: string, fallback?: string) => string;
+}> = ({ service, t }) => {
+	const labels = getTrafficLabels(t, service.traffic_basis);
+	const limit = service.data_limit ?? 0;
+	const remaining =
+		service.remaining_data ?? Math.max(limit - service.used_traffic, 0);
+	const remainingText =
+		service.data_limit === null
+			? t("myaccount.unlimited")
+			: formatBytes(remaining, 2);
+	const limitText =
+		service.data_limit === null
+			? t("myaccount.unlimited")
+			: formatBytes(limit, 2);
+
+	return (
+		<Box
+			borderWidth="1px"
+			borderRadius="lg"
+			p={4}
+			bg="surface.light"
+			_dark={{ bg: "surface.dark" }}
+		>
+			<HStack justify="space-between" align="start" spacing={3} mb={3}>
+				<Box minW={0}>
+					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+						{t("myaccount.service", "Service")}
+					</Text>
+					<Text fontWeight="semibold" fontSize="lg" noOfLines={1}>
+						{service.service_name}
+					</Text>
+				</Box>
+				<Badge colorScheme={service.traffic_basis === "created_traffic" ? "purple" : "blue"}>
+					{labels.modeLabel}
+				</Badge>
+			</HStack>
+			<Text fontSize="2xl" fontWeight="bold">
+				{remainingText}
+			</Text>
+			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				{t("myaccount.remainingFromService", "remaining from this service")}
+			</Text>
+			<SimpleGrid columns={2} spacing={3} mt={4}>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{labels.usedLabel}
+					</Text>
+					<Text fontWeight="semibold">{formatBytes(service.used_traffic, 2)}</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{labels.totalLabel}
+					</Text>
+					<Text fontWeight="semibold">{limitText}</Text>
+				</Box>
+			</SimpleGrid>
+		</Box>
+	);
+};
+
 const ChangePasswordModal: React.FC<{
 	isOpen: boolean;
 	onClose: () => void;
@@ -715,6 +777,7 @@ export const MyAccountPage: React.FC = () => {
 	const dailyTotalLabel = isPerServiceLimits
 		? t("myaccount.totalServiceTraffic", "Total service traffic")
 		: trafficLabels.dailyTotalLabel;
+	const showServiceBalances = isPerServiceLimits || serviceLimits.length > 0;
 
 	return (
 		<VStack spacing={4} align="stretch">
@@ -790,6 +853,39 @@ export const MyAccountPage: React.FC = () => {
 					</SimpleGrid>
 				</GridItem>
 			</Grid>
+
+			{showServiceBalances && (
+				<ChartBox title={t("myaccount.serviceBalances", "Service balances")}>
+					{serviceLimits.length ? (
+						<>
+							<Text
+								fontSize="sm"
+								color="gray.500"
+								_dark={{ color: "gray.400" }}
+								mb={3}
+							>
+								{t(
+									"myaccount.serviceBalancesHint",
+									"Remaining traffic is shown separately for each assigned service.",
+								)}
+							</Text>
+							<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+								{serviceLimits.map((service) => (
+									<ServiceBalanceCard
+										key={service.service_id}
+										service={service}
+										t={t}
+									/>
+								))}
+							</SimpleGrid>
+						</>
+					) : (
+						<Text color="gray.500" _dark={{ color: "gray.400" }}>
+							{t("noData")}
+						</Text>
+					)}
+				</ChartBox>
+			)}
 
 			<Grid
 				templateColumns={{
