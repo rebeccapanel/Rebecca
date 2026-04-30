@@ -8,13 +8,7 @@ MANAGED_START = "<!-- REBECCA_RELEASE_ASSETS_START -->"
 MANAGED_END = "<!-- REBECCA_RELEASE_ASSETS_END -->"
 
 ASSETS = [
-    ("Linux", "386", "rebecca-linux-386.tar.gz"),
     ("Linux", "amd64", "rebecca-linux-amd64.tar.gz"),
-    ("Linux", "arm64", "rebecca-linux-arm64.tar.gz"),
-    ("Linux", "armv5", "rebecca-linux-armv5.tar.gz"),
-    ("Linux", "armv6", "rebecca-linux-armv6.tar.gz"),
-    ("Linux", "armv7", "rebecca-linux-armv7.tar.gz"),
-    ("Linux", "s390x", "rebecca-linux-s390x.tar.gz"),
     ("Windows", "amd64", "rebecca-windows-amd64.zip"),
 ]
 
