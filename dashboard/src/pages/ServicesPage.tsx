@@ -114,6 +114,18 @@ const NO_SERVICE_OPTION_VALUE = "__no_service__";
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 const MB_IN_BYTES = 1024 * 1024;
 
+const formatGigabytes = (
+	bytes?: number | null,
+	unlimitedLabel = "Unlimited",
+) => {
+	const value = Number(bytes ?? 0);
+	if (!Number.isFinite(value) || value <= 0) {
+		return unlimitedLabel;
+	}
+	const gb = value / GB_IN_BYTES;
+	return `${Number.isInteger(gb) ? gb : Number(gb.toFixed(2))} GB`;
+};
+
 const ServiceDialog: FC<ServiceDialogProps> = ({
 	isOpen,
 	onClose,
@@ -1423,8 +1435,15 @@ const ServicesPage: FC = () => {
 												<Flex justify="space-between" gap={3}>
 													<Text fontWeight="medium">{link.username}</Text>
 													<Text fontSize="sm" color="gray.500">
-														{formatBytes(link.used_traffic)} /{" "}
-														{formatBytes(link.lifetime_used_traffic)}
+														{link.traffic_limit_mode ===
+														AdminTrafficLimitMode.CreatedTraffic
+															? formatBytes(link.created_traffic)
+															: formatBytes(link.used_traffic)}{" "}
+														/{" "}
+														{formatGigabytes(
+															link.data_limit,
+															t("common.unlimited", "Unlimited"),
+														)}
 													</Text>
 												</Flex>
 												<Flex
