@@ -417,6 +417,50 @@ def test_3xui_import_assigns_selected_service(auth_client, tmp_path):
         assert imported.service_id == service.id
 
 
+def test_3xui_import_accepts_hyphenated_usernames_without_runtime_warning(auth_client, tmp_path):
+    owner = _create_admin("hyphen_owner")
+    source_client = _build_client(
+        protocol="vless",
+        email="t-xwzp6p19",
+        sub_id=f"sub-{uuid.uuid4().hex[:8]}",
+        total_bytes=1024,
+        expire_ms=int((datetime.now(timezone.utc) + timedelta(days=5)).timestamp() * 1000),
+    )
+    source_db = tmp_path / "hyphen_username.db"
+    _build_3xui_db(
+        source_db,
+        [
+            {
+                "id": 44,
+                "remark": "hyphen inbound",
+                "port": 2044,
+                "protocol": "vless",
+                "clients": [source_client],
+            }
+        ],
+    )
+
+    preview = _upload_preview(auth_client, source_db)
+    response = auth_client.post(
+        "/api/settings/database/3xui/import",
+        json={
+            "preview_id": preview["preview_id"],
+            "inbounds": [
+                {"inbound_id": 44, "admin_id": owner.id, "service_id": None, "username_conflict_mode": "rename"}
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    job = _wait_for_job(auth_client, response.json()["job_id"])
+    assert job["status"] == "completed"
+    assert job["result"]["warnings"] == []
+
+    with GetDB() as db:
+        imported = crud.get_user(db, "t-xwzp6p19")
+        assert imported is not None
+        assert imported.username == "t-xwzp6p19"
+
+
 def test_3xui_import_renames_username_conflicts(auth_client, tmp_path):
     owner = _create_admin("rename_owner")
     username = f"rename_{uuid.uuid4().hex[:8]}@example.com"
