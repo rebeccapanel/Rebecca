@@ -40,6 +40,7 @@ import {
 	Text,
 	Tooltip,
 	useClipboard,
+	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
@@ -205,6 +206,8 @@ export const NodesPage: FC = () => {
 	} = useNodes();
 	const queryClient = useQueryClient();
 	const toast = useToast();
+	const nodeCardBg = useColorModeValue("surface.light", "surface.dark");
+	const nodeCardBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const [editingNode, setEditingNode] = useState<NodeType | null>(null);
 	const [isAddNodeOpen, setAddNodeOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -1405,7 +1408,9 @@ export const NodesPage: FC = () => {
 						(skeletonKey) => (
 							<Box
 								key={skeletonKey}
+								bg={nodeCardBg}
 								borderWidth="1px"
+								borderColor={nodeCardBorder}
 								borderRadius="lg"
 								p={6}
 								boxShadow="sm"
@@ -1432,7 +1437,9 @@ export const NodesPage: FC = () => {
 					{masterMatchesSearch && (
 						<Box
 							key="master-node"
+							bg={nodeCardBg}
 							borderWidth="1px"
+							borderColor={nodeCardBorder}
 							borderRadius="lg"
 							p={viewMode === "list" ? 4 : 6}
 							boxShadow="sm"
@@ -1805,7 +1812,9 @@ export const NodesPage: FC = () => {
 							return (
 								<Box
 									key={node.id ?? node.name}
+									bg={nodeCardBg}
 									borderWidth="1px"
+									borderColor={nodeCardBorder}
 									borderRadius="lg"
 									p={viewMode === "list" ? 4 : 6}
 									boxShadow="sm"
@@ -1853,7 +1862,9 @@ export const NodesPage: FC = () => {
 						})
 					) : (
 						<Box
+							bg={nodeCardBg}
 							borderWidth="1px"
+							borderColor={nodeCardBorder}
 							borderRadius="lg"
 							p={6}
 							boxShadow="sm"
