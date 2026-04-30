@@ -11,6 +11,7 @@ from app.models.admin import AdminRole, AdminTrafficLimitMode
 
 
 DELETE_CAP_EXCEEDED_MESSAGE = "User traffic is greater than the allowed delete limit."
+CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE = "Created traffic limit would be exceeded."
 
 
 def _dialect_name(db: Optional[Session]) -> str:
@@ -87,6 +88,19 @@ def traffic_scope_created_limit_reached(scope: Any) -> bool:
     return int(getattr(scope, "created_traffic", 0) or 0) >= limit
 
 
+def traffic_scope_created_limit_would_exceed(scope: Any, amount: int) -> bool:
+    if not traffic_scope_uses_created_traffic(scope):
+        return False
+    normalized_amount = int(amount or 0)
+    if normalized_amount <= 0:
+        return False
+    limit = int(getattr(scope, "data_limit", 0) or 0)
+    if limit <= 0:
+        return False
+    created_traffic = int(getattr(scope, "created_traffic", 0) or 0)
+    return created_traffic + normalized_amount > limit
+
+
 def traffic_scope_used_limit_reached(scope: Any) -> bool:
     if traffic_scope_uses_created_traffic(scope):
         return False
@@ -124,6 +138,8 @@ def record_admin_created_traffic(
         link = get_admin_service_link(db, dbadmin.id, service_id)
         if link is None:
             return 0
+        if traffic_scope_created_limit_would_exceed(link, normalized_amount):
+            raise ValueError(CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE)
         link.created_traffic = int(getattr(link, "created_traffic", 0) or 0) + normalized_amount
         db.add(
             AdminCreatedTrafficLog(
@@ -136,6 +152,8 @@ def record_admin_created_traffic(
         )
         return normalized_amount
 
+    if traffic_scope_created_limit_would_exceed(dbadmin, normalized_amount):
+        raise ValueError(CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE)
     dbadmin.created_traffic = int(getattr(dbadmin, "created_traffic", 0) or 0) + normalized_amount
     db.add(
         AdminCreatedTrafficLog(

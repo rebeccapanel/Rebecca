@@ -813,6 +813,9 @@ def modify_user(
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     user = _user_response(request, dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:
