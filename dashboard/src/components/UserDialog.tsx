@@ -684,52 +684,60 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		return (
 			<InputGroup size="sm" dir="ltr" w="full">
-				<ChakraInput
-					value={args.value}
-					onChange={args.onChange}
-					placeholder={args.placeholder}
-					type={args.type ?? "text"}
-					inputMode={args.inputMode ?? "decimal"}
-					isDisabled={args.disabled}
-					borderRadius={UNIT_RADIUS}
-					borderEndRadius="0"
-					dir="ltr"
-					textAlign={isRTL ? "right" : "left"}
-				/>
+				<Box position="relative" flex="1">
+					<ChakraInput
+						value={args.value}
+						onChange={args.onChange}
+						placeholder={args.placeholder}
+						type={args.type ?? "text"}
+						inputMode={args.inputMode ?? "decimal"}
+						isDisabled={args.disabled}
+						borderRadius={UNIT_RADIUS}
+						borderEndRadius="0"
+						dir="ltr"
+						textAlign={isRTL ? "right" : "left"}
+						pr={args.onStep ? "2.5rem" : undefined}
+					/>
 
-				{args.onStep && (
-					<Flex
-						borderTopWidth="1px"
-						borderBottomWidth="1px"
-						borderColor={addonBorder}
-						bg={addonBg}
-						direction="column"
-						w="34px"
-					>
-						<IconButton
-							aria-label={t("common.increment", "Increase")}
-							icon={<ChevronUpIcon width={12} />}
-							variant="ghost"
-							size="xs"
-							minW="auto"
-							h="17px"
-							borderRadius="0"
-							isDisabled={args.disabled}
-							onClick={() => args.onStep?.(1)}
-						/>
-						<IconButton
-							aria-label={t("common.decrement", "Decrease")}
-							icon={<HeroChevronDownIcon width={12} />}
-							variant="ghost"
-							size="xs"
-							minW="auto"
-							h="17px"
-							borderRadius="0"
-							isDisabled={args.disabled}
-							onClick={() => args.onStep?.(-1)}
-						/>
-					</Flex>
-				)}
+					{args.onStep && (
+						<Flex
+							position="absolute"
+							insetInlineEnd="1px"
+							top="1px"
+							bottom="1px"
+							borderInlineStartWidth="1px"
+							borderColor={addonBorder}
+							bg={addonBg}
+							direction="column"
+							w="28px"
+							overflow="hidden"
+							zIndex={1}
+						>
+							<IconButton
+								aria-label={t("common.increment", "Increase")}
+								icon={<ChevronUpIcon width={11} />}
+								variant="ghost"
+								size="xs"
+								minW="auto"
+								h="50%"
+								borderRadius="0"
+								isDisabled={args.disabled}
+								onClick={() => args.onStep?.(1)}
+							/>
+							<IconButton
+								aria-label={t("common.decrement", "Decrease")}
+								icon={<HeroChevronDownIcon width={11} />}
+								variant="ghost"
+								size="xs"
+								minW="auto"
+								h="50%"
+								borderRadius="0"
+								isDisabled={args.disabled}
+								onClick={() => args.onStep?.(-1)}
+							/>
+						</Flex>
+					)}
+				</Box>
 
 				<InputRightAddon
 					bg={addonBg}
