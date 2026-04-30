@@ -66,11 +66,18 @@ def _create_created_admin(client: TestClient, username: str, password: str, *, d
     return response.json()
 
 
-def _create_user(client: TestClient, headers: dict[str, str], username: str, *, service_id: int | None = None):
+def _create_user(
+    client: TestClient,
+    headers: dict[str, str],
+    username: str,
+    *,
+    service_id: int | None = None,
+    data_limit: int = GB,
+):
     payload = {
         "username": username,
         "expire": 1735689600,
-        "data_limit": GB,
+        "data_limit": data_limit,
         "data_limit_reset_strategy": "no_reset",
     }
     if service_id is None:
@@ -526,3 +533,56 @@ def test_per_service_created_limit_allows_only_valid_decrease(auth_client: TestC
         dbuser = crud.get_user(db, user_username)
         assert dbuser.data_limit == 4 * GB
         assert link.created_traffic == 4 * GB
+
+
+def test_per_service_created_limit_recredits_large_limit_decrease(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_bigdown_{unique}"
+    password = "svcbigdown123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-bigdown-{unique}")
+    update_response = auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 2000 * GB,
+                }
+            ],
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    headers = _login_headers(auth_client, username, password)
+    user_username = f"svc_bigdown_user_{unique}"
+    _create_user(auth_client, headers, user_username, service_id=service_id, data_limit=1000 * GB)
+
+    ok_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": GB},
+        headers=headers,
+    )
+    assert ok_response.status_code == 200, ok_response.text
+
+    with TestingSessionLocal() as db:
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        dbuser = crud.get_user(db, user_username)
+        assert dbuser.data_limit == GB
+        assert link.created_traffic == GB
