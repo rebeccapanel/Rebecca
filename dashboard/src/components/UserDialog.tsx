@@ -2490,13 +2490,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																							: "",
 																						onChange: field.onChange,
 																						disabled,
-																						onStep: isEditing
-																							? (delta) =>
-																									stepDataLimit(
-																										field.value,
-																										delta,
-																									)
-																							: undefined,
+																						onStep: (delta) =>
+																							stepDataLimit(
+																								field.value,
+																								delta,
+																							),
 																					})}
 																					{isEditing && remainingDataInfo && (
 																						<FormHelperText
