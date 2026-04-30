@@ -2188,29 +2188,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 									</Alert>
 								)}
 
-								{showServiceSelector && !servicesLoading && !hasServices && (
-									<Alert
-										status="warning"
-										variant="subtle"
-										w="full"
-										px={4}
-										py={3}
-										borderRadius="md"
-										alignItems="flex-start"
-										mb={4}
-									>
-										<AlertIcon />
-										<AlertDescription>
-											{`${t(
-												"userDialog.noServicesAvailable",
-												"No services are available yet.",
-											)} ${t(
-												"userDialog.createServiceToManage",
-												"Create a service to manage users.",
-											)}`}
-										</AlertDescription>
-									</Alert>
-								)}
 								{userManagementLocked && (
 									<Alert status="warning" mb={4} borderRadius="md">
 										<AlertIcon />
@@ -2932,31 +2909,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															<FormLabel>
 																{t("userDialog.selectServiceLabel", "Service")}
 															</FormLabel>
-
-															{!servicesLoading && !hasServices && (
-																<Box w="full" display="block" mt={2} mb={4}>
-																	<Alert
-																		status="warning"
-																		variant="subtle"
-																		w="full"
-																		px={4}
-																		py={3}
-																		borderRadius="md"
-																		alignItems="flex-start"
-																	>
-																		<AlertIcon />
-																		<AlertDescription>
-																			{`${t(
-																				"userDialog.noServicesAvailable",
-																				"No services are available yet.",
-																			)} ${t(
-																				"userDialog.createServiceToManage",
-																				"Create a service to manage users.",
-																			)}`}
-																		</AlertDescription>
-																	</Alert>
-																</Box>
-															)}
 
 															{servicesLoading ? (
 																<HStack spacing={2} py={4}>
