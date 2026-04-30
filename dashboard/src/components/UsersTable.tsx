@@ -33,6 +33,7 @@ import {
 	ArrowPathIcon,
 	CheckIcon,
 	ChevronDownIcon,
+	ChevronRightIcon,
 	ClipboardIcon,
 	ClockIcon,
 	LinkIcon,
@@ -623,7 +624,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		if (!currentLimit || currentLimit <= 0) {
 			return;
 		}
-		setContextAction("traffic");
+		setContextAction(`traffic-${gigabytes}`);
 		try {
 			const delta = gigabytes * 1024 * 1024 * 1024;
 			const nextLimit = currentLimit + delta;
@@ -1416,15 +1417,65 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 						{canMutateUsers &&
 							contextMenu.user.data_limit !== null &&
 							contextMenu.user.data_limit !== 0 && (
-								<Button
-									variant="ghost"
-									justifyContent="flex-start"
-									leftIcon={<TrafficIcon />}
-									onClick={() => handleAdjustTraffic(contextMenu.user!, 10)}
-									isLoading={contextAction === "traffic"}
-								>
-									{t("usersTable.add10Gb", "Add 10 GB")}
-								</Button>
+								<Box position="relative" role="group">
+									<Button
+										variant="ghost"
+										justifyContent="space-between"
+										w="full"
+										leftIcon={<TrafficIcon />}
+										rightIcon={
+											<ChevronRightIcon
+												width={14}
+												style={{
+													transform: isRTL
+														? "rotate(180deg)"
+														: undefined,
+												}}
+											/>
+										}
+										isLoading={contextAction?.startsWith("traffic-")}
+									>
+										{t("usersTable.addTraffic", "Add traffic")}
+									</Button>
+									<Stack
+										display="none"
+										_groupHover={{ display: "flex" }}
+										position="absolute"
+										top={0}
+										left={isRTL ? "auto" : "100%"}
+										right={isRTL ? "100%" : "auto"}
+										minW="140px"
+										spacing={1}
+										p={2}
+										bg={dialogBg}
+										borderWidth="1px"
+										borderColor={dialogBorderColor}
+										borderRadius="md"
+										boxShadow="lg"
+										zIndex={1501}
+									>
+										{[1, 2, 3, 5, 10].map((gigabytes) => (
+											<Button
+												key={gigabytes}
+												variant="ghost"
+												justifyContent="flex-start"
+												onClick={() =>
+													handleAdjustTraffic(
+														contextMenu.user!,
+														gigabytes,
+													)
+												}
+												isLoading={
+													contextAction === `traffic-${gigabytes}`
+												}
+											>
+												{t("usersTable.addGb", "Add {{count}} GB", {
+													count: gigabytes,
+												})}
+											</Button>
+										))}
+									</Stack>
+								</Box>
 							)}
 						{canMutateUsers &&
 							contextMenu.user.expire !== null &&

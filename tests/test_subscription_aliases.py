@@ -1,6 +1,9 @@
 from unittest.mock import patch
 
 from app.db import GetDB, crud
+from app.db import models as db_models
+from app.models.proxy import ProxyHostALPN, ProxyHostFingerprint, ProxyHostSecurity
+from app.models.user import UserDataLimitResetStrategy, UserStatus
 
 
 def _create_user_payload(auth_client, username: str, *, headers: dict | None = None) -> dict:
@@ -94,10 +97,10 @@ def test_user_responses_use_db_subscription_path_and_multi_ports(auth_client):
     credential_key = created["credential_key"]
 
     assert created["subscription_url"].startswith(
-        f"https://sub.example.com/mysub/multi_port_user/{credential_key}"
+        f"https://sub.example.com:443/mysub/multi_port_user/{credential_key}"
     )
-    assert created["subscription_urls"]["key"].startswith("https://sub.example.com/mysub/")
-    assert created["subscription_urls"]["username-key@443"].startswith(
+    assert created["subscription_urls"]["key"].startswith("https://sub.example.com:443/mysub/")
+    assert created["subscription_urls"]["username-key"].startswith(
         "https://sub.example.com:443/mysub/multi_port_user/"
     )
     assert created["subscription_urls"]["key@8443"].startswith("https://sub.example.com:8443/mysub/")
@@ -107,7 +110,7 @@ def test_user_responses_use_db_subscription_path_and_multi_ports(auth_client):
     assert detail_resp.status_code == 200, detail_resp.text
     detail = detail_resp.json()
     assert detail["subscription_url"].startswith(
-        f"https://sub.example.com/mysub/multi_port_user/{credential_key}"
+        f"https://sub.example.com:443/mysub/multi_port_user/{credential_key}"
     )
     assert detail["subscription_urls"]["username-key@8443"].startswith(
         "https://sub.example.com:8443/mysub/multi_port_user/"
@@ -119,9 +122,149 @@ def test_user_responses_use_db_subscription_path_and_multi_ports(auth_client):
     assert len(users) == 1
     list_user = users[0]
     assert list_user["subscription_url"].startswith(
-        f"https://sub.example.com/mysub/multi_port_user/{credential_key}"
+        f"https://sub.example.com:443/mysub/multi_port_user/{credential_key}"
     )
-    assert list_user["subscription_urls"]["key@443"].startswith("https://sub.example.com:443/mysub/")
+    assert list_user["subscription_urls"]["key"].startswith("https://sub.example.com:443/mysub/")
+
+
+def test_subscription_ports_override_prefix_panel_port(auth_client):
+    panel_resp = auth_client.put(
+        "/api/settings/panel",
+        json={"default_subscription_type": "key"},
+    )
+    assert panel_resp.status_code == 200, panel_resp.text
+
+    settings_resp = auth_client.put(
+        "/api/settings/subscriptions",
+        json={
+            "subscription_url_prefix": "https://panel.example.com:8000",
+            "subscription_path": "mysub",
+            "subscription_ports": [2096],
+        },
+    )
+    assert settings_resp.status_code == 200, settings_resp.text
+
+    created = _create_user_payload(auth_client, "prefix_port_user")
+    credential_key = created["credential_key"]
+
+    assert created["subscription_url"].startswith(f"https://panel.example.com:2096/mysub/{credential_key}")
+    assert created["subscription_urls"]["key"].startswith(f"https://panel.example.com:2096/mysub/{credential_key}")
+    assert ":8000" not in created["subscription_url"]
+
+
+def test_imported_3xui_subadress_is_primary_subscription_link(auth_client):
+    with GetDB() as db:
+        imported = db_models.User(
+            username="imported_sub_user",
+            credential_key="0123456789abcdef0123456789abcdef",
+            subadress="legacy-3xui-sub",
+            status=UserStatus.active,
+            used_traffic=0,
+            data_limit=0,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            proxies=[
+                db_models.Proxy(
+                    type="vless",
+                    settings={"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"},
+                    excluded_inbounds=[],
+                )
+            ],
+        )
+        db.add(imported)
+        db.commit()
+
+    detail_resp = auth_client.get("/api/user/imported_sub_user")
+    assert detail_resp.status_code == 200, detail_resp.text
+    detail = detail_resp.json()
+    assert detail["subscription_url"].endswith("/legacy-3xui-sub")
+    assert detail["subscription_urls"]["subadress"].endswith("/legacy-3xui-sub")
+    assert detail["subscription_urls"]["key"].endswith("/0123456789abcdef0123456789abcdef")
+
+    legacy_resp = auth_client.get("/sub/legacy-3xui-sub")
+    assert legacy_resp.status_code == 200, legacy_resp.text
+
+    username_legacy_resp = auth_client.get("/sub/imported_sub_user/legacy-3xui-sub")
+    assert username_legacy_resp.status_code == 200, username_legacy_resp.text
+
+
+def test_service_subscription_links_fallback_to_database_hosts(auth_client):
+    inbound = {
+        "tag": "svc-vless",
+        "protocol": "vless",
+        "port": 443,
+        "network": "ws",
+        "tls": "tls",
+        "sni": [],
+        "host": [],
+        "path": "/",
+        "header_type": "none",
+        "is_fallback": False,
+    }
+
+    with patch("app.runtime.xray.config.inbounds_by_tag", {"svc-vless": inbound}):
+        with GetDB() as db:
+            admin = crud.get_admin(db, "testadmin")
+            service = db_models.Service(name="subscription-host-fallback")
+            db.add(service)
+            db.flush()
+            db.add(db_models.AdminServiceLink(admin_id=admin.id, service_id=service.id))
+            db.add(db_models.ProxyInbound(tag="svc-vless"))
+            db.flush()
+            host = db_models.ProxyHost(
+                remark="Service {USERNAME}",
+                address="{SERVER_IP}",
+                port=443,
+                inbound_tag="svc-vless",
+                path=None,
+                sni=None,
+                host=None,
+                security=ProxyHostSecurity.inbound_default,
+                alpn=ProxyHostALPN.none,
+                fingerprint=ProxyHostFingerprint.none,
+                allowinsecure=None,
+                is_disabled=False,
+            )
+            db.add(host)
+            db.flush()
+            db.add(db_models.ServiceHostLink(service_id=service.id, host_id=host.id, sort=0))
+            imported = db_models.User(
+                username="service_sub_user",
+                credential_key="1123456789abcdef0123456789abcdef",
+                subadress="service-subadress",
+                status=UserStatus.active,
+                used_traffic=0,
+                data_limit=0,
+                data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+                admin_id=admin.id,
+                service_id=service.id,
+                proxies=[
+                    db_models.Proxy(
+                        type="vless",
+                        settings={"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"},
+                        excluded_inbounds=[],
+                    )
+                ],
+            )
+            db.add(imported)
+            db.commit()
+
+        detail_resp = auth_client.get("/api/user/service_sub_user")
+        assert detail_resp.status_code == 200, detail_resp.text
+        detail = detail_resp.json()
+        assert detail["links"]
+        assert detail["links"][0].startswith("vless://")
+
+        sub_resp = auth_client.get("/sub/service-subadress")
+        assert sub_resp.status_code == 200, sub_resp.text
+        assert sub_resp.text
+
+        json_resp = auth_client.get("/sub/service-subadress/json")
+        assert json_resp.status_code == 200, json_resp.text
+        assert json_resp.headers["content-type"].startswith("application/json")
+
+        v2ray_json_resp = auth_client.get("/sub/service-subadress/v2ray-json")
+        assert v2ray_json_resp.status_code == 200, v2ray_json_resp.text
+        assert v2ray_json_resp.headers["content-type"].startswith("application/json")
 
 
 def test_subscription_ports_use_request_host_when_prefix_is_empty(auth_client):

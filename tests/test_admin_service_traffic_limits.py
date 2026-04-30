@@ -13,7 +13,12 @@ from tests.conftest import TestingSessionLocal
 
 GB = 1024**3
 MB = 1024**2
-_INBOUNDS = {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]}
+CREATED_TRAFFIC_LIMIT_MESSAGE = "لیمیت حجم شما به پایان رسید"
+DATA_LIMIT_BELOW_USED_MESSAGE = "حجم جدید نمی‌تواند کمتر از مصرف فعلی کاربر باشد."
+_INBOUNDS = {
+    "vmess": [{"tag": "VMess TCP", "network": "tcp", "tls": "none"}],
+    "vless": [{"tag": "VLESS TCP", "network": "tcp", "tls": "none"}],
+}
 
 
 def _login_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
@@ -281,3 +286,243 @@ def test_per_service_used_limit_disables_and_blocks_activation(auth_client: Test
 
     activate_response = auth_client.put(f"/api/user/{user_username}", json={"status": "active"}, headers=headers)
     assert activate_response.status_code == 403
+
+
+def test_myaccount_returns_per_service_created_limits(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_myacct_{unique}"
+    password = "svcmyacct123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-myacct-{unique}")
+
+    update_response = auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 2 * GB,
+                    "users_limit": 5,
+                }
+            ],
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    headers = _login_headers(auth_client, username, password)
+    _create_user(auth_client, headers, f"svc_myacct_user_{unique}", service_id=service_id)
+
+    myaccount_response = auth_client.get("/api/myaccount", headers=headers)
+    assert myaccount_response.status_code == 200, myaccount_response.text
+    payload = myaccount_response.json()
+    assert payload["use_service_traffic_limits"] is True
+    assert payload["used_traffic"] == GB
+    assert payload["data_limit"] == 2 * GB
+    assert payload["current_users_count"] == 1
+    assert len(payload["service_limits"]) == 1
+
+    service_payload = payload["service_limits"][0]
+    assert service_payload["service_id"] == service_id
+    assert service_payload["traffic_basis"] == "created_traffic"
+    assert service_payload["used_traffic"] == GB
+    assert service_payload["remaining_data"] == GB
+    assert service_payload["users_limit"] == 5
+    assert service_payload["current_users_count"] == 1
+    assert sum(point["used_traffic"] for point in service_payload["daily_usage"]) == GB
+
+
+def test_per_service_created_limit_blocks_create_over_remaining(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_cap_{unique}"
+    password = "svccappass123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-cap-{unique}")
+
+    update_response = auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 1500 * MB,
+                }
+            ],
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    headers = _login_headers(auth_client, username, password)
+
+    _create_user(auth_client, headers, f"svc_cap_ok_{unique}", service_id=service_id)
+
+    blocked_response = auth_client.post(
+        "/api/user",
+        json={
+            "username": f"svc_cap_block_{unique}",
+            "service_id": service_id,
+            "data_limit": 1 * GB,
+            "expire": 1735689600,
+            "data_limit_reset_strategy": "no_reset",
+        },
+        headers=headers,
+    )
+    assert blocked_response.status_code == 400
+    assert blocked_response.json()["detail"] == CREATED_TRAFFIC_LIMIT_MESSAGE
+
+    with TestingSessionLocal() as db:
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        assert link.created_traffic == GB
+        assert crud.get_user(db, f"svc_cap_block_{unique}") is None
+
+
+def test_per_service_created_limit_blocks_update_over_remaining(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_upcap_{unique}"
+    password = "svcupcappass123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-upcap-{unique}")
+    auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 2 * GB,
+                }
+            ],
+        },
+    )
+    headers = _login_headers(auth_client, username, password)
+    user_username = f"svc_upcap_user_{unique}"
+    _create_user(auth_client, headers, user_username, service_id=service_id)
+
+    blocked_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": 3 * GB},
+        headers=headers,
+    )
+    assert blocked_response.status_code == 400
+    assert blocked_response.json()["detail"] == CREATED_TRAFFIC_LIMIT_MESSAGE
+
+    with TestingSessionLocal() as db:
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        dbuser = crud.get_user(db, user_username)
+        assert link.created_traffic == GB
+        assert dbuser.data_limit == GB
+
+
+def test_per_service_created_limit_allows_only_valid_decrease(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_down_{unique}"
+    password = "svcdownpass123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-down-{unique}")
+    auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 10 * GB,
+                }
+            ],
+        },
+    )
+    headers = _login_headers(auth_client, username, password)
+    user_username = f"svc_down_user_{unique}"
+    _create_user(auth_client, headers, user_username, service_id=service_id)
+
+    with TestingSessionLocal() as db:
+        dbuser = crud.get_user(db, user_username)
+        dbuser.data_limit = 5 * GB
+        dbuser.used_traffic = 4 * GB
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        link.created_traffic = 5 * GB
+        db.commit()
+
+    blocked_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": 3 * GB},
+        headers=headers,
+    )
+    assert blocked_response.status_code == 400
+    assert blocked_response.json()["detail"] == DATA_LIMIT_BELOW_USED_MESSAGE
+
+    ok_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": 4 * GB},
+        headers=headers,
+    )
+    assert ok_response.status_code == 200, ok_response.text
+
+    with TestingSessionLocal() as db:
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        dbuser = crud.get_user(db, user_username)
+        assert dbuser.data_limit == 4 * GB
+        assert link.created_traffic == 4 * GB

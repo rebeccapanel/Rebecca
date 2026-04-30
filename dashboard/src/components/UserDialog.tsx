@@ -49,6 +49,7 @@ import {
 	CheckIcon,
 	ClipboardIcon,
 	ChevronDownIcon as HeroChevronDownIcon,
+	ChevronUpIcon,
 	LinkIcon,
 	LockClosedIcon,
 	PencilIcon,
@@ -675,6 +676,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		placeholder?: string;
 		type?: string;
 		inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+		onStep?: (delta: number) => void;
 	}) => {
 		const addonBg = colorMode === "dark" ? "whiteAlpha.100" : "blackAlpha.50";
 		const addonBorder = colorMode === "dark" ? "gray.700" : "gray.200";
@@ -694,6 +696,40 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					dir="ltr"
 					textAlign={isRTL ? "right" : "left"}
 				/>
+
+				{args.onStep && (
+					<Flex
+						borderTopWidth="1px"
+						borderBottomWidth="1px"
+						borderColor={addonBorder}
+						bg={addonBg}
+						direction="column"
+						w="34px"
+					>
+						<IconButton
+							aria-label={t("common.increment", "Increase")}
+							icon={<ChevronUpIcon width={12} />}
+							variant="ghost"
+							size="xs"
+							minW="auto"
+							h="17px"
+							borderRadius="0"
+							isDisabled={args.disabled}
+							onClick={() => args.onStep?.(1)}
+						/>
+						<IconButton
+							aria-label={t("common.decrement", "Decrease")}
+							icon={<HeroChevronDownIcon width={12} />}
+							variant="ghost"
+							size="xs"
+							minW="auto"
+							h="17px"
+							borderRadius="0"
+							isDisabled={args.disabled}
+							onClick={() => args.onStep?.(-1)}
+						/>
+					</Flex>
+				)}
 
 				<InputRightAddon
 					bg={addonBg}
@@ -720,6 +756,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		mode: "onChange",
 		reValidateMode: "onChange",
 	});
+
+	const stepDataLimit = useCallback(
+		(currentValue: unknown, delta: number) => {
+			const parsed = parseDecimalInput(currentValue);
+			const base = Number.isFinite(parsed) && parsed !== null ? parsed : 0;
+			const nextValue = Math.max(0, base + delta);
+			form.setValue("data_limit", nextValue, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		},
+		[form],
+	);
 
 	const manualKeyEntryEnabled = useWatch({
 		control: form.control,
@@ -2369,6 +2418,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																							: "",
 																						onChange: field.onChange,
 																						disabled,
+																						onStep: isEditing
+																							? (delta) =>
+																									stepDataLimit(
+																										field.value,
+																										delta,
+																									)
+																							: undefined,
 																					})}
 																					{isEditing && remainingDataInfo && (
 																						<FormHelperText

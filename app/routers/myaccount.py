@@ -30,7 +30,9 @@ class MyAccountNodeUsage(BaseModel):
     used_traffic: int
 
 
-class MyAccountResponse(BaseModel):
+class MyAccountServiceLimit(BaseModel):
+    service_id: int
+    service_name: str
     traffic_basis: str
     data_limit: Optional[int]
     used_traffic: int
@@ -39,7 +41,20 @@ class MyAccountResponse(BaseModel):
     current_users_count: int
     remaining_users: Optional[int]
     daily_usage: List[MyAccountUsagePoint] = Field(default_factory=list)
+
+
+class MyAccountResponse(BaseModel):
+    traffic_basis: str
+    use_service_traffic_limits: bool = False
+    data_limit: Optional[int]
+    used_traffic: int
+    remaining_data: Optional[int]
+    users_limit: Optional[int]
+    current_users_count: int
+    remaining_users: Optional[int]
+    daily_usage: List[MyAccountUsagePoint] = Field(default_factory=list)
     node_usages: List[MyAccountNodeUsage] = Field(default_factory=list)
+    service_limits: List[MyAccountServiceLimit] = Field(default_factory=list)
 
 
 class ChangePasswordPayload(BaseModel):
@@ -106,6 +121,7 @@ def get_myaccount(
 
     return MyAccountResponse(
         traffic_basis=summary.get("traffic_basis", "used_traffic"),
+        use_service_traffic_limits=bool(summary.get("use_service_traffic_limits", False)),
         data_limit=summary.get("data_limit"),
         used_traffic=summary.get("used_traffic", 0),
         remaining_data=summary.get("remaining_data"),
@@ -120,6 +136,21 @@ def get_myaccount(
                 used_traffic=int(item.get("used_traffic") or 0),
             )
             for item in summary.get("node_usages", [])
+        ],
+        service_limits=[
+            MyAccountServiceLimit(
+                service_id=int(item.get("service_id")),
+                service_name=item.get("service_name") or "",
+                traffic_basis=item.get("traffic_basis", "used_traffic"),
+                data_limit=item.get("data_limit"),
+                used_traffic=int(item.get("used_traffic") or 0),
+                remaining_data=item.get("remaining_data"),
+                users_limit=item.get("users_limit"),
+                current_users_count=int(item.get("current_users_count") or 0),
+                remaining_users=item.get("remaining_users"),
+                daily_usage=[MyAccountUsagePoint(**point) for point in item.get("daily_usage", [])],
+            )
+            for item in summary.get("service_limits", [])
         ],
     )
 

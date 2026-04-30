@@ -26,6 +26,13 @@ def _normalize_subscription_key(value: str) -> str:
         raise HTTPException(status_code=400, detail="Invalid credential key") from exc
 
 
+def _try_normalize_subscription_key(value: str) -> Optional[str]:
+    try:
+        return normalize_key(value)
+    except ValueError:
+        return None
+
+
 def validate_admin(db: Session, username: str, password: str) -> Optional[AdminValidationResult]:
     """Validate admin credentials with environment variables or database."""
     if SUDOERS.get(username) == password:
@@ -113,24 +120,34 @@ def get_validated_sub(token: str, db: Session = Depends(get_db)) -> UserResponse
 
 def get_validated_sub_by_key(
     username: str,
-    credential_key: str = Path(..., pattern="^[0-9a-fA-F-]{32,36}$"),
+    credential_key: str = Path(...),
     db: Session = Depends(get_db),
 ) -> UserResponse:
     """Validate subscription by username and credential key."""
-    normalized_key = _normalize_subscription_key(credential_key)
     dbuser = crud.get_user(db, username)
     if not dbuser:
         dbuser = (
             db.query(User)
             .filter(func.lower(User.username) == username.lower())
-            .filter(User.credential_key.isnot(None))
             .first()
         )
-    if not dbuser or not dbuser.credential_key:
+    if not dbuser:
         raise HTTPException(status_code=404, detail="Not Found")
-    if normalize_key(dbuser.credential_key) != normalized_key:
+
+    normalized_key = _try_normalize_subscription_key(credential_key)
+    if normalized_key and dbuser.credential_key:
+        stored_key = _try_normalize_subscription_key(dbuser.credential_key)
+        if stored_key == normalized_key:
+            return dbuser
         raise HTTPException(status_code=404, detail="Not Found")
-    return dbuser
+
+    normalized_subadress = (credential_key or "").strip().lower()
+    if normalized_subadress and (dbuser.subadress or "").strip().lower() == normalized_subadress:
+        return dbuser
+
+    if normalized_key is None:
+        raise HTTPException(status_code=404, detail="Not Found")
+    raise HTTPException(status_code=404, detail="Not Found")
 
 
 def get_validated_sub_by_key_only(
