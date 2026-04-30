@@ -57,8 +57,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#224389",
 				"--bg-light": "#f6f8ff",
 				"--bg-dark": "#0f172a",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#141f35",
+				"--surface-light": "#edf1ff",
+				"--surface-dark": "#17233d",
 			},
 
 			".rb-theme-dark": {
@@ -74,8 +74,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#ffffff",
 				"--bg-light": "#1a202c",
 				"--bg-dark": "#0b1524",
-				"--surface-light": "#232c3d",
-				"--surface-dark": "#121c2c",
+				"--surface-light": "#253247",
+				"--surface-dark": "#172338",
 			},
 			body: {
 				backgroundColor: "var(--bg-light)",
@@ -97,8 +97,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#1b4046",
 				"--bg-light": "#edfafa",
 				"--bg-dark": "#091212",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#0f1f1f",
+				"--surface-light": "#dff4f2",
+				"--surface-dark": "#132928",
 			},
 
 			".rb-theme-moontone": {
@@ -114,8 +114,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#172554",
 				"--bg-light": "#f5f7ff",
 				"--bg-dark": "#0f1930",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#172544",
+				"--surface-light": "#e9f0ff",
+				"--surface-dark": "#1b2d52",
 			},
 
 			".rb-theme-purple": {
@@ -131,8 +131,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#3b0f73",
 				"--bg-light": "#f8f2ff",
 				"--bg-dark": "#1a1031",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#261547",
+				"--surface-light": "#f0e5ff",
+				"--surface-dark": "#2d1b54",
 			},
 
 			".rb-theme-green": {
@@ -148,8 +148,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#064e3b",
 				"--bg-light": "#eefdf4",
 				"--bg-dark": "#071c10",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#0f2a18",
+				"--surface-light": "#e2f8e9",
+				"--surface-dark": "#12341e",
 			},
 
 			".rb-seasonal-christmas": {
@@ -165,8 +165,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#5f0a0a",
 				"--bg-light": "#fdf7f2",
 				"--bg-dark": "#0b0f19",
-				"--surface-light": "#ffffff",
-				"--surface-dark": "#141d2a",
+				"--surface-light": "#f7eee8",
+				"--surface-dark": "#172235",
 			},
 
 			".rb-theme-pure-dark": {
@@ -182,8 +182,8 @@ const sharedThemeConfig = {
 				"--primary-900": "#001a2f",
 				"--bg-light": "#0c1018",
 				"--bg-dark": "#05070c",
-				"--surface-light": "#111827",
-				"--surface-dark": "#0a0f1a",
+				"--surface-light": "#151d2b",
+				"--surface-dark": "#101826",
 			},
 		},
 	},
