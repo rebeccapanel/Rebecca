@@ -205,6 +205,7 @@ const TutorialsPage: FC = () => {
 	const autoScrollAttempts = useRef(0);
 	const focusScrollAttempts = useRef(0);
 	const focusHandledFor = useRef<string | null>(null);
+	const acknowledgedVisitKey = useRef<string | null>(null);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	const {
@@ -849,6 +850,33 @@ const TutorialsPage: FC = () => {
 		},
 		[i18n.language],
 	);
+
+	useEffect(() => {
+		if (typeof window === "undefined" || !content || !allMenuIds.length) {
+			return;
+		}
+		const langKey = normalizeTutorialLang(i18n.language);
+		const visitKey = `${langKey}:${content.meta?.updated ?? ""}:${allMenuIds.join("|")}`;
+		if (acknowledgedVisitKey.current === visitKey) {
+			return;
+		}
+		const stored = readTutorialStorage(langKey);
+		const activeUnseen = stored.unseen.filter((id) => allMenuIds.includes(id));
+		if (!activeUnseen.length) {
+			return;
+		}
+		acknowledgedVisitKey.current = visitKey;
+		const timer = window.setTimeout(() => {
+			acknowledgeTutorialIds(langKey, activeUnseen);
+			setNewMenuIds((prev) => {
+				if (!activeUnseen.some((id) => prev.has(id))) return prev;
+				const next = new Set(prev);
+				activeUnseen.forEach((id) => next.delete(id));
+				return next;
+			});
+		}, 700);
+		return () => window.clearTimeout(timer);
+	}, [allMenuIds, content, i18n.language]);
 
 	useEffect(() => {
 		if (typeof document === "undefined") return;

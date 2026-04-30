@@ -106,13 +106,13 @@ Rebecca is user-friendly, feature-rich and reliable. It lets you create differen
 Run the Docker installer with:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install
 ```
 
 Run the binary installer with:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh)" @ install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh)" @ install
 ```
 
 The two installers are intentionally separate. The Docker script manages docker-compose installs, while the binary script installs the published native systemd release artifact. Release builds publish Linux binaries for `386`, `amd64`, `arm64`, `armv5`, `armv6`, `armv7`, and `s390x`; the binary installer picks the matching asset automatically. The `--dev` channel downloads the latest successful binary artifact from the `dev` branch workflow.
@@ -120,12 +120,12 @@ The two installers are intentionally separate. The Docker script manages docker-
 Dockerized mode supports SQLite, MySQL, and MariaDB. Run the following command to install Rebecca with MySQL database:
 
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --database mysql
 ```
 
 Run the following command to install Rebecca with MariaDB database:
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install --database mariadb
 ```
 
 Once the installation is complete:
@@ -354,7 +354,7 @@ Rebecca's backup service efficiently zips all necessary files and sends them to 
 
 Install the Latest Version of Rebecca Command:
 ```bash
-sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca.sh)" @ install-script
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca.sh)" @ install-script
 ```
 
 Setup the Backup Service:

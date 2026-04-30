@@ -33,7 +33,8 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { fetch } from "service/http";
-import { removeAuthToken, setAuthToken } from "utils/authStorage";
+import { setAuthToken } from "utils/authStorage";
+import { clearClientSession } from "utils/session";
 import { z } from "zod";
 
 const schema = z.object({
@@ -110,7 +111,7 @@ export const Login: FC = () => {
 
 	// Only clear existing tokens on initial mount to avoid wiping the new token
 	useEffect(() => {
-		removeAuthToken();
+		clearClientSession();
 		if (location.pathname !== "/login") {
 			navigate("/login", { replace: true });
 		}
@@ -125,7 +126,7 @@ export const Login: FC = () => {
 		setLoading(true);
 		fetch("/admin/token", { method: "post", body: formData })
 			.then(({ access_token: token }) => {
-				console.log("Token received:", token);
+				clearClientSession();
 				setAuthToken(token);
 				navigate("/");
 			})

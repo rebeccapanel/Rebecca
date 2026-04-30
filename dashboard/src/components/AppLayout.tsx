@@ -56,6 +56,7 @@ import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
+import { clearClientSession } from "utils/session";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
 import { AppSidebar } from "./AppSidebar";
 import { GitHubStars } from "./GitHubStars";
@@ -924,6 +925,7 @@ export function AppLayout() {
 											_active={{ bg: menuHover }}
 											_focus={{ bg: menuHover }}
 											onClick={() => {
+												clearClientSession();
 												navigate("/login");
 											}}
 										>
@@ -1450,6 +1452,7 @@ export function AppLayout() {
 																	_active={{ bg: menuHover }}
 																	_focus={{ bg: menuHover }}
 																	onClick={() => {
+																		clearClientSession();
 																		handleAccountMenuClose();
 																		navigate("/login");
 																	}}

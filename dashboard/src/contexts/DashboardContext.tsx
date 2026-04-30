@@ -10,6 +10,7 @@ import type {
 	UsersListResponse,
 } from "types/User";
 import { queryClient } from "utils/react-query";
+import { getAuthToken } from "utils/authStorage";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -34,6 +35,24 @@ export type FilterUsageType = {
 };
 
 const USERS_CACHE_WINDOW_MS = 60 * 60 * 1000;
+
+const createEmptyUsersResponse = (): UsersListResponse => ({
+	users: [],
+	total: 0,
+	active_total: 0,
+	users_limit: null,
+	status_breakdown: {},
+	usage_total: null,
+	online_total: null,
+});
+
+const createDefaultFilters = (): FilterType => ({
+	limit: getUsersPerPageLimitSize(),
+	sort: DEFAULT_SORT,
+	advancedFilters: [],
+	owner: undefined,
+	serviceId: undefined,
+});
 
 const sanitizeFilterQuery = (query: FilterType): FilterType => {
 	const normalized: FilterType = {
@@ -93,6 +112,7 @@ type DashboardStateType = {
 	isResetingAllUsage: boolean;
 	lastUsersFetchAt: number | null;
 	usersCacheKey: string | null;
+	usersCacheAuthToken: string | null;
 	resetUsageUser: UserListItem | null;
 	revokeSubscriptionUser: UserListItem | null;
 	isEditingCore: boolean;
@@ -127,13 +147,16 @@ const fetchUsers = (
 ): Promise<UsersListResponse> => {
 	const sanitizedQuery = sanitizeFilterQuery(query);
 	const cacheKey = buildUsersCacheKey(sanitizedQuery);
-	const { lastUsersFetchAt, usersCacheKey, users } = useDashboard.getState();
+	const currentAuthToken = getAuthToken();
+	const { lastUsersFetchAt, usersCacheKey, usersCacheAuthToken, users } =
+		useDashboard.getState();
 	const now = Date.now();
 
 	if (
 		!options.force &&
 		lastUsersFetchAt &&
 		usersCacheKey === cacheKey &&
+		usersCacheAuthToken === currentAuthToken &&
 		now - lastUsersFetchAt < USERS_CACHE_WINDOW_MS
 	) {
 		return Promise.resolve(users);
@@ -178,6 +201,7 @@ const fetchUsers = (
 				isUserLimitReached,
 				lastUsersFetchAt: Date.now(),
 				usersCacheKey: cacheKey,
+				usersCacheAuthToken: currentAuthToken,
 			});
 			return usersResponse;
 		})
@@ -200,6 +224,26 @@ export const fetchInbounds = () => {
 		});
 };
 
+export const clearDashboardCache = () => {
+	usersFetchSequence += 1;
+	useDashboard.setState({
+		users: createEmptyUsersResponse(),
+		linkTemplates: undefined,
+		loading: false,
+		isUserLimitReached: false,
+		lastUsersFetchAt: null,
+		usersCacheKey: null,
+		usersCacheAuthToken: null,
+		editingUser: null,
+		deletingUser: null,
+		resetUsageUser: null,
+		revokeSubscriptionUser: null,
+		subscribeUrl: null,
+		QRcodeLinks: null,
+		filters: createDefaultFilters(),
+	});
+};
+
 export const useDashboard = create(
 	subscribeWithSelector<DashboardStateType>((set, get) => ({
 		version: null,
@@ -208,30 +252,17 @@ export const useDashboard = create(
 		isCreatingNewUser: false,
 		QRcodeLinks: null,
 		subscribeUrl: null,
-		users: {
-			users: [],
-			total: 0,
-			active_total: 0,
-			users_limit: null,
-			status_breakdown: {},
-			usage_total: null,
-			online_total: null,
-		},
+		users: createEmptyUsersResponse(),
 		loading: true,
 		isUserLimitReached: false,
 		isResetingAllUsage: false,
 		lastUsersFetchAt: null,
 		usersCacheKey: null,
+		usersCacheAuthToken: null,
 		isEditingNodes: false,
 		resetUsageUser: null,
 		revokeSubscriptionUser: null,
-		filters: {
-			limit: getUsersPerPageLimitSize(),
-			sort: DEFAULT_SORT,
-			advancedFilters: [],
-			owner: undefined,
-			serviceId: undefined,
-		},
+		filters: createDefaultFilters(),
 		inbounds: new Map(),
 		isEditingCore: false,
 		refetchUsers: (force = false) => {

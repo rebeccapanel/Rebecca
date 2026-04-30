@@ -35,6 +35,7 @@ import {
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
+import { clearClientSession } from "utils/session";
 import { type FC, type ReactNode, useRef, useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
@@ -321,7 +322,10 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
 										justifyContent="flex-start"
 										as={Link}
 										to="/login"
-										onClick={closeActionsMenu}
+										onClick={() => {
+											clearClientSession();
+											closeActionsMenu();
+										}}
 									>
 										{t("header.logout")}
 									</Button>

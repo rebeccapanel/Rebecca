@@ -21,7 +21,7 @@ ENV_FILE="$APP_DIR/.env"
 LAST_XRAY_CORES=10
 CERTS_BASE="/var/lib/$APP_NAME/certs"
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-dev}"
+REBECCA_REF="${REBECCA_REF:-master}"
 REBECCA_RAW_BASE="${REBECCA_RAW_BASE:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}}"
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-${REBECCA_RAW_BASE}/scripts/rebecca}"
 REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
@@ -78,8 +78,11 @@ set_rebecca_source_for_version() {
         dev)
             set_rebecca_source_ref "$REBECCA_BINARY_DEV_BRANCH"
             ;;
+        v[0-9]*)
+            set_rebecca_source_ref "$1"
+            ;;
         *)
-            set_rebecca_source_ref "dev"
+            set_rebecca_source_ref "master"
             ;;
     esac
 }
