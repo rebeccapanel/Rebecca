@@ -637,6 +637,7 @@ class UserResponse(User):
     links: List[str] = Field(default_factory=list)  # Config links for this user
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
+    subadress: str = Field(default="", exclude=True)
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
     service_id: int | None = None

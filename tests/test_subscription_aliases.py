@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 from app.db import GetDB, crud
+from app.db import models as db_models
+from app.models.user import UserDataLimitResetStrategy, UserStatus
 
 
 def _create_user_payload(auth_client, username: str, *, headers: dict | None = None) -> dict:
@@ -147,6 +149,41 @@ def test_subscription_ports_override_prefix_panel_port(auth_client):
     assert created["subscription_url"].startswith(f"https://panel.example.com:2096/mysub/{credential_key}")
     assert created["subscription_urls"]["key"].startswith(f"https://panel.example.com:2096/mysub/{credential_key}")
     assert ":8000" not in created["subscription_url"]
+
+
+def test_imported_3xui_subadress_is_primary_subscription_link(auth_client):
+    with GetDB() as db:
+        imported = db_models.User(
+            username="imported_sub_user",
+            credential_key="0123456789abcdef0123456789abcdef",
+            subadress="legacy-3xui-sub",
+            status=UserStatus.active,
+            used_traffic=0,
+            data_limit=0,
+            data_limit_reset_strategy=UserDataLimitResetStrategy.no_reset,
+            proxies=[
+                db_models.Proxy(
+                    type="vless",
+                    settings={"id": "35e4e39c-7d5c-4f4b-8b71-558e4f37ff53"},
+                    excluded_inbounds=[],
+                )
+            ],
+        )
+        db.add(imported)
+        db.commit()
+
+    detail_resp = auth_client.get("/api/user/imported_sub_user")
+    assert detail_resp.status_code == 200, detail_resp.text
+    detail = detail_resp.json()
+    assert detail["subscription_url"].endswith("/legacy-3xui-sub")
+    assert detail["subscription_urls"]["subadress"].endswith("/legacy-3xui-sub")
+    assert detail["subscription_urls"]["key"].endswith("/0123456789abcdef0123456789abcdef")
+
+    legacy_resp = auth_client.get("/sub/legacy-3xui-sub")
+    assert legacy_resp.status_code == 200, legacy_resp.text
+
+    username_legacy_resp = auth_client.get("/sub/imported_sub_user/legacy-3xui-sub")
+    assert username_legacy_resp.status_code == 200, username_legacy_resp.text
 
 
 def test_subscription_ports_use_request_host_when_prefix_is_empty(auth_client):

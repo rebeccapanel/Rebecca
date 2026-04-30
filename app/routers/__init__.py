@@ -35,6 +35,9 @@ routers = [
 ]
 
 for router in routers:
-    api_router.include_router(router, dependencies=[Depends(capture_subscription_request_origin)])
+    if router is core.router:
+        api_router.include_router(router)
+    else:
+        api_router.include_router(router, dependencies=[Depends(capture_subscription_request_origin)])
 
 __all__ = ["api_router"]
