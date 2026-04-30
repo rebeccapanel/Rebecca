@@ -63,6 +63,7 @@ import {
 } from "types/Admin";
 import type { ServiceSummary } from "types/Service";
 import { relativeExpiryDate } from "utils/dateFormatter";
+import { formatBytes } from "utils/formatByte";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -282,6 +283,10 @@ type AdminFormValues = {
 			data_limit?: string;
 			show_user_traffic: boolean;
 			users_limit?: string;
+			created_traffic?: number;
+			used_traffic?: number;
+			lifetime_used_traffic?: number;
+			deleted_users_usage?: number;
 			delete_user_usage_limit_enabled: boolean;
 			delete_user_usage_limit?: string;
 		}
@@ -570,6 +575,10 @@ export const AdminDialog: FC = () => {
 				data_limit: "",
 				show_user_traffic: true,
 				users_limit: "",
+				created_traffic: 0,
+				used_traffic: 0,
+				lifetime_used_traffic: 0,
+				deleted_users_usage: 0,
 				delete_user_usage_limit_enabled: false,
 				delete_user_usage_limit: "",
 			},
@@ -727,6 +736,10 @@ export const AdminDialog: FC = () => {
 								item.users_limit !== undefined && item.users_limit !== null
 									? String(item.users_limit)
 									: "",
+							created_traffic: Number(item.created_traffic ?? 0),
+							used_traffic: Number(item.used_traffic ?? 0),
+							lifetime_used_traffic: Number(item.lifetime_used_traffic ?? 0),
+							deleted_users_usage: Number(item.deleted_users_usage ?? 0),
 							delete_user_usage_limit_enabled:
 								item.delete_user_usage_limit_enabled ?? false,
 							delete_user_usage_limit:
@@ -855,6 +868,10 @@ export const AdminDialog: FC = () => {
 							: null,
 					};
 				});
+			const requestedServices = values.services ?? [];
+			const serviceLimitPayload = values.use_service_traffic_limits
+				? buildServiceLimitPayload()
+				: undefined;
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
@@ -899,15 +916,25 @@ export const AdminDialog: FC = () => {
 						: values.users_limit
 							? Number(values.users_limit)
 							: undefined,
-					service_limits: values.use_service_traffic_limits
-						? buildServiceLimitPayload()
-						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
-				const requestedServices = values.services ?? [];
 				let shouldFetch = true;
 				let serviceSyncError: unknown = null;
-				if (requestedServices.length > 0) {
+				if (
+					selectedRole !== AdminRole.FullAccess &&
+					values.use_service_traffic_limits
+				) {
+					try {
+						await updateAdmin(createdAdmin.username, {
+							services: requestedServices,
+							use_service_traffic_limits: true,
+							service_limits: serviceLimitPayload,
+						});
+						shouldFetch = false;
+					} catch (error) {
+						serviceSyncError = error;
+					}
+				} else if (requestedServices.length > 0) {
 					const createdServices = new Set(createdAdmin?.services ?? []);
 					const missingServices = requestedServices.filter(
 						(serviceId) => !createdServices.has(serviceId),
@@ -981,9 +1008,7 @@ export const AdminDialog: FC = () => {
 						: values.users_limit
 							? Number(values.users_limit)
 							: undefined,
-					service_limits: values.use_service_traffic_limits
-						? buildServiceLimitPayload()
-						: undefined,
+					service_limits: serviceLimitPayload,
 				};
 				if (values.password) {
 					payload.password = values.password;
@@ -1475,6 +1500,13 @@ export const AdminDialog: FC = () => {
 								const isServiceCreatedMode =
 									item.traffic_limit_mode ===
 									AdminTrafficLimitMode.CreatedTraffic;
+								const configuredLimitBytes =
+									item.data_limit && Number(item.data_limit) > 0
+										? Number(item.data_limit) * GB_IN_BYTES
+										: 0;
+								const usageBytes = isServiceCreatedMode
+									? Number(item.created_traffic ?? 0)
+									: Number(item.used_traffic ?? 0);
 								return (
 									<Box
 										key={`service-limit-${serviceId}`}
@@ -1483,9 +1515,26 @@ export const AdminDialog: FC = () => {
 										p={3}
 									>
 										<VStack align="stretch" spacing={3}>
-											<Text fontWeight="medium">
-												{service?.name ?? `#${serviceId}`}
-											</Text>
+											<HStack justify="space-between" align="flex-start">
+												<Box>
+													<Text fontWeight="medium">
+														{service?.name ?? `#${serviceId}`}
+													</Text>
+													<Text color="gray.400" fontSize="xs">
+														{t(
+															"admins.deletedUserUsage",
+															"Deleted-user usage",
+														)}
+														: {formatBytes(Number(item.deleted_users_usage ?? 0), 2)}
+													</Text>
+												</Box>
+												<Text color="primary.200" fontSize="sm" fontWeight="medium">
+													{formatBytes(usageBytes, 2)} /{" "}
+													{configuredLimitBytes > 0
+														? formatBytes(configuredLimitBytes, 2)
+														: t("common.unlimited", "Unlimited")}
+												</Text>
+											</HStack>
 											<Checkbox
 												isChecked={isServiceCreatedMode}
 												onChange={(event) =>

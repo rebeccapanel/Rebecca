@@ -62,6 +62,7 @@ from .admin_traffic import (
     normalize_admin_created_traffic_delta,
     record_admin_created_traffic,
     traffic_scope_used_limit_reached,
+    validate_created_traffic_data_limit_change,
 )
 
 MASTER_NODE_NAME = "Master"
@@ -491,6 +492,7 @@ def _apply_search_filter(query: Query, search: Optional[str]) -> Query:
 
     search_clauses = [
         User.username.ilike(like_pattern),
+        User.subadress.ilike(like_pattern),
         User.note.ilike(like_pattern),
         User.credential_key.ilike(like_pattern),
         User.telegram_id.ilike(like_pattern),
@@ -653,6 +655,8 @@ def _filter_users_in_memory(
             if u.username and search_lower in u.username.lower():
                 return True
             if u.note and search_lower in u.note.lower():
+                return True
+            if getattr(u, "subadress", None) and search_lower in str(u.subadress).lower():
                 return True
             if getattr(u, "telegram_id", None) and search_lower in str(u.telegram_id).lower():
                 return True
@@ -833,6 +837,7 @@ def get_users_list_rows(
             User.admin_id.label("admin_id"),
             Admin.username.label("admin_username"),
             User.credential_key.label("credential_key"),
+            User.subadress.label("subadress"),
         )
         .select_from(User)
         .outerjoin(reseted_usage_subq, reseted_usage_subq.c.user_id == User.id)
@@ -1364,6 +1369,7 @@ def update_user(
     """Updates a user with new details."""
     original_status_value = _status_to_str(dbuser.status)
     previous_data_limit = dbuser.data_limit
+    data_limit_delta = 0
     credential_key = dbuser.credential_key
     added_proxies: Dict[ProxyTypes, Proxy] = {}
 
@@ -1424,7 +1430,16 @@ def update_user(
     if modify.status is not None:
         dbuser.status = modify.status
     if "data_limit" in modify.model_fields_set:
-        dbuser.data_limit = modify.data_limit or None
+        next_data_limit = modify.data_limit or None
+        data_limit_delta = validate_created_traffic_data_limit_change(
+            db,
+            dbuser.admin,
+            previous_limit=previous_data_limit,
+            new_limit=next_data_limit,
+            used_traffic=int(dbuser.used_traffic or 0),
+            service_id=getattr(dbuser, "service_id", None),
+        )
+        dbuser.data_limit = next_data_limit
         status_value = _status_to_str(dbuser.status)
         if status_value in (UserStatus.active.value, UserStatus.limited.value):
             dbuser.status = (
@@ -1514,7 +1529,9 @@ def update_user(
     record_admin_created_traffic(
         db,
         dbuser.admin,
-        normalize_admin_created_traffic_delta(previous_data_limit, dbuser.data_limit),
+        data_limit_delta
+        if "data_limit" in modify.model_fields_set
+        else normalize_admin_created_traffic_delta(previous_data_limit, dbuser.data_limit),
         action="user_limit_update",
         service_id=getattr(dbuser, "service_id", None),
     )

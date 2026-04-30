@@ -81,6 +81,9 @@ def build_subscription_links(
         url_prefixes  # type: ignore[name-defined]
     except Exception:
         url_prefixes = [url_prefix]
+    subadress = (getattr(user, "subadress", "") or "").strip()
+    if subadress:
+        links["subadress"] = f"{url_prefix}/{subadress}"
     if user.credential_key:
         links["username-key"] = f"{url_prefix}/{user.username}/{user.credential_key}"
         links["key"] = f"{url_prefix}/{user.credential_key}"
@@ -90,6 +93,8 @@ def build_subscription_links(
 
     for extra_prefix in url_prefixes[1:]:
         label = _prefix_label(extra_prefix)
+        if subadress:
+            links[f"subadress@{label}"] = f"{extra_prefix}/{subadress}"
         if user.credential_key:
             links[f"username-key@{label}"] = f"{extra_prefix}/{user.username}/{user.credential_key}"
             links[f"key@{label}"] = f"{extra_prefix}/{user.credential_key}"
@@ -97,8 +102,10 @@ def build_subscription_links(
 
     has_key = bool(user.credential_key)
     if not has_key:
-        # Always token for users without a key
-        return {"primary": links["token"], **links}
+        return {"primary": links.get("subadress") or links["token"], **links}
+
+    if subadress:
+        return {"primary": links["subadress"], **links}
 
     if preferred is None:
         try:

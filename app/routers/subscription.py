@@ -58,6 +58,10 @@ client_config = {
     },
 }
 
+client_type_aliases = {
+    "json": "v2ray-json",
+}
+
 router = APIRouter(tags=["Subscription"], prefix="/sub")
 
 
@@ -357,8 +361,6 @@ def user_get_usage(
     return _build_usage_payload(dbuser, start, end, db)
 
 
-@router.get("/{username}/{credential_key}/")
-@router.get("/{username}/{credential_key}", include_in_schema=False)
 def user_subscription_by_key(
     request: Request,
     username: str,
@@ -395,9 +397,29 @@ def user_get_usage_by_key(
 
 
 def _validate_client_type(client_type: str) -> str:
+    client_type = client_type_aliases.get(client_type, client_type)
     if client_type not in client_config:
         raise HTTPException(status_code=404, detail="Unsupported client type")
     return client_type
+
+
+@router.get("/{part1}/{part2}/")
+@router.get("/{part1}/{part2}", include_in_schema=False)
+def user_subscription_two_part(
+    request: Request,
+    part1: str,
+    part2: str = Path(...),
+    db: Session = Depends(get_db),
+    user_agent: str = Header(default=""),
+):
+    client_type = client_type_aliases.get(part2, part2)
+    if client_type in client_config:
+        dbuser = _get_user_by_identifier(part1, db)
+        return _subscription_with_client_type(request, dbuser, client_type, db)
+
+    dbuser = get_validated_sub_by_key(username=part1, credential_key=part2, db=db)
+    token_hint = f"{part1}/{part2}"
+    return _serve_subscription_response(request, token_hint, db, dbuser, user_agent)
 
 
 @router.get("/{username}/{credential_key}/{client_type}")
@@ -409,7 +431,7 @@ def user_subscription_with_client_type_by_key(
     dbuser: UserResponse = Depends(get_validated_sub_by_key),
     db: Session = Depends(get_db),
 ):
-    _validate_client_type(client_type)
+    client_type = _validate_client_type(client_type)
     return _subscription_with_client_type(request, dbuser, client_type, db)
 
 
@@ -421,5 +443,5 @@ def user_subscription_with_client_type(
     db: Session = Depends(get_db),
 ):
     dbuser = _get_user_by_identifier(identifier, db)
-    _validate_client_type(client_type)
+    client_type = _validate_client_type(client_type)
     return _subscription_with_client_type(request, dbuser, client_type, db)

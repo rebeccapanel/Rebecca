@@ -66,6 +66,96 @@ colorized_echo() {
     esac
 }
 
+format_rebecca_journal_logs() {
+    sed -u -E "s/^[0-9-]+[ T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\\.[0-9]+)?([+-][0-9:]+|Z)? [^ ]+ [^:]+: /Rebecca-\1: /; s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+}
+
+journal_output_format() {
+    if journalctl -o short-iso --no-pager -n 0 >/dev/null 2>&1; then
+        echo "short-iso"
+    else
+        echo "short"
+    fi
+}
+
+humanize_seconds() {
+    local seconds="${1:-0}"
+    local days hours minutes
+    if ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+        echo "-"
+        return
+    fi
+    days=$((seconds / 86400))
+    hours=$(((seconds % 86400) / 3600))
+    minutes=$(((seconds % 3600) / 60))
+    seconds=$((seconds % 60))
+    if [ "$days" -gt 0 ]; then
+        printf "%sd %sh %sm\n" "$days" "$hours" "$minutes"
+    elif [ "$hours" -gt 0 ]; then
+        printf "%sh %sm\n" "$hours" "$minutes"
+    elif [ "$minutes" -gt 0 ]; then
+        printf "%sm %ss\n" "$minutes" "$seconds"
+    else
+        printf "%ss\n" "$seconds"
+    fi
+}
+
+get_current_rebecca_version() {
+    local version=""
+    if [ -f "$BINARY_METADATA_FILE" ]; then
+        version=$(sed -nE 's/.*"tag"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$BINARY_METADATA_FILE" | head -n 1)
+    fi
+    if [ -z "$version" ] && [ -f "$CHANNEL_FILE" ]; then
+        version=$(tr -d '[:space:]' < "$CHANNEL_FILE")
+    fi
+    printf '%s\n' "${version:-unknown}"
+}
+
+get_binary_uptime() {
+    local started now started_epoch
+    if ! systemctl is-active --quiet "$APP_NAME.service"; then
+        echo "-"
+        return
+    fi
+    started=$(systemctl show "$APP_NAME.service" -p ActiveEnterTimestamp --value 2>/dev/null || true)
+    if [ -z "$started" ]; then
+        echo "-"
+        return
+    fi
+    started_epoch=$(date -d "$started" +%s 2>/dev/null || echo "")
+    now=$(date +%s)
+    if [ -z "$started_epoch" ]; then
+        echo "-"
+        return
+    fi
+    humanize_seconds "$((now - started_epoch))"
+}
+
+get_xray_runtime_status() {
+    if pgrep -f "$DATA_DIR/xray-core/xray" >/dev/null 2>&1 || pgrep -f "xray run" >/dev/null 2>&1; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+print_menu_status_summary() {
+    local service_status="stopped"
+    local xray_status="stopped"
+    local version uptime
+    if systemctl is-active --quiet "$APP_NAME.service"; then
+        service_status="running"
+    fi
+    version=$(get_current_rebecca_version)
+    uptime=$(get_binary_uptime)
+    xray_status=$(get_xray_runtime_status)
+    colorized_echo cyan "Version: ${version}"
+    colorized_echo cyan "Rebecca: ${service_status}"
+    colorized_echo cyan "Xray: ${xray_status}"
+    colorized_echo cyan "Uptime: ${uptime}"
+    colorized_echo blue "=============================="
+}
+
 set_rebecca_source_ref() {
     local ref="${1:-dev}"
     REBECCA_REF="$ref"
@@ -2413,7 +2503,7 @@ install_binary_rebecca() {
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
         colorized_echo blue "Fetching xray config file"
-        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" || {
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" 2>/dev/null || {
             rm -f "$DATA_DIR/xray_config.json"
             colorized_echo yellow "No bundled xray_config.json found; Rebecca will use its built-in default."
         }
@@ -2447,7 +2537,7 @@ up_rebecca() {
 
 follow_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -f
+        journalctl -u "$APP_NAME.service" -f -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
         return
     fi
 
@@ -2898,7 +2988,7 @@ down_rebecca() {
 
 show_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" --no-pager
+        journalctl -u "$APP_NAME.service" -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
         return
     fi
 
@@ -3570,6 +3660,7 @@ print_menu() {
     colorized_echo blue "=============================="
     colorized_echo magenta "           Rebecca Menu"
     colorized_echo blue "=============================="
+    print_menu_status_summary
     local entries=(
         "up:Start services"
         "down:Stop services"
@@ -3583,16 +3674,7 @@ print_menu() {
         "script-install:Install Rebecca script"
         "script-update:Update Rebecca CLI script"
         "script-uninstall:Uninstall Rebecca script"
-        "backup:Manual backup launch"
-        "backup-service:Backup service (Telegram + cron job)"
-    )
-    if [ "$(script_install_mode)" = "docker" ]; then
-        entries+=("migrate-binary:Migrate Docker install to binary")
-    fi
-    entries+=(
         "core-update:Update/Change Xray core"
-        "enable-phpmyadmin:Add phpMyAdmin to docker-compose and restart services"
-        "edit:Edit docker-compose.yml"
         "edit-env:Edit environment file"
         "ssl:Issue or renew SSL certificates"
         "help:Show this help message"
@@ -3616,12 +3698,9 @@ print_menu() {
 map_choice_to_command() {
     local commands=(
         up down restart status logs cli install update uninstall
-        script-install script-update script-uninstall backup backup-service
+        script-install script-update script-uninstall
+        core-update edit-env ssl help
     )
-    if [ "$(script_install_mode)" = "docker" ]; then
-        commands+=(migrate-binary)
-    fi
-    commands+=(core-update enable-phpmyadmin edit edit-env ssl help)
 
     if [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le "${#commands[@]}" ]; then
         echo "${commands[$(($1 - 1))]}"
@@ -3652,14 +3731,7 @@ usage() {
     colorized_echo yellow "  script-install  $(tput sgr0)- Install Rebecca script"
     colorized_echo yellow "  script-update   $(tput sgr0)- Update Rebecca CLI script"
     colorized_echo yellow "  script-uninstall  $(tput sgr0)- Uninstall Rebecca script"
-    colorized_echo yellow "  backup          $(tput sgr0)- Manual backup launch"
-    colorized_echo yellow "  backup-service  $(tput sgr0)- Rebecca Backupservice to backup to TG, and a new job in crontab"
-    if [ "$(script_install_mode)" = "docker" ]; then
-        colorized_echo yellow "  migrate-binary  $(tput sgr0)- Migrate Docker install to binary"
-    fi
     colorized_echo yellow "  core-update     $(tput sgr0)- Update/Change Xray core"
-    colorized_echo yellow "  enable-phpmyadmin $(tput sgr0)- Add phpMyAdmin to docker-compose.yml and restart services"
-    colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml (via nano or vi editor)"
     colorized_echo yellow "  edit-env        $(tput sgr0)- Edit environment file (via nano or vi editor)"
     colorized_echo yellow "  ssl             $(tput sgr0)- Issue or renew SSL certificates"
     colorized_echo yellow "  help            $(tput sgr0)- Show this help message"
@@ -3705,9 +3777,6 @@ dispatch_command() {
         status) status_command "$@" ;;
         logs) logs_command "$@" ;;
         cli) cli_command "$@" ;;
-        backup) backup_command "$@" ;;
-        backup-service) backup_service "$@" ;;
-        migrate-binary|migrate-to-binary) migrate_docker_to_binary_command "$@" ;;
         install) install_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
@@ -3715,9 +3784,7 @@ dispatch_command() {
         script-update|update-script) install_rebecca_script "$@" ;;
         script-uninstall|uninstall-script) uninstall_rebecca_script "$@" ;;
         core-update) update_core_command "$@" ;;
-        enable-phpmyadmin) enable_phpmyadmin "$@" ;;
         ssl) ssl_command "$@" ;;
-        edit) edit_command "$@" ;;
         edit-env) edit_env_command "$@" ;;
         help) usage ;;
         *) usage ;;

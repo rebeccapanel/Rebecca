@@ -331,7 +331,12 @@ def _filter_users_raw(
 
             username = (u.get("username") or "").lower()
             note = (u.get("note") or "").lower()
-            if search_lower not in username and (not note or search_lower not in note):
+            subadress = (u.get("subadress") or "").lower()
+            if (
+                search_lower not in username
+                and (not note or search_lower not in note)
+                and (not subadress or search_lower not in subadress)
+            ):
                 # Check credential_key, uuid and other fields before failing
                 credential_key = (u.get("credential_key") or "").lower()
                 if credential_key and search_lower in credential_key:

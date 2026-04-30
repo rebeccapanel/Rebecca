@@ -38,6 +38,7 @@ DEFAULT_USE_CUSTOM_JSON_FOR_HAPP = False
 REBECCA_DATA_DIR = Path(os.getenv("REBECCA_DATA_DIR", "/var/lib/rebecca"))
 CERT_BASE_PATH = Path(os.getenv("REBECCA_CERT_BASE", REBECCA_DATA_DIR / "certs"))
 APP_TEMPLATE_BASE_PATH = (Path(__file__).resolve().parents[1] / "templates").resolve()
+PERSISTENT_TEMPLATE_BASE_PATH = REBECCA_DATA_DIR / "templates"
 DOMAIN_PATTERN = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -299,6 +300,26 @@ class SubscriptionSettingsService:
         return template_name, custom_directory
 
     @classmethod
+    def _ensure_persistent_template_directory(
+        cls,
+        db: Session,
+        record: "SubscriptionSettingsModel",
+        admin: Optional["Admin"],
+    ) -> str:
+        if admin is not None:
+            overrides = dict(getattr(admin, "subscription_settings", {}) or {})
+            custom_directory = str((PERSISTENT_TEMPLATE_BASE_PATH / "admins" / str(admin.id)).resolve())
+            overrides["custom_templates_directory"] = custom_directory
+            admin.subscription_settings = overrides
+            db.add(admin)
+            return custom_directory
+
+        custom_directory = str(PERSISTENT_TEMPLATE_BASE_PATH.resolve())
+        record.custom_templates_directory = custom_directory
+        db.add(record)
+        return custom_directory
+
+    @classmethod
     def _ensure_record(cls, db: Session) -> "SubscriptionSettingsModel":
         _, _, SubscriptionSettingsModel = _models()
         record = db.query(SubscriptionSettingsModel).order_by(SubscriptionSettingsModel.id.desc()).first()
@@ -404,6 +425,9 @@ class SubscriptionSettingsService:
         try:
             base = cls.get_settings(ensure_record=True, db=db)
             template_name, custom_directory = cls._effective_template_selection(template_key, base, admin)
+            record = cls._ensure_record(db)
+            if not custom_directory:
+                custom_directory = cls._ensure_persistent_template_directory(db, record, admin)
             base_dir = (
                 Path(custom_directory).expanduser().resolve() if custom_directory else APP_TEMPLATE_BASE_PATH
             )
@@ -419,7 +443,11 @@ class SubscriptionSettingsService:
             except OSError as exc:
                 raise ValueError(f"Unable to write template {template_name}: {exc}") from exc
 
+            db.commit()
             return cls.read_template_content(template_key, admin=admin, db=db)
+        except Exception:
+            db.rollback()
+            raise
         finally:
             if close_db and db is not None:
                 db.close()
@@ -537,15 +565,12 @@ class SubscriptionSettingsService:
             prefix = prefix.replace("*", salt)
         path = (settings.subscription_path or "sub").strip("/")
         ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
-        prefix_from_request = False
         if not prefix and ports:
             prefix = request_origin or ""
-            prefix_from_request = bool(prefix)
             try:
                 from app.utils.request_context import get_subscription_request_origin
 
                 prefix = prefix or get_subscription_request_origin() or ""
-                prefix_from_request = bool(prefix)
             except Exception:
                 prefix = prefix or ""
 
@@ -572,8 +597,10 @@ class SubscriptionSettingsService:
                 )
                 if alt not in bases:
                     bases.append(alt)
+            if bases:
+                return bases
         base = f"{prefix.rstrip('/')}/{path}"
-        if base not in bases and not (prefix_from_request and ports):
+        if base not in bases:
             bases.insert(0, base)
         if not bases:
             bases.append(base)

@@ -53,6 +53,19 @@ def _is_connection_pool_error(e: Exception) -> bool:
     return False
 
 
+def is_retryable_db_error(e: Exception) -> bool:
+    if _is_deadlock_error(e) or _is_connection_pool_error(e):
+        return True
+    if isinstance(e, (OperationalError, PyMySQLOperationalError)):
+        error_msg = str(e).lower()
+        return "database is locked" in error_msg or "database table is locked" in error_msg
+    return False
+
+
+def retry_delay(tries: int) -> None:
+    time.sleep(min(0.25 * max(tries, 1), 2.0))
+
+
 def safe_execute(db: Session, stmt, params=None, max_retries: int = 3):
     """
     Safely execute a database statement with retry logic for deadlocks and connection pool errors.
@@ -71,42 +84,42 @@ def safe_execute(db: Session, stmt, params=None, max_retries: int = 3):
                 db.commit()
                 done = True
             except (OperationalError, PyMySQLOperationalError, SQLTimeoutError) as err:
-                is_deadlock = _is_deadlock_error(err)
-                is_pool_error = _is_connection_pool_error(err)
+                retryable = is_retryable_db_error(err)
 
-                if (is_deadlock or is_pool_error) and tries < max_retries - 1:
+                if retryable and tries < max_retries - 1:
                     db.rollback()
                     tries += 1
-                    error_type = "deadlock" if is_deadlock else "connection pool"
                     import logging
 
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"{error_type} detected in safe_execute, retrying ({tries}/{max_retries})...")
-                    time.sleep(0.1 * tries)
+                    logger.warning(f"Retryable database error in safe_execute, retrying ({tries}/{max_retries})...")
+                    retry_delay(tries)
                     continue
                 raise err
 
     else:
         tries = 0
         done = False
+        if db.bind.name == "sqlite":
+            max_retries = max(max_retries, 8)
         while not done and tries < max_retries:
             try:
                 db.connection().execute(stmt, params)
                 db.commit()
                 done = True
             except (OperationalError, SQLTimeoutError) as err:
-                is_pool_error = _is_connection_pool_error(err)
+                retryable = is_retryable_db_error(err)
 
-                if is_pool_error and tries < max_retries - 1:
+                if retryable and tries < max_retries - 1:
                     db.rollback()
                     tries += 1
                     import logging
 
                     logger = logging.getLogger(__name__)
                     logger.warning(
-                        f"Connection pool error detected in safe_execute, retrying ({tries}/{max_retries})..."
+                        f"Retryable database error in safe_execute, retrying ({tries}/{max_retries})..."
                     )
-                    time.sleep(0.1 * tries)
+                    retry_delay(tries)
                     continue
                 raise err
 

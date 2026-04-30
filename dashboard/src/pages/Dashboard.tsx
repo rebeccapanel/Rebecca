@@ -1,6 +1,5 @@
 import { Box, VStack } from "@chakra-ui/react";
 import { CoreSettingsModal } from "components/CoreSettingsModal";
-import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
 import { Header } from "components/Header";
 import { QRCodeDialog } from "components/QRCodeDialog";
@@ -26,7 +25,6 @@ export const Dashboard: FC = () => {
 				<Filters />
 				<UsersTable />
 				<UserDialog />
-				<DeleteUserModal />
 				<QRCodeDialog />
 				<ResetUserUsageModal />
 				<RevokeSubscriptionModal />

@@ -1,10 +1,4 @@
 import {
-	AlertDialog,
-	AlertDialogBody,
-	AlertDialogContent,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogOverlay,
 	Badge,
 	Box,
 	Button,
@@ -78,6 +72,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { DeleteIcon } from "./DeleteUserModal";
 import { JsonEditor } from "./JsonEditor";
 
@@ -584,18 +579,20 @@ const HostCard: FC<HostCardProps> = ({
 					>
 						{t("hostsPage.edit")}
 					</Button>
-					<IconButton
-						aria-label={t("hostsPage.delete")}
-						size="sm"
-						colorScheme="red"
-						variant="ghost"
-						onClick={(event) => {
-							event.stopPropagation();
-							onDelete(host.uid);
-						}}
-						icon={<DeleteIcon />}
+					<DeleteConfirmPopover
+						message={t("hostsPage.deleteConfirmation")}
 						isLoading={deleting}
-					/>
+						onConfirm={() => onDelete(host.uid)}
+					>
+						<IconButton
+							aria-label={t("hostsPage.delete")}
+							size="sm"
+							colorScheme="red"
+							variant="ghost"
+							onClick={(event) => event.stopPropagation()}
+							icon={<DeleteIcon />}
+						/>
+					</DeleteConfirmPopover>
 				</HStack>
 			</CardBody>
 		</Card>
@@ -696,18 +693,20 @@ const HostListRow: FC<HostCardProps> = ({
 						}}
 						isLoading={saving}
 					/>
-					<IconButton
-						aria-label={t("hostsPage.delete")}
-						size="sm"
-						colorScheme="red"
-						variant="ghost"
-						onClick={(event) => {
-							event.stopPropagation();
-							onDelete(host.uid);
-						}}
-						icon={<DeleteIcon />}
+					<DeleteConfirmPopover
+						message={t("hostsPage.deleteConfirmation")}
 						isLoading={deleting}
-					/>
+						onConfirm={() => onDelete(host.uid)}
+					>
+						<IconButton
+							aria-label={t("hostsPage.delete")}
+							size="sm"
+							colorScheme="red"
+							variant="ghost"
+							onClick={(event) => event.stopPropagation()}
+							icon={<DeleteIcon />}
+						/>
+					</DeleteConfirmPopover>
 				</HStack>
 			</HStack>
 		</Box>
@@ -1267,16 +1266,20 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							{t("hostsPage.cancel")}
 						</Button>
 					) : (
-						<Button
-							size="sm"
-							variant="ghost"
-							colorScheme="red"
-							leftIcon={<DeleteIcon />}
-							onClick={() => onDelete(host.uid)}
+						<DeleteConfirmPopover
+							message={t("hostsPage.deleteConfirmation")}
 							isLoading={deleting}
+							onConfirm={() => onDelete(host.uid)}
 						>
-							{t("hostsPage.delete")}
-						</Button>
+							<Button
+								size="sm"
+								variant="ghost"
+								colorScheme="red"
+								leftIcon={<DeleteIcon />}
+							>
+								{t("hostsPage.delete")}
+							</Button>
+						</DeleteConfirmPopover>
 					)}
 					<HStack spacing={3}>
 						{!isCloneMode && onClone && (
@@ -1575,8 +1578,6 @@ export const HostsManager: FC = () => {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
 	const [deletingUid, setDeletingUid] = useState<string | null>(null);
-	const [confirmDeleteUid, setConfirmDeleteUid] = useState<string | null>(null);
-	const cancelRef = useRef<HTMLButtonElement | null>(null);
 
 	const [orderDirtyState, setOrderDirtyState] = useState(false);
 	const orderDirtyRef = useRef(false);
@@ -2113,20 +2114,13 @@ export const HostsManager: FC = () => {
 		}
 	};
 
-	const handleDeleteHost = (uid: string) => {
-		setConfirmDeleteUid(uid);
-	};
-
-	const confirmDelete = async () => {
-		if (!confirmDeleteUid) return;
-		const host = hostItemsRef.current.find(
-			(item) => item.uid === confirmDeleteUid,
-		);
+	const handleDeleteHost = async (uid: string) => {
+		const host = hostItemsRef.current.find((item) => item.uid === uid);
 		if (!host) return;
-		setDeletingUid(confirmDeleteUid);
+		setDeletingUid(uid);
 		try {
 			const nextHosts = hostItemsRef.current.filter(
-				(item) => item.uid !== confirmDeleteUid,
+				(item) => item.uid !== uid,
 			);
 			applyHostItems(nextHosts);
 			const payload = buildInboundPayload(nextHosts, [
@@ -2141,7 +2135,7 @@ export const HostsManager: FC = () => {
 				isClosable: true,
 				position: "top",
 			});
-			if (selectedHostUid === confirmDeleteUid) {
+			if (selectedHostUid === uid) {
 				setSelectedHostUid(null);
 			}
 		} catch (_error) {
@@ -2153,7 +2147,6 @@ export const HostsManager: FC = () => {
 			});
 		} finally {
 			setDeletingUid(null);
-			setConfirmDeleteUid(null);
 		}
 	};
 
@@ -2471,36 +2464,6 @@ export const HostsManager: FC = () => {
 				saving={!!cloneHost && savingHostUid === cloneHost.uid && isPostLoading}
 				deleting={false}
 			/>
-
-			<AlertDialog
-				isOpen={Boolean(confirmDeleteUid)}
-				leastDestructiveRef={cancelRef}
-				onClose={() => setConfirmDeleteUid(null)}
-			>
-				<AlertDialogOverlay>
-					<AlertDialogContent>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("hostsPage.deleteTitle")}
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							{t("hostsPage.deleteConfirmation")}
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<Button ref={cancelRef} onClick={() => setConfirmDeleteUid(null)}>
-								{t("hostsPage.cancel")}
-							</Button>
-							<Button
-								colorScheme="red"
-								onClick={confirmDelete}
-								ml={3}
-								isLoading={Boolean(deletingUid)}
-							>
-								{t("hostsPage.delete")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
 		</VStack>
 	);
 };

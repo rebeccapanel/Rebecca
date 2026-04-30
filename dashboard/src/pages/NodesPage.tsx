@@ -40,6 +40,7 @@ import {
 	Text,
 	Tooltip,
 	useClipboard,
+	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
@@ -78,7 +79,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
-import { DeleteNodeModal } from "../components/DeleteNodeModal";
+import { DeleteConfirmPopover } from "../components/DeleteConfirmPopover";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
@@ -201,10 +202,13 @@ export const NodesPage: FC = () => {
 		resetNodeUsage,
 		updateMasterNode,
 		resetMasterUsage,
+		deleteNode,
 		setDeletingNode,
 	} = useNodes();
 	const queryClient = useQueryClient();
 	const toast = useToast();
+	const nodeCardBg = useColorModeValue("surface.light", "surface.dark");
+	const nodeCardBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const [editingNode, setEditingNode] = useState<NodeType | null>(null);
 	const [isAddNodeOpen, setAddNodeOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -415,6 +419,29 @@ export const NodesPage: FC = () => {
 			},
 			onSettled: () => {
 				setEditingNode(null);
+			},
+		},
+	);
+
+	const { isLoading: isDeletingNode, mutate: deleteNodeMutate } = useMutation(
+		async (node: NodeType) => {
+			setDeletingNode(node);
+			return deleteNode();
+		},
+		{
+			onSuccess: (_result, node) => {
+				generateSuccessMessage(
+					t("deleteNode.deleteSuccess", { name: node.name }),
+					toast,
+				);
+				queryClient.invalidateQueries(FetchNodesQueryKey);
+				refetchNodes();
+			},
+			onError: (err) => {
+				generateErrorMessage(err, toast);
+			},
+			onSettled: () => {
+				setDeletingNode(null);
 			},
 		},
 	);
@@ -1405,7 +1432,9 @@ export const NodesPage: FC = () => {
 						(skeletonKey) => (
 							<Box
 								key={skeletonKey}
+								bg={nodeCardBg}
 								borderWidth="1px"
+								borderColor={nodeCardBorder}
 								borderRadius="lg"
 								p={6}
 								boxShadow="sm"
@@ -1432,7 +1461,9 @@ export const NodesPage: FC = () => {
 					{masterMatchesSearch && (
 						<Box
 							key="master-node"
+							bg={nodeCardBg}
 							borderWidth="1px"
+							borderColor={nodeCardBorder}
 							borderRadius="lg"
 							p={viewMode === "list" ? 4 : 6}
 							boxShadow="sm"
@@ -1791,12 +1822,19 @@ export const NodesPage: FC = () => {
 												icon={<EditIconStyled />}
 												onClick={() => setEditingNode(node)}
 											/>
-											<IconButton
-												aria-label={t("delete")}
-												icon={<DeleteIconStyled />}
-												colorScheme="red"
-												onClick={() => setDeletingNode(node)}
-											/>
+											<DeleteConfirmPopover
+												message={t("deleteNode.prompt", {
+													name: node.name,
+												})}
+												isLoading={isDeletingNode}
+												onConfirm={() => deleteNodeMutate(node)}
+											>
+												<IconButton
+													aria-label={t("delete")}
+													icon={<DeleteIconStyled />}
+													colorScheme="red"
+												/>
+											</DeleteConfirmPopover>
 										</ButtonGroup>
 									</HStack>
 								</VStack>
@@ -1805,7 +1843,9 @@ export const NodesPage: FC = () => {
 							return (
 								<Box
 									key={node.id ?? node.name}
+									bg={nodeCardBg}
 									borderWidth="1px"
+									borderColor={nodeCardBorder}
 									borderRadius="lg"
 									p={viewMode === "list" ? 4 : 6}
 									boxShadow="sm"
@@ -1853,7 +1893,9 @@ export const NodesPage: FC = () => {
 						})
 					) : (
 						<Box
+							bg={nodeCardBg}
 							borderWidth="1px"
+							borderColor={nodeCardBorder}
 							borderRadius="lg"
 							p={6}
 							boxShadow="sm"
@@ -2093,9 +2135,6 @@ export const NodesPage: FC = () => {
 					</ModalContent>
 				</Modal>
 			)}
-			<DeleteNodeModal
-				deleteCallback={() => queryClient.invalidateQueries(FetchNodesQueryKey)}
-			/>
 		</VStack>
 	);
 };

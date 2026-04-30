@@ -12,7 +12,7 @@ exclude = ["dashboard*", "tests*", "Rebecca-node*", "scripts/rebecca*", "3x-ui*"
 
 [project]
 name = "rebecca"
-version = "0.1.2"
+version = "0.1.3"
 description = "Rebecca, Unified GUI Censorship Resistant Solution Powered by Xray."
 readme = "README.md"
 requires-python = ">=3.13"

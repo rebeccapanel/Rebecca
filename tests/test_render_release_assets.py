@@ -8,9 +8,9 @@ def test_render_assets_section_contains_downloads_and_reports():
     assert "## Reports" in body
     assert "`rebecca-linux-amd64.tar.gz`" in body
     assert "`rebecca-windows-amd64.zip`" in body
-    assert "releases/download/v0.1.0/rebecca-linux-armv7.tar.gz" in body
+    assert "releases/download/v0.1.0/rebecca-linux-amd64.tar.gz" in body
     assert "github/downloads/rebeccapanel/Rebecca/v0.1.0/total?label=Total" in body
-    assert "github/downloads/rebeccapanel/Rebecca/v0.1.0/rebecca-linux-s390x.tar.gz?label=linux-s390x" in body
+    assert "github/downloads/rebeccapanel/Rebecca/v0.1.0/rebecca-windows-amd64.zip?label=windows-amd64" in body
 
 
 def test_update_body_replaces_managed_section():

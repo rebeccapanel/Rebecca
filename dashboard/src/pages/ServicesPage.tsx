@@ -84,6 +84,7 @@ import type {
 	ServiceSummary,
 } from "types/Service";
 import { AdminTrafficLimitMode } from "types/Admin";
+import type { Admin, AdminPermissions } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 
 type HostOption = {
@@ -113,6 +114,29 @@ type ServiceDialogProps = {
 const NO_SERVICE_OPTION_VALUE = "__no_service__";
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 const MB_IN_BYTES = 1024 * 1024;
+
+const formatGigabytes = (
+	bytes?: number | null,
+	unlimitedLabel = "Unlimited",
+) => {
+	const value = Number(bytes ?? 0);
+	if (!Number.isFinite(value) || value <= 0) {
+		return unlimitedLabel;
+	}
+	const gb = value / GB_IN_BYTES;
+	return `${Number.isInteger(gb) ? gb : Number(gb.toFixed(2))} GB`;
+};
+
+const adminCanDeleteUsers = (admin?: Admin) =>
+	Boolean(admin?.permissions?.users?.delete);
+
+const withDeleteUserPermission = (permissions: AdminPermissions) => ({
+	...permissions,
+	users: {
+		...permissions.users,
+		delete: true,
+	},
+});
 
 const ServiceDialog: FC<ServiceDialogProps> = ({
 	isOpen,
@@ -1240,11 +1264,22 @@ const ServicesPage: FC = () => {
 		if (!selectedService) return;
 		setSavingAdminLimitId(adminId);
 		try {
+			if (payload.delete_user_usage_limit_enabled === true) {
+				const targetAdmin = adminStore.admins.find((item) => item.id === adminId);
+				if (targetAdmin && !adminCanDeleteUsers(targetAdmin)) {
+					await adminStore.updateAdmin(targetAdmin.username, {
+						permissions: withDeleteUserPermission(targetAdmin.permissions),
+					});
+				}
+			}
 			await servicesStore.updateServiceAdminLimits(
 				selectedService.id,
 				adminId,
 				payload,
 			);
+			if (payload.delete_user_usage_limit_enabled === true) {
+				await servicesStore.fetchServiceDetail(selectedService.id);
+			}
 		} catch (error) {
 			toast({
 				status: "error",
@@ -1423,8 +1458,15 @@ const ServicesPage: FC = () => {
 												<Flex justify="space-between" gap={3}>
 													<Text fontWeight="medium">{link.username}</Text>
 													<Text fontSize="sm" color="gray.500">
-														{formatBytes(link.used_traffic)} /{" "}
-														{formatBytes(link.lifetime_used_traffic)}
+														{link.traffic_limit_mode ===
+														AdminTrafficLimitMode.CreatedTraffic
+															? formatBytes(link.created_traffic)
+															: formatBytes(link.used_traffic)}{" "}
+														/{" "}
+														{formatGigabytes(
+															link.data_limit,
+															t("common.unlimited", "Unlimited"),
+														)}
 													</Text>
 												</Flex>
 												<Flex

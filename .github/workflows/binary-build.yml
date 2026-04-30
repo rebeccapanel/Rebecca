@@ -2,6 +2,12 @@ name: Binary Build
 
 on:
   workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: "Build every Linux architecture. This is slower than the default release build."
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - dev
@@ -25,6 +31,7 @@ concurrency:
 jobs:
   dashboard:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       DASH_DIR: ./dashboard
 
@@ -60,7 +67,7 @@ jobs:
   build-linux:
     needs: dashboard
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -98,11 +105,11 @@ jobs:
           path: dashboard/build
 
       - name: Set up QEMU
-        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        if: github.event_name == 'workflow_dispatch' && inputs.full_matrix == true && matrix.asset_arch != 'amd64'
         uses: docker/setup-qemu-action@v3
 
       - name: Build Linux binary package
-        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
         shell: bash
         env:
           ASSET_ARCH: ${{ matrix.asset_arch }}
@@ -174,7 +181,7 @@ jobs:
           fi
 
       - name: Upload Linux package artifact
-        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
         uses: actions/upload-artifact@v4
         with:
           name: rebecca-linux-${{ matrix.asset_arch }}
@@ -183,6 +190,7 @@ jobs:
   build-windows-amd64:
     needs: dashboard
     runs-on: windows-latest
+    timeout-minutes: 10
     env:
       PYTHON_VERSION: "3.13"
 
@@ -231,6 +239,7 @@ jobs:
       - build-linux
       - build-windows-amd64
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'release' || github.ref_type == 'tag'
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -263,9 +272,16 @@ jobs:
         run: |
           set -euo pipefail
           release_tag="${{ steps.meta.outputs.release_tag }}"
+          notes_file=".github/release-notes/${release_tag}.md"
+
+          if [ -f "${notes_file}" ]; then
+            cp "${notes_file}" release-body.md
+          else
+            printf 'Rebecca %s\n' "${release_tag}" > release-body.md
+          fi
 
           gh release view "${release_tag}" >/dev/null 2>&1 || \
-            gh release create "${release_tag}" --title "${release_tag}" --notes "Rebecca ${release_tag}"
+            gh release create "${release_tag}" --title "${release_tag}" --notes-file release-body.md
 
           assets=(
             rebecca-linux-386.tar.gz
@@ -292,7 +308,12 @@ jobs:
         run: |
           set -euo pipefail
           release_tag="${{ steps.meta.outputs.release_tag }}"
-          gh release view "${release_tag}" --json body --jq .body > release-body.md
+          notes_file=".github/release-notes/${release_tag}.md"
+          if [ -f "${notes_file}" ]; then
+            cp "${notes_file}" release-body.md
+          else
+            gh release view "${release_tag}" --json body --jq .body > release-body.md
+          fi
           python scripts/render_release_assets.py \
             --repo "${GITHUB_REPOSITORY}" \
             --tag "${release_tag}" \

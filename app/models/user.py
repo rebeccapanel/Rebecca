@@ -31,7 +31,10 @@ except Exception:  # pragma: no cover - defensive
         token = "token"
 
 
-USERNAME_REGEXP = re.compile(r"^(?=\w{3,32}\b)[a-zA-Z0-9-_@.]+(?:_[a-zA-Z0-9-_@.]+)*$")
+USERNAME_REGEXP = re.compile(r"^(?=.{3,32}$)[a-zA-Z0-9._@-]+$")
+USERNAME_VALIDATION_MESSAGE = (
+    "Username only can be 3 to 32 characters and contain a-z, 0-9, underscores, hyphens, dots, or @."
+)
 
 _skip_expensive_computations: ContextVar[bool] = ContextVar("skip_expensive_computations", default=False)
 
@@ -336,9 +339,7 @@ class User(BaseModel):
     @classmethod
     def validate_username(cls, v):
         if not USERNAME_REGEXP.match(v):
-            raise ValueError(
-                "Username only can be 3 to 32 characters and contain a-z, 0-9, and underscores in between."
-            )
+            raise ValueError(USERNAME_VALIDATION_MESSAGE)
         return v
 
     @field_validator("note", check_fields=False)
@@ -636,6 +637,7 @@ class UserResponse(User):
     links: List[str] = Field(default_factory=list)  # Config links for this user
     subscription_url: str = ""
     subscription_urls: Dict[str, str] = Field(default_factory=dict)
+    subadress: str = Field(default="", exclude=True)
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
     service_id: int | None = None

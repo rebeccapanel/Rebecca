@@ -1,11 +1,5 @@
 import {
 	Alert,
-	AlertDialog,
-	AlertDialogBody,
-	AlertDialogContent,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogOverlay,
 	AlertIcon,
 	Box,
 	Button,
@@ -36,7 +30,6 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -47,6 +40,7 @@ import {
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
+import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
 import { InboundFormModal } from "./FormDrawer";
 
 type FilterState = {
@@ -68,12 +62,10 @@ export const InboundsManager: FC = () => {
 	});
 	const [selected, setSelected] = useState<RawInbound | null>(null);
 	const [cloneTarget, setCloneTarget] = useState<RawInbound | null>(null);
-	const [deleteTarget, setDeleteTarget] = useState<RawInbound | null>(null);
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const cloneDrawer = useDisclosure();
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
 	const isDesktop = useBreakpointValue({ base: false, md: true });
-	const cancelRef = useRef<HTMLButtonElement | null>(null);
 
 	const loadInbounds = useCallback(() => {
 		setIsLoading(true);
@@ -246,17 +238,13 @@ export const InboundsManager: FC = () => {
 			},
 		});
 
-	const handleDelete = (inbound: RawInbound) => {
-		setDeleteTarget(inbound);
-	};
-
-	const confirmDelete = async () => {
-		if (!deleteTarget) {
+	const handleDelete = async (inbound: RawInbound) => {
+		if (!inbound) {
 			return;
 		}
 		setIsMutating(true);
 		try {
-			await fetch(`/inbounds/${encodeURIComponent(deleteTarget.tag)}`, {
+			await fetch(`/inbounds/${encodeURIComponent(inbound.tag)}`, {
 				method: "DELETE",
 			});
 			toast({
@@ -265,11 +253,11 @@ export const InboundsManager: FC = () => {
 			});
 			refreshInboundsStore();
 			await loadInbounds();
-			if (selected?.tag === deleteTarget.tag) {
+			if (selected?.tag === inbound.tag) {
 				setSelected(null);
 				onClose();
 			}
-			if (cloneTarget?.tag === deleteTarget.tag) {
+			if (cloneTarget?.tag === inbound.tag) {
 				setCloneTarget(null);
 				cloneDrawer.onClose();
 			}
@@ -298,7 +286,6 @@ export const InboundsManager: FC = () => {
 			});
 		} finally {
 			setIsMutating(false);
-			setDeleteTarget(null);
 		}
 	};
 
@@ -463,14 +450,20 @@ export const InboundsManager: FC = () => {
 													size="sm"
 													onClick={() => openEdit(inbound)}
 												/>
-												<IconButton
-													aria-label={t("common.delete", "Delete")}
-													icon={<TrashIcon width={16} height={16} />}
-													variant="ghost"
-													size="sm"
-													onClick={() => handleDelete(inbound)}
+												<DeleteConfirmPopover
+													message={t("inbounds.confirmDelete", {
+														tag: inbound.tag,
+													})}
 													isLoading={isMutating}
-												/>
+													onConfirm={() => handleDelete(inbound)}
+												>
+													<IconButton
+														aria-label={t("common.delete", "Delete")}
+														icon={<TrashIcon width={16} height={16} />}
+														variant="ghost"
+														size="sm"
+													/>
+												</DeleteConfirmPopover>
 											</HStack>
 										</Td>
 									</Tr>
@@ -500,14 +493,20 @@ export const InboundsManager: FC = () => {
 											size="sm"
 											onClick={() => openEdit(inbound)}
 										/>
-										<IconButton
-											aria-label={t("common.delete", "Delete")}
-											icon={<TrashIcon width={16} height={16} />}
-											variant="ghost"
-											size="sm"
-											onClick={() => handleDelete(inbound)}
+										<DeleteConfirmPopover
+											message={t("inbounds.confirmDelete", {
+												tag: inbound.tag,
+											})}
 											isLoading={isMutating}
-										/>
+											onConfirm={() => handleDelete(inbound)}
+										>
+											<IconButton
+												aria-label={t("common.delete", "Delete")}
+												icon={<TrashIcon width={16} height={16} />}
+												variant="ghost"
+												size="sm"
+											/>
+										</DeleteConfirmPopover>
 									</HStack>
 								</Flex>
 								<Stack spacing={2}>
@@ -562,7 +561,7 @@ export const InboundsManager: FC = () => {
 				onSubmit={handleSubmit}
 				onDelete={selected ? () => handleDelete(selected) : undefined}
 				onClone={selected ? () => openClone(selected) : undefined}
-				isDeleting={isMutating && Boolean(deleteTarget)}
+				isDeleting={isMutating}
 			/>
 			<InboundFormModal
 				isOpen={cloneDrawer.isOpen}
@@ -577,42 +576,6 @@ export const InboundsManager: FC = () => {
 				}}
 				onSubmit={handleCloneSubmit}
 			/>
-
-			<AlertDialog
-				isOpen={Boolean(deleteTarget)}
-				leastDestructiveRef={cancelRef}
-				onClose={() => setDeleteTarget(null)}
-			>
-				<AlertDialogOverlay>
-					<AlertDialogContent>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("inbounds.deleteTitle", "Delete inbound")}
-						</AlertDialogHeader>
-						<AlertDialogBody>
-							{t("inbounds.confirmDelete", {
-								tag: deleteTarget?.tag ?? "",
-							})}
-						</AlertDialogBody>
-						<AlertDialogFooter>
-							<Button
-								ref={cancelRef}
-								onClick={() => setDeleteTarget(null)}
-								isDisabled={isMutating}
-							>
-								{t("inbounds.deleteCancel", "Cancel")}
-							</Button>
-							<Button
-								colorScheme="red"
-								onClick={confirmDelete}
-								ml={3}
-								isLoading={isMutating}
-							>
-								{t("inbounds.deleteConfirm", "Delete")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
 		</Stack>
 	);
 };
