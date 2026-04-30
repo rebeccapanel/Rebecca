@@ -537,15 +537,12 @@ class SubscriptionSettingsService:
             prefix = prefix.replace("*", salt)
         path = (settings.subscription_path or "sub").strip("/")
         ports = cls._normalize_ports(getattr(settings, "subscription_ports", []))
-        prefix_from_request = False
         if not prefix and ports:
             prefix = request_origin or ""
-            prefix_from_request = bool(prefix)
             try:
                 from app.utils.request_context import get_subscription_request_origin
 
                 prefix = prefix or get_subscription_request_origin() or ""
-                prefix_from_request = bool(prefix)
             except Exception:
                 prefix = prefix or ""
 
@@ -572,8 +569,10 @@ class SubscriptionSettingsService:
                 )
                 if alt not in bases:
                     bases.append(alt)
+            if bases:
+                return bases
         base = f"{prefix.rstrip('/')}/{path}"
-        if base not in bases and not (prefix_from_request and ports):
+        if base not in bases:
             bases.insert(0, base)
         if not bases:
             bases.append(base)
