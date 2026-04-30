@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - dev
+    tags:
+      - "v*"
   pull_request:
     branches:
       - "**"
@@ -16,56 +18,19 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-linux-amd64:
+  dashboard:
     runs-on: ubuntu-latest
     env:
       DASH_DIR: ./dashboard
-      PYTHON_VERSION: "3.13"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Resolve build metadata
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            VERSION="${{ github.event.release.tag_name }}"
-            RELEASE_TAG="${{ github.event.release.tag_name }}"
-            UPLOAD_RELEASE="true"
-          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-            UPLOAD_RELEASE="true"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            VERSION="pr-${{ github.event.pull_request.number }}-${GITHUB_SHA::7}"
-            RELEASE_TAG=""
-            UPLOAD_RELEASE="false"
-          else
-            REF_SLUG="$(echo "${GITHUB_REF_NAME}" | tr '/[:space:]' '-' | tr -cd '[:alnum:]._-')"
-            VERSION="${REF_SLUG}-${GITHUB_SHA::7}"
-            RELEASE_TAG=""
-            UPLOAD_RELEASE="false"
-          fi
-
-          ARTIFACT_NAME="rebecca-binaries-linux-amd64"
-          SERVER_ASSET_NAME="rebecca-server-${VERSION}-linux-amd64"
-          CLI_ASSET_NAME="rebecca-cli-${VERSION}-linux-amd64"
-
-          echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "server_asset_name=${SERVER_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "cli_asset_name=${CLI_ASSET_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
-          echo "upload_release=${UPLOAD_RELEASE}" >> "${GITHUB_OUTPUT}"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Setup Node.js 20 LTS
         uses: actions/setup-node@v4
@@ -86,51 +51,251 @@ jobs:
         working-directory: ${{ env.DASH_DIR }}
         run: cp ./build/index.html ./build/404.html
 
-      - name: Install build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bash \
-            build-essential \
-            curl \
-            gcc \
-            libffi-dev \
-            libssl-dev \
-            pkg-config \
-            zlib1g-dev
+      - name: Upload dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-build
+          path: dashboard/build
 
-      - name: Sync Python dependencies
-        run: |
-          python -m pip install --upgrade pip uv
-          uv sync --frozen --no-dev --group build
+  build-linux:
+    needs: dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset_arch: "386"
+            platform: linux/386
+            image: python:3.13-trixie
+          - asset_arch: amd64
+            platform: linux/amd64
+            image: python:3.13-trixie
+          - asset_arch: arm64
+            platform: linux/arm64
+            image: python:3.13-trixie
+          - asset_arch: armv5
+            platform: linux/arm/v7
+            image: python:3.13-trixie
+          - asset_arch: armv6
+            platform: linux/arm/v7
+            image: python:3.13-trixie
+          - asset_arch: armv7
+            platform: linux/arm/v7
+            image: python:3.13-trixie
+          - asset_arch: s390x
+            platform: linux/s390x
+            image: python:3.13-trixie
 
-      - name: Verify PyInstaller
-        run: |
-          uv run python -m PyInstaller --version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Build binaries
+      - name: Download dashboard
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-build
+          path: dashboard/build
+
+      - name: Set up QEMU
+        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Linux binary package
+        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        shell: bash
+        env:
+          ASSET_ARCH: ${{ matrix.asset_arch }}
+          ASSET_NAME: rebecca-linux-${{ matrix.asset_arch }}.tar.gz
+          BUILD_IMAGE: ${{ matrix.image }}
+          BUILD_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+
+          docker pull --platform "${BUILD_PLATFORM}" "${BUILD_IMAGE}"
+
+          set +e
+          docker run --rm \
+            --pull never \
+            --platform "${BUILD_PLATFORM}" \
+            -e ASSET_ARCH="${ASSET_ARCH}" \
+            -e ASSET_NAME="${ASSET_NAME}" \
+            -v "${PWD}:/workspace" \
+            -w /workspace \
+            "${BUILD_IMAGE}" \
+            bash -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                bash \
+                build-essential \
+                ca-certificates \
+                curl \
+                gcc \
+                git \
+                libffi-dev \
+                libssl-dev \
+                pkg-config \
+                zlib1g-dev
+              case "${ASSET_ARCH}" in
+                386|s390x)
+                  apt-get install -y --no-install-recommends cargo rustc
+                  ;;
+                *)
+                  curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+                  export PATH="${HOME}/.cargo/bin:${PATH}"
+                  ;;
+              esac
+              rustc --version
+              cargo --version
+              export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+              export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
+              python -m pip install --disable-pip-version-check --upgrade pip wheel
+              python -m pip install --disable-pip-version-check . pyinstaller==6.20.0
+              REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false bash scripts/build_binary.sh
+              tar -C dist -czf "dist/${ASSET_NAME}" rebecca-server rebecca-cli
+              sha256sum "dist/${ASSET_NAME}"
+            ' 2>&1 | tee "build-${ASSET_ARCH}.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "${status}" -ne 0 ]; then
+            echo "::group::Last ${ASSET_NAME} build log lines"
+            tail -n 120 "build-${ASSET_ARCH}.log" || true
+            echo "::endgroup::"
+            tail -n 20 "build-${ASSET_ARCH}.log" | while IFS= read -r line; do
+              line="${line//'%'/'%25'}"
+              line="${line//$'\r'/'%0D'}"
+              line="${line//$'\n'/'%0A'}"
+              echo "::error title=${ASSET_NAME}::${line}"
+            done
+            exit "${status}"
+          fi
+
+      - name: Upload Linux package artifact
+        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || matrix.asset_arch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebecca-linux-${{ matrix.asset_arch }}
+          path: dist/rebecca-linux-${{ matrix.asset_arch }}.tar.gz
+
+  build-windows-amd64:
+    needs: dashboard
+    runs-on: windows-latest
+    env:
+      PYTHON_VERSION: "3.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dashboard
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-build
+          path: dashboard/build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python build dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip wheel
+          python -m pip install --disable-pip-version-check . pyinstaller==6.20.0
+
+      - name: Build Windows binaries
         shell: bash
         run: |
           set -euo pipefail
-          uv run bash scripts/build_binary.sh
-          ls -lah dist
+          REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false bash scripts/build_binary.sh
 
-      - name: Upload artifact
+      - name: Package Windows binaries
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path dist/rebecca-server.exe, dist/rebecca-cli.exe `
+            -DestinationPath dist/rebecca-windows-amd64.zip `
+            -Force
+
+      - name: Upload Windows package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.meta.outputs.artifact_name }}
-          path: |
-            dist/rebecca-server
-            dist/rebecca-cli
+          name: rebecca-windows-amd64
+          path: dist/rebecca-windows-amd64.zip
 
-      - name: Upload release asset
-        if: steps.meta.outputs.upload_release == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish-release:
+    needs:
+      - build-linux
+      - build-windows-amd64
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || github.ref_type == 'tag'
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: meta
+        shell: bash
         run: |
-          gh release view "${{ steps.meta.outputs.release_tag }}" >/dev/null 2>&1 || \
-            gh release create "${{ steps.meta.outputs.release_tag }}" --title "${{ steps.meta.outputs.release_tag }}" --notes "Rebecca ${{ steps.meta.outputs.release_tag }}"
-          gh release upload "${{ steps.meta.outputs.release_tag }}" \
-            "dist/rebecca-server#${{ steps.meta.outputs.server_asset_name }}" \
-            "dist/rebecca-cli#${{ steps.meta.outputs.cli_asset_name }}" \
-            --clobber
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rebecca-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Upload release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="${{ steps.meta.outputs.release_tag }}"
+
+          gh release view "${release_tag}" >/dev/null 2>&1 || \
+            gh release create "${release_tag}" --title "${release_tag}" --notes "Rebecca ${release_tag}"
+
+          assets=(
+            rebecca-linux-386.tar.gz
+            rebecca-linux-amd64.tar.gz
+            rebecca-linux-arm64.tar.gz
+            rebecca-linux-armv5.tar.gz
+            rebecca-linux-armv6.tar.gz
+            rebecca-linux-armv7.tar.gz
+            rebecca-linux-s390x.tar.gz
+            rebecca-windows-amd64.zip
+            rebecca-os
+            "rebecca-server-${release_tag}-linux-amd64"
+            "rebecca-cli-${release_tag}-linux-amd64"
+          )
+
+          for asset in "${assets[@]}"; do
+            gh release delete-asset "${release_tag}" "${asset}" -y >/dev/null 2>&1 || true
+          done
+
+          gh release upload "${release_tag}" release-assets/rebecca-* --clobber
+
+      - name: Update release downloads report
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="${{ steps.meta.outputs.release_tag }}"
+          gh release view "${release_tag}" --json body --jq .body > release-body.md
+          python scripts/render_release_assets.py \
+            --repo "${GITHUB_REPOSITORY}" \
+            --tag "${release_tag}" \
+            --existing-body-file release-body.md \
+            > release-body-updated.md
+          gh release edit "${release_tag}" --notes-file release-body-updated.md

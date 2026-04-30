@@ -343,6 +343,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		fetchAdmins,
 		deleteAdmin,
 		resetUsage,
+		resetDeletedUsersUsage,
 		disableAdmin,
 		enableAdmin,
 		updateAdmin,
@@ -373,7 +374,12 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const [disableReason, setDisableReason] = useState("");
 	const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
 	const [actionState, setActionState] = useState<{
-		type: "reset" | "disableAdmin" | "enableAdmin" | "quickPassword";
+		type:
+			| "reset"
+			| "resetDeleted"
+			| "disableAdmin"
+			| "enableAdmin"
+			| "quickPassword";
 		username: string;
 	} | null>(null);
 	const [adminForPermissions, setAdminForPermissions] = useState<Admin | null>(
@@ -571,6 +577,22 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			await resetUsage(admin.username);
 			generateSuccessMessage(
 				t("admins.resetUsageSuccess", "Usage reset"),
+				toast,
+			);
+			fetchAdmins();
+		} catch (error) {
+			generateErrorMessage(error, toast);
+		} finally {
+			setActionState(null);
+		}
+	};
+
+	const runResetDeletedUsersUsage = async (admin: Admin) => {
+		setActionState({ type: "resetDeleted", username: admin.username });
+		try {
+			await resetDeletedUsersUsage(admin.username);
+			generateSuccessMessage(
+				t("admins.resetDeletedUsageSuccess", "Deleted-user usage reset"),
 				toast,
 			);
 			fetchAdmins();
@@ -1221,6 +1243,33 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																}}
 															/>
 														</Tooltip>
+														{(admin.deleted_users_usage ?? 0) > 0 && (
+															<Tooltip
+																label={t(
+																	"admins.resetDeletedUsage",
+																	"Reset deleted-user usage",
+																)}
+															>
+																<IconButton
+																	aria-label={t(
+																		"admins.resetDeletedUsage",
+																		"Reset deleted-user usage",
+																	)}
+																	icon={<QuickPassIcon width={20} />}
+																	variant="ghost"
+																	size="sm"
+																	isLoading={
+																		actionState?.username ===
+																			admin.username &&
+																		actionState?.type === "resetDeleted"
+																	}
+																	onClick={(event) => {
+																		event.stopPropagation();
+																		runResetDeletedUsersUsage(admin);
+																	}}
+																/>
+															</Tooltip>
+														)}
 													</>
 												)}
 												{showDisableAction && canManageThisAdmin && (
@@ -2048,6 +2097,39 @@ export const AdminsTable: FC<TableProps> = (props) => {
 																							}}
 																						/>
 																					</Tooltip>
+																					{(admin.deleted_users_usage ?? 0) >
+																						0 && (
+																						<Tooltip
+																							label={t(
+																								"admins.resetDeletedUsage",
+																								"Reset deleted-user usage",
+																							)}
+																						>
+																							<IconButton
+																								aria-label={t(
+																									"admins.resetDeletedUsage",
+																									"Reset deleted-user usage",
+																								)}
+																								icon={
+																									<QuickPassIcon width={20} />
+																								}
+																								variant="ghost"
+																								size="sm"
+																								isLoading={
+																									actionState?.username ===
+																										admin.username &&
+																									actionState?.type ===
+																										"resetDeleted"
+																								}
+																								onClick={(event) => {
+																									event.stopPropagation();
+																									runResetDeletedUsersUsage(
+																										admin,
+																									);
+																								}}
+																							/>
+																						</Tooltip>
+																					)}
 																				</>
 																			)}
 																			{showDisableAction &&

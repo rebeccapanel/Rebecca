@@ -11,6 +11,15 @@ from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user, validate_dates
 from app.models.admin import Admin, AdminRole, UserPermission, admin_can_view_user_traffic
+from app.db.crud.admin_traffic import (
+    DELETE_CAP_EXCEEDED_MESSAGE,
+    admin_uses_service_traffic_limits,
+    ensure_user_delete_allowed_and_apply_credit,
+    get_admin_service_link,
+    traffic_scope_created_limit_reached,
+    traffic_scope_used_limit_reached,
+    traffic_scope_uses_created_traffic,
+)
 from app.models.user import (
     AdvancedUserAction,
     BulkUsersActionRequest,
@@ -144,8 +153,42 @@ def _ensure_user_management_available(admin: Admin, action: str) -> None:
         )
 
 
-def _can_view_user_traffic(admin: Admin) -> bool:
-    return admin.role == AdminRole.full_access or admin_can_view_user_traffic(admin)
+def _service_limit_from_admin(admin: Admin, service_id: Optional[int]):
+    if service_id is None:
+        return None
+    for item in getattr(admin, "service_limits", []) or []:
+        if getattr(item, "service_id", None) == service_id:
+            return item
+    return None
+
+
+def _can_view_user_traffic(admin: Admin, service_id: Optional[int] = None) -> bool:
+    if admin.role == AdminRole.full_access:
+        return True
+    if getattr(admin, "use_service_traffic_limits", False):
+        service_limit = _service_limit_from_admin(admin, service_id)
+        if service_limit is None:
+            return True
+        if not traffic_scope_uses_created_traffic(service_limit):
+            return True
+        return bool(getattr(service_limit, "show_user_traffic", True))
+    return admin_can_view_user_traffic(admin)
+
+
+def _can_sort_user_traffic(admin: Admin, service_id: Optional[int] = None) -> bool:
+    if admin.role == AdminRole.full_access:
+        return True
+    if not getattr(admin, "use_service_traffic_limits", False):
+        return _can_view_user_traffic(admin, service_id)
+    if service_id is not None:
+        return _can_view_user_traffic(admin, service_id)
+    for service_limit in getattr(admin, "service_limits", []) or []:
+        if (
+            traffic_scope_uses_created_traffic(service_limit)
+            and not bool(getattr(service_limit, "show_user_traffic", True))
+        ):
+            return False
+    return True
 
 
 def _is_disable_enable_only_update(modified_user: UserModify) -> bool:
@@ -160,6 +203,15 @@ def _owner_uses_created_reset_policy(dbuser) -> bool:
     owner = getattr(dbuser, "admin", None)
     if owner is None:
         return False
+    if admin_uses_service_traffic_limits(owner):
+        service_id = getattr(dbuser, "service_id", None)
+        if service_id is None:
+            return False
+        from sqlalchemy.orm import object_session
+
+        db = object_session(dbuser)
+        link = get_admin_service_link(db, getattr(owner, "id", None), service_id) if db else None
+        return bool(link and traffic_scope_uses_created_traffic(link))
     mode = getattr(owner, "traffic_limit_mode", None)
     role = getattr(owner, "role", None)
     mode_value = getattr(mode, "value", mode) or "used_traffic"
@@ -167,7 +219,7 @@ def _owner_uses_created_reset_policy(dbuser) -> bool:
 
 
 def _ensure_reset_usage_allowed(admin: Admin, dbuser) -> None:
-    if not _can_view_user_traffic(admin):
+    if not _can_view_user_traffic(admin, getattr(dbuser, "service_id", None)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewing user traffic is disabled.")
 
     if not _owner_uses_created_reset_policy(dbuser):
@@ -192,7 +244,7 @@ def _ensure_reset_usage_allowed(admin: Admin, dbuser) -> None:
 
 
 def _sanitize_user_response(admin: Admin, user: UserResponse) -> UserResponse:
-    if _can_view_user_traffic(admin):
+    if _can_view_user_traffic(admin, getattr(user, "service_id", None)):
         return user
     user.used_traffic = 0
     user.lifetime_used_traffic = 0
@@ -200,10 +252,13 @@ def _sanitize_user_response(admin: Admin, user: UserResponse) -> UserResponse:
 
 
 def _sanitize_users_response(admin: Admin, response: UsersResponse) -> UsersResponse:
-    if _can_view_user_traffic(admin):
-        return response
     sanitized_items = []
+    hidden_any = False
     for item in response.users:
+        if _can_view_user_traffic(admin, getattr(item, "service_id", None)):
+            sanitized_items.append(item)
+            continue
+        hidden_any = True
         sanitized_items.append(
             UserListItem(
                 **{
@@ -214,8 +269,47 @@ def _sanitize_users_response(admin: Admin, response: UsersResponse) -> UsersResp
             )
         )
     response.users = sanitized_items
-    response.usage_total = None
+    if hidden_any:
+        response.usage_total = None
     return response
+
+
+def _ensure_admin_service_scope_available(db: Session, dbadmin, service_id: Optional[int], action: str) -> None:
+    if not admin_uses_service_traffic_limits(dbadmin):
+        return
+    if service_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This admin must create users inside an assigned service.",
+        )
+    link = get_admin_service_link(db, dbadmin.id, service_id)
+    if not link:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Service is not assigned to admin.")
+    if traffic_scope_created_limit_reached(link):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "User management is locked for this service because the created traffic limit has been reached. "
+                f"You can't {action}."
+            ),
+        )
+    if traffic_scope_used_limit_reached(link):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This service traffic limit has been reached. You can't {action}.",
+        )
+
+
+def _ensure_user_can_be_activated_in_scope(db: Session, dbuser) -> None:
+    dbadmin = getattr(dbuser, "admin", None)
+    if not admin_uses_service_traffic_limits(dbadmin):
+        return
+    link = get_admin_service_link(db, dbadmin.id, getattr(dbuser, "service_id", None))
+    if link and traffic_scope_used_limit_reached(link):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This service traffic limit has been reached. You can't activate users in this service.",
+        )
 
 
 def _create_user_response(request: Request, dbuser) -> UserCreateResponse:
@@ -328,6 +422,7 @@ def add_user(
         db_admin = crud.get_admin(db, admin.username)
         if not db_admin:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
+        _ensure_admin_service_scope_available(db, db_admin, service.id, "create users")
 
         from app.services.data_access import get_service_allowed_inbounds_cached
 
@@ -486,7 +581,15 @@ def add_user(
         # for each protocol if not specified
 
         ensure_user_credential_key(new_user)
-        dbuser = crud.create_user(db, new_user, admin=crud.get_admin(db, admin.username))
+        db_admin = crud.get_admin(db, admin.username)
+        if not db_admin:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
+        if admin_uses_service_traffic_limits(db_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This admin must create users inside an assigned service.",
+            )
+        dbuser = crud.create_user(db, new_user, admin=db_admin)
     except UsersLimitReachedError as exc:
         report.admin_users_limit_reached(admin, exc.limit, exc.current_active)
         db.rollback()
@@ -558,6 +661,25 @@ def modify_user(
 
     if admin.user_management_locked and not _is_disable_enable_only_update(modified_user):
         _ensure_user_management_available(admin, "modify users")
+
+    owner_admin = getattr(dbuser, "admin", None)
+    if admin_uses_service_traffic_limits(owner_admin):
+        if "service_id" in modified_user.model_fields_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Service changes are disabled for admins that use per-service traffic limits.",
+            )
+        link = get_admin_service_link(db, owner_admin.id, getattr(dbuser, "service_id", None))
+        if link and traffic_scope_created_limit_reached(link) and not _is_disable_enable_only_update(modified_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "User management is locked for this service because the created traffic limit has been reached. "
+                    "You can't modify users."
+                ),
+            )
+        if modified_user.status == UserStatus.active:
+            _ensure_user_can_be_activated_in_scope(db, dbuser)
 
     if "data_limit" in modified_user.model_fields_set and modified_user.data_limit is not None:
         max_limit = admin.permissions.users.max_data_limit_per_user
@@ -742,7 +864,12 @@ def remove_user(
 ):
     """Remove a user"""
     admin.ensure_user_permission(UserPermission.delete)
-    _ensure_user_management_available(admin, "delete users")
+    try:
+        ensure_user_delete_allowed_and_apply_credit(db, dbuser)
+    except ValueError as exc:
+        db.rollback()
+        detail = str(exc) or DELETE_CAP_EXCEEDED_MESSAGE
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
     crud.remove_user(db, dbuser)
     bg.add_task(xray.operations.remove_user, dbuser=dbuser)
 
@@ -770,6 +897,17 @@ def reset_user_data_usage(
     """Reset user data usage"""
     admin.ensure_user_permission(UserPermission.reset_usage)
     _ensure_user_management_available(admin, "reset user usage")
+    owner_admin = getattr(dbuser, "admin", None)
+    if admin_uses_service_traffic_limits(owner_admin):
+        link = get_admin_service_link(db, owner_admin.id, getattr(dbuser, "service_id", None))
+        if link and traffic_scope_created_limit_reached(link):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "User management is locked for this service because the created traffic limit has been reached. "
+                    "You can't reset user usage."
+                ),
+            )
     _ensure_reset_usage_allowed(admin, dbuser)
     try:
         dbuser = crud.reset_user_data_usage(db=db, dbuser=dbuser)
@@ -800,6 +938,17 @@ def revoke_user_subscription(
     """Revoke users subscription (Subscription link and proxies)"""
     admin.ensure_user_permission(UserPermission.revoke)
     _ensure_user_management_available(admin, "revoke user subscriptions")
+    owner_admin = getattr(dbuser, "admin", None)
+    if admin_uses_service_traffic_limits(owner_admin):
+        link = get_admin_service_link(db, owner_admin.id, getattr(dbuser, "service_id", None))
+        if link and traffic_scope_created_limit_reached(link):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "User management is locked for this service because the created traffic limit has been reached. "
+                    "You can't revoke user subscriptions."
+                ),
+            )
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
     if dbuser.status in [UserStatus.active, UserStatus.on_hold]:
@@ -858,7 +1007,7 @@ def get_users(
         opts = sort.strip(",").split(",")
         sort = []
         for opt in opts:
-            if opt in {"used_traffic", "-used_traffic"} and not _can_view_user_traffic(admin):
+            if opt in {"used_traffic", "-used_traffic"} and not _can_sort_user_traffic(admin, service_id):
                 raise HTTPException(status_code=403, detail="Viewing user traffic is disabled.")
             try:
                 sort.append(crud.UsersSortingOptions[opt])
@@ -988,6 +1137,33 @@ def perform_users_bulk_action(
                 raise HTTPException(status_code=404, detail="Target service not found")
             if target_admin.id not in destination_service.admin_ids:
                 raise HTTPException(status_code=403, detail="Target service not assigned to admin")
+
+    if payload.action == AdvancedUserAction.change_service:
+        if target_admin is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Select one admin before changing service assignments.",
+            )
+        target_mode = getattr(target_admin, "traffic_limit_mode", None)
+        target_mode_value = getattr(target_mode, "value", target_mode)
+        if admin_uses_service_traffic_limits(target_admin) or target_mode_value == "created_traffic":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Service transfer is disabled for created-traffic and per-service traffic admins.",
+            )
+
+    if payload.action == AdvancedUserAction.activate_users and admin_uses_service_traffic_limits(target_admin):
+        if payload.service_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Select one service before activating users for a per-service traffic admin.",
+            )
+        link = get_admin_service_link(db, target_admin.id, payload.service_id)
+        if link and traffic_scope_used_limit_reached(link):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This service traffic limit has been reached. You can't activate users in this service.",
+            )
 
     try:
         if payload.action == AdvancedUserAction.extend_expire:
@@ -1123,7 +1299,7 @@ def get_user_usage(
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get users usage"""
-    if not _can_view_user_traffic(admin):
+    if not _can_view_user_traffic(admin, getattr(dbuser, "service_id", None)):
         raise HTTPException(status_code=403, detail="Viewing user traffic is disabled.")
     start, end = validate_dates(start, end)
 
@@ -1145,6 +1321,18 @@ def active_next_plan(
     """Reset user by next plan"""
     admin.ensure_user_permission(UserPermission.allow_next_plan)
     _ensure_user_management_available(admin, "activate the next plan")
+    owner_admin = getattr(dbuser, "admin", None)
+    if admin_uses_service_traffic_limits(owner_admin):
+        link = get_admin_service_link(db, owner_admin.id, getattr(dbuser, "service_id", None))
+        if link and traffic_scope_created_limit_reached(link):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "User management is locked for this service because the created traffic limit has been reached. "
+                    "You can't activate the next plan."
+                ),
+            )
+        _ensure_user_can_be_activated_in_scope(db, dbuser)
     had_next_plan = getattr(dbuser, "next_plan", None) is not None
     try:
         dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)

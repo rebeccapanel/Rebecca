@@ -2,7 +2,7 @@
 set -e
 
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
-REBECCA_REF="${REBECCA_REF:-dev}"
+REBECCA_REF="${REBECCA_REF:-master}"
 SCRIPT_URL="${REBECCA_SCRIPT_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca/rebecca.sh}"
 
 if [ "$(id -u)" != "0" ]; then

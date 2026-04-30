@@ -74,6 +74,30 @@ export type AdminPermissions = {
 	};
 };
 
+export type AdminServiceTrafficLimit = {
+	service_id: number;
+	traffic_limit_mode: AdminTrafficLimitMode;
+	data_limit?: number | null;
+	created_traffic: number;
+	used_traffic: number;
+	lifetime_used_traffic: number;
+	show_user_traffic: boolean;
+	users_limit?: number | null;
+	delete_user_usage_limit_enabled: boolean;
+	delete_user_usage_limit?: number | null;
+	deleted_users_usage: number;
+};
+
+export type AdminServiceTrafficLimitPayload = {
+	service_id: number;
+	traffic_limit_mode?: AdminTrafficLimitMode;
+	data_limit?: number | null;
+	show_user_traffic?: boolean;
+	users_limit?: number | null;
+	delete_user_usage_limit_enabled?: boolean;
+	delete_user_usage_limit?: number | null;
+};
+
 export type Admin = {
 	id: number;
 	username: string;
@@ -85,11 +109,16 @@ export type Admin = {
 	telegram_id?: number | null;
 	users_usage?: number | null;
 	created_traffic?: number | null;
+	deleted_users_usage?: number | null;
 	data_limit?: number | null;
 	traffic_limit_mode?: AdminTrafficLimitMode;
+	use_service_traffic_limits?: boolean;
 	show_user_traffic?: boolean;
+	delete_user_usage_limit_enabled?: boolean;
+	delete_user_usage_limit?: number | null;
 	expire?: number | null;
 	users_limit?: number | null;
+	service_limits?: AdminServiceTrafficLimit[];
 	users_count?: number | null;
 	active_users?: number | null;
 	online_users?: number | null;
@@ -113,9 +142,13 @@ export type AdminCreatePayload = {
 	data_limit?: number | null;
 	created_traffic?: number | null;
 	traffic_limit_mode?: AdminTrafficLimitMode;
+	use_service_traffic_limits?: boolean;
 	show_user_traffic?: boolean;
+	delete_user_usage_limit_enabled?: boolean;
+	delete_user_usage_limit?: number | null;
 	expire?: number | null;
 	users_limit?: number | null;
+	service_limits?: AdminServiceTrafficLimitPayload[];
 };
 
 export type AdminUpdatePayload = {
@@ -127,9 +160,13 @@ export type AdminUpdatePayload = {
 	data_limit?: number | null;
 	created_traffic?: number | null;
 	traffic_limit_mode?: AdminTrafficLimitMode;
+	use_service_traffic_limits?: boolean;
 	show_user_traffic?: boolean;
+	delete_user_usage_limit_enabled?: boolean;
+	delete_user_usage_limit?: number | null;
 	expire?: number | null;
 	users_limit?: number | null;
+	service_limits?: AdminServiceTrafficLimitPayload[];
 };
 
 export type StandardAdminPermissionsBulkPayload = {

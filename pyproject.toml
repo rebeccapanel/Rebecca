@@ -12,7 +12,7 @@ exclude = ["dashboard*", "tests*", "Rebecca-node*", "scripts/rebecca*", "3x-ui*"
 
 [project]
 name = "rebecca"
-version = "0.1.0"
+version = "0.1.2"
 description = "Rebecca, Unified GUI Censorship Resistant Solution Powered by Xray."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -47,6 +47,7 @@ dependencies = [
     "qrcode==7.4.2",
     "requests==2.32.3",
     "rich==13.7.1",
+    "setuptools==80.9.0",
     "sqlalchemy==2.0.36",
     "starlette==0.40.0",
     "typer==0.7.0",

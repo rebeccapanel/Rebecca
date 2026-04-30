@@ -90,6 +90,7 @@ import { getConfigLabelFromLink } from "utils/configLabel";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
+	canDeleteUserByTrafficCap,
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
@@ -944,7 +945,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		getUserIsSuccess && userData.role === AdminRole.FullAccess,
 	);
 	const userManagementLocked = isUserManagementLocked(userData);
-	const canViewTraffic = canViewUserTraffic(userData);
+	const canViewTraffic = canViewUserTraffic(
+		userData,
+		editingUser?.service_id ?? null,
+	);
 	const canSetFlow =
 		hasPrivilegedRole ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.SetFlow]);
@@ -963,7 +967,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const canRevokeSubscription =
 		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
-	const canDeleteUsersVisible = canDeleteUsers && !userManagementLocked;
+	const requiresServiceScope = Boolean(
+		userData.use_service_traffic_limits && !hasPrivilegedRole,
+	);
+	const canDeleteUsersVisible =
+		canDeleteUsers && canDeleteUserByTrafficCap(userData, editingUser);
 	const canResetUsageVisible =
 		canResetUsage && canViewTraffic && !userManagementLocked;
 	const canRevokeSubscriptionVisible =
@@ -1781,7 +1789,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			}
 		}
 
-		if (typeof selectedServiceId !== "undefined") {
+		if (!requiresServiceScope && typeof selectedServiceId !== "undefined") {
 			if (selectedServiceId === null) {
 				if (hasPrivilegedRole) {
 					body.service_id = null;
@@ -1881,6 +1889,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	};
 
 	const disabled = loading || limitReached || userManagementLocked;
+	const serviceSelectionDisabled = disabled || (isEditing && requiresServiceScope);
 	const submitDisabled = disabled || !form.formState.isValid;
 
 	const isOnHold = userStatus === "on_hold";
@@ -2820,7 +2829,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 												{showServiceSelector && (
 													<GridItem mt={useTwoColumns ? 0 : 4}>
-														<FormControl isRequired={!hasPrivilegedRole}>
+														<FormControl
+															isRequired={!hasPrivilegedRole || requiresServiceScope}
+														>
 															<FormLabel>
 																{t("userDialog.selectServiceLabel", "Service")}
 															</FormLabel>
@@ -2867,10 +2878,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																	{hasPrivilegedRole && (
 																		<Box
 																			role="button"
-																			tabIndex={disabled ? -1 : 0}
+																			tabIndex={serviceSelectionDisabled ? -1 : 0}
 																			aria-pressed={selectedServiceId === null}
 																			onKeyDown={(event) => {
-																				if (disabled) return;
+																				if (serviceSelectionDisabled) return;
 
 																				if (
 																					event.key === "Enter" ||
@@ -2882,7 +2893,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				}
 																			}}
 																			onClick={() => {
-																				if (disabled) return;
+																				if (serviceSelectionDisabled) return;
 
 																				setSelectedServiceId(null);
 																			}}
@@ -2900,12 +2911,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																					: "transparent"
 																			}
 																			cursor={
-																				disabled ? "not-allowed" : "pointer"
+																				serviceSelectionDisabled
+																					? "not-allowed"
+																					: "pointer"
 																			}
-																			pointerEvents={disabled ? "none" : "auto"}
+																			pointerEvents={
+																				serviceSelectionDisabled ? "none" : "auto"
+																			}
 																			transition="border-color 0.2s ease, background-color 0.2s ease"
 																			_hover={
-																				disabled
+																				serviceSelectionDisabled
 																					? {}
 																					: {
 																							borderColor:
@@ -2959,10 +2974,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																			<Box
 																				key={service.id}
 																				role="button"
-																				tabIndex={disabled || isBroken ? -1 : 0}
+																				tabIndex={
+																					serviceSelectionDisabled || isBroken
+																						? -1
+																						: 0
+																				}
 																				aria-pressed={isSelected}
 																				onKeyDown={(event) => {
-																					if (disabled || isBroken) return;
+																					if (
+																						serviceSelectionDisabled ||
+																						isBroken
+																					)
+																						return;
 
 																					if (
 																						event.key === "Enter" ||
@@ -2974,7 +2997,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																					}
 																				}}
 																				onClick={() => {
-																					if (disabled || isBroken) return;
+																					if (
+																						serviceSelectionDisabled ||
+																						isBroken
+																					)
+																						return;
 
 																					setSelectedServiceId(service.id);
 																				}}
@@ -2992,16 +3019,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																						: "transparent"
 																				}
 																				cursor={
-																					disabled || isBroken
+																					serviceSelectionDisabled || isBroken
 																						? "not-allowed"
 																						: "pointer"
 																				}
 																				pointerEvents={
-																					disabled || isBroken ? "none" : "auto"
+																					serviceSelectionDisabled || isBroken
+																						? "none"
+																						: "auto"
 																				}
 																				transition="border-color 0.2s ease, background-color 0.2s ease"
 																				_hover={
-																					disabled
+																					serviceSelectionDisabled
 																						? {}
 																						: {
 																								borderColor: isSelected

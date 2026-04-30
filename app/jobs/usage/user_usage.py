@@ -544,6 +544,14 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                 for (admin_id, service_id), value in admin_service_usage.items()
             ]
             safe_execute(db, admin_service_update_stmt, admin_service_params)
+            for admin_id, service_id in admin_service_usage.keys():
+                link = (
+                    db.query(AdminServiceLink)
+                    .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+                    .first()
+                )
+                if link:
+                    crud.enforce_admin_service_data_limit(db, link)
 
         admin_ids_to_disable = {event["admin_id"] for event in admin_limit_events if event.get("admin_id") is not None}
         for admin_id in admin_ids_to_disable:

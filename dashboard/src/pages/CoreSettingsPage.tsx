@@ -515,6 +515,10 @@ export const CoreSettingsPage: FC = () => {
 		() => configTargets.find((target) => target.id === selectedTarget),
 		[configTargets, selectedTarget],
 	);
+	const hasNodeTargets = useMemo(
+		() => configTargets.some((target) => target.type === "node"),
+		[configTargets],
+	);
 	const tabKeys = useMemo(
 		() => [
 			"basic",
@@ -659,6 +663,18 @@ export const CoreSettingsPage: FC = () => {
 			document.removeEventListener("fullscreenchange", handleFullscreenChange);
 		};
 	}, []);
+
+	useEffect(() => {
+		if (!configTargets.length) {
+			if (selectedTarget !== "master") {
+				setSelectedTarget("master");
+			}
+			return;
+		}
+		if (!configTargets.some((target) => target.id === selectedTarget)) {
+			setSelectedTarget("master");
+		}
+	}, [configTargets, selectedTarget]);
 
 	useEffect(() => {
 		if (!canManageXraySettings) {
@@ -1882,51 +1898,56 @@ export const CoreSettingsPage: FC = () => {
 			<Text color="gray.600" _dark={{ color: "gray.300" }} fontSize="sm">
 				{t("pages.xray.coreDescription")}
 			</Text>
-			<Stack
-				direction={{ base: "column", sm: "row" }}
-				spacing={{ base: 3, sm: 4 }}
-				justifyContent="space-between"
-				alignItems={{ base: "stretch", sm: "center" }}
-			>
-				<Stack
-					direction={{ base: "column", sm: "row" }}
-					spacing={3}
-					flexWrap="wrap"
-					w="full"
-				>
-					<FormControl maxW={{ base: "full", sm: "260px" }}>
-						<FormLabel>{t("core.configTarget", "Target")}</FormLabel>
-						<Select
-							size="sm"
-							value={selectedTarget}
-							onChange={(event) => setSelectedTarget(event.target.value)}
-						>
-							{configTargets.map((target) => (
-								<option key={target.id} value={target.id}>
-									{target.type === "master"
-										? target.name
-										: `${target.name} (${target.mode})`}
-								</option>
-							))}
-							{configTargets.length === 0 && (
-								<option value="master">Master</option>
-							)}
-						</Select>
-					</FormControl>
-					{selectedTargetInfo?.type === "node" && (
-						<FormControl display="flex" alignItems="center" w="auto">
-							<FormLabel mb={0}>
-								{t("core.customNodeConfig", "Custom config")}
+			<VStack align="flex-start" spacing={2}>
+				{hasNodeTargets && (
+					<HStack spacing={3} align="flex-end" flexWrap="wrap" w="full">
+						<FormControl w={{ base: "full", sm: "220px" }}>
+							<FormLabel
+								mb={1}
+								fontSize="xs"
+								color="gray.600"
+								_dark={{ color: "gray.300" }}
+							>
+								{t("core.configTarget", "Target")}
 							</FormLabel>
-							<Switch
-								isChecked={selectedTargetInfo.mode === "custom"}
-								isDisabled={isChangingTargetMode}
-								onChange={(event) =>
-									handleTargetModeChange(event.target.checked)
-								}
-							/>
+							<Select
+								size="sm"
+								h="32px"
+								value={selectedTarget}
+								onChange={(event) => setSelectedTarget(event.target.value)}
+							>
+								{configTargets.map((target) => (
+									<option key={target.id} value={target.id}>
+										{target.type === "master"
+											? target.name
+											: `${target.name} (${target.mode})`}
+									</option>
+								))}
+							</Select>
 						</FormControl>
-					)}
+						{selectedTargetInfo?.type === "node" && (
+							<FormControl
+								display="flex"
+								alignItems="center"
+								w={{ base: "full", sm: "auto" }}
+								minH="32px"
+							>
+								<FormLabel mb={0} fontSize="sm">
+									{t("core.customNodeConfig", "Custom config")}
+								</FormLabel>
+								<Switch
+									size="sm"
+									isChecked={selectedTargetInfo.mode === "custom"}
+									isDisabled={isChangingTargetMode}
+									onChange={(event) =>
+										handleTargetModeChange(event.target.checked)
+									}
+								/>
+							</FormControl>
+						)}
+					</HStack>
+				)}
+				<HStack spacing={3} flexWrap="wrap" w="full">
 					<Button
 						size="sm"
 						colorScheme="primary"
@@ -1947,8 +1968,8 @@ export const CoreSettingsPage: FC = () => {
 					>
 						{t(isRestarting ? "core.restarting" : "core.restartCore")}
 					</Button>
-				</Stack>
-			</Stack>
+				</HStack>
+			</VStack>
 			<Tabs
 				variant="enclosed"
 				colorScheme="primary"

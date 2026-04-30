@@ -6,7 +6,9 @@ import type {
 	ServiceListResponse,
 	ServiceModifyPayload,
 	ServiceSummary,
+	ServiceAdmin,
 } from "types/Service";
+import type { AdminServiceTrafficLimitPayload } from "types/Admin";
 import { create } from "zustand";
 
 type QueryParams = {
@@ -30,6 +32,11 @@ type ServicesStore = {
 	) => Promise<ServiceDetail>;
 	deleteService: (id: number, payload?: ServiceDeletePayload) => Promise<void>;
 	resetServiceUsage: (id: number) => Promise<ServiceDetail>;
+	updateServiceAdminLimits: (
+		serviceId: number,
+		adminId: number,
+		payload: Omit<AdminServiceTrafficLimitPayload, "service_id">,
+	) => Promise<ServiceAdmin>;
 	setServiceDetail: (service: ServiceDetail | null) => void;
 	performServiceUserAction: (
 		id: number,
@@ -123,6 +130,28 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 		} finally {
 			set({ isSaving: false });
 		}
+	},
+
+	async updateServiceAdminLimits(serviceId, adminId, payload) {
+		const updated = await fetch<ServiceAdmin>(
+			`/v2/services/${serviceId}/admins/${adminId}/limits`,
+			{
+				method: "PUT",
+				body: payload,
+			},
+		);
+		const current = get().serviceDetail;
+		if (current?.id === serviceId) {
+			set({
+				serviceDetail: {
+					...current,
+					admins: current.admins.map((item) =>
+						item.id === adminId ? updated : item,
+					),
+				},
+			});
+		}
+		return updated;
 	},
 
 	setServiceDetail(service) {

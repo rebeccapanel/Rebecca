@@ -23,6 +23,7 @@ from app.models.service import (
     ServiceCreate,
     ServiceDetail,
     ServiceHost,
+    ServiceAdminLimitUpdate,
     ServiceListResponse,
     ServiceModify,
     ServiceAdminUsage,
@@ -221,6 +222,14 @@ def _service_to_detail(db: Session, service: Service) -> ServiceDetail:
                 username=link.admin.username,
                 used_traffic=int(link.used_traffic or 0),
                 lifetime_used_traffic=int(link.lifetime_used_traffic or 0),
+                traffic_limit_mode=link.traffic_limit_mode,
+                data_limit=link.data_limit,
+                created_traffic=int(link.created_traffic or 0),
+                show_user_traffic=bool(link.show_user_traffic),
+                users_limit=link.users_limit,
+                delete_user_usage_limit_enabled=bool(link.delete_user_usage_limit_enabled),
+                delete_user_usage_limit=link.delete_user_usage_limit,
+                deleted_users_usage=int(link.deleted_users_usage or 0),
             )
         )
 
@@ -286,6 +295,55 @@ def create_service(
     xray.hosts.update()
 
     return _service_to_detail(db, service)
+
+
+@router.put("/{service_id}/admins/{admin_id}/limits", response_model=ServiceAdmin)
+def update_service_admin_limits(
+    service_id: int,
+    admin_id: int,
+    payload: ServiceAdminLimitUpdate,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.check_sudo_admin),
+):
+    del admin
+    service = crud.get_service(db, service_id)
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    link = crud.get_admin_service_link(db, admin_id, service_id)
+    if not link or not link.admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin service link not found")
+
+    if "traffic_limit_mode" in payload.model_fields_set:
+        link.traffic_limit_mode = payload.traffic_limit_mode
+    if "data_limit" in payload.model_fields_set:
+        link.data_limit = payload.data_limit
+    if "show_user_traffic" in payload.model_fields_set:
+        link.show_user_traffic = bool(payload.show_user_traffic)
+    if "users_limit" in payload.model_fields_set:
+        link.users_limit = payload.users_limit
+    if "delete_user_usage_limit_enabled" in payload.model_fields_set:
+        link.delete_user_usage_limit_enabled = bool(payload.delete_user_usage_limit_enabled)
+    if "delete_user_usage_limit" in payload.model_fields_set:
+        link.delete_user_usage_limit = payload.delete_user_usage_limit
+    if not Admin.model_validate(link.admin).permissions.users.delete:
+        link.delete_user_usage_limit_enabled = False
+
+    db.commit()
+    db.refresh(link)
+    return ServiceAdmin(
+        id=link.admin.id,
+        username=link.admin.username,
+        used_traffic=int(link.used_traffic or 0),
+        lifetime_used_traffic=int(link.lifetime_used_traffic or 0),
+        traffic_limit_mode=link.traffic_limit_mode,
+        data_limit=link.data_limit,
+        created_traffic=int(link.created_traffic or 0),
+        show_user_traffic=bool(link.show_user_traffic),
+        users_limit=link.users_limit,
+        delete_user_usage_limit_enabled=bool(link.delete_user_usage_limit_enabled),
+        delete_user_usage_limit=link.delete_user_usage_limit,
+        deleted_users_usage=int(link.deleted_users_usage or 0),
+    )
 
 
 @router.get("/{service_id}", response_model=ServiceDetail)

@@ -65,6 +65,7 @@ import type { User, UserListItem } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
 import {
+	canDeleteUserByTrafficCap,
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
@@ -399,7 +400,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const canToggleUserStatus =
 		!isAdminDisabled && (canCreateUsers || hasFullAccess || userManagementLocked);
 	const canMutateUsers = !isAdminDisabled && canCreateUsers && !userManagementLocked;
-	const canDeleteUserActions = !isAdminDisabled && canDeleteUsers && !userManagementLocked;
+	const canDeleteUserActions = !isAdminDisabled && canDeleteUsers;
 	const canResetUsageActions =
 		!isAdminDisabled && canResetUsage && canViewTraffic && !userManagementLocked;
 	const canRevokeSubActions = !isAdminDisabled && canRevokeSub && !userManagementLocked;
@@ -1078,7 +1079,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 														: undefined
 												}
 												onDelete={
-													canDeleteUserActions
+													canDeleteUserActions &&
+													canDeleteUserByTrafficCap(userData, user)
 														? () => onDeletingUser(user)
 														: undefined
 												}
@@ -1160,7 +1162,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 								canEdit={canOpenUserDialog}
 								onEdit={() => onEditingUser(user)}
 								onDelete={
-									canDeleteUserActions ? () => onDeletingUser(user) : undefined
+									canDeleteUserActions &&
+									canDeleteUserByTrafficCap(userData, user)
+										? () => onDeletingUser(user)
+										: undefined
 								}
 								isRTL={isRTL}
 								showCreator={hasPrivilegedRole}
@@ -1435,7 +1440,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 									{t("usersTable.add30Days", "Add 30 days")}
 								</Button>
 							)}
-						{canDeleteUserActions && (
+						{canDeleteUserActions &&
+							canDeleteUserByTrafficCap(userData, contextMenu.user) && (
 							<Button
 								variant="ghost"
 								justifyContent="flex-start"

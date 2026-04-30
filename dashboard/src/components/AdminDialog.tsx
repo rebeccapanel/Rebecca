@@ -73,6 +73,7 @@ import AdminPermissionsModal from "./AdminPermissionsModal";
 import { DateTimePicker } from "./DateTimePicker";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
+const MB_IN_BYTES = 1024 * 1024;
 
 const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
 	[AdminRole.Standard]: {
@@ -265,12 +266,26 @@ type AdminFormValues = {
 	telegram_id?: string;
 	role: AdminRole;
 	traffic_limit_mode: AdminTrafficLimitMode;
+	use_service_traffic_limits: boolean;
 	show_user_traffic: boolean;
+	delete_user_usage_limit_enabled: boolean;
+	delete_user_usage_limit?: string;
 	permissions: AdminPermissions;
 	maxDataLimitPerUserGb?: string;
 	data_limit?: string;
 	users_limit?: string;
 	services?: number[];
+	service_limits?: Record<
+		number,
+		{
+			traffic_limit_mode: AdminTrafficLimitMode;
+			data_limit?: string;
+			show_user_traffic: boolean;
+			users_limit?: string;
+			delete_user_usage_limit_enabled: boolean;
+			delete_user_usage_limit?: string;
+		}
+	>;
 };
 
 export const AdminDialog: FC = () => {
@@ -361,7 +376,21 @@ export const AdminDialog: FC = () => {
 				traffic_limit_mode: z
 					.nativeEnum(AdminTrafficLimitMode)
 					.default(AdminTrafficLimitMode.UsedTraffic),
+				use_service_traffic_limits: z.boolean().default(false),
 				show_user_traffic: z.boolean().default(true),
+				delete_user_usage_limit_enabled: z.boolean().default(false),
+				delete_user_usage_limit: z
+					.string()
+					.trim()
+					.optional()
+					.transform((value) => (value === "" ? undefined : value))
+					.refine(
+						(value) => value === undefined || /^\d+$/.test(value),
+						t(
+							"admins.validation.deleteLimitNumeric",
+							"Delete cap must be a number",
+						),
+					),
 				data_limit: z
 					.string()
 					.trim()
@@ -393,6 +422,7 @@ export const AdminDialog: FC = () => {
 					.transform((value) => (value === "" ? undefined : value)),
 				permissions: adminPermissionsSchema,
 				services: z.array(z.number()).optional(),
+				service_limits: z.record(z.any()).optional(),
 			})
 			.superRefine((values, ctx) => {
 				if (mode === "create" && !values.password) {
@@ -414,12 +444,16 @@ export const AdminDialog: FC = () => {
 			telegram_id: "",
 			role: AdminRole.Standard,
 			traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
+			use_service_traffic_limits: false,
 			show_user_traffic: true,
+			delete_user_usage_limit_enabled: false,
+			delete_user_usage_limit: "",
 			permissions: clonePermissions(AdminRole.Standard),
 			maxDataLimitPerUserGb: "",
 			data_limit: "",
 			users_limit: "",
 			services: [],
+			service_limits: {},
 		},
 	});
 
@@ -429,6 +463,7 @@ export const AdminDialog: FC = () => {
 		reset,
 		formState,
 		setValue,
+		getValues,
 		watch,
 		setError,
 	} = form;
@@ -516,13 +551,51 @@ export const AdminDialog: FC = () => {
 	const { errors, isSubmitting } = formState;
 	const watchRole = watch("role");
 	const watchTrafficLimitMode = watch("traffic_limit_mode");
+	const watchUseServiceTrafficLimits = watch("use_service_traffic_limits");
 	const _hideExtendedPermissions = watchRole === AdminRole.Standard;
 	const permissionsValue = watch("permissions");
 	const showUserTrafficValue = watch("show_user_traffic");
+	const deleteUserUsageLimitEnabled = watch("delete_user_usage_limit_enabled");
+	const serviceLimitsValue = watch("service_limits") ?? {};
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 	const isFullAccessRole = watchRole === AdminRole.FullAccess;
 	const isCreatedTrafficMode =
 		watchTrafficLimitMode === AdminTrafficLimitMode.CreatedTraffic;
+	const usePerServiceTrafficLimits = Boolean(watchUseServiceTrafficLimits);
+
+	const getServiceLimitValue = useCallback(
+		(serviceId: number) =>
+			serviceLimitsValue[serviceId] ?? {
+				traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
+				data_limit: "",
+				show_user_traffic: true,
+				users_limit: "",
+				delete_user_usage_limit_enabled: false,
+				delete_user_usage_limit: "",
+			},
+		[serviceLimitsValue],
+	);
+
+	const setServiceLimitValue = useCallback(
+		(
+			serviceId: number,
+			patch: Partial<ReturnType<typeof getServiceLimitValue>>,
+		) => {
+			const current = getValues("service_limits") ?? {};
+			setValue(
+				"service_limits",
+				{
+					...current,
+					[serviceId]: {
+						...getServiceLimitValue(serviceId),
+						...patch,
+					},
+				},
+				{ shouldDirty: true },
+			);
+		},
+		[getServiceLimitValue, getValues, setValue],
+	);
 
 	const resetPermissionsToRole = useCallback(() => {
 		const role = watchRole ?? AdminRole.Standard;
@@ -565,6 +638,7 @@ export const AdminDialog: FC = () => {
 		register("maxDataLimitPerUserGb");
 		register("permissions");
 		register("services");
+		register("service_limits");
 	}, [register]);
 
 	useEffect(() => {
@@ -615,7 +689,16 @@ export const AdminDialog: FC = () => {
 				role: nextRole,
 				traffic_limit_mode:
 					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
+				use_service_traffic_limits:
+					admin?.use_service_traffic_limits ?? false,
 				show_user_traffic: admin?.show_user_traffic ?? true,
+				delete_user_usage_limit_enabled:
+					admin?.delete_user_usage_limit_enabled ?? false,
+				delete_user_usage_limit:
+					admin?.delete_user_usage_limit !== undefined &&
+					admin?.delete_user_usage_limit !== null
+						? String(Math.floor(admin.delete_user_usage_limit / MB_IN_BYTES))
+						: "",
 				permissions: nextPermissions,
 				maxDataLimitPerUserGb: formatBytesToGbString(
 					nextPermissions.users.max_data_limit_per_user,
@@ -629,6 +712,33 @@ export const AdminDialog: FC = () => {
 						? String(admin.users_limit)
 						: "",
 				services: admin?.services ?? [],
+				service_limits: Object.fromEntries(
+					(admin?.service_limits ?? []).map((item) => [
+						item.service_id,
+						{
+							traffic_limit_mode:
+								item.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
+							data_limit:
+								item.data_limit !== undefined && item.data_limit !== null
+									? String(Math.floor(item.data_limit / GB_IN_BYTES))
+									: "",
+							show_user_traffic: item.show_user_traffic ?? true,
+							users_limit:
+								item.users_limit !== undefined && item.users_limit !== null
+									? String(item.users_limit)
+									: "",
+							delete_user_usage_limit_enabled:
+								item.delete_user_usage_limit_enabled ?? false,
+							delete_user_usage_limit:
+								item.delete_user_usage_limit !== undefined &&
+								item.delete_user_usage_limit !== null
+									? String(
+											Math.floor(item.delete_user_usage_limit / MB_IN_BYTES),
+										)
+									: "",
+						},
+					]),
+				),
 			});
 		}
 	}, [admin, isOpen, reset]);
@@ -644,9 +754,21 @@ export const AdminDialog: FC = () => {
 			setValue("traffic_limit_mode", AdminTrafficLimitMode.UsedTraffic, {
 				shouldDirty: true,
 			});
+			setValue("use_service_traffic_limits", false, { shouldDirty: true });
 			setValue("show_user_traffic", true, { shouldDirty: true });
+			setValue("delete_user_usage_limit_enabled", false, {
+				shouldDirty: true,
+			});
 		}
 	}, [setValue, watchRole]);
+
+	useEffect(() => {
+		if (!permissionsValue.users.delete) {
+			setValue("delete_user_usage_limit_enabled", false, {
+				shouldDirty: true,
+			});
+		}
+	}, [permissionsValue.users.delete, setValue]);
 
 	const handleFormSubmit = handleSubmit(async (values) => {
 		const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
@@ -712,6 +834,27 @@ export const AdminDialog: FC = () => {
 			const expireValue = adminExpireDate
 				? dayjs(adminExpireDate).utc().unix()
 				: null;
+			const buildServiceLimitPayload = () =>
+				(values.services ?? []).map((serviceId) => {
+					const item = values.service_limits?.[serviceId];
+					return {
+						service_id: serviceId,
+						traffic_limit_mode:
+							item?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
+						data_limit: item?.data_limit
+							? Number(item.data_limit) * GB_IN_BYTES
+							: null,
+						show_user_traffic: item?.show_user_traffic ?? true,
+						users_limit: item?.users_limit ? Number(item.users_limit) : null,
+						delete_user_usage_limit_enabled: Boolean(
+							permissionsValue.users.delete &&
+								item?.delete_user_usage_limit_enabled,
+						),
+						delete_user_usage_limit: item?.delete_user_usage_limit
+							? Number(item.delete_user_usage_limit) * MB_IN_BYTES
+							: null,
+					};
+				});
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
@@ -722,20 +865,42 @@ export const AdminDialog: FC = () => {
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
 						: undefined,
-					data_limit: values.data_limit
-						? Number(values.data_limit) * GB_IN_BYTES
-						: undefined,
+					data_limit: values.use_service_traffic_limits
+						? undefined
+						: values.data_limit
+							? Number(values.data_limit) * GB_IN_BYTES
+							: undefined,
 					traffic_limit_mode:
-						selectedRole === AdminRole.FullAccess
+						selectedRole === AdminRole.FullAccess ||
+						values.use_service_traffic_limits
 							? undefined
 							: values.traffic_limit_mode,
+					use_service_traffic_limits:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.use_service_traffic_limits,
 					show_user_traffic:
 						selectedRole === AdminRole.FullAccess
 							? undefined
 							: values.show_user_traffic,
+					delete_user_usage_limit_enabled:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: Boolean(
+									permissionsValue.users.delete &&
+										values.delete_user_usage_limit_enabled,
+								),
+					delete_user_usage_limit: values.delete_user_usage_limit
+						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
+						: undefined,
 					expire: expireValue,
-					users_limit: values.users_limit
-						? Number(values.users_limit)
+					users_limit: values.use_service_traffic_limits
+						? undefined
+						: values.users_limit
+							? Number(values.users_limit)
+							: undefined,
+					service_limits: values.use_service_traffic_limits
+						? buildServiceLimitPayload()
 						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
@@ -782,20 +947,42 @@ export const AdminDialog: FC = () => {
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
 						: undefined,
-					data_limit: values.data_limit
-						? Number(values.data_limit) * GB_IN_BYTES
-						: undefined,
+					data_limit: values.use_service_traffic_limits
+						? undefined
+						: values.data_limit
+							? Number(values.data_limit) * GB_IN_BYTES
+							: undefined,
 					traffic_limit_mode:
-						selectedRole === AdminRole.FullAccess
+						selectedRole === AdminRole.FullAccess ||
+						values.use_service_traffic_limits
 							? undefined
 							: values.traffic_limit_mode,
+					use_service_traffic_limits:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: values.use_service_traffic_limits,
 					show_user_traffic:
 						selectedRole === AdminRole.FullAccess
 							? undefined
 							: values.show_user_traffic,
+					delete_user_usage_limit_enabled:
+						selectedRole === AdminRole.FullAccess
+							? undefined
+							: Boolean(
+									permissionsValue.users.delete &&
+										values.delete_user_usage_limit_enabled,
+								),
+					delete_user_usage_limit: values.delete_user_usage_limit
+						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
+						: undefined,
 					expire: expireValue,
-					users_limit: values.users_limit
-						? Number(values.users_limit)
+					users_limit: values.use_service_traffic_limits
+						? undefined
+						: values.users_limit
+							? Number(values.users_limit)
+							: undefined,
+					service_limits: values.use_service_traffic_limits
+						? buildServiceLimitPayload()
 						: undefined,
 				};
 				if (values.password) {
@@ -1002,7 +1189,23 @@ export const AdminDialog: FC = () => {
 			{!isFullAccessRole && (
 				<VStack align="stretch" spacing={3}>
 					<Checkbox
+						isChecked={usePerServiceTrafficLimits}
+						onChange={(event) =>
+							setValue(
+								"use_service_traffic_limits",
+								event.target.checked,
+								{ shouldDirty: true },
+							)
+						}
+					>
+						{t(
+							"admins.usePerServiceTrafficLimits",
+							"Use per-service traffic limits",
+						)}
+					</Checkbox>
+					<Checkbox
 						isChecked={isCreatedTrafficMode}
+						isDisabled={usePerServiceTrafficLimits}
 						onChange={(event) =>
 							setValue(
 								"traffic_limit_mode",
@@ -1047,6 +1250,39 @@ export const AdminDialog: FC = () => {
 								{t("admins.permissions.deleteUser", "Delete user")}
 							</Checkbox>
 							<Checkbox
+								isChecked={Boolean(deleteUserUsageLimitEnabled)}
+								isDisabled={!permissionsValue.users.delete}
+								onChange={(event) =>
+									setValue(
+										"delete_user_usage_limit_enabled",
+										event.target.checked,
+										{ shouldDirty: true },
+									)
+								}
+							>
+								{t(
+									"admins.deleteUserUsageCap",
+									"Limit delete by user usage",
+								)}
+							</Checkbox>
+							{deleteUserUsageLimitEnabled && (
+								<FormControl isInvalid={!!errors.delete_user_usage_limit}>
+									<FormLabel>
+										{t(
+											"admins.deleteUserUsageLimit",
+											"Max deletable user usage (MB)",
+										)}
+									</FormLabel>
+									<Input
+										inputMode="numeric"
+										{...register("delete_user_usage_limit")}
+									/>
+									<FormErrorMessage>
+										{errors.delete_user_usage_limit?.message as string}
+									</FormErrorMessage>
+								</FormControl>
+							)}
+							<Checkbox
 								isChecked={Boolean(permissionsValue.users.reset_usage)}
 								onChange={(event) =>
 									handleUserPermissionToggle(
@@ -1076,6 +1312,7 @@ export const AdminDialog: FC = () => {
 							"e.g., 100 for 100GB (empty = unlimited)",
 						)}
 						inputMode="numeric"
+						isDisabled={usePerServiceTrafficLimits}
 						{...register("data_limit")}
 					/>
 					<FormErrorMessage>
@@ -1093,6 +1330,7 @@ export const AdminDialog: FC = () => {
 							"e.g., 100 (empty = unlimited)",
 						)}
 						inputMode="numeric"
+						isDisabled={usePerServiceTrafficLimits}
 						{...register("users_limit")}
 					/>
 					<FormErrorMessage>
@@ -1221,6 +1459,139 @@ export const AdminDialog: FC = () => {
 							})
 						)}
 					</VStack>
+					{usePerServiceTrafficLimits && selectedServices.length > 0 && (
+						<VStack align="stretch" spacing={3}>
+							<Text fontWeight="semibold">
+								{t(
+									"admins.perServiceLimitsTitle",
+									"Per-service limits",
+								)}
+							</Text>
+							{selectedServices.map((serviceId) => {
+								const service = serviceOptions.find(
+									(item) => item.id === serviceId,
+								);
+								const item = getServiceLimitValue(serviceId);
+								const isServiceCreatedMode =
+									item.traffic_limit_mode ===
+									AdminTrafficLimitMode.CreatedTraffic;
+								return (
+									<Box
+										key={`service-limit-${serviceId}`}
+										borderWidth="1px"
+										borderRadius="md"
+										p={3}
+									>
+										<VStack align="stretch" spacing={3}>
+											<Text fontWeight="medium">
+												{service?.name ?? `#${serviceId}`}
+											</Text>
+											<Checkbox
+												isChecked={isServiceCreatedMode}
+												onChange={(event) =>
+													setServiceLimitValue(serviceId, {
+														traffic_limit_mode: event.target.checked
+															? AdminTrafficLimitMode.CreatedTraffic
+															: AdminTrafficLimitMode.UsedTraffic,
+													})
+												}
+											>
+												{t(
+													"admins.limitByCreatedTraffic",
+													"Limit admin by created traffic",
+												)}
+											</Checkbox>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+												<FormControl>
+													<FormLabel>
+														{t("admins.dataLimit", "Data Limit (GB)")}
+													</FormLabel>
+													<Input
+														value={item.data_limit ?? ""}
+														inputMode="numeric"
+														onChange={(event) =>
+															setServiceLimitValue(serviceId, {
+																data_limit: event.target.value,
+															})
+														}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t("admins.usersLimit", "Users Limit")}
+													</FormLabel>
+													<Input
+														value={item.users_limit ?? ""}
+														inputMode="numeric"
+														onChange={(event) =>
+															setServiceLimitValue(serviceId, {
+																users_limit: event.target.value,
+															})
+														}
+													/>
+												</FormControl>
+											</SimpleGrid>
+											{isServiceCreatedMode && (
+												<Stack spacing={2}>
+													<Checkbox
+														isChecked={item.show_user_traffic}
+														onChange={(event) =>
+															setServiceLimitValue(serviceId, {
+																show_user_traffic: event.target.checked,
+															})
+														}
+													>
+														{t(
+															"admins.showUserTraffic",
+															"Admin can view user traffic",
+														)}
+													</Checkbox>
+													<Checkbox
+														isChecked={
+															permissionsValue.users.delete &&
+															item.delete_user_usage_limit_enabled
+														}
+														isDisabled={!permissionsValue.users.delete}
+														onChange={(event) =>
+															setServiceLimitValue(serviceId, {
+																delete_user_usage_limit_enabled:
+																	event.target.checked,
+															})
+														}
+													>
+														{t(
+															"admins.deleteUserUsageCap",
+															"Limit delete by user usage",
+														)}
+													</Checkbox>
+													{item.delete_user_usage_limit_enabled && (
+														<FormControl>
+															<FormLabel>
+																{t(
+																	"admins.deleteUserUsageLimit",
+																	"Max deletable user usage (MB)",
+																)}
+															</FormLabel>
+															<Input
+																value={item.delete_user_usage_limit ?? ""}
+																inputMode="numeric"
+																onChange={(event) =>
+																	setServiceLimitValue(serviceId, {
+																		delete_user_usage_limit:
+																			event.target.value,
+																	})
+																}
+															/>
+														</FormControl>
+													)}
+												</Stack>
+											)}
+										</VStack>
+									</Box>
+								);
+							})}
+						</VStack>
+					)}
 				</VStack>
 				<FormHelperText>
 					{t("admins.servicesHelper", "Assign services this admin can manage")}

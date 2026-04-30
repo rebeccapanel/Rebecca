@@ -18,6 +18,7 @@ from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.sql.functions import coalesce
 from app.db.models import (
     Admin,
+    AdminServiceLink,
     NextPlan,
     NodeUserUsage,
     Proxy,
@@ -55,7 +56,13 @@ from config import (
 
 # MasterSettingsService not available in current project structure
 from app.db.exceptions import UsersLimitReachedError
-from .admin_traffic import normalize_admin_created_traffic_delta, record_admin_created_traffic
+from .admin_traffic import (
+    admin_uses_service_traffic_limits,
+    get_admin_service_link,
+    normalize_admin_created_traffic_delta,
+    record_admin_created_traffic,
+    traffic_scope_used_limit_reached,
+)
 
 MASTER_NODE_NAME = "Master"
 
@@ -1071,7 +1078,11 @@ def _status_to_str(status: Union[UserStatus, str, None]) -> Optional[str]:
     return str(status)
 
 
-def _is_user_limit_enforced(admin: Optional[Admin]) -> bool:
+def _is_user_limit_enforced(admin: Optional[Admin], service_link: Optional[AdminServiceLink] = None) -> bool:
+    if service_link is not None:
+        return bool(service_link.users_limit is not None and service_link.users_limit > 0)
+    if admin_uses_service_traffic_limits(admin):
+        return False
     return bool(admin and admin.users_limit is not None and admin.users_limit > 0)
 
 
@@ -1079,6 +1090,7 @@ def _get_active_users_count(
     db: Session,
     admin: Admin,
     exclude_user_ids: Optional[Iterable[int]] = None,
+    service_id: Optional[int] = None,
 ) -> int:
     if not admin:
         return 0
@@ -1087,6 +1099,8 @@ def _get_active_users_count(
         User.admin_id == admin.id,
         User.status == UserStatus.active,
     )
+    if service_id is not None:
+        query = query.filter(User.service_id == service_id)
     if exclude_user_ids:
         exclude_ids = [uid for uid in exclude_user_ids if uid is not None]
         if exclude_ids:
@@ -1101,18 +1115,25 @@ def _ensure_active_user_capacity(
     *,
     required_slots: int = 1,
     exclude_user_ids: Optional[Iterable[int]] = None,
+    service_id: Optional[int] = None,
 ) -> None:
-    if not _is_user_limit_enforced(admin) or required_slots <= 0:
+    service_link = None
+    if admin_uses_service_traffic_limits(admin) and service_id is not None:
+        service_link = get_admin_service_link(db, admin.id, service_id)
+
+    if not _is_user_limit_enforced(admin, service_link) or required_slots <= 0:
         return
 
     active_count = _get_active_users_count(
         db,
         admin,
         exclude_user_ids=exclude_user_ids,
+        service_id=service_id if service_link is not None else None,
     )
-    remaining_slots = (admin.users_limit or 0) - active_count
+    limit = service_link.users_limit if service_link is not None else admin.users_limit
+    remaining_slots = (limit or 0) - active_count
     if remaining_slots < required_slots:
-        raise UsersLimitReachedError(limit=admin.users_limit, current_active=active_count)
+        raise UsersLimitReachedError(limit=limit, current_active=active_count)
 
 
 def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Optional[Service] = None) -> User:
@@ -1134,7 +1155,12 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
     status_value = _status_to_str(user.status) or UserStatus.active.value
     resolved_status = UserStatus(status_value)
     if admin:
-        _ensure_active_user_capacity(db, admin, required_slots=1)
+        _ensure_active_user_capacity(
+            db,
+            admin,
+            required_slots=1,
+            service_id=getattr(service, "id", None),
+        )
 
     excluded_inbounds_tags = user.excluded_inbounds
     credential_key = user.credential_key  # Already processed by ensure_user_credential_key
@@ -1240,6 +1266,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None, service: Opt
         admin,
         normalize_admin_created_traffic_delta(None, dbuser.data_limit),
         action="user_create",
+        service_id=getattr(service, "id", None),
     )
     db.flush()
 
@@ -1476,7 +1503,12 @@ def update_user(
 
     current_status_value = _status_to_str(dbuser.status)
     if current_status_value == UserStatus.active.value and original_status_value != UserStatus.active.value:
-        _ensure_active_user_capacity(db, dbuser.admin, exclude_user_ids=(dbuser.id,))
+        _ensure_active_user_capacity(
+            db,
+            dbuser.admin,
+            exclude_user_ids=(dbuser.id,),
+            service_id=getattr(dbuser, "service_id", None),
+        )
     dbuser.edit_at = datetime.now(timezone.utc)
 
     record_admin_created_traffic(
@@ -1484,6 +1516,7 @@ def update_user(
         dbuser.admin,
         normalize_admin_created_traffic_delta(previous_data_limit, dbuser.data_limit),
         action="user_limit_update",
+        service_id=getattr(dbuser, "service_id", None),
     )
 
     db.commit()
@@ -1510,7 +1543,12 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
     db.add(UserUsageResetLogs(user=dbuser, used_traffic_at_reset=dbuser.used_traffic))
     dbuser.node_usages.clear()
     if _status_to_str(dbuser.status) != UserStatus.active.value:
-        _ensure_active_user_capacity(db, dbuser.admin, exclude_user_ids=(dbuser.id,))
+        _ensure_active_user_capacity(
+            db,
+            dbuser.admin,
+            exclude_user_ids=(dbuser.id,),
+            service_id=getattr(dbuser, "service_id", None),
+        )
     dbuser.status = UserStatus.active.value
     current_limit = dbuser.data_limit or 0
     if plan.increase_data_limit:
@@ -1636,6 +1674,7 @@ def _sync_user_status_from_expire(db: Session, dbuser: User, now: float) -> None
             db,
             dbuser.admin,
             exclude_user_ids=(dbuser.id,),
+            service_id=getattr(dbuser, "service_id", None),
         )
 
 
@@ -1723,6 +1762,7 @@ def _sync_user_status_from_usage(db: Session, dbuser: User) -> None:
                 db,
                 dbuser.admin,
                 exclude_user_ids=(dbuser.id,),
+                service_id=getattr(dbuser, "service_id", None),
             )
 
 
@@ -1817,16 +1857,16 @@ def adjust_all_users_limit(
     else:
         query = query.filter(User.status == UserStatus.active)
 
-    created_traffic_increments: Dict[int, int] = {}
+    created_traffic_increments: Dict[Tuple[int, Optional[int]], int] = {}
     if delta_bytes > 0:
         increment_rows = (
-            query.with_entities(User.admin_id, func.count(User.id))
-            .group_by(User.admin_id)
+            query.with_entities(User.admin_id, User.service_id, func.count(User.id))
+            .group_by(User.admin_id, User.service_id)
             .all()
         )
         created_traffic_increments = {
-            int(admin_id): int(count or 0) * int(delta_bytes)
-            for admin_id, count in increment_rows
+            (int(admin_id), service_id): int(count or 0) * int(delta_bytes)
+            for admin_id, service_id, count in increment_rows
             if admin_id is not None and count
         }
 
@@ -1856,18 +1896,20 @@ def adjust_all_users_limit(
     )
     if affected:
         if created_traffic_increments:
+            admin_ids = {admin_id for admin_id, _service_id in created_traffic_increments.keys()}
             admin_rows = (
                 db.query(Admin)
-                .filter(Admin.id.in_(list(created_traffic_increments.keys())))
+                .filter(Admin.id.in_(list(admin_ids)))
                 .all()
             )
             admin_map = {int(item.id): item for item in admin_rows if item.id is not None}
-            for admin_id, amount in created_traffic_increments.items():
+            for (admin_id, service_id_value), amount in created_traffic_increments.items():
                 record_admin_created_traffic(
                     db,
                     admin_map.get(admin_id),
                     amount,
                     action="bulk_limit_increase",
+                    service_id=service_id_value,
                 )
         db.commit()
     return affected
@@ -1927,6 +1969,10 @@ def activate_all_disabled_users(db: Session, admin: Optional[Admin] = None):
         if dbuser.expire is None and dbuser.on_hold_expire_duration is not None and dbuser.online_at is None:
             target_status: Optional[UserStatus] = UserStatus.on_hold
         else:
+            if admin_uses_service_traffic_limits(admin):
+                link = get_admin_service_link(db, getattr(admin, "id", None), getattr(dbuser, "service_id", None))
+                if link and traffic_scope_used_limit_reached(link):
+                    continue
             if remaining_slots is not None:
                 if remaining_slots <= 0:
                     # Keep disabled if admin limit is reached.
@@ -1955,7 +2001,7 @@ def bulk_update_user_status(
     if target_status == UserStatus.active:
         if admin:
             required_slots = query.filter(User.status != UserStatus.active).count()
-            _ensure_active_user_capacity(db, admin, required_slots=required_slots)
+            _ensure_active_user_capacity(db, admin, required_slots=required_slots, service_id=service_id)
         else:
             counts = (
                 query.filter(User.status != UserStatus.active)

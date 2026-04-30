@@ -83,6 +83,7 @@ import type {
 	ServiceHostAssignment,
 	ServiceSummary,
 } from "types/Service";
+import { AdminTrafficLimitMode } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 
 type HostOption = {
@@ -110,6 +111,8 @@ type ServiceDialogProps = {
 };
 
 const NO_SERVICE_OPTION_VALUE = "__no_service__";
+const GB_IN_BYTES = 1024 * 1024 * 1024;
+const MB_IN_BYTES = 1024 * 1024;
 
 const ServiceDialog: FC<ServiceDialogProps> = ({
 	isOpen,
@@ -740,6 +743,9 @@ const ServicesPage: FC = () => {
 	const [editingService, setEditingService] = useState<ServiceDetail | null>(
 		null,
 	);
+	const [savingAdminLimitId, setSavingAdminLimitId] = useState<number | null>(
+		null,
+	);
 
 	useEffect(() => {
 		if (!getUserIsSuccess || !canManageServices) {
@@ -1220,6 +1226,67 @@ const ServicesPage: FC = () => {
 
 	const selectedService = servicesStore.serviceDetail;
 
+	const saveServiceAdminLimit = async (
+		adminId: number,
+		payload: {
+			traffic_limit_mode?: AdminTrafficLimitMode;
+			data_limit?: number | null;
+			show_user_traffic?: boolean;
+			users_limit?: number | null;
+			delete_user_usage_limit_enabled?: boolean;
+			delete_user_usage_limit?: number | null;
+		},
+	) => {
+		if (!selectedService) return;
+		setSavingAdminLimitId(adminId);
+		try {
+			await servicesStore.updateServiceAdminLimits(
+				selectedService.id,
+				adminId,
+				payload,
+			);
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t("services.adminLimitSaveFailed", "Unable to save limits"),
+				description:
+					error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setSavingAdminLimitId(null);
+		}
+	};
+
+	const resetServiceDeletedUsersUsage = async (link: {
+		id: number;
+		username: string;
+	}) => {
+		if (!selectedService) return;
+		setSavingAdminLimitId(link.id);
+		try {
+			await adminStore.resetDeletedUsersUsage(link.username, selectedService.id);
+			await servicesStore.fetchServiceDetail(selectedService.id);
+			toast({
+				status: "success",
+				title: t(
+					"admins.resetDeletedUsageSuccess",
+					"Deleted-user usage reset",
+				),
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"admins.resetDeletedUsageFailed",
+					"Unable to reset deleted-user usage",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setSavingAdminLimitId(null);
+		}
+	};
+
 	if (!getUserIsSuccess) {
 		return (
 			<Flex justify="center" align="center" h="full" py={10}>
@@ -1345,20 +1412,186 @@ const ServicesPage: FC = () => {
 										</Text>
 									) : (
 										selectedService.admins.map((link) => (
-											<Flex
+											<Stack
 												key={link.id}
-												justify="space-between"
 												borderWidth="1px"
 												borderRadius="md"
 												px={3}
 												py={2}
+												spacing={3}
 											>
-												<Text fontWeight="medium">{link.username}</Text>
-												<Text fontSize="sm" color="gray.500">
-													{formatBytes(link.used_traffic)} /{" "}
-													{formatBytes(link.lifetime_used_traffic)}
-												</Text>
-											</Flex>
+												<Flex justify="space-between" gap={3}>
+													<Text fontWeight="medium">{link.username}</Text>
+													<Text fontSize="sm" color="gray.500">
+														{formatBytes(link.used_traffic)} /{" "}
+														{formatBytes(link.lifetime_used_traffic)}
+													</Text>
+												</Flex>
+												<Flex
+													justify="space-between"
+													align="center"
+													gap={3}
+													flexWrap="wrap"
+												>
+													<Text fontSize="xs" color="gray.500">
+														{t(
+															"admins.deletedUsersUsage",
+															"Deleted-user usage",
+														)}
+														: {formatBytes(link.deleted_users_usage)}
+													</Text>
+													{link.deleted_users_usage > 0 && (
+														<Button
+															size="xs"
+															variant="ghost"
+															leftIcon={<ArrowPathIcon width={14} />}
+															isLoading={savingAdminLimitId === link.id}
+															onClick={() =>
+																resetServiceDeletedUsersUsage(link)
+															}
+														>
+															{t(
+																"admins.resetDeletedUsage",
+																"Reset deleted-user usage",
+															)}
+														</Button>
+													)}
+												</Flex>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={2}>
+													<FormControl>
+														<FormLabel fontSize="xs">
+															{t("admins.trafficMode", "Traffic mode")}
+														</FormLabel>
+														<Select
+															size="sm"
+															value={link.traffic_limit_mode}
+															isDisabled={savingAdminLimitId === link.id}
+															onChange={(event) =>
+																saveServiceAdminLimit(link.id, {
+																	traffic_limit_mode:
+																		event.target
+																			.value as AdminTrafficLimitMode,
+																})
+															}
+														>
+															<option
+																value={AdminTrafficLimitMode.UsedTraffic}
+															>
+																{t("admins.usedTraffic", "Used traffic")}
+															</option>
+															<option
+																value={AdminTrafficLimitMode.CreatedTraffic}
+															>
+																{t(
+																	"admins.createdTraffic",
+																	"Created traffic",
+																)}
+															</option>
+														</Select>
+													</FormControl>
+													<FormControl>
+														<FormLabel fontSize="xs">
+															{t("admins.dataLimit", "Data Limit (GB)")}
+														</FormLabel>
+														<Input
+															size="sm"
+															inputMode="numeric"
+															defaultValue={
+																link.data_limit
+																	? Math.floor(
+																			link.data_limit / GB_IN_BYTES,
+																		)
+																	: ""
+															}
+															isDisabled={savingAdminLimitId === link.id}
+															onBlur={(event) =>
+																saveServiceAdminLimit(link.id, {
+																	data_limit: event.target.value
+																		? Number(event.target.value) * GB_IN_BYTES
+																		: null,
+																})
+															}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel fontSize="xs">
+															{t("admins.usersLimit", "Users Limit")}
+														</FormLabel>
+														<Input
+															size="sm"
+															inputMode="numeric"
+															defaultValue={link.users_limit ?? ""}
+															isDisabled={savingAdminLimitId === link.id}
+															onBlur={(event) =>
+																saveServiceAdminLimit(link.id, {
+																	users_limit: event.target.value
+																		? Number(event.target.value)
+																		: null,
+																})
+															}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel fontSize="xs">
+															{t(
+																"admins.deleteUserUsageLimit",
+																"Max deletable user usage (MB)",
+															)}
+														</FormLabel>
+														<Input
+															size="sm"
+															inputMode="numeric"
+															defaultValue={
+																link.delete_user_usage_limit
+																	? Math.floor(
+																			link.delete_user_usage_limit /
+																				MB_IN_BYTES,
+																		)
+																	: ""
+															}
+															isDisabled={savingAdminLimitId === link.id}
+															onBlur={(event) =>
+																saveServiceAdminLimit(link.id, {
+																	delete_user_usage_limit: event.target.value
+																		? Number(event.target.value) * MB_IN_BYTES
+																		: null,
+																})
+															}
+														/>
+													</FormControl>
+												</SimpleGrid>
+												<HStack spacing={4} flexWrap="wrap">
+													<Checkbox
+														isChecked={link.show_user_traffic}
+														isDisabled={savingAdminLimitId === link.id}
+														onChange={(event) =>
+															saveServiceAdminLimit(link.id, {
+																show_user_traffic: event.target.checked,
+															})
+														}
+													>
+														{t(
+															"admins.showUserTraffic",
+															"Admin can view user traffic",
+														)}
+													</Checkbox>
+													<Checkbox
+														isChecked={link.delete_user_usage_limit_enabled}
+														isDisabled={savingAdminLimitId === link.id}
+														onChange={(event) =>
+															saveServiceAdminLimit(link.id, {
+																delete_user_usage_limit_enabled:
+																	event.target.checked,
+															})
+														}
+													>
+														{t(
+															"admins.deleteUserUsageCap",
+															"Limit delete by user usage",
+														)}
+													</Checkbox>
+												</HStack>
+											</Stack>
 										))
 									)}
 								</Stack>
