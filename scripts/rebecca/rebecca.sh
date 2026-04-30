@@ -67,7 +67,112 @@ colorized_echo() {
 }
 
 format_rebecca_journal_logs() {
-    sed -u -E "s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+    sed -u -E "s/^[0-9-]+[ T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\\.[0-9]+)?([+-][0-9:]+|Z)? [^ ]+ [^:]+: /Rebecca-\1: /; s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+}
+
+journal_output_format() {
+    if journalctl -o short-iso --no-pager -n 0 >/dev/null 2>&1; then
+        echo "short-iso"
+    else
+        echo "short"
+    fi
+}
+
+humanize_seconds() {
+    local seconds="${1:-0}"
+    local days hours minutes
+    if ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+        echo "-"
+        return
+    fi
+    days=$((seconds / 86400))
+    hours=$(((seconds % 86400) / 3600))
+    minutes=$(((seconds % 3600) / 60))
+    seconds=$((seconds % 60))
+    if [ "$days" -gt 0 ]; then
+        printf "%sd %sh %sm\n" "$days" "$hours" "$minutes"
+    elif [ "$hours" -gt 0 ]; then
+        printf "%sh %sm\n" "$hours" "$minutes"
+    elif [ "$minutes" -gt 0 ]; then
+        printf "%sm %ss\n" "$minutes" "$seconds"
+    else
+        printf "%ss\n" "$seconds"
+    fi
+}
+
+get_summary_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+    elif docker-compose version >/dev/null 2>&1; then
+        echo "docker-compose"
+    else
+        echo ""
+    fi
+}
+
+get_current_rebecca_version() {
+    local version=""
+    if [ -f "$CHANNEL_FILE" ]; then
+        version=$(tr -d '[:space:]' < "$CHANNEL_FILE")
+    fi
+    if [ -z "$version" ] && [ -f "$COMPOSE_FILE" ]; then
+        version=$(grep -E "image:.*rebeccapanel/rebecca:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*rebeccapanel\/rebecca:([^"[:space:]]+).*/\1/')
+    fi
+    printf '%s\n' "${version:-unknown}"
+}
+
+get_docker_container_id() {
+    local compose_cmd
+    compose_cmd=$(get_summary_compose)
+    if [ -z "$compose_cmd" ] || [ ! -f "$COMPOSE_FILE" ]; then
+        echo ""
+        return
+    fi
+    $compose_cmd -f "$COMPOSE_FILE" -p "$APP_NAME" ps -q rebecca 2>/dev/null | head -n 1
+}
+
+get_docker_uptime() {
+    local container_id started started_epoch now
+    container_id=$(get_docker_container_id)
+    if [ -z "$container_id" ]; then
+        echo "-"
+        return
+    fi
+    started=$(docker inspect -f '{{.State.StartedAt}}' "$container_id" 2>/dev/null || true)
+    started_epoch=$(date -d "$started" +%s 2>/dev/null || echo "")
+    now=$(date +%s)
+    if [ -z "$started_epoch" ]; then
+        echo "-"
+        return
+    fi
+    humanize_seconds "$((now - started_epoch))"
+}
+
+get_xray_runtime_status() {
+    local container_id
+    container_id=$(get_docker_container_id)
+    if [ -n "$container_id" ] && docker exec "$container_id" pgrep -x xray >/dev/null 2>&1; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+print_menu_status_summary() {
+    local container_id service_status="stopped"
+    local version uptime xray_status
+    container_id=$(get_docker_container_id)
+    if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null)" = "true" ]; then
+        service_status="running"
+    fi
+    version=$(get_current_rebecca_version)
+    uptime=$(get_docker_uptime)
+    xray_status=$(get_xray_runtime_status)
+    colorized_echo cyan "Version: ${version}"
+    colorized_echo cyan "Rebecca: ${service_status}"
+    colorized_echo cyan "Xray: ${xray_status}"
+    colorized_echo cyan "Uptime: ${uptime}"
+    colorized_echo blue "=============================="
 }
 
 set_rebecca_source_ref() {
@@ -2451,7 +2556,7 @@ up_rebecca() {
 
 follow_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -f -o short-time --no-pager | format_rebecca_journal_logs
+        journalctl -u "$APP_NAME.service" -f -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
         return
     fi
 
@@ -2902,7 +3007,7 @@ down_rebecca() {
 
 show_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -o short-time --no-pager | format_rebecca_journal_logs
+        journalctl -u "$APP_NAME.service" -o "$(journal_output_format)" --no-pager | format_rebecca_journal_logs
         return
     fi
 
@@ -3574,6 +3679,7 @@ print_menu() {
     colorized_echo blue "=============================="
     colorized_echo magenta "           Rebecca Menu"
     colorized_echo blue "=============================="
+    print_menu_status_summary
     local entries=(
         "up:Start services"
         "down:Stop services"
@@ -3589,11 +3695,6 @@ print_menu() {
         "script-uninstall:Uninstall Rebecca script"
         "backup:Manual backup launch"
         "backup-service:Backup service (Telegram + cron job)"
-    )
-    if [ "$(script_install_mode)" = "docker" ]; then
-        entries+=("migrate-binary:Migrate Docker install to binary")
-    fi
-    entries+=(
         "core-update:Update/Change Xray core"
         "enable-phpmyadmin:Add phpMyAdmin to docker-compose and restart services"
         "edit:Edit docker-compose.yml"
@@ -3621,11 +3722,8 @@ map_choice_to_command() {
     local commands=(
         up down restart status logs cli install update uninstall
         script-install script-update script-uninstall backup backup-service
+        core-update enable-phpmyadmin edit edit-env ssl help
     )
-    if [ "$(script_install_mode)" = "docker" ]; then
-        commands+=(migrate-binary)
-    fi
-    commands+=(core-update enable-phpmyadmin edit edit-env ssl help)
 
     if [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le "${#commands[@]}" ]; then
         echo "${commands[$(($1 - 1))]}"
@@ -3658,9 +3756,6 @@ usage() {
     colorized_echo yellow "  script-uninstall  $(tput sgr0)- Uninstall Rebecca script"
     colorized_echo yellow "  backup          $(tput sgr0)- Manual backup launch"
     colorized_echo yellow "  backup-service  $(tput sgr0)- Rebecca Backupservice to backup to TG, and a new job in crontab"
-    if [ "$(script_install_mode)" = "docker" ]; then
-        colorized_echo yellow "  migrate-binary  $(tput sgr0)- Migrate Docker install to binary"
-    fi
     colorized_echo yellow "  core-update     $(tput sgr0)- Update/Change Xray core"
     colorized_echo yellow "  enable-phpmyadmin $(tput sgr0)- Add phpMyAdmin to docker-compose.yml and restart services"
     colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml (via nano or vi editor)"
@@ -3711,7 +3806,6 @@ dispatch_command() {
         cli) cli_command "$@" ;;
         backup) backup_command "$@" ;;
         backup-service) backup_service "$@" ;;
-        migrate-binary|migrate-to-binary) migrate_docker_to_binary_command "$@" ;;
         install) install_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
