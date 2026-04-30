@@ -125,12 +125,22 @@ def record_admin_created_traffic(
         if link is None:
             return 0
         link.created_traffic = int(getattr(link, "created_traffic", 0) or 0) + normalized_amount
+        db.add(
+            AdminCreatedTrafficLog(
+                admin=dbadmin,
+                service_id=service_id,
+                amount=normalized_amount,
+                action=(action or "unknown")[:64],
+                created_at=created_at,
+            )
+        )
         return normalized_amount
 
     dbadmin.created_traffic = int(getattr(dbadmin, "created_traffic", 0) or 0) + normalized_amount
     db.add(
         AdminCreatedTrafficLog(
             admin=dbadmin,
+            service_id=None,
             amount=normalized_amount,
             action=(action or "unknown")[:64],
             created_at=created_at,
@@ -167,6 +177,16 @@ def ensure_user_delete_allowed_and_apply_credit(db: Session, dbuser: User) -> in
         db.add(
             AdminCreatedTrafficLog(
                 admin=scope,
+                service_id=None,
+                amount=-used_traffic,
+                action="user_delete_credit",
+            )
+        )
+    else:
+        db.add(
+            AdminCreatedTrafficLog(
+                admin=dbuser.admin,
+                service_id=getattr(scope, "service_id", None),
                 amount=-used_traffic,
                 action="user_delete_credit",
             )
@@ -180,21 +200,22 @@ def get_admin_created_traffic_by_day(
     start: datetime,
     end: datetime,
     granularity: str = "day",
+    service_id: Optional[int] = None,
 ) -> List[Dict[str, int | str]]:
     bucket_expr = _bucket_label_expr(db, AdminCreatedTrafficLog.created_at, granularity).label("bucket")
-    rows = (
-        db.query(
-            bucket_expr,
-            func.coalesce(func.sum(AdminCreatedTrafficLog.amount), 0).label("created_traffic"),
-        )
-        .filter(
-            AdminCreatedTrafficLog.admin_id == dbadmin.id,
-            AdminCreatedTrafficLog.created_at >= start,
-            AdminCreatedTrafficLog.created_at <= end,
-        )
-        .group_by(bucket_expr)
-        .all()
+    query = db.query(
+        bucket_expr,
+        func.coalesce(func.sum(AdminCreatedTrafficLog.amount), 0).label("created_traffic"),
+    ).filter(
+        AdminCreatedTrafficLog.admin_id == dbadmin.id,
+        AdminCreatedTrafficLog.created_at >= start,
+        AdminCreatedTrafficLog.created_at <= end,
     )
+    if service_id is None:
+        query = query.filter(AdminCreatedTrafficLog.service_id.is_(None))
+    else:
+        query = query.filter(AdminCreatedTrafficLog.service_id == service_id)
+    rows = query.group_by(bucket_expr).all()
 
     results: List[Dict[str, int | str]] = []
     for bucket_label, created_traffic in rows:

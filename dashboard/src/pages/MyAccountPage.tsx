@@ -1,5 +1,6 @@
 import {
 	Box,
+	Badge,
 	Button,
 	chakra,
 	Flex,
@@ -69,6 +70,8 @@ import type { AdminApiKey } from "types/ApiKey";
 import type {
 	MyAccountNodeUsage,
 	MyAccountResponse,
+	MyAccountServiceLimit,
+	MyAccountTrafficBasis,
 	MyAccountUsagePoint,
 } from "types/MyAccount";
 import { formatBytes } from "utils/formatByte";
@@ -173,6 +176,159 @@ const StatsCard: React.FC<StatsCardProps> = ({ label, value }) => (
 		<StatNumber fontSize="lg">{value}</StatNumber>
 	</Stat>
 );
+
+const getTrafficLabels = (
+	t: (key: string, fallback?: string) => string,
+	basis: MyAccountTrafficBasis,
+) => {
+	const isCreated = basis === "created_traffic";
+	return {
+		sectionTitle: isCreated
+			? t("myaccount.createdTrafficSection", "Created traffic")
+			: t("myaccount.dataUsage"),
+		usedLabel: isCreated
+			? t("myaccount.createdTraffic", "Created traffic")
+			: t("myaccount.usedData"),
+		remainingLabel: isCreated
+			? t("myaccount.remainingTraffic", "Remaining traffic")
+			: t("myaccount.remainingData"),
+		totalLabel: isCreated
+			? t("myaccount.trafficLimit", "Traffic limit")
+			: t("myaccount.totalData"),
+		dailyChartTitle: isCreated
+			? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
+			: t("myaccount.dailyUsage"),
+		dailyTotalLabel: isCreated
+			? t("myaccount.totalCreatedTraffic", "Total created traffic")
+			: t("nodes.totalUsage", "Total usage"),
+		modeLabel: isCreated
+			? t("myaccount.serviceModeCreated", "Created traffic")
+			: t("myaccount.serviceModeUsed", "Used traffic"),
+	};
+};
+
+const ServiceLimitPanel: React.FC<{
+	service: MyAccountServiceLimit;
+	colorMode: string;
+	t: (key: string, fallback?: string) => string;
+}> = ({ service, colorMode, t }) => {
+	const labels = getTrafficLabels(t, service.traffic_basis);
+	const dailyPoints = service.daily_usage ?? [];
+	const dailyTotal = dailyPoints.reduce(
+		(sum, point) => sum + Number(point.used_traffic || 0),
+		0,
+	);
+	const categories = dailyPoints.map((point) => formatTimeseriesLabel(point.date));
+	const series = [
+		{
+			name: labels.dailyChartTitle,
+			data: dailyPoints.map((point) => point.used_traffic),
+		},
+	];
+	const limit = service.data_limit ?? 0;
+	const remaining = service.remaining_data ?? Math.max(limit - service.used_traffic, 0);
+	const usersLimit = service.users_limit ?? 0;
+	const remainingUsers =
+		service.remaining_users ?? Math.max(usersLimit - service.current_users_count, 0);
+
+	return (
+		<Box
+			borderWidth="1px"
+			borderRadius="lg"
+			p={4}
+			bg="surface.light"
+			_dark={{ bg: "surface.dark" }}
+		>
+			<HStack justify="space-between" align="start" mb={4} spacing={3}>
+				<Box minW={0}>
+					<Text fontWeight="semibold" noOfLines={1}>
+						{service.service_name}
+					</Text>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{t("myaccount.serviceLimit", "Service limit")}
+					</Text>
+				</Box>
+				<Badge colorScheme={service.traffic_basis === "created_traffic" ? "purple" : "blue"}>
+					{labels.modeLabel}
+				</Badge>
+			</HStack>
+
+			<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} mb={4}>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{labels.usedLabel}
+					</Text>
+					<Text fontWeight="semibold">{formatBytes(service.used_traffic, 2)}</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{labels.remainingLabel}
+					</Text>
+					<Text fontWeight="semibold">
+						{service.data_limit === null
+							? t("myaccount.unlimited")
+							: formatBytes(remaining, 2)}
+					</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{labels.totalLabel}
+					</Text>
+					<Text fontWeight="semibold">
+						{service.data_limit === null
+							? t("myaccount.unlimited")
+							: formatBytes(limit, 2)}
+					</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{t("myaccount.createdUsers")}
+					</Text>
+					<Text fontWeight="semibold">{service.current_users_count}</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{t("myaccount.remainingUsers")}
+					</Text>
+					<Text fontWeight="semibold">
+						{service.users_limit === null
+							? t("myaccount.unlimited")
+							: `${Math.max(remainingUsers, 0)}`}
+					</Text>
+				</Box>
+				<Box>
+					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+						{t("myaccount.totalUsers")}
+					</Text>
+					<Text fontWeight="semibold">
+						{service.users_limit === null
+							? t("myaccount.unlimited")
+							: `${usersLimit}`}
+					</Text>
+				</Box>
+			</SimpleGrid>
+
+			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }} mb={2}>
+				{labels.dailyTotalLabel}:{" "}
+				<chakra.span fontWeight="semibold">
+					{formatBytes(dailyTotal, 2)}
+				</chakra.span>
+			</Text>
+			{series[0].data.length ? (
+				<ReactApexChart
+					options={buildDailyUsageOptions(colorMode, categories)}
+					series={series as any}
+					type="area"
+					height={220}
+				/>
+			) : (
+				<Text color="gray.500" _dark={{ color: "gray.400" }}>
+					{t("noData")}
+				</Text>
+			)}
+		</Box>
+	);
+};
 
 const ChangePasswordModal: React.FC<{
 	isOpen: boolean;
@@ -387,6 +543,7 @@ export const MyAccountPage: React.FC = () => {
 	);
 	const trafficBasis = data?.traffic_basis ?? "used_traffic";
 	const isCreatedTrafficBasis = trafficBasis === "created_traffic";
+	const isPerServiceLimits = Boolean(data?.use_service_traffic_limits);
 	const { data: nodesData } = useQuery(
 		["myaccount-nodes", username, range.start, range.end],
 		() =>
@@ -402,7 +559,8 @@ export const MyAccountPage: React.FC = () => {
 				selfPermissions.self_myaccount &&
 				Boolean(username) &&
 				getUserIsSuccess &&
-				data?.traffic_basis === "used_traffic",
+				data?.traffic_basis === "used_traffic" &&
+				!data?.use_service_traffic_limits,
 		},
 	);
 	const mutation = useMutation(changeMyAccountPassword, {
@@ -539,24 +697,24 @@ export const MyAccountPage: React.FC = () => {
 	const remainingData = data.remaining_data ?? Math.max(totalData - used, 0);
 	const usersLimit = data.users_limit ?? 0;
 	const remainingUsers = data.remaining_users ?? 0;
-	const usageSectionTitle = isCreatedTrafficBasis
-		? t("myaccount.createdTrafficSection", "Created traffic")
-		: t("myaccount.dataUsage");
-	const usedLabel = isCreatedTrafficBasis
-		? t("myaccount.createdTraffic", "Created traffic")
-		: t("myaccount.usedData");
-	const remainingLabel = isCreatedTrafficBasis
-		? t("myaccount.remainingTraffic", "Remaining traffic")
-		: t("myaccount.remainingData");
-	const totalLabel = isCreatedTrafficBasis
-		? t("myaccount.trafficLimit", "Traffic limit")
-		: t("myaccount.totalData");
-	const dailyChartTitle = isCreatedTrafficBasis
-		? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
-		: t("myaccount.dailyUsage");
-	const dailyTotalLabel = isCreatedTrafficBasis
-		? t("myaccount.totalCreatedTraffic", "Total created traffic")
-		: t("nodes.totalUsage", "Total usage");
+	const serviceLimits = data.service_limits ?? [];
+	const trafficLabels = getTrafficLabels(t, trafficBasis);
+	const usageSectionTitle = isPerServiceLimits
+		? t("myaccount.serviceTrafficOverview", "Service traffic overview")
+		: trafficLabels.sectionTitle;
+	const usedLabel = isPerServiceLimits
+		? t("myaccount.totalServiceTraffic", "Total service traffic")
+		: trafficLabels.usedLabel;
+	const remainingLabel = trafficLabels.remainingLabel;
+	const totalLabel = isPerServiceLimits
+		? t("myaccount.serviceTrafficLimit", "Service traffic limit")
+		: trafficLabels.totalLabel;
+	const dailyChartTitle = isPerServiceLimits
+		? t("myaccount.dailyServiceTraffic", "Daily service traffic")
+		: trafficLabels.dailyChartTitle;
+	const dailyTotalLabel = isPerServiceLimits
+		? t("myaccount.totalServiceTraffic", "Total service traffic")
+		: trafficLabels.dailyTotalLabel;
 
 	return (
 		<VStack spacing={4} align="stretch">
@@ -636,7 +794,7 @@ export const MyAccountPage: React.FC = () => {
 			<Grid
 				templateColumns={{
 					base: "1fr",
-					lg: isCreatedTrafficBasis ? "1fr" : "2fr 1fr",
+					lg: isCreatedTrafficBasis || isPerServiceLimits ? "1fr" : "2fr 1fr",
 				}}
 				gap={4}
 			>
@@ -678,7 +836,7 @@ export const MyAccountPage: React.FC = () => {
 						)}
 					</ChartBox>
 				</GridItem>
-				{!isCreatedTrafficBasis && (
+				{!isCreatedTrafficBasis && !isPerServiceLimits && (
 					<GridItem>
 						<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
 							<Text
@@ -709,6 +867,27 @@ export const MyAccountPage: React.FC = () => {
 					</GridItem>
 				)}
 			</Grid>
+
+			{isPerServiceLimits && (
+				<ChartBox title={t("myaccount.serviceTrafficLimits", "Service limits")}>
+					{serviceLimits.length ? (
+						<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
+							{serviceLimits.map((service) => (
+								<ServiceLimitPanel
+									key={service.service_id}
+									service={service}
+									colorMode={colorMode}
+									t={t}
+								/>
+							))}
+						</SimpleGrid>
+					) : (
+						<Text color="gray.500" _dark={{ color: "gray.400" }}>
+							{t("noData")}
+						</Text>
+					)}
+				</ChartBox>
+			)}
 
 			{selfPermissions.self_api_keys && (
 				<ChartBox

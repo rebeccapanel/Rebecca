@@ -281,3 +281,58 @@ def test_per_service_used_limit_disables_and_blocks_activation(auth_client: Test
 
     activate_response = auth_client.put(f"/api/user/{user_username}", json={"status": "active"}, headers=headers)
     assert activate_response.status_code == 403
+
+
+def test_myaccount_returns_per_service_created_limits(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_myacct_{unique}"
+    password = "svcmyacct123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-myacct-{unique}")
+
+    update_response = auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 2 * GB,
+                    "users_limit": 5,
+                }
+            ],
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    headers = _login_headers(auth_client, username, password)
+    _create_user(auth_client, headers, f"svc_myacct_user_{unique}", service_id=service_id)
+
+    myaccount_response = auth_client.get("/api/myaccount", headers=headers)
+    assert myaccount_response.status_code == 200, myaccount_response.text
+    payload = myaccount_response.json()
+    assert payload["use_service_traffic_limits"] is True
+    assert payload["used_traffic"] == GB
+    assert payload["data_limit"] == 2 * GB
+    assert payload["current_users_count"] == 1
+    assert len(payload["service_limits"]) == 1
+
+    service_payload = payload["service_limits"][0]
+    assert service_payload["service_id"] == service_id
+    assert service_payload["traffic_basis"] == "created_traffic"
+    assert service_payload["used_traffic"] == GB
+    assert service_payload["remaining_data"] == GB
+    assert service_payload["users_limit"] == 5
+    assert service_payload["current_users_count"] == 1
+    assert sum(point["used_traffic"] for point in service_payload["daily_usage"]) == GB

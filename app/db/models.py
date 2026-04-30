@@ -134,6 +134,7 @@ class AdminCreatedTrafficLog(Base):
 
     id = Column(Integer, primary_key=True)
     admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
+    service_id = Column(Integer, ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
     amount = Column(BigInteger, nullable=False)
     action = Column(String(64), nullable=False, default="unknown", server_default="unknown")
     created_at = Column(DateTime, default=utcnow, nullable=False)

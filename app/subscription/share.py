@@ -578,11 +578,11 @@ def process_inbounds_and_tags(
         if host.get("is_disabled"):
             continue
         format_variables.update({"PROTOCOL": protocol.name})
-        format_variables.update({"TRANSPORT": inbound["network"]})
+        format_variables.update({"TRANSPORT": inbound.get("network") or "tcp"})
         host_inbound = inbound.copy()
 
         sni = ""
-        sni_list = host["sni"] or inbound["sni"]
+        sni_list = host.get("sni") or inbound.get("sni") or []
         if sni_list:
             # Use first SNI to ensure consistent configs
             sni = sni_list[0]
@@ -599,7 +599,7 @@ def process_inbounds_and_tags(
             sid = sids[0]
 
         req_host = ""
-        req_host_list = host["host"] or inbound["host"]
+        req_host_list = host.get("host") or inbound.get("host") or []
         if req_host_list:
             # Use first host to ensure consistent configs
             req_host = req_host_list[0]
@@ -628,12 +628,14 @@ def process_inbounds_and_tags(
 
         host_inbound.update(
             {
-                "port": host["port"] or inbound["port"],
+                "port": host["port"] or inbound.get("port"),
                 "sni": sni,
                 "host": req_host,
-                "tls": inbound["tls"] if host["tls"] is None else host["tls"],
+                "tls": inbound.get("tls", "none") if host["tls"] is None else host["tls"],
                 "alpn": host["alpn"] if host["alpn"] else None,
                 "path": path,
+                "network": host.get("network") or inbound.get("network") or "tcp",
+                "header_type": inbound.get("header_type") or "none",
                 "fp": host["fingerprint"] or inbound.get("fp", ""),
                 "ais": host["allowinsecure"] or inbound.get("allowinsecure", ""),
                 "mux_enable": host["mux_enable"],
