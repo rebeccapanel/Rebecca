@@ -124,13 +124,13 @@ const PRIMARY_VARS = [
 const DEFAULT_LIGHT_MODE: ModeConfig = {
 	primary: "#396fe4",
 	bg: "#f6f8ff",
-	surface: "#ffffff",
+	surface: "#edf1ff",
 };
 
 const DEFAULT_DARK_MODE: ModeConfig = {
 	primary: "#4f46e5",
 	bg: "#0f172a",
-	surface: "#141f35",
+	surface: "#17233d",
 };
 
 const DEFAULT_PALETTE: PaletteVars = {
@@ -222,44 +222,44 @@ const BUILTIN_THEME_DATA: Record<
 		basePrimary: DEFAULT_DARK_MODE.primary,
 		bgLight: "#1a202c",
 		bgDark: "#0b1524",
-		surfaceLight: "#232c3d",
-		surfaceDark: "#121c2c",
+		surfaceLight: "#253247",
+		surfaceDark: "#172338",
 		palette: DARK_PALETTE,
 	},
 	"pure-dark": {
 		basePrimary: "#1a8ce0",
 		bgLight: "#0c1018",
 		bgDark: "#05070c",
-		surfaceLight: "#111827",
-		surfaceDark: "#0a0f1a",
+		surfaceLight: "#151d2b",
+		surfaceDark: "#101826",
 	},
 	"ultra-dark": {
 		basePrimary: "#319795",
 		bgLight: "#edfafa",
 		bgDark: "#091212",
-		surfaceLight: "#ffffff",
-		surfaceDark: "#0f1f1f",
+		surfaceLight: "#dff4f2",
+		surfaceDark: "#132928",
 	},
 	moontone: {
 		basePrimary: "#3b82f6",
 		bgLight: "#f5f7ff",
 		bgDark: "#0f1930",
-		surfaceLight: "#ffffff",
-		surfaceDark: "#172544",
+		surfaceLight: "#e9f0ff",
+		surfaceDark: "#1b2d52",
 	},
 	purple: {
 		basePrimary: "#7c3aed",
 		bgLight: "#f8f2ff",
 		bgDark: "#1a1031",
-		surfaceLight: "#ffffff",
-		surfaceDark: "#261547",
+		surfaceLight: "#f0e5ff",
+		surfaceDark: "#2d1b54",
 	},
 	green: {
 		basePrimary: "#10b981",
 		bgLight: "#eefdf4",
 		bgDark: "#071c10",
-		surfaceLight: "#ffffff",
-		surfaceDark: "#0f2a18",
+		surfaceLight: "#e2f8e9",
+		surfaceDark: "#12341e",
 	},
 };
 
