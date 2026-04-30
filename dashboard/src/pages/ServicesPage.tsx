@@ -84,6 +84,7 @@ import type {
 	ServiceSummary,
 } from "types/Service";
 import { AdminTrafficLimitMode } from "types/Admin";
+import type { Admin, AdminPermissions } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 
 type HostOption = {
@@ -125,6 +126,17 @@ const formatGigabytes = (
 	const gb = value / GB_IN_BYTES;
 	return `${Number.isInteger(gb) ? gb : Number(gb.toFixed(2))} GB`;
 };
+
+const adminCanDeleteUsers = (admin?: Admin) =>
+	Boolean(admin?.permissions?.users?.delete);
+
+const withDeleteUserPermission = (permissions: AdminPermissions) => ({
+	...permissions,
+	users: {
+		...permissions.users,
+		delete: true,
+	},
+});
 
 const ServiceDialog: FC<ServiceDialogProps> = ({
 	isOpen,
@@ -1252,11 +1264,22 @@ const ServicesPage: FC = () => {
 		if (!selectedService) return;
 		setSavingAdminLimitId(adminId);
 		try {
+			if (payload.delete_user_usage_limit_enabled === true) {
+				const targetAdmin = adminStore.admins.find((item) => item.id === adminId);
+				if (targetAdmin && !adminCanDeleteUsers(targetAdmin)) {
+					await adminStore.updateAdmin(targetAdmin.username, {
+						permissions: withDeleteUserPermission(targetAdmin.permissions),
+					});
+				}
+			}
 			await servicesStore.updateServiceAdminLimits(
 				selectedService.id,
 				adminId,
 				payload,
 			);
+			if (payload.delete_user_usage_limit_enabled === true) {
+				await servicesStore.fetchServiceDetail(selectedService.id);
+			}
 		} catch (error) {
 			toast({
 				status: "error",
