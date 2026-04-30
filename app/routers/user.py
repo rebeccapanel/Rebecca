@@ -12,6 +12,7 @@ from app.db.exceptions import UsersLimitReachedError
 from app.dependencies import get_validated_user, validate_dates
 from app.models.admin import Admin, AdminRole, UserPermission, admin_can_view_user_traffic
 from app.db.crud.admin_traffic import (
+    CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
     DELETE_CAP_EXCEEDED_MESSAGE,
     admin_uses_service_traffic_limits,
     ensure_user_delete_allowed_and_apply_credit,
@@ -146,10 +147,7 @@ def _ensure_user_management_available(admin: Admin, action: str) -> None:
     if admin.user_management_locked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "User management is locked because the created traffic limit has been reached. "
-                f"You can't {action}."
-            ),
+            detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
         )
 
 
@@ -197,6 +195,10 @@ def _is_disable_enable_only_update(modified_user: UserModify) -> bool:
         return False
     status_value = getattr(modified_user.status, "value", modified_user.status)
     return status_value in {"active", "disabled"}
+
+
+def _is_data_limit_rebalance_update(modified_user: UserModify) -> bool:
+    return set(modified_user.model_fields_set) == {"data_limit"}
 
 
 def _owner_uses_created_reset_policy(dbuser) -> bool:
@@ -288,10 +290,7 @@ def _ensure_admin_service_scope_available(db: Session, dbadmin, service_id: Opti
     if traffic_scope_created_limit_reached(link):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "User management is locked for this service because the created traffic limit has been reached. "
-                f"You can't {action}."
-            ),
+            detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
         )
     if traffic_scope_used_limit_reached(link):
         raise HTTPException(
@@ -659,7 +658,11 @@ def modify_user(
     Note: Fields set to `null` or omitted will not be modified.
     """
 
-    if admin.user_management_locked and not _is_disable_enable_only_update(modified_user):
+    if (
+        admin.user_management_locked
+        and not _is_disable_enable_only_update(modified_user)
+        and not _is_data_limit_rebalance_update(modified_user)
+    ):
         _ensure_user_management_available(admin, "modify users")
 
     owner_admin = getattr(dbuser, "admin", None)
@@ -670,13 +673,15 @@ def modify_user(
                 detail="Service changes are disabled for admins that use per-service traffic limits.",
             )
         link = get_admin_service_link(db, owner_admin.id, getattr(dbuser, "service_id", None))
-        if link and traffic_scope_created_limit_reached(link) and not _is_disable_enable_only_update(modified_user):
+        if (
+            link
+            and traffic_scope_created_limit_reached(link)
+            and not _is_disable_enable_only_update(modified_user)
+            and not _is_data_limit_rebalance_update(modified_user)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "User management is locked for this service because the created traffic limit has been reached. "
-                    "You can't modify users."
-                ),
+                detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
             )
         if modified_user.status == UserStatus.active:
             _ensure_user_can_be_activated_in_scope(db, dbuser)
@@ -906,10 +911,7 @@ def reset_user_data_usage(
         if link and traffic_scope_created_limit_reached(link):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "User management is locked for this service because the created traffic limit has been reached. "
-                    "You can't reset user usage."
-                ),
+                detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
             )
     _ensure_reset_usage_allowed(admin, dbuser)
     try:
@@ -947,10 +949,7 @@ def revoke_user_subscription(
         if link and traffic_scope_created_limit_reached(link):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "User management is locked for this service because the created traffic limit has been reached. "
-                    "You can't revoke user subscriptions."
-                ),
+                detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
             )
     dbuser = crud.revoke_user_sub(db=db, dbuser=dbuser)
 
@@ -1330,10 +1329,7 @@ def active_next_plan(
         if link and traffic_scope_created_limit_reached(link):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "User management is locked for this service because the created traffic limit has been reached. "
-                    "You can't activate the next plan."
-                ),
+                detail=CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE,
             )
         _ensure_user_can_be_activated_in_scope(db, dbuser)
     had_next_plan = getattr(dbuser, "next_plan", None) is not None

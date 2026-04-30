@@ -11,7 +11,9 @@ from app.models.admin import AdminRole, AdminTrafficLimitMode
 
 
 DELETE_CAP_EXCEEDED_MESSAGE = "User traffic is greater than the allowed delete limit."
-CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE = "Created traffic limit would be exceeded."
+CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE = "لیمیت حجم شما به پایان رسید"
+CREATED_TRAFFIC_REQUIRES_FINITE_LIMIT_MESSAGE = "در حالت حجم ساخته‌شده، حجم یوزر باید محدود باشد."
+DATA_LIMIT_BELOW_USED_TRAFFIC_MESSAGE = "حجم جدید نمی‌تواند کمتر از مصرف فعلی کاربر باشد."
 
 
 def _dialect_name(db: Optional[Session]) -> str:
@@ -41,11 +43,7 @@ def _bucket_label_expr(db: Session, column, granularity: str):
 def normalize_admin_created_traffic_delta(previous_limit: Optional[int], new_limit: Optional[int]) -> int:
     previous = int(previous_limit or 0)
     current = int(new_limit or 0)
-    if current <= 0:
-        return 0
-    if previous <= 0:
-        return current
-    return max(current - previous, 0)
+    return current - previous
 
 
 def admin_uses_service_traffic_limits(dbadmin: Optional[Admin]) -> bool:
@@ -119,6 +117,38 @@ def get_user_traffic_scope(db: Session, dbuser: User) -> Optional[Any]:
     return get_admin_service_link(db, getattr(dbadmin, "id", None), getattr(dbuser, "service_id", None))
 
 
+def validate_created_traffic_data_limit_change(
+    db: Session,
+    dbadmin: Optional[Admin],
+    *,
+    previous_limit: Optional[int],
+    new_limit: Optional[int],
+    used_traffic: int = 0,
+    service_id: Optional[int] = None,
+) -> int:
+    previous = int(previous_limit or 0)
+    current = int(new_limit or 0)
+    delta = current - previous
+    if dbadmin is None:
+        return delta
+
+    scope: Optional[Any]
+    if admin_uses_service_traffic_limits(dbadmin):
+        scope = get_admin_service_link(db, dbadmin.id, service_id)
+    else:
+        scope = dbadmin
+    if scope is None or not traffic_scope_uses_created_traffic(scope):
+        return delta
+
+    if current <= 0:
+        raise ValueError(CREATED_TRAFFIC_REQUIRES_FINITE_LIMIT_MESSAGE)
+    if current < int(used_traffic or 0):
+        raise ValueError(DATA_LIMIT_BELOW_USED_TRAFFIC_MESSAGE)
+    if traffic_scope_created_limit_would_exceed(scope, delta):
+        raise ValueError(CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE)
+    return delta
+
+
 def record_admin_created_traffic(
     db: Session,
     dbadmin: Optional[Admin],
@@ -131,7 +161,7 @@ def record_admin_created_traffic(
     if dbadmin is None:
         return 0
     normalized_amount = int(amount or 0)
-    if normalized_amount <= 0:
+    if normalized_amount == 0:
         return 0
 
     if admin_uses_service_traffic_limits(dbadmin):
@@ -140,7 +170,7 @@ def record_admin_created_traffic(
             return 0
         if traffic_scope_created_limit_would_exceed(link, normalized_amount):
             raise ValueError(CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE)
-        link.created_traffic = int(getattr(link, "created_traffic", 0) or 0) + normalized_amount
+        link.created_traffic = max(int(getattr(link, "created_traffic", 0) or 0) + normalized_amount, 0)
         db.add(
             AdminCreatedTrafficLog(
                 admin=dbadmin,
@@ -154,7 +184,7 @@ def record_admin_created_traffic(
 
     if traffic_scope_created_limit_would_exceed(dbadmin, normalized_amount):
         raise ValueError(CREATED_TRAFFIC_LIMIT_EXCEEDED_MESSAGE)
-    dbadmin.created_traffic = int(getattr(dbadmin, "created_traffic", 0) or 0) + normalized_amount
+    dbadmin.created_traffic = max(int(getattr(dbadmin, "created_traffic", 0) or 0) + normalized_amount, 0)
     db.add(
         AdminCreatedTrafficLog(
             admin=dbadmin,

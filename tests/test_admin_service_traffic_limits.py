@@ -13,7 +13,12 @@ from tests.conftest import TestingSessionLocal
 
 GB = 1024**3
 MB = 1024**2
-_INBOUNDS = {"vmess": [{"tag": "VMess TCP"}], "vless": [{"tag": "VLESS TCP"}]}
+CREATED_TRAFFIC_LIMIT_MESSAGE = "لیمیت حجم شما به پایان رسید"
+DATA_LIMIT_BELOW_USED_MESSAGE = "حجم جدید نمی‌تواند کمتر از مصرف فعلی کاربر باشد."
+_INBOUNDS = {
+    "vmess": [{"tag": "VMess TCP", "network": "tcp", "tls": "none"}],
+    "vless": [{"tag": "VLESS TCP", "network": "tcp", "tls": "none"}],
+}
 
 
 def _login_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
@@ -386,7 +391,7 @@ def test_per_service_created_limit_blocks_create_over_remaining(auth_client: Tes
         headers=headers,
     )
     assert blocked_response.status_code == 400
-    assert "Created traffic limit" in blocked_response.json()["detail"]
+    assert blocked_response.json()["detail"] == CREATED_TRAFFIC_LIMIT_MESSAGE
 
     with TestingSessionLocal() as db:
         link = (
@@ -438,7 +443,7 @@ def test_per_service_created_limit_blocks_update_over_remaining(auth_client: Tes
         headers=headers,
     )
     assert blocked_response.status_code == 400
-    assert "Created traffic limit" in blocked_response.json()["detail"]
+    assert blocked_response.json()["detail"] == CREATED_TRAFFIC_LIMIT_MESSAGE
 
     with TestingSessionLocal() as db:
         link = (
@@ -449,3 +454,75 @@ def test_per_service_created_limit_blocks_update_over_remaining(auth_client: Tes
         dbuser = crud.get_user(db, user_username)
         assert link.created_traffic == GB
         assert dbuser.data_limit == GB
+
+
+def test_per_service_created_limit_allows_only_valid_decrease(auth_client: TestClient):
+    unique = uuid4().hex[:8]
+    username = f"svc_down_{unique}"
+    password = "svcdownpass123"
+    response = auth_client.post(
+        "/api/admin",
+        json={
+            "username": username,
+            "password": password,
+            "role": "standard",
+            "use_service_traffic_limits": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    admin_id = response.json()["id"]
+    service_id = _create_service_for_admin(admin_id, f"svc-down-{unique}")
+    auth_client.put(
+        f"/api/admin/{username}",
+        json={
+            "services": [service_id],
+            "use_service_traffic_limits": True,
+            "service_limits": [
+                {
+                    "service_id": service_id,
+                    "traffic_limit_mode": "created_traffic",
+                    "data_limit": 10 * GB,
+                }
+            ],
+        },
+    )
+    headers = _login_headers(auth_client, username, password)
+    user_username = f"svc_down_user_{unique}"
+    _create_user(auth_client, headers, user_username, service_id=service_id)
+
+    with TestingSessionLocal() as db:
+        dbuser = crud.get_user(db, user_username)
+        dbuser.data_limit = 5 * GB
+        dbuser.used_traffic = 4 * GB
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        link.created_traffic = 5 * GB
+        db.commit()
+
+    blocked_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": 3 * GB},
+        headers=headers,
+    )
+    assert blocked_response.status_code == 400
+    assert blocked_response.json()["detail"] == DATA_LIMIT_BELOW_USED_MESSAGE
+
+    ok_response = auth_client.put(
+        f"/api/user/{user_username}",
+        json={"data_limit": 4 * GB},
+        headers=headers,
+    )
+    assert ok_response.status_code == 200, ok_response.text
+
+    with TestingSessionLocal() as db:
+        link = (
+            db.query(AdminServiceLink)
+            .filter(AdminServiceLink.admin_id == admin_id, AdminServiceLink.service_id == service_id)
+            .first()
+        )
+        dbuser = crud.get_user(db, user_username)
+        assert dbuser.data_limit == 4 * GB
+        assert link.created_traffic == 4 * GB
