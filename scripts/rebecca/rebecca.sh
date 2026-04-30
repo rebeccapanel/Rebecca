@@ -66,6 +66,10 @@ colorized_echo() {
     esac
 }
 
+format_rebecca_journal_logs() {
+    sed -u -E "s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+}
+
 set_rebecca_source_ref() {
     local ref="${1:-dev}"
     REBECCA_REF="$ref"
@@ -2413,7 +2417,7 @@ install_binary_rebecca() {
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
         colorized_echo blue "Fetching xray config file"
-        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" || {
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" 2>/dev/null || {
             rm -f "$DATA_DIR/xray_config.json"
             colorized_echo yellow "No bundled xray_config.json found; Rebecca will use its built-in default."
         }
@@ -2447,7 +2451,7 @@ up_rebecca() {
 
 follow_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" -f
+        journalctl -u "$APP_NAME.service" -f -o short-time --no-pager | format_rebecca_journal_logs
         return
     fi
 
@@ -2898,7 +2902,7 @@ down_rebecca() {
 
 show_rebecca_logs() {
     if is_binary_install; then
-        journalctl -u "$APP_NAME.service" --no-pager
+        journalctl -u "$APP_NAME.service" -o short-time --no-pager | format_rebecca_journal_logs
         return
     fi
 
