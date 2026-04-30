@@ -5,7 +5,7 @@ import string
 from collections import defaultdict
 from datetime import datetime as dt, timezone
 from datetime import timedelta
-from typing import TYPE_CHECKING, List, Literal, Union
+from typing import TYPE_CHECKING, Any, List, Literal, Sequence, Union
 
 from jdatetime import date as jd
 
@@ -273,6 +273,79 @@ def _host_map_has_hosts(host_map: dict | None) -> bool:
     return any(hosts for hosts in host_map.values())
 
 
+def _enum_value(value: Any) -> Any:
+    return value.value if hasattr(value, "value") else value
+
+
+def _split_host_value(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _host_to_subscription_dict(host: Any, service_ids: Sequence[int] | None = None) -> dict:
+    from app.models.proxy import ProxyHostSecurity
+
+    security = _enum_value(getattr(host, "security", None))
+    alpn = _enum_value(getattr(host, "alpn", None)) or ""
+    fingerprint = _enum_value(getattr(host, "fingerprint", None)) or ""
+
+    return {
+        "remark": host.remark,
+        "address": _split_host_value(host.address),
+        "port": host.port,
+        "path": host.path if host.path else None,
+        "sni": _split_host_value(host.sni),
+        "host": _split_host_value(host.host),
+        "alpn": alpn,
+        "fingerprint": fingerprint,
+        "tls": None if security == ProxyHostSecurity.inbound_default.value else security,
+        "allowinsecure": host.allowinsecure,
+        "mux_enable": host.mux_enable,
+        "fragment_setting": host.fragment_setting,
+        "noise_setting": host.noise_setting,
+        "random_user_agent": host.random_user_agent,
+        "use_sni_as_host": host.use_sni_as_host,
+        "sort": host.sort if host.sort is not None else 0,
+        "id": host.id,
+        "service_ids": list(service_ids) if service_ids else [],
+        "is_disabled": bool(host.is_disabled),
+        "inbound_tag": host.inbound_tag,
+    }
+
+
+def _load_service_host_map_from_db(service_ids: list[int], inbound_tags: set[str]) -> dict:
+    from sqlalchemy import or_
+
+    from app.db import GetDB
+    from app.db import models as db_models
+
+    host_map = {tag: [] for tag in inbound_tags}
+    if not service_ids:
+        return host_map
+
+    with GetDB() as db:
+        rows = (
+            db.query(db_models.ServiceHostLink, db_models.ProxyHost)
+            .join(db_models.ProxyHost, db_models.ProxyHost.id == db_models.ServiceHostLink.host_id)
+            .filter(db_models.ServiceHostLink.service_id.in_(service_ids))
+            .filter(or_(db_models.ProxyHost.is_disabled.is_(False), db_models.ProxyHost.is_disabled.is_(None)))
+            .all()
+        )
+
+    for link, host in rows:
+        if inbound_tags and host.inbound_tag not in inbound_tags:
+            continue
+        host_map.setdefault(host.inbound_tag, []).append(_host_to_subscription_dict(host, [link.service_id]))
+
+    for tag in list(host_map):
+        host_map[tag].sort(key=lambda h: (h.get("sort", 0), h.get("id") or 0))
+
+    return host_map
+
+
 def process_inbounds_and_tags(
     inbounds: dict,
     proxies: dict,
@@ -408,6 +481,13 @@ def process_inbounds_and_tags(
     if not os.getenv("PYTEST_CURRENT_TEST") and os.getenv("REBECCA_SKIP_RUNTIME_INIT") != "1":
         if not _host_map_has_hosts(host_map):
             _refresh_inbounds_state()
+    if service_ids and not _host_map_has_hosts(host_map):
+        try:
+            fallback_host_map = _load_service_host_map_from_db(service_ids, set(inbounds_by_tag.keys()))
+            if _host_map_has_hosts(fallback_host_map):
+                host_map = fallback_host_map
+        except Exception:
+            pass
 
     if service_ids:
         allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
