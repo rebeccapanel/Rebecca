@@ -868,6 +868,10 @@ export const AdminDialog: FC = () => {
 							: null,
 					};
 				});
+			const requestedServices = values.services ?? [];
+			const serviceLimitPayload = values.use_service_traffic_limits
+				? buildServiceLimitPayload()
+				: undefined;
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
@@ -912,15 +916,25 @@ export const AdminDialog: FC = () => {
 						: values.users_limit
 							? Number(values.users_limit)
 							: undefined,
-					service_limits: values.use_service_traffic_limits
-						? buildServiceLimitPayload()
-						: undefined,
 				};
 				const createdAdmin = await createAdmin(payload);
-				const requestedServices = values.services ?? [];
 				let shouldFetch = true;
 				let serviceSyncError: unknown = null;
-				if (requestedServices.length > 0) {
+				if (
+					selectedRole !== AdminRole.FullAccess &&
+					values.use_service_traffic_limits
+				) {
+					try {
+						await updateAdmin(createdAdmin.username, {
+							services: requestedServices,
+							use_service_traffic_limits: true,
+							service_limits: serviceLimitPayload,
+						});
+						shouldFetch = false;
+					} catch (error) {
+						serviceSyncError = error;
+					}
+				} else if (requestedServices.length > 0) {
 					const createdServices = new Set(createdAdmin?.services ?? []);
 					const missingServices = requestedServices.filter(
 						(serviceId) => !createdServices.has(serviceId),
@@ -994,9 +1008,7 @@ export const AdminDialog: FC = () => {
 						: values.users_limit
 							? Number(values.users_limit)
 							: undefined,
-					service_limits: values.use_service_traffic_limits
-						? buildServiceLimitPayload()
-						: undefined,
+					service_limits: serviceLimitPayload,
 				};
 				if (values.password) {
 					payload.password = values.password;
