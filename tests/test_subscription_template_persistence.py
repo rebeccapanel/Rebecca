@@ -37,4 +37,3 @@ def test_subscription_template_creator_uses_persistent_directory_by_default(tmp_
         assert reloaded["resolved_path"] == result["resolved_path"]
     finally:
         db.close()
-
