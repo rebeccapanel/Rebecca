@@ -117,6 +117,33 @@ def _aggregate_user_usage(api_params, usage_coefficient):
     return [{"uid": uid, "value": value} for uid, value in users_usage.items()]
 
 
+def _resolve_username_uids(users_usage):
+    """Resolve username-only uids (old xray format) to their numeric database IDs.
+
+    Old xray configs registered users with email=username instead of email={id}.{username}.
+    Stats from those entries arrive with a plain username as uid.
+    """
+    legacy = [(i, entry["uid"]) for i, entry in enumerate(users_usage) if not entry["uid"].isdigit()]
+    if not legacy:
+        return users_usage
+
+    usernames = [uid for _, uid in legacy]
+    with GetDB() as db:
+        rows = db.query(User.id, User.username).filter(User.username.in_(usernames)).all()
+    username_to_id = {row[1]: str(row[0]) for row in rows}
+
+    result = list(users_usage)
+    to_remove = set()
+    for i, username in legacy:
+        numeric_id = username_to_id.get(username)
+        if numeric_id:
+            result[i] = {**result[i], "uid": numeric_id}
+        else:
+            to_remove.add(i)
+
+    return [entry for j, entry in enumerate(result) if j not in to_remove]
+
+
 def _load_user_mapping(user_ids):
     with GetDB() as db:
         rows = db.query(User.id, User.admin_id, User.service_id).filter(User.id.in_(user_ids)).all()
@@ -586,6 +613,11 @@ def record_user_usages():
     api_params, node_batches = _collect_usage_params(api_instances)
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)
+    if not users_usage:
+        _ack_node_user_batches(node_batches)
+        return
+
+    users_usage = _resolve_username_uids(users_usage)
     if not users_usage:
         _ack_node_user_batches(node_batches)
         return
