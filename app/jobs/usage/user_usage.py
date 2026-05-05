@@ -474,6 +474,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
     admin_limit_events = []
 
     with GetDB() as db:
+        connection = db.connection()
         stmt = (
             update(User)
             .where(User.id == bindparam("uid"))
@@ -488,7 +489,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 ),
             )
         )
-        db.execute(stmt, users_usage)
+        connection.execute(stmt, users_usage)
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
@@ -517,7 +518,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                     lifetime_usage=Admin.lifetime_usage + bindparam("value"),
                 )
             )
-            db.execute(
+            connection.execute(
                 admin_update_stmt,
                 [{"b_admin_id": entry["admin_id"], "value": entry["value"]} for entry in admin_data],
             )
@@ -533,7 +534,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 )
             )
             service_params = [{"b_service_id": sid, "value": value} for sid, value in service_usage.items()]
-            db.execute(service_update_stmt, service_params)
+            connection.execute(service_update_stmt, service_params)
 
         if admin_service_usage:
             admin_service_update_stmt = (
@@ -554,7 +555,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 {"b_admin_id": admin_id, "b_service_id": service_id, "value": value}
                 for (admin_id, service_id), value in admin_service_usage.items()
             ]
-            db.execute(admin_service_update_stmt, admin_service_params)
+            connection.execute(admin_service_update_stmt, admin_service_params)
             for admin_id, service_id in admin_service_usage.keys():
                 link = (
                     db.query(AdminServiceLink)

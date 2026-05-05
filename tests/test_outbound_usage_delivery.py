@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import app.runtime
-from app.db.models import NodeUsage, OutboundTraffic, System
+from app.db.models import NodeUsage, OutboundTraffic, System, User
 
 app.runtime.scheduler = SimpleNamespace(add_job=lambda *args, **kwargs: None)
 
@@ -224,6 +224,32 @@ def test_user_usage_ack_prevents_replay_when_hourly_snapshot_fails(monkeypatch):
 
     assert applied == [{"uid": "42", "value": 100}]
     assert usage_delivery_buffer.pending_user_stats(None) == []
+
+
+def test_apply_usage_bulk_update_does_not_require_session_sync(monkeypatch):
+    username = "usage_bulk_sync_test"
+    db = TestingSessionLocal()
+    try:
+        db.query(User).filter(User.username == username).delete(synchronize_session=False)
+        db.commit()
+        dbuser = User(username=username, used_traffic=0)
+        db.add(dbuser)
+        db.commit()
+        user_id = dbuser.id
+    finally:
+        db.close()
+
+    user_usage._apply_usage_to_db([{"uid": str(user_id), "value": 1234}], {}, {}, {})
+
+    db = TestingSessionLocal()
+    try:
+        dbuser = db.query(User).filter(User.id == user_id).first()
+        assert dbuser is not None
+        assert dbuser.used_traffic == 1234
+    finally:
+        db.query(User).filter(User.username == username).delete(synchronize_session=False)
+        db.commit()
+        db.close()
 
 
 def test_outbound_usage_buffer_rolls_back_partial_persist_until_retry_succeeds(monkeypatch):
