@@ -4,13 +4,14 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import and_, bindparam, case, func, insert, or_, select, update
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
 from app.jobs.usage.collectors import get_users_stats
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
-from app.jobs.usage.utils import hour_bucket, safe_execute, utcnow_naive
+from app.jobs.usage.utils import hour_bucket, is_retryable_db_error, retry_delay, safe_execute, utcnow_naive
 from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
@@ -70,10 +71,16 @@ def _ack_node_user_batches(node_batches: dict[int, str]) -> None:
         node = xray.nodes.get(node_id)
         if not node:
             continue
-        try:
-            node.ack_user_stats(batch_id)
-        except Exception as exc:  # pragma: no cover - best effort
-            logger.warning(f"Failed to ack user usage batch {batch_id} for node {node_id}: {exc}")
+        max_retries = 3
+        for tries in range(1, max_retries + 1):
+            try:
+                node.ack_user_stats(batch_id)
+                break
+            except Exception as exc:  # pragma: no cover - best effort
+                if tries >= max_retries:
+                    logger.warning(f"Failed to ack user usage batch {batch_id} for node {node_id}: {exc}")
+                    break
+                retry_delay(tries)
 
 
 def _collect_usage_params(api_instances):
@@ -88,10 +95,15 @@ def _collect_usage_params(api_instances):
     for node_id, future in futures.items():
         try:
             result = future.result(timeout=30)
+            node_batch_id = ""
             if isinstance(result, dict):
-                node_batches[node_id] = result.get("node_batch_id") or ""
+                node_batch_id = result.get("node_batch_id") or ""
+                node_batches[node_id] = node_batch_id
                 result = result.get("stats") or []
-            api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, result)
+            if node_batch_id:
+                api_params[node_id] = usage_delivery_buffer.replace_user_stats(node_id, result)
+            else:
+                api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get stats from node {node_id}: {exc}")
             api_params[node_id] = usage_delivery_buffer.pending_user_stats(node_id)
@@ -457,7 +469,7 @@ def record_user_stats(params: list, node_id: Union[int, None], consumption_facto
 # region Admin/Service aggregates and persistence
 
 
-def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage):
+def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_service_usage):
     # DB path: apply deltas to users, admins, services, and admin-service links.
     admin_limit_events = []
 
@@ -476,7 +488,7 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                 ),
             )
         )
-        safe_execute(db, stmt, users_usage)
+        db.execute(stmt, users_usage)
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
@@ -505,8 +517,7 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                     lifetime_usage=Admin.lifetime_usage + bindparam("value"),
                 )
             )
-            safe_execute(
-                db,
+            db.execute(
                 admin_update_stmt,
                 [{"b_admin_id": entry["admin_id"], "value": entry["value"]} for entry in admin_data],
             )
@@ -522,7 +533,7 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                 )
             )
             service_params = [{"b_service_id": sid, "value": value} for sid, value in service_usage.items()]
-            safe_execute(db, service_update_stmt, service_params)
+            db.execute(service_update_stmt, service_params)
 
         if admin_service_usage:
             admin_service_update_stmt = (
@@ -543,7 +554,7 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
                 {"b_admin_id": admin_id, "b_service_id": service_id, "value": value}
                 for (admin_id, service_id), value in admin_service_usage.items()
             ]
-            safe_execute(db, admin_service_update_stmt, admin_service_params)
+            db.execute(admin_service_update_stmt, admin_service_params)
             for admin_id, service_id in admin_service_usage.keys():
                 link = (
                     db.query(AdminServiceLink)
@@ -561,8 +572,23 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
 
         # Enforce per-user limits/expiry immediately using the freshly updated usage.
         _enforce_user_limits_and_expiry(db, [int(usage["uid"]) for usage in users_usage if usage.get("uid")])
+        db.commit()
 
     return admin_limit_events
+
+
+def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage):
+    max_retries = 8
+    tries = 0
+    while True:
+        try:
+            return _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_service_usage)
+        except (OperationalError, SQLTimeoutError) as exc:
+            tries += 1
+            if not is_retryable_db_error(exc) or tries >= max_retries:
+                raise
+            logger.warning("Retryable database error while recording user usage, retrying (%s/%s)...", tries, max_retries)
+            retry_delay(tries)
 
 
 # endregion
@@ -597,21 +623,25 @@ def record_user_usages():
     del user_ids
     admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
 
+    usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+    _ack_node_user_batches(node_batches)
+
     # Notify admin limit triggers.
     for event in admin_limit_events:
-        report.admin_data_limit_reached(event["admin"], event["limit"], event["current"])
+        try:
+            report.admin_data_limit_reached(event["admin"], event["limit"], event["current"])
+        except Exception as exc:  # pragma: no cover - best-effort
+            logger.warning(f"Failed to send admin data limit report for admin {event.get('admin_id')}: {exc}")
 
     if DISABLE_RECORDING_NODE_USAGE:
-        usage_delivery_buffer.ack_user_stats_for(api_params.keys())
-        _ack_node_user_batches(node_batches)
         return
 
     # Write per-node/hour snapshots.
     for node_id, params in api_params.items():
-        record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
-
-    usage_delivery_buffer.ack_user_stats_for(api_params.keys())
-    _ack_node_user_batches(node_batches)
+        try:
+            record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
+        except Exception as exc:  # pragma: no cover - best-effort
+            logger.warning(f"Failed to record hourly user usage snapshot for node {node_id}: {exc}")
 
 
 # endregion

@@ -275,10 +275,15 @@ def record_node_usages():
     for node_id, future in futures.items():
         try:
             result = future.result()
+            node_batch_id = ""
             if isinstance(result, dict):
-                node_batches[node_id] = result.get("node_batch_id") or ""
+                node_batch_id = result.get("node_batch_id") or ""
+                node_batches[node_id] = node_batch_id
                 result = result.get("stats") or []
-            api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, result)
+            if node_batch_id:
+                api_params[node_id] = usage_delivery_buffer.replace_outbound_stats(node_id, result)
+            else:
+                api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning(f"Failed to get outbound stats from node {node_id}: {exc}")
             api_params[node_id] = usage_delivery_buffer.pending_outbound_stats(node_id)
