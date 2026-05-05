@@ -4,8 +4,6 @@ import {
 	Checkbox,
 	Heading,
 	HStack,
-	NumberInput,
-	NumberInputField,
 	Stack,
 	Text,
 	useToast,
@@ -15,6 +13,7 @@ import { BoltIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { useServicesStore } from "contexts/ServicesContext";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NumericInput } from "./common/NumericInput";
 import type {
 	AdvancedUserActionPayload,
 	AdvancedUserActionScopeStatus,
@@ -229,17 +228,16 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 									"Add or remove days for users in this service.",
 								)}
 							</Text>
-							<NumberInput
+							<NumericInput
 								value={days}
 								onChange={(value) => setDays(value)}
 								min={1}
 								step={1}
 								size="sm"
-							>
-								<NumberInputField
-									placeholder={t("services.userActions.expire.days", "Days")}
-								/>
-							</NumberInput>
+								fieldProps={{
+									placeholder: t("services.userActions.expire.days", "Days"),
+								}}
+							/>
 							<HStack spacing={2} flexWrap="wrap">
 								<Button
 									size="sm"
@@ -272,20 +270,19 @@ const ServiceUserActions = ({ serviceId }: Props) => {
 									"Adjust traffic for all users in this service.",
 								)}
 							</Text>
-							<NumberInput
+							<NumericInput
 								value={gigabytes}
 								onChange={(value) => setGigabytes(value)}
 								min={0.01}
 								step={0.1}
 								size="sm"
-							>
-								<NumberInputField
-									placeholder={t(
+								fieldProps={{
+									placeholder: t(
 										"services.userActions.traffic.gigabytes",
 										"Gigabytes",
-									)}
-								/>
-							</NumberInput>
+									),
+								}}
+							/>
 							<HStack spacing={2} flexWrap="wrap">
 								<Button
 									size="sm"

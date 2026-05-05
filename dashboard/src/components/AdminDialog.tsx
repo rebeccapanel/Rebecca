@@ -71,6 +71,7 @@ import {
 import { z } from "zod";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
+import { NumericInput } from "./common/NumericInput";
 import { DateTimePicker } from "./DateTimePicker";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
@@ -562,6 +563,10 @@ export const AdminDialog: FC = () => {
 	const showUserTrafficValue = watch("show_user_traffic");
 	const deleteUserUsageLimitEnabled = watch("delete_user_usage_limit_enabled");
 	const serviceLimitsValue = watch("service_limits") ?? {};
+	const telegramIdValue = watch("telegram_id") ?? "";
+	const deleteUserUsageLimitValue = watch("delete_user_usage_limit") ?? "";
+	const dataLimitValue = watch("data_limit") ?? "";
+	const usersLimitValue = watch("users_limit") ?? "";
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 	const isFullAccessRole = watchRole === AdminRole.FullAccess;
 	const isCreatedTrafficMode =
@@ -1199,13 +1204,19 @@ export const AdminDialog: FC = () => {
 				))}
 			<FormControl isInvalid={!!errors.telegram_id}>
 				<FormLabel>{t("admins.telegramId", "Telegram ID")}</FormLabel>
-				<Input
+				<NumericInput
 					placeholder={t(
 						"admins.telegramPlaceholder",
 						"Optional numeric Telegram ID",
 					)}
-					inputMode="numeric"
-					{...register("telegram_id")}
+					value={telegramIdValue}
+					precision={0}
+					onChange={(value) =>
+						setValue("telegram_id", value, {
+							shouldDirty: true,
+							shouldValidate: true,
+						})
+					}
 				/>
 				<FormErrorMessage>
 					{errors.telegram_id?.message as string}
@@ -1298,9 +1309,15 @@ export const AdminDialog: FC = () => {
 											"Max deletable user usage (MB)",
 										)}
 									</FormLabel>
-									<Input
-										inputMode="numeric"
-										{...register("delete_user_usage_limit")}
+									<NumericInput
+										value={deleteUserUsageLimitValue}
+										precision={0}
+										onChange={(value) =>
+											setValue("delete_user_usage_limit", value, {
+												shouldDirty: true,
+												shouldValidate: true,
+											})
+										}
 									/>
 									<FormErrorMessage>
 										{errors.delete_user_usage_limit?.message as string}
@@ -1331,14 +1348,20 @@ export const AdminDialog: FC = () => {
 			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 				<FormControl isInvalid={!!errors.data_limit}>
 					<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
-					<Input
+					<NumericInput
 						placeholder={t(
 							"admins.dataLimitPlaceholder",
 							"e.g., 100 for 100GB (empty = unlimited)",
 						)}
-						inputMode="numeric"
+						value={dataLimitValue}
+						precision={0}
 						isDisabled={usePerServiceTrafficLimits}
-						{...register("data_limit")}
+						onChange={(value) =>
+							setValue("data_limit", value, {
+								shouldDirty: true,
+								shouldValidate: true,
+							})
+						}
 					/>
 					<FormErrorMessage>
 						{errors.data_limit?.message as string}
@@ -1349,14 +1372,20 @@ export const AdminDialog: FC = () => {
 				</FormControl>
 				<FormControl isInvalid={!!errors.users_limit}>
 					<FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
-					<Input
+					<NumericInput
 						placeholder={t(
 							"admins.usersLimitPlaceholder",
 							"e.g., 100 (empty = unlimited)",
 						)}
-						inputMode="numeric"
+						value={usersLimitValue}
+						precision={0}
 						isDisabled={usePerServiceTrafficLimits}
-						{...register("users_limit")}
+						onChange={(value) =>
+							setValue("users_limit", value, {
+								shouldDirty: true,
+								shouldValidate: true,
+							})
+						}
 					/>
 					<FormErrorMessage>
 						{errors.users_limit?.message as string}
@@ -1555,12 +1584,12 @@ export const AdminDialog: FC = () => {
 													<FormLabel>
 														{t("admins.dataLimit", "Data Limit (GB)")}
 													</FormLabel>
-													<Input
+													<NumericInput
 														value={item.data_limit ?? ""}
-														inputMode="numeric"
-														onChange={(event) =>
+														precision={0}
+														onChange={(value) =>
 															setServiceLimitValue(serviceId, {
-																data_limit: event.target.value,
+																data_limit: value,
 															})
 														}
 													/>
@@ -1569,12 +1598,12 @@ export const AdminDialog: FC = () => {
 													<FormLabel>
 														{t("admins.usersLimit", "Users Limit")}
 													</FormLabel>
-													<Input
+													<NumericInput
 														value={item.users_limit ?? ""}
-														inputMode="numeric"
-														onChange={(event) =>
+														precision={0}
+														onChange={(value) =>
 															setServiceLimitValue(serviceId, {
-																users_limit: event.target.value,
+																users_limit: value,
 															})
 														}
 													/>
@@ -1621,13 +1650,12 @@ export const AdminDialog: FC = () => {
 																	"Max deletable user usage (MB)",
 																)}
 															</FormLabel>
-															<Input
+															<NumericInput
 																value={item.delete_user_usage_limit ?? ""}
-																inputMode="numeric"
-																onChange={(event) =>
+																precision={0}
+																onChange={(value) =>
 																	setServiceLimitValue(serviceId, {
-																		delete_user_usage_limit:
-																			event.target.value,
+																		delete_user_usage_limit: value,
 																	})
 																}
 															/>

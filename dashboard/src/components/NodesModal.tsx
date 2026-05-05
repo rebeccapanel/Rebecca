@@ -318,7 +318,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									<Input
 										label={t("nodes.nodePort")}
 										size="sm"
-										type="text"
+										type="number"
 										inputMode="numeric"
 										placeholder="62050"
 										{...form.register("port")}
@@ -329,7 +329,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									<Input
 										label={t("nodes.nodeAPIPort")}
 										size="sm"
-										type="text"
+										type="number"
 										inputMode="numeric"
 										placeholder="62051"
 										{...form.register("api_port")}
@@ -341,7 +341,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								<Input
 									label={t("nodes.usageCoefficient")}
 									size="sm"
-									type="text"
+									type="number"
 									inputMode="decimal"
 									placeholder="1"
 									{...form.register("usage_coefficient")}

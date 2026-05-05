@@ -14,8 +14,9 @@ import {
 } from "@chakra-ui/react";
 import { type FC, useEffect } from "react";
 import type { UseFormReturn } from "react-hook-form";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { NumericInput } from "./common/NumericInput";
 
 type FakeDnsFormValues = {
 	ipPool: string;
@@ -123,12 +124,18 @@ export const FakeDnsModal: FC<FakeDnsModalProps> = ({
 							</FormControl>
 							<FormControl>
 								<FormLabel>{t("pages.xray.fakedns.poolSize")}</FormLabel>
-								<Input
-									{...modalForm.register("poolSize")}
-									type="number"
-									size="sm"
-									placeholder="100"
-									min={1}
+								<Controller
+									control={modalForm.control}
+									name="poolSize"
+									render={({ field }) => (
+										<NumericInput
+											value={field.value ?? ""}
+											onChange={(value) => field.onChange(value)}
+											size="sm"
+											min={1}
+											fieldProps={{ placeholder: "100" }}
+										/>
+									)}
 								/>
 							</FormControl>
 							<Button type="submit" colorScheme="primary" size="sm">

@@ -112,10 +112,16 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 						name,
 						type,
 						placeholder,
+						defaultValue:
+							typeof props.defaultValue === "string" ||
+							typeof props.defaultValue === "number"
+								? props.defaultValue
+								: 0,
 						onBlur,
 						onClick,
 						disabled,
 						flexGrow: 1,
+						role: "group",
 						size,
 						onChange: (valueAsString: string, valueAsNumber: number) => {
 							if (!onChange) return;
@@ -169,11 +175,18 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 								cursor: "not-allowed",
 							}}
 							{...props}
+							pr={type === "number" ? props.pr ?? "2rem" : props.pr}
 							roundedLeft={startAdornment ? "0" : "md"}
 							roundedRight={endAdornment ? "0" : "md"}
 						/>
 						{type === "number" && (
-							<NumberInputStepper>
+							<NumberInputStepper
+								opacity={0}
+								pointerEvents="none"
+								transition="opacity 0.15s ease"
+								_groupHover={{ opacity: 1, pointerEvents: "auto" }}
+								_groupFocusWithin={{ opacity: 1, pointerEvents: "auto" }}
+							>
 								<NumberIncrementStepper />
 								<NumberDecrementStepper />
 							</NumberInputStepper>

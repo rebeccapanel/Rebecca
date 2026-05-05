@@ -58,6 +58,7 @@ import {
 	Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
+import { NumericInput } from "components/common/NumericInput";
 import {
 	FetchNodesQueryKey,
 	type NodeType,
@@ -1138,15 +1139,11 @@ export const NodesPage: FC = () => {
 				align={{ base: "stretch", md: "center" }}
 			>
 				<InputGroup size="sm" maxW={{ base: "full", md: "240px" }}>
-					<Input
-						type="number"
-						step="0.01"
+					<NumericInput
+						step={0.01}
 						min={0}
-						inputMode="decimal"
 						value={masterLimitInput}
-						onChange={(event) =>
-							handleMasterLimitInputChange(event.target.value)
-						}
+						onChange={(value) => handleMasterLimitInputChange(value)}
 						placeholder={t(
 							"nodes.dataLimitPlaceholder",
 							"e.g., 500 (empty = unlimited)",

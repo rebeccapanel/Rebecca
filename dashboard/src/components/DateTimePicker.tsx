@@ -20,6 +20,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import { type FC, useEffect, useState } from "react";
+import { NumericInput } from "./common/NumericInput";
 
 interface DateTimePickerProps {
 	value?: Date | null;
@@ -357,40 +358,36 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 									<Text fontSize="2xs" color={timeLabelColor}>
 										Time:
 									</Text>
-									<Input
-										type="number"
+									<NumericInput
 										size="xs"
 										w="45px"
 										min={0}
 										max={23}
 										value={selectedTime.hour}
-										onChange={(e) => {
+										onChange={(value) => {
 											const h = Math.max(
 												0,
-												Math.min(23, parseInt(e.target.value, 10) || 0),
+												Math.min(23, parseInt(value, 10) || 0),
 											);
 											handleTimeChange(h, selectedTime.minute);
 										}}
-										textAlign="center"
-										fontSize="xs"
+										fieldProps={{ textAlign: "center", fontSize: "xs" }}
 									/>
 									<Text fontSize="xs">:</Text>
-									<Input
-										type="number"
+									<NumericInput
 										size="xs"
 										w="45px"
 										min={0}
 										max={59}
 										value={selectedTime.minute}
-										onChange={(e) => {
+										onChange={(value) => {
 											const m = Math.max(
 												0,
-												Math.min(59, parseInt(e.target.value, 10) || 0),
+												Math.min(59, parseInt(value, 10) || 0),
 											);
 											handleTimeChange(selectedTime.hour, m);
 										}}
-										textAlign="center"
-										fontSize="xs"
+										fieldProps={{ textAlign: "center", fontSize: "xs" }}
 									/>
 								</HStack>
 

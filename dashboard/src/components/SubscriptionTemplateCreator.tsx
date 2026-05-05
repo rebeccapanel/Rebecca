@@ -17,7 +17,6 @@ import {
 	FormLabel,
 	HStack,
 	IconButton,
-	Input,
 	Select,
 	SimpleGrid,
 	Spinner,
@@ -34,6 +33,7 @@ import {
 	TrashIcon,
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { PanelInput as Input } from "components/common/PanelInput";
 import {
 	type ChangeEvent,
 	type DragEvent,

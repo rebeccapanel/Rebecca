@@ -21,8 +21,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	NumberInput,
-	NumberInputField,
 	Popover,
 	PopoverArrow,
 	PopoverBody,
@@ -73,6 +71,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { NumericInput } from "./common/NumericInput";
 import { DeleteIcon } from "./DeleteUserModal";
 import { JsonEditor } from "./JsonEditor";
 
@@ -998,7 +997,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-														<NumberInput
+														<NumericInput
 															value={host.data.sort}
 															allowMouseWheel
 															onChange={(_, num) =>
@@ -1008,9 +1007,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 																	Number.isNaN(num) ? host.data.sort : num,
 																)
 															}
-														>
-															<NumberInputField />
-														</NumberInput>
+														/>
 													</FormControl>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -1038,7 +1035,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.port")}</FormLabel>
-														<NumberInput
+														<NumericInput
 															value={host.data.port ?? ""}
 															allowMouseWheel
 															onChange={(_, num) =>
@@ -1048,9 +1045,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 																	Number.isNaN(num) ? null : num,
 																)
 															}
-														>
-															<NumberInputField />
-														</NumberInput>
+														/>
 													</FormControl>
 												</SimpleGrid>
 												<FormControl>
@@ -1450,7 +1445,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</FormControl>
 						<FormControl>
 							<FormLabel>{t("hostsDialog.port")}</FormLabel>
-							<NumberInput
+							<NumericInput
 								value={formState.port ?? ""}
 								onChange={(_, num) =>
 									setFormState((prev) => ({
@@ -1458,9 +1453,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 										port: Number.isNaN(num) ? null : num,
 									}))
 								}
-							>
-								<NumberInputField />
-							</NumberInput>
+							/>
 						</FormControl>
 					</SimpleGrid>
 					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -1505,7 +1498,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 					</FormControl>
 					<FormControl>
 						<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-						<NumberInput
+						<NumericInput
 							value={Number.isFinite(formState.sort) ? formState.sort : ""}
 							onChange={(_, num) =>
 								setFormState((prev) => ({
@@ -1513,9 +1506,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									sort: Number.isNaN(num) ? prev.sort : num,
 								}))
 							}
-						>
-							<NumberInputField />
-						</NumberInput>
+						/>
 					</FormControl>
 					<Box
 						borderRadius="md"

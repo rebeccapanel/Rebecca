@@ -18,8 +18,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	NumberInput,
-	NumberInputField,
 	SimpleGrid,
 	Stack,
 	Text,
@@ -33,6 +31,7 @@ import { useTranslation } from "react-i18next";
 
 import { fetch as apiFetch } from "service/http";
 import { Outbound, SizeFormatter } from "../utils/outbound";
+import { NumericInput } from "./common/NumericInput";
 import {
 	ensureWireguardGlobal,
 	generateWireguardKeypair,
@@ -985,7 +984,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 
 								<FormControl>
 									<FormLabel>{t("pages.xray.warp.mtu", "MTU")}</FormLabel>
-									<NumberInput
+									<NumericInput
 										size="sm"
 										min={576}
 										max={1600}
@@ -993,9 +992,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 										onChange={(_, value) =>
 											updateFormField("mtu", value || 1420)
 										}
-									>
-										<NumberInputField />
-									</NumberInput>
+									/>
 								</FormControl>
 
 								<FormControl>
