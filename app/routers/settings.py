@@ -1,11 +1,19 @@
 from typing import Dict, Optional
 
+import shutil
+import tempfile
+from pathlib import Path
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from app.models.admin import Admin
 from app.models.settings import (
     PanelSettingsResponse,
     PanelSettingsUpdate,
+    RebeccaBackupImportResponse,
+    RebeccaBackupScope,
     SubscriptionCertificate,
     SubscriptionCertificateIssueRequest,
     SubscriptionCertificateRenewRequest,
@@ -25,8 +33,15 @@ from app.models.settings import (
 )
 from app.services.panel_settings import PanelSettingsService
 from app.services.import_3xui import ThreeXUiImportService
+from app.services.rebecca_backup import (
+    BACKUP_MEDIA_TYPE,
+    RebeccaBackupError,
+    RebeccaBackupService,
+    _safe_unlink,
+)
 from app.services.subscription_settings import SubscriptionCertificateService, SubscriptionSettingsService
 from app.services.telegram_settings import TelegramSettingsService
+from app.utils.binary_control import is_binary_runtime
 from app.db import crud, get_db, Session
 from app.utils import responses
 
@@ -34,6 +49,12 @@ router = APIRouter(
     prefix="/api/settings",
     tags=["Settings"],
     responses={401: responses._401, 403: responses._403},
+)
+
+
+BACKUP_DISABLED_DETAIL = (
+    "Rebecca backup and import is available only on binary installations. "
+    "Migrate this panel to the binary version before using backup or restore from the web UI."
 )
 
 
@@ -104,6 +125,61 @@ def update_panel_settings(
         use_nobetci=settings.use_nobetci,
         default_subscription_type=settings.default_subscription_type,
         access_insights_enabled=settings.access_insights_enabled,
+    )
+
+
+@router.get("/backup/export", responses={403: responses._403})
+def export_rebecca_backup(
+    scope: RebeccaBackupScope = RebeccaBackupScope.database,
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Export a Rebecca database-only or full system backup."""
+    if not is_binary_runtime():
+        raise HTTPException(status_code=409, detail=BACKUP_DISABLED_DETAIL)
+    try:
+        export = RebeccaBackupService().export_backup(scope.value)
+    except RebeccaBackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return FileResponse(
+        path=export.path,
+        filename=export.filename,
+        media_type=BACKUP_MEDIA_TYPE,
+        background=BackgroundTask(_safe_unlink, export.path),
+    )
+
+
+@router.post(
+    "/backup/import",
+    response_model=RebeccaBackupImportResponse,
+    responses={403: responses._403},
+)
+def import_rebecca_backup(
+    scope: RebeccaBackupScope = RebeccaBackupScope.database,
+    file: UploadFile = File(...),
+    _: Admin = Depends(Admin.check_sudo_admin),
+):
+    """Import a Rebecca database-only or full system backup."""
+    if not is_binary_runtime():
+        raise HTTPException(status_code=409, detail=BACKUP_DISABLED_DETAIL)
+    suffix = Path(file.filename or "").suffix or ".rbbackup"
+    handle = tempfile.NamedTemporaryFile(prefix="rebecca-backup-upload-", suffix=suffix, delete=False)
+    upload_path = Path(handle.name)
+    try:
+        with handle:
+            shutil.copyfileobj(file.file, handle)
+        result = RebeccaBackupService().import_backup(upload_path, scope.value)
+    except RebeccaBackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        _safe_unlink(upload_path)
+
+    return RebeccaBackupImportResponse(
+        scope=RebeccaBackupScope(result.scope),
+        tables_restored=result.tables_restored,
+        rows_restored=result.rows_restored,
+        files_restored=result.files_restored,
+        warnings=result.warnings,
     )
 
 
