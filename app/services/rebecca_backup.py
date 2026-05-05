@@ -178,6 +178,7 @@ class RebeccaBackupService:
                 }
                 manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
+                sqlite_skip_paths = self._active_sqlite_paths()
                 with tarfile.open(output_path, "w:gz") as archive:
                     archive.add(manifest_path, arcname=MANIFEST_NAME)
                     archive.add(database_path, arcname=DATABASE_DUMP_NAME)
@@ -187,7 +188,11 @@ class RebeccaBackupService:
                                 archive.add(
                                     root.path,
                                     arcname=f"{FILES_PREFIX}/{root.archive_name}",
-                                    filter=self._archive_file_filter,
+                                    filter=lambda tarinfo, backup_root=root: self._archive_file_filter(
+                                        tarinfo,
+                                        root=backup_root,
+                                        skip_paths=sqlite_skip_paths,
+                                    ),
                                 )
             return BackupExportResult(path=output_path, filename=filename, scope=scope)
         except Exception:
@@ -383,9 +388,24 @@ class RebeccaBackupService:
         except TypeError:
             archive.extractall(destination)
 
-    def _archive_file_filter(self, tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    def _archive_file_filter(
+        self,
+        tarinfo: tarfile.TarInfo,
+        *,
+        root: BackupFileRoot | None = None,
+        skip_paths: set[Path] | None = None,
+    ) -> tarfile.TarInfo | None:
         if tarinfo.issym() or tarinfo.islnk() or tarinfo.isdev():
             return None
+        if root is not None and skip_paths:
+            try:
+                relative = Path(tarinfo.name).relative_to(Path(FILES_PREFIX) / root.archive_name)
+            except ValueError:
+                relative = None
+            if relative is not None and str(relative) not in {"", "."}:
+                source_path = (root.path / relative).expanduser().resolve()
+                if source_path in skip_paths:
+                    return None
         tarinfo.uid = 0
         tarinfo.gid = 0
         tarinfo.uname = ""

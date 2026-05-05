@@ -1,4 +1,5 @@
 from pathlib import Path
+import tarfile
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -92,6 +93,35 @@ def test_full_backup_restores_rebecca_file_roots_and_database(tmp_path):
         assert (data_root / "xray_config.json").read_text(encoding="utf-8") == '{"log":{}}\n'
         assert str(etc_root) in result.files_restored
         assert str(data_root) in result.files_restored
+    finally:
+        _safe_unlink(export.path)
+
+
+def test_full_backup_excludes_active_sqlite_files_from_file_payload(tmp_path):
+    data_root = tmp_path / "var" / "lib" / "rebecca"
+    data_root.mkdir(parents=True)
+    db_path = data_root / "db.sqlite3"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    (data_root / "db.sqlite3-wal").write_text("wal placeholder", encoding="utf-8")
+    (data_root / "db.sqlite3-shm").write_text("shm placeholder", encoding="utf-8")
+    (data_root / "xray_config.json").write_text('{"log":{}}\n', encoding="utf-8")
+
+    service = RebeccaBackupService(
+        db_engine=engine,
+        file_roots=[BackupFileRoot("var_lib_rebecca", data_root)],
+    )
+
+    export = service.export_backup("full")
+    try:
+        with tarfile.open(export.path, "r:gz") as archive:
+            names = set(archive.getnames())
+
+        assert "database.json" in names
+        assert "files/var_lib_rebecca/xray_config.json" in names
+        assert "files/var_lib_rebecca/db.sqlite3" not in names
+        assert "files/var_lib_rebecca/db.sqlite3-wal" not in names
+        assert "files/var_lib_rebecca/db.sqlite3-shm" not in names
     finally:
         _safe_unlink(export.path)
 

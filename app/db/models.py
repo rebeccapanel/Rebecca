@@ -168,6 +168,12 @@ class TelegramSettings(Base):
     default_vless_flow = Column(String(255), nullable=True)
     forum_topics = Column(JSON, nullable=False, default=dict)
     event_toggles = Column(JSON, nullable=False, default=dict)
+    backup_enabled = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    backup_scope = Column(String(16), nullable=False, default="database", server_default=text("'database'"))
+    backup_interval_value = Column(Integer, nullable=False, default=24, server_default=text("24"))
+    backup_interval_unit = Column(String(16), nullable=False, default="hours", server_default=text("'hours'"))
+    backup_last_sent_at = Column(DateTime, nullable=True)
+    backup_last_error = Column(String(1024), nullable=True)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

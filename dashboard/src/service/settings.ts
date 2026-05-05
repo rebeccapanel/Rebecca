@@ -16,6 +16,12 @@ export interface TelegramSettingsResponse {
 	default_vless_flow: string | null;
 	forum_topics: Record<string, TelegramTopicSettingsPayload>;
 	event_toggles: Record<string, boolean>;
+	backup_enabled: boolean;
+	backup_scope: RebeccaBackupScope;
+	backup_interval_value: number;
+	backup_interval_unit: "minutes" | "hours" | "days";
+	backup_last_sent_at: string | null;
+	backup_last_error: string | null;
 }
 
 export interface TelegramSettingsUpdatePayload {
@@ -28,6 +34,10 @@ export interface TelegramSettingsUpdatePayload {
 	default_vless_flow?: string | null;
 	forum_topics?: Record<string, TelegramTopicSettingsPayload>;
 	event_toggles?: Record<string, boolean>;
+	backup_enabled?: boolean;
+	backup_scope?: RebeccaBackupScope;
+	backup_interval_value?: number;
+	backup_interval_unit?: "minutes" | "hours" | "days";
 }
 
 export const getTelegramSettings =

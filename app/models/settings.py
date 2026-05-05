@@ -20,6 +20,17 @@ class TelegramTopicSettings(BaseModel):
     )
 
 
+class RebeccaBackupScope(str, Enum):
+    database = "database"
+    full = "full"
+
+
+class TelegramBackupIntervalUnit(str, Enum):
+    minutes = "minutes"
+    hours = "hours"
+    days = "days"
+
+
 class TelegramSettingsResponse(BaseModel):
     api_token: Optional[str] = None
     use_telegram: bool = True
@@ -30,6 +41,12 @@ class TelegramSettingsResponse(BaseModel):
     default_vless_flow: Optional[str] = None
     forum_topics: Dict[str, TelegramTopicSettings] = Field(default_factory=dict)
     event_toggles: Dict[str, bool] = Field(default_factory=dict)
+    backup_enabled: bool = False
+    backup_scope: RebeccaBackupScope = RebeccaBackupScope.database
+    backup_interval_value: int = 24
+    backup_interval_unit: TelegramBackupIntervalUnit = TelegramBackupIntervalUnit.hours
+    backup_last_sent_at: Optional[datetime] = None
+    backup_last_error: Optional[str] = None
 
 
 class TelegramSettingsUpdate(BaseModel):
@@ -62,6 +79,17 @@ class TelegramSettingsUpdate(BaseModel):
         default=None,
         description="Optional mapping of log event keys to enable/disable notifications",
     )
+    backup_enabled: Optional[bool] = Field(default=None, description="Enable periodic Telegram backups")
+    backup_scope: Optional[RebeccaBackupScope] = Field(default=None, description="Periodic backup scope")
+    backup_interval_value: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Periodic backup interval value",
+    )
+    backup_interval_unit: Optional[TelegramBackupIntervalUnit] = Field(
+        default=None,
+        description="Periodic backup interval unit",
+    )
 
 
 class PanelSettingsResponse(BaseModel):
@@ -74,11 +102,6 @@ class PanelSettingsUpdate(BaseModel):
     use_nobetci: Optional[bool] = None
     default_subscription_type: Optional[SubscriptionLinkType] = None
     access_insights_enabled: Optional[bool] = None
-
-
-class RebeccaBackupScope(str, Enum):
-    database = "database"
-    full = "full"
 
 
 class RebeccaBackupImportResponse(BaseModel):

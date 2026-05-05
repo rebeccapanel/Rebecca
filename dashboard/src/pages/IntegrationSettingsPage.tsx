@@ -49,6 +49,7 @@ import {
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
 import { PanelInput as Input } from "components/common/PanelInput";
+import { NumericInput } from "components/common/NumericInput";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ReactNode,
@@ -446,6 +447,10 @@ type FormValues = {
 	default_vless_flow: string;
 	forum_topics: Record<string, TopicFormValue>;
 	event_toggles: Record<string, boolean>;
+	backup_enabled: boolean;
+	backup_scope: "database" | "full";
+	backup_interval_value: number;
+	backup_interval_unit: "minutes" | "hours" | "days";
 };
 
 const RefreshIcon = chakra(ArrowPathIcon, { baseStyle: { w: 4, h: 4 } });
@@ -488,6 +493,13 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 		default_vless_flow: settings.default_vless_flow ?? "",
 		forum_topics: topics,
 		event_toggles: toggles,
+		backup_enabled: settings.backup_enabled ?? false,
+		backup_scope: settings.backup_scope ?? "database",
+		backup_interval_value: Math.max(
+			Number(settings.backup_interval_value ?? 24),
+			1,
+		),
+		backup_interval_unit: settings.backup_interval_unit ?? "hours",
 	};
 };
 
@@ -896,6 +908,12 @@ export const IntegrationSettingsPage = () => {
 				default_vless_flow: null,
 				forum_topics: {},
 				event_toggles: {},
+				backup_enabled: false,
+				backup_scope: "database",
+				backup_interval_value: 24,
+				backup_interval_unit: "hours",
+				backup_last_sent_at: null,
+				backup_last_error: null,
 			},
 		),
 	});
@@ -1178,6 +1196,13 @@ export const IntegrationSettingsPage = () => {
 				]),
 			),
 			event_toggles: flattenedEventToggles,
+			backup_enabled: values.backup_enabled,
+			backup_scope: values.backup_scope,
+			backup_interval_value: Math.max(
+				Number(values.backup_interval_value || 1),
+				1,
+			),
+			backup_interval_unit: values.backup_interval_unit,
 		};
 		mutation.mutate(payload);
 	};
@@ -1375,7 +1400,12 @@ export const IntegrationSettingsPage = () => {
 
 	const forumTopics = watchTelegram("forum_topics");
 	const isTelegramEnabled = watchTelegram("use_telegram");
+	const isTelegramBackupEnabled = watchTelegram("backup_enabled");
 	const telegramDisabledMessage = t("settings.telegram.disabledOverlay");
+	const telegramBackupDisabledMessage = t(
+		"settings.telegram.backupBinaryOnly",
+		"Periodic backup delivery is available only on binary installations.",
+	);
 
 	if (!getUserIsSuccess) {
 		return (
@@ -1786,7 +1816,7 @@ export const IntegrationSettingsPage = () => {
 							</Flex>
 						) : (
 							<form onSubmit={handleSubmit(onSubmit)}>
-								<VStack align="stretch" spacing={6}>
+								<VStack align="stretch" spacing={4}>
 									<Text fontSize="sm" color="gray.500">
 										{t("settings.telegram.description")}
 									</Text>
@@ -1821,8 +1851,8 @@ export const IntegrationSettingsPage = () => {
 										disabled={!isTelegramEnabled}
 										message={telegramDisabledMessage}
 									>
-										<Box borderWidth="1px" borderRadius="lg" p={4}>
-											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+										<Box borderWidth="1px" borderRadius="md" p={3}>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
 														{t("settings.telegram.apiToken")}
@@ -1895,28 +1925,179 @@ export const IntegrationSettingsPage = () => {
 									</DisabledCard>
 
 									<DisabledCard
+										disabled={!isTelegramEnabled || !hostActionsAvailable}
+										message={
+											!hostActionsAvailable
+												? telegramBackupDisabledMessage
+												: telegramDisabledMessage
+										}
+									>
+										<Box borderWidth="1px" borderRadius="md" p={3}>
+											<Flex
+												justify="space-between"
+												align={{ base: "flex-start", md: "center" }}
+												gap={3}
+												mb={3}
+												flexDirection={{ base: "column", md: "row" }}
+											>
+												<Box>
+													<Heading size="sm">
+														{t(
+															"settings.telegram.backupTitle",
+															"Periodic backup",
+														)}
+													</Heading>
+													<Text fontSize="xs" color="gray.500" mt={1}>
+														{t(
+															"settings.telegram.backupDescription",
+															"Send Rebecca backups to Telegram on a schedule.",
+														)}
+													</Text>
+												</Box>
+												<Controller
+													control={control}
+													name="backup_enabled"
+													render={({ field }) => (
+														<Switch
+															isChecked={field.value}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													)}
+												/>
+											</Flex>
+											<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+												<FormControl>
+													<FormLabel>
+														{t("settings.telegram.backupScope", "Backup scope")}
+													</FormLabel>
+													<Controller
+														control={control}
+														name="backup_scope"
+														render={({ field }) => (
+															<Select {...field} isDisabled={!isTelegramBackupEnabled}>
+																<option value="database">
+																	{t(
+																		"settings.telegram.backupScopeDatabase",
+																		"Database only",
+																	)}
+																</option>
+																<option value="full">
+																	{t(
+																		"settings.telegram.backupScopeFull",
+																		"Database + Rebecca files",
+																	)}
+																</option>
+															</Select>
+														)}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t(
+															"settings.telegram.backupIntervalValue",
+															"Every",
+														)}
+													</FormLabel>
+													<Controller
+														control={control}
+														name="backup_interval_value"
+														render={({ field }) => (
+															<NumericInput
+																min={1}
+																value={field.value}
+																onChange={(_value, valueAsNumber) =>
+																	field.onChange(
+																		Number.isFinite(valueAsNumber)
+																			? valueAsNumber
+																			: 1,
+																	)
+																}
+																isDisabled={!isTelegramBackupEnabled}
+															/>
+														)}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t(
+															"settings.telegram.backupIntervalUnit",
+															"Interval unit",
+														)}
+													</FormLabel>
+													<Controller
+														control={control}
+														name="backup_interval_unit"
+														render={({ field }) => (
+															<Select {...field} isDisabled={!isTelegramBackupEnabled}>
+																<option value="minutes">
+																	{t(
+																		"settings.telegram.backupIntervalMinutes",
+																		"Minutes",
+																	)}
+																</option>
+																<option value="hours">
+																	{t(
+																		"settings.telegram.backupIntervalHours",
+																		"Hours",
+																	)}
+																</option>
+																<option value="days">
+																	{t(
+																		"settings.telegram.backupIntervalDays",
+																		"Days",
+																	)}
+																</option>
+															</Select>
+														)}
+													/>
+												</FormControl>
+											</SimpleGrid>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+												<Text fontSize="xs" color="gray.500">
+													{t(
+														"settings.telegram.backupLastSent",
+														"Last sent",
+													)}
+													: {data?.backup_last_sent_at || "-"}
+												</Text>
+												{data?.backup_last_error && (
+													<Text fontSize="xs" color="red.300">
+														{t(
+															"settings.telegram.backupLastError",
+															"Last error",
+														)}
+														: {data.backup_last_error}
+													</Text>
+												)}
+											</SimpleGrid>
+										</Box>
+									</DisabledCard>
+
+									<DisabledCard
 										disabled={!isTelegramEnabled}
 										message={telegramDisabledMessage}
 									>
 										<Box>
-											<Heading size="sm" mb={4}>
+											<Heading size="sm" mb={3}>
 												{t("settings.telegram.forumTopics")}
 											</Heading>
 											{forumTopics && Object.keys(forumTopics).length > 0 ? (
-												<Stack spacing={4}>
+												<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={3}>
 													{Object.entries(forumTopics).map(([key]) => (
 														<Box
 															key={key}
 															borderWidth="1px"
-															borderRadius="lg"
-															p={4}
+															borderRadius="md"
+															p={3}
 														>
-															<Text fontWeight="medium" mb={3}>
+															<Text fontSize="sm" fontWeight="medium" mb={2}>
 																{t("settings.telegram.topicKey")}: {key}
 															</Text>
 															<SimpleGrid
 																columns={{ base: 1, md: 2 }}
-																spacing={4}
+																spacing={3}
 															>
 																<FormControl>
 																	<FormLabel>
@@ -1945,7 +2126,7 @@ export const IntegrationSettingsPage = () => {
 															</SimpleGrid>
 														</Box>
 													))}
-												</Stack>
+												</SimpleGrid>
 											) : (
 												<Text color="gray.500">
 													{t("settings.telegram.emptyTopics")}

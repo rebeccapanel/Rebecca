@@ -73,6 +73,12 @@ def _to_response_payload(settings) -> TelegramSettingsResponse:
         default_vless_flow=settings.default_vless_flow,
         forum_topics=topics,
         event_toggles=dict(settings.event_toggles or {}),
+        backup_enabled=settings.backup_enabled,
+        backup_scope=settings.backup_scope,
+        backup_interval_value=settings.backup_interval_value,
+        backup_interval_unit=settings.backup_interval_unit,
+        backup_last_sent_at=settings.backup_last_sent_at,
+        backup_last_error=settings.backup_last_error,
     )
 
 
