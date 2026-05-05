@@ -27,6 +27,22 @@ class UsageDeliveryBuffer:
                     bucket[uid] += value
             return self.pending_user_stats(node_id)
 
+    def replace_user_stats(self, node_id: Optional[int], samples: list[dict] | None) -> list[dict]:
+        with self._lock:
+            bucket: dict[str, int] = defaultdict(int)
+            for sample in samples or []:
+                uid = str(sample.get("uid") or "").strip()
+                if not uid:
+                    continue
+                value = int(sample.get("value") or 0)
+                if value:
+                    bucket[uid] += value
+            if bucket:
+                self._users[node_id] = bucket
+            else:
+                self._users.pop(node_id, None)
+            return self.pending_user_stats(node_id)
+
     def pending_user_stats(self, node_id: Optional[int]) -> list[dict]:
         with self._lock:
             bucket = self._users.get(node_id, {})
@@ -54,6 +70,26 @@ class UsageDeliveryBuffer:
                 current = bucket.setdefault(tag, {"tag": tag, "up": 0, "down": 0})
                 current["up"] = int(current.get("up") or 0) + up
                 current["down"] = int(current.get("down") or 0) + down
+            return self.pending_outbound_stats(node_id)
+
+    def replace_outbound_stats(self, node_id: Optional[int], samples: list[dict] | None) -> list[dict]:
+        with self._lock:
+            bucket: dict[str, dict[str, int | str]] = {}
+            for sample in samples or []:
+                tag = str(sample.get("tag") or "").strip()
+                if not tag:
+                    continue
+                up = int(sample.get("up") or 0)
+                down = int(sample.get("down") or 0)
+                if not (up or down):
+                    continue
+                current = bucket.setdefault(tag, {"tag": tag, "up": 0, "down": 0})
+                current["up"] = int(current.get("up") or 0) + up
+                current["down"] = int(current.get("down") or 0) + down
+            if bucket:
+                self._outbounds[node_id] = bucket
+            else:
+                self._outbounds.pop(node_id, None)
             return self.pending_outbound_stats(node_id)
 
     def pending_outbound_stats(self, node_id: Optional[int]) -> list[dict]:
