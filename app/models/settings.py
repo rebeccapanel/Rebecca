@@ -76,6 +76,19 @@ class PanelSettingsUpdate(BaseModel):
     access_insights_enabled: Optional[bool] = None
 
 
+class RebeccaBackupScope(str, Enum):
+    database = "database"
+    full = "full"
+
+
+class RebeccaBackupImportResponse(BaseModel):
+    scope: RebeccaBackupScope
+    tables_restored: int = 0
+    rows_restored: int = 0
+    files_restored: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
 class SubscriptionTemplateSettings(BaseModel):
     subscription_url_prefix: str = ""
     subscription_profile_title: str = "Subscription"
@@ -290,12 +303,8 @@ class ThreeXUiInboundImportConfig(BaseModel):
 
 
 class ThreeXUiDuplicateSubadressPolicy(BaseModel):
-    source_conflict_mode: ThreeXUiDuplicateSubadressSourceMode = (
-        ThreeXUiDuplicateSubadressSourceMode.keep_first
-    )
-    existing_conflict_mode: ThreeXUiDuplicateSubadressExistingMode = (
-        ThreeXUiDuplicateSubadressExistingMode.overwrite
-    )
+    source_conflict_mode: ThreeXUiDuplicateSubadressSourceMode = ThreeXUiDuplicateSubadressSourceMode.keep_first
+    existing_conflict_mode: ThreeXUiDuplicateSubadressExistingMode = ThreeXUiDuplicateSubadressExistingMode.overwrite
 
 
 class ThreeXUiImportRequest(BaseModel):

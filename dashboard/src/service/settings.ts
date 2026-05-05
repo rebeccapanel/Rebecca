@@ -1,4 +1,5 @@
-import { fetch as apiFetch } from "./http";
+import { getAuthToken } from "utils/authStorage";
+import { $fetch, fetch as apiFetch } from "./http";
 
 export interface TelegramTopicSettingsPayload {
 	title: string;
@@ -53,6 +54,16 @@ export interface PanelSettingsUpdatePayload {
 	use_nobetci?: boolean;
 	default_subscription_type?: "username-key" | "key" | "token";
 	access_insights_enabled?: boolean;
+}
+
+export type RebeccaBackupScope = "database" | "full";
+
+export interface RebeccaBackupImportResponse {
+	scope: RebeccaBackupScope;
+	tables_restored: number;
+	rows_restored: number;
+	files_restored: string[];
+	warnings: string[];
 }
 
 export interface SubscriptionTemplateSettings {
@@ -270,6 +281,28 @@ export const updatePanelSettings = async (
 	return apiFetch("/settings/panel", {
 		method: "PUT",
 		body: JSON.stringify(payload),
+	});
+};
+
+export const exportRebeccaBackup = async (
+	scope: RebeccaBackupScope,
+): Promise<Blob> => {
+	const token = getAuthToken();
+	return $fetch<Blob>(`/settings/backup/export?scope=${scope}`, {
+		responseType: "blob",
+		headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+	} as any);
+};
+
+export const importRebeccaBackup = async (
+	scope: RebeccaBackupScope,
+	file: File,
+): Promise<RebeccaBackupImportResponse> => {
+	const body = new FormData();
+	body.append("file", file);
+	return apiFetch(`/settings/backup/import?scope=${scope}`, {
+		method: "POST",
+		body,
 	});
 };
 

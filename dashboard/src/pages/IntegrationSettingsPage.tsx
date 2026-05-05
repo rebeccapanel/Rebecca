@@ -87,6 +87,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { JsonEditor } from "../components/JsonEditor";
+import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
 import { ThreeXUiDatabaseImportPanel } from "../components/ThreeXUiDatabaseImportPanel";
 
@@ -3480,7 +3481,14 @@ export const IntegrationSettingsPage = () => {
 						)}
 					</TabPanel>
 					<TabPanel px={{ base: 0, md: 2 }}>
-						<ThreeXUiDatabaseImportPanel />
+						<VStack align="stretch" spacing={6}>
+							<RebeccaBackupPanel
+								isBinaryRuntime={hostActionsAvailable}
+								runtimeLoading={maintenanceInfoQuery.isLoading}
+							/>
+							<Divider />
+							<ThreeXUiDatabaseImportPanel />
+						</VStack>
 					</TabPanel>
 					<TabPanel px={{ base: 0, md: 2 }}>
 						<VStack align="stretch" spacing={6}>
