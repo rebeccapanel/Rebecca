@@ -10,6 +10,7 @@ import {
 	PopoverTrigger,
 	Portal,
 	Text,
+	useDisclosure,
 } from "@chakra-ui/react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,15 +37,23 @@ export const DeleteConfirmPopover = ({
 	onCancel,
 }: DeleteConfirmPopoverProps) => {
 	const { t } = useTranslation();
+	const { isOpen, onClose, onOpen } = useDisclosure();
 
 	return (
-		<Popover placement="top" closeOnBlur isLazy>
-			{({ onClose }) => (
+		<Popover placement="top" closeOnBlur isLazy isOpen={isOpen} onClose={onClose}>
+			{() => (
 				<>
 					<PopoverTrigger>
 						<Box
 							as="span"
 							display="inline-flex"
+							onClickCapture={(event: MouseEvent<HTMLSpanElement>) => {
+								event.preventDefault();
+								event.stopPropagation();
+								if (!isDisabled && !isLoading) {
+									onOpen();
+								}
+							}}
 							onClick={(event: MouseEvent<HTMLSpanElement>) =>
 								event.stopPropagation()
 							}
