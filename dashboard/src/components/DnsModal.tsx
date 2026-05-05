@@ -19,6 +19,7 @@ import { type FC, useEffect } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { NumericInput } from "./common/NumericInput";
 
 type DnsFormValues = {
 	address: string;
@@ -198,13 +199,19 @@ export const DnsModal: FC<DnsModalProps> = ({
 							</FormControl>
 							<FormControl>
 								<FormLabel>{t("pages.xray.dns.port")}</FormLabel>
-								<Input
-									{...modalForm.register("port")}
-									type="number"
-									size="sm"
-									placeholder="53"
-									min={1}
-									max={65535}
+								<Controller
+									control={modalForm.control}
+									name="port"
+									render={({ field }) => (
+										<NumericInput
+											value={field.value ?? ""}
+											onChange={(value) => field.onChange(value)}
+											size="sm"
+											min={1}
+											max={65535}
+											fieldProps={{ placeholder: "53" }}
+										/>
+									)}
 								/>
 							</FormControl>
 							<FormControl>

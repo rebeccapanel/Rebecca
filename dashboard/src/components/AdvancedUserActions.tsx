@@ -15,8 +15,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	NumberInput,
-	NumberInputField,
 	Select,
 	Stack,
 	Text,
@@ -33,6 +31,7 @@ import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
+import { NumericInput } from "./common/NumericInput";
 import { isUserManagementLocked } from "utils/adminTraffic";
 import type {
 	AdvancedUserActionPayload,
@@ -594,15 +593,13 @@ const AdvancedUserActions = () => {
 													"Days",
 												)}
 											</FormLabel>
-											<NumberInput
+											<NumericInput
 												value={expireDays}
 												onChange={(value) => setExpireDays(value)}
 												min={1}
 												step={1}
 												w="full"
-											>
-												<NumberInputField />
-											</NumberInput>
+											/>
 											<FormHelperText>
 												{t(
 													"filters.advancedActions.expireSection.helper",
@@ -661,15 +658,13 @@ const AdvancedUserActions = () => {
 													"Gigabytes",
 												)}
 											</FormLabel>
-											<NumberInput
+											<NumericInput
 												value={trafficGb}
 												onChange={(value) => setTrafficGb(value)}
 												min={0.01}
 												step={0.1}
 												w="full"
-											>
-												<NumberInputField />
-											</NumberInput>
+											/>
 										</FormControl>
 										<HStack spacing={2} flexWrap="wrap">
 											<Button
@@ -722,15 +717,13 @@ const AdvancedUserActions = () => {
 													"Days since status change",
 												)}
 											</FormLabel>
-											<NumberInput
+											<NumericInput
 												value={cleanupDays}
 												onChange={(value) => setCleanupDays(value)}
 												min={1}
 												step={1}
 												w="full"
-											>
-												<NumberInputField />
-											</NumberInput>
+											/>
 										</FormControl>
 										<HStack spacing={3}>
 											{cleanupOptions.map((status) => (

@@ -20,6 +20,7 @@ import {
 	useToast,
 } from "@chakra-ui/react";
 import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
+import { NumericInput } from "components/common/NumericInput";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "react-query";
@@ -765,14 +766,13 @@ export const ThreeXUiDatabaseImportPanel = () => {
 														"Expire days",
 													)}
 												</FormLabel>
-												<Input
-													type="number"
-													min="0"
-													step="1"
+												<NumericInput
+													min={0}
+													step={1}
 													value={config?.expireDays ?? ""}
-													onChange={(event) =>
+													onChange={(value) =>
 														updateInboundConfig(inbound.inbound_id, {
-															expireDays: event.target.value,
+															expireDays: value,
 														})
 													}
 												/>
@@ -818,14 +818,13 @@ export const ThreeXUiDatabaseImportPanel = () => {
 														"Traffic gigabytes",
 													)}
 												</FormLabel>
-												<Input
-													type="number"
-													min="0"
-													step="0.1"
+												<NumericInput
+													min={0}
+													step={0.1}
 													value={config?.trafficGigabytes ?? ""}
-													onChange={(event) =>
+													onChange={(value) =>
 														updateInboundConfig(inbound.inbound_id, {
-															trafficGigabytes: event.target.value,
+															trafficGigabytes: value,
 														})
 													}
 												/>

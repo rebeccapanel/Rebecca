@@ -1537,6 +1537,7 @@ const ServicesPage: FC = () => {
 														</FormLabel>
 														<Input
 															size="sm"
+															type="number"
 															inputMode="numeric"
 															defaultValue={
 																link.data_limit
@@ -1561,6 +1562,7 @@ const ServicesPage: FC = () => {
 														</FormLabel>
 														<Input
 															size="sm"
+															type="number"
 															inputMode="numeric"
 															defaultValue={link.users_limit ?? ""}
 															isDisabled={savingAdminLimitId === link.id}
@@ -1582,6 +1584,7 @@ const ServicesPage: FC = () => {
 														</FormLabel>
 														<Input
 															size="sm"
+															type="number"
 															inputMode="numeric"
 															defaultValue={
 																link.delete_user_usage_limit

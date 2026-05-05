@@ -25,8 +25,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	NumberInput,
-	NumberInputField,
 	Radio,
 	RadioGroup,
 	SimpleGrid,
@@ -50,6 +48,7 @@ import {
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
+import { NumericInput } from "../common/NumericInput";
 import { JsonEditor } from "components/JsonEditor";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { shadowsocksMethods } from "constants/Proxies";
@@ -574,13 +573,11 @@ export const InboundFormModal: FC<Props> = ({
 								? field.value
 								: undefined;
 						return (
-							<NumberInput
+							<NumericInput
 								min={0}
 								value={numberInputValue ?? ""}
 								onChange={(valueString) => field.onChange(valueString)}
-							>
-								<NumberInputField />
-							</NumberInput>
+							/>
 						);
 					}}
 				/>
@@ -2406,13 +2403,11 @@ export const InboundFormModal: FC<Props> = ({
 													control={control}
 													name="realityXver"
 													render={({ field }) => (
-														<NumberInput
+														<NumericInput
 															value={field.value ?? ""}
 															onChange={(value) => field.onChange(value)}
 															min={0}
-														>
-															<NumberInputField />
-														</NumberInput>
+														/>
 													)}
 												/>
 											</FormControl>
@@ -2513,13 +2508,11 @@ export const InboundFormModal: FC<Props> = ({
 													control={control}
 													name="realityMaxTimediff"
 													render={({ field }) => (
-														<NumberInput
+														<NumericInput
 															value={field.value ?? ""}
 															onChange={(value) => field.onChange(value)}
 															min={0}
-														>
-															<NumberInputField />
-														</NumberInput>
+														/>
 													)}
 												/>
 											</FormControl>

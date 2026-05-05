@@ -6,7 +6,6 @@ import {
 	FormLabel,
 	HStack,
 	IconButton,
-	Input,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -31,6 +30,7 @@ import {
 	MinusIcon as MinusIconOutline,
 	PlusIcon,
 } from "@heroicons/react/24/outline";
+import { PanelInput as Input } from "components/common/PanelInput";
 import {
 	type FC,
 	useCallback,

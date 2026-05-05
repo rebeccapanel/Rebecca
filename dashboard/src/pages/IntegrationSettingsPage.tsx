@@ -12,7 +12,6 @@ import {
 	FormLabel,
 	Heading,
 	HStack,
-	Input,
 	InputGroup,
 	InputLeftElement,
 	Menu,
@@ -49,6 +48,7 @@ import {
 	MagnifyingGlassIcon,
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
+import { PanelInput as Input } from "components/common/PanelInput";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ReactNode,

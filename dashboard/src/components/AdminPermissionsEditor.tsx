@@ -5,7 +5,6 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
-	Input,
 	SimpleGrid,
 	Stack,
 	Switch,
@@ -20,6 +19,7 @@ import {
 	SelfPermissionToggle,
 	UserPermissionToggle,
 } from "types/Admin";
+import { NumericInput } from "./common/NumericInput";
 
 type AdminPermissionsEditorProps = {
 	value: AdminPermissions;
@@ -164,10 +164,8 @@ export const AdminPermissionsEditor = ({
 		onChange(updated);
 	};
 
-	const handleMaxDataLimitChange = (
-		event: React.ChangeEvent<HTMLInputElement>,
-	) => {
-		onMaxDataLimitChange?.(event.target.value);
+	const handleMaxDataLimitChange = (value: string) => {
+		onMaxDataLimitChange?.(value);
 	};
 
 	return (
@@ -224,10 +222,9 @@ export const AdminPermissionsEditor = ({
 					gutter={6}
 					shouldWrapChildren
 				>
-					<Input
-						type="number"
-						min="0"
-						step="1"
+					<NumericInput
+						min={0}
+						step={1}
 						placeholder={t(
 							"admins.permissions.maxDataHint",
 							"Leave empty for unlimited",

@@ -15,6 +15,8 @@ import {
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+const stripHtmlTags = (value: string) => value.replace(/<[^>]*>/g, "");
+
 type DeleteConfirmPopoverProps = {
 	children: ReactElement;
 	message?: ReactNode;
@@ -38,9 +40,36 @@ export const DeleteConfirmPopover = ({
 }: DeleteConfirmPopoverProps) => {
 	const { t } = useTranslation();
 	const { isOpen, onClose, onOpen } = useDisclosure();
+	const confirmMessage =
+		typeof message === "string"
+			? stripHtmlTags(message)
+			: (message ?? t("common.confirmDelete", "Delete this item?"));
 
 	return (
-		<Popover placement="top" closeOnBlur isLazy isOpen={isOpen} onClose={onClose}>
+		<Popover
+			placement="top"
+			closeOnBlur
+			isLazy
+			isOpen={isOpen}
+			onClose={onClose}
+			modifiers={[
+				{
+					name: "preventOverflow",
+					options: {
+						boundary: "viewport",
+						padding: 12,
+					},
+				},
+				{
+					name: "flip",
+					options: {
+						boundary: "viewport",
+						padding: 12,
+						fallbackPlacements: ["bottom", "left", "right"],
+					},
+				},
+			]}
+		>
 			{() => (
 				<>
 					<PopoverTrigger>
@@ -63,15 +92,22 @@ export const DeleteConfirmPopover = ({
 					</PopoverTrigger>
 					<Portal>
 						<PopoverContent
-							w="260px"
+							w={{ base: "calc(100vw - 24px)", sm: "min(320px, calc(100vw - 24px))" }}
+							maxW="calc(100vw - 24px)"
+							minW="0"
 							borderRadius="md"
 							boxShadow="lg"
 							_focusVisible={{ outline: "none" }}
 						>
 							<PopoverArrow />
 							<PopoverBody pb={2}>
-								<Text fontSize="sm">
-									{message ?? t("common.confirmDelete", "Delete this item?")}
+								<Text
+									fontSize="sm"
+									whiteSpace="normal"
+									overflowWrap="anywhere"
+									wordBreak="break-word"
+								>
+									{confirmMessage}
 								</Text>
 							</PopoverBody>
 							<PopoverFooter
@@ -80,7 +116,12 @@ export const DeleteConfirmPopover = ({
 								borderTopWidth="0"
 								pt={0}
 							>
-								<ButtonGroup size="sm" spacing={2}>
+								<ButtonGroup
+									size="sm"
+									spacing={2}
+									flexWrap="wrap"
+									justifyContent="flex-end"
+								>
 									<Button
 										variant="ghost"
 										onClick={(event) => {
