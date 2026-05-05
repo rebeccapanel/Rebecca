@@ -30,16 +30,16 @@ class TelegramSettingsData:
     forum_topics: Dict[str, TelegramTopic] = field(default_factory=dict)
     event_toggles: Dict[str, bool] = field(default_factory=dict)
     use_telegram: bool = True
+    backup_enabled: bool = False
+    backup_scope: str = "database"
+    backup_interval_value: int = 24
+    backup_interval_unit: str = "hours"
+    backup_last_sent_at: Optional[datetime] = None
+    backup_last_error: Optional[str] = None
     record_id: Optional[int] = None
 
-    def to_dict(
-        self,
-    ) -> Dict[
-        str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]
-    ]:
-        payload: Dict[
-            str, Union[Optional[str], List[int], bool, Dict[str, Dict[str, Optional[Union[str, int]]]], Dict[str, bool]]
-        ] = {
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
             "id": self.record_id,
             "api_token": self.api_token,
             "use_telegram": self.use_telegram,
@@ -50,6 +50,12 @@ class TelegramSettingsData:
             "default_vless_flow": self.default_vless_flow,
             "forum_topics": {key: topic.to_dict() for key, topic in self.forum_topics.items()},
             "event_toggles": self.event_toggles,
+            "backup_enabled": self.backup_enabled,
+            "backup_scope": self.backup_scope,
+            "backup_interval_value": self.backup_interval_value,
+            "backup_interval_unit": self.backup_interval_unit,
+            "backup_last_sent_at": self.backup_last_sent_at,
+            "backup_last_error": self.backup_last_error,
         }
         return payload
 
@@ -64,7 +70,11 @@ class TelegramSettingsService:
         "login": "Login",
         "errors": "Errors",
         "auto_renew": "Auto renew",
+        "backup": "Backup",
     }
+
+    BACKUP_SCOPES = {"database", "full"}
+    BACKUP_INTERVAL_UNITS = {"minutes", "hours", "days"}
 
     DEFAULT_EVENT_TOGGLES: Dict[str, bool] = {
         "user.created": True,
@@ -126,6 +136,38 @@ class TelegramSettingsService:
             if lowered in {"false", "0", "no", "off"}:
                 return False
         raise ValueError(f"Invalid boolean value: {value}")
+
+    @classmethod
+    def _coerce_backup_scope(cls, value: Any) -> str:
+        raw = getattr(value, "value", value)
+        if raw in (None, ""):
+            return "database"
+        scope = str(raw).strip().lower()
+        if scope not in cls.BACKUP_SCOPES:
+            raise ValueError("Backup scope must be database or full")
+        return scope
+
+    @classmethod
+    def _coerce_backup_interval_unit(cls, value: Any) -> str:
+        raw = getattr(value, "value", value)
+        if raw in (None, ""):
+            return "hours"
+        unit = str(raw).strip().lower()
+        if unit not in cls.BACKUP_INTERVAL_UNITS:
+            raise ValueError("Backup interval unit must be minutes, hours, or days")
+        return unit
+
+    @classmethod
+    def _coerce_positive_int(cls, value: Any, default: int) -> int:
+        if value in (None, ""):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid positive integer value: {value}") from exc
+        if parsed < 1:
+            raise ValueError("Value must be greater than zero")
+        return parsed
 
     @classmethod
     def _coerce_admin_ids(cls, value: Union[str, Iterable[Union[str, int]], None]) -> List[int]:
@@ -267,6 +309,19 @@ class TelegramSettingsService:
         event_toggles, _ = cls._prepare_event_toggles(record.event_toggles if record and record.event_toggles else None)
 
         use_telegram = cls._coerce_bool(record.use_telegram) if record and record.use_telegram is not None else True
+        backup_enabled = (
+            cls._coerce_bool(record.backup_enabled)
+            if record and getattr(record, "backup_enabled", None) is not None
+            else False
+        )
+        backup_scope = cls._coerce_backup_scope(getattr(record, "backup_scope", None) if record else None)
+        backup_interval_value = cls._coerce_positive_int(
+            getattr(record, "backup_interval_value", None) if record else None,
+            24,
+        )
+        backup_interval_unit = cls._coerce_backup_interval_unit(
+            getattr(record, "backup_interval_unit", None) if record else None
+        )
 
         return TelegramSettingsData(
             api_token=api_token or None,
@@ -278,6 +333,12 @@ class TelegramSettingsService:
             default_vless_flow=default_vless_flow or None,
             forum_topics=topics_dict,
             event_toggles=event_toggles,
+            backup_enabled=backup_enabled,
+            backup_scope=backup_scope,
+            backup_interval_value=backup_interval_value,
+            backup_interval_unit=backup_interval_unit,
+            backup_last_sent_at=getattr(record, "backup_last_sent_at", None) if record else None,
+            backup_last_error=getattr(record, "backup_last_error", None) if record else None,
             record_id=record.id if record else None,
         )
 
@@ -400,6 +461,18 @@ class TelegramSettingsService:
                 merged_source = {**cls.DEFAULT_EVENT_TOGGLES, **existing_processed, **incoming_processed}
                 record.event_toggles = merged_source
 
+            if "backup_enabled" in payload:
+                record.backup_enabled = cls._coerce_bool(payload["backup_enabled"])
+
+            if "backup_scope" in payload:
+                record.backup_scope = cls._coerce_backup_scope(payload["backup_scope"])
+
+            if "backup_interval_value" in payload:
+                record.backup_interval_value = cls._coerce_positive_int(payload["backup_interval_value"], 24)
+
+            if "backup_interval_unit" in payload:
+                record.backup_interval_unit = cls._coerce_backup_interval_unit(payload["backup_interval_unit"])
+
             record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.add(record)
             db.commit()
@@ -408,6 +481,47 @@ class TelegramSettingsService:
             if should_reload:
                 cls._trigger_reload()
 
+            return cls._merge_with_env(record)
+        finally:
+            if close_db:
+                db.close()
+
+    @classmethod
+    def update_backup_status(
+        cls,
+        *,
+        sent_at: Optional[datetime] = None,
+        error: Optional[str] = None,
+        db: Optional[Session] = None,
+    ) -> TelegramSettingsData:
+        close_db = False
+        if db is None:
+            db = SessionLocal()
+            close_db = True
+
+        try:
+            record = db.query(TelegramSettingsModel).first()
+            if record is None:
+                record = TelegramSettingsModel(
+                    forum_topics={
+                        key: {"title": title, "topic_id": None} for key, title in cls.DEFAULT_TOPIC_TITLES.items()
+                    },
+                    event_toggles=cls.DEFAULT_EVENT_TOGGLES.copy(),
+                    admin_chat_ids=cls._coerce_admin_ids(cls.ENV_FALLBACKS["admin_chat_ids"]),
+                    use_telegram=True,
+                )
+                db.add(record)
+                db.flush()
+
+            if sent_at is not None:
+                record.backup_last_sent_at = sent_at.replace(tzinfo=None)
+                record.backup_last_error = None
+            elif error is not None:
+                record.backup_last_error = error[:1024]
+            record.updated_at = datetime.now(UTC).replace(tzinfo=None)
+            db.add(record)
+            db.commit()
+            db.refresh(record)
             return cls._merge_with_env(record)
         finally:
             if close_db:

@@ -78,6 +78,7 @@ def record_realtime_bandwidth() -> None:
 
 def register_scheduler_jobs(scheduler) -> None:
     from app.utils.ads import refresh_ads
+    from app.services.telegram_backup import run_periodic_telegram_backup
 
     scheduler.add_job(
         record_realtime_bandwidth,
@@ -92,6 +93,15 @@ def register_scheduler_jobs(scheduler) -> None:
         "interval",
         seconds=max(ADS_CACHE_TTL_SECONDS, 60),
         args=[True],
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        run_periodic_telegram_backup,
+        "interval",
+        seconds=60,
+        id="telegram_periodic_backup",
+        replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
