@@ -858,7 +858,7 @@ wheels = [
 
 [[package]]
 name = "rebecca"
-version = "0.1.0"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -891,6 +891,7 @@ dependencies = [
     { name = "qrcode" },
     { name = "requests" },
     { name = "rich" },
+    { name = "setuptools" },
     { name = "sqlalchemy" },
     { name = "starlette" },
     { name = "typer" },
@@ -944,10 +945,11 @@ requires-dist = [
     { name = "qrcode", specifier = "==7.4.2" },
     { name = "requests", specifier = "==2.32.3" },
     { name = "rich", specifier = "==13.7.1" },
+    { name = "setuptools", specifier = "==80.9.0" },
     { name = "sqlalchemy", specifier = "==2.0.36" },
     { name = "starlette", specifier = "==0.40.0" },
     { name = "typer", specifier = "==0.7.0" },
-    { name = "urllib3", specifier = "==1.26.19" },
+    { name = "urllib3", specifier = "==2.6.3" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.27.0.post1" },
     { name = "websocket-client", specifier = "==1.7.0" },
     { name = "websockets", specifier = "==12.0" },
@@ -1120,11 +1122,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "1.26.19"
+version = "2.6.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c8/93/65e479b023bbc46dab3e092bda6b0005424ea3217d711964ccdede3f9b1b/urllib3-1.26.19.tar.gz", hash = "sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429", size = 306068, upload-time = "2024-06-17T14:53:34.424Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/6a/99eaaeae8becaa17a29aeb334a18e5d582d873b6f084c11f02581b8d7f7f/urllib3-1.26.19-py2.py3-none-any.whl", hash = "sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3", size = 143933, upload-time = "2024-06-17T14:53:31.589Z" },
+    { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
 ]
 
 [[package]]
