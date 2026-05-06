@@ -83,6 +83,11 @@ import { DnsPresetsModal } from "../components/DnsPresetsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { JsonEditor } from "../components/JsonEditor";
 import { OutboundModal } from "../components/OutboundModal";
+import {
+	type ReverseFormValues,
+	ReverseModal,
+	type ReverseType,
+} from "../components/ReverseModal";
 import { type RoutingRule, RuleModal } from "../components/RuleModal";
 import { WarpModal } from "../components/WarpModal";
 import { SizeFormatter } from "../utils/outbound";
@@ -220,6 +225,13 @@ type BalancerRow = {
 	strategy: string;
 	selector: string[];
 	fallbackTag: string;
+};
+type ReverseRow = {
+	key: string;
+	index: number;
+	type: ReverseType;
+	tag: string;
+	domain: string;
 };
 
 const SettingsSection: FC<{ title: string; children: ReactNode }> = ({
@@ -435,6 +447,11 @@ export const CoreSettingsPage: FC = () => {
 		onClose: onBalancerClose,
 	} = useDisclosure();
 	const {
+		isOpen: isReverseOpen,
+		onOpen: onReverseOpen,
+		onClose: onReverseClose,
+	} = useDisclosure();
+	const {
 		isOpen: isDnsOpen,
 		onOpen: onDnsOpen,
 		onClose: onDnsClose,
@@ -497,6 +514,9 @@ export const CoreSettingsPage: FC = () => {
 	const [editingBalancerIndex, setEditingBalancerIndex] = useState<
 		number | null
 	>(null);
+	const [editingReverseIndex, setEditingReverseIndex] = useState<number | null>(
+		null,
+	);
 	const [editingDnsIndex, setEditingDnsIndex] = useState<number | null>(null);
 	const [editingFakeDnsIndex, setEditingFakeDnsIndex] = useState<number | null>(
 		null,
@@ -524,6 +544,7 @@ export const CoreSettingsPage: FC = () => {
 			"basic",
 			"routing",
 			"outbounds",
+			"reverse",
 			"balancers",
 			"dns",
 			"advanced",
@@ -652,6 +673,113 @@ export const CoreSettingsPage: FC = () => {
 		}
 		return [];
 	}, [form]);
+
+	const buildReverseRows = useCallback((reverse: any): ReverseRow[] => {
+		const rows: ReverseRow[] = [];
+		if (reverse?.bridges && Array.isArray(reverse.bridges)) {
+			reverse.bridges.forEach((entry: any, index: number) => {
+				rows.push({
+					key: `bridge-${index}-${entry?.tag ?? "reverse"}`,
+					index,
+					type: "bridge",
+					tag: entry?.tag ?? "",
+					domain: entry?.domain ?? "",
+				});
+			});
+		}
+		if (reverse?.portals && Array.isArray(reverse.portals)) {
+			reverse.portals.forEach((entry: any, index: number) => {
+				rows.push({
+					key: `portal-${index}-${entry?.tag ?? "reverse"}`,
+					index,
+					type: "portal",
+					tag: entry?.tag ?? "",
+					domain: entry?.domain ?? "",
+				});
+			});
+		}
+		return rows;
+	}, []);
+
+	const getReverseRuleIndices = useCallback(
+		(rules: RoutingRule[], reverse: ReverseRow) =>
+			rules.reduce<number[]>((indices, rule, index) => {
+				if (
+					reverse.type === "bridge" &&
+					Array.isArray(rule.inboundTag) &&
+					rule.inboundTag[0] === reverse.tag
+				) {
+					indices.push(index);
+				}
+				if (reverse.type === "portal" && rule.outboundTag === reverse.tag) {
+					indices.push(index);
+				}
+				return indices;
+			}, []),
+		[],
+	);
+
+	const getReverseRules = useCallback(
+		(rules: RoutingRule[], reverse: ReverseRow) =>
+			getReverseRuleIndices(rules, reverse).map((index) => rules[index]),
+		[getReverseRuleIndices],
+	);
+
+	const buildReverseRules = useCallback(
+		(reverse: ReverseFormValues): RoutingRule[] => {
+			const domain = reverse.domain.trim().replace(/^full:/, "");
+			const domainRule: RoutingRule = {
+				type: "field",
+				domain: [`full:${domain}`],
+			};
+			const routeRule: RoutingRule = { type: "field" };
+
+			if (reverse.type === "bridge") {
+				domainRule.inboundTag = [reverse.tag];
+				routeRule.inboundTag = [reverse.tag];
+				domainRule.outboundTag = reverse.interconnectionOutboundTag;
+				routeRule.outboundTag = reverse.outboundTag;
+			} else {
+				domainRule.outboundTag = reverse.tag;
+				routeRule.outboundTag = reverse.tag;
+				domainRule.inboundTag = reverse.interconnectionInboundTags;
+				routeRule.inboundTag = reverse.inboundTags;
+			}
+
+			return [domainRule, routeRule];
+		},
+		[],
+	);
+
+	const removeReverseRules = useCallback(
+		(rules: RoutingRule[], reverse: ReverseRow) => {
+			if (reverse.type === "bridge") {
+				return rules.filter(
+					(rule) =>
+						!(
+							Array.isArray(rule.inboundTag) &&
+							rule.inboundTag.length === 1 &&
+							rule.inboundTag[0] === reverse.tag
+						),
+				);
+			}
+			return rules.filter((rule) => rule.outboundTag !== reverse.tag);
+		},
+		[],
+	);
+
+	const cleanupReverseConfig = useCallback((cfg: any) => {
+		if (!cfg.reverse) return;
+		if (Array.isArray(cfg.reverse.bridges) && cfg.reverse.bridges.length === 0) {
+			delete cfg.reverse.bridges;
+		}
+		if (Array.isArray(cfg.reverse.portals) && cfg.reverse.portals.length === 0) {
+			delete cfg.reverse.portals;
+		}
+		if (Object.keys(cfg.reverse).length === 0) {
+			delete cfg.reverse;
+		}
+	}, []);
 
 	useEffect(() => {
 		const handleFullscreenChange = () => {
@@ -1320,6 +1448,94 @@ export const CoreSettingsPage: FC = () => {
 		commitBalancers(balancers);
 	};
 
+	const addReverse = () => {
+		setEditingReverseIndex(null);
+		onReverseOpen();
+	};
+
+	const editReverse = (index: number) => {
+		setEditingReverseIndex(index);
+		onReverseOpen();
+	};
+
+	const handleReverseModalClose = () => {
+		setEditingReverseIndex(null);
+		onReverseClose();
+	};
+
+	const handleReverseSubmit = (reverse: ReverseFormValues) => {
+		const cfg = JSON.parse(JSON.stringify(form.getValues("config") || {}));
+		if (!cfg.routing) cfg.routing = {};
+		if (!Array.isArray(cfg.routing.rules)) cfg.routing.rules = [];
+		if (!cfg.reverse) cfg.reverse = {};
+
+		const oldReverse =
+			editingReverseIndex !== null ? reverseData[editingReverseIndex] : null;
+		const oldRuleIndices = oldReverse
+			? getReverseRuleIndices(cfg.routing.rules, oldReverse)
+			: [];
+
+		if (oldReverse) {
+			const oldKey = `${oldReverse.type}s`;
+			const oldList = Array.isArray(cfg.reverse[oldKey])
+				? cfg.reverse[oldKey]
+				: [];
+			cfg.reverse[oldKey] = oldList.filter(
+				(entry: any) =>
+					!(entry?.tag === oldReverse.tag && entry?.domain === oldReverse.domain),
+			);
+		}
+
+		const newKey = `${reverse.type}s`;
+		if (!Array.isArray(cfg.reverse[newKey])) {
+			cfg.reverse[newKey] = [];
+		}
+		cfg.reverse[newKey].push({
+			tag: reverse.tag,
+			domain: reverse.domain,
+		});
+
+		const nextRules = buildReverseRules(reverse);
+		if (oldRuleIndices.length > 0) {
+			const rules = cfg.routing.rules.filter(
+				(_rule: RoutingRule, index: number) => !oldRuleIndices.includes(index),
+			);
+			const insertAt = Math.min(...oldRuleIndices);
+			rules.splice(insertAt, 0, ...nextRules);
+			cfg.routing.rules = rules;
+		} else {
+			cfg.routing.rules.push(...nextRules);
+		}
+
+		cleanupReverseConfig(cfg);
+		form.setValue("config", cfg, { shouldDirty: true });
+		syncRoutingRuleDisplay(cfg.routing.rules);
+		setJsonKey((prev) => prev + 1);
+		handleReverseModalClose();
+	};
+
+	const deleteReverse = (index: number) => {
+		const reverse = reverseData[index];
+		if (!reverse) return;
+		const cfg = JSON.parse(JSON.stringify(form.getValues("config") || {}));
+		if (!cfg.reverse) return;
+		const key = `${reverse.type}s`;
+		const list = Array.isArray(cfg.reverse[key]) ? cfg.reverse[key] : [];
+		cfg.reverse[key] = list.filter(
+			(entry: any) =>
+				!(entry?.tag === reverse.tag && entry?.domain === reverse.domain),
+		);
+		if (!cfg.routing) cfg.routing = {};
+		cfg.routing.rules = removeReverseRules(
+			Array.isArray(cfg.routing.rules) ? cfg.routing.rules : [],
+			reverse,
+		);
+		cleanupReverseConfig(cfg);
+		form.setValue("config", cfg, { shouldDirty: true });
+		syncRoutingRuleDisplay(cfg.routing.rules);
+		setJsonKey((prev) => prev + 1);
+	};
+
 	const addDnsServer = () => {
 		setEditingDnsIndex(null);
 		onDnsOpen();
@@ -1501,8 +1717,49 @@ export const CoreSettingsPage: FC = () => {
 						.map((balancer: any) => balancer?.tag)
 						.filter((tag: string | undefined): tag is string => Boolean(tag)),
 				),
-			),
+		),
 		[watchedConfig],
+	);
+
+	const reverseData = useMemo<ReverseRow[]>(
+		() => buildReverseRows(watchedConfig?.reverse),
+		[buildReverseRows, watchedConfig],
+	);
+
+	const editingReverseRow =
+		editingReverseIndex !== null ? reverseData[editingReverseIndex] : null;
+
+	const editingReverseInitial = useMemo<ReverseFormValues | null>(() => {
+		if (!editingReverseRow) return null;
+		const rules = getReverseRules(canonicalRoutingRules, editingReverseRow);
+		const domainRules = rules.filter((rule) => rule.domain != null);
+		const routeRules = rules.filter((rule) => rule.domain == null);
+		const domainRule = domainRules[0];
+		const routeRule = routeRules[0];
+
+		return {
+			type: editingReverseRow.type,
+			tag: editingReverseRow.tag,
+			domain: editingReverseRow.domain,
+			interconnectionOutboundTag: domainRule?.outboundTag ?? "",
+			outboundTag: routeRule?.outboundTag ?? "",
+			interconnectionInboundTags: domainRules.flatMap(
+				(rule) => rule.inboundTag ?? [],
+			),
+			inboundTags: routeRules.flatMap((rule) => rule.inboundTag ?? []),
+		};
+	}, [canonicalRoutingRules, editingReverseRow, getReverseRules]);
+
+	const existingReverseTags = useMemo(
+		() =>
+			reverseData
+				.map((reverse) => reverse.tag)
+				.filter(
+					(tag) =>
+						tag &&
+						tag !== (editingReverseIndex !== null ? editingReverseRow?.tag : ""),
+				),
+		[editingReverseIndex, editingReverseRow?.tag, reverseData],
 	);
 
 	const freedomOutboundIndex = useMemo(() => {
@@ -1825,6 +2082,22 @@ export const CoreSettingsPage: FC = () => {
 		return <Text>{str}</Text>;
 	};
 
+	const getReverseRuleSummary = (reverse: ReverseRow) => {
+		const rules = getReverseRules(canonicalRoutingRules, reverse);
+		const domainRules = rules.filter((rule) => rule.domain != null);
+		const routeRules = rules.filter((rule) => rule.domain == null);
+		return {
+			interconnection:
+				reverse.type === "bridge"
+					? domainRules[0]?.outboundTag
+					: domainRules.flatMap((rule) => rule.inboundTag ?? []),
+			target:
+				reverse.type === "bridge"
+					? routeRules[0]?.outboundTag
+					: routeRules.flatMap((rule) => rule.inboundTag ?? []),
+		};
+	};
+
 	const renderAttrsCell = (attrsValue: string | undefined) => {
 		if (!attrsValue) {
 			return <Text color="gray.400">-</Text>;
@@ -2015,6 +2288,12 @@ export const CoreSettingsPage: FC = () => {
 						<HStack spacing={2} align="center">
 							<OutboundTabIcon />
 							<Text as="span">{t("pages.xray.Outbounds")}</Text>
+						</HStack>
+					</Tab>
+					<Tab>
+						<HStack spacing={2} align="center">
+							<ReloadIconStyled />
+							<Text as="span">{t("pages.xray.reverse.title", "Reverse")}</Text>
 						</HStack>
 					</Tab>
 					<Tab>
@@ -2842,6 +3121,119 @@ export const CoreSettingsPage: FC = () => {
 					</TabPanel>
 					<TabPanel>
 						<VStack spacing={4} align="stretch">
+							{reverseData.length > 0 ? (
+								<VStack spacing={3} align="stretch">
+									<Button
+										leftIcon={<AddIconStyled />}
+										{...compactActionButtonProps}
+										onClick={addReverse}
+									>
+										{t("pages.xray.reverse.add", "Add Reverse")}
+									</Button>
+									<TableCard>
+										<TableGrid minW="760px">
+											<Thead>
+												<Tr>
+													<Th>#</Th>
+													<Th>{t("pages.xray.reverse.type", "Type")}</Th>
+													<Th>{t("pages.xray.reverse.tag", "Tag")}</Th>
+													<Th>{t("pages.xray.reverse.domain", "Domain")}</Th>
+													<Th>
+														{t(
+															"pages.xray.reverse.interconnection",
+															"Interconnection",
+														)}
+													</Th>
+													<Th>{t("pages.xray.reverse.target", "Target")}</Th>
+												</Tr>
+											</Thead>
+											<Tbody>
+												{reverseData.map((reverse, index) => {
+													const summary = getReverseRuleSummary(reverse);
+													return (
+														<Tr key={reverse.key}>
+															<Td>
+																<HStack>
+																	<Text>{index + 1}</Text>
+																	<IconButton
+																		aria-label="edit"
+																		icon={<EditIconStyled />}
+																		size="xs"
+																		variant="ghost"
+																		onClick={() => editReverse(index)}
+																	/>
+																	<IconButton
+																		aria-label="delete"
+																		icon={<DeleteIconStyled />}
+																		size="xs"
+																		variant="ghost"
+																		colorScheme="red"
+																		onClick={() => deleteReverse(index)}
+																	/>
+																</HStack>
+															</Td>
+															<Td>
+																<Tag
+																	colorScheme={
+																		reverse.type === "bridge" ? "blue" : "purple"
+																	}
+																>
+																	{reverse.type === "bridge"
+																		? t("pages.xray.reverse.bridge", "Bridge")
+																		: t("pages.xray.reverse.portal", "Portal")}
+																</Tag>
+															</Td>
+															<Td>{renderTextValue(reverse.tag)}</Td>
+															<Td>{renderTextValue(reverse.domain)}</Td>
+															<Td>
+																{Array.isArray(summary.interconnection)
+																	? renderChipList(
+																			summary.interconnection,
+																			"teal",
+																		)
+																	: renderTextValue(summary.interconnection)}
+															</Td>
+															<Td>
+																{Array.isArray(summary.target)
+																	? renderChipList(summary.target, "cyan")
+																	: renderTextValue(summary.target)}
+															</Td>
+														</Tr>
+													);
+												})}
+											</Tbody>
+										</TableGrid>
+									</TableCard>
+								</VStack>
+							) : (
+								<Box
+									borderWidth="1px"
+									borderStyle="dashed"
+									borderColor={emptyStateBorder}
+									borderRadius="lg"
+									bg={emptyStateBg}
+									p={4}
+									textAlign="center"
+								>
+									<Text color="gray.500" mb={3}>
+										{t(
+											"pages.xray.reverse.empty",
+											"No added reverse proxies.",
+										)}
+									</Text>
+									<Button
+										leftIcon={<AddIconStyled />}
+										{...compactActionButtonProps}
+										onClick={addReverse}
+									>
+										{t("pages.xray.reverse.add", "Add Reverse")}
+									</Button>
+								</Box>
+							)}
+						</VStack>
+					</TabPanel>
+					<TabPanel>
+						<VStack spacing={4} align="stretch">
 							{balancersData.length > 0 ? (
 								<VStack spacing={3} align="stretch">
 									<Button
@@ -3494,6 +3886,17 @@ export const CoreSettingsPage: FC = () => {
 				availableBalancerTags={availableBalancerTags}
 				onSubmit={handleRuleModalSubmit}
 				onClose={handleRuleModalClose}
+			/>
+			<ReverseModal
+				isOpen={isReverseOpen}
+				onClose={handleReverseModalClose}
+				mode={editingReverseIndex !== null ? "edit" : "create"}
+				initialReverse={editingReverseInitial}
+				inboundTags={availableInboundTags}
+				outboundTags={availableOutboundTags}
+				existingTags={existingReverseTags}
+				reverseCount={reverseData.length}
+				onSubmit={handleReverseSubmit}
 			/>
 			<WarpModal
 				isOpen={isWarpOpen}
