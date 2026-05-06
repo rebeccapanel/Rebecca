@@ -2,6 +2,8 @@ import base64
 import json
 import os
 import shutil
+import sqlite3
+import subprocess
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -11,11 +13,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlalchemy import Date, DateTime, LargeBinary, MetaData, Numeric, Time, delete, insert, select, text
+from sqlalchemy import Date, DateTime, LargeBinary, MetaData, Numeric, Time, func, insert, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql.sqltypes import JSON as SAJSON
 
-from app.db.base import engine as default_engine
+from app.db.base import Base, engine as default_engine
 from config import REBECCA_DATA_DIR, SQLALCHEMY_DATABASE_URL
 
 
@@ -26,6 +28,8 @@ BACKUP_MEDIA_TYPE = "application/vnd.rebecca.backup"
 BACKUP_SCOPES = {"database", "full"}
 MANIFEST_NAME = "manifest.json"
 DATABASE_DUMP_NAME = "database.json"
+DATABASE_SQLITE_NAME = "database.sqlite3"
+DATABASE_SQL_NAME = "database.sql"
 FILES_PREFIX = "files"
 
 
@@ -53,6 +57,12 @@ class BackupImportResult:
     rows_restored: int
     files_restored: list[str]
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class DatabaseExportPayload:
+    archive_name: str
+    payload_type: str
 
 
 def _utc_now() -> datetime:
@@ -155,10 +165,10 @@ class RebeccaBackupService:
         try:
             with tempfile.TemporaryDirectory(prefix="rebecca-backup-build-") as build_dir_name:
                 build_dir = Path(build_dir_name)
-                database_path = build_dir / DATABASE_DUMP_NAME
                 manifest_path = build_dir / MANIFEST_NAME
 
-                table_count, row_count = self._dump_database(database_path)
+                database_payload = self._export_database_payload(build_dir)
+                table_count, row_count = self._database_counts()
                 manifest = {
                     "format": BACKUP_FORMAT,
                     "version": BACKUP_VERSION,
@@ -167,6 +177,8 @@ class RebeccaBackupService:
                     "database": {
                         "url_dialect": self.engine.url.get_backend_name(),
                         "source_url_dialect": self._database_url_dialect(),
+                        "payload": database_payload.archive_name,
+                        "payload_type": database_payload.payload_type,
                         "tables": table_count,
                         "rows": row_count,
                     },
@@ -181,7 +193,7 @@ class RebeccaBackupService:
                 sqlite_skip_paths = self._active_sqlite_paths()
                 with tarfile.open(output_path, "w:gz") as archive:
                     archive.add(manifest_path, arcname=MANIFEST_NAME)
-                    archive.add(database_path, arcname=DATABASE_DUMP_NAME)
+                    archive.add(build_dir / database_payload.archive_name, arcname=database_payload.archive_name)
                     if scope == "full":
                         for root in self.file_roots:
                             if root.path.exists():
@@ -215,12 +227,8 @@ class RebeccaBackupService:
             if scope == "full" and backup_scope != "full":
                 raise RebeccaBackupError("Selected full restore, but the uploaded backup is database-only")
 
-            database_dump_path = extract_dir / DATABASE_DUMP_NAME
-            if not database_dump_path.is_file():
-                raise RebeccaBackupError("Backup database payload is missing")
-
             warnings: list[str] = []
-            tables_restored, rows_restored, db_warnings = self._restore_database(database_dump_path)
+            tables_restored, rows_restored, db_warnings = self._restore_database_payload(extract_dir, manifest)
             warnings.extend(db_warnings)
 
             files_restored: list[str] = []
@@ -236,6 +244,148 @@ class RebeccaBackupService:
                 files_restored=files_restored,
                 warnings=warnings,
             )
+
+    def _export_database_payload(self, build_dir: Path) -> DatabaseExportPayload:
+        dialect = self.engine.url.get_backend_name()
+        if dialect == "sqlite":
+            self._export_sqlite_database(build_dir / DATABASE_SQLITE_NAME)
+            return DatabaseExportPayload(archive_name=DATABASE_SQLITE_NAME, payload_type="sqlite-file")
+        if dialect in {"mysql", "mariadb"}:
+            self._export_mysql_database(build_dir / DATABASE_SQL_NAME)
+            return DatabaseExportPayload(archive_name=DATABASE_SQL_NAME, payload_type="mysql-dump")
+        raise RebeccaBackupError(f"Unsupported database backend for Rebecca backup: {dialect}")
+
+    def _restore_database_payload(self, extract_dir: Path, manifest: dict[str, Any]) -> tuple[int, int, list[str]]:
+        database_info = manifest.get("database") if isinstance(manifest.get("database"), dict) else {}
+        payload_name = database_info.get("payload")
+        payload_type = database_info.get("payload_type")
+
+        if payload_name:
+            payload_path = extract_dir / str(payload_name)
+            if not payload_path.is_file():
+                raise RebeccaBackupError("Backup database payload is missing")
+            if payload_type == "sqlite-file":
+                self._restore_sqlite_database(payload_path)
+            elif payload_type == "mysql-dump":
+                self._restore_mysql_database(payload_path)
+            else:
+                raise RebeccaBackupError("Backup database payload type is not supported")
+            tables_restored, rows_restored = self._database_counts()
+            return tables_restored, rows_restored, []
+
+        legacy_dump_path = extract_dir / DATABASE_DUMP_NAME
+        if not legacy_dump_path.is_file():
+            raise RebeccaBackupError("Backup database payload is missing")
+        tables_restored, rows_restored, warnings = self._restore_legacy_database(legacy_dump_path)
+        warnings.append("Restored a legacy JSON database payload; create a fresh backup to use hard database replacement.")
+        return tables_restored, rows_restored, warnings
+
+    def _export_sqlite_database(self, output_path: Path) -> None:
+        source_path = self._sqlite_database_path()
+        if source_path is None:
+            raise RebeccaBackupError("SQLite database file path is not available")
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        if not source_path.exists():
+            sqlite3.connect(source_path).close()
+
+        source = sqlite3.connect(f"file:{source_path.as_posix()}?mode=ro", uri=True)
+        destination = sqlite3.connect(output_path)
+        try:
+            source.backup(destination)
+        finally:
+            destination.close()
+            source.close()
+
+    def _restore_sqlite_database(self, payload_path: Path) -> None:
+        target_path = self._sqlite_database_path()
+        if target_path is None:
+            raise RebeccaBackupError("This backup contains a SQLite database, but the current installation is not using SQLite")
+
+        self.engine.dispose()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_target = target_path.with_name(f".{target_path.name}.restore-{os.getpid()}.tmp")
+        shutil.copy2(payload_path, temp_target)
+        try:
+            os.replace(temp_target, target_path)
+        except PermissionError:
+            _safe_unlink(temp_target)
+            self._overwrite_sqlite_database(payload_path, target_path)
+        for sidecar in (Path(f"{target_path}-wal"), Path(f"{target_path}-shm")):
+            _safe_unlink(sidecar)
+        self.engine.dispose()
+
+    def _overwrite_sqlite_database(self, payload_path: Path, target_path: Path) -> None:
+        source = sqlite3.connect(f"file:{payload_path.as_posix()}?mode=ro", uri=True)
+        target = sqlite3.connect(target_path)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+
+    def _export_mysql_database(self, output_path: Path) -> None:
+        dump_command = self._find_executable(["mariadb-dump", "mysqldump"])
+        database_name = self._mysql_database_name()
+        with tempfile.TemporaryDirectory(prefix="rebecca-mysql-dump-") as temp_dir_name:
+            defaults_file = self._write_mysql_defaults_file(Path(temp_dir_name))
+            command = [
+                dump_command,
+                f"--defaults-extra-file={defaults_file}",
+                "--single-transaction",
+                "--quick",
+                "--routines",
+                "--triggers",
+                "--events",
+                "--hex-blob",
+                "--add-drop-database",
+                "--default-character-set=utf8mb4",
+                "--databases",
+                database_name,
+            ]
+            try:
+                with output_path.open("wb") as handle:
+                    subprocess.run(command, stdout=handle, stderr=subprocess.PIPE, check=True)
+            except subprocess.CalledProcessError as exc:
+                message = exc.stderr.decode("utf-8", errors="replace").strip()
+                raise RebeccaBackupError(f"Failed to dump MySQL/MariaDB database: {message}") from exc
+
+    def _restore_mysql_database(self, payload_path: Path) -> None:
+        mysql_command = self._find_executable(["mariadb", "mysql"])
+        database_name = self._mysql_database_name()
+        self.engine.dispose()
+        with tempfile.TemporaryDirectory(prefix="rebecca-mysql-restore-") as temp_dir_name:
+            defaults_file = self._write_mysql_defaults_file(Path(temp_dir_name))
+            drop_command = [
+                mysql_command,
+                f"--defaults-extra-file={defaults_file}",
+                "-e",
+                f"DROP DATABASE IF EXISTS {self._quote_mysql_identifier(database_name)}",
+            ]
+            try:
+                subprocess.run(drop_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                with payload_path.open("rb") as handle:
+                    subprocess.run(
+                        [mysql_command, f"--defaults-extra-file={defaults_file}"],
+                        stdin=handle,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=True,
+                    )
+            except subprocess.CalledProcessError as exc:
+                message = exc.stderr.decode("utf-8", errors="replace").strip()
+                raise RebeccaBackupError(f"Failed to restore MySQL/MariaDB database: {message}") from exc
+            finally:
+                self.engine.dispose()
+
+    def _database_counts(self) -> tuple[int, int]:
+        metadata = MetaData()
+        metadata.reflect(bind=self.engine)
+        tables = list(metadata.sorted_tables)
+        rows = 0
+        with self.engine.connect() as connection:
+            for table in tables:
+                rows += int(connection.execute(select(func.count()).select_from(table)).scalar_one() or 0)
+        return len(tables), rows
 
     def _dump_database(self, output_path: Path) -> tuple[int, int]:
         metadata = MetaData()
@@ -281,14 +431,11 @@ class RebeccaBackupService:
             handle.write("]}")
         return len(tables), total_rows
 
-    def _restore_database(self, dump_path: Path) -> tuple[int, int, list[str]]:
+    def _restore_legacy_database(self, dump_path: Path) -> tuple[int, int, list[str]]:
         with dump_path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         self._validate_payload_header(payload, "database payload")
 
-        metadata = MetaData()
-        metadata.reflect(bind=self.engine)
-        tables_by_name = {table.name: table for table in metadata.sorted_tables}
         dump_tables = payload.get("tables")
         if not isinstance(dump_tables, list):
             raise RebeccaBackupError("Backup database payload has an invalid table list")
@@ -297,11 +444,17 @@ class RebeccaBackupService:
         rows_restored = 0
         tables_restored = 0
 
+        self.engine.dispose()
         with self.engine.begin() as connection:
             self._disable_foreign_key_checks(connection)
             try:
-                for table in reversed(metadata.sorted_tables):
-                    connection.execute(delete(table))
+                existing_metadata = MetaData()
+                existing_metadata.reflect(bind=connection)
+                existing_metadata.drop_all(bind=connection)
+                Base.metadata.create_all(bind=connection)
+                restored_metadata = MetaData()
+                restored_metadata.reflect(bind=connection)
+                tables_by_name = {table.name: table for table in restored_metadata.sorted_tables}
 
                 for table_payload in dump_tables:
                     table_name = table_payload.get("name")
@@ -330,6 +483,7 @@ class RebeccaBackupService:
                     tables_restored += 1
             finally:
                 self._enable_foreign_key_checks(connection)
+        self.engine.dispose()
 
         return tables_restored, rows_restored, warnings
 
@@ -440,21 +594,63 @@ class RebeccaBackupService:
         elif dialect in {"mysql", "mariadb"}:
             connection.execute(text("SET FOREIGN_KEY_CHECKS=1"))
 
-    def _active_sqlite_paths(self) -> set[Path]:
+    def _sqlite_database_path(self) -> Path | None:
         if self.engine.url.get_backend_name() != "sqlite":
-            return set()
+            return None
         database_path = self.engine.url.database
         if not database_path or database_path == ":memory:":
-            return set()
+            return None
         path = Path(database_path)
         if not path.is_absolute():
             path = Path.cwd() / path
-        resolved = path.resolve()
+        return path.resolve()
+
+    def _active_sqlite_paths(self) -> set[Path]:
+        resolved = self._sqlite_database_path()
+        if resolved is None:
+            return set()
         return {
             resolved,
             Path(f"{resolved}-wal"),
             Path(f"{resolved}-shm"),
         }
+
+    def _mysql_database_name(self) -> str:
+        database_name = self.engine.url.database
+        if not database_name:
+            raise RebeccaBackupError("MySQL/MariaDB database name is not available")
+        return database_name
+
+    def _write_mysql_defaults_file(self, directory: Path) -> Path:
+        url = self.engine.url
+        lines = ["[client]"]
+        if url.username:
+            lines.append(f"user={url.username}")
+        if url.password:
+            lines.append(f"password={url.password}")
+        if url.host:
+            lines.append(f"host={url.host}")
+            if not (url.query.get("unix_socket") or url.query.get("socket")):
+                lines.append("protocol=tcp")
+        if url.port:
+            lines.append(f"port={url.port}")
+        socket_path = url.query.get("unix_socket") or url.query.get("socket")
+        if socket_path:
+            lines.append(f"socket={socket_path}")
+        path = directory / "mysql-client.cnf"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        path.chmod(0o600)
+        return path
+
+    def _find_executable(self, candidates: list[str]) -> str:
+        for candidate in candidates:
+            executable = shutil.which(candidate)
+            if executable:
+                return executable
+        raise RebeccaBackupError(f"Required database tool is not installed: {' or '.join(candidates)}")
+
+    def _quote_mysql_identifier(self, value: str) -> str:
+        return f"`{value.replace('`', '``')}`"
 
     def _database_url_dialect(self) -> str:
         return SQLALCHEMY_DATABASE_URL.split(":", 1)[0] if ":" in SQLALCHEMY_DATABASE_URL else "unknown"
