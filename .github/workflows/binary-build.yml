@@ -59,7 +59,7 @@ jobs:
         run: cp ./build/index.html ./build/404.html
 
       - name: Upload dashboard
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dashboard-build
           path: dashboard/build
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload Linux package artifact
         if: matrix.asset_arch == 'amd64' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rebecca-linux-${{ matrix.asset_arch }}
           path: dist/rebecca-linux-${{ matrix.asset_arch }}.tar.gz
@@ -229,7 +229,7 @@ jobs:
             -Force
 
       - name: Upload Windows package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rebecca-windows-amd64
           path: dist/rebecca-windows-amd64.zip
