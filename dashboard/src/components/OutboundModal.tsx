@@ -7,11 +7,7 @@ import {
 	HStack,
 	IconButton,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	Switch,
@@ -61,6 +57,12 @@ import {
 	XHTTPStreamSettings,
 } from "../utils/outbound";
 import { JsonEditor } from "./JsonEditor";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 const AddIcon = chakra(PlusIcon);
 const MinusIcon = chakra(MinusIconOutline);
@@ -1184,17 +1186,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			scrollBehavior="inside"
 		>
 			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
-			<ModalContent as="form" onSubmit={onSubmit}>
-				<ModalHeader>
+			<XrayModalContent as="form" onSubmit={onSubmit}>
+				<XrayModalHeader>
 					{mode === "edit"
 						? t("pages.xray.outbound.editOutbound", "Edit Outbound")
 						: t("pages.xray.outbound.addOutbound")}
-				</ModalHeader>
+				</XrayModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
+				<XrayModalBody>
 					<Tabs
-						variant="enclosed"
-						colorScheme="primary"
+						className="xray-dialog-auto-sections"
+						variant="unstyled"
 						index={activeTab}
 						onChange={handleTabChange}
 					>
@@ -2187,16 +2189,16 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 							</TabPanel>
 						</TabPanels>
 					</Tabs>
-				</ModalBody>
-				<ModalFooter gap={3}>
+				</XrayModalBody>
+				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="outline" onClick={handleClose}>
 						{t("cancel")}
 					</Button>
 					<Button colorScheme="primary" type="submit" isDisabled={!isValid}>
 						{mode === "edit" ? t("save") : t("add")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };

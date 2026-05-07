@@ -1,18 +1,13 @@
 import {
 	Button,
-	Divider,
 	FormControl,
 	FormLabel,
 	Input,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	Switch,
-	Text,
 	VStack,
 } from "@chakra-ui/react";
 import { type FC, useEffect } from "react";
@@ -20,6 +15,13 @@ import type { UseFormReturn } from "react-hook-form";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { NumericInput } from "./common/NumericInput";
+import {
+	XrayDialogSection,
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 type DnsFormValues = {
 	address: string;
@@ -177,131 +179,156 @@ export const DnsModal: FC<DnsModalProps> = ({
 	});
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="md">
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3">
-				<ModalHeader pt={6}>
-					<Text fontWeight="semibold" fontSize="lg">
-						{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
-					</Text>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				<ModalBody>
-					<form onSubmit={handleSubmit}>
-						<VStack spacing={4}>
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.address")}</FormLabel>
-								<Input
-									{...modalForm.register("address")}
-									size="sm"
-									placeholder="8.8.8.8"
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.port")}</FormLabel>
-								<Controller
-									control={modalForm.control}
-									name="port"
-									render={({ field }) => (
-										<NumericInput
-											value={field.value ?? ""}
-											onChange={(value) => field.onChange(value)}
+		<Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3">
+				<XrayModalHeader>
+					{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<form onSubmit={handleSubmit}>
+					<XrayModalBody>
+						<VStack spacing={3} align="stretch">
+							<XrayDialogSection title={t("pages.xray.dns.add")}>
+								<VStack spacing={4} align="stretch">
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.address")}</FormLabel>
+										<Input
+											{...modalForm.register("address")}
 											size="sm"
-											min={1}
-											max={65535}
-											fieldProps={{ placeholder: "53" }}
+											placeholder="8.8.8.8"
 										/>
-									)}
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.strategy")}</FormLabel>
-								<Select
-									{...modalForm.register("queryStrategy")}
-									size="sm"
-									maxW="240px"
-								>
-									{["UseSystem", "UseIP", "UseIPv4", "UseIPv6"].map(
-										(strategy) => (
-											<option key={strategy} value={strategy}>
-												{strategy}
-											</option>
-										),
-									)}
-								</Select>
-							</FormControl>
-							<Divider />
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.domains")}</FormLabel>
-								<Input
-									{...modalForm.register("domains")}
-									size="sm"
-									placeholder="example.com,*.example.com"
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.expectIPs")}</FormLabel>
-								<Input
-									{...modalForm.register("expectIPs")}
-									size="sm"
-									placeholder="1.1.1.1,2.2.2.2"
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.dns.unexpectIPs")}</FormLabel>
-								<Input
-									{...modalForm.register("unexpectedIPs")}
-									size="sm"
-									placeholder="3.3.3.3,4.4.4.4"
-								/>
-							</FormControl>
-							<Divider />
-							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>{t("pages.xray.dns.skipFallback")}</FormLabel>
-								<Controller
-									name="skipFallback"
-									control={modalForm.control}
-									render={({ field }) => (
-										<Switch
-											isChecked={field.value}
-											onChange={(event) => field.onChange(event.target.checked)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.port")}</FormLabel>
+										<Controller
+											control={modalForm.control}
+											name="port"
+											render={({ field }) => (
+												<NumericInput
+													value={field.value ?? ""}
+													onChange={(value) => field.onChange(value)}
+													size="sm"
+													min={1}
+													max={65535}
+													fieldProps={{ placeholder: "53" }}
+												/>
+											)}
 										/>
-									)}
-								/>
-							</FormControl>
-							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>{t("pages.xray.dns.disableCache")}</FormLabel>
-								<Controller
-									name="disableCache"
-									control={modalForm.control}
-									render={({ field }) => (
-										<Switch
-											isChecked={field.value}
-											onChange={(event) => field.onChange(event.target.checked)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.strategy")}</FormLabel>
+										<Select
+											{...modalForm.register("queryStrategy")}
+											size="sm"
+											maxW="240px"
+										>
+											{["UseSystem", "UseIP", "UseIPv4", "UseIPv6"].map(
+												(strategy) => (
+													<option key={strategy} value={strategy}>
+														{strategy}
+													</option>
+												),
+											)}
+										</Select>
+									</FormControl>
+								</VStack>
+							</XrayDialogSection>
+							<XrayDialogSection title={t("pages.xray.dns.domains")}>
+								<VStack spacing={4} align="stretch">
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.domains")}</FormLabel>
+										<Input
+											{...modalForm.register("domains")}
+											size="sm"
+											placeholder="example.com,*.example.com"
 										/>
-									)}
-								/>
-							</FormControl>
-							<FormControl display="flex" alignItems="center">
-								<FormLabel mb={0}>{t("pages.xray.dns.finalQuery")}</FormLabel>
-								<Controller
-									name="finalQuery"
-									control={modalForm.control}
-									render={({ field }) => (
-										<Switch
-											isChecked={field.value}
-											onChange={(event) => field.onChange(event.target.checked)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.expectIPs")}</FormLabel>
+										<Input
+											{...modalForm.register("expectIPs")}
+											size="sm"
+											placeholder="1.1.1.1,2.2.2.2"
 										/>
-									)}
-								/>
-							</FormControl>
-							<Button type="submit" colorScheme="primary" size="sm" w="full">
-								{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
-							</Button>
+									</FormControl>
+									<FormControl>
+										<FormLabel>{t("pages.xray.dns.unexpectIPs")}</FormLabel>
+										<Input
+											{...modalForm.register("unexpectedIPs")}
+											size="sm"
+											placeholder="3.3.3.3,4.4.4.4"
+										/>
+									</FormControl>
+								</VStack>
+							</XrayDialogSection>
+							<XrayDialogSection title={t("pages.xray.generalConfigs")}>
+								<VStack spacing={3} align="stretch">
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("pages.xray.dns.skipFallback")}
+										</FormLabel>
+										<Controller
+											name="skipFallback"
+											control={modalForm.control}
+											render={({ field }) => (
+												<Switch
+													isChecked={field.value}
+													onChange={(event) =>
+														field.onChange(event.target.checked)
+													}
+												/>
+											)}
+										/>
+									</FormControl>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("pages.xray.dns.disableCache")}
+										</FormLabel>
+										<Controller
+											name="disableCache"
+											control={modalForm.control}
+											render={({ field }) => (
+												<Switch
+													isChecked={field.value}
+													onChange={(event) =>
+														field.onChange(event.target.checked)
+													}
+												/>
+											)}
+										/>
+									</FormControl>
+									<FormControl display="flex" alignItems="center">
+										<FormLabel mb={0}>
+											{t("pages.xray.dns.finalQuery")}
+										</FormLabel>
+										<Controller
+											name="finalQuery"
+											control={modalForm.control}
+											render={({ field }) => (
+												<Switch
+													isChecked={field.value}
+													onChange={(event) =>
+														field.onChange(event.target.checked)
+													}
+												/>
+											)}
+										/>
+									</FormControl>
+								</VStack>
+							</XrayDialogSection>
 						</VStack>
-					</form>
-				</ModalBody>
-			</ModalContent>
+					</XrayModalBody>
+					<XrayModalFooter justifyContent="flex-end">
+						<Button variant="outline" onClick={onClose}>
+							{t("cancel")}
+						</Button>
+						<Button type="submit" colorScheme="primary" size="sm">
+							{isEdit ? t("pages.xray.dns.edit") : t("pages.xray.dns.add")}
+						</Button>
+					</XrayModalFooter>
+				</form>
+			</XrayModalContent>
 		</Modal>
 	);
 };

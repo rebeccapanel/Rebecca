@@ -1,26 +1,19 @@
 import {
-	Box,
 	Button,
 	Checkbox,
 	CheckboxGroup,
-	Divider,
 	FormControl,
 	FormLabel,
 	HStack,
 	IconButton,
 	Input,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	Stack,
 	Text,
 	Textarea,
-	useColorModeValue,
 	Wrap,
 	WrapItem,
 } from "@chakra-ui/react";
@@ -28,6 +21,13 @@ import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { type FC, useEffect, useMemo } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import {
+	XrayDialogSection,
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 type AttributePair = {
 	key: string;
@@ -205,7 +205,6 @@ export const RuleModal: FC<RuleModalProps> = ({
 	onClose,
 }) => {
 	const { t } = useTranslation();
-	const formBg = useColorModeValue("white", "gray.900");
 
 	const {
 		control,
@@ -252,217 +251,243 @@ export const RuleModal: FC<RuleModalProps> = ({
 		<Modal
 			isOpen={isOpen}
 			onClose={handleClose}
-			size="xl"
+			size="3xl"
 			scrollBehavior="inside"
 		>
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent as="form" onSubmit={handleSave} bg={formBg}>
-				<ModalHeader>{title}</ModalHeader>
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent as="form" onSubmit={handleSave}>
+				<XrayModalHeader>{title}</XrayModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
-					<Stack spacing={5}>
-						<FormControl>
-							<FormLabel>{t("pages.xray.rules.type", "Rule Type")}</FormLabel>
-							<Select {...register("type")} size="sm">
-								{TYPE_OPTIONS.map((option) => (
-									<option key={option} value={option}>
-										{option || t("core.none", "None")}
-									</option>
-								))}
-							</Select>
-						</FormControl>
+				<XrayModalBody>
+					<Stack spacing={3}>
+						<XrayDialogSection
+							title={t("pages.outbound.basicSettings", "Basic settings")}
+						>
+							<Stack spacing={3}>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.type", "Rule Type")}
+									</FormLabel>
+									<Select {...register("type")} size="sm">
+										{TYPE_OPTIONS.map((option) => (
+											<option key={option} value={option}>
+												{option || t("core.none", "None")}
+											</option>
+										))}
+									</Select>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.outboundTag", "Outbound Tag")}
-							</FormLabel>
-							<Select
-								{...register("outboundTag")}
-								size="sm"
-								placeholder={t("core.none", "None")}
-							>
-								{availableOutboundTags.map((tag) => (
-									<option key={tag} value={tag}>
-										{tag}
-									</option>
-								))}
-							</Select>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.outboundTag", "Outbound Tag")}
+									</FormLabel>
+									<Select
+										{...register("outboundTag")}
+										size="sm"
+										placeholder={t("core.none", "None")}
+									>
+										{availableOutboundTags.map((tag) => (
+											<option key={tag} value={tag}>
+												{tag}
+											</option>
+										))}
+									</Select>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.balancer", "Balancer Tag")}
-							</FormLabel>
-							<Select
-								{...register("balancerTag")}
-								size="sm"
-								placeholder={t("core.none", "None")}
-							>
-								{availableBalancerTags.map((tag) => (
-									<option key={tag} value={tag}>
-										{tag}
-									</option>
-								))}
-							</Select>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.balancer", "Balancer Tag")}
+									</FormLabel>
+									<Select
+										{...register("balancerTag")}
+										size="sm"
+										placeholder={t("core.none", "None")}
+									>
+										{availableBalancerTags.map((tag) => (
+											<option key={tag} value={tag}>
+												{tag}
+											</option>
+										))}
+									</Select>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.inboundTag", "Inbound Tags")}
-							</FormLabel>
-							<Controller
-								control={control}
-								name="inboundTags"
-								render={({ field }) => (
-									<CheckboxGroup {...field}>
-										<Wrap spacing={3}>
-											{availableInboundTags.map((tag) => (
-												<WrapItem key={tag}>
-													<Checkbox value={tag}>{tag}</Checkbox>
-												</WrapItem>
-											))}
-										</Wrap>
-									</CheckboxGroup>
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.inboundTag", "Inbound Tags")}
+									</FormLabel>
+									<Controller
+										control={control}
+										name="inboundTags"
+										render={({ field }) => (
+											<CheckboxGroup {...field}>
+												<Wrap spacing={3}>
+													{availableInboundTags.map((tag) => (
+														<WrapItem key={tag}>
+															<Checkbox value={tag}>{tag}</Checkbox>
+														</WrapItem>
+													))}
+												</Wrap>
+											</CheckboxGroup>
+										)}
+									/>
+								</FormControl>
+							</Stack>
+						</XrayDialogSection>
 
-						<Divider />
+						<XrayDialogSection title={t("pages.xray.Routings", "Routing")}>
+							<Stack spacing={3}>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.domainMatcher", "Domain Matcher")}
+									</FormLabel>
+									<Select {...register("domainMatcher")} size="sm">
+										{DOMAIN_MATCHER_OPTIONS.map((option) => (
+											<option key={option || "empty"} value={option}>
+												{option ? option : t("core.default", "Default")}
+											</option>
+										))}
+									</Select>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.domainMatcher", "Domain Matcher")}
-							</FormLabel>
-							<Select {...register("domainMatcher")} size="sm">
-								{DOMAIN_MATCHER_OPTIONS.map((option) => (
-									<option key={option || "empty"} value={option}>
-										{option ? option : t("core.default", "Default")}
-									</option>
-								))}
-							</Select>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.network", "Network")}
+									</FormLabel>
+									<Controller
+										control={control}
+										name="networks"
+										render={({ field }) => (
+											<CheckboxGroup {...field}>
+												<Wrap spacing={3}>
+													{NETWORK_OPTIONS.map((network) => (
+														<WrapItem key={network}>
+															<Checkbox value={network}>{network}</Checkbox>
+														</WrapItem>
+													))}
+												</Wrap>
+											</CheckboxGroup>
+										)}
+									/>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>{t("pages.xray.rules.network", "Network")}</FormLabel>
-							<Controller
-								control={control}
-								name="networks"
-								render={({ field }) => (
-									<CheckboxGroup {...field}>
-										<Wrap spacing={3}>
-											{NETWORK_OPTIONS.map((network) => (
-												<WrapItem key={network}>
-													<Checkbox value={network}>{network}</Checkbox>
-												</WrapItem>
-											))}
-										</Wrap>
-									</CheckboxGroup>
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.protocol", "Protocol")}
+									</FormLabel>
+									<Controller
+										control={control}
+										name="protocols"
+										render={({ field }) => (
+											<CheckboxGroup {...field}>
+												<Wrap spacing={3}>
+													{PROTOCOL_OPTIONS.map((protocol) => (
+														<WrapItem key={protocol}>
+															<Checkbox value={protocol}>{protocol}</Checkbox>
+														</WrapItem>
+													))}
+												</Wrap>
+											</CheckboxGroup>
+										)}
+									/>
+								</FormControl>
+							</Stack>
+						</XrayDialogSection>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.protocol", "Protocol")}
-							</FormLabel>
-							<Controller
-								control={control}
-								name="protocols"
-								render={({ field }) => (
-									<CheckboxGroup {...field}>
-										<Wrap spacing={3}>
-											{PROTOCOL_OPTIONS.map((protocol) => (
-												<WrapItem key={protocol}>
-													<Checkbox value={protocol}>{protocol}</Checkbox>
-												</WrapItem>
-											))}
-										</Wrap>
-									</CheckboxGroup>
-								)}
-							/>
-						</FormControl>
+						<XrayDialogSection
+							title={t("pages.xray.rules.sourceGroup", "Source")}
+						>
+							<Stack spacing={3}>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.source", "Source IPs")}
+									</FormLabel>
+									<Textarea
+										{...register("sourceIps")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.source", "Source IPs")}
-							</FormLabel>
-							<Textarea
-								{...register("sourceIps")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.sourcePort", "Source Ports")}
+									</FormLabel>
+									<Textarea
+										{...register("sourcePort")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
+							</Stack>
+						</XrayDialogSection>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.sourcePort", "Source Ports")}
-							</FormLabel>
-							<Textarea
-								{...register("sourcePort")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
+						<XrayDialogSection
+							title={t("pages.xray.rules.destinationGroup", "Destination")}
+						>
+							<Stack spacing={3}>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.ip", "Destination IPs")}
+									</FormLabel>
+									<Textarea
+										{...register("ip")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>
-								{t("pages.xray.rules.ip", "Destination IPs")}
-							</FormLabel>
-							<Textarea
-								{...register("ip")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>
+										{t("pages.xray.rules.domain", "Domains")}
+									</FormLabel>
+									<Textarea
+										{...register("domain")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>{t("pages.xray.rules.domain", "Domains")}</FormLabel>
-							<Textarea
-								{...register("domain")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>{t("pages.xray.rules.user", "Users")}</FormLabel>
+									<Textarea
+										{...register("user")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
 
-						<FormControl>
-							<FormLabel>{t("pages.xray.rules.user", "Users")}</FormLabel>
-							<Textarea
-								{...register("user")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
+								<FormControl>
+									<FormLabel>{t("pages.xray.rules.port", "Ports")}</FormLabel>
+									<Textarea
+										{...register("port")}
+										size="sm"
+										placeholder={t(
+											"pages.xray.rules.useComma",
+											"Comma or space separated",
+										)}
+									/>
+								</FormControl>
+							</Stack>
+						</XrayDialogSection>
 
-						<FormControl>
-							<FormLabel>{t("pages.xray.rules.port", "Ports")}</FormLabel>
-							<Textarea
-								{...register("port")}
-								size="sm"
-								placeholder={t(
-									"pages.xray.rules.useComma",
-									"Comma or space separated",
-								)}
-							/>
-						</FormControl>
-
-						<Divider />
-
-						<Box>
+						<XrayDialogSection
+							title={t("pages.xray.rules.attrs", "Attributes")}
+						>
 							<FormControl>
 								<FormLabel>
 									{t("pages.xray.rules.attrs", "Attributes")}
@@ -514,10 +539,10 @@ export const RuleModal: FC<RuleModalProps> = ({
 									</HStack>
 								))}
 							</Stack>
-						</Box>
+						</XrayDialogSection>
 					</Stack>
-				</ModalBody>
-				<ModalFooter gap={3}>
+				</XrayModalBody>
+				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="outline" onClick={handleClose}>
 						{t("cancel")}
 					</Button>
@@ -526,8 +551,8 @@ export const RuleModal: FC<RuleModalProps> = ({
 							? t("pages.xray.rules.edit", "Save Changes")
 							: t("pages.xray.rules.add", "Add Rule")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };

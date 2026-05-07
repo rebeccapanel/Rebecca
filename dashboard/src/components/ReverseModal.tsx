@@ -8,13 +8,9 @@ import {
 	FormLabel,
 	Input,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
 	ModalOverlay,
 	Select,
-	Text,
 	VStack,
 	Wrap,
 	WrapItem,
@@ -22,6 +18,13 @@ import {
 import { type FC, useEffect, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import {
+	XrayDialogSection,
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 export type ReverseType = "bridge" | "portal";
 
@@ -47,9 +50,7 @@ interface ReverseModalProps {
 	onSubmit: (values: ReverseFormValues) => void;
 }
 
-const defaultReverseFormValues = (
-	reverseCount: number,
-): ReverseFormValues => ({
+const defaultReverseFormValues = (reverseCount: number): ReverseFormValues => ({
 	type: "bridge",
 	tag: `reverse-${reverseCount}`,
 	domain: "reverse.xui",
@@ -131,209 +132,234 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 	});
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="lg">
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3">
-				<ModalHeader pt={6}>
-					<Text fontWeight="semibold" fontSize="lg">
-						{mode === "edit"
-							? t("pages.xray.reverse.edit", "Edit Reverse")
-							: t("pages.xray.reverse.add", "Add Reverse")}
-					</Text>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				<ModalBody>
-					<form onSubmit={onSubmitInternal}>
+		<Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3">
+				<XrayModalHeader>
+					{mode === "edit"
+						? t("pages.xray.reverse.edit", "Edit Reverse")
+						: t("pages.xray.reverse.add", "Add Reverse")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<form onSubmit={onSubmitInternal}>
+					<XrayModalBody>
 						<VStack spacing={4} align="stretch">
-							<FormControl>
-								<FormLabel>{t("pages.xray.reverse.type", "Type")}</FormLabel>
-								<Select {...modalForm.register("type")} size="sm">
-									<option value="bridge">
-										{t("pages.xray.reverse.bridge", "Bridge")}
-									</option>
-									<option value="portal">
-										{t("pages.xray.reverse.portal", "Portal")}
-									</option>
-								</Select>
-							</FormControl>
+							<XrayDialogSection
+								title={t("pages.xray.reverse.title", "Reverse")}
+							>
+								<VStack spacing={4} align="stretch">
+									<FormControl>
+										<FormLabel>
+											{t("pages.xray.reverse.type", "Type")}
+										</FormLabel>
+										<Select {...modalForm.register("type")} size="sm">
+											<option value="bridge">
+												{t("pages.xray.reverse.bridge", "Bridge")}
+											</option>
+											<option value="portal">
+												{t("pages.xray.reverse.portal", "Portal")}
+											</option>
+										</Select>
+									</FormControl>
 
-							<FormControl isInvalid={tagInvalid}>
-								<FormLabel>{t("pages.xray.reverse.tag", "Tag")}</FormLabel>
-								<Input
-									{...modalForm.register("tag")}
-									size="sm"
-									placeholder="reverse-0"
-								/>
-								{tagInvalid ? (
-									<FormErrorMessage>
-										{duplicateTag
-											? t(
-													"pages.xray.reverse.tagDuplicate",
-													"This reverse tag already exists.",
-												)
-											: t(
-													"pages.xray.reverse.tagError",
-													"Reverse tag is required.",
+									<FormControl isInvalid={tagInvalid}>
+										<FormLabel>{t("pages.xray.reverse.tag", "Tag")}</FormLabel>
+										<Input
+											{...modalForm.register("tag")}
+											size="sm"
+											placeholder="reverse-0"
+										/>
+										{tagInvalid ? (
+											<FormErrorMessage>
+												{duplicateTag
+													? t(
+															"pages.xray.reverse.tagDuplicate",
+															"This reverse tag already exists.",
+														)
+													: t(
+															"pages.xray.reverse.tagError",
+															"Reverse tag is required.",
+														)}
+											</FormErrorMessage>
+										) : (
+											<FormHelperText>
+												{t(
+													"pages.xray.reverse.tagHint",
+													"Unique tag for this reverse entry.",
 												)}
-									</FormErrorMessage>
-								) : (
-									<FormHelperText>
-										{t(
-											"pages.xray.reverse.tagHint",
-											"Unique tag for this reverse entry.",
+											</FormHelperText>
 										)}
-									</FormHelperText>
-								)}
-							</FormControl>
+									</FormControl>
 
-							<FormControl isInvalid={domainInvalid}>
-								<FormLabel>{t("pages.xray.reverse.domain", "Domain")}</FormLabel>
-								<Input
-									{...modalForm.register("domain")}
-									size="sm"
-									placeholder="reverse.xui"
-								/>
-								<FormErrorMessage>
-									{t("pages.xray.reverse.domainError", "Domain is required.")}
-								</FormErrorMessage>
-							</FormControl>
+									<FormControl isInvalid={domainInvalid}>
+										<FormLabel>
+											{t("pages.xray.reverse.domain", "Domain")}
+										</FormLabel>
+										<Input
+											{...modalForm.register("domain")}
+											size="sm"
+											placeholder="reverse.xui"
+										/>
+										<FormErrorMessage>
+											{t(
+												"pages.xray.reverse.domainError",
+												"Domain is required.",
+											)}
+										</FormErrorMessage>
+									</FormControl>
+								</VStack>
+							</XrayDialogSection>
 
 							{type === "bridge" ? (
-								<>
-									<FormControl isInvalid={!interconnectionOutboundTag}>
-										<FormLabel>
-											{t(
-												"pages.xray.reverse.interconnection",
-												"Interconnection",
-											)}
-										</FormLabel>
-										<Select
-											{...modalForm.register("interconnectionOutboundTag")}
-											size="sm"
-											placeholder={t(
-												"pages.xray.reverse.selectOutbound",
-												"Select outbound tag",
-											)}
-										>
-											{outboundTags.map((tag) => (
-												<option key={tag} value={tag}>
-													{tag}
-												</option>
-											))}
-										</Select>
-										<FormErrorMessage>
-											{t(
-												"pages.xray.reverse.outboundRequired",
-												"Select an outbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
-									<FormControl isInvalid={!outboundTag}>
-										<FormLabel>{t("pages.xray.rules.outbound")}</FormLabel>
-										<Select
-											{...modalForm.register("outboundTag")}
-											size="sm"
-											placeholder={t(
-												"pages.xray.reverse.selectOutbound",
-												"Select outbound tag",
-											)}
-										>
-											{outboundTags.map((tag) => (
-												<option key={tag} value={tag}>
-													{tag}
-												</option>
-											))}
-										</Select>
-										<FormErrorMessage>
-											{t(
-												"pages.xray.reverse.outboundRequired",
-												"Select an outbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
-								</>
+								<XrayDialogSection
+									title={t("pages.xray.reverse.bridge", "Bridge")}
+								>
+									<VStack spacing={4} align="stretch">
+										<FormControl isInvalid={!interconnectionOutboundTag}>
+											<FormLabel>
+												{t(
+													"pages.xray.reverse.interconnection",
+													"Interconnection",
+												)}
+											</FormLabel>
+											<Select
+												{...modalForm.register("interconnectionOutboundTag")}
+												size="sm"
+												placeholder={t(
+													"pages.xray.reverse.selectOutbound",
+													"Select outbound tag",
+												)}
+											>
+												{outboundTags.map((tag) => (
+													<option key={tag} value={tag}>
+														{tag}
+													</option>
+												))}
+											</Select>
+											<FormErrorMessage>
+												{t(
+													"pages.xray.reverse.outboundRequired",
+													"Select an outbound tag.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
+										<FormControl isInvalid={!outboundTag}>
+											<FormLabel>{t("pages.xray.rules.outbound")}</FormLabel>
+											<Select
+												{...modalForm.register("outboundTag")}
+												size="sm"
+												placeholder={t(
+													"pages.xray.reverse.selectOutbound",
+													"Select outbound tag",
+												)}
+											>
+												{outboundTags.map((tag) => (
+													<option key={tag} value={tag}>
+														{tag}
+													</option>
+												))}
+											</Select>
+											<FormErrorMessage>
+												{t(
+													"pages.xray.reverse.outboundRequired",
+													"Select an outbound tag.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
+									</VStack>
+								</XrayDialogSection>
 							) : (
-								<>
-									<FormControl isInvalid={interconnectionInboundTags.length === 0}>
-										<FormLabel>
-											{t(
-												"pages.xray.reverse.interconnection",
-												"Interconnection",
-											)}
-										</FormLabel>
-										<Controller
-											name="interconnectionInboundTags"
-											control={modalForm.control}
-											render={({ field }) => (
-												<CheckboxGroup
-													value={field.value ?? []}
-													onChange={(values) => field.onChange(values)}
-												>
-													<Wrap spacing={3}>
-														{inboundTags.map((tag) => (
-															<WrapItem key={tag}>
-																<Checkbox value={tag} size="sm">
-																	{tag}
-																</Checkbox>
-															</WrapItem>
-														))}
-													</Wrap>
-												</CheckboxGroup>
-											)}
-										/>
-										<FormErrorMessage>
-											{t(
-												"pages.xray.reverse.inboundRequired",
-												"Select at least one inbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
-									<FormControl isInvalid={inboundTagsValue.length === 0}>
-										<FormLabel>{t("pages.xray.rules.inbound")}</FormLabel>
-										<Controller
-											name="inboundTags"
-											control={modalForm.control}
-											render={({ field }) => (
-												<CheckboxGroup
-													value={field.value ?? []}
-													onChange={(values) => field.onChange(values)}
-												>
-													<Wrap spacing={3}>
-														{inboundTags.map((tag) => (
-															<WrapItem key={tag}>
-																<Checkbox value={tag} size="sm">
-																	{tag}
-																</Checkbox>
-															</WrapItem>
-														))}
-													</Wrap>
-												</CheckboxGroup>
-											)}
-										/>
-										<FormErrorMessage>
-											{t(
-												"pages.xray.reverse.inboundRequired",
-												"Select at least one inbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
-								</>
+								<XrayDialogSection
+									title={t("pages.xray.reverse.portal", "Portal")}
+								>
+									<VStack spacing={4} align="stretch">
+										<FormControl
+											isInvalid={interconnectionInboundTags.length === 0}
+										>
+											<FormLabel>
+												{t(
+													"pages.xray.reverse.interconnection",
+													"Interconnection",
+												)}
+											</FormLabel>
+											<Controller
+												name="interconnectionInboundTags"
+												control={modalForm.control}
+												render={({ field }) => (
+													<CheckboxGroup
+														value={field.value ?? []}
+														onChange={(values) => field.onChange(values)}
+													>
+														<Wrap spacing={3}>
+															{inboundTags.map((tag) => (
+																<WrapItem key={tag}>
+																	<Checkbox value={tag} size="sm">
+																		{tag}
+																	</Checkbox>
+																</WrapItem>
+															))}
+														</Wrap>
+													</CheckboxGroup>
+												)}
+											/>
+											<FormErrorMessage>
+												{t(
+													"pages.xray.reverse.inboundRequired",
+													"Select at least one inbound tag.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
+										<FormControl isInvalid={inboundTagsValue.length === 0}>
+											<FormLabel>{t("pages.xray.rules.inbound")}</FormLabel>
+											<Controller
+												name="inboundTags"
+												control={modalForm.control}
+												render={({ field }) => (
+													<CheckboxGroup
+														value={field.value ?? []}
+														onChange={(values) => field.onChange(values)}
+													>
+														<Wrap spacing={3}>
+															{inboundTags.map((tag) => (
+																<WrapItem key={tag}>
+																	<Checkbox value={tag} size="sm">
+																		{tag}
+																	</Checkbox>
+																</WrapItem>
+															))}
+														</Wrap>
+													</CheckboxGroup>
+												)}
+											/>
+											<FormErrorMessage>
+												{t(
+													"pages.xray.reverse.inboundRequired",
+													"Select at least one inbound tag.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
+									</VStack>
+								</XrayDialogSection>
 							)}
-
-							<Button
-								type="submit"
-								colorScheme="primary"
-								size="sm"
-								isDisabled={!isValid}
-							>
-								{mode === "edit"
-									? t("pages.xray.reverse.edit", "Edit Reverse")
-									: t("pages.xray.reverse.add", "Add Reverse")}
-							</Button>
 						</VStack>
-					</form>
-				</ModalBody>
-			</ModalContent>
+					</XrayModalBody>
+					<XrayModalFooter justifyContent="flex-end">
+						<Button variant="outline" onClick={onClose}>
+							{t("cancel")}
+						</Button>
+						<Button
+							type="submit"
+							colorScheme="primary"
+							size="sm"
+							isDisabled={!isValid}
+						>
+							{mode === "edit"
+								? t("pages.xray.reverse.edit", "Edit Reverse")
+								: t("pages.xray.reverse.add", "Add Reverse")}
+						</Button>
+					</XrayModalFooter>
+				</form>
+			</XrayModalContent>
 		</Modal>
 	);
 };
