@@ -12,11 +12,7 @@ import {
 	HStack,
 	Input,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	SimpleGrid,
 	Stack,
@@ -31,11 +27,17 @@ import { useTranslation } from "react-i18next";
 
 import { fetch as apiFetch } from "service/http";
 import { Outbound, SizeFormatter } from "../utils/outbound";
-import { NumericInput } from "./common/NumericInput";
 import {
 	ensureWireguardGlobal,
 	generateWireguardKeypair,
 } from "../utils/wireguard";
+import { NumericInput } from "./common/NumericInput";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 type WarpAccount = {
 	device_id: string;
@@ -627,10 +629,12 @@ export const WarpModal: FC<WarpModalProps> = ({
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(8px)" />
-			<ModalContent>
-				<ModalHeader>{t("pages.xray.warp.manage", "Manage WARP")}</ModalHeader>
+			<XrayModalContent>
+				<XrayModalHeader>
+					{t("pages.xray.warp.manage", "Manage WARP")}
+				</XrayModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
+				<XrayModalBody>
 					<VStack spacing={5} align="stretch">
 						<Alert status="info" borderRadius="md">
 							<AlertIcon />
@@ -1011,8 +1015,8 @@ export const WarpModal: FC<WarpModalProps> = ({
 							</Stack>
 						</Box>
 					</VStack>
-				</ModalBody>
-				<ModalFooter display="flex" justifyContent="space-between">
+				</XrayModalBody>
+				<XrayModalFooter display="flex" justifyContent="space-between">
 					{isEditingOutbound ? (
 						<Button
 							colorScheme="red"
@@ -1032,8 +1036,8 @@ export const WarpModal: FC<WarpModalProps> = ({
 							{isEditingOutbound ? t("save") : t("add")}
 						</Button>
 					</HStack>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };

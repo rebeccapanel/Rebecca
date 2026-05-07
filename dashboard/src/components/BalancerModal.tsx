@@ -8,10 +8,7 @@ import {
 	HStack,
 	Input,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	Tag,
@@ -25,6 +22,13 @@ import {
 import { type FC, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import {
+	XrayDialogSection,
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 export type BalancerFormValues = {
 	tag: string;
@@ -140,160 +144,171 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 	);
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="md">
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3">
-				<ModalHeader pt={6}>
-					<Text fontWeight="semibold" fontSize="lg">
-						{mode === "edit"
-							? t("pages.xray.balancer.editBalancer")
-							: t("pages.xray.balancer.addBalancer")}
-					</Text>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				<ModalBody>
-					<form onSubmit={onSubmitInternal}>
-						<VStack spacing={4}>
-							<FormControl isInvalid={duplicateTag}>
-								<FormLabel>{t("pages.xray.balancer.tag")}</FormLabel>
-								<Input
-									{...modalForm.register("tag")}
-									size="sm"
-									placeholder={t("pages.xray.balancer.tagDesc")}
-								/>
-								{duplicateTag ? (
-									<FormErrorMessage>
-										{t("pages.xray.balancer.tagError")}
-									</FormErrorMessage>
-								) : (
-									<FormHelperText>
-										{t("pages.xray.balancer.tagDesc")}
-									</FormHelperText>
-								)}
-							</FormControl>
-							<FormControl>
-								<FormLabel>
-									{t("pages.xray.balancer.balancerStrategy")}
-								</FormLabel>
-								<Select {...modalForm.register("strategy")} size="sm">
-									{["random", "roundRobin", "leastLoad", "leastPing"].map(
-										(s) => (
-											<option key={s} value={s}>
-												{s}
-											</option>
-										),
-									)}
-								</Select>
-							</FormControl>
-							<FormControl isInvalid={emptySelector}>
-								<FormLabel>
-									{t("pages.xray.balancer.balancerSelectors")}
-								</FormLabel>
-								<VStack align="stretch" spacing={2}>
-									{outboundTags.length > 0 && (
-										<HStack>
-											<Select
-												size="sm"
-												placeholder={t(
-													"pages.xray.balancer.selectOutbound",
-													"Select outbound tag",
-												)}
-												value={selectorPick}
-												onChange={(event) =>
-													addSelectedOutboundTag(event.target.value)
-												}
-											>
-												{outboundTags.map((tag) => (
-													<option key={tag} value={tag}>
-														{tag}
-													</option>
-												))}
-											</Select>
-										</HStack>
-									)}
-									<HStack>
+		<Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3">
+				<XrayModalHeader>
+					{mode === "edit"
+						? t("pages.xray.balancer.editBalancer")
+						: t("pages.xray.balancer.addBalancer")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<form onSubmit={onSubmitInternal}>
+					<XrayModalBody>
+						<VStack spacing={3} align="stretch">
+							<XrayDialogSection title={t("pages.xray.balancer.addBalancer")}>
+								<VStack spacing={4} align="stretch">
+									<FormControl isInvalid={duplicateTag}>
+										<FormLabel>{t("pages.xray.balancer.tag")}</FormLabel>
 										<Input
+											{...modalForm.register("tag")}
 											size="sm"
-											value={selectorInput}
-											onChange={(event) => setSelectorInput(event.target.value)}
-											placeholder={t(
-												"pages.xray.balancer.selectorPlaceholder",
-												"tag1, tag2",
-											)}
-											onKeyDown={(event) => {
-												if (event.key === "Enter") {
-													event.preventDefault();
-													addSelectorTags(selectorInput);
-													setSelectorInput("");
-												}
-											}}
+											placeholder={t("pages.xray.balancer.tagDesc")}
 										/>
-										<Button
-											size="xs"
-											variant="outline"
-											onClick={() => {
-												addSelectorTags(selectorInput);
-												setSelectorInput("");
-											}}
-										>
-											{t("core.add", "Add")}
-										</Button>
-									</HStack>
-									{selectorValue.length > 0 ? (
-										<Wrap>
-											{selectorValue.map((tag) => (
-												<WrapItem key={tag}>
-													<Tag size="sm" colorScheme="blue">
-														<TagLabel>{tag}</TagLabel>
-														<TagCloseButton
-															onClick={() => removeSelectorTag(tag)}
-														/>
-													</Tag>
-												</WrapItem>
+										{duplicateTag ? (
+											<FormErrorMessage>
+												{t("pages.xray.balancer.tagError")}
+											</FormErrorMessage>
+										) : (
+											<FormHelperText>
+												{t("pages.xray.balancer.tagDesc")}
+											</FormHelperText>
+										)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("pages.xray.balancer.balancerStrategy")}
+										</FormLabel>
+										<Select {...modalForm.register("strategy")} size="sm">
+											{["random", "roundRobin", "leastLoad", "leastPing"].map(
+												(s) => (
+													<option key={s} value={s}>
+														{s}
+													</option>
+												),
+											)}
+										</Select>
+									</FormControl>
+									<FormControl isInvalid={emptySelector}>
+										<FormLabel>
+											{t("pages.xray.balancer.balancerSelectors")}
+										</FormLabel>
+										<VStack align="stretch" spacing={2}>
+											{outboundTags.length > 0 && (
+												<HStack>
+													<Select
+														size="sm"
+														placeholder={t(
+															"pages.xray.balancer.selectOutbound",
+															"Select outbound tag",
+														)}
+														value={selectorPick}
+														onChange={(event) =>
+															addSelectedOutboundTag(event.target.value)
+														}
+													>
+														{outboundTags.map((tag) => (
+															<option key={tag} value={tag}>
+																{tag}
+															</option>
+														))}
+													</Select>
+												</HStack>
+											)}
+											<HStack>
+												<Input
+													size="sm"
+													value={selectorInput}
+													onChange={(event) =>
+														setSelectorInput(event.target.value)
+													}
+													placeholder={t(
+														"pages.xray.balancer.selectorPlaceholder",
+														"tag1, tag2",
+													)}
+													onKeyDown={(event) => {
+														if (event.key === "Enter") {
+															event.preventDefault();
+															addSelectorTags(selectorInput);
+															setSelectorInput("");
+														}
+													}}
+												/>
+												<Button
+													size="xs"
+													variant="outline"
+													onClick={() => {
+														addSelectorTags(selectorInput);
+														setSelectorInput("");
+													}}
+												>
+													{t("core.add", "Add")}
+												</Button>
+											</HStack>
+											{selectorValue.length > 0 ? (
+												<Wrap>
+													{selectorValue.map((tag) => (
+														<WrapItem key={tag}>
+															<Tag size="sm" colorScheme="blue">
+																<TagLabel>{tag}</TagLabel>
+																<TagCloseButton
+																	onClick={() => removeSelectorTag(tag)}
+																/>
+															</Tag>
+														</WrapItem>
+													))}
+												</Wrap>
+											) : (
+												<Box>
+													<Text fontSize="sm" color="gray.500">
+														{t(
+															"pages.xray.balancer.selectorHint",
+															"Choose outbound tags or add custom tags.",
+														)}
+													</Text>
+												</Box>
+											)}
+										</VStack>
+										{emptySelector && (
+											<FormErrorMessage>
+												{t("pages.xray.balancer.selectorError")}
+											</FormErrorMessage>
+										)}
+									</FormControl>
+									<FormControl>
+										<FormLabel>
+											{t("pages.xray.balancer.fallbackTag")}
+										</FormLabel>
+										<Select {...modalForm.register("fallbackTag")} size="sm">
+											<option value="">{t("core.none", "None")}</option>
+											{outboundTags.map((tag) => (
+												<option key={tag} value={tag}>
+													{tag}
+												</option>
 											))}
-										</Wrap>
-									) : (
-										<Box>
-											<Text fontSize="sm" color="gray.500">
-												{t(
-													"pages.xray.balancer.selectorHint",
-													"Choose outbound tags or add custom tags.",
-												)}
-											</Text>
-										</Box>
-									)}
+										</Select>
+									</FormControl>
 								</VStack>
-								{emptySelector && (
-									<FormErrorMessage>
-										{t("pages.xray.balancer.selectorError")}
-									</FormErrorMessage>
-								)}
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.balancer.fallbackTag")}</FormLabel>
-								<Select {...modalForm.register("fallbackTag")} size="sm">
-									<option value="">{t("core.none", "None")}</option>
-									{outboundTags.map((tag) => (
-										<option key={tag} value={tag}>
-											{tag}
-										</option>
-									))}
-								</Select>
-							</FormControl>
-							<Button
-								type="submit"
-								colorScheme="primary"
-								size="sm"
-								isDisabled={!isValid}
-							>
-								{mode === "edit"
-									? t("pages.xray.balancer.editBalancer")
-									: t("pages.xray.balancer.addBalancer")}
-							</Button>
+							</XrayDialogSection>
 						</VStack>
-					</form>
-				</ModalBody>
-			</ModalContent>
+					</XrayModalBody>
+					<XrayModalFooter justifyContent="flex-end">
+						<Button variant="outline" onClick={onClose}>
+							{t("cancel")}
+						</Button>
+						<Button
+							type="submit"
+							colorScheme="primary"
+							size="sm"
+							isDisabled={!isValid}
+						>
+							{mode === "edit"
+								? t("pages.xray.balancer.editBalancer")
+								: t("pages.xray.balancer.addBalancer")}
+						</Button>
+					</XrayModalFooter>
+				</form>
+			</XrayModalContent>
 		</Modal>
 	);
 };

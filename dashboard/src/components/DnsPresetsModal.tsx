@@ -3,10 +3,7 @@ import {
 	Button,
 	HStack,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
 	ModalOverlay,
 	Spacer,
 	Tag,
@@ -15,6 +12,11 @@ import {
 } from "@chakra-ui/react";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 type DnsPreset = {
 	name: string;
@@ -90,18 +92,22 @@ export const DnsPresetsModal: FC<DnsPresetsModalProps> = ({
 
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="md">
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3">
-				<ModalHeader pt={6}>
-					<Text fontWeight="semibold" fontSize="lg">
-						{t("pages.xray.dns.dnsPresetTitle", "DNS Presets")}
-					</Text>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				<ModalBody pb={6}>
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3">
+				<XrayModalHeader>
+					{t("pages.xray.dns.dnsPresetTitle", "DNS Presets")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<XrayModalBody pb={6}>
 					<VStack spacing={3} align="stretch">
 						{DNS_PRESETS.map((preset) => (
-							<Box key={preset.name} borderWidth="1px" borderRadius="md" p={3}>
+							<Box
+								key={preset.name}
+								className="xray-dialog-section"
+								borderWidth="1px"
+								borderRadius="md"
+								p={3}
+							>
 								<HStack spacing={3}>
 									<Tag
 										colorScheme={preset.family ? "purple" : "green"}
@@ -127,8 +133,8 @@ export const DnsPresetsModal: FC<DnsPresetsModalProps> = ({
 							</Box>
 						))}
 					</VStack>
-				</ModalBody>
-			</ModalContent>
+				</XrayModalBody>
+			</XrayModalContent>
 		</Modal>
 	);
 };

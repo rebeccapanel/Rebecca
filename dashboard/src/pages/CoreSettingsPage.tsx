@@ -1,5 +1,10 @@
 import type { TableProps } from "@chakra-ui/react";
 import {
+	Accordion,
+	AccordionButton,
+	AccordionIcon,
+	AccordionItem,
+	AccordionPanel,
 	Box,
 	Button,
 	chakra,
@@ -8,6 +13,11 @@ import {
 	HStack,
 	IconButton,
 	Input,
+	Menu,
+	MenuButton,
+	MenuItem,
+	MenuList,
+	Portal,
 	Radio,
 	RadioGroup,
 	Select,
@@ -28,8 +38,8 @@ import {
 	Text,
 	Th,
 	Thead,
-	Tr,
 	Tooltip,
+	Tr,
 	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
@@ -52,6 +62,7 @@ import {
 	TrashIcon as DeleteIcon,
 	DocumentTextIcon,
 	PencilIcon as EditIcon,
+	EllipsisHorizontalIcon,
 	GlobeAltIcon,
 	ArrowPathIcon as ReloadIcon,
 	ScaleIcon,
@@ -63,6 +74,7 @@ import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import {
 	type FC,
+	type ReactElement,
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -97,6 +109,9 @@ import XrayLogsPage from "./XrayLogsPage";
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 3.5, h: 3.5 } });
 const DeleteIconStyled = chakra(DeleteIcon, { baseStyle: { w: 4, h: 4 } });
 const EditIconStyled = chakra(EditIcon, { baseStyle: { w: 4, h: 4 } });
+const MoreIconStyled = chakra(EllipsisHorizontalIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
 const ArrowUpIconStyled = chakra(ArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
 const ArrowDownIconStyled = chakra(ArrowDownIcon, {
 	baseStyle: { w: 4, h: 4 },
@@ -234,30 +249,49 @@ type ReverseRow = {
 	domain: string;
 };
 
+type RowAction = {
+	label: string;
+	icon: ReactElement;
+	onClick: () => void;
+	isDisabled?: boolean;
+	colorScheme?: "red" | "gray";
+};
+
+// UX credit: the compact Xray settings panels and row action flow are
+// intentionally inspired by 3x-ui's Xray settings page.
 const SettingsSection: FC<{ title: string; children: ReactNode }> = ({
 	title,
 	children,
 }) => {
 	const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const panelBg = useColorModeValue("white", "surface.dark");
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 	return (
-		<Box
-			borderWidth="1px"
-			borderColor={borderColor}
-			borderRadius="lg"
-			overflow="hidden"
-		>
-			<Box bg={headerBg} px={{ base: 3, md: 4 }} py={2}>
-				<Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
-					{title}
-				</Text>
-			</Box>
-			<Box overflowX="auto">
-				<Table variant="simple" size="sm" minW={{ base: "100%", md: "unset" }}>
-					<Tbody>{children}</Tbody>
-				</Table>
-			</Box>
-		</Box>
+		<Accordion allowToggle defaultIndex={0} reduceMotion>
+			<AccordionItem
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				overflow="hidden"
+			>
+				<h2>
+					<AccordionButton bg={headerBg} px={{ base: 3, md: 4 }} py={2.5}>
+						<Box flex="1" textAlign="start">
+							<Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
+								{title}
+							</Text>
+						</Box>
+						<AccordionIcon />
+					</AccordionButton>
+				</h2>
+				<AccordionPanel p={0}>
+					<VStack align="stretch" spacing={0}>
+						{children}
+					</VStack>
+				</AccordionPanel>
+			</AccordionItem>
+		</Accordion>
 	);
 };
 
@@ -266,20 +300,49 @@ const SectionCard: FC<{ title: string; children: ReactNode }> = ({
 	children,
 }) => {
 	const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const panelBg = useColorModeValue("white", "surface.dark");
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
+	return (
+		<Accordion allowToggle defaultIndex={0} reduceMotion>
+			<AccordionItem
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				overflow="hidden"
+			>
+				<h2>
+					<AccordionButton bg={headerBg} px={{ base: 3, md: 4 }} py={2.5}>
+						<Box flex="1" textAlign="start">
+							<Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
+								{title}
+							</Text>
+						</Box>
+						<AccordionIcon />
+					</AccordionButton>
+				</h2>
+				<AccordionPanel p={{ base: 3, md: 4 }}>{children}</AccordionPanel>
+			</AccordionItem>
+		</Accordion>
+	);
+};
+
+const XrayActionBar: FC<{ children: ReactNode }> = ({ children }) => {
+	const bg = useColorModeValue("white", "surface.dark");
+	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
+
 	return (
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="lg"
-			overflow="hidden"
+			borderRadius="md"
+			bg={bg}
+			px={{ base: 3, md: 4 }}
+			py={3}
 		>
-			<Box bg={headerBg} px={{ base: 3, md: 4 }} py={2}>
-				<Text fontWeight="semibold" fontSize={{ base: "sm", md: "md" }}>
-					{title}
-				</Text>
-			</Box>
-			<Box p={{ base: 3, md: 4 }}>{children}</Box>
+			<HStack spacing={2} align="center" flexWrap="wrap">
+				{children}
+			</HStack>
 		</Box>
 	);
 };
@@ -292,63 +355,51 @@ const SettingRow: FC<{
 }> = ({ label, description, controlId, children }) => {
 	const labelColor = useColorModeValue("gray.700", "whiteAlpha.800");
 	const descriptionColor = useColorModeValue("gray.500", "whiteAlpha.600");
+	const dividerColor = useColorModeValue("gray.100", "whiteAlpha.200");
 	return (
-		<Tr
-			display={{ base: "block", md: "table-row" }}
-			_notFirst={{
-				borderTopWidth: { base: "1px", md: "0" },
-				borderColor: "gray.200",
-				_dark: { borderColor: "whiteAlpha.200" },
-			}}
+		<Box
+			display="grid"
+			gridTemplateColumns={{ base: "1fr", md: "minmax(220px, 32%) 1fr" }}
+			gap={{ base: 2, md: 4 }}
+			px={{ base: 3, md: 4 }}
+			py={3}
+			borderTopWidth="1px"
+			borderTopColor={dividerColor}
+			_first={{ borderTopWidth: 0 }}
+			alignItems="center"
 		>
-			<Td
-				width={{ base: "100%", md: "40%" }}
-				py={3}
-				pr={{ base: 0, md: 4 }}
-				display={{ base: "block", md: "table-cell" }}
-			>
-				<Box>
-					<FormLabel
-						htmlFor={controlId}
-						mb={description ? 1 : { base: 2, md: 0 }}
-						color={labelColor}
-					>
-						{label}
-					</FormLabel>
-					{description && (
-						<Text fontSize="xs" color={descriptionColor}>
-							{description}
-						</Text>
-					)}
-				</Box>
-			</Td>
-			<Td py={3} display={{ base: "block", md: "table-cell" }}>
-				<FormControl
-					id={controlId}
-					display="flex"
-					flexDir={{ base: "column", md: "row" }}
-					alignItems={{ base: "flex-start", md: "center" }}
-					gap={{ base: 2, md: 4 }}
-					w="full"
+			<Box minW={0}>
+				<FormLabel
+					htmlFor={controlId}
+					mb={description ? 1 : 0}
+					color={labelColor}
+					fontSize="sm"
+					fontWeight="semibold"
 				>
-					{children(controlId)}
-				</FormControl>
-			</Td>
-		</Tr>
+					{label}
+				</FormLabel>
+				{description && (
+					<Text fontSize="xs" color={descriptionColor} lineHeight="1.45">
+						{description}
+					</Text>
+				)}
+			</Box>
+			<FormControl id={controlId} w="full">
+				{children(controlId)}
+			</FormControl>
+		</Box>
 	);
 };
 
 const TableCard: FC<{ children: ReactNode }> = ({ children }) => {
-	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "blackAlpha.400");
-	const shadow = useColorModeValue("sm", "none");
+	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
+	const bg = useColorModeValue("white", "surface.dark");
 	return (
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="xl"
+			borderRadius="md"
 			bg={bg}
-			boxShadow={shadow}
 			overflow="hidden"
 		>
 			<Box overflowX="auto">{children}</Box>
@@ -357,11 +408,11 @@ const TableCard: FC<{ children: ReactNode }> = ({ children }) => {
 };
 
 const TableGrid: FC<TableProps> = ({ children, ...props }) => {
-	const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const headerBg = useColorModeValue("gray.100", "whiteAlpha.100");
 	const verticalBorderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 	const headerBorderColor = useColorModeValue("gray.300", "whiteAlpha.300");
 	const bodyBorderColor = useColorModeValue("gray.100", "whiteAlpha.200");
-	const hoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const hoverBg = useColorModeValue("gray.50", "whiteAlpha.50");
 	return (
 		<Table
 			size="sm"
@@ -384,14 +435,15 @@ const TableGrid: FC<TableProps> = ({ children, ...props }) => {
 					borderBottomColor: headerBorderColor,
 					textTransform: "none",
 					fontWeight: "semibold",
-					fontSize: "sm",
+					fontSize: "xs",
 					letterSpacing: "normal",
+					whiteSpace: "nowrap",
 				},
 				"tbody td": {
 					borderBottom: "1px solid",
 					borderBottomColor: bodyBorderColor,
-					fontSize: "sm",
-					verticalAlign: "top",
+					fontSize: "xs",
+					verticalAlign: "middle",
 				},
 				"tbody tr:last-of-type td": {
 					borderBottom: "none",
@@ -403,6 +455,51 @@ const TableGrid: FC<TableProps> = ({ children, ...props }) => {
 		>
 			{children}
 		</Table>
+	);
+};
+
+const RowActionMenu: FC<{ index: number; actions: RowAction[] }> = ({
+	index,
+	actions,
+}) => {
+	const menuBg = useColorModeValue("white", "gray.800");
+	const menuBorder = useColorModeValue("gray.200", "whiteAlpha.300");
+
+	return (
+		<HStack spacing={2} align="center" whiteSpace="nowrap">
+			<Text fontWeight="semibold" fontSize="xs" minW="5">
+				{index + 1}
+			</Text>
+			<Menu isLazy placement="bottom-start">
+				<MenuButton
+					as={IconButton}
+					aria-label="Row actions"
+					icon={<MoreIconStyled />}
+					size="xs"
+					variant="ghost"
+				/>
+				<Portal>
+					<MenuList
+						bg={menuBg}
+						borderColor={menuBorder}
+						minW="160px"
+						zIndex={1600}
+					>
+						{actions.map((action) => (
+							<MenuItem
+								key={action.label}
+								icon={action.icon}
+								onClick={action.onClick}
+								isDisabled={action.isDisabled}
+								color={action.colorScheme === "red" ? "red.500" : undefined}
+							>
+								{action.label}
+							</MenuItem>
+						))}
+					</MenuList>
+				</Portal>
+			</Menu>
+		</HStack>
 	);
 };
 
@@ -578,9 +675,18 @@ export const CoreSettingsPage: FC = () => {
 		return () => window.removeEventListener("hashchange", syncFromHash);
 	}, [splitHash, tabKeys]);
 
-	const basicSectionBorder = useColorModeValue("gray.200", "whiteAlpha.300");
 	const emptyStateBorder = useColorModeValue("gray.200", "whiteAlpha.300");
 	const emptyStateBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const pageShellBg = useColorModeValue("white", "surface.dark");
+	const pageShellBorder = useColorModeValue("gray.200", "whiteAlpha.300");
+	const pageHintColor = useColorModeValue("gray.600", "gray.300");
+	const tabShellBg = useColorModeValue("white", "surface.dark");
+	const tabIdleColor = useColorModeValue("gray.600", "gray.400");
+	const tabHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const tabActiveBg = useColorModeValue("primary.500", "whiteAlpha.200");
+	const tabActiveColor = useColorModeValue("white", "white");
+	const tabActiveBorder = useColorModeValue("primary.500", "primary.300");
+	const tabActiveShadow = useColorModeValue("sm", "none");
 
 	const buildOutboundRows = useCallback(
 		(outbounds: OutboundJson[]) =>
@@ -770,10 +876,16 @@ export const CoreSettingsPage: FC = () => {
 
 	const cleanupReverseConfig = useCallback((cfg: any) => {
 		if (!cfg.reverse) return;
-		if (Array.isArray(cfg.reverse.bridges) && cfg.reverse.bridges.length === 0) {
+		if (
+			Array.isArray(cfg.reverse.bridges) &&
+			cfg.reverse.bridges.length === 0
+		) {
 			delete cfg.reverse.bridges;
 		}
-		if (Array.isArray(cfg.reverse.portals) && cfg.reverse.portals.length === 0) {
+		if (
+			Array.isArray(cfg.reverse.portals) &&
+			cfg.reverse.portals.length === 0
+		) {
 			delete cfg.reverse.portals;
 		}
 		if (Object.keys(cfg.reverse).length === 0) {
@@ -1482,7 +1594,9 @@ export const CoreSettingsPage: FC = () => {
 				: [];
 			cfg.reverse[oldKey] = oldList.filter(
 				(entry: any) =>
-					!(entry?.tag === oldReverse.tag && entry?.domain === oldReverse.domain),
+					!(
+						entry?.tag === oldReverse.tag && entry?.domain === oldReverse.domain
+					),
 			);
 		}
 
@@ -1662,9 +1776,12 @@ export const CoreSettingsPage: FC = () => {
 		};
 	}, [canonicalOutbounds]);
 
+	const outboundIdsKey = useMemo(() => outboundIds.join("|"), [outboundIds]);
+
 	useEffect(() => {
+		void outboundIdsKey;
 		setOutboundTestStates({});
-	}, [outboundIds.join("|")]);
+	}, [outboundIdsKey]);
 
 	useEffect(() => {
 		let active = true;
@@ -1717,7 +1834,7 @@ export const CoreSettingsPage: FC = () => {
 						.map((balancer: any) => balancer?.tag)
 						.filter((tag: string | undefined): tag is string => Boolean(tag)),
 				),
-		),
+			),
 		[watchedConfig],
 	);
 
@@ -1757,7 +1874,8 @@ export const CoreSettingsPage: FC = () => {
 				.filter(
 					(tag) =>
 						tag &&
-						tag !== (editingReverseIndex !== null ? editingReverseRow?.tag : ""),
+						tag !==
+							(editingReverseIndex !== null ? editingReverseRow?.tag : ""),
 				),
 		[editingReverseIndex, editingReverseRow?.tag, reverseData],
 	);
@@ -2164,23 +2282,68 @@ export const CoreSettingsPage: FC = () => {
 	};
 
 	return (
-		<VStack spacing={6} align="stretch">
-			<Text as="h1" fontWeight="semibold" fontSize="2xl">
-				{t("header.coreSettings")}
-			</Text>
-			<Text color="gray.600" _dark={{ color: "gray.300" }} fontSize="sm">
-				{t("pages.xray.coreDescription")}
-			</Text>
-			<VStack align="flex-start" spacing={2}>
+		<VStack spacing={4} align="stretch">
+			<Box
+				borderWidth="1px"
+				borderColor={pageShellBorder}
+				borderRadius="md"
+				bg={pageShellBg}
+				p={{ base: 3, md: 4 }}
+			>
+				<Stack
+					direction={{ base: "column", lg: "row" }}
+					spacing={4}
+					align={{ base: "stretch", lg: "flex-end" }}
+					justify="space-between"
+				>
+					<Box minW={0}>
+						<Text as="h1" fontWeight="semibold" fontSize="2xl">
+							{t("header.coreSettings")}
+						</Text>
+						<Text color={pageHintColor} fontSize="sm" mt={1}>
+							{t("pages.xray.coreDescription")}
+						</Text>
+					</Box>
+					<HStack
+						spacing={2}
+						flexWrap="wrap"
+						justify={{ base: "stretch", lg: "flex-end" }}
+					>
+						<Button
+							size="sm"
+							colorScheme="primary"
+							isLoading={isPostLoading}
+							isDisabled={!hasConfigChanges || isPostLoading}
+							onClick={handleOnSave}
+							w={{ base: "full", sm: "auto" }}
+						>
+							{t("core.save")}
+						</Button>
+						<Button
+							size="sm"
+							leftIcon={<ReloadIconStyled />}
+							isLoading={isRestarting}
+							onClick={() => handleRestartCore(selectedTarget)}
+							variant="outline"
+							w={{ base: "full", sm: "auto" }}
+						>
+							{t(isRestarting ? "core.restarting" : "core.restartCore")}
+						</Button>
+					</HStack>
+				</Stack>
 				{hasNodeTargets && (
-					<HStack spacing={3} align="flex-end" flexWrap="wrap" w="full">
-						<FormControl w={{ base: "full", sm: "220px" }}>
-							<FormLabel
-								mb={1}
-								fontSize="xs"
-								color="gray.600"
-								_dark={{ color: "gray.300" }}
-							>
+					<HStack
+						mt={4}
+						pt={3}
+						borderTopWidth="1px"
+						borderTopColor={pageShellBorder}
+						spacing={3}
+						align="flex-end"
+						flexWrap="wrap"
+						w="full"
+					>
+						<FormControl w={{ base: "full", sm: "260px" }}>
+							<FormLabel mb={1} fontSize="xs" color={pageHintColor}>
 								{t("core.configTarget", "Target")}
 							</FormLabel>
 							<Select
@@ -2220,32 +2383,9 @@ export const CoreSettingsPage: FC = () => {
 						)}
 					</HStack>
 				)}
-				<HStack spacing={3} flexWrap="wrap" w="full">
-					<Button
-						size="sm"
-						colorScheme="primary"
-						isLoading={isPostLoading}
-						isDisabled={!hasConfigChanges || isPostLoading}
-						onClick={handleOnSave}
-						w={{ base: "full", sm: "auto" }}
-					>
-						{t("core.save")}
-					</Button>
-					<Button
-						size="sm"
-						leftIcon={<ReloadIconStyled />}
-						isLoading={isRestarting}
-						onClick={() => handleRestartCore(selectedTarget)}
-						variant="outline"
-						w={{ base: "full", sm: "auto" }}
-					>
-						{t(isRestarting ? "core.restarting" : "core.restartCore")}
-					</Button>
-				</HStack>
-			</VStack>
+			</Box>
 			<Tabs
-				variant="enclosed"
-				colorScheme="primary"
+				variant="unstyled"
 				isLazy
 				isManual
 				index={activeTab}
@@ -2254,8 +2394,12 @@ export const CoreSettingsPage: FC = () => {
 				<TabList
 					overflowX="auto"
 					flexWrap={{ base: "wrap", md: "nowrap" }}
-					gap={{ base: 2, md: 0 }}
-					pb={{ base: 1, md: 0 }}
+					gap={2}
+					bg={tabShellBg}
+					borderWidth="1px"
+					borderColor={pageShellBorder}
+					borderRadius="md"
+					p={1.5}
 					sx={{
 						"&::-webkit-scrollbar": { display: "none" },
 						button: {
@@ -2263,11 +2407,31 @@ export const CoreSettingsPage: FC = () => {
 							fontSize: "sm",
 							minW: "max-content",
 							px: 3,
-							py: 2,
+							py: 1.5,
+							borderRadius: "md",
+							borderWidth: "1px",
+							borderColor: "transparent",
+							color: tabIdleColor,
+							fontWeight: "semibold",
+							transitionProperty: "common",
+							transitionDuration: "normal",
+							_hover: {
+								bg: tabHoverBg,
+								color: pageHintColor,
+							},
+							"&[aria-selected=true]": {
+								bg: tabActiveBg,
+								borderColor: tabActiveBorder,
+								color: tabActiveColor,
+								boxShadow: tabActiveShadow,
+							},
+							"&[aria-selected=true] svg": {
+								color: tabActiveColor,
+							},
 							"@media (min-width: 48em)": {
-								fontSize: "md",
-								px: 4,
-								py: 3,
+								fontSize: "sm",
+								px: 3,
+								py: 1.5,
 							},
 						},
 					}}
@@ -2321,407 +2485,286 @@ export const CoreSettingsPage: FC = () => {
 						</HStack>
 					</Tab>
 				</TabList>
-				<TabPanels>
-					<TabPanel>
+				<TabPanels mt={3}>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
-							<Box
-								borderWidth="1px"
-								borderColor={basicSectionBorder}
-								borderRadius="lg"
-								p={{ base: 3, md: 4 }}
-							>
-								<VStack spacing={4} align="stretch">
-									<SettingsSection
-										title={t("pages.xray.serverIPs", "Server IPs")}
+							<VStack spacing={3} align="stretch">
+								<SettingsSection
+									title={t("pages.xray.serverIPs", "Server IPs")}
+								>
+									<SettingRow label="IPv4" controlId="server-ipv4">
+										{(_controlId) => (
+											<CompactTextWithCopy
+												text={serverIPs?.ipv4 || "Loading..."}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow label="IPv6" controlId="server-ipv6">
+										{(_controlId) => (
+											<CompactTextWithCopy
+												text={serverIPs?.ipv6 || "Loading..."}
+											/>
+										)}
+									</SettingRow>
+								</SettingsSection>
+								<SettingsSection title={t("pages.xray.generalConfigs")}>
+									<SettingRow
+										label={t("pages.xray.FreedomStrategy")}
+										controlId="freedom-domain-strategy"
 									>
-										<SettingRow label="IPv4" controlId="server-ipv4">
-											{(_controlId) => (
-												<CompactTextWithCopy
-													text={serverIPs?.ipv4 || "Loading..."}
-												/>
-											)}
-										</SettingRow>
-										<SettingRow label="IPv6" controlId="server-ipv6">
-											{(_controlId) => (
-												<CompactTextWithCopy
-													text={serverIPs?.ipv6 || "Loading..."}
-												/>
-											)}
-										</SettingRow>
-									</SettingsSection>
-									<SettingsSection title={t("pages.xray.generalConfigs")}>
-										<SettingRow
-											label={t("pages.xray.FreedomStrategy")}
-											controlId="freedom-domain-strategy"
-										>
-											{(id) => (
-												<Select
-													id={id}
-													size="sm"
-													maxW="220px"
-													value={freedomDomainStrategy}
-													onChange={(event) =>
-														handleFreedomDomainStrategyChange(
-															event.target.value,
-														)
-													}
-													isDisabled={freedomOutboundIndex === -1}
-												>
-													<option value="">
-														{t("core.default", "Default")}
+										{(id) => (
+											<Select
+												id={id}
+												size="sm"
+												maxW="220px"
+												value={freedomDomainStrategy}
+												onChange={(event) =>
+													handleFreedomDomainStrategyChange(event.target.value)
+												}
+												isDisabled={freedomOutboundIndex === -1}
+											>
+												<option value="">{t("core.default", "Default")}</option>
+												{[
+													"AsIs",
+													"UseIP",
+													"UseIPv4",
+													"UseIPv6",
+													"UseIPv6v4",
+													"UseIPv4v6",
+												].map((s) => (
+													<option key={s} value={s}>
+														{s}
 													</option>
-													{[
-														"AsIs",
-														"UseIP",
-														"UseIPv4",
-														"UseIPv6",
-														"UseIPv6v4",
-														"UseIPv4v6",
-													].map((s) => (
-														<option key={s} value={s}>
-															{s}
-														</option>
-													))}
-												</Select>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.RoutingStrategy")}
-											controlId="routing-domain-strategy"
-										>
-											{(id) => (
-												<Controller
-													name="config.routing.domainStrategy"
-													control={form.control}
-													render={({ field }) => (
-														<Select {...field} id={id} size="sm" maxW="220px">
-															{["AsIs", "IPIfNonMatch", "IPOnDemand"].map(
-																(s) => (
-																	<option key={s} value={s}>
-																		{s}
-																	</option>
-																),
-															)}
-														</Select>
-													)}
-												/>
-											)}
-										</SettingRow>
-									</SettingsSection>
-									<Box
-										borderWidth="1px"
-										borderColor={warpSectionBorder}
-										borderRadius="lg"
-										bg={warpSectionBg}
-										p={{ base: 3, md: 4 }}
+												))}
+											</Select>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.RoutingStrategy")}
+										controlId="routing-domain-strategy"
 									>
-										<VStack align="stretch" spacing={3}>
-											<HStack justify="space-between" align="center">
-												<Text fontWeight="semibold">
-													{t("pages.xray.warpRouting")}
-												</Text>
-												<Button
-													variant="outline"
+										{(id) => (
+											<Controller
+												name="config.routing.domainStrategy"
+												control={form.control}
+												render={({ field }) => (
+													<Select {...field} id={id} size="sm" maxW="220px">
+														{["AsIs", "IPIfNonMatch", "IPOnDemand"].map((s) => (
+															<option key={s} value={s}>
+																{s}
+															</option>
+														))}
+													</Select>
+												)}
+											/>
+										)}
+									</SettingRow>
+								</SettingsSection>
+								<Box
+									borderWidth="1px"
+									borderColor={warpSectionBorder}
+									borderRadius="lg"
+									bg={warpSectionBg}
+									p={{ base: 3, md: 4 }}
+								>
+									<VStack align="stretch" spacing={3}>
+										<HStack justify="space-between" align="center">
+											<Text fontWeight="semibold">
+												{t("pages.xray.warpRouting")}
+											</Text>
+											<Button
+												variant="outline"
+												size="sm"
+												leftIcon={<WarpIconStyled />}
+												onClick={onWarpOpen}
+											>
+												{warpExists
+													? t("pages.xray.warp.manage", "Manage WARP")
+													: t("pages.xray.warp.create", "Create WARP")}
+											</Button>
+										</HStack>
+										<Text fontSize="sm" color={warpDomainHelper}>
+											{t("pages.xray.warpRoutingDesc")}
+										</Text>
+										<Wrap>
+											{warpDomains.length === 0 && (
+												<WrapItem>
+													<Tag colorScheme="gray" variant="subtle">
+														<TagLabel>{t("core.empty", "Empty")}</TagLabel>
+													</Tag>
+												</WrapItem>
+											)}
+											{warpDomains.map((domain) => (
+												<WrapItem key={domain}>
+													<Tag colorScheme="primary" borderRadius="full">
+														<TagLabel>{domain}</TagLabel>
+														<TagCloseButton
+															aria-label={t("core.remove")}
+															onClick={() => handleWarpDomainRemove(domain)}
+														/>
+													</Tag>
+												</WrapItem>
+											))}
+										</Wrap>
+										<HStack spacing={3} flexWrap="wrap">
+											<Select
+												placeholder={t("core.select", "Select...")}
+												size="sm"
+												maxW="240px"
+												value={warpOptionValue}
+												onChange={(event) => {
+													const { value } = event.target;
+													if (value) {
+														handleWarpDomainAdd(value);
+													}
+													setWarpOptionValue("");
+												}}
+												isDisabled={availableWarpOptions.length === 0}
+											>
+												{availableWarpOptions.map((option) => (
+													<option key={option.value} value={option.value}>
+														{option.label}
+													</option>
+												))}
+											</Select>
+											<HStack spacing={2} maxW="320px" flex="1">
+												<Input
 													size="sm"
-													leftIcon={<WarpIconStyled />}
-													onClick={onWarpOpen}
+													value={warpCustomDomain}
+													onChange={(event) =>
+														setWarpCustomDomain(event.target.value)
+													}
+													placeholder="geosite:google"
+												/>
+												<Button
+													size="sm"
+													colorScheme="primary"
+													onClick={() => {
+														handleWarpDomainAdd(warpCustomDomain);
+														setWarpCustomDomain("");
+													}}
+													isDisabled={!warpCustomDomain.trim()}
 												>
-													{warpExists
-														? t("pages.xray.warp.manage", "Manage WARP")
-														: t("pages.xray.warp.create", "Create WARP")}
+													{t("core.add")}
 												</Button>
 											</HStack>
-											<Text fontSize="sm" color={warpDomainHelper}>
-												{t("pages.xray.warpRoutingDesc")}
-											</Text>
-											<Wrap>
-												{warpDomains.length === 0 && (
-													<WrapItem>
-														<Tag colorScheme="gray" variant="subtle">
-															<TagLabel>{t("core.empty", "Empty")}</TagLabel>
-														</Tag>
-													</WrapItem>
-												)}
-												{warpDomains.map((domain) => (
-													<WrapItem key={domain}>
-														<Tag colorScheme="primary" borderRadius="full">
-															<TagLabel>{domain}</TagLabel>
-															<TagCloseButton
-																aria-label={t("core.remove")}
-																onClick={() => handleWarpDomainRemove(domain)}
-															/>
-														</Tag>
-													</WrapItem>
-												))}
-											</Wrap>
-											<HStack spacing={3} flexWrap="wrap">
-												<Select
-													placeholder={t("core.select", "Select...")}
-													size="sm"
-													maxW="240px"
-													value={warpOptionValue}
-													onChange={(event) => {
-														const { value } = event.target;
-														if (value) {
-															handleWarpDomainAdd(value);
-														}
-														setWarpOptionValue("");
-													}}
-													isDisabled={availableWarpOptions.length === 0}
-												>
-													{availableWarpOptions.map((option) => (
-														<option key={option.value} value={option.value}>
-															{option.label}
-														</option>
-													))}
-												</Select>
-												<HStack spacing={2} maxW="320px" flex="1">
-													<Input
-														size="sm"
-														value={warpCustomDomain}
-														onChange={(event) =>
-															setWarpCustomDomain(event.target.value)
-														}
-														placeholder="geosite:google"
+										</HStack>
+									</VStack>
+								</Box>
+								<SettingsSection title={t("pages.xray.statistics")}>
+									<SettingRow
+										label={t("pages.xray.statsInboundUplink")}
+										controlId="stats-inbound-uplink"
+									>
+										{(id) => (
+											<Controller
+												name="config.policy.system.statsInboundUplink"
+												control={form.control}
+												render={({ field }) => (
+													<Switch
+														id={id}
+														isChecked={!!field.value}
+														dir={isRTL ? "ltr" : undefined}
+														onChange={(e) => field.onChange(e.target.checked)}
 													/>
-													<Button
-														size="sm"
-														colorScheme="primary"
-														onClick={() => {
-															handleWarpDomainAdd(warpCustomDomain);
-															setWarpCustomDomain("");
-														}}
-														isDisabled={!warpCustomDomain.trim()}
-													>
-														{t("core.add")}
-													</Button>
-												</HStack>
-											</HStack>
-										</VStack>
-									</Box>
-									<SettingsSection title={t("pages.xray.statistics")}>
-										<SettingRow
-											label={t("pages.xray.statsInboundUplink")}
-											controlId="stats-inbound-uplink"
-										>
-											{(id) => (
-												<Controller
-													name="config.policy.system.statsInboundUplink"
-													control={form.control}
-													render={({ field }) => (
-														<Switch
-															id={id}
-															isChecked={!!field.value}
-															dir={isRTL ? "ltr" : undefined}
-															onChange={(e) => field.onChange(e.target.checked)}
-														/>
-													)}
-												/>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.statsInboundDownlink")}
-											controlId="stats-inbound-downlink"
-										>
-											{(id) => (
-												<Controller
-													name="config.policy.system.statsInboundDownlink"
-													control={form.control}
-													render={({ field }) => (
-														<Switch
-															id={id}
-															isChecked={!!field.value}
-															dir={isRTL ? "ltr" : undefined}
-															onChange={(e) => field.onChange(e.target.checked)}
-														/>
-													)}
-												/>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.statsOutboundUplink")}
-											controlId="stats-outbound-uplink"
-										>
-											{(id) => (
-												<Controller
-													name="config.policy.system.statsOutboundUplink"
-													control={form.control}
-													render={({ field }) => (
-														<Switch
-															id={id}
-															isChecked={!!field.value}
-															dir={isRTL ? "ltr" : undefined}
-															onChange={(e) => field.onChange(e.target.checked)}
-														/>
-													)}
-												/>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.statsOutboundDownlink")}
-											controlId="stats-outbound-downlink"
-										>
-											{(id) => (
-												<Controller
-													name="config.policy.system.statsOutboundDownlink"
-													control={form.control}
-													render={({ field }) => (
-														<Switch
-															id={id}
-															isChecked={!!field.value}
-															dir={isRTL ? "ltr" : undefined}
-															onChange={(e) => field.onChange(e.target.checked)}
-														/>
-													)}
-												/>
-											)}
-										</SettingRow>
-									</SettingsSection>
-									<SettingsSection title={t("pages.xray.logConfigs")}>
-										<SettingRow
-											label={t("pages.xray.logLevel")}
-											controlId="log-level"
-										>
-											{(id) => (
-												<Controller
-													name="config.log.loglevel"
-													control={form.control}
-													render={({ field }) => (
-														<Select {...field} id={id} size="sm" maxW="220px">
-															{[
-																"none",
-																"debug",
-																"info",
-																"warning",
-																"error",
-															].map((s) => (
+												)}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.statsInboundDownlink")}
+										controlId="stats-inbound-downlink"
+									>
+										{(id) => (
+											<Controller
+												name="config.policy.system.statsInboundDownlink"
+												control={form.control}
+												render={({ field }) => (
+													<Switch
+														id={id}
+														isChecked={!!field.value}
+														dir={isRTL ? "ltr" : undefined}
+														onChange={(e) => field.onChange(e.target.checked)}
+													/>
+												)}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.statsOutboundUplink")}
+										controlId="stats-outbound-uplink"
+									>
+										{(id) => (
+											<Controller
+												name="config.policy.system.statsOutboundUplink"
+												control={form.control}
+												render={({ field }) => (
+													<Switch
+														id={id}
+														isChecked={!!field.value}
+														dir={isRTL ? "ltr" : undefined}
+														onChange={(e) => field.onChange(e.target.checked)}
+													/>
+												)}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.statsOutboundDownlink")}
+										controlId="stats-outbound-downlink"
+									>
+										{(id) => (
+											<Controller
+												name="config.policy.system.statsOutboundDownlink"
+												control={form.control}
+												render={({ field }) => (
+													<Switch
+														id={id}
+														isChecked={!!field.value}
+														dir={isRTL ? "ltr" : undefined}
+														onChange={(e) => field.onChange(e.target.checked)}
+													/>
+												)}
+											/>
+										)}
+									</SettingRow>
+								</SettingsSection>
+								<SettingsSection title={t("pages.xray.logConfigs")}>
+									<SettingRow
+										label={t("pages.xray.logLevel")}
+										controlId="log-level"
+									>
+										{(id) => (
+											<Controller
+												name="config.log.loglevel"
+												control={form.control}
+												render={({ field }) => (
+													<Select {...field} id={id} size="sm" maxW="220px">
+														{["none", "debug", "info", "warning", "error"].map(
+															(s) => (
 																<option key={s} value={s}>
 																	{s}
 																</option>
-															))}
-														</Select>
-													)}
-												/>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.accessLog")}
-											controlId="access-log"
-										>
-											{(id) => (
-												<HStack spacing={2} w="full" flexWrap="wrap">
-													<Controller
-														name="config.log.access"
-														control={form.control}
-														render={({ field }) => (
-															<Select {...field} id={id} size="sm" maxW="220px">
-																<option value="">Empty</option>
-																{["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
-																	<option key={s} value={s}>
-																		{s}
-																	</option>
-																))}
-															</Select>
+															),
 														)}
-													/>
-													<Controller
-														name="config.log.accessCleanupInterval"
-														control={form.control}
-														render={({ field }) => (
-															<Select
-																id={`${id}-cleanup`}
-																size="sm"
-																maxW="220px"
-																value={
-																	field.value === undefined ||
-																	field.value === null ||
-																	field.value === ""
-																		? "0"
-																		: String(field.value)
-																}
-																onChange={(e) =>
-																	field.onChange(Number(e.target.value))
-																}
-															>
-																{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
-																	<option
-																		key={option.value}
-																		value={String(option.value)}
-																	>
-																		{t(option.labelKey, option.fallback)}
-																	</option>
-																))}
-															</Select>
-														)}
-													/>
-												</HStack>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.errorLog")}
-											controlId="error-log"
-										>
-											{(id) => (
-												<HStack spacing={2} w="full" flexWrap="wrap">
-													<Controller
-														name="config.log.error"
-														control={form.control}
-														render={({ field }) => (
-															<Select {...field} id={id} size="sm" maxW="220px">
-																<option value="">Empty</option>
-																{["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
-																	<option key={s} value={s}>
-																		{s}
-																	</option>
-																))}
-															</Select>
-														)}
-													/>
-													<Controller
-														name="config.log.errorCleanupInterval"
-														control={form.control}
-														render={({ field }) => (
-															<Select
-																id={`${id}-cleanup`}
-																size="sm"
-																maxW="220px"
-																value={
-																	field.value === undefined ||
-																	field.value === null ||
-																	field.value === ""
-																		? "0"
-																		: String(field.value)
-																}
-																onChange={(e) =>
-																	field.onChange(Number(e.target.value))
-																}
-															>
-																{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
-																	<option
-																		key={option.value}
-																		value={String(option.value)}
-																	>
-																		{t(option.labelKey, option.fallback)}
-																	</option>
-																))}
-															</Select>
-														)}
-													/>
-												</HStack>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.maskAddress")}
-											controlId="mask-address"
-										>
-											{(id) => (
+													</Select>
+												)}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.accessLog")}
+										controlId="access-log"
+									>
+										{(id) => (
+											<HStack spacing={2} w="full" flexWrap="wrap">
 												<Controller
-													name="config.log.maskAddress"
+													name="config.log.access"
 													control={form.control}
 													render={({ field }) => (
 														<Select {...field} id={id} size="sm" maxW="220px">
 															<option value="">Empty</option>
-															{["quarter", "half", "full"].map((s) => (
+															{["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
 																<option key={s} value={s}>
 																	{s}
 																</option>
@@ -2729,34 +2772,138 @@ export const CoreSettingsPage: FC = () => {
 														</Select>
 													)}
 												/>
-											)}
-										</SettingRow>
-										<SettingRow
-											label={t("pages.xray.dnsLog")}
-											controlId="dns-log"
-										>
-											{(id) => (
 												<Controller
-													name="config.log.dnsLog"
+													name="config.log.accessCleanupInterval"
 													control={form.control}
 													render={({ field }) => (
-														<Switch
-															id={id}
-															isChecked={!!field.value}
-															onChange={(e) => field.onChange(e.target.checked)}
-														/>
+														<Select
+															id={`${id}-cleanup`}
+															size="sm"
+															maxW="220px"
+															value={
+																field.value === undefined ||
+																field.value === null ||
+																field.value === ""
+																	? "0"
+																	: String(field.value)
+															}
+															onChange={(e) =>
+																field.onChange(Number(e.target.value))
+															}
+														>
+															{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
+																<option
+																	key={option.value}
+																	value={String(option.value)}
+																>
+																	{t(option.labelKey, option.fallback)}
+																</option>
+															))}
+														</Select>
 													)}
 												/>
-											)}
-										</SettingRow>
-									</SettingsSection>
-								</VStack>
-							</Box>
+											</HStack>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.errorLog")}
+										controlId="error-log"
+									>
+										{(id) => (
+											<HStack spacing={2} w="full" flexWrap="wrap">
+												<Controller
+													name="config.log.error"
+													control={form.control}
+													render={({ field }) => (
+														<Select {...field} id={id} size="sm" maxW="220px">
+															<option value="">Empty</option>
+															{["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
+																<option key={s} value={s}>
+																	{s}
+																</option>
+															))}
+														</Select>
+													)}
+												/>
+												<Controller
+													name="config.log.errorCleanupInterval"
+													control={form.control}
+													render={({ field }) => (
+														<Select
+															id={`${id}-cleanup`}
+															size="sm"
+															maxW="220px"
+															value={
+																field.value === undefined ||
+																field.value === null ||
+																field.value === ""
+																	? "0"
+																	: String(field.value)
+															}
+															onChange={(e) =>
+																field.onChange(Number(e.target.value))
+															}
+														>
+															{LOG_CLEANUP_INTERVAL_OPTIONS.map((option) => (
+																<option
+																	key={option.value}
+																	value={String(option.value)}
+																>
+																	{t(option.labelKey, option.fallback)}
+																</option>
+															))}
+														</Select>
+													)}
+												/>
+											</HStack>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.maskAddress")}
+										controlId="mask-address"
+									>
+										{(id) => (
+											<Controller
+												name="config.log.maskAddress"
+												control={form.control}
+												render={({ field }) => (
+													<Select {...field} id={id} size="sm" maxW="220px">
+														<option value="">Empty</option>
+														{["quarter", "half", "full"].map((s) => (
+															<option key={s} value={s}>
+																{s}
+															</option>
+														))}
+													</Select>
+												)}
+											/>
+										)}
+									</SettingRow>
+									<SettingRow
+										label={t("pages.xray.dnsLog")}
+										controlId="dns-log"
+									>
+										{(id) => (
+											<Controller
+												name="config.log.dnsLog"
+												control={form.control}
+												render={({ field }) => (
+													<Switch
+														id={id}
+														isChecked={!!field.value}
+														onChange={(e) => field.onChange(e.target.checked)}
+													/>
+												)}
+											/>
+										)}
+									</SettingRow>
+								</SettingsSection>
+							</VStack>
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
-							<HStack align="center" gap={2} flexWrap="wrap">
+							<XrayActionBar>
 								<Button
 									leftIcon={<AddIconStyled />}
 									{...compactActionButtonProps}
@@ -2772,7 +2919,7 @@ export const CoreSettingsPage: FC = () => {
 									value={routingRuleSearch}
 									onChange={(e) => setRoutingRuleSearch(e.target.value)}
 								/>
-							</HStack>
+							</XrayActionBar>
 							<TableCard>
 								<TableGrid minW="1100px">
 									<Thead>
@@ -2788,7 +2935,6 @@ export const CoreSettingsPage: FC = () => {
 											<Th colSpan={2}>{t("pages.xray.rules.inboundGroup")}</Th>
 											<Th rowSpan={2}>{t("pages.xray.rules.outbound")}</Th>
 											<Th rowSpan={2}>{t("pages.xray.rules.balancer")}</Th>
-											<Th rowSpan={2}>{t("actions")}</Th>
 										</Tr>
 										<Tr>
 											<Th>{t("IP")}</Th>
@@ -2806,7 +2952,7 @@ export const CoreSettingsPage: FC = () => {
 									<Tbody>
 										{filteredRoutingRules.length === 0 && (
 											<Tr>
-												<Td colSpan={14}>
+												<Td colSpan={13}>
 													<Text textAlign="center" color="gray.500">
 														{t("pages.xray.rules.empty")}
 													</Text>
@@ -2817,45 +2963,50 @@ export const CoreSettingsPage: FC = () => {
 											({ rule, originalIndex }, _index) => (
 												<Tr key={rule.key}>
 													<Td>
-														<VStack align="flex-start" spacing={1}>
-															<Text fontWeight="semibold">
-																{originalIndex + 1}
-															</Text>
-															<HStack spacing={1}>
-																<IconButton
-																	aria-label="move up"
-																	icon={<ArrowUpIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	isDisabled={
+														<RowActionMenu
+															index={originalIndex}
+															actions={[
+																{
+																	label: t("pages.xray.rules.up", "Move up"),
+																	icon: <ArrowUpIconStyled />,
+																	isDisabled:
 																		routingRuleSearch.trim().length > 0 ||
-																		originalIndex === 0
-																	}
-																	onClick={() =>
+																		originalIndex === 0,
+																	onClick: () =>
 																		replaceRule(
 																			originalIndex,
 																			originalIndex - 1,
-																		)
-																	}
-																/>
-																<IconButton
-																	aria-label="move down"
-																	icon={<ArrowDownIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	isDisabled={
+																		),
+																},
+																{
+																	label: t(
+																		"pages.xray.rules.down",
+																		"Move down",
+																	),
+																	icon: <ArrowDownIconStyled />,
+																	isDisabled:
 																		routingRuleSearch.trim().length > 0 ||
-																		originalIndex === routingRuleData.length - 1
-																	}
-																	onClick={() =>
+																		originalIndex ===
+																			routingRuleData.length - 1,
+																	onClick: () =>
 																		replaceRule(
 																			originalIndex,
 																			originalIndex + 1,
-																		)
-																	}
-																/>
-															</HStack>
-														</VStack>
+																		),
+																},
+																{
+																	label: t("edit"),
+																	icon: <EditIconStyled />,
+																	onClick: () => editRule(originalIndex),
+																},
+																{
+																	label: t("delete"),
+																	icon: <DeleteIconStyled />,
+																	colorScheme: "red",
+																	onClick: () => deleteRule(originalIndex),
+																},
+															]}
+														/>
 													</Td>
 													<Td>{renderChipList(rule.source, "blue")}</Td>
 													<Td>{renderTextValue(rule.sourcePort)}</Td>
@@ -2869,25 +3020,6 @@ export const CoreSettingsPage: FC = () => {
 													<Td>{renderChipList(rule.user, "cyan")}</Td>
 													<Td>{renderTextValue(rule.outboundTag)}</Td>
 													<Td>{renderTextValue(rule.balancerTag)}</Td>
-													<Td>
-														<HStack spacing={1}>
-															<IconButton
-																aria-label="edit"
-																icon={<EditIconStyled />}
-																size="xs"
-																variant="ghost"
-																onClick={() => editRule(originalIndex)}
-															/>
-															<IconButton
-																aria-label="delete"
-																icon={<DeleteIconStyled />}
-																size="xs"
-																variant="ghost"
-																colorScheme="red"
-																onClick={() => deleteRule(originalIndex)}
-															/>
-														</HStack>
-													</Td>
 												</Tr>
 											),
 										)}
@@ -2896,9 +3028,9 @@ export const CoreSettingsPage: FC = () => {
 							</TableCard>
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
-							<HStack align="center" gap={2} flexWrap="wrap">
+							<XrayActionBar>
 								<Button
 									leftIcon={<AddIconStyled />}
 									{...compactActionButtonProps}
@@ -2946,7 +3078,7 @@ export const CoreSettingsPage: FC = () => {
 									value={outboundSearch}
 									onChange={(e) => setOutboundSearch(e.target.value)}
 								/>
-							</HStack>
+							</XrayActionBar>
 							<TableCard>
 								<TableGrid minW="880px">
 									<Thead>
@@ -2976,52 +3108,57 @@ export const CoreSettingsPage: FC = () => {
 											({ outbound, originalIndex }, _index) => (
 												<Tr key={outbound.key}>
 													<Td>
-														<HStack>
-															<Text>{originalIndex + 1}</Text>
-															<IconButton
-																aria-label={t(
-																	"pages.xray.outbound.moveUp",
-																	"Move up",
-																)}
-																icon={<ArrowUpIconStyled />}
-																size="xs"
-																variant="ghost"
-																isDisabled={
-																	outboundSearch.trim().length > 0 ||
-																	originalIndex === 0
-																}
-																onClick={() => moveOutboundUp(originalIndex)}
-															/>
-															<IconButton
-																aria-label={t(
-																	"pages.xray.outbound.moveDown",
-																	"Move down",
-																)}
-																icon={<ArrowDownIconStyled />}
-																size="xs"
-																variant="ghost"
-																isDisabled={
-																	outboundSearch.trim().length > 0 ||
-																	originalIndex === outboundData.length - 1
-																}
-																onClick={() => moveOutboundDown(originalIndex)}
-															/>
-															<IconButton
-																aria-label="edit"
-																icon={<EditIconStyled />}
-																size="xs"
-																variant="ghost"
-																onClick={() => editOutbound(originalIndex)}
-															/>
-															<IconButton
-																aria-label="delete"
-																icon={<DeleteIconStyled />}
-																size="xs"
-																variant="ghost"
-																colorScheme="red"
-																onClick={() => deleteOutbound(originalIndex)}
-															/>
-														</HStack>
+														<RowActionMenu
+															index={originalIndex}
+															actions={[
+																{
+																	label: t(
+																		"pages.xray.outbound.moveUp",
+																		"Move up",
+																	),
+																	icon: <ArrowUpIconStyled />,
+																	isDisabled:
+																		outboundSearch.trim().length > 0 ||
+																		originalIndex === 0,
+																	onClick: () => moveOutboundUp(originalIndex),
+																},
+																{
+																	label: t(
+																		"pages.xray.outbound.moveDown",
+																		"Move down",
+																	),
+																	icon: <ArrowDownIconStyled />,
+																	isDisabled:
+																		outboundSearch.trim().length > 0 ||
+																		originalIndex === outboundData.length - 1,
+																	onClick: () =>
+																		moveOutboundDown(originalIndex),
+																},
+																{
+																	label: t("edit"),
+																	icon: <EditIconStyled />,
+																	onClick: () => editOutbound(originalIndex),
+																},
+																{
+																	label: t(
+																		"pages.inbounds.resetTraffic",
+																		"Reset traffic",
+																	),
+																	icon: <ReloadIconStyled />,
+																	onClick: () =>
+																		_resetOutboundTraffic(
+																			originalIndex,
+																			"target",
+																		),
+																},
+																{
+																	label: t("delete"),
+																	icon: <DeleteIconStyled />,
+																	colorScheme: "red",
+																	onClick: () => deleteOutbound(originalIndex),
+																},
+															]}
+														/>
 													</Td>
 													<Td>{outbound.tag}</Td>
 													<Td>
@@ -3082,28 +3219,28 @@ export const CoreSettingsPage: FC = () => {
 															{outboundTestStates[originalIndex]?.result ? (
 																outboundTestStates[originalIndex].result
 																	.success ? (
-																		<Tag colorScheme="green">
-																			{`${outboundTestStates[originalIndex].result.delay ?? 0}ms`}
-																			{outboundTestStates[originalIndex]
-																				.result.statusCode
-																				? ` (${outboundTestStates[originalIndex].result.statusCode})`
-																				: ""}
+																	<Tag colorScheme="green">
+																		{`${outboundTestStates[originalIndex].result.delay ?? 0}ms`}
+																		{outboundTestStates[originalIndex].result
+																			.statusCode
+																			? ` (${outboundTestStates[originalIndex].result.statusCode})`
+																			: ""}
+																	</Tag>
+																) : (
+																	<Tooltip
+																		label={
+																			outboundTestStates[originalIndex].result
+																				.error || "-"
+																		}
+																	>
+																		<Tag colorScheme="red">
+																			{t(
+																				"pages.xray.outbound.testFailedBadge",
+																				"Failed",
+																			)}
 																		</Tag>
-																	) : (
-																		<Tooltip
-																			label={
-																				outboundTestStates[originalIndex]
-																					.result.error || "-"
-																			}
-																		>
-																			<Tag colorScheme="red">
-																				{t(
-																					"pages.xray.outbound.testFailedBadge",
-																					"Failed",
-																				)}
-																			</Tag>
-																		</Tooltip>
-																	)
+																	</Tooltip>
+																)
 															) : (
 																<Text fontSize="xs" color="gray.500">
 																	-
@@ -3119,17 +3256,19 @@ export const CoreSettingsPage: FC = () => {
 							</TableCard>
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
 							{reverseData.length > 0 ? (
 								<VStack spacing={3} align="stretch">
-									<Button
-										leftIcon={<AddIconStyled />}
-										{...compactActionButtonProps}
-										onClick={addReverse}
-									>
-										{t("pages.xray.reverse.add", "Add Reverse")}
-									</Button>
+									<XrayActionBar>
+										<Button
+											leftIcon={<AddIconStyled />}
+											{...compactActionButtonProps}
+											onClick={addReverse}
+										>
+											{t("pages.xray.reverse.add", "Add Reverse")}
+										</Button>
+									</XrayActionBar>
 									<TableCard>
 										<TableGrid minW="760px">
 											<Thead>
@@ -3153,29 +3292,29 @@ export const CoreSettingsPage: FC = () => {
 													return (
 														<Tr key={reverse.key}>
 															<Td>
-																<HStack>
-																	<Text>{index + 1}</Text>
-																	<IconButton
-																		aria-label="edit"
-																		icon={<EditIconStyled />}
-																		size="xs"
-																		variant="ghost"
-																		onClick={() => editReverse(index)}
-																	/>
-																	<IconButton
-																		aria-label="delete"
-																		icon={<DeleteIconStyled />}
-																		size="xs"
-																		variant="ghost"
-																		colorScheme="red"
-																		onClick={() => deleteReverse(index)}
-																	/>
-																</HStack>
+																<RowActionMenu
+																	index={index}
+																	actions={[
+																		{
+																			label: t("edit"),
+																			icon: <EditIconStyled />,
+																			onClick: () => editReverse(index),
+																		},
+																		{
+																			label: t("delete"),
+																			icon: <DeleteIconStyled />,
+																			colorScheme: "red",
+																			onClick: () => deleteReverse(index),
+																		},
+																	]}
+																/>
 															</Td>
 															<Td>
 																<Tag
 																	colorScheme={
-																		reverse.type === "bridge" ? "blue" : "purple"
+																		reverse.type === "bridge"
+																			? "blue"
+																			: "purple"
 																	}
 																>
 																	{reverse.type === "bridge"
@@ -3216,10 +3355,7 @@ export const CoreSettingsPage: FC = () => {
 									textAlign="center"
 								>
 									<Text color="gray.500" mb={3}>
-										{t(
-											"pages.xray.reverse.empty",
-											"No added reverse proxies.",
-										)}
+										{t("pages.xray.reverse.empty", "No added reverse proxies.")}
 									</Text>
 									<Button
 										leftIcon={<AddIconStyled />}
@@ -3232,17 +3368,19 @@ export const CoreSettingsPage: FC = () => {
 							)}
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
 							{balancersData.length > 0 ? (
 								<VStack spacing={3} align="stretch">
-									<Button
-										leftIcon={<AddIconStyled />}
-										{...compactActionButtonProps}
-										onClick={addBalancer}
-									>
-										{t("pages.xray.balancer.addBalancer")}
-									</Button>
+									<XrayActionBar>
+										<Button
+											leftIcon={<AddIconStyled />}
+											{...compactActionButtonProps}
+											onClick={addBalancer}
+										>
+											{t("pages.xray.balancer.addBalancer")}
+										</Button>
+									</XrayActionBar>
 									<TableCard>
 										<TableGrid minW="680px">
 											<Thead>
@@ -3257,24 +3395,22 @@ export const CoreSettingsPage: FC = () => {
 												{balancersData.map((balancer, index) => (
 													<Tr key={balancer.key}>
 														<Td>
-															<HStack>
-																<Text>{index + 1}</Text>
-																<IconButton
-																	aria-label="edit"
-																	icon={<EditIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	onClick={() => editBalancer(index)}
-																/>
-																<IconButton
-																	aria-label="delete"
-																	icon={<DeleteIconStyled />}
-																	size="xs"
-																	variant="ghost"
-																	colorScheme="red"
-																	onClick={() => deleteBalancer(index)}
-																/>
-															</HStack>
+															<RowActionMenu
+																index={index}
+																actions={[
+																	{
+																		label: t("edit"),
+																		icon: <EditIconStyled />,
+																		onClick: () => editBalancer(index),
+																	},
+																	{
+																		label: t("delete"),
+																		icon: <DeleteIconStyled />,
+																		colorScheme: "red",
+																		onClick: () => deleteBalancer(index),
+																	},
+																]}
+															/>
 														</Td>
 														<Td>{balancer.tag}</Td>
 														<Td>
@@ -3362,7 +3498,7 @@ export const CoreSettingsPage: FC = () => {
 							)}
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
 							<SettingsSection title={t("pages.xray.generalConfigs")}>
 								<SettingRow
@@ -3596,13 +3732,22 @@ export const CoreSettingsPage: FC = () => {
 								<SectionCard title={t("DNS")}>
 									{dnsServers.length > 0 ? (
 										<VStack align="stretch" spacing={3}>
-											<Button
-												leftIcon={<AddIconStyled />}
-												{...compactActionButtonProps}
-												onClick={addDnsServer}
-											>
-												{t("pages.xray.dns.add")}
-											</Button>
+											<XrayActionBar>
+												<Button
+													leftIcon={<AddIconStyled />}
+													{...compactActionButtonProps}
+													onClick={addDnsServer}
+												>
+													{t("pages.xray.dns.add")}
+												</Button>
+												<Button
+													size="xs"
+													variant="outline"
+													onClick={onDnsPresetsOpen}
+												>
+													{t("pages.xray.dns.presets")}
+												</Button>
+											</XrayActionBar>
 											<TableCard>
 												<TableGrid minW="720px">
 													<Thead>
@@ -3617,24 +3762,22 @@ export const CoreSettingsPage: FC = () => {
 														{dnsServers.map((dns, index) => (
 															<Tr key={dns.address ?? JSON.stringify(dns)}>
 																<Td>
-																	<HStack>
-																		<Text>{index + 1}</Text>
-																		<IconButton
-																			aria-label="edit"
-																			icon={<EditIconStyled />}
-																			size="xs"
-																			variant="ghost"
-																			onClick={() => editDnsServer(index)}
-																		/>
-																		<IconButton
-																			aria-label="delete"
-																			icon={<DeleteIconStyled />}
-																			size="xs"
-																			variant="ghost"
-																			colorScheme="red"
-																			onClick={() => deleteDnsServer(index)}
-																		/>
-																	</HStack>
+																	<RowActionMenu
+																		index={index}
+																		actions={[
+																			{
+																				label: t("edit"),
+																				icon: <EditIconStyled />,
+																				onClick: () => editDnsServer(index),
+																			},
+																			{
+																				label: t("delete"),
+																				icon: <DeleteIconStyled />,
+																				colorScheme: "red",
+																				onClick: () => deleteDnsServer(index),
+																			},
+																		]}
+																	/>
 																</Td>
 																<Td>
 																	{typeof dns === "object" ? dns.address : dns}
@@ -3692,13 +3835,15 @@ export const CoreSettingsPage: FC = () => {
 								<SectionCard title={t("pages.xray.fakedns.title", "Fake DNS")}>
 									{fakeDns.length > 0 ? (
 										<VStack align="stretch" spacing={3}>
-											<Button
-												leftIcon={<AddIconStyled />}
-												{...compactActionButtonProps}
-												onClick={addFakeDns}
-											>
-												{t("pages.xray.fakedns.add")}
-											</Button>
+											<XrayActionBar>
+												<Button
+													leftIcon={<AddIconStyled />}
+													{...compactActionButtonProps}
+													onClick={addFakeDns}
+												>
+													{t("pages.xray.fakedns.add")}
+												</Button>
+											</XrayActionBar>
 											<TableCard>
 												<TableGrid minW="520px">
 													<Thead>
@@ -3712,24 +3857,22 @@ export const CoreSettingsPage: FC = () => {
 														{fakeDns.map((fake, index) => (
 															<Tr key={fake.ipPool ?? JSON.stringify(fake)}>
 																<Td>
-																	<HStack>
-																		<Text>{index + 1}</Text>
-																		<IconButton
-																			aria-label="edit"
-																			icon={<EditIconStyled />}
-																			size="xs"
-																			variant="ghost"
-																			onClick={() => editFakeDns(index)}
-																		/>
-																		<IconButton
-																			aria-label="delete"
-																			icon={<DeleteIconStyled />}
-																			size="xs"
-																			variant="ghost"
-																			colorScheme="red"
-																			onClick={() => deleteFakeDns(index)}
-																		/>
-																	</HStack>
+																	<RowActionMenu
+																		index={index}
+																		actions={[
+																			{
+																				label: t("edit"),
+																				icon: <EditIconStyled />,
+																				onClick: () => editFakeDns(index),
+																			},
+																			{
+																				label: t("delete"),
+																				icon: <DeleteIconStyled />,
+																				colorScheme: "red",
+																				onClick: () => deleteFakeDns(index),
+																			},
+																		]}
+																	/>
 																</Td>
 																<Td>{fake.ipPool}</Td>
 																<Td>{fake.poolSize}</Td>
@@ -3765,7 +3908,7 @@ export const CoreSettingsPage: FC = () => {
 							)}
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
 							<Box px={2}>
 								<Text fontWeight="semibold">{t("pages.xray.Template")}</Text>
@@ -3855,7 +3998,7 @@ export const CoreSettingsPage: FC = () => {
 							</Box>
 						</VStack>
 					</TabPanel>
-					<TabPanel>
+					<TabPanel p={0}>
 						<Box>
 							<XrayLogsPage showTitle={false} />
 						</Box>
