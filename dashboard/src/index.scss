@@ -32,6 +32,73 @@ html, body, #root {
   font-family: var(--rb-font-stack);
 }
 
+* {
+  min-width: 0;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 768px) {
+  body {
+    overscroll-behavior: none;
+  }
+
+  .chakra-modal__content {
+    max-width: 100vw !important;
+  }
+
+  .chakra-modal__body,
+  .chakra-drawer__body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chakra-modal__footer {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chakra-modal__footer .chakra-button,
+  .chakra-modal__footer .chakra-icon__button,
+  .chakra-modal__footer button,
+  .chakra-drawer__body .chakra-button,
+  .chakra-drawer__body button {
+    min-height: 40px;
+  }
+
+  .chakra-popover__popper,
+  .chakra-menu__menu-list {
+    max-width: calc(100vw - 16px);
+  }
+
+  .chakra-tabs__tablist {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .chakra-tabs__tablist::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chakra-table__container,
+  .chakra-table {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Full RTL Support for Persian/Farsi Language */
 /* When dir="rtl" is set, the entire layout becomes right-to-left */
 [dir="rtl"] {

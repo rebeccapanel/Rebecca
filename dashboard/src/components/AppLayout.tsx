@@ -961,7 +961,7 @@ export function AppLayout() {
 					<Box
 						as="main"
 						flex="1"
-						p="6"
+						p={{ base: 3, md: 6 }}
 						pb={{ base: "28", md: "6" }}
 						overflow="auto"
 						minH="0"
