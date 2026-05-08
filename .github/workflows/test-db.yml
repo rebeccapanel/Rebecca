@@ -4,9 +4,15 @@ on:
   push:
     paths:
       - "**.py"
+      - "go/**"
+      - "scripts/build_go_bridge.sh"
+      - ".github/workflows/test-db.yml"
   pull_request:
     paths:
       - "**.py"
+      - "go/**"
+      - "scripts/build_go_bridge.sh"
+      - ".github/workflows/test-db.yml"
 
 jobs:
   test-databases:
@@ -58,6 +64,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go/go.mod"
 
       - name: Set DATABASE_URL
         run: |
@@ -83,6 +92,9 @@ jobs:
       - name: Verify pytest is installed
         run: |
           python -m pytest --version
+
+      - name: Build Go usage bridge
+        run: bash scripts/build_go_bridge.sh
 
       - name: Verify database connection
         run: |
