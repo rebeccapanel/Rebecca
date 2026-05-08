@@ -33,6 +33,68 @@ func (s Service) AdminsUsage(ctx context.Context, req UsageRequest) ([]UsageRow,
 	return s.repo.AdminsUsage(ctx, req.Admins, start, end)
 }
 
+func (s Service) AdminUsageByDay(ctx context.Context, req UsageRequest) ([]DateUsageRow, error) {
+	if req.AdminID <= 0 {
+		return nil, fmt.Errorf("admin_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.AdminUsageByDay(ctx, req.AdminID, req.NodeID, normalizeGranularity(req.Granularity), start, end)
+}
+
+func (s Service) AdminUsageByNodes(ctx context.Context, req UsageRequest) ([]NodeTrafficRow, error) {
+	if req.AdminID <= 0 {
+		return nil, fmt.Errorf("admin_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.AdminUsageByNodes(ctx, req.AdminID, start, end)
+}
+
+func (s Service) ServiceUsageTimeseries(ctx context.Context, req UsageRequest) ([]TimeseriesRow, error) {
+	if req.ServiceID <= 0 {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ServiceUsageTimeseries(ctx, req.ServiceID, normalizeGranularity(req.Granularity), start, end)
+}
+
+func (s Service) ServiceAdminUsage(ctx context.Context, req UsageRequest) ([]ServiceAdminUsageRow, error) {
+	if req.ServiceID <= 0 {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ServiceAdminUsage(ctx, req.ServiceID, start, end)
+}
+
+func (s Service) ServiceAdminUsageTimeseries(ctx context.Context, req UsageRequest) ([]TimeseriesRow, error) {
+	if req.ServiceID <= 0 {
+		return nil, fmt.Errorf("service_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ServiceAdminUsageTimeseries(ctx, req.ServiceID, req.AdminID, normalizeGranularity(req.Granularity), start, end)
+}
+
+func normalizeGranularity(value string) string {
+	if value == "hour" {
+		return "hour"
+	}
+	return "day"
+}
+
 func parseRange(req UsageRequest) (time.Time, time.Time, error) {
 	start, err := parseTime(req.Start)
 	if err != nil {

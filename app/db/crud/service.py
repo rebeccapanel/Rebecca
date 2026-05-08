@@ -2,33 +2,18 @@
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
 
-import logging
-from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union, Literal
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.models import (
     Admin,
-    NodeUserUsage,
     ProxyTypes,
     Service,
     User,
 )
 from app.models.service import ServiceCreate, ServiceHostAssignment, ServiceModify
 
-# MasterSettingsService not available in current project structure
 from .other import ServiceRepository
-
-# Imported inside functions to avoid circular import
-# from .usage import _get_usage_data, _get_usage_timeseries
-MASTER_NODE_NAME = "Master"
-
-_USER_STATUS_ENUM_ENSURED = False
-
-_logger = logging.getLogger(__name__)
-_RECORD_CHANGED_ERRNO = 1020
-ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted"
 
 # ============================================================================
 
@@ -126,83 +111,3 @@ def reset_service_usage(db: Session, service: Service) -> Service:
     return _service_repo(db).reset_usage(service)
 
 
-def get_service_usage_timeseries(
-    db: Session,
-    service: Service,
-    start: datetime,
-    end: datetime,
-    granularity: str = "day",
-) -> List[Dict[str, Union[datetime, int]]]:
-    from .usage import _get_usage_data
-
-    return _get_usage_data(
-        db=db,
-        entity_type="service",
-        service=service,
-        start=start,
-        end=end,
-        granularity=granularity,
-        format="timeseries",
-    )
-
-
-def get_service_admin_usage_timeseries(
-    db: Session,
-    service: Service,
-    admin_id: Optional[int],
-    start: datetime,
-    end: datetime,
-    granularity: str = "day",
-) -> List[Dict[str, Union[datetime, int]]]:
-    # Note: admin_id filter needs special handling
-    query = (
-        db.query(NodeUserUsage)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .filter(User.service_id == service.id, NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end)
-    )
-    if admin_id is None:
-        query = query.filter(User.admin_id.is_(None))
-    else:
-        query = query.filter(User.admin_id == admin_id)
-
-    start_aware = start.astimezone(timezone.utc) if start.tzinfo else start.replace(tzinfo=timezone.utc)
-    end_aware = end.astimezone(timezone.utc) if end.tzinfo else end.replace(tzinfo=timezone.utc)
-    tzinfo = start_aware.tzinfo or timezone.utc
-
-    from .usage import _get_usage_timeseries
-
-    return _get_usage_timeseries(db, query, start_aware, end_aware, tzinfo, granularity, {}, False)
-
-
-def get_service_admin_usage(
-    db: Session,
-    service: Service,
-    start: datetime,
-    end: datetime,
-) -> List[Dict[str, Union[int, None, str]]]:
-    # This returns admin-level aggregation, needs special handling
-    usage_rows = (
-        db.query(
-            Admin.id.label("admin_id"),
-            Admin.username.label("username"),
-            func.coalesce(func.sum(NodeUserUsage.used_traffic), 0).label("used_traffic"),
-        )
-        .select_from(NodeUserUsage)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .outerjoin(Admin, Admin.id == User.admin_id)
-        .filter(
-            User.service_id == service.id,
-            NodeUserUsage.created_at >= start,
-            NodeUserUsage.created_at <= end,
-        )
-        .group_by(Admin.id, Admin.username)
-        .all()
-    )
-    return [
-        {
-            "admin_id": row.admin_id,
-            "username": row.username or "No Admin",
-            "used_traffic": int(row.used_traffic or 0),
-        }
-        for row in usage_rows
-    ]

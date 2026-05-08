@@ -41,6 +41,16 @@ func Call(input []byte) []byte {
 		return handleUsageUser(ctx, pool, req.Payload)
 	case "usage.admins":
 		return handleUsageAdmins(ctx, pool, req.Payload)
+	case "usage.admin.by_day":
+		return handleUsageAdminByDay(ctx, pool, req.Payload)
+	case "usage.admin.by_nodes":
+		return handleUsageAdminByNodes(ctx, pool, req.Payload)
+	case "usage.service.timeseries":
+		return handleUsageServiceTimeseries(ctx, pool, req.Payload)
+	case "usage.service.admins":
+		return handleUsageServiceAdmins(ctx, pool, req.Payload)
+	case "usage.service.admin_timeseries":
+		return handleUsageServiceAdminTimeseries(ctx, pool, req.Payload)
 	default:
 		return encodeError(fmt.Errorf("unknown action: %s", req.Action))
 	}
@@ -66,6 +76,71 @@ func handleUsageAdmins(ctx context.Context, pool db.Pool, payload json.RawMessag
 	}
 	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
 	rows, err := service.AdminsUsage(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(rows)
+}
+
+func handleUsageAdminByDay(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req usage.UsageRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
+	rows, err := service.AdminUsageByDay(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(rows)
+}
+
+func handleUsageAdminByNodes(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req usage.UsageRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
+	rows, err := service.AdminUsageByNodes(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(rows)
+}
+
+func handleUsageServiceTimeseries(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req usage.UsageRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
+	rows, err := service.ServiceUsageTimeseries(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(rows)
+}
+
+func handleUsageServiceAdmins(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req usage.UsageRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
+	rows, err := service.ServiceAdminUsage(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(rows)
+}
+
+func handleUsageServiceAdminTimeseries(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req usage.UsageRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	service := usage.NewService(usage.NewRepository(pool.DB, pool.Dialect))
+	rows, err := service.ServiceAdminUsageTimeseries(ctx, req)
 	if err != nil {
 		return encodeError(err)
 	}

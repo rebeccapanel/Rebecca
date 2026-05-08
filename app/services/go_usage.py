@@ -115,3 +115,80 @@ def get_users_usage(admins: list[str] | None, start: datetime, end: datetime) ->
             "end": _dt(end),
         },
     )
+
+
+def get_admin_usage_by_day(
+    admin_id: int,
+    start: datetime,
+    end: datetime,
+    *,
+    node_id: int | None = None,
+    granularity: str = "day",
+) -> list[dict[str, Any]]:
+    payload: dict[str, Any] = {
+        "admin_id": int(admin_id),
+        "start": _dt(start),
+        "end": _dt(end),
+        "granularity": granularity,
+    }
+    if node_id is not None:
+        payload["node_id"] = int(node_id)
+    return _call("usage.admin.by_day", payload)
+
+
+def get_admin_usage_by_nodes(admin_id: int, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    return _call(
+        "usage.admin.by_nodes",
+        {
+            "admin_id": int(admin_id),
+            "start": _dt(start),
+            "end": _dt(end),
+        },
+    )
+
+
+def get_service_usage_timeseries(
+    service_id: int,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> list[dict[str, Any]]:
+    return _call(
+        "usage.service.timeseries",
+        {
+            "service_id": int(service_id),
+            "start": _dt(start),
+            "end": _dt(end),
+            "granularity": granularity,
+        },
+    )
+
+
+def get_service_admin_usage(service_id: int, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    return _call(
+        "usage.service.admins",
+        {
+            "service_id": int(service_id),
+            "start": _dt(start),
+            "end": _dt(end),
+        },
+    )
+
+
+def get_service_admin_usage_timeseries(
+    service_id: int,
+    admin_id: int | None,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> list[dict[str, Any]]:
+    return _call(
+        "usage.service.admin_timeseries",
+        {
+            "service_id": int(service_id),
+            "admin_id": 0 if admin_id is None else int(admin_id),
+            "start": _dt(start),
+            "end": _dt(end),
+            "granularity": granularity,
+        },
+    )

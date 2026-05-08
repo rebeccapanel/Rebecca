@@ -421,22 +421,6 @@ def get_user_usage_by_nodes(
     return sorted(node_lookup.values(), key=lambda e: (e["node_id"] is not None, e["node_id"] or -1))
 
 
-def get_user_usages(db: Session, dbuser: User, start: datetime, end: datetime) -> List[UserUsageResponse]:
-    """
-    Retrieves user usages within a specified date range.
-
-    Args:
-        db (Session): Database session.
-        dbuser (User): The user object.
-        start (datetime): Start date for usage retrieval.
-        end (datetime): End date for usage retrieval.
-
-    Returns:
-        List[UserUsageResponse]: List of user usage responses.
-    """
-    return _get_usage_data(db=db, entity_type="user", entity_id=dbuser.id, start=start, end=end, format="aggregated")
-
-
 def reset_user_data_usage(db: Session, dbuser: User) -> User:
     """
     Resets the data usage of a user and logs the reset.
@@ -537,26 +521,6 @@ def reset_all_users_data_usage(db: Session, admin: Optional[Admin] = None):
         db.add(dbuser)
 
     db.commit()
-
-
-def get_all_users_usages(db: Session, admin: Admin, start: datetime, end: datetime) -> List[UserUsageResponse]:
-    """
-    Retrieves usage data for all users associated with an admin within a specified time range.
-
-    This function calculates the total traffic used by users across different nodes,
-    including a "Master" node that represents the main core.
-
-    Args:
-        db (Session): Database session for querying.
-        admin (Admin): The admin user for which to retrieve user usage data.
-        start (datetime): The start date and time of the period to consider.
-        end (datetime): The end date and time of the period to consider.
-
-    Returns:
-        List[UserUsageResponse]: A list of UserUsageResponse objects, each representing
-        the usage data for a specific node or the main core.
-    """
-    return _get_usage_data(db=db, entity_type="admin", admin=admin, start=start, end=end, format="aggregated")
 
 
 def reset_admin_usage(db: Session, dbadmin: Admin) -> int:
@@ -699,55 +663,6 @@ def reset_node_usage(db: Session, dbnode: Node) -> Node:
     return dbnode
 
 
-def get_admin_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[UserUsageResponse]:
-    """
-    Retrieves total usage for all users under a specific admin within a date range.
-    Returns data grouped by node.
-    """
-    return _get_usage_data(db=db, entity_type="admin", admin=dbadmin, start=start, end=end, format="aggregated")
-
-
-def get_admin_daily_usages(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[dict]:
-    """
-    Retrieves daily usage for all users under a specific admin, aggregated over all nodes.
-    Returns a list of dictionaries with date and total used_traffic.
-    """
-    return _get_usage_data(
-        db=db, entity_type="admin", admin=dbadmin, start=start, end=end, granularity="day", format="by_day"
-    )
-
-
-def get_admin_usages_by_day(
-    db: Session,
-    dbadmin: Admin,
-    start: datetime,
-    end: datetime,
-    node_id: Optional[int] = None,
-    granularity: str = "day",
-) -> List[dict]:
-    """
-    Retrieves usage for all users under a specific admin, optionally filtered by node_id.
-    Supports daily (default) or hourly granularity.
-    """
-    query = (
-        db.query(NodeUserUsage)
-        .join(User, User.id == NodeUserUsage.user_id)
-        .filter(
-            User.admin_id == dbadmin.id,
-            User.status != UserStatus.deleted,
-            NodeUserUsage.created_at >= start,
-            NodeUserUsage.created_at <= end,
-        )
-    )
-    if node_id is not None:
-        if node_id == 0:
-            query = query.filter(NodeUserUsage.node_id.is_(None))
-        else:
-            query = query.filter(NodeUserUsage.node_id == node_id)
-
-    return _get_usage_by_day(query, start, end, granularity)
-
-
 def get_node_usage_by_day(
     db: Session,
     node_id: int,
@@ -764,29 +679,3 @@ def get_node_usage_by_day(
     )
 
 
-def get_admin_usage_by_nodes(db: Session, dbadmin: Admin, start: datetime, end: datetime) -> List[dict]:
-    """
-    Retrieves uplink and downlink usage for all users under a specific admin within a date range,
-    grouped by node. Returns a list of dictionaries with node_id, node_name, uplink, and downlink.
-    """
-    result = _get_usage_data(db=db, entity_type="admin", admin=dbadmin, start=start, end=end, format="by_nodes")
-    # Convert to expected format with uplink/downlink
-    node_lookup: Dict[Optional[int], Dict] = {}
-    for node in db.query(Node).all():
-        node_lookup[node.id] = {"node_id": node.id, "node_name": node.name, "uplink": 0, "downlink": 0}
-    node_lookup[None] = {"node_id": None, "node_name": "Master", "uplink": 0, "downlink": 0}
-
-    for entry in result:
-        nid = entry["node_id"]
-        if nid not in node_lookup:
-            node_lookup[nid] = {
-                "node_id": nid,
-                "node_name": "Master" if nid is None else f"Node {nid}",
-                "uplink": 0,
-                "downlink": 0,
-            }
-        node_lookup[nid]["downlink"] += entry["used_traffic"]
-
-    return sorted(
-        [e for e in node_lookup.values() if e["uplink"] > 0 or e["downlink"] > 0], key=lambda x: x["node_id"] or 0
-    )

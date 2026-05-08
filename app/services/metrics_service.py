@@ -6,7 +6,6 @@ Routers delegate here to fetch chart/usage data from database-backed crud helper
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -15,8 +14,6 @@ from app.db.models import Admin as AdminModel, AdminServiceLink, Service as Serv
 from app.models.admin import AdminTrafficLimitMode, admin_uses_created_traffic_limit
 from app.models.user import UserStatus
 from app.services import go_usage
-
-logger = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 300
 
@@ -72,7 +69,7 @@ def get_admin_daily_usage(db: Session, admin: AdminModel, start: datetime, end: 
     if cached is not None:
         return cached
 
-    rows = crud.get_admin_daily_usages(db, admin, start, end)
+    rows = go_usage.get_admin_usage_by_day(int(admin.id), start, end, granularity="day")
     _cache_set(key, rows)
     return rows
 
@@ -100,7 +97,13 @@ def get_admin_usage_chart(
     if cached is not None:
         return cached
 
-    rows = crud.get_admin_usages_by_day(db, admin, start, end, node_id, granularity)
+    rows = go_usage.get_admin_usage_by_day(
+        int(admin.id),
+        start,
+        end,
+        node_id=node_id,
+        granularity=granularity,
+    )
     _cache_set(key, rows)
     return rows
 
@@ -119,7 +122,7 @@ def get_admin_usage_by_nodes(
     if cached is not None:
         return cached
 
-    rows = crud.get_admin_usage_by_nodes(db, admin, start, end)
+    rows = go_usage.get_admin_usage_by_nodes(int(admin.id), start, end)
     _cache_set(key, rows)
     return rows
 
@@ -147,6 +150,8 @@ def _format_usage_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         date_value = row.get("date", row.get("timestamp"))
         if isinstance(date_value, datetime):
             date_value = date_value.strftime("%Y-%m-%d")
+        elif isinstance(date_value, str) and "T" in date_value:
+            date_value = date_value.split("T", 1)[0]
         points.append(
             {
                 "date": str(date_value),
@@ -315,7 +320,7 @@ def get_service_usage_timeseries(
     if cached is not None:
         return cached
 
-    rows = crud.get_service_usage_timeseries(db, service, start, end, granularity)
+    rows = go_usage.get_service_usage_timeseries(int(service.id), start, end, granularity)
     _cache_set(key, rows)
     return rows
 
@@ -331,7 +336,7 @@ def get_service_usage_by_admin(
     if cached is not None:
         return cached
 
-    rows = crud.get_service_admin_usage(db, service, start, end)
+    rows = go_usage.get_service_admin_usage(int(service.id), start, end)
     _cache_set(key, rows)
     return rows
 
@@ -350,7 +355,7 @@ def get_service_admin_usage_timeseries(
     if cached is not None:
         return cached
 
-    rows = crud.get_service_admin_usage_timeseries(db, service, admin_id, start, end, granularity)
+    rows = go_usage.get_service_admin_usage_timeseries(int(service.id), admin_id, start, end, granularity)
     _cache_set(key, rows)
     return rows
 
@@ -366,11 +371,7 @@ def get_user_usage(db: Session, user: UserModel, start: datetime, end: datetime)
     if cached is not None:
         return cached
 
-    try:
-        rows = go_usage.get_user_usage(int(user.id), start, end)
-    except go_usage.GoUsageUnavailable as exc:
-        logger.warning("Go usage bridge unavailable, using Python usage fallback: %s", exc)
-        rows = crud.get_user_usages(db, user, start, end)
+    rows = go_usage.get_user_usage(int(user.id), start, end)
     _cache_set(key, rows)
     return rows
 
@@ -383,10 +384,6 @@ def get_users_usage(db: Session, admins: Optional[List[str]], start: datetime, e
     if cached is not None:
         return cached
 
-    try:
-        rows = go_usage.get_users_usage(admins, start, end)
-    except go_usage.GoUsageUnavailable as exc:
-        logger.warning("Go usage bridge unavailable, using Python usage fallback: %s", exc)
-        rows = crud.get_all_users_usages(db=db, start=start, end=end, admin=admins)
+    rows = go_usage.get_users_usage(admins, start, end)
     _cache_set(key, rows)
     return rows
