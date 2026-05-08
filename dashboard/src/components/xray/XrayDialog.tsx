@@ -39,12 +39,23 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 			borderColor={borderColor}
 			borderRadius="md"
 			overflow="hidden"
-			maxH={{ base: "100dvh", md: "calc(100vh - 48px)" }}
-			h={{ base: "100dvh", md: "auto" }}
+			maxH={{
+				base: "var(--rb-dialog-viewport-height, 100dvh)",
+				md: "calc(100vh - 48px)",
+			}}
+			h={{ base: "var(--rb-dialog-viewport-height, 100dvh)", md: "auto" }}
 			display="flex"
 			flexDirection="column"
 			boxShadow="xl"
 			sx={{
+				"@media (max-width: 48em)": {
+					width: "100vw !important",
+					maxWidth: "100vw !important",
+					height: "var(--rb-dialog-viewport-height, 100dvh) !important",
+					maxHeight: "var(--rb-dialog-viewport-height, 100dvh) !important",
+					margin: "0 !important",
+					borderRadius: "0 !important",
+				},
 				".chakra-modal__body": {
 					bg: bodyBg,
 					minH: 0,
@@ -197,7 +208,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 						bottom: 0,
 						zIndex: 1,
 						boxShadow: "0 -14px 28px rgba(0, 0, 0, 0.22)",
-						paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+						paddingBottom: "var(--rb-dialog-safe-bottom)",
 					},
 				},
 				...sx,

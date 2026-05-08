@@ -2031,8 +2031,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					my={{ base: 0, md: "3.75rem" }}
 					position="relative"
 					overflow="hidden"
-					h={{ base: "100dvh", md: "auto" }}
-					maxH={{ base: "100dvh", md: "calc(100vh - 48px)" }}
+					h={{ base: "var(--rb-dialog-viewport-height, 100dvh)", md: "auto" }}
+					maxH={{
+						base: "var(--rb-dialog-viewport-height, 100dvh)",
+						md: "calc(100vh - 48px)",
+					}}
 					borderRadius={{ base: 0, md: "md" }}
 					display="flex"
 					flexDirection="column"
@@ -4155,7 +4158,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								px={{ base: 3, sm: 4, md: 5 }}
 								pt={{ base: 2.5, md: 3 }}
 								pb={{
-									base: "max(0.625rem, env(safe-area-inset-bottom))",
+									base: "var(--rb-dialog-safe-bottom)",
 									md: 3,
 								}}
 								boxShadow={{
