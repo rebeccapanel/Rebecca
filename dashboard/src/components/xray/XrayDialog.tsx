@@ -98,6 +98,15 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					fontSize: "13px",
 					width: "100%",
 				},
+				".chakra-numberinput__field": {
+					width: "100%",
+				},
+				".chakra-input__left-addon, .chakra-input__right-addon": {
+					bg: fieldBg,
+					fontSize: "13px",
+					fontWeight: "semibold",
+					whiteSpace: "nowrap",
+				},
 				".chakra-input__group, .chakra-numberinput, .chakra-select__wrapper": {
 					width: "100%",
 				},
@@ -192,6 +201,21 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					},
 					"input, select": {
 						minH: "42px",
+					},
+					".chakra-input__left-addon, .chakra-input__right-addon": {
+						minH: "42px",
+						minW: "3.25rem",
+						px: 3,
+					},
+					".chakra-numberinput": {
+						flex: "1 1 auto",
+					},
+					".chakra-numberinput__field": {
+						minH: "42px",
+						paddingInlineEnd: "0.75rem !important",
+					},
+					".chakra-numberinput__stepper-group": {
+						display: "none !important",
 					},
 					".chakra-button": {
 						minH: "40px",
