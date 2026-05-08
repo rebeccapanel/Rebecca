@@ -48,7 +48,7 @@ def _load_environment_file() -> Path | None:
         seen_paths.add(normalized)
 
         if resolved_candidate.is_file():
-            load_dotenv(dotenv_path=resolved_candidate, override=False)
+            load_dotenv(dotenv_path=resolved_candidate, override=True)
             return resolved_candidate
 
     return None
