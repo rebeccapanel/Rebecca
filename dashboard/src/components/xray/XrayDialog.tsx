@@ -56,7 +56,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					borderColor,
 				},
 				".chakra-form__label": {
-					mb: { base: 1, md: 0 },
+					mb: 1,
 					color: labelColor,
 					fontSize: "xs",
 					fontWeight: "semibold",
@@ -75,7 +75,15 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					bg: fieldBg,
 					borderRadius: "4px",
 					fontSize: "13px",
+					width: "100%",
 				},
+				".chakra-input__group, .chakra-numberinput, .chakra-select__wrapper": {
+					width: "100%",
+				},
+				".chakra-form-control > .chakra-stack, .chakra-form-control > .chakra-wrap, .chakra-form-control > .chakra-box":
+					{
+						width: "100%",
+					},
 				textarea: {
 					minH: "68px",
 				},
@@ -111,19 +119,16 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					p: { base: 3, md: 3 },
 				},
 				".xray-dialog-section .chakra-form-control": {
-					display: { base: "block", md: "grid" },
-					gridTemplateColumns: { md: "180px minmax(0, 1fr)" },
-					alignItems: "center",
-					columnGap: { md: 4 },
-					rowGap: 1,
+					display: "block",
+					minW: 0,
 				},
 				".xray-dialog-section .chakra-form-control > .chakra-form__helper-text, .xray-dialog-section .chakra-form-control > .chakra-form__error-message":
 					{
-						gridColumn: { md: "2" },
+						gridColumn: "auto",
 					},
-				".xray-dialog-section .chakra-form-control > .chakra-stack, .xray-dialog-section .chakra-form-control > .chakra-wrap":
+				".xray-dialog-section .chakra-form-control > .chakra-stack, .xray-dialog-section .chakra-form-control > .chakra-wrap, .xray-dialog-section .chakra-form-control > .chakra-button, .xray-dialog-section .chakra-form-control > .chakra-text, .xray-dialog-section .chakra-form-control > .chakra-box, .xray-dialog-section .chakra-form-control > .chakra-alert":
 					{
-						gridColumn: { md: "2" },
+						gridColumn: "auto",
 					},
 				".xray-dialog-section .chakra-form-control > .chakra-checkbox__control + span":
 					{
@@ -147,15 +152,12 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					},
 				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control":
 					{
-						display: { base: "block", md: "grid" },
-						gridTemplateColumns: { md: "180px minmax(0, 1fr)" },
-						alignItems: "center",
-						columnGap: { md: 4 },
-						rowGap: 1,
+						display: "block",
+						minW: 0,
 					},
 				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control > .chakra-form__helper-text, .xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control > .chakra-form__error-message":
 					{
-						gridColumn: { md: "2" },
+						gridColumn: "auto",
 					},
 				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box > .chakra-text:first-of-type":
 					{

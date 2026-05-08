@@ -19,11 +19,7 @@ import {
 	MenuItem,
 	MenuList,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	SimpleGrid,
@@ -37,6 +33,7 @@ import {
 	Tabs,
 	Text,
 	Textarea,
+	useColorModeValue,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -48,8 +45,8 @@ import {
 	MagnifyingGlassIcon,
 	PaperAirplaneIcon,
 } from "@heroicons/react/24/outline";
-import { PanelInput as Input } from "components/common/PanelInput";
 import { NumericInput } from "components/common/NumericInput";
+import { PanelInput as Input } from "components/common/PanelInput";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ReactNode,
@@ -91,6 +88,12 @@ import { JsonEditor } from "../components/JsonEditor";
 import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
 import { ThreeXUiDatabaseImportPanel } from "../components/ThreeXUiDatabaseImportPanel";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "../components/xray/XrayDialog";
 
 type EventToggleItem = {
 	key: string;
@@ -529,8 +532,7 @@ const parseSubscriptionPortsInput = (raw: string): number[] => {
 	return ports;
 };
 
-const formatSubscriptionPorts = (ports: number[]): string =>
-	ports.join(", ");
+const formatSubscriptionPorts = (ports: number[]): string => ports.join(", ");
 
 const buildSubscriptionDefaults = (
 	settings?: SubscriptionTemplateSettings,
@@ -643,6 +645,12 @@ const parseAdminChatIds = (value: string): number[] =>
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
 	const toast = useToast();
+	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const cardBg = useColorModeValue("white", "whiteAlpha.50");
+	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
+	const fieldBg = useColorModeValue("white", "blackAlpha.200");
 	const { userData, getUserIsSuccess } = useGetUser();
 	const isSudoOrFull =
 		userData?.role === "sudo" || userData?.role === "full_access";
@@ -726,8 +734,6 @@ export const IntegrationSettingsPage = () => {
 	const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(
 		panelData?.use_nobetci ?? false,
 	);
-	const [panelAccessInsightsEnabled, setPanelAccessInsightsEnabled] =
-		useState<boolean>(panelData?.access_insights_enabled ?? false);
 	const [panelDefaultSubType, setPanelDefaultSubType] = useState<
 		"username-key" | "key" | "token"
 	>(panelData?.default_subscription_type ?? "key");
@@ -735,7 +741,6 @@ export const IntegrationSettingsPage = () => {
 	useEffect(() => {
 		if (panelData) {
 			setPanelUseNobetci(panelData.use_nobetci);
-			setPanelAccessInsightsEnabled(panelData.access_insights_enabled ?? false);
 			setPanelDefaultSubType(panelData.default_subscription_type ?? "key");
 		}
 	}, [panelData]);
@@ -949,7 +954,13 @@ export const IntegrationSettingsPage = () => {
 	);
 
 	const integrationTabKeys = useMemo(
-		() => ["panel", "telegram", "subscriptions", "database", "template-creator"],
+		() => [
+			"panel",
+			"telegram",
+			"subscriptions",
+			"database",
+			"template-creator",
+		],
 		[],
 	);
 	const splitHash = useCallback(() => {
@@ -1002,7 +1013,6 @@ export const IntegrationSettingsPage = () => {
 	const panelMutation = useMutation(updatePanelSettings, {
 		onSuccess: (updated) => {
 			setPanelUseNobetci(updated.use_nobetci);
-			setPanelAccessInsightsEnabled(updated.access_insights_enabled ?? false);
 			setPanelDefaultSubType(updated.default_subscription_type ?? "key");
 			queryClient.setQueryData("panel-settings", updated);
 			toast({
@@ -1212,7 +1222,9 @@ export const IntegrationSettingsPage = () => {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter(Boolean);
-		const ports = parseSubscriptionPortsInput(values.subscription_ports_text || "");
+		const ports = parseSubscriptionPortsInput(
+			values.subscription_ports_text || "",
+		);
 		const payload: SubscriptionTemplateSettingsUpdatePayload = {
 			subscription_url_prefix: values.subscription_url_prefix ?? "",
 			subscription_profile_title: values.subscription_profile_title.trim(),
@@ -1427,21 +1439,126 @@ export const IntegrationSettingsPage = () => {
 	}
 
 	return (
-		<Box px={{ base: 4, md: 8 }} py={{ base: 6, md: 8 }}>
-			<Heading size="lg" mb={4}>
-				{t("settings.integrations")}
-			</Heading>
+		<Box
+			px={{ base: 4, md: 8 }}
+			py={{ base: 6, md: 8 }}
+			sx={{
+				".master-settings-card": {
+					bg: cardBg,
+					border: "1px solid",
+					borderColor,
+					borderRadius: "6px",
+					p: { base: 3, md: 4 },
+				},
+				".master-settings-subcard": {
+					bg: subCardBg,
+					border: "1px solid",
+					borderColor,
+					borderRadius: "6px",
+					p: { base: 3, md: 3 },
+				},
+				".master-settings-card input, .master-settings-card select, .master-settings-card textarea, .master-settings-subcard input, .master-settings-subcard select, .master-settings-subcard textarea":
+					{
+						bg: fieldBg,
+						borderRadius: "4px",
+						fontSize: "13px",
+					},
+				".master-settings-card .chakra-form__label, .master-settings-subcard .chakra-form__label":
+					{
+						fontSize: "xs",
+						fontWeight: "semibold",
+					},
+			}}
+		>
+			<Box
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={4}
+				mb={4}
+			>
+				<Heading size="lg">{t("settings.integrations")}</Heading>
+				<Text
+					mt={2}
+					fontSize="sm"
+					color="gray.500"
+					_dark={{ color: "gray.400" }}
+				>
+					{t(
+						"settings.integrationsDescription",
+						"Configure panel runtime, Telegram, subscriptions, database imports, and templates.",
+					)}
+				</Text>
+			</Box>
 			<Tabs
-				colorScheme="primary"
+				variant="unstyled"
 				index={activeIntegrationTab}
 				onChange={handleIntegrationTabChange}
 			>
-				<TabList>
-					<Tab>{t("settings.panel.tabTitle")}</Tab>
-					<Tab>{t("settings.telegram")}</Tab>
-					<Tab>{t("settings.subscriptions.tabTitle")}</Tab>
-					<Tab>{t("settings.database.tabTitle", "DATABASE")}</Tab>
-					<Tab>
+				<TabList
+					borderWidth="1px"
+					borderColor={borderColor}
+					borderRadius="md"
+					bg={panelBg}
+					p={2}
+					gap={2}
+					mb={4}
+					overflowX="auto"
+				>
+					<Tab
+						borderRadius="md"
+						px={4}
+						py={2}
+						fontWeight="semibold"
+						color="gray.500"
+						_selected={{ bg: activeTabBg, color: "white" }}
+						_dark={{ color: "gray.300" }}
+					>
+						{t("settings.panel.tabTitle")}
+					</Tab>
+					<Tab
+						borderRadius="md"
+						px={4}
+						py={2}
+						fontWeight="semibold"
+						color="gray.500"
+						_selected={{ bg: activeTabBg, color: "white" }}
+						_dark={{ color: "gray.300" }}
+					>
+						{t("settings.telegram")}
+					</Tab>
+					<Tab
+						borderRadius="md"
+						px={4}
+						py={2}
+						fontWeight="semibold"
+						color="gray.500"
+						_selected={{ bg: activeTabBg, color: "white" }}
+						_dark={{ color: "gray.300" }}
+					>
+						{t("settings.subscriptions.tabTitle")}
+					</Tab>
+					<Tab
+						borderRadius="md"
+						px={4}
+						py={2}
+						fontWeight="semibold"
+						color="gray.500"
+						_selected={{ bg: activeTabBg, color: "white" }}
+						_dark={{ color: "gray.300" }}
+					>
+						{t("settings.database.tabTitle", "DATABASE")}
+					</Tab>
+					<Tab
+						borderRadius="md"
+						px={4}
+						py={2}
+						fontWeight="semibold"
+						color="gray.500"
+						_selected={{ bg: activeTabBg, color: "white" }}
+						_dark={{ color: "gray.300" }}
+					>
 						{t("settings.templates.tabTitle")}
 					</Tab>
 				</TabList>
@@ -1456,7 +1573,7 @@ export const IntegrationSettingsPage = () => {
 								<Text fontSize="sm" color="gray.500">
 									{t("settings.panel.description")}
 								</Text>
-								<Box borderWidth="1px" borderRadius="lg" p={4}>
+								<Box className="master-settings-card">
 									<Flex
 										justify="space-between"
 										align={{ base: "flex-start", md: "center" }}
@@ -1480,31 +1597,7 @@ export const IntegrationSettingsPage = () => {
 										/>
 									</Flex>
 								</Box>
-								<Box borderWidth="1px" borderRadius="lg" p={4}>
-									<Flex
-										justify="space-between"
-										align={{ base: "flex-start", md: "center" }}
-										gap={4}
-										flexDirection={{ base: "column", md: "row" }}
-									>
-										<Box>
-											<Heading size="sm" mb={1}>
-												{t("settings.panel.accessInsightsTitle")}
-											</Heading>
-											<Text fontSize="sm" color="gray.500">
-												{t("settings.panel.accessInsightsDescription")}
-											</Text>
-										</Box>
-										<Switch
-											isChecked={panelAccessInsightsEnabled}
-											onChange={(event) =>
-												setPanelAccessInsightsEnabled(event.target.checked)
-											}
-											isDisabled={panelMutation.isLoading || isPanelLoading}
-										/>
-									</Flex>
-								</Box>
-								<Box borderWidth="1px" borderRadius="lg" p={4}>
+								<Box className="master-settings-card">
 									<Flex
 										justify="space-between"
 										align={{ base: "flex-start", md: "center" }}
@@ -1549,7 +1642,7 @@ export const IntegrationSettingsPage = () => {
 										</FormControl>
 									</Flex>
 								</Box>
-								<Box borderWidth="1px" borderRadius="lg" p={4}>
+								<Box className="master-settings-card">
 									<Flex
 										justify="space-between"
 										align={{ base: "flex-start", md: "center" }}
@@ -1596,22 +1689,6 @@ export const IntegrationSettingsPage = () => {
 															: t("settings.panel.versionUnknown")}
 													</Text>
 												</Box>
-												<Box>
-													<Text fontWeight="semibold">
-														{t("settings.panel.nodeVersion")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{maintenanceInfoQuery.data?.node
-															? maintenanceInfoQuery.data.node.image
-																? `${maintenanceInfoQuery.data.node.image}${
-																		maintenanceInfoQuery.data.node.tag
-																			? ` (${maintenanceInfoQuery.data.node.tag})`
-																			: ""
-																	}`
-																: t("settings.panel.versionUnknown")
-															: t("settings.panel.nodeVersionUnavailable")}
-													</Text>
-												</Box>
 											</>
 										)}
 									</Stack>
@@ -1625,7 +1702,11 @@ export const IntegrationSettingsPage = () => {
 													)}
 										</Text>
 										{!hostActionsAvailable && (
-											<Alert status="warning" variant="subtle" borderRadius="md">
+											<Alert
+												status="warning"
+												variant="subtle"
+												borderRadius="md"
+											>
 												<AlertIcon />
 												<Text fontSize="sm">
 													{t(
@@ -1636,7 +1717,11 @@ export const IntegrationSettingsPage = () => {
 											</Alert>
 										)}
 										{hostActionsAvailable && panelUpdateInfo?.available && (
-											<Alert status="success" variant="subtle" borderRadius="md">
+											<Alert
+												status="success"
+												variant="subtle"
+												borderRadius="md"
+											>
 												<AlertIcon />
 												<Text fontSize="sm">
 													{t(
@@ -1657,7 +1742,11 @@ export const IntegrationSettingsPage = () => {
 											</Alert>
 										)}
 										{hostActionsAvailable && panelUpdateInfo?.error && (
-											<Alert status="warning" variant="subtle" borderRadius="md">
+											<Alert
+												status="warning"
+												variant="subtle"
+												borderRadius="md"
+											>
 												<AlertIcon />
 												<Text fontSize="sm">
 													{t(
@@ -1671,10 +1760,7 @@ export const IntegrationSettingsPage = () => {
 										{hostActionsAvailable && (
 											<FormControl maxW={{ base: "full", md: "360px" }}>
 												<FormLabel fontSize="sm">
-													{t(
-														"settings.panel.updateChannel",
-														"Update channel",
-													)}
+													{t("settings.panel.updateChannel", "Update channel")}
 												</FormLabel>
 												<Select
 													size="sm"
@@ -1715,17 +1801,22 @@ export const IntegrationSettingsPage = () => {
 												</FormHelperText>
 											</FormControl>
 										)}
-										{hostActionsAvailable && selectedUpdateChannel === "dev" && (
-											<Alert status="warning" variant="subtle" borderRadius="md">
-												<AlertIcon />
-												<Text fontSize="sm">
-													{t(
-														"settings.panel.devChannelWarning",
-														"Dev builds are not stable. They can include unfinished changes, migrations in progress, and temporary bugs.",
-													)}
-												</Text>
-											</Alert>
-										)}
+										{hostActionsAvailable &&
+											selectedUpdateChannel === "dev" && (
+												<Alert
+													status="warning"
+													variant="subtle"
+													borderRadius="md"
+												>
+													<AlertIcon />
+													<Text fontSize="sm">
+														{t(
+															"settings.panel.devChannelWarning",
+															"Dev builds are not stable. They can include unfinished changes, migrations in progress, and temporary bugs.",
+														)}
+													</Text>
+												</Alert>
+											)}
 										{activeMaintenanceAction && (
 											<Alert status="info" variant="subtle" borderRadius="md">
 												<AlertIcon />
@@ -1788,7 +1879,6 @@ export const IntegrationSettingsPage = () => {
 										onClick={() =>
 											panelMutation.mutate({
 												use_nobetci: panelUseNobetci,
-												access_insights_enabled: panelAccessInsightsEnabled,
 												default_subscription_type: panelDefaultSubType,
 											})
 										}
@@ -1797,8 +1887,6 @@ export const IntegrationSettingsPage = () => {
 											panelMutation.isLoading ||
 											panelData === undefined ||
 											(panelUseNobetci === panelData.use_nobetci &&
-												panelAccessInsightsEnabled ===
-													(panelData.access_insights_enabled ?? false) &&
 												panelDefaultSubType ===
 													(panelData.default_subscription_type ?? "key"))
 										}
@@ -1851,7 +1939,7 @@ export const IntegrationSettingsPage = () => {
 										disabled={!isTelegramEnabled}
 										message={telegramDisabledMessage}
 									>
-										<Box borderWidth="1px" borderRadius="md" p={3}>
+										<Box className="master-settings-card">
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
@@ -1932,7 +2020,7 @@ export const IntegrationSettingsPage = () => {
 												: telegramDisabledMessage
 										}
 									>
-										<Box borderWidth="1px" borderRadius="md" p={3}>
+										<Box className="master-settings-card">
 											<Flex
 												justify="space-between"
 												align={{ base: "flex-start", md: "center" }}
@@ -1976,7 +2064,10 @@ export const IntegrationSettingsPage = () => {
 														control={control}
 														name="backup_scope"
 														render={({ field }) => (
-															<Select {...field} isDisabled={!isTelegramBackupEnabled}>
+															<Select
+																{...field}
+																isDisabled={!isTelegramBackupEnabled}
+															>
 																<option value="database">
 																	{t(
 																		"settings.telegram.backupScopeDatabase",
@@ -2030,7 +2121,10 @@ export const IntegrationSettingsPage = () => {
 														control={control}
 														name="backup_interval_unit"
 														render={({ field }) => (
-															<Select {...field} isDisabled={!isTelegramBackupEnabled}>
+															<Select
+																{...field}
+																isDisabled={!isTelegramBackupEnabled}
+															>
 																<option value="minutes">
 																	{t(
 																		"settings.telegram.backupIntervalMinutes",
@@ -2054,13 +2148,14 @@ export const IntegrationSettingsPage = () => {
 													/>
 												</FormControl>
 											</SimpleGrid>
-											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+											<SimpleGrid
+												columns={{ base: 1, md: 2 }}
+												spacing={3}
+												mt={3}
+											>
 												<Text fontSize="xs" color="gray.500">
-													{t(
-														"settings.telegram.backupLastSent",
-														"Last sent",
-													)}
-													: {data?.backup_last_sent_at || "-"}
+													{t("settings.telegram.backupLastSent", "Last sent")}:{" "}
+													{data?.backup_last_sent_at || "-"}
 												</Text>
 												{data?.backup_last_error && (
 													<Text fontSize="xs" color="red.300">
@@ -2086,12 +2181,7 @@ export const IntegrationSettingsPage = () => {
 											{forumTopics && Object.keys(forumTopics).length > 0 ? (
 												<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={3}>
 													{Object.entries(forumTopics).map(([key]) => (
-														<Box
-															key={key}
-															borderWidth="1px"
-															borderRadius="md"
-															p={3}
-														>
+														<Box className="master-settings-subcard" key={key}>
 															<Text fontSize="sm" fontWeight="medium" mb={2}>
 																{t("settings.telegram.topicKey")}: {key}
 															</Text>
@@ -2149,10 +2239,8 @@ export const IntegrationSettingsPage = () => {
 											<Stack spacing={4}>
 												{EVENT_TOGGLE_GROUPS.map((group) => (
 													<Box
+														className="master-settings-subcard"
 														key={group.key}
-														borderWidth="1px"
-														borderRadius="lg"
-														p={4}
 													>
 														<Text fontWeight="semibold" mb={3}>
 															{t(group.titleKey)}
@@ -2238,13 +2326,7 @@ export const IntegrationSettingsPage = () => {
 									<Text fontSize="sm" color="gray.500">
 										{t("settings.subscriptions.description")}
 									</Text>
-									<Box
-										borderWidth="1px"
-										borderRadius="lg"
-										p={{ base: 4, md: 5 }}
-										bg="gray.50"
-										_dark={{ bg: "gray.900" }}
-									>
+									<Box className="master-settings-card">
 										<Flex
 											justify="space-between"
 											align={{ base: "flex-start", md: "center" }}
@@ -2586,7 +2668,9 @@ export const IntegrationSettingsPage = () => {
 													{...subscriptionRegister("subscription_aliases_text")}
 												/>
 												<FormHelperText>
-													One alias per line. Examples: /mypath/ , /test/ , /api/v1/client/subscribe?token= , /api/v1/client/subscribe?key=
+													One alias per line. Examples: /mypath/ , /test/ ,
+													/api/v1/client/subscribe?token= ,
+													/api/v1/client/subscribe?key=
 												</FormHelperText>
 											</FormControl>
 											<FormControl>
@@ -2644,7 +2728,9 @@ export const IntegrationSettingsPage = () => {
 																{t("settings.subscriptions.customJsonDefault")}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonDefaultHint")}
+																{t(
+																	"settings.subscriptions.customJsonDefaultHint",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2666,7 +2752,9 @@ export const IntegrationSettingsPage = () => {
 																{t("settings.subscriptions.customJsonV2rayn")}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonV2raynHint")}
+																{t(
+																	"settings.subscriptions.customJsonV2raynHint",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2688,7 +2776,9 @@ export const IntegrationSettingsPage = () => {
 																{t("settings.subscriptions.customJsonV2rayng")}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonV2rayngHint")}
+																{t(
+																	"settings.subscriptions.customJsonV2rayngHint",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2707,10 +2797,14 @@ export const IntegrationSettingsPage = () => {
 													<FormControl display="flex" alignItems="center">
 														<Box flex="1">
 															<Text fontWeight="medium">
-																{t("settings.subscriptions.customJsonStreisand")}
+																{t(
+																	"settings.subscriptions.customJsonStreisand",
+																)}
 															</Text>
 															<Text fontSize="sm" color="gray.500">
-																{t("settings.subscriptions.customJsonStreisandHint")}
+																{t(
+																	"settings.subscriptions.customJsonStreisandHint",
+																)}
 															</Text>
 														</Box>
 														<Switch
@@ -2746,7 +2840,7 @@ export const IntegrationSettingsPage = () => {
 											/>
 										</SimpleGrid>
 									</Box>
-									<Box borderWidth="1px" borderRadius="lg" p={4}>
+									<Box className="master-settings-card">
 										<Heading size="sm" mb={1}>
 											{t("settings.subscriptions.adminsTitle")}
 										</Heading>
@@ -2774,7 +2868,9 @@ export const IntegrationSettingsPage = () => {
 															{selectedAdminId &&
 															adminOverrides[selectedAdminId]
 																? adminOverrides[selectedAdminId].username
-																: t("settings.subscriptions.selectAdminPlaceholder")}
+																: t(
+																		"settings.subscriptions.selectAdminPlaceholder",
+																	)}
 														</MenuButton>
 														<MenuList
 															minW="320px"
@@ -2791,7 +2887,9 @@ export const IntegrationSettingsPage = () => {
 																		<SearchIcon color="gray.400" />
 																	</InputLeftElement>
 																	<Input
-																		placeholder={t("settings.subscriptions.searchAdmin")}
+																		placeholder={t(
+																			"settings.subscriptions.searchAdmin",
+																		)}
 																		value={adminSearchTerm}
 																		onChange={(event) =>
 																			setAdminSearchTerm(event.target.value)
@@ -2844,12 +2942,8 @@ export const IntegrationSettingsPage = () => {
 													</Text>
 												) : (
 													<Box
+														className="master-settings-subcard"
 														key={selectedAdminId}
-														borderWidth="1px"
-														borderRadius="md"
-														p={4}
-														bg="gray.50"
-														_dark={{ bg: "gray.800" }}
 													>
 														{(() => {
 															const admin = adminOverrides[selectedAdminId];
@@ -2900,7 +2994,9 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.adminDomain")}
+																				{t(
+																					"settings.subscriptions.adminDomain",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder="sub.admin.example.com"
@@ -2916,7 +3012,9 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.customTemplatesDir")}
+																				{t(
+																					"settings.subscriptions.customTemplatesDir",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder={
@@ -2936,7 +3034,9 @@ export const IntegrationSettingsPage = () => {
 																				}
 																			/>
 																			<FormHelperText>
-																				{t("settings.subscriptions.inheritHint")}
+																				{t(
+																					"settings.subscriptions.inheritHint",
+																				)}
 																			</FormHelperText>
 																		</FormControl>
 																	</SimpleGrid>
@@ -2948,7 +3048,9 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.profileTitle")}
+																				{t(
+																					"settings.subscriptions.profileTitle",
+																				)}
 																			</FormLabel>
 																			<Input
 																				placeholder={
@@ -2992,7 +3094,9 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.updateInterval")}
+																				{t(
+																					"settings.subscriptions.updateInterval",
+																				)}
 																			</FormLabel>
 																			<Input
 																				type="number"
@@ -3022,7 +3126,9 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.subscriptionPageTemplate")}
+																				{t(
+																					"settings.subscriptions.subscriptionPageTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3053,13 +3159,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.homePageTemplate")}
+																				{t(
+																					"settings.subscriptions.homePageTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3089,13 +3199,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.clashTemplate")}
+																				{t(
+																					"settings.subscriptions.clashTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3126,13 +3240,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.clashSettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.clashSettingsTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3163,13 +3281,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.v2rayTemplate")}
+																				{t(
+																					"settings.subscriptions.v2rayTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3200,13 +3322,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.v2raySettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.v2raySettingsTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3237,13 +3363,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.singboxTemplate")}
+																				{t(
+																					"settings.subscriptions.singboxTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3275,13 +3405,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.singboxSettingsTemplate")}
+																				{t(
+																					"settings.subscriptions.singboxSettingsTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3312,13 +3446,17 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("settings.subscriptions.muxTemplate")}
+																				{t(
+																					"settings.subscriptions.muxTemplate",
+																				)}
 																			</FormLabel>
 																			<HStack spacing={2} align="stretch">
 																				<Input
@@ -3346,7 +3484,9 @@ export const IntegrationSettingsPage = () => {
 																						)
 																					}
 																				>
-																					{t("settings.subscriptions.editTemplate")}
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
 																				</Button>
 																			</HStack>
 																		</FormControl>
@@ -3364,10 +3504,14 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonDefault")}
+																					{t(
+																						"settings.subscriptions.customJsonDefault",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonDefaultHint")}
+																					{t(
+																						"settings.subscriptions.customJsonDefaultHint",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3392,10 +3536,14 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonV2rayn")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayn",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonV2raynHint")}
+																					{t(
+																						"settings.subscriptions.customJsonV2raynHint",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3420,10 +3568,14 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonV2rayng")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayng",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonV2rayngHint")}
+																					{t(
+																						"settings.subscriptions.customJsonV2rayngHint",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3448,10 +3600,14 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonStreisand")}
+																					{t(
+																						"settings.subscriptions.customJsonStreisand",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonStreisandHint")}
+																					{t(
+																						"settings.subscriptions.customJsonStreisandHint",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3476,10 +3632,14 @@ export const IntegrationSettingsPage = () => {
 																		>
 																			<Box flex="1">
 																				<Text fontWeight="medium">
-																					{t("settings.subscriptions.customJsonHapp")}
+																					{t(
+																						"settings.subscriptions.customJsonHapp",
+																					)}
 																				</Text>
 																				<Text fontSize="sm" color="gray.500">
-																					{t("settings.subscriptions.customJsonHappHint")}
+																					{t(
+																						"settings.subscriptions.customJsonHappHint",
+																					)}
 																				</Text>
 																			</Box>
 																			<Switch
@@ -3507,7 +3667,9 @@ export const IntegrationSettingsPage = () => {
 																			onClick={() => handleAdminReset(admin.id)}
 																			isDisabled={savingAdminId === admin.id}
 																		>
-																			{t("settings.subscriptions.resetOverrides")}
+																			{t(
+																				"settings.subscriptions.resetOverrides",
+																			)}
 																		</Button>
 																		<Button
 																			colorScheme="primary"
@@ -3526,8 +3688,7 @@ export const IntegrationSettingsPage = () => {
 											</Stack>
 										)}
 									</Box>
-									\t\t\t\t\t\t\t\t
-									<Box borderWidth="1px" borderRadius="lg" p={4}>
+									<Box className="master-settings-card">
 										<Heading size="sm" mb={1}>
 											{t("settings.subscriptions.certificateTitle")}
 										</Heading>
@@ -3566,7 +3727,10 @@ export const IntegrationSettingsPage = () => {
 													}
 												/>
 												<FormHelperText>
-													{t("settings.subscriptions.domainsHint", "Comma-separated list of domains for certificate issuance.")}
+													{t(
+														"settings.subscriptions.domainsHint",
+														"Comma-separated list of domains for certificate issuance.",
+													)}
 												</FormHelperText>
 											</FormControl>
 										</SimpleGrid>
@@ -3592,10 +3756,8 @@ export const IntegrationSettingsPage = () => {
 											<Stack spacing={3}>
 												{subscriptionBundle.certificates.map((cert) => (
 													<Box
+														className="master-settings-subcard"
 														key={cert.domain}
-														borderWidth="1px"
-														borderRadius="md"
-														p={3}
 													>
 														<Flex
 															justify="space-between"
@@ -3606,12 +3768,11 @@ export const IntegrationSettingsPage = () => {
 															<Box>
 																<Text fontWeight="semibold">{cert.domain}</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.pathLabel")}
-																	: {cert.path}
+																	{t("settings.subscriptions.pathLabel")}:{" "}
+																	{cert.path}
 																</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.lastIssued")}
-																	:{" "}
+																	{t("settings.subscriptions.lastIssued")}:{" "}
 																	{cert.last_issued_at
 																		? new Date(
 																				cert.last_issued_at,
@@ -3619,8 +3780,7 @@ export const IntegrationSettingsPage = () => {
 																		: t("settings.subscriptions.never")}
 																</Text>
 																<Text fontSize="sm" color="gray.500">
-																	{t("settings.subscriptions.lastRenewed")}
-																	:{" "}
+																	{t("settings.subscriptions.lastRenewed")}:{" "}
 																	{cert.last_renewed_at
 																		? new Date(
 																				cert.last_renewed_at,
@@ -3702,25 +3862,28 @@ export const IntegrationSettingsPage = () => {
 				size="6xl"
 				scrollBehavior="inside"
 			>
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader>
+				<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+				<XrayModalContent mx="3">
+					<XrayModalHeader>
 						{templateDialog
 							? t("settings.subscriptions.editTemplateTitle")
 							: ""}
-					</ModalHeader>
+					</XrayModalHeader>
 					<ModalCloseButton />
-					<ModalBody>
+					<XrayModalBody>
 						{templateLoading ? (
 							<Flex align="center" justify="center" minH="200px">
 								<Spinner />
 							</Flex>
 						) : (
-							<VStack align="stretch" spacing={3}>
+							<VStack
+								className="xray-dialog-section"
+								align="stretch"
+								spacing={3}
+							>
 								{templateDialog?.adminId ? (
 									<Text fontWeight="medium">
-										{t("settings.subscriptions.adminTemplateFor")}
-										:{" "}
+										{t("settings.subscriptions.adminTemplateFor")}:{" "}
 										{adminOverrides[templateDialog.adminId]?.username ||
 											t("settings.subscriptions.admin")}
 									</Text>
@@ -3763,8 +3926,8 @@ export const IntegrationSettingsPage = () => {
 								</Box>
 							</VStack>
 						)}
-					</ModalBody>
-					<ModalFooter>
+					</XrayModalBody>
+					<XrayModalFooter justifyContent="flex-end">
 						<Button mr={3} onClick={closeTemplateEditor} variant="ghost">
 							{t("actions.close")}
 						</Button>
@@ -3778,8 +3941,8 @@ export const IntegrationSettingsPage = () => {
 						>
 							{t("settings.save")}
 						</Button>
-					</ModalFooter>
-				</ModalContent>
+					</XrayModalFooter>
+				</XrayModalContent>
 			</Modal>
 		</Box>
 	);

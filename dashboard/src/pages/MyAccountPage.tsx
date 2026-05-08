@@ -1,11 +1,9 @@
 import {
-	Box,
 	Badge,
+	Box,
 	Button,
 	chakra,
 	Flex,
-	Grid,
-	GridItem,
 	HStack,
 	IconButton,
 	Input,
@@ -33,6 +31,7 @@ import {
 	Tr,
 	useClipboard,
 	useColorMode,
+	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
@@ -162,20 +161,69 @@ const buildDonutOptions = (
 type StatsCardProps = {
 	label: string;
 	value: string;
+	helper?: string;
+	accentColor?: string;
 };
 
-const StatsCard: React.FC<StatsCardProps> = ({ label, value }) => (
-	<Stat
-		p={4}
-		borderWidth="1px"
-		borderRadius="lg"
-		bg="surface.light"
-		_dark={{ bg: "surface.dark" }}
-	>
-		<StatLabel>{label}</StatLabel>
-		<StatNumber fontSize="lg">{value}</StatNumber>
-	</Stat>
-);
+const StatsCard: React.FC<StatsCardProps> = ({
+	label,
+	value,
+	helper,
+	accentColor = "primary.400",
+}) => {
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
+
+	return (
+		<Stat
+			p={4}
+			borderWidth="1px"
+			borderColor={borderColor}
+			borderRadius="md"
+			bg={bg}
+			position="relative"
+			overflow="hidden"
+		>
+			<Box
+				position="absolute"
+				insetInlineStart={0}
+				top={0}
+				bottom={0}
+				w="3px"
+				bg={accentColor}
+			/>
+			<StatLabel color={labelColor} fontSize="xs" fontWeight="semibold">
+				{label}
+			</StatLabel>
+			<StatNumber mt={1} fontSize="xl" lineHeight="1.2">
+				{value}
+			</StatNumber>
+			{helper && (
+				<Text mt={2} fontSize="xs" color={labelColor}>
+					{helper}
+				</Text>
+			)}
+		</Stat>
+	);
+};
+
+const MiniMetric: React.FC<{ label: string; value: string }> = ({
+	label,
+	value,
+}) => {
+	const labelColor = useColorModeValue("gray.500", "gray.400");
+	return (
+		<Box>
+			<Text fontSize="xs" color={labelColor} fontWeight="semibold">
+				{label}
+			</Text>
+			<Text mt={1} fontWeight="semibold">
+				{value}
+			</Text>
+		</Box>
+	);
+};
 
 const getTrafficLabels = (
 	t: (key: string, fallback?: string) => string,
@@ -212,13 +260,19 @@ const ServiceLimitPanel: React.FC<{
 	colorMode: string;
 	t: (key: string, fallback?: string) => string;
 }> = ({ service, colorMode, t }) => {
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const subBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const labels = getTrafficLabels(t, service.traffic_basis);
 	const dailyPoints = service.daily_usage ?? [];
 	const dailyTotal = dailyPoints.reduce(
 		(sum, point) => sum + Number(point.used_traffic || 0),
 		0,
 	);
-	const categories = dailyPoints.map((point) => formatTimeseriesLabel(point.date));
+	const categories = dailyPoints.map((point) =>
+		formatTimeseriesLabel(point.date),
+	);
 	const series = [
 		{
 			name: labels.dailyChartTitle,
@@ -226,106 +280,97 @@ const ServiceLimitPanel: React.FC<{
 		},
 	];
 	const limit = service.data_limit ?? 0;
-	const remaining = service.remaining_data ?? Math.max(limit - service.used_traffic, 0);
+	const remaining =
+		service.remaining_data ?? Math.max(limit - service.used_traffic, 0);
 	const usersLimit = service.users_limit ?? 0;
 	const remainingUsers =
-		service.remaining_users ?? Math.max(usersLimit - service.current_users_count, 0);
+		service.remaining_users ??
+		Math.max(usersLimit - service.current_users_count, 0);
 
 	return (
-		<Box
-			borderWidth="1px"
-			borderRadius="lg"
-			p={4}
-			bg="surface.light"
-			_dark={{ bg: "surface.dark" }}
-		>
+		<Box borderWidth="1px" borderColor={borderColor} borderRadius="md" bg={bg}>
 			<HStack justify="space-between" align="start" mb={4} spacing={3}>
-				<Box minW={0}>
+				<Box minW={0} px={4} pt={4}>
 					<Text fontWeight="semibold" noOfLines={1}>
 						{service.service_name}
 					</Text>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
+					<Text fontSize="xs" color={labelColor}>
 						{t("myaccount.serviceLimit", "Service limit")}
 					</Text>
 				</Box>
-				<Badge colorScheme={service.traffic_basis === "created_traffic" ? "purple" : "blue"}>
-					{labels.modeLabel}
-				</Badge>
+				<Box px={4} pt={4}>
+					<Badge
+						borderRadius="md"
+						colorScheme={
+							service.traffic_basis === "created_traffic" ? "purple" : "blue"
+						}
+					>
+						{labels.modeLabel}
+					</Badge>
+				</Box>
 			</HStack>
 
-			<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} mb={4}>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{labels.usedLabel}
-					</Text>
-					<Text fontWeight="semibold">{formatBytes(service.used_traffic, 2)}</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{labels.remainingLabel}
-					</Text>
-					<Text fontWeight="semibold">
-						{service.data_limit === null
+			<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} px={4} pb={4}>
+				<MiniMetric
+					label={labels.usedLabel}
+					value={formatBytes(service.used_traffic, 2)}
+				/>
+				<MiniMetric
+					label={labels.remainingLabel}
+					value={
+						service.data_limit === null
 							? t("myaccount.unlimited")
-							: formatBytes(remaining, 2)}
-					</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{labels.totalLabel}
-					</Text>
-					<Text fontWeight="semibold">
-						{service.data_limit === null
+							: formatBytes(remaining, 2)
+					}
+				/>
+				<MiniMetric
+					label={labels.totalLabel}
+					value={
+						service.data_limit === null
 							? t("myaccount.unlimited")
-							: formatBytes(limit, 2)}
-					</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("myaccount.createdUsers")}
-					</Text>
-					<Text fontWeight="semibold">{service.current_users_count}</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("myaccount.remainingUsers")}
-					</Text>
-					<Text fontWeight="semibold">
-						{service.users_limit === null
+							: formatBytes(limit, 2)
+					}
+				/>
+				<MiniMetric
+					label={t("myaccount.createdUsers")}
+					value={`${service.current_users_count}`}
+				/>
+				<MiniMetric
+					label={t("myaccount.remainingUsers")}
+					value={
+						service.users_limit === null
 							? t("myaccount.unlimited")
-							: `${Math.max(remainingUsers, 0)}`}
-					</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("myaccount.totalUsers")}
-					</Text>
-					<Text fontWeight="semibold">
-						{service.users_limit === null
+							: `${Math.max(remainingUsers, 0)}`
+					}
+				/>
+				<MiniMetric
+					label={t("myaccount.totalUsers")}
+					value={
+						service.users_limit === null
 							? t("myaccount.unlimited")
-							: `${usersLimit}`}
-					</Text>
-				</Box>
+							: `${usersLimit}`
+					}
+				/>
 			</SimpleGrid>
 
-			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }} mb={2}>
-				{labels.dailyTotalLabel}:{" "}
-				<chakra.span fontWeight="semibold">
-					{formatBytes(dailyTotal, 2)}
-				</chakra.span>
-			</Text>
-			{series[0].data.length ? (
-				<ReactApexChart
-					options={buildDailyUsageOptions(colorMode, categories)}
-					series={series as any}
-					type="area"
-					height={220}
-				/>
-			) : (
-				<Text color="gray.500" _dark={{ color: "gray.400" }}>
-					{t("noData")}
+			<Box borderTopWidth="1px" borderTopColor={borderColor} bg={subBg} p={4}>
+				<Text fontSize="sm" color={labelColor} mb={2}>
+					{labels.dailyTotalLabel}:{" "}
+					<chakra.span fontWeight="semibold">
+						{formatBytes(dailyTotal, 2)}
+					</chakra.span>
 				</Text>
-			)}
+				{series[0].data.length ? (
+					<ReactApexChart
+						options={buildDailyUsageOptions(colorMode, categories)}
+						series={series as any}
+						type="area"
+						height={220}
+					/>
+				) : (
+					<Text color={labelColor}>{t("noData")}</Text>
+				)}
+			</Box>
 		</Box>
 	);
 };
@@ -334,6 +379,9 @@ const ServiceBalanceCard: React.FC<{
 	service: MyAccountServiceLimit;
 	t: (key: string, fallback?: string) => string;
 }> = ({ service, t }) => {
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const labels = getTrafficLabels(t, service.traffic_basis);
 	const limit = service.data_limit ?? 0;
 	const remaining =
@@ -350,43 +398,41 @@ const ServiceBalanceCard: React.FC<{
 	return (
 		<Box
 			borderWidth="1px"
-			borderRadius="lg"
+			borderColor={borderColor}
+			borderRadius="md"
 			p={4}
-			bg="surface.light"
-			_dark={{ bg: "surface.dark" }}
+			bg={bg}
 		>
 			<HStack justify="space-between" align="start" spacing={3} mb={3}>
 				<Box minW={0}>
-					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+					<Text fontSize="xs" color={labelColor} fontWeight="semibold">
 						{t("myaccount.service", "Service")}
 					</Text>
 					<Text fontWeight="semibold" fontSize="lg" noOfLines={1}>
 						{service.service_name}
 					</Text>
 				</Box>
-				<Badge colorScheme={service.traffic_basis === "created_traffic" ? "purple" : "blue"}>
+				<Badge
+					borderRadius="md"
+					colorScheme={
+						service.traffic_basis === "created_traffic" ? "purple" : "blue"
+					}
+				>
 					{labels.modeLabel}
 				</Badge>
 			</HStack>
 			<Text fontSize="2xl" fontWeight="bold">
 				{remainingText}
 			</Text>
-			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+			<Text fontSize="sm" color={labelColor}>
 				{t("myaccount.remainingFromService", "remaining from this service")}
 			</Text>
 			<SimpleGrid columns={2} spacing={3} mt={4}>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{labels.usedLabel}
-					</Text>
-					<Text fontWeight="semibold">{formatBytes(service.used_traffic, 2)}</Text>
-				</Box>
-				<Box>
-					<Text fontSize="xs" color="gray.500" _dark={{ color: "gray.400" }}>
-						{labels.totalLabel}
-					</Text>
-					<Text fontWeight="semibold">{limitText}</Text>
-				</Box>
+				<MiniMetric
+					label={labels.usedLabel}
+					value={formatBytes(service.used_traffic, 2)}
+				/>
+				<MiniMetric label={labels.totalLabel} value={limitText} />
 			</SimpleGrid>
 		</Box>
 	);
@@ -565,6 +611,9 @@ export const MyAccountPage: React.FC = () => {
 	const apiKeyModal = useDisclosure();
 	const queryClient = useQueryClient();
 	const { colorMode } = useColorMode();
+	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const { userData, getUserIsSuccess } = useGetUser();
 	const { onCopy, setValue: setClipboardValue } = useClipboard("");
 	const [range, setRange] = useState<DateRangeValue>(() => {
@@ -735,13 +784,19 @@ export const MyAccountPage: React.FC = () => {
 
 	if (!selfPermissions.self_myaccount) {
 		return (
-			<VStack spacing={3} align="start">
+			<VStack
+				spacing={3}
+				align="start"
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={4}
+			>
 				<Text fontSize="lg" fontWeight="semibold">
 					{t("myaccount.forbiddenTitle")}
 				</Text>
-				<Text color="gray.500" _dark={{ color: "gray.400" }}>
-					{t("myaccount.forbiddenDescription")}
-				</Text>
+				<Text color={labelColor}>{t("myaccount.forbiddenDescription")}</Text>
 			</VStack>
 		);
 	}
@@ -781,31 +836,39 @@ export const MyAccountPage: React.FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<HStack justify="space-between" align="center">
-				<Box>
-					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("myaccount.title")}
-					</Text>
-					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("myaccount.subtitle")}
-					</Text>
-				</Box>
-				{isFetching && (
-					<HStack spacing={2}>
-						<Spinner size="sm" />
-						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-							{t("loading")}
+			<Box
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={{ base: 3, md: 4 }}
+			>
+				<Flex
+					justify="space-between"
+					align={{ base: "flex-start", md: "center" }}
+					gap={3}
+					flexWrap="wrap"
+				>
+					<Box minW={0}>
+						<Text as="h1" fontWeight="semibold" fontSize="2xl">
+							{t("myaccount.title")}
 						</Text>
-					</HStack>
-				)}
-			</HStack>
+						<Text fontSize="sm" color={labelColor}>
+							{t("myaccount.subtitle")}
+						</Text>
+					</Box>
+					{isFetching && (
+						<HStack spacing={2} color={labelColor}>
+							<Spinner size="sm" />
+							<Text fontSize="sm">{t("loading")}</Text>
+						</HStack>
+					)}
+				</Flex>
+			</Box>
 
-			<Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={4}>
-				<GridItem>
-					<Text fontWeight="semibold" mb={2}>
-						{usageSectionTitle}
-					</Text>
-					<SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+			<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
+				<ChartBox title={usageSectionTitle}>
+					<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 						<StatsCard label={usedLabel} value={formatBytes(used, 2)} />
 						<StatsCard
 							label={remainingLabel}
@@ -824,12 +887,9 @@ export const MyAccountPage: React.FC = () => {
 							}
 						/>
 					</SimpleGrid>
-				</GridItem>
-				<GridItem>
-					<Text fontWeight="semibold" mb={2}>
-						{t("myaccount.userLimits")}
-					</Text>
-					<SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3}>
+				</ChartBox>
+				<ChartBox title={t("myaccount.userLimits")}>
+					<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 						<StatsCard
 							label={t("myaccount.createdUsers")}
 							value={`${data.current_users_count}`}
@@ -851,19 +911,14 @@ export const MyAccountPage: React.FC = () => {
 							}
 						/>
 					</SimpleGrid>
-				</GridItem>
-			</Grid>
+				</ChartBox>
+			</SimpleGrid>
 
 			{showServiceBalances && (
 				<ChartBox title={t("myaccount.serviceBalances", "Service balances")}>
 					{serviceLimits.length ? (
 						<>
-							<Text
-								fontSize="sm"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								mb={3}
-							>
+							<Text fontSize="sm" color={labelColor} mb={3}>
 								{t(
 									"myaccount.serviceBalancesHint",
 									"Remaining traffic is shown separately for each assigned service.",
@@ -880,21 +935,19 @@ export const MyAccountPage: React.FC = () => {
 							</SimpleGrid>
 						</>
 					) : (
-						<Text color="gray.500" _dark={{ color: "gray.400" }}>
-							{t("noData")}
-						</Text>
+						<Text color={labelColor}>{t("noData")}</Text>
 					)}
 				</ChartBox>
 			)}
 
-			<Grid
-				templateColumns={{
-					base: "1fr",
-					lg: isCreatedTrafficBasis || isPerServiceLimits ? "1fr" : "2fr 1fr",
+			<SimpleGrid
+				columns={{
+					base: 1,
+					lg: isCreatedTrafficBasis || isPerServiceLimits ? 1 : 2,
 				}}
-				gap={4}
+				spacing={4}
 			>
-				<GridItem>
+				<Box minW={0}>
 					<ChartBox
 						title={dailyChartTitle}
 						headerActions={
@@ -907,12 +960,7 @@ export const MyAccountPage: React.FC = () => {
 						}
 						minH="500px"
 					>
-						<Text
-							fontSize="sm"
-							color="gray.500"
-							_dark={{ color: "gray.400" }}
-							mb={3}
-						>
+						<Text fontSize="sm" color={labelColor} mb={3}>
 							{dailyTotalLabel}:{" "}
 							<chakra.span fontWeight="semibold">
 								{formatBytes(dailyTotal, 2)}
@@ -926,21 +974,14 @@ export const MyAccountPage: React.FC = () => {
 								height={340}
 							/>
 						) : (
-							<Text color="gray.500" _dark={{ color: "gray.400" }}>
-								{t("noData")}
-							</Text>
+							<Text color={labelColor}>{t("noData")}</Text>
 						)}
 					</ChartBox>
-				</GridItem>
+				</Box>
 				{!isCreatedTrafficBasis && !isPerServiceLimits && (
-					<GridItem>
+					<Box minW={0}>
 						<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
-							<Text
-								fontSize="sm"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								mb={3}
-							>
+							<Text fontSize="sm" color={labelColor} mb={3}>
 								{t("nodes.totalUsage", "Total usage")}:{" "}
 								<chakra.span fontWeight="semibold">
 									{formatBytes(perNodeTotal, 2)}
@@ -955,14 +996,12 @@ export const MyAccountPage: React.FC = () => {
 									series={donutSeries}
 								/>
 							) : (
-								<Text color="gray.500" _dark={{ color: "gray.400" }}>
-									{t("noData")}
-								</Text>
+								<Text color={labelColor}>{t("noData")}</Text>
 							)}
 						</ChartBox>
-					</GridItem>
+					</Box>
 				)}
-			</Grid>
+			</SimpleGrid>
 
 			{isPerServiceLimits && (
 				<ChartBox title={t("myaccount.serviceTrafficLimits", "Service limits")}>
@@ -978,9 +1017,7 @@ export const MyAccountPage: React.FC = () => {
 							))}
 						</SimpleGrid>
 					) : (
-						<Text color="gray.500" _dark={{ color: "gray.400" }}>
-							{t("noData")}
-						</Text>
+						<Text color={labelColor}>{t("noData")}</Text>
 					)}
 				</ChartBox>
 			)}
@@ -1004,78 +1041,83 @@ export const MyAccountPage: React.FC = () => {
 							<Text>{t("loading")}</Text>
 						</HStack>
 					) : (apiKeysQuery.data?.length ?? 0) === 0 ? (
-						<Text color="gray.500" _dark={{ color: "gray.400" }}>
-							{t("myaccount.noApiKeys")}
-						</Text>
+						<Text color={labelColor}>{t("myaccount.noApiKeys")}</Text>
 					) : (
-						<Table size="sm">
-							<Thead>
-								<Tr>
-									<Th>{t("myaccount.apiKeyMasked")}</Th>
-									<Th>{t("createdAt")}</Th>
-									<Th>{t("expiresAt")}</Th>
-									<Th>{t("myaccount.lastUsed")}</Th>
-									<Th></Th>
-								</Tr>
-							</Thead>
-							<Tbody>
-								{apiKeysQuery.data?.map((key) => (
-									<Tr key={key.id}>
-										<Td>{key.masked_key ?? "****"}</Td>
-										<Td>
-											{key.created_at
-												? dayjs(key.created_at).format("YYYY-MM-DD HH:mm")
-												: "-"}
-										</Td>
-										<Td>
-											{key.expires_at
-												? dayjs(key.expires_at).format("YYYY-MM-DD")
-												: t("myaccount.never")}
-										</Td>
-										<Td>
-											{key.last_used_at
-												? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
-												: t("myaccount.neverUsed")}
-										</Td>
-										<Td textAlign="right">
-											<Button
-												size="xs"
-												colorScheme="red"
-												variant="ghost"
-												isLoading={deleteKeyMutation.isLoading}
-												onClick={() => {
-													setDeleteKeyId(key.id);
-													setDeletePassword("");
-													setShowDeletePassword(false);
-													deleteModal.onOpen();
-												}}
-											>
-												{t("delete")}
-											</Button>
-										</Td>
+						<Box
+							overflowX="auto"
+							borderWidth="1px"
+							borderColor={borderColor}
+							borderRadius="md"
+						>
+							<Table size="sm">
+								<Thead bg={panelBg}>
+									<Tr>
+										<Th>{t("myaccount.apiKeyMasked")}</Th>
+										<Th>{t("createdAt")}</Th>
+										<Th>{t("expiresAt")}</Th>
+										<Th>{t("myaccount.lastUsed")}</Th>
+										<Th></Th>
 									</Tr>
-								))}
-							</Tbody>
-						</Table>
+								</Thead>
+								<Tbody>
+									{apiKeysQuery.data?.map((key) => (
+										<Tr key={key.id}>
+											<Td fontWeight="semibold">{key.masked_key ?? "****"}</Td>
+											<Td>
+												{key.created_at
+													? dayjs(key.created_at).format("YYYY-MM-DD HH:mm")
+													: "-"}
+											</Td>
+											<Td>
+												{key.expires_at
+													? dayjs(key.expires_at).format("YYYY-MM-DD")
+													: t("myaccount.never")}
+											</Td>
+											<Td>
+												{key.last_used_at
+													? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
+													: t("myaccount.neverUsed")}
+											</Td>
+											<Td textAlign="right">
+												<Button
+													size="xs"
+													colorScheme="red"
+													variant="ghost"
+													isLoading={deleteKeyMutation.isLoading}
+													onClick={() => {
+														setDeleteKeyId(key.id);
+														setDeletePassword("");
+														setShowDeletePassword(false);
+														deleteModal.onOpen();
+													}}
+												>
+													{t("delete")}
+												</Button>
+											</Td>
+										</Tr>
+									))}
+								</Tbody>
+							</Table>
+						</Box>
 					)}
 				</ChartBox>
 			)}
 
 			{selfPermissions.self_change_password && (
 				<ChartBox title={t("myaccount.changePasswordCard")}>
-					<Text
-						fontSize="sm"
-						color="gray.500"
-						_dark={{ color: "gray.400" }}
-						mb={3}
+					<Flex
+						justify="space-between"
+						align={{ base: "stretch", md: "center" }}
+						gap={3}
+						flexWrap="wrap"
 					>
-						{t("myaccount.changePasswordHint")}
-					</Text>
-					<Box maxW="400px">
-						<Button colorScheme="primary" onClick={modal.onOpen} w="auto">
+						<Text fontSize="sm" color={labelColor} maxW="720px">
+							{t("myaccount.changePasswordHint")}
+						</Text>
+						<Button colorScheme="primary" onClick={modal.onOpen}>
 							{t("myaccount.changePassword")}
 						</Button>
-					</Box>
+					</Flex>
 				</ChartBox>
 			)}
 
@@ -1202,7 +1244,7 @@ export const MyAccountPage: React.FC = () => {
 						<ModalCloseButton />
 						<ModalBody>
 							<VStack spacing={3} align="stretch">
-								<Text color="gray.600" _dark={{ color: "gray.300" }}>
+								<Text color={labelColor}>
 									{t("myaccount.deleteApiKeyPrompt")}
 								</Text>
 								<InputGroup dir={isRTL ? "rtl" : "ltr"}>

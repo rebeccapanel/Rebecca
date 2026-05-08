@@ -10,11 +10,7 @@ import {
 	HStack,
 	IconButton,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Select,
 	SimpleGrid,
@@ -46,6 +42,12 @@ import { useQuery } from "react-query";
 import { getPanelSettings } from "service/settings";
 import { SizeFormatter } from "../utils/outbound";
 import { Input } from "./Input";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 const EyeIconStyled = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const EyeSlashIconStyled = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
@@ -257,19 +259,55 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={handleClose} size="lg">
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3" as="form" onSubmit={handleSubmit}>
-				<ModalHeader pt={6}>
-					<Text fontWeight="semibold" fontSize="lg">
-						{isAddMode ? t("nodes.addNewRebeccaNode") : t("nodes.editNode")}
-					</Text>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				<ModalBody>
-					<Stack spacing={6}>
+		<Modal
+			isOpen={isOpen}
+			onClose={handleClose}
+			size="2xl"
+			scrollBehavior="inside"
+		>
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent
+				mx="3"
+				as="form"
+				onSubmit={handleSubmit}
+				sx={{
+					".node-form-section .chakra-simple-grid": {
+						gridTemplateColumns: {
+							base: "1fr",
+							md: "repeat(2, minmax(0, 1fr))",
+						},
+					},
+					".node-form-section .chakra-form-control": {
+						display: "block",
+					},
+					".node-form-section .node-switch-control": {
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						gap: 3,
+					},
+					".node-form-section .chakra-form__label": {
+						mb: 1,
+					},
+					".node-form-section .chakra-input__group, .node-form-section .chakra-numberinput, .node-form-section input, .node-form-section select":
+						{
+							w: "full",
+							width: "100%",
+						},
+					".node-form-section .chakra-form-control > .chakra-form__helper-text, .node-form-section .chakra-form-control > .chakra-form__error-message":
+						{
+							gridColumn: "auto",
+						},
+				}}
+			>
+				<XrayModalHeader>
+					{isAddMode ? t("nodes.addNewRebeccaNode") : t("nodes.editNode")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<XrayModalBody>
+					<Stack spacing={4}>
 						{!isAddMode && nodeUsage && (
-							<Stack spacing={2}>
+							<Stack className="xray-dialog-section" spacing={2}>
 								<Text fontWeight="medium">{t("nodes.usage")}</Text>
 								<HStack>
 									<Tag colorScheme="green">
@@ -285,7 +323,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 						)}
 
 						{!isAddMode && nodeCertificateValue && (
-							<Stack spacing={3}>
+							<Stack className="xray-dialog-section" spacing={3}>
 								<HStack justify="space-between" align="center">
 									<Text fontWeight="medium">{t("nodes.certificate")}</Text>
 									<HStack spacing={2}>
@@ -350,7 +388,13 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 							</Stack>
 						)}
 
-						<Stack spacing={4}>
+						<Stack
+							className="xray-dialog-section node-form-section"
+							spacing={3}
+						>
+							<Text fontSize="sm" fontWeight="semibold">
+								{t("nodes.connectionSettings", "Connection settings")}
+							</Text>
 							{isAddMode && (
 								<Checkbox isChecked isReadOnly isDisabled pointerEvents="none">
 									{t(
@@ -360,46 +404,38 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								</Checkbox>
 							)}
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-								<FormControl>
-									<Input
-										label={t("nodes.nodeName")}
-										size="sm"
-										placeholder="Rebecca-S2"
-										{...form.register("name")}
-										error={getInputError(form.formState?.errors?.name)}
-									/>
-								</FormControl>
-								<FormControl>
-									<Input
-										label={t("nodes.nodeAddress")}
-										size="sm"
-										placeholder="192.168.1.1 or 2001:db8::1"
-										{...form.register("address")}
-										error={getInputError(form.formState?.errors?.address)}
-									/>
-								</FormControl>
+								<Input
+									label={t("nodes.nodeName")}
+									size="sm"
+									placeholder="Rebecca-S2"
+									{...form.register("name")}
+									error={getInputError(form.formState?.errors?.name)}
+								/>
+								<Input
+									label={t("nodes.nodeAddress")}
+									size="sm"
+									placeholder="192.168.1.1 or 2001:db8::1"
+									{...form.register("address")}
+									error={getInputError(form.formState?.errors?.address)}
+								/>
 							</SimpleGrid>
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-								<FormControl>
-									<Input
-										label={t("nodes.nodePort")}
-										size="sm"
-										placeholder="62050"
-										{...form.register("port")}
-										error={getInputError(form.formState?.errors?.port)}
-									/>
-								</FormControl>
-								<FormControl>
-									<Input
-										label={t("nodes.nodeAPIPort")}
-										size="sm"
-										placeholder="62051"
-										{...form.register("api_port")}
-										error={getInputError(form.formState?.errors?.api_port)}
-									/>
-								</FormControl>
+								<Input
+									label={t("nodes.nodePort")}
+									size="sm"
+									placeholder="62050"
+									{...form.register("port")}
+									error={getInputError(form.formState?.errors?.port)}
+								/>
+								<Input
+									label={t("nodes.nodeAPIPort")}
+									size="sm"
+									placeholder="62051"
+									{...form.register("api_port")}
+									error={getInputError(form.formState?.errors?.api_port)}
+								/>
 							</SimpleGrid>
-							<FormControl>
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 								<Input
 									label={t("nodes.usageCoefficient")}
 									size="sm"
@@ -409,58 +445,61 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 										form.formState?.errors?.usage_coefficient,
 									)}
 								/>
-							</FormControl>
-							<FormControl>
-								<Input
-									label={t("nodes.dataLimitField", "Data Limit (GB)")}
-									size="sm"
-									type="number"
-									step={0.01}
-									min={0}
-									placeholder={t(
-										"nodes.dataLimitPlaceholder",
-										"e.g., 500 (empty = unlimited)",
-									)}
-									{...form.register("data_limit", {
-										setValueAs: (value) => {
-											if (
-												value === "" ||
-												value === null ||
-												value === undefined
-											) {
-												return null;
-											}
-											const parsed = Number(value);
-											return Number.isFinite(parsed) ? parsed : Number.NaN;
-										},
-										validate: (value) => {
-											if (value === null || value === undefined) {
-												return true;
-											}
-											if (Number.isNaN(value)) {
-												return t(
-													"nodes.dataLimitValidation",
-													"Data limit must be a valid number",
+								<FormControl>
+									<Input
+										label={t("nodes.dataLimitField", "Data Limit (GB)")}
+										size="sm"
+										type="number"
+										step={0.01}
+										min={0}
+										placeholder={t(
+											"nodes.dataLimitPlaceholder",
+											"e.g., 500 (empty = unlimited)",
+										)}
+										{...form.register("data_limit", {
+											setValueAs: (value) => {
+												if (
+													value === "" ||
+													value === null ||
+													value === undefined
+												) {
+													return null;
+												}
+												const parsed = Number(value);
+												return Number.isFinite(parsed) ? parsed : Number.NaN;
+											},
+											validate: (value) => {
+												if (value === null || value === undefined) {
+													return true;
+												}
+												if (Number.isNaN(value)) {
+													return t(
+														"nodes.dataLimitValidation",
+														"Data limit must be a valid number",
+													);
+												}
+												return (
+													value >= 0 ||
+													t(
+														"nodes.dataLimitPositive",
+														"Data limit must be zero or greater",
+													)
 												);
-											}
-											return (
-												value >= 0 ||
-												t(
-													"nodes.dataLimitPositive",
-													"Data limit must be zero or greater",
-												)
-											);
-										},
-									})}
-									error={getInputError(form.formState?.errors?.data_limit)}
-								/>
-								<Text fontSize="xs" color="gray.500" mt={1}>
-									{t("nodes.dataLimitHint", "Leave empty for unlimited data.")}
-								</Text>
-							</FormControl>
+											},
+										})}
+										error={getInputError(form.formState?.errors?.data_limit)}
+									/>
+									<Text fontSize="xs" color="gray.500" mt={1}>
+										{t(
+											"nodes.dataLimitHint",
+											"Leave empty for unlimited data.",
+										)}
+									</Text>
+								</FormControl>
+							</SimpleGrid>
 							{allowNobetci && (
 								<>
-									<FormControl display="flex" alignItems="center">
+									<FormControl className="node-switch-control">
 										<FormLabel mb={0}>
 											{t("nodes.useNobetci", "Enable Nobetci integration")}
 										</FormLabel>
@@ -535,7 +574,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</Collapse>
 								</>
 							)}
-							<FormControl display="flex" alignItems="center">
+							<FormControl className="node-switch-control">
 								<FormLabel mb={0}>
 									{t("nodes.useProxy", "Enable proxy for node connection")}
 								</FormLabel>
@@ -551,7 +590,14 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								/>
 							</FormControl>
 							<Collapse in={Boolean(proxyEnabled)} animateOpacity>
-								<Stack spacing={3} mt={2}>
+								<Stack
+									className="xray-dialog-section node-form-section"
+									spacing={3}
+									mt={2}
+								>
+									<Text fontSize="sm" fontWeight="semibold">
+										{t("nodes.proxySettings", "Proxy settings")}
+									</Text>
 									<FormControl
 										isInvalid={
 											!!getInputError(form.formState?.errors?.proxy_type)
@@ -574,70 +620,56 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 										</FormErrorMessage>
 									</FormControl>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<Input
-												label={t("nodes.proxyHost", "Proxy host")}
-												size="sm"
-												placeholder="proxy.example.com"
-												{...form.register("proxy_host")}
-												error={getInputError(
-													form.formState?.errors?.proxy_host,
-												)}
-											/>
-										</FormControl>
-										<FormControl>
-											<Input
-												label={t("nodes.proxyPort", "Proxy port")}
-												size="sm"
-												type="number"
-												min={1}
-												max={65535}
-												placeholder="8080"
-												{...form.register("proxy_port", {
-													setValueAs: (value) => {
-														if (
-															value === "" ||
-															value === null ||
-															value === undefined
-														) {
-															return null;
-														}
-														const parsed = Number(value);
-														return Number.isFinite(parsed)
-															? parsed
-															: Number.NaN;
-													},
-												})}
-												error={getInputError(
-													form.formState?.errors?.proxy_port,
-												)}
-											/>
-										</FormControl>
+										<Input
+											label={t("nodes.proxyHost", "Proxy host")}
+											size="sm"
+											placeholder="proxy.example.com"
+											{...form.register("proxy_host")}
+											error={getInputError(form.formState?.errors?.proxy_host)}
+										/>
+										<Input
+											label={t("nodes.proxyPort", "Proxy port")}
+											size="sm"
+											type="number"
+											min={1}
+											max={65535}
+											placeholder="8080"
+											{...form.register("proxy_port", {
+												setValueAs: (value) => {
+													if (
+														value === "" ||
+														value === null ||
+														value === undefined
+													) {
+														return null;
+													}
+													const parsed = Number(value);
+													return Number.isFinite(parsed) ? parsed : Number.NaN;
+												},
+											})}
+											error={getInputError(form.formState?.errors?.proxy_port)}
+										/>
 									</SimpleGrid>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-										<FormControl>
-											<Input
-												label={t("nodes.proxyUsername", "Proxy username")}
-												size="sm"
-												placeholder="user"
-												{...form.register("proxy_username")}
-												error={getInputError(
-													form.formState?.errors?.proxy_username,
-												)}
-											/>
-										</FormControl>
-										<FormControl>
-											<Input
-												label={t("nodes.proxyPassword", "Proxy password")}
-												size="sm"
-												type="password"
-												placeholder="••••••••"
-												{...form.register("proxy_password")}
-												error={getInputError(
-													form.formState?.errors?.proxy_password,
-												)}
-											/>
-										</FormControl>
+										<Input
+											label={t("nodes.proxyUsername", "Proxy username")}
+											size="sm"
+											placeholder="user"
+											{...form.register("proxy_username")}
+											error={getInputError(
+												form.formState?.errors?.proxy_username,
+											)}
+										/>
+										<Input
+											label={t("nodes.proxyPassword", "Proxy password")}
+											size="sm"
+											type="password"
+											placeholder="••••••••"
+											{...form.register("proxy_password")}
+											error={getInputError(
+												form.formState?.errors?.proxy_password,
+											)}
+										/>
 									</SimpleGrid>
 									<Text fontSize="xs" color="gray.500">
 										{t(
@@ -650,23 +682,23 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 						</Stack>
 
 						{isAddMode && (
-							<Box>
+							<Box className="xray-dialog-section">
 								<Checkbox {...form.register("add_as_new_host")}>
 									{t("nodes.addHostForEveryInbound")}
 								</Checkbox>
 							</Box>
 						)}
 					</Stack>
-				</ModalBody>
-				<ModalFooter gap={3}>
+				</XrayModalBody>
+				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="outline" onClick={handleClose}>
 						{t("cancel")}
 					</Button>
 					<Button type="submit" colorScheme="primary" isLoading={isLoading}>
 						{isAddMode ? t("nodes.addNode") : t("nodes.editNode")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };

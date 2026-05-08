@@ -16,16 +16,11 @@ import {
 	Badge,
 	Box,
 	Button,
-	Card,
-	CardBody,
-	CardHeader,
 	Checkbox,
 	Flex,
 	FormControl,
 	FormHelperText,
 	FormLabel,
-	Grid,
-	GridItem,
 	HStack,
 	IconButton,
 	Modal,
@@ -49,6 +44,7 @@ import {
 	Thead,
 	Tooltip,
 	Tr,
+	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
@@ -62,7 +58,14 @@ import {
 	PlusIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
+import { ChartBox } from "components/common/ChartBox";
 import { Input } from "components/Input";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "components/xray/XrayDialog";
 import { useAdminsStore } from "contexts/AdminsContext";
 import {
 	fetchInbounds,
@@ -76,6 +79,8 @@ import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
+import type { Admin, AdminPermissions } from "types/Admin";
+import { AdminTrafficLimitMode } from "types/Admin";
 import type {
 	ServiceCreatePayload,
 	ServiceDeletePayload,
@@ -83,8 +88,6 @@ import type {
 	ServiceHostAssignment,
 	ServiceSummary,
 } from "types/Service";
-import { AdminTrafficLimitMode } from "types/Admin";
-import type { Admin, AdminPermissions } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 
 type HostOption = {
@@ -127,6 +130,49 @@ const formatGigabytes = (
 	return `${Number.isInteger(gb) ? gb : Number(gb.toFixed(2))} GB`;
 };
 
+const MetricTile: FC<{
+	label: string;
+	value: string | number;
+	helper?: string;
+	accentColor?: string;
+}> = ({ label, value, helper, accentColor = "primary.400" }) => {
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
+
+	return (
+		<Box
+			position="relative"
+			overflow="hidden"
+			borderWidth="1px"
+			borderColor={borderColor}
+			borderRadius="md"
+			bg={bg}
+			p={3}
+		>
+			<Box
+				position="absolute"
+				insetInlineStart={0}
+				top={0}
+				bottom={0}
+				w="3px"
+				bg={accentColor}
+			/>
+			<Text fontSize="xs" color={labelColor} fontWeight="semibold">
+				{label}
+			</Text>
+			<Text mt={1} fontWeight="semibold" fontSize="lg" lineHeight="1.2">
+				{value}
+			</Text>
+			{helper && (
+				<Text mt={1} fontSize="xs" color={labelColor}>
+					{helper}
+				</Text>
+			)}
+		</Box>
+	);
+};
+
 const adminCanDeleteUsers = (admin?: Admin) =>
 	Boolean(admin?.permissions?.users?.delete);
 
@@ -151,6 +197,10 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	refreshHosts,
 }) => {
 	const { t } = useTranslation();
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const subtleBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const selectedBg = useColorModeValue("primary.50", "whiteAlpha.100");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const [name, setName] = useState(initialService?.name ?? "");
 	const [description, setDescription] = useState(
 		initialService?.description ?? "",
@@ -374,37 +424,60 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="5xl">
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>
+		<Modal isOpen={isOpen} onClose={onClose} size="5xl" scrollBehavior="inside">
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent
+				mx="3"
+				sx={{
+					".service-dialog-section .chakra-form-control": {
+						display: "block",
+						gridTemplateColumns: "none",
+					},
+					".service-dialog-list": {
+						borderColor,
+						bg: subtleBg,
+					},
+				}}
+			>
+				<XrayModalHeader>
 					{initialService
 						? t("services.editTitle", "Edit Service")
 						: t("services.createTitle", "Create Service")}
-				</ModalHeader>
+				</XrayModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
-					<Stack spacing={6}>
-						<HStack spacing={4}>
-							<Input
-								label={t("services.fields.name", "Name")}
-								value={name}
-								onChange={(event) => setName(event.target.value)}
-								maxLength={128}
-								isRequired
-							/>
-							<Input
-								label={t("services.fields.description", "Description")}
-								value={description ?? ""}
-								onChange={(event) => setDescription(event.target.value)}
-								maxLength={256}
-							/>
-						</HStack>
-						<Box>
-							<Text fontWeight="medium" mb={2}>
-								{t("services.fields.admins", "Admins")}
+				<XrayModalBody>
+					<Stack spacing={4}>
+						<Box className="xray-dialog-section service-dialog-section">
+							<Text fontSize="sm" fontWeight="semibold" mb={3}>
+								{t("services.basicInfo", "Basic information")}
 							</Text>
-							<Stack spacing={3}>
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<Input
+									label={t("services.fields.name", "Name")}
+									value={name}
+									onChange={(event) => setName(event.target.value)}
+									maxLength={128}
+									isRequired
+								/>
+								<Input
+									label={t("services.fields.description", "Description")}
+									value={description ?? ""}
+									onChange={(event) => setDescription(event.target.value)}
+									maxLength={256}
+								/>
+							</SimpleGrid>
+						</Box>
+
+						<Box className="xray-dialog-section service-dialog-section">
+							<Flex justify="space-between" align="center" gap={3} mb={3}>
+								<Text fontSize="sm" fontWeight="semibold">
+									{t("services.fields.admins", "Admins")}
+								</Text>
+								<Badge borderRadius="md" variant="subtle" colorScheme="primary">
+									{selectedAdmins.length} / {allAdmins.length}
+								</Badge>
+							</Flex>
+							<Stack spacing={2}>
 								<Checkbox
 									isChecked={
 										selectedAdmins.length === allAdmins.length &&
@@ -423,20 +496,21 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									clearable
 								/>
 								<VStack
+									className="service-dialog-list"
 									align="stretch"
-									spacing={2}
-									maxH="200px"
+									spacing={1.5}
+									maxH="170px"
 									overflowY="auto"
 									borderWidth="1px"
 									borderRadius="md"
-									p={3}
+									p={2}
 								>
 									{allAdmins.length === 0 ? (
-										<Text fontSize="sm" color="gray.500">
+										<Text fontSize="sm" color={labelColor}>
 											{t("services.noAdminsFound", "No admins available")}
 										</Text>
 									) : filteredAdmins.length === 0 ? (
-										<Text fontSize="sm" color="gray.500">
+										<Text fontSize="sm" color={labelColor}>
 											{t(
 												"services.noAdminsMatching",
 												"No admins match your search",
@@ -450,19 +524,13 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 													key={admin.id}
 													borderWidth="1px"
 													borderRadius="md"
-													px={3}
+													px={2.5}
 													py={2}
-													borderColor={isSelected ? "primary.400" : "gray.200"}
-													bg={isSelected ? "primary.50" : "transparent"}
+													borderColor={isSelected ? "primary.400" : borderColor}
+													bg={isSelected ? selectedBg : "transparent"}
 													_hover={{
 														borderColor: "primary.300",
 														cursor: "pointer",
-													}}
-													_dark={{
-														borderColor: isSelected
-															? "primary.300"
-															: "gray.600",
-														bg: isSelected ? "gray.700" : "transparent",
 													}}
 													transition="all 0.1s ease-in-out"
 													onClick={() => handleAdminToggle(admin.id)}
@@ -475,10 +543,12 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 													role="button"
 													tabIndex={0}
 												>
-													<Flex align="center" justify="space-between">
-														<Text fontWeight="medium">{admin.username}</Text>
+													<Flex align="center" justify="space-between" gap={3}>
+														<Text fontWeight="medium" noOfLines={1}>
+															{admin.username}
+														</Text>
 														{isSelected && (
-															<Badge colorScheme="primary">
+															<Badge colorScheme="primary" borderRadius="md">
 																{t("services.selected", "Selected")}
 															</Badge>
 														)}
@@ -489,264 +559,258 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									)}
 								</VStack>
 							</Stack>
-							<Text fontSize="sm" color="gray.500" mt={1}>
+							<Text fontSize="xs" color={labelColor} mt={2}>
 								{t(
 									"services.adminHint",
 									"Selected admins can create users for this service",
 								)}
 							</Text>
 						</Box>
-						<Box>
-							<Text fontWeight="medium" mb={2}>
-								{t("services.autoInbound.title", "Service inbound")}
+
+						<Box className="xray-dialog-section service-dialog-section">
+							<Flex
+								justify="space-between"
+								align={{ base: "flex-start", md: "center" }}
+								gap={3}
+								flexWrap="wrap"
+								mb={3}
+							>
+								<Box minW={0}>
+									<Text fontSize="sm" fontWeight="semibold">
+										{t("services.autoInbound.title", "Service inbound")}
+									</Text>
+									<Text
+										fontFamily="mono"
+										fontSize="xs"
+										color={labelColor}
+										mt={1}
+									>
+										{autoInboundTag ??
+											t(
+												"services.autoInbound.pendingTag",
+												"Save the service to generate the tag",
+											)}
+									</Text>
+								</Box>
+								<Badge
+									borderRadius="md"
+									colorScheme={autoInboundExists ? "green" : "gray"}
+								>
+									{autoInboundExists
+										? t("services.autoInbound.statusCreated", "Created")
+										: t("services.autoInbound.statusMissing", "Not created")}
+								</Badge>
+							</Flex>
+							<HStack spacing={2} flexWrap="wrap">
+								<Button
+									size="sm"
+									onClick={handleCreateAutoInbound}
+									isDisabled={
+										!initialService?.id || autoInboundExists || autoInboundBusy
+									}
+									isLoading={autoInboundBusy}
+								>
+									{t("services.autoInbound.create", "Create inbound")}
+								</Button>
+								<Button
+									size="sm"
+									variant="outline"
+									colorScheme="red"
+									onClick={handleDeleteAutoInbound}
+									isDisabled={
+										!initialService?.id || !autoInboundExists || autoInboundBusy
+									}
+									isLoading={autoInboundBusy}
+								>
+									{t("services.autoInbound.delete", "Delete inbound")}
+								</Button>
+							</HStack>
+							<Text fontSize="xs" color={labelColor} mt={2}>
+								{t(
+									"services.autoInbound.helper",
+									"Use this inbound as the only selection to auto-assign the service. It uses Shadowsocks defaults and should stay without hosts.",
+								)}
 							</Text>
-							<Stack spacing={3} borderWidth="1px" borderRadius="md" p={4}>
-								<Flex align="center" justify="space-between" gap={3}>
-									<Box>
-										<Text fontSize="sm" color="gray.500">
-											{t("services.autoInbound.tagLabel", "Inbound tag")}
-										</Text>
-										<Text fontFamily="mono" fontSize="sm">
-											{autoInboundTag ??
-												t(
-													"services.autoInbound.pendingTag",
-													"Save the service to generate the tag",
+						</Box>
+
+						<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
+							<Box className="xray-dialog-section service-dialog-section">
+								<Text fontSize="sm" fontWeight="semibold" mb={3}>
+									{t("services.availableHosts", "Available Hosts")}
+								</Text>
+								<Stack spacing={2}>
+									<Input
+										value={hostSearch}
+										onChange={(event) => setHostSearch(event.target.value)}
+										placeholder={t("services.searchHosts", "Search hosts")}
+										size="sm"
+										clearable
+									/>
+									<VStack
+										className="service-dialog-list"
+										align="stretch"
+										spacing={1.5}
+										maxH="260px"
+										overflowY="auto"
+										borderWidth="1px"
+										borderRadius="md"
+										p={2}
+									>
+										{availableHosts.length === 0 ? (
+											<Text fontSize="sm" color={labelColor}>
+												{t("services.noHostsLeft", "All hosts are selected")}
+											</Text>
+										) : filteredAvailableHosts.length === 0 ? (
+											<Text fontSize="sm" color={labelColor}>
+												{t(
+													"services.noHostsMatching",
+													"No hosts match your search",
 												)}
-										</Text>
-									</Box>
-									<Badge colorScheme={autoInboundExists ? "green" : "gray"}>
-										{autoInboundExists
-											? t("services.autoInbound.statusCreated", "Created")
-											: t("services.autoInbound.statusMissing", "Not created")}
+											</Text>
+										) : (
+											filteredAvailableHosts.map((host) => (
+												<Box
+													key={host.id}
+													borderWidth="1px"
+													borderRadius="md"
+													px={2.5}
+													py={2}
+													borderColor={
+														hoveredHost === host.id
+															? "primary.400"
+															: borderColor
+													}
+													_hover={{
+														borderColor: "primary.300",
+														cursor: "pointer",
+													}}
+													onMouseEnter={() => setHoveredHost(host.id)}
+													onMouseLeave={() => setHoveredHost(null)}
+													onClick={() => handleHostToggle(host.id)}
+												>
+													<Text fontWeight="medium" noOfLines={1}>
+														{host.label}
+													</Text>
+													<Text fontSize="xs" color={labelColor}>
+														{host.protocol.toUpperCase()} - {host.inboundTag}
+													</Text>
+												</Box>
+											))
+										)}
+									</VStack>
+								</Stack>
+							</Box>
+
+							<Box className="xray-dialog-section service-dialog-section">
+								<Flex justify="space-between" align="center" gap={3} mb={3}>
+									<Text fontSize="sm" fontWeight="semibold">
+										{t("services.selectedHosts", "Selected Hosts")}
+									</Text>
+									<Badge borderRadius="md" variant="subtle">
+										{selectedHosts.length}
 									</Badge>
 								</Flex>
-								<HStack spacing={2} flexWrap="wrap">
-									<Button
-										size="sm"
-										onClick={handleCreateAutoInbound}
-										isDisabled={
-											!initialService?.id ||
-											autoInboundExists ||
-											autoInboundBusy
-										}
-										isLoading={autoInboundBusy}
-									>
-										{t("services.autoInbound.create", "Create inbound")}
-									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										colorScheme="red"
-										onClick={handleDeleteAutoInbound}
-										isDisabled={
-											!initialService?.id ||
-											!autoInboundExists ||
-											autoInboundBusy
-										}
-										isLoading={autoInboundBusy}
-									>
-										{t("services.autoInbound.delete", "Delete inbound")}
-									</Button>
-								</HStack>
-								<Text fontSize="sm" color="gray.500">
-									{t(
-										"services.autoInbound.helper",
-										"Use this inbound as the only selection to auto-assign the service. It uses Shadowsocks defaults and should stay without hosts.",
-									)}
-								</Text>
-								{!initialService?.id && (
-									<Text fontSize="sm" color="gray.500">
-										{t(
-											"services.autoInbound.saveFirst",
-											"Save the service first to enable this option.",
-										)}
-									</Text>
-								)}
-							</Stack>
-						</Box>
-						<Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4}>
-							<GridItem>
-								<Card variant="outline" h="full">
-									<CardHeader>
-										<Text fontWeight="semibold">
-											{t("services.availableHosts", "Available Hosts")}
-										</Text>
-									</CardHeader>
-									<CardBody>
-										<Stack spacing={3}>
-											<Input
-												value={hostSearch}
-												onChange={(event) => setHostSearch(event.target.value)}
-												placeholder={t("services.searchHosts", "Search hosts")}
-												size="sm"
-												clearable
-											/>
-											<VStack
-												align="stretch"
-												spacing={2}
-												maxH="300px"
-												overflowY="auto"
-											>
-												{availableHosts.length === 0 ? (
-													<Text fontSize="sm" color="gray.500">
-														{t(
-															"services.noHostsLeft",
-															"All hosts are selected",
-														)}
-													</Text>
-												) : filteredAvailableHosts.length === 0 ? (
-													<Text fontSize="sm" color="gray.500">
-														{t(
-															"services.noHostsMatching",
-															"No hosts match your search",
-														)}
-													</Text>
-												) : (
-													filteredAvailableHosts.map((host) => (
-														<Box
-															key={host.id}
-															borderWidth="1px"
-															borderRadius="md"
-															px={3}
-															py={2}
-															borderColor={
-																hoveredHost === host.id
-																	? "primary.400"
-																	: "gray.200"
-															}
-															_hover={{
-																borderColor: "primary.300",
-																cursor: "pointer",
-															}}
-															onMouseEnter={() => setHoveredHost(host.id)}
-															onMouseLeave={() => setHoveredHost(null)}
-															onClick={() => handleHostToggle(host.id)}
-														>
-															<Text fontWeight="medium">{host.label}</Text>
-															<Text fontSize="sm" color="gray.500">
-																{host.protocol.toUpperCase()} -{" "}
-																{host.inboundTag}
-															</Text>
-														</Box>
-													))
-												)}
-											</VStack>
-										</Stack>
-									</CardBody>
-								</Card>
-							</GridItem>
-							<GridItem>
-								<Card variant="outline" h="full">
-									<CardHeader>
-										<Text fontWeight="semibold">
-											{t("services.selectedHosts", "Selected Hosts")}
-										</Text>
-									</CardHeader>
-									<CardBody>
-										<VStack
-											align="stretch"
-											spacing={2}
-											maxH="300px"
-											overflowY="auto"
-										>
-											{selectedHosts.length === 0 && (
-												<Text fontSize="sm" color="gray.500">
-													{t(
-														"services.noHostsSelected",
-														"Choose hosts from the left list",
-													)}
-												</Text>
+								<VStack
+									className="service-dialog-list"
+									align="stretch"
+									spacing={1.5}
+									maxH="300px"
+									overflowY="auto"
+									borderWidth="1px"
+									borderRadius="md"
+									p={2}
+								>
+									{selectedHosts.length === 0 && (
+										<Text fontSize="sm" color={labelColor}>
+											{t(
+												"services.noHostsSelected",
+												"Choose hosts from the left list",
 											)}
-											{selectedHosts.map((hostId, index) => {
-												const host = hostMap.get(hostId);
-												if (!host) return null;
-												return (
-													<motion.div layout key={hostId}>
-														<Flex
-															align="center"
-															justify="space-between"
-															borderWidth="1px"
-															borderRadius="md"
-															px={3}
-															py={2}
-															gap={3}
+										</Text>
+									)}
+									{selectedHosts.map((hostId, index) => {
+										const host = hostMap.get(hostId);
+										if (!host) return null;
+										return (
+											<motion.div layout key={hostId}>
+												<Flex
+													align="center"
+													justify="space-between"
+													borderWidth="1px"
+													borderRadius="md"
+													borderColor={borderColor}
+													px={2.5}
+													py={2}
+													gap={3}
+												>
+													<Box minW={0}>
+														<HStack spacing={2} align="center">
+															<Text fontWeight="medium" noOfLines={1}>
+																{host.label}
+															</Text>
+															{host.isDisabled && (
+																<Badge colorScheme="red" borderRadius="md">
+																	{t("services.hostDisabled", "Disabled")}
+																</Badge>
+															)}
+														</HStack>
+														<Text fontSize="xs" color={labelColor}>
+															{host.protocol.toUpperCase()} - {host.inboundTag}
+														</Text>
+													</Box>
+													<HStack spacing={1} flexShrink={0}>
+														<Tooltip label={t("services.moveUp", "Move up")}>
+															<IconButton
+																aria-label="Move up"
+																size="sm"
+																variant="ghost"
+																icon={<ArrowUpIcon width={16} />}
+																onClick={() => moveHost(hostId, "up")}
+																isDisabled={index === 0}
+															/>
+														</Tooltip>
+														<Tooltip
+															label={t("services.moveDown", "Move down")}
 														>
-															<Box>
-																<HStack spacing={2} align="center">
-																	<Text fontWeight="medium">{host.label}</Text>
-																	{host.isDisabled && (
-																		<Badge colorScheme="red">
-																			{t("services.hostDisabled", "Disabled")}
-																		</Badge>
-																	)}
-																</HStack>
-																<Text fontSize="sm" color="gray.500">
-																	{host.protocol.toUpperCase()} -{" "}
-																	{host.inboundTag}
-																</Text>
-															</Box>
-															<HStack spacing={1}>
-																<Tooltip
-																	label={t("services.moveUp", "Move up")}
-																>
-																	<IconButton
-																		aria-label="Move up"
-																		size="sm"
-																		variant="ghost"
-																		icon={<ArrowUpIcon width={16} />}
-																		onClick={() => moveHost(hostId, "up")}
-																		isDisabled={index === 0}
-																	/>
-																</Tooltip>
-																<Tooltip
-																	label={t("services.moveDown", "Move down")}
-																>
-																	<IconButton
-																		aria-label="Move down"
-																		size="sm"
-																		variant="ghost"
-																		icon={<ArrowDownIcon width={16} />}
-																		onClick={() => moveHost(hostId, "down")}
-																		isDisabled={
-																			index === selectedHosts.length - 1
-																		}
-																	/>
-																</Tooltip>
-																<Tooltip
-																	label={t(
-																		"services.removeHost",
-																		"Remove host",
-																	)}
-																>
-																	<IconButton
-																		aria-label="Remove"
-																		size="sm"
-																		variant="ghost"
-																		icon={<TrashIcon width={16} />}
-																		onClick={() => handleHostToggle(hostId)}
-																	/>
-																</Tooltip>
-															</HStack>
-														</Flex>
-													</motion.div>
-												);
-											})}
-										</VStack>
-									</CardBody>
-								</Card>
-							</GridItem>
-						</Grid>
+															<IconButton
+																aria-label="Move down"
+																size="sm"
+																variant="ghost"
+																icon={<ArrowDownIcon width={16} />}
+																onClick={() => moveHost(hostId, "down")}
+																isDisabled={index === selectedHosts.length - 1}
+															/>
+														</Tooltip>
+														<Tooltip
+															label={t("services.removeHost", "Remove host")}
+														>
+															<IconButton
+																aria-label="Remove"
+																size="sm"
+																variant="ghost"
+																icon={<TrashIcon width={16} />}
+																onClick={() => handleHostToggle(hostId)}
+															/>
+														</Tooltip>
+													</HStack>
+												</Flex>
+											</motion.div>
+										);
+									})}
+								</VStack>
+							</Box>
+						</SimpleGrid>
 					</Stack>
-				</ModalBody>
-				<ModalFooter>
-					<HStack justify="flex-end" w="full">
-						<Button onClick={onClose}>{t("cancel")}</Button>
-						<Button colorScheme="primary" onClick={submit} isLoading={isSaving}>
-							{initialService ? t("saveChanges") : t("create")}
-						</Button>
-					</HStack>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalBody>
+				<XrayModalFooter>
+					<Button variant="ghost" onClick={onClose}>
+						{t("cancel")}
+					</Button>
+					<Button colorScheme="primary" onClick={submit} isLoading={isSaving}>
+						{initialService ? t("saveChanges") : t("create")}
+					</Button>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };
@@ -754,6 +818,11 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 const ServicesPage: FC = () => {
 	const { t, i18n } = useTranslation();
 	const _isRTL = i18n.language === "fa";
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const cardBg = useColorModeValue("white", "whiteAlpha.50");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const tableHeadBg = useColorModeValue("gray.50", "whiteAlpha.100");
 	const toast = useToast();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canManageServices =
@@ -995,6 +1064,27 @@ const ServicesPage: FC = () => {
 			(service) => service.id !== servicePendingDelete.id,
 		);
 	}, [servicePendingDelete, servicesStore.services]);
+	const servicesSummary = useMemo(
+		() =>
+			servicesStore.services.reduce(
+				(summary, service) => ({
+					totalHosts: summary.totalHosts + Number(service.host_count || 0),
+					totalUsers: summary.totalUsers + Number(service.user_count || 0),
+					totalUsage: summary.totalUsage + Number(service.used_traffic || 0),
+					lifetimeUsage:
+						summary.lifetimeUsage + Number(service.lifetime_used_traffic || 0),
+					brokenServices: summary.brokenServices + (service.has_hosts ? 0 : 1),
+				}),
+				{
+					totalHosts: 0,
+					totalUsers: 0,
+					totalUsage: 0,
+					lifetimeUsage: 0,
+					brokenServices: 0,
+				},
+			),
+		[servicesStore.services],
+	);
 
 	useEffect(() => {
 		if (servicePendingDelete) {
@@ -1015,9 +1105,10 @@ const ServicesPage: FC = () => {
 		<AccordionItem
 			key={`service-accordion-${service.id}`}
 			borderWidth="1px"
-			borderRadius="lg"
-			borderColor="gray.200"
-			_dark={{ borderColor: "whiteAlpha.200", bg: "gray.800" }}
+			borderRadius="md"
+			borderColor={borderColor}
+			bg={cardBg}
+			overflow="hidden"
 			mb={2}
 		>
 			{({ isExpanded }) => (
@@ -1030,14 +1121,21 @@ const ServicesPage: FC = () => {
 						gap={3}
 					>
 						<Box flex="1" textAlign="left">
-							<Text fontWeight="semibold">
-								{t("services.columns.id", "ID")} {service.id} {service.name}
-							</Text>
+							<HStack spacing={2} flexWrap="wrap">
+								<Badge borderRadius="md" variant="subtle">
+									#{service.id}
+								</Badge>
+								<Text fontWeight="semibold">{service.name}</Text>
+								{!service.has_hosts && (
+									<Badge colorScheme="red" borderRadius="md">
+										Broken
+									</Badge>
+								)}
+							</HStack>
 							{service.description && (
 								<Text
 									fontSize="sm"
-									color="gray.500"
-									_dark={{ color: "gray.300" }}
+									color={labelColor}
 									noOfLines={isExpanded ? 3 : 1}
 									mt={1}
 								>
@@ -1045,35 +1143,23 @@ const ServicesPage: FC = () => {
 								</Text>
 							)}
 						</Box>
-						<VStack spacing={1} align="flex-end" fontSize="xs" color="gray.500">
+						<VStack
+							spacing={1}
+							align="flex-end"
+							fontSize="xs"
+							color={labelColor}
+						>
 							<HStack spacing={1}>
 								<Text fontWeight="medium">
 									{t("services.columns.hosts", "Hosts")}:
 								</Text>
-								<Text
-									fontWeight="semibold"
-									color="gray.700"
-									_dark={{ color: "gray.200" }}
-								>
-									{service.host_count}
-									{!service.has_hosts && (
-										<Badge colorScheme="red" ml={2}>
-											Broken
-										</Badge>
-									)}
-								</Text>
+								<Text fontWeight="semibold">{service.host_count}</Text>
 							</HStack>
 							<HStack spacing={1}>
 								<Text fontWeight="medium">
 									{t("services.columns.users", "Users")}:
 								</Text>
-								<Text
-									fontWeight="semibold"
-									color="gray.700"
-									_dark={{ color: "gray.200" }}
-								>
-									{service.user_count}
-								</Text>
+								<Text fontWeight="semibold">{service.user_count}</Text>
 							</HStack>
 						</VStack>
 						<AccordionIcon />
@@ -1081,30 +1167,15 @@ const ServicesPage: FC = () => {
 					<AccordionPanel pt={0} pb={4}>
 						<Stack spacing={4}>
 							<SimpleGrid columns={2} spacing={3}>
-								<Box>
-									<Text
-										fontSize="xs"
-										textTransform="uppercase"
-										color="gray.500"
-									>
-										{t("services.columns.usage", "Usage")}
-									</Text>
-									<Text fontWeight="semibold">
-										{formatBytes(service.used_traffic)}
-									</Text>
-								</Box>
-								<Box>
-									<Text
-										fontSize="xs"
-										textTransform="uppercase"
-										color="gray.500"
-									>
-										{t("services.columns.lifetime", "Lifetime")}
-									</Text>
-									<Text fontWeight="semibold">
-										{formatBytes(service.lifetime_used_traffic)}
-									</Text>
-								</Box>
+								<MetricTile
+									label={t("services.columns.usage", "Usage")}
+									value={formatBytes(service.used_traffic)}
+								/>
+								<MetricTile
+									label={t("services.columns.lifetime", "Lifetime")}
+									value={formatBytes(service.lifetime_used_traffic)}
+									accentColor="purple.400"
+								/>
 							</SimpleGrid>
 							<Stack spacing={2}>
 								<Text fontSize="xs" textTransform="uppercase" color="gray.500">
@@ -1178,27 +1249,34 @@ const ServicesPage: FC = () => {
 			className={
 				index === servicesStore.services.length - 1 ? "last-row" : undefined
 			}
+			_hover={{ bg: panelBg }}
 		>
-			<Td>{service.id}</Td>
+			<Td>
+				<Badge borderRadius="md" variant="subtle">
+					#{service.id}
+				</Badge>
+			</Td>
 			<Td>
 				<VStack align="start" spacing={0}>
 					<Text fontWeight="semibold">{service.name}</Text>
 					{service.description && (
-						<Text fontSize="sm" color="gray.500">
+						<Text fontSize="sm" color={labelColor} noOfLines={1}>
 							{service.description}
 						</Text>
 					)}
 				</VStack>
 			</Td>
 			<Td>
-				{service.host_count}
+				<Text as="span" fontWeight="semibold">
+					{service.host_count}
+				</Text>
 				{!service.has_hosts && (
-					<Badge colorScheme="red" ml={2}>
+					<Badge colorScheme="red" ml={2} borderRadius="md">
 						Broken
 					</Badge>
 				)}
 			</Td>
-			<Td>{service.user_count}</Td>
+			<Td fontWeight="semibold">{service.user_count}</Td>
 			<Td>{formatBytes(service.used_traffic)}</Td>
 			<Td>{formatBytes(service.lifetime_used_traffic)}</Td>
 			<Td>
@@ -1265,7 +1343,9 @@ const ServicesPage: FC = () => {
 		setSavingAdminLimitId(adminId);
 		try {
 			if (payload.delete_user_usage_limit_enabled === true) {
-				const targetAdmin = adminStore.admins.find((item) => item.id === adminId);
+				const targetAdmin = adminStore.admins.find(
+					(item) => item.id === adminId,
+				);
 				if (targetAdmin && !adminCanDeleteUsers(targetAdmin)) {
 					await adminStore.updateAdmin(targetAdmin.username, {
 						permissions: withDeleteUserPermission(targetAdmin.permissions),
@@ -1284,8 +1364,7 @@ const ServicesPage: FC = () => {
 			toast({
 				status: "error",
 				title: t("services.adminLimitSaveFailed", "Unable to save limits"),
-				description:
-					error instanceof Error ? error.message : undefined,
+				description: error instanceof Error ? error.message : undefined,
 			});
 		} finally {
 			setSavingAdminLimitId(null);
@@ -1299,14 +1378,14 @@ const ServicesPage: FC = () => {
 		if (!selectedService) return;
 		setSavingAdminLimitId(link.id);
 		try {
-			await adminStore.resetDeletedUsersUsage(link.username, selectedService.id);
+			await adminStore.resetDeletedUsersUsage(
+				link.username,
+				selectedService.id,
+			);
 			await servicesStore.fetchServiceDetail(selectedService.id);
 			toast({
 				status: "success",
-				title: t(
-					"admins.resetDeletedUsageSuccess",
-					"Deleted-user usage reset",
-				),
+				title: t("admins.resetDeletedUsageSuccess", "Deleted-user usage reset"),
 			});
 		} catch (error) {
 			toast({
@@ -1332,11 +1411,19 @@ const ServicesPage: FC = () => {
 
 	if (!canManageServices) {
 		return (
-			<VStack spacing={4} align="stretch">
+			<VStack
+				spacing={3}
+				align="start"
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={4}
+			>
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
 					{t("services.title", "Services")}
 				</Text>
-				<Text fontSize="sm" color="gray.500">
+				<Text fontSize="sm" color={labelColor}>
 					{t(
 						"services.noPermission",
 						"You do not have permission to view this section.",
@@ -1348,329 +1435,391 @@ const ServicesPage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Flex
-				direction={{ base: "column", md: "row" }}
-				justify="space-between"
-				align={{ base: "flex-start", md: "center" }}
-				gap={{ base: 3, md: 0 }}
+			<Box
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={{ base: 3, md: 4 }}
 			>
-				<Box>
-					<Text as="h1" fontSize="2xl" fontWeight="semibold">
-						{t("services.title", "Services")}
-					</Text>
-					<Text fontSize="sm" color="gray.500">
-						{t(
-							"services.subtitle",
-							"Group hosts, assign admins, and monitor usage per service.",
-						)}
-					</Text>
-				</Box>
-				{canManageServices && (
-					<Button
-						leftIcon={<PlusIcon width={18} />}
-						colorScheme="primary"
-						onClick={openCreateDialog}
-						size="sm"
-						alignSelf={{ base: "flex-start", md: "center" }}
-						w={{ base: "auto", md: "auto" }}
-						px={{ base: 4, md: 5 }}
-					>
-						{t("services.addService", "New Service")}
-					</Button>
-				)}
-			</Flex>
-			<Card variant="outline">
-				<CardBody>
-					{servicesStore.isLoading ? (
-						<Flex justify="center" py={10}>
-							<Spinner />
-						</Flex>
-					) : (
-						<>
-							<Accordion allowToggle display={{ base: "block", md: "none" }}>
-								{servicesStore.services.map(renderServiceAccordionItem)}
-							</Accordion>
-							<Box display={{ base: "none", md: "block" }} overflowX="auto">
-								<Table variant="simple">
-									<Thead>
-										<Tr>
-											<Th>{t("services.columns.id", "ID")}</Th>
-											<Th>{t("services.columns.name", "Name")}</Th>
-											<Th>{t("services.columns.hosts", "Hosts")}</Th>
-											<Th>{t("services.columns.users", "Users")}</Th>
-											<Th>{t("services.columns.usage", "Usage")}</Th>
-											<Th>{t("services.columns.lifetime", "Lifetime")}</Th>
-											<Th>{t("services.columns.actions", "Actions")}</Th>
-										</Tr>
-									</Thead>
-									<Tbody>
-										{servicesStore.services.map((service, index) =>
-											renderServiceRow(service, index),
-										)}
-									</Tbody>
-								</Table>
-							</Box>
-						</>
+				<Flex
+					direction={{ base: "column", md: "row" }}
+					justify="space-between"
+					align={{ base: "flex-start", md: "center" }}
+					gap={3}
+				>
+					<Box minW={0}>
+						<Text as="h1" fontSize="2xl" fontWeight="semibold">
+							{t("services.title", "Services")}
+						</Text>
+						<Text fontSize="sm" color={labelColor}>
+							{t(
+								"services.subtitle",
+								"Group hosts, assign admins, and monitor usage per service.",
+							)}
+						</Text>
+					</Box>
+					{canManageServices && (
+						<Button
+							leftIcon={<PlusIcon width={18} />}
+							colorScheme="primary"
+							onClick={openCreateDialog}
+							size="sm"
+							alignSelf={{ base: "flex-start", md: "center" }}
+						>
+							{t("services.addService", "New Service")}
+						</Button>
 					)}
-				</CardBody>
-			</Card>
+				</Flex>
+			</Box>
+
+			<SimpleGrid columns={{ base: 1, md: 2, xl: 5 }} spacing={4}>
+				<MetricTile
+					label={t("services.title", "Services")}
+					value={servicesStore.services.length}
+				/>
+				<MetricTile
+					label={t("services.columns.hosts", "Hosts")}
+					value={servicesSummary.totalHosts}
+					accentColor="green.400"
+				/>
+				<MetricTile
+					label={t("services.columns.users", "Users")}
+					value={servicesSummary.totalUsers}
+					accentColor="orange.400"
+				/>
+				<MetricTile
+					label={t("services.columns.usage", "Usage")}
+					value={formatBytes(servicesSummary.totalUsage)}
+					accentColor="blue.400"
+				/>
+				<MetricTile
+					label={t("services.columns.lifetime", "Lifetime")}
+					value={formatBytes(servicesSummary.lifetimeUsage)}
+					helper={
+						servicesSummary.brokenServices > 0
+							? t("services.brokenCount", "{{count}} broken", {
+									count: servicesSummary.brokenServices,
+								})
+							: undefined
+					}
+					accentColor="purple.400"
+				/>
+			</SimpleGrid>
+
+			<ChartBox title={t("services.title", "Services")}>
+				{servicesStore.isLoading ? (
+					<Flex justify="center" py={10}>
+						<Spinner />
+					</Flex>
+				) : servicesStore.services.length === 0 ? (
+					<Box
+						borderWidth="1px"
+						borderColor={borderColor}
+						borderRadius="md"
+						bg={panelBg}
+						p={5}
+						textAlign="center"
+					>
+						<Text fontWeight="semibold">
+							{t("services.noServicesAvailable", "No services available")}
+						</Text>
+						<Text fontSize="sm" color={labelColor} mt={1}>
+							{t(
+								"services.emptyHint",
+								"Create a service to group hosts and admins.",
+							)}
+						</Text>
+					</Box>
+				) : (
+					<>
+						<Accordion allowToggle display={{ base: "block", md: "none" }}>
+							{servicesStore.services.map(renderServiceAccordionItem)}
+						</Accordion>
+						<Box
+							display={{ base: "none", md: "block" }}
+							overflowX="auto"
+							borderWidth="1px"
+							borderColor={borderColor}
+							borderRadius="md"
+						>
+							<Table variant="simple" size="sm">
+								<Thead bg={tableHeadBg}>
+									<Tr>
+										<Th>{t("services.columns.id", "ID")}</Th>
+										<Th>{t("services.columns.name", "Name")}</Th>
+										<Th>{t("services.columns.hosts", "Hosts")}</Th>
+										<Th>{t("services.columns.users", "Users")}</Th>
+										<Th>{t("services.columns.usage", "Usage")}</Th>
+										<Th>{t("services.columns.lifetime", "Lifetime")}</Th>
+										<Th>{t("services.columns.actions", "Actions")}</Th>
+									</Tr>
+								</Thead>
+								<Tbody>
+									{servicesStore.services.map((service, index) =>
+										renderServiceRow(service, index),
+									)}
+								</Tbody>
+							</Table>
+						</Box>
+					</>
+				)}
+			</ChartBox>
 
 			{selectedService && (
-				<Card variant="outline">
-					<CardHeader>
-						<Flex justify="space-between" align="center">
-							<Box>
-								<Text fontWeight="semibold">{selectedService.name}</Text>
+				<ChartBox
+					title={
+						<Flex
+							justify="space-between"
+							align="center"
+							gap={3}
+							flexWrap="wrap"
+						>
+							<Box minW={0}>
+								<Text fontWeight="semibold" noOfLines={1}>
+									{selectedService.name}
+								</Text>
 								{selectedService.description && (
-									<Text fontSize="sm" color="gray.500">
+									<Text fontSize="sm" color={labelColor} noOfLines={2}>
 										{selectedService.description}
 									</Text>
 								)}
 							</Box>
-							<Badge colorScheme="primary">
+							<Badge colorScheme="primary" borderRadius="md">
 								{t("services.usersCount", "{{count}} users", {
 									count: selectedService.user_count,
 								})}
 							</Badge>
 						</Flex>
-					</CardHeader>
-					<CardBody>
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-							<Box>
-								<Text fontWeight="medium" mb={2}>
-									{t("services.admins", "Admins")}
-								</Text>
-								<Stack spacing={2}>
-									{selectedService.admins.length === 0 ? (
-										<Text fontSize="sm" color="gray.500">
-											{t("services.noAdmins", "No admins assigned")}
-										</Text>
-									) : (
-										selectedService.admins.map((link) => (
-											<Stack
-												key={link.id}
-												borderWidth="1px"
-												borderRadius="md"
-												px={3}
-												py={2}
-												spacing={3}
-											>
-												<Flex justify="space-between" gap={3}>
-													<Text fontWeight="medium">{link.username}</Text>
-													<Text fontSize="sm" color="gray.500">
-														{link.traffic_limit_mode ===
-														AdminTrafficLimitMode.CreatedTraffic
-															? formatBytes(link.created_traffic)
-															: formatBytes(link.used_traffic)}{" "}
-														/{" "}
-														{formatGigabytes(
-															link.data_limit,
-															t("common.unlimited", "Unlimited"),
-														)}
-													</Text>
-												</Flex>
-												<Flex
-													justify="space-between"
-													align="center"
-													gap={3}
-													flexWrap="wrap"
-												>
-													<Text fontSize="xs" color="gray.500">
-														{t(
-															"admins.deletedUsersUsage",
-															"Deleted-user usage",
-														)}
-														: {formatBytes(link.deleted_users_usage)}
-													</Text>
-													{link.deleted_users_usage > 0 && (
-														<Button
-															size="xs"
-															variant="ghost"
-															leftIcon={<ArrowPathIcon width={14} />}
-															isLoading={savingAdminLimitId === link.id}
-															onClick={() =>
-																resetServiceDeletedUsersUsage(link)
-															}
-														>
-															{t(
-																"admins.resetDeletedUsage",
-																"Reset deleted-user usage",
-															)}
-														</Button>
-													)}
-												</Flex>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={2}>
-													<FormControl>
-														<FormLabel fontSize="xs">
-															{t("admins.trafficMode", "Traffic mode")}
-														</FormLabel>
-														<Select
-															size="sm"
-															value={link.traffic_limit_mode}
-															isDisabled={savingAdminLimitId === link.id}
-															onChange={(event) =>
-																saveServiceAdminLimit(link.id, {
-																	traffic_limit_mode:
-																		event.target
-																			.value as AdminTrafficLimitMode,
-																})
-															}
-														>
-															<option
-																value={AdminTrafficLimitMode.UsedTraffic}
-															>
-																{t("admins.usedTraffic", "Used traffic")}
-															</option>
-															<option
-																value={AdminTrafficLimitMode.CreatedTraffic}
-															>
-																{t(
-																	"admins.createdTraffic",
-																	"Created traffic",
-																)}
-															</option>
-														</Select>
-													</FormControl>
-													<FormControl>
-														<FormLabel fontSize="xs">
-															{t("admins.dataLimit", "Data Limit (GB)")}
-														</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															inputMode="numeric"
-															defaultValue={
-																link.data_limit
-																	? Math.floor(
-																			link.data_limit / GB_IN_BYTES,
-																		)
-																	: ""
-															}
-															isDisabled={savingAdminLimitId === link.id}
-															onBlur={(event) =>
-																saveServiceAdminLimit(link.id, {
-																	data_limit: event.target.value
-																		? Number(event.target.value) * GB_IN_BYTES
-																		: null,
-																})
-															}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel fontSize="xs">
-															{t("admins.usersLimit", "Users Limit")}
-														</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															inputMode="numeric"
-															defaultValue={link.users_limit ?? ""}
-															isDisabled={savingAdminLimitId === link.id}
-															onBlur={(event) =>
-																saveServiceAdminLimit(link.id, {
-																	users_limit: event.target.value
-																		? Number(event.target.value)
-																		: null,
-																})
-															}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel fontSize="xs">
-															{t(
-																"admins.deleteUserUsageLimit",
-																"Max deletable user usage (MB)",
-															)}
-														</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															inputMode="numeric"
-															defaultValue={
-																link.delete_user_usage_limit
-																	? Math.floor(
-																			link.delete_user_usage_limit /
-																				MB_IN_BYTES,
-																		)
-																	: ""
-															}
-															isDisabled={savingAdminLimitId === link.id}
-															onBlur={(event) =>
-																saveServiceAdminLimit(link.id, {
-																	delete_user_usage_limit: event.target.value
-																		? Number(event.target.value) * MB_IN_BYTES
-																		: null,
-																})
-															}
-														/>
-													</FormControl>
-												</SimpleGrid>
-												<HStack spacing={4} flexWrap="wrap">
-													<Checkbox
-														isChecked={link.show_user_traffic}
-														isDisabled={savingAdminLimitId === link.id}
-														onChange={(event) =>
-															saveServiceAdminLimit(link.id, {
-																show_user_traffic: event.target.checked,
-															})
-														}
-													>
-														{t(
-															"admins.showUserTraffic",
-															"Admin can view user traffic",
-														)}
-													</Checkbox>
-													<Checkbox
-														isChecked={link.delete_user_usage_limit_enabled}
-														isDisabled={savingAdminLimitId === link.id}
-														onChange={(event) =>
-															saveServiceAdminLimit(link.id, {
-																delete_user_usage_limit_enabled:
-																	event.target.checked,
-															})
-														}
-													>
-														{t(
-															"admins.deleteUserUsageCap",
-															"Limit delete by user usage",
-														)}
-													</Checkbox>
-												</HStack>
-											</Stack>
-										))
-									)}
-								</Stack>
-							</Box>
-							<Box>
-								<Text fontWeight="medium" mb={2}>
-									{t("services.hosts", "Hosts")}
-								</Text>
-								<Stack spacing={2}>
-									{selectedService.hosts.map((host) => (
-										<Flex
-											key={host.id}
+					}
+				>
+					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+						<Box>
+							<Text fontWeight="medium" mb={2}>
+								{t("services.admins", "Admins")}
+							</Text>
+							<Stack spacing={2}>
+								{selectedService.admins.length === 0 ? (
+									<Text fontSize="sm" color="gray.500">
+										{t("services.noAdmins", "No admins assigned")}
+									</Text>
+								) : (
+									selectedService.admins.map((link) => (
+										<Stack
+											key={link.id}
 											borderWidth="1px"
+											borderColor={borderColor}
 											borderRadius="md"
+											bg={cardBg}
 											px={3}
 											py={2}
-											justify="space-between"
-											align="center"
+											spacing={3}
 										>
-											<Box>
-												<Text fontWeight="medium">{host.remark}</Text>
-												<Text fontSize="sm" color="gray.500">
-													{host.inbound_protocol.toUpperCase()} -{" "}
-													{host.inbound_tag}
+											<Flex justify="space-between" gap={3}>
+												<Text fontWeight="medium">{link.username}</Text>
+												<Text fontSize="sm" color={labelColor}>
+													{link.traffic_limit_mode ===
+													AdminTrafficLimitMode.CreatedTraffic
+														? formatBytes(link.created_traffic)
+														: formatBytes(link.used_traffic)}{" "}
+													/{" "}
+													{formatGigabytes(
+														link.data_limit,
+														t("common.unlimited", "Unlimited"),
+													)}
 												</Text>
-											</Box>
-											<Badge colorScheme="gray">#{host.sort + 1}</Badge>
-										</Flex>
-									))}
-								</Stack>
-							</Box>
-						</SimpleGrid>
-					</CardBody>
-				</Card>
+											</Flex>
+											<Flex
+												justify="space-between"
+												align="center"
+												gap={3}
+												flexWrap="wrap"
+											>
+												<Text fontSize="xs" color="gray.500">
+													{t("admins.deletedUsersUsage", "Deleted-user usage")}:{" "}
+													{formatBytes(link.deleted_users_usage)}
+												</Text>
+												{link.deleted_users_usage > 0 && (
+													<Button
+														size="xs"
+														variant="ghost"
+														leftIcon={<ArrowPathIcon width={14} />}
+														isLoading={savingAdminLimitId === link.id}
+														onClick={() => resetServiceDeletedUsersUsage(link)}
+													>
+														{t(
+															"admins.resetDeletedUsage",
+															"Reset deleted-user usage",
+														)}
+													</Button>
+												)}
+											</Flex>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={2}>
+												<FormControl>
+													<FormLabel fontSize="xs">
+														{t("admins.trafficMode", "Traffic mode")}
+													</FormLabel>
+													<Select
+														size="sm"
+														value={link.traffic_limit_mode}
+														isDisabled={savingAdminLimitId === link.id}
+														onChange={(event) =>
+															saveServiceAdminLimit(link.id, {
+																traffic_limit_mode: event.target
+																	.value as AdminTrafficLimitMode,
+															})
+														}
+													>
+														<option value={AdminTrafficLimitMode.UsedTraffic}>
+															{t("admins.usedTraffic", "Used traffic")}
+														</option>
+														<option
+															value={AdminTrafficLimitMode.CreatedTraffic}
+														>
+															{t("admins.createdTraffic", "Created traffic")}
+														</option>
+													</Select>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="xs">
+														{t("admins.dataLimit", "Data Limit (GB)")}
+													</FormLabel>
+													<Input
+														size="sm"
+														type="number"
+														inputMode="numeric"
+														defaultValue={
+															link.data_limit
+																? Math.floor(link.data_limit / GB_IN_BYTES)
+																: ""
+														}
+														isDisabled={savingAdminLimitId === link.id}
+														onBlur={(event) =>
+															saveServiceAdminLimit(link.id, {
+																data_limit: event.target.value
+																	? Number(event.target.value) * GB_IN_BYTES
+																	: null,
+															})
+														}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="xs">
+														{t("admins.usersLimit", "Users Limit")}
+													</FormLabel>
+													<Input
+														size="sm"
+														type="number"
+														inputMode="numeric"
+														defaultValue={link.users_limit ?? ""}
+														isDisabled={savingAdminLimitId === link.id}
+														onBlur={(event) =>
+															saveServiceAdminLimit(link.id, {
+																users_limit: event.target.value
+																	? Number(event.target.value)
+																	: null,
+															})
+														}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="xs">
+														{t(
+															"admins.deleteUserUsageLimit",
+															"Max deletable user usage (MB)",
+														)}
+													</FormLabel>
+													<Input
+														size="sm"
+														type="number"
+														inputMode="numeric"
+														defaultValue={
+															link.delete_user_usage_limit
+																? Math.floor(
+																		link.delete_user_usage_limit / MB_IN_BYTES,
+																	)
+																: ""
+														}
+														isDisabled={savingAdminLimitId === link.id}
+														onBlur={(event) =>
+															saveServiceAdminLimit(link.id, {
+																delete_user_usage_limit: event.target.value
+																	? Number(event.target.value) * MB_IN_BYTES
+																	: null,
+															})
+														}
+													/>
+												</FormControl>
+											</SimpleGrid>
+											<HStack spacing={4} flexWrap="wrap">
+												<Checkbox
+													isChecked={link.show_user_traffic}
+													isDisabled={savingAdminLimitId === link.id}
+													onChange={(event) =>
+														saveServiceAdminLimit(link.id, {
+															show_user_traffic: event.target.checked,
+														})
+													}
+												>
+													{t(
+														"admins.showUserTraffic",
+														"Admin can view user traffic",
+													)}
+												</Checkbox>
+												<Checkbox
+													isChecked={link.delete_user_usage_limit_enabled}
+													isDisabled={savingAdminLimitId === link.id}
+													onChange={(event) =>
+														saveServiceAdminLimit(link.id, {
+															delete_user_usage_limit_enabled:
+																event.target.checked,
+														})
+													}
+												>
+													{t(
+														"admins.deleteUserUsageCap",
+														"Limit delete by user usage",
+													)}
+												</Checkbox>
+											</HStack>
+										</Stack>
+									))
+								)}
+							</Stack>
+						</Box>
+						<Box>
+							<Text fontWeight="medium" mb={2}>
+								{t("services.hosts", "Hosts")}
+							</Text>
+							<Stack spacing={2}>
+								{selectedService.hosts.map((host) => (
+									<Flex
+										key={host.id}
+										borderWidth="1px"
+										borderColor={borderColor}
+										borderRadius="md"
+										bg={cardBg}
+										px={3}
+										py={2}
+										justify="space-between"
+										align="center"
+									>
+										<Box>
+											<Text fontWeight="medium">{host.remark}</Text>
+											<Text fontSize="sm" color={labelColor}>
+												{host.inbound_protocol.toUpperCase()} -{" "}
+												{host.inbound_tag}
+											</Text>
+										</Box>
+										<Badge colorScheme="gray" borderRadius="md">
+											#{host.sort + 1}
+										</Badge>
+									</Flex>
+								))}
+							</Stack>
+						</Box>
+					</SimpleGrid>
+				</ChartBox>
 			)}
 
 			<AlertDialog

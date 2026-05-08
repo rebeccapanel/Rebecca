@@ -27,6 +27,7 @@ import {
 	Thead,
 	Tooltip,
 	Tr,
+	useToast,
 	VStack,
 } from "@chakra-ui/react";
 import {
@@ -68,9 +69,9 @@ import {
 	SiX,
 	SiYoutube,
 } from "react-icons/si";
-import { useQuery } from "react-query";
+import { useMutation, useQuery, useQueryClient } from "react-query";
 import { fetch } from "service/http";
-import { getPanelSettings } from "service/settings";
+import { getPanelSettings, updatePanelSettings } from "service/settings";
 import type {
 	AccessInsightClient,
 	AccessInsightPlatform,
@@ -934,14 +935,36 @@ type PlatformStat = [string, number, number | undefined];
 
 const AccessInsightsPage: FC = () => {
 	const { t } = useTranslation();
+	const toast = useToast();
+	const queryClient = useQueryClient();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewXray =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
-	const { data: panelSettings } = useQuery(
-		["panel-settings"],
+	const { data: panelSettings, isLoading: panelSettingsLoading } = useQuery(
+		"panel-settings",
 		getPanelSettings,
 	);
 	const insightsEnabled = panelSettings?.access_insights_enabled ?? false;
+	const accessInsightsMutation = useMutation(updatePanelSettings, {
+		onSuccess: (updated) => {
+			queryClient.setQueryData("panel-settings", updated);
+			toast({
+				status: "success",
+				title: t("settings.panel.saved", "Panel settings saved."),
+				duration: 2500,
+			});
+		},
+		onError: () => {
+			toast({
+				status: "error",
+				title: t("errors.generic", "Something went wrong."),
+			});
+		},
+	});
+
+	const handleAccessInsightsToggle = (enabled: boolean) => {
+		accessInsightsMutation.mutate({ access_insights_enabled: enabled });
+	};
 
 	const [data, setData] = useState<AccessInsightsResponse | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -1200,7 +1223,7 @@ const AccessInsightsPage: FC = () => {
 
 	return (
 		<Box p={6} display="flex" flexDirection="column" gap={4}>
-			<Stack spacing={2} position="relative">
+			<Stack spacing={2}>
 				<Text fontSize="2xl" fontWeight="bold">
 					{t("pages.accessInsights.title", "Live Access Insights")}
 				</Text>
@@ -1220,33 +1243,51 @@ const AccessInsightsPage: FC = () => {
 						{failedNodeStatuses.map((status) => status.node_name).join(",")}
 					</Text>
 				) : null}
-				{!insightsEnabled ? (
-					<Box
-						position="absolute"
-						inset={0}
-						bg="rgba(0,0,0,0.6)"
-						backdropFilter="blur(4px)"
-						display="flex"
-						alignItems="center"
-						justifyContent="center"
-						zIndex={1}
-						borderRadius="md"
-					>
-						<Text
-							fontSize="lg"
-							fontWeight="bold"
-							color="white"
-							textAlign="center"
-							px={4}
-						>
+			</Stack>
+
+			<Box borderWidth="1px" borderRadius="md" p={4}>
+				<HStack
+					justify="space-between"
+					align={{ base: "flex-start", md: "center" }}
+					spacing={4}
+					flexWrap="wrap"
+				>
+					<Stack spacing={1} flex="1" minW={{ base: "full", md: "320px" }}>
+						<Text fontWeight="semibold">
 							{t(
-								"pages.accessInsights.disabled",
-								"Access Insights is disabled in panel settings",
+								"settings.panel.accessInsightsTitle",
+								"Enable Access Insights",
 							)}
 						</Text>
-					</Box>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"settings.panel.accessInsightsDescription",
+								"When enabled, Access Insights will load extra geo/ISP data and may consume more memory.",
+							)}
+						</Text>
+					</Stack>
+					<Switch
+						isChecked={insightsEnabled}
+						isDisabled={
+							panelSettingsLoading || accessInsightsMutation.isLoading
+						}
+						onChange={(event) =>
+							handleAccessInsightsToggle(event.target.checked)
+						}
+					/>
+				</HStack>
+				{!insightsEnabled ? (
+					<Alert status="warning" borderRadius="md" mt={3}>
+						<AlertIcon />
+						<Text fontSize="sm">
+							{t(
+								"pages.accessInsights.disabled",
+								"Access Insights is disabled.",
+							)}
+						</Text>
+					</Alert>
 				) : null}
-			</Stack>
+			</Box>
 
 			<HStack spacing={3} flexWrap="wrap">
 				<InputGroup maxW={{ base: "full", md: "360px" }}>

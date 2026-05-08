@@ -1,4 +1,4 @@
-import { Box, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, Text, useColorModeValue, VStack } from "@chakra-ui/react";
 import { Filters } from "components/Filters";
 import { Pagination } from "components/Pagination";
 import { QRCodeDialog } from "components/QRCodeDialog";
@@ -13,6 +13,10 @@ import { useTranslation } from "react-i18next";
 export const UsersPage: FC = () => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const panelBg = useColorModeValue("white", "whiteAlpha.50");
+	const filterBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const mutedColor = useColorModeValue("gray.600", "gray.400");
 
 	useEffect(() => {
 		useDashboard.getState().refetchUsers();
@@ -29,20 +33,32 @@ export const UsersPage: FC = () => {
 
 	return (
 		<VStack spacing={6} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
-			<VStack spacing={1} align="flex-start">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("users")}
-				</Text>
-				<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.400" }}>
-					{t("usersPage.subtitle")}
-				</Text>
-			</VStack>
+			<Flex
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				px={{ base: 3, md: 4 }}
+				py={4}
+				align={{ base: "flex-start", md: "center" }}
+				justify="space-between"
+				gap={3}
+				flexWrap="wrap"
+			>
+				<Box>
+					<Text as="h1" fontWeight="semibold" fontSize="2xl">
+						{t("users")}
+					</Text>
+					<Text fontSize="sm" color={mutedColor}>
+						{t("usersPage.subtitle")}
+					</Text>
+				</Box>
+			</Flex>
 			<Box
 				borderWidth="1px"
-				borderColor="light-border"
-				borderRadius="xl"
-				bg="surface.light"
-				_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={filterBg}
 				p={{ base: 3, md: 4 }}
 			>
 				<Filters />

@@ -10,29 +10,28 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
-	Input,
 	Progress,
 	Select,
 	SimpleGrid,
 	Stack,
 	Text,
-	VStack,
 	useToast,
 } from "@chakra-ui/react";
 import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
+import { FileDropzone } from "components/common/FileDropzone";
 import { NumericInput } from "components/common/NumericInput";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "react-query";
 import {
+	getThreeXUiImportJob,
+	previewThreeXUiDatabase,
+	startThreeXUiImport,
 	type ThreeXUiImportJobResponse,
 	type ThreeXUiImportRequest,
 	type ThreeXUiInboundImportConfig,
 	type ThreeXUiInboundPreview,
 	type ThreeXUiPreviewResponse,
-	getThreeXUiImportJob,
-	previewThreeXUiDatabase,
-	startThreeXUiImport,
 } from "service/settings";
 import {
 	generateErrorMessage,
@@ -107,10 +106,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 		onSuccess: (payload) => {
 			setPreview(payload);
 			generateSuccessMessage(
-				t(
-					"settings.database.previewReady",
-					"3x-ui database preview is ready.",
-				),
+				t("settings.database.previewReady", "3x-ui database preview is ready."),
 				toast,
 			);
 		},
@@ -146,7 +142,8 @@ export const ThreeXUiDatabaseImportPanel = () => {
 	);
 
 	const job = jobQuery.data;
-	const running = previewMutation.isLoading || importMutation.isLoading || isJobRunning(job);
+	const running =
+		previewMutation.isLoading || importMutation.isLoading || isJobRunning(job);
 
 	const canStartImport = useMemo(() => {
 		if (!preview || preview.importable_clients === 0) {
@@ -319,21 +316,20 @@ export const ThreeXUiDatabaseImportPanel = () => {
 						<FormLabel>
 							{t("settings.database.fileLabel", "3x-ui database file")}
 						</FormLabel>
-						<Input
-							type="file"
+						<FileDropzone
 							accept=".db,.sqlite,.sqlite3"
-							onChange={(event) =>
-								setSelectedFile(event.target.files?.[0] ?? null)
-							}
+							selectedFile={selectedFile}
+							title={t(
+								"settings.database.dropTitle",
+								"Drop 3x-ui database here",
+							)}
+							description={t(
+								"settings.database.dropHint",
+								"Drag a SQLite database file here or select it from your device.",
+							)}
+							emptyText={t("settings.database.selectFile", "Select file")}
+							onFileSelect={setSelectedFile}
 						/>
-						<FormHelperText>
-							{selectedFile
-								? selectedFile.name
-								: t(
-										"settings.database.fileHint",
-										"Only SQLite database files exported from 3x-ui are supported here.",
-								  )}
-						</FormHelperText>
 					</FormControl>
 					<HStack justify="space-between" align="center" flexWrap="wrap">
 						<Text fontSize="sm" color="gray.500">
@@ -562,24 +558,28 @@ export const ThreeXUiDatabaseImportPanel = () => {
 								inbound.source_port
 									? t("settings.database.sourcePort", "Port: {{port}}", {
 											port: inbound.source_port,
-									  })
+										})
 									: null,
 								inbound.source_tag
 									? t("settings.database.sourceTag", "Tag: {{tag}}", {
 											tag: inbound.source_tag,
-									  })
+										})
 									: null,
 								inbound.network
-									? t("settings.database.sourceNetwork", "Network: {{network}}", {
-											network: inbound.network,
-									  })
+									? t(
+											"settings.database.sourceNetwork",
+											"Network: {{network}}",
+											{
+												network: inbound.network,
+											},
+										)
 									: null,
 								inbound.security
 									? t(
 											"settings.database.sourceSecurity",
 											"Security: {{security}}",
 											{ security: inbound.security },
-									  )
+										)
 									: null,
 							].filter(Boolean);
 							return (
@@ -628,7 +628,10 @@ export const ThreeXUiDatabaseImportPanel = () => {
 										</HStack>
 
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl isRequired={importEnabled} isDisabled={!importEnabled}>
+											<FormControl
+												isRequired={importEnabled}
+												isDisabled={!importEnabled}
+											>
 												<FormLabel>
 													{t("settings.database.ownerAdmin", "Owner admin")}
 												</FormLabel>
@@ -642,10 +645,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 													}
 												>
 													<option value="">
-														{t(
-															"settings.database.selectAdmin",
-															"Select admin",
-														)}
+														{t("settings.database.selectAdmin", "Select admin")}
 													</option>
 													{preview.admins.map((admin) => (
 														<option key={admin.id} value={admin.id}>
@@ -671,10 +671,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 													isDisabled={!importEnabled || !config?.adminId}
 												>
 													<option value="">
-														{t(
-															"settings.database.noService",
-															"No service",
-														)}
+														{t("settings.database.noService", "No service")}
 													</option>
 													{services.map((service) => (
 														<option key={service.id} value={service.id}>
@@ -757,14 +754,12 @@ export const ThreeXUiDatabaseImportPanel = () => {
 											</FormControl>
 											<FormControl
 												isDisabled={
-													!importEnabled || config?.expireOverrideMode === "none"
+													!importEnabled ||
+													config?.expireOverrideMode === "none"
 												}
 											>
 												<FormLabel>
-													{t(
-														"settings.database.expireDays",
-														"Expire days",
-													)}
+													{t("settings.database.expireDays", "Expire days")}
 												</FormLabel>
 												<NumericInput
 													min={0}
@@ -809,7 +804,8 @@ export const ThreeXUiDatabaseImportPanel = () => {
 											</FormControl>
 											<FormControl
 												isDisabled={
-													!importEnabled || config?.trafficOverrideMode === "none"
+													!importEnabled ||
+													config?.trafficOverrideMode === "none"
 												}
 											>
 												<FormLabel>
@@ -854,7 +850,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 																		"settings.database.sourceDuplicatesShort",
 																		"source duplicates: {{count}}",
 																		{ count: conflict.source_count },
-																  )}`
+																	)}`
 																: ""}
 															{conflict.existing_usernames.length > 0
 																? ` | ${t(
@@ -864,7 +860,7 @@ export const ThreeXUiDatabaseImportPanel = () => {
 																			users:
 																				conflict.existing_usernames.join(", "),
 																		},
-																  )}`
+																	)}`
 																: ""}
 														</Text>
 													))}
@@ -945,14 +941,18 @@ export const ThreeXUiDatabaseImportPanel = () => {
 									</SimpleGrid>
 								) : null}
 								{job.result?.warnings?.length ? (
-									<Alert status="warning" borderRadius="md" alignItems="flex-start">
+									<Alert
+										status="warning"
+										borderRadius="md"
+										alignItems="flex-start"
+									>
 										<AlertIcon mt={1} />
 										<Stack spacing={1}>
 											<Text fontWeight="semibold">
 												{t("settings.database.warnings", "Warnings")}
 											</Text>
-											{job.result.warnings.slice(0, 10).map((warning, index) => (
-												<Text key={`${warning}-${index}`} fontSize="sm">
+											{job.result.warnings.slice(0, 10).map((warning) => (
+												<Text key={warning} fontSize="sm">
 													{warning}
 												</Text>
 											))}

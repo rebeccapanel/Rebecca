@@ -2,7 +2,7 @@ import {
 	Box,
 	Button,
 	chakra,
-	HStack,
+	Flex,
 	Popover,
 	PopoverArrow,
 	PopoverBody,
@@ -17,6 +17,7 @@ import {
 	Text,
 	type UseRadioProps,
 	useBreakpointValue,
+	useColorModeValue,
 	useDisclosure,
 	useOutsideClick,
 	useRadio,
@@ -26,7 +27,7 @@ import {
 import { CalendarIcon } from "@heroicons/react/24/outline";
 import DatePicker from "components/common/DatePicker";
 import dayjs, { type ManipulateType } from "dayjs";
-import { type FC, useEffect, useRef, useState } from "react";
+import { type FC, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 const CalendarIconStyled = chakra(CalendarIcon, { baseStyle: { w: 4, h: 4 } });
@@ -54,10 +55,9 @@ export type DateRangePickerProps = {
 	showPresets?: boolean;
 };
 
-const FilterItem: FC<UseRadioProps & { border?: boolean } & any> = ({
-	border,
-	...props
-}) => {
+const FilterItem: FC<
+	UseRadioProps & { border?: boolean; bg?: string } & any
+> = ({ border, bg, ...props }) => {
 	const { getInputProps, getRadioProps } = useRadio(props);
 	const fontSize = useBreakpointValue({ base: "xs", md: "sm" });
 	return (
@@ -73,6 +73,7 @@ const FilterItem: FC<UseRadioProps & { border?: boolean } & any> = ({
 				fontSize={fontSize}
 				borderWidth={border ? "1px" : "0px"}
 				borderRadius="md"
+				bg={bg}
 				_checked={{
 					bg: "primary.500",
 					color: "white",
@@ -104,8 +105,13 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const { isOpen, onOpen, onClose } = useDisclosure();
+	const radioGroupName = useId();
 	const customRef = useRef(null);
 	useOutsideClick({ ref: customRef, handler: onClose });
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const panelBg = useColorModeValue("white", "gray.900");
+	const controlBg = useColorModeValue("white", "whiteAlpha.50");
+	const mutedBg = useColorModeValue("gray.50", "whiteAlpha.100");
 
 	const _filterOptions = useBreakpointValue({
 		base: ["7h", "1d", "3d", "1w"],
@@ -224,7 +230,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 	};
 
 	const { getRootProps, getRadioProps } = useRadioGroup({
-		name: "relative-filter",
+		name: `relative-filter-${radioGroupName}`,
 		defaultValue: "",
 		onChange: handleRelativeChange,
 	});
@@ -244,7 +250,11 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 	};
 
 	return (
-		<HStack spacing={2} flexWrap="wrap">
+		<Flex
+			gap={2}
+			flexWrap="wrap"
+			justify={{ base: "flex-start", md: "flex-end" }}
+		>
 			{showPresets &&
 				presets.map((preset) => (
 					<Button
@@ -253,6 +263,8 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 						onClick={() => handlePresetChange(preset.key)}
 						colorScheme="primary"
 						variant={selectedPreset === preset.key ? "solid" : "outline"}
+						borderRadius="md"
+						minW="52px"
 					>
 						{preset.label}
 					</Button>
@@ -280,6 +292,9 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 						onClick={onOpen}
 						minW={{ base: "200px", md: "240px" }}
 						maxW="100%"
+						bg={controlBg}
+						borderColor={borderColor}
+						borderRadius="md"
 						overflow="hidden"
 						textOverflow="ellipsis"
 						whiteSpace="nowrap"
@@ -290,16 +305,34 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 				<PopoverContent
 					w="fit-content"
 					maxW="calc(100vw - 2rem)"
+					bg={panelBg}
+					borderColor={borderColor}
 					_focus={{ outline: "none" }}
 				>
 					<PopoverArrow />
 					<PopoverBody px={0} py={0} ref={customRef}>
-						<Tabs onChange={(index) => setTabIndex(index)} index={tabIndex}>
-							<TabList px={3} pt={3}>
-								<Tab fontSize={fontSize}>
+						<Tabs
+							variant="unstyled"
+							onChange={(index) => setTabIndex(index)}
+							index={tabIndex}
+						>
+							<TabList px={3} pt={3} gap={2}>
+								<Tab
+									fontSize={fontSize}
+									borderRadius="md"
+									px={3}
+									py={1.5}
+									_selected={{ bg: "primary.500", color: "white" }}
+								>
 									{t("userDialog.relative", "Relative")}
 								</Tab>
-								<Tab fontSize={fontSize}>
+								<Tab
+									fontSize={fontSize}
+									borderRadius="md"
+									px={3}
+									py={1.5}
+									_selected={{ bg: "primary.500", color: "white" }}
+								>
 									{t("userDialog.absolute", "Absolute")}
 								</Tab>
 							</TabList>
@@ -312,6 +345,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 													fontSize={fontSize}
 													fontWeight="medium"
 													minW="60px"
+													color="gray.500"
 												>
 													{t(`userDialog.${row.title}`, row.title)}
 												</Text>
@@ -325,6 +359,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 														<FilterItem
 															key={option}
 															border={true}
+															bg={mutedBg}
 															{...getRadioProps({ value: option })}
 														>
 															{option}
@@ -356,6 +391,6 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 					</PopoverBody>
 				</PopoverContent>
 			</Popover>
-		</HStack>
+		</Flex>
 	);
 };

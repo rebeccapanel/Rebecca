@@ -3,16 +3,11 @@ import {
 	Box,
 	type BoxProps,
 	Button,
-	Card,
 	chakra,
 	Flex,
 	HStack,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	SimpleGrid,
 	Stack,
@@ -35,6 +30,13 @@ import { fetch } from "service/http";
 import type { SystemStats } from "types/System";
 import { formatBytes, numberWithCommas } from "utils/formatByte";
 import { formatDuration } from "utils/formatDuration";
+import { ChartBox } from "./common/ChartBox";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 export const StatisticsQueryKey = "statistics-query-key";
 
@@ -250,12 +252,12 @@ const HistoryModal: FC<{
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
 			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>
+			<XrayModalContent>
+				<XrayModalHeader>
 					{t("historyModalTitle", { metric: payload?.title ?? "" })}
-				</ModalHeader>
+				</XrayModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
+				<XrayModalBody>
 					<Stack spacing={3}>
 						<Flex wrap="wrap" gap={2}>
 							{HISTORY_INTERVALS.map((interval) => (
@@ -278,11 +280,11 @@ const HistoryModal: FC<{
 							height={300}
 						/>
 					</Stack>
-				</ModalBody>
-				<ModalFooter>
+				</XrayModalBody>
+				<XrayModalFooter>
 					<Button onClick={onClose}>{t("close")}</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };
@@ -335,26 +337,40 @@ const HistoryPreview: FC<{
 	accent?: string;
 	onOpen?: () => void;
 	actionLabel: string;
-}> = ({ label, value, history, accent, onOpen, actionLabel }) => (
-	<Stack spacing={1}>
-		<HStack justifyContent="space-between" alignItems="center">
-			<Box>
-				<Text fontSize="xs" color="gray.500">
-					{label}
-				</Text>
-				<Text fontSize="lg" fontWeight="semibold">
-					{value}
-				</Text>
-			</Box>
-			{onOpen && (
-				<Button size="xs" variant="ghost" onClick={onOpen}>
-					{actionLabel}
-				</Button>
-			)}
-		</HStack>
-		<HistorySparkline values={history} accent={accent} />
-	</Stack>
-);
+}> = ({ label, value, history, accent, onOpen, actionLabel }) => {
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const mutedColor = useColorModeValue("gray.500", "gray.400");
+
+	return (
+		<Box
+			borderWidth="1px"
+			borderColor={borderColor}
+			borderRadius="md"
+			bg={bg}
+			p={3}
+		>
+			<Stack spacing={1}>
+				<HStack justifyContent="space-between" alignItems="center" gap={3}>
+					<Box minW={0}>
+						<Text fontSize="xs" fontWeight="semibold" color={mutedColor}>
+							{label}
+						</Text>
+						<Text fontSize="xl" fontWeight="semibold" mt={1}>
+							{value}
+						</Text>
+					</Box>
+					{onOpen && (
+						<Button size="xs" variant="outline" onClick={onOpen} flexShrink={0}>
+							{actionLabel}
+						</Button>
+					)}
+				</HStack>
+				<HistorySparkline values={history} accent={accent} />
+			</Stack>
+		</Box>
+	);
+};
 
 const MetricBadge: FC<{
 	label: string;
@@ -362,11 +378,16 @@ const MetricBadge: FC<{
 	colorScheme?: string;
 	valueClassName?: string;
 }> = ({ label, value, colorScheme = "gray", valueClassName }) => {
-	const borderColor = useColorModeValue("gray.200", "gray.700");
-	const bg = useColorModeValue("white", "gray.900");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const valueColor = useColorModeValue(
 		colorScheme === "gray" ? "gray.800" : `${colorScheme}.600`,
 		colorScheme === "gray" ? "gray.100" : `${colorScheme}.300`,
+	);
+	const accent = useColorModeValue(
+		colorScheme === "gray" ? "gray.300" : `${colorScheme}.400`,
+		colorScheme === "gray" ? "whiteAlpha.400" : `${colorScheme}.300`,
 	);
 
 	return (
@@ -377,12 +398,23 @@ const MetricBadge: FC<{
 			borderWidth="1px"
 			borderColor={borderColor}
 			bg={bg}
-			_dark={{ bg: "gray.800", borderColor: "gray.700" }}
+			position="relative"
+			overflow="hidden"
+			minH="76px"
+			_before={{
+				content: '""',
+				position: "absolute",
+				insetInlineStart: 0,
+				insetBlockStart: 0,
+				w: "3px",
+				h: "full",
+				bg: accent,
+			}}
 		>
-			<Text fontSize="xs" color="gray.500">
+			<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
 				{label}
 			</Text>
-			<Text fontWeight="semibold" color={valueColor}>
+			<Text mt={1} fontWeight="semibold" color={valueColor}>
 				{valueClassName ? (
 					<chakra.span className={valueClassName}>{value}</chakra.span>
 				) : (
@@ -424,44 +456,38 @@ const SystemOverviewCard: FC<{
 		normalizeVersion(data.version) &&
 		normalizeVersion(latestPanelVersion) !== normalizeVersion(data.version);
 	return (
-		<Card p={5} borderRadius="12px" boxShadow="none">
-			<Stack spacing={4}>
-				<Stack
-					direction={{ base: "column", md: "row" }}
-					spacing={{ base: 2, md: 4 }}
-					justifyContent="space-between"
-					align={{ base: "flex-start", md: "center" }}
-				>
-					<Text fontSize="lg" fontWeight="semibold">
-						{t("systemOverview")}
-					</Text>
-					<Wrap spacing={2} justify={{ base: "flex-start", md: "flex-end" }}>
+		<ChartBox
+			title={t("systemOverview")}
+			headerActions={
+				<Wrap spacing={2} justify={{ base: "flex-start", md: "flex-end" }}>
+					<WrapItem>
+						<Tag colorScheme="gray">v{data.version}</Tag>
+					</WrapItem>
+					{latestPanelVersion && (
 						<WrapItem>
-							<Tag colorScheme="gray">v{data.version}</Tag>
-						</WrapItem>
-						{latestPanelVersion && (
-							<WrapItem>
-								<Tag colorScheme={isPanelUpdateAvailable ? "green" : "blue"}>
-									{isPanelUpdateAvailable
-										? t("system.updateAvailable", {
-												version: latestPanelVersion,
-											})
-										: t("system.latestRelease", {
-												version: latestPanelVersion,
-											})}
-								</Tag>
-							</WrapItem>
-						)}
-						<WrapItem>
-							<Tag colorScheme="gray">
-								{t("loadAverage")}:{" "}
-								{data.load_avg.length
-									? data.load_avg.map((value) => value.toFixed(2)).join(" | ")
-									: "-"}
+							<Tag colorScheme={isPanelUpdateAvailable ? "green" : "blue"}>
+								{isPanelUpdateAvailable
+									? t("system.updateAvailable", {
+											version: latestPanelVersion,
+										})
+									: t("system.latestRelease", {
+											version: latestPanelVersion,
+										})}
 							</Tag>
 						</WrapItem>
-					</Wrap>
-				</Stack>
+					)}
+					<WrapItem>
+						<Tag colorScheme="gray">
+							{t("loadAverage")}:{" "}
+							{data.load_avg.length
+								? data.load_avg.map((value) => value.toFixed(2)).join(" | ")
+								: "-"}
+						</Tag>
+					</WrapItem>
+				</Wrap>
+			}
+		>
+			<Stack spacing={4}>
 				<SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
 					<HistoryPreview
 						label={t("cpuUsage")}
@@ -636,7 +662,7 @@ const SystemOverviewCard: FC<{
 					</Box>
 				)}
 			</Stack>
-		</Card>
+		</ChartBox>
 	);
 };
 
@@ -650,16 +676,15 @@ const PanelOverviewCard: FC<{
 		(entry) => entry.value,
 	);
 	return (
-		<Card p={5} borderRadius="12px" boxShadow="none">
+		<ChartBox
+			title={t("panelUsage")}
+			headerActions={
+				<Badge colorScheme={data.xray_running ? "green" : "red"}>
+					{data.xray_running ? t("status.running") : t("status.stopped")}
+				</Badge>
+			}
+		>
 			<Stack spacing={4}>
-				<HStack justifyContent="space-between" alignItems="center">
-					<Text fontSize="lg" fontWeight="semibold">
-						{t("panelUsage")}
-					</Text>
-					<Badge colorScheme={data.xray_running ? "green" : "red"}>
-						{data.xray_running ? t("status.running") : t("status.stopped")}
-					</Badge>
-				</HStack>
 				<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
 					<HistoryPreview
 						label={t("cpuUsage")}
@@ -703,15 +728,16 @@ const PanelOverviewCard: FC<{
 					/>
 				</SimpleGrid>
 			</Stack>
-		</Card>
+		</ChartBox>
 	);
 };
 
 const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => {
-	const borderColor = useColorModeValue("gray.200", "gray.700");
-	const bg = useColorModeValue("gray.50", "gray.900");
-	const iconBg = useColorModeValue("primary.100", "primary.900");
-	const iconColor = useColorModeValue("primary.500", "primary.200");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const iconBg = useColorModeValue("primary.50", "whiteAlpha.100");
+	const iconColor = useColorModeValue("primary.600", "primary.200");
+	const mutedColor = useColorModeValue("gray.500", "gray.400");
 	return (
 		<Box
 			borderWidth="1px"
@@ -725,7 +751,7 @@ const UsersUsageCard: FC<{ value: number; t: TFunction }> = ({ value, t }) => {
 					<Box p={2} borderRadius="md" bg={iconBg}>
 						<ChartIcon color={iconColor} />
 					</Box>
-					<Text fontSize="xs" color="gray.500">
+					<Text fontSize="xs" fontWeight="semibold" color={mutedColor}>
 						{t("dashboard.systemUsage", "System usage")}
 					</Text>
 				</HStack>
@@ -741,11 +767,8 @@ const UsersOverviewCard: FC<{
 	data: SystemStats;
 	t: TFunction;
 }> = ({ data, t }) => (
-	<Card p={5} borderRadius="12px" boxShadow="none">
+	<ChartBox title={t("usersOverview")}>
 		<Stack spacing={4}>
-			<Text fontSize="lg" fontWeight="semibold">
-				{t("usersOverview")}
-			</Text>
 			<MetricBadge
 				label={t("totalUsersLabel")}
 				value={formatNumberValue(data.total_user)}
@@ -780,7 +803,7 @@ const UsersOverviewCard: FC<{
 				/>
 			</SimpleGrid>
 		</Stack>
-	</Card>
+	</ChartBox>
 );
 
 const YourUsageCard: FC<{
@@ -789,11 +812,8 @@ const YourUsageCard: FC<{
 }> = ({ data, t }) => {
 	if (!data) return null;
 	return (
-		<Card p={5} borderRadius="12px" boxShadow="none">
+		<ChartBox title={t("yourUsage")}>
 			<Stack spacing={4}>
-				<Text fontSize="lg" fontWeight="semibold">
-					{t("yourUsage")}
-				</Text>
 				<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
 					<MetricBadge
 						label={t("totalUsersLabel")}
@@ -817,7 +837,7 @@ const YourUsageCard: FC<{
 					/>
 				</SimpleGrid>
 			</Stack>
-		</Card>
+		</ChartBox>
 	);
 };
 
@@ -827,11 +847,8 @@ const AdminOverviewCard: FC<{
 }> = ({ data, t }) => {
 	if (!data) return null;
 	return (
-		<Card p={5} borderRadius="12px" boxShadow="none">
+		<ChartBox title={t("adminOverview")}>
 			<Stack spacing={4}>
-				<Text fontSize="lg" fontWeight="semibold">
-					{t("adminOverview")}
-				</Text>
 				<SimpleGrid columns={{ base: 1, md: 2 }} gap={3}>
 					<MetricBadge
 						label={t("totalAdmins")}
@@ -868,7 +885,7 @@ const AdminOverviewCard: FC<{
 					</Box>
 				)}
 			</Stack>
-		</Card>
+		</ChartBox>
 	);
 };
 

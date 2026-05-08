@@ -34,7 +34,6 @@ import type {
 import { formatBytes } from "utils/formatByte";
 import {
 	buildRangeFromPreset,
-	normalizeCustomRange,
 	type RangeState as SharedRangeState,
 	type UsagePreset as SharedUsagePreset,
 } from "utils/usageRange";
@@ -169,10 +168,16 @@ const rangeStateToDateRangeValue = (range: RangeState): DateRangeValue => ({
 
 // Helper function to convert DateRangeValue to RangeState
 const dateRangeValueToRangeState = (value: DateRangeValue): RangeState => {
-	if (value.presetKey && value.presetKey !== "custom") {
-		return normalizeCustomRange(value.start, value.end);
-	}
 	const unit: "day" | "hour" = value.unit === "hour" ? "hour" : "day";
+	const key = (value.presetKey || value.key || "custom") as RangeKey;
+	if (key !== "custom") {
+		return {
+			key,
+			start: value.start,
+			end: value.end,
+			unit,
+		};
+	}
 	return {
 		key: "custom",
 		start: value.start,
@@ -202,9 +207,13 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		presets.find((preset) => preset.key === "30d") ?? presets[0];
 
 	const [serviceId, setServiceId] = useState<number | null>(initialServiceId);
-	const [range, setRange] = useState<RangeState>(() =>
+	const [serviceTimeseriesRange, setServiceTimeseriesRange] =
+		useState<RangeState>(() => buildRangeFromPreset(defaultPreset));
+	const [adminTrendRange, setAdminTrendRange] = useState<RangeState>(() =>
 		buildRangeFromPreset(defaultPreset),
 	);
+	const [adminDistributionRange, setAdminDistributionRange] =
+		useState<RangeState>(() => buildRangeFromPreset(defaultPreset));
 	const [timeseries, setTimeseries] = useState<ServiceUsagePoint[]>([]);
 	const [timeseriesGranularity, setTimeseriesGranularity] = useState<
 		"day" | "hour"
@@ -237,10 +246,11 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			return;
 		}
 		const params = {
-			start: formatApiStart(range.start),
-			end: formatApiEnd(range.end),
+			start: formatApiStart(serviceTimeseriesRange.start),
+			end: formatApiEnd(serviceTimeseriesRange.end),
 		};
-		const granularityParam = range.unit === "hour" ? "hour" : "day";
+		const granularityParam =
+			serviceTimeseriesRange.unit === "hour" ? "hour" : "day";
 
 		let cancelled = false;
 		setLoadingTimeseries(true);
@@ -265,6 +275,30 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 				if (!cancelled) setLoadingTimeseries(false);
 			});
 
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		serviceId,
+		serviceTimeseriesRange.start,
+		serviceTimeseriesRange.end,
+		serviceTimeseriesRange.unit,
+	]);
+
+	useEffect(() => {
+		if (!serviceId) {
+			setAdminUsage([]);
+			setAdminTimeseries([]);
+			setSelectedAdminId(null);
+			setAdminTimeseriesUsername("");
+			return;
+		}
+		const params = {
+			start: formatApiStart(adminDistributionRange.start),
+			end: formatApiEnd(adminDistributionRange.end),
+		};
+
+		let cancelled = false;
 		setLoadingAdmins(true);
 		apiFetch<ServiceAdminUsageResponse>(
 			`/v2/services/${serviceId}/usage/admins`,
@@ -286,7 +320,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [serviceId, range.start, range.end, range.unit]);
+	}, [serviceId, adminDistributionRange.start, adminDistributionRange.end]);
 
 	useEffect(() => {
 		if (!serviceId) {
@@ -339,7 +373,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			return;
 		}
 
-		const granularityParam = range.unit === "hour" ? "hour" : "day";
+		const granularityParam = adminTrendRange.unit === "hour" ? "hour" : "day";
 		const adminParam =
 			selectedAdminId === null
 				? "null"
@@ -353,8 +387,8 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			`/v2/services/${serviceId}/usage/admin-timeseries`,
 			{
 				query: {
-					start: formatApiStart(range.start),
-					end: formatApiEnd(range.end),
+					start: formatApiStart(adminTrendRange.start),
+					end: formatApiEnd(adminTrendRange.end),
 					granularity: granularityParam,
 					admin_id: adminParam,
 				},
@@ -384,9 +418,9 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		};
 	}, [
 		adminUsage,
-		range.end,
-		range.start,
-		range.unit,
+		adminTrendRange.end,
+		adminTrendRange.start,
+		adminTrendRange.unit,
 		selectedAdminId,
 		serviceId,
 	]);
@@ -406,9 +440,19 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		[],
 	);
 
-	const handleRangeChange = (value: DateRangeValue) => {
+	const handleServiceTimeseriesRangeChange = (value: DateRangeValue) => {
 		const rangeState = dateRangeValueToRangeState(value);
-		setRange(rangeState);
+		setServiceTimeseriesRange(rangeState);
+	};
+
+	const handleAdminTrendRangeChange = (value: DateRangeValue) => {
+		const rangeState = dateRangeValueToRangeState(value);
+		setAdminTrendRange(rangeState);
+	};
+
+	const handleAdminDistributionRangeChange = (value: DateRangeValue) => {
+		const rangeState = dateRangeValueToRangeState(value);
+		setAdminDistributionRange(rangeState);
 	};
 
 	const categories = useMemo(
@@ -561,33 +605,39 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 							</option>
 						))}
 					</Select>
-					<DateRangePicker
-						value={rangeStateToDateRangeValue(range)}
-						onChange={handleRangeChange}
-						presets={dateRangePresets}
-						defaultPreset="30d"
-					/>
 				</Stack>
 			</HStack>
 
 			<ChartBox
 				title={t("services.usageOverTime", "Usage over time")}
 				headerActions={
-					<HStack fontSize="sm" color="gray.500">
-						<InfoIcon />
-						<Text>
-							{t("services.totalUsage", "Total")}{" "}
-							<chakra.span fontWeight="medium">
-								{formatBytes(
-									timeseries.reduce(
-										(acc, item) => acc + (item.used_traffic || 0),
-										0,
-									),
-									2,
-								)}
-							</chakra.span>
-						</Text>
-					</HStack>
+					<Stack
+						direction={{ base: "column", lg: "row" }}
+						spacing={3}
+						align={{ base: "stretch", lg: "center" }}
+					>
+						<HStack fontSize="sm" color="gray.500">
+							<InfoIcon />
+							<Text>
+								{t("services.totalUsage", "Total")}{" "}
+								<chakra.span fontWeight="medium">
+									{formatBytes(
+										timeseries.reduce(
+											(acc, item) => acc + (item.used_traffic || 0),
+											0,
+										),
+										2,
+									)}
+								</chakra.span>
+							</Text>
+						</HStack>
+						<DateRangePicker
+							value={rangeStateToDateRangeValue(serviceTimeseriesRange)}
+							onChange={handleServiceTimeseriesRangeChange}
+							presets={dateRangePresets}
+							defaultPreset="30d"
+						/>
+					</Stack>
 				}
 			>
 				{loadingTimeseries ? (
@@ -630,27 +680,41 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 					</Tooltip>
 				}
 				headerActions={
-					<Select
-						size="sm"
-						minW={{ md: "200px" }}
-						value={selectedAdminId === null ? "null" : String(selectedAdminId)}
-						onChange={(event) => {
-							const value = event.target.value;
-							if (value === "null") {
-								setSelectedAdminId(null);
-								return;
-							}
-							const parsed = Number(value);
-							setSelectedAdminId(Number.isNaN(parsed) ? null : parsed);
-						}}
-						isDisabled={adminSelectOptions.length === 0}
+					<Stack
+						direction={{ base: "column", lg: "row" }}
+						spacing={3}
+						align={{ base: "stretch", lg: "center" }}
 					>
-						{adminSelectOptions.map((option) => (
-							<option key={option.value} value={option.value}>
-								{option.label}
-							</option>
-						))}
-					</Select>
+						<Select
+							size="sm"
+							minW={{ md: "200px" }}
+							value={
+								selectedAdminId === null ? "null" : String(selectedAdminId)
+							}
+							onChange={(event) => {
+								const value = event.target.value;
+								if (value === "null") {
+									setSelectedAdminId(null);
+									return;
+								}
+								const parsed = Number(value);
+								setSelectedAdminId(Number.isNaN(parsed) ? null : parsed);
+							}}
+							isDisabled={adminSelectOptions.length === 0}
+						>
+							{adminSelectOptions.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</Select>
+						<DateRangePicker
+							value={rangeStateToDateRangeValue(adminTrendRange)}
+							onChange={handleAdminTrendRangeChange}
+							presets={dateRangePresets}
+							defaultPreset="30d"
+						/>
+					</Stack>
 				}
 			>
 				<VStack align="start" spacing={1} mb={4}>
@@ -689,15 +753,27 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			<ChartBox
 				title={t("services.adminUsageDistribution", "Admin usage distribution")}
 				headerActions={
-					<HStack fontSize="sm" color="gray.500">
-						<InfoIcon />
-						<Text>
-							{t("services.totalUsage", "Total")}{" "}
-							<chakra.span fontWeight="medium">
-								{formatBytes(adminTotal, 2)}
-							</chakra.span>
-						</Text>
-					</HStack>
+					<Stack
+						direction={{ base: "column", lg: "row" }}
+						spacing={3}
+						align={{ base: "stretch", lg: "center" }}
+					>
+						<HStack fontSize="sm" color="gray.500">
+							<InfoIcon />
+							<Text>
+								{t("services.totalUsage", "Total")}{" "}
+								<chakra.span fontWeight="medium">
+									{formatBytes(adminTotal, 2)}
+								</chakra.span>
+							</Text>
+						</HStack>
+						<DateRangePicker
+							value={rangeStateToDateRangeValue(adminDistributionRange)}
+							onChange={handleAdminDistributionRangeChange}
+							presets={dateRangePresets}
+							defaultPreset="30d"
+						/>
+					</Stack>
 				}
 			>
 				<Stack

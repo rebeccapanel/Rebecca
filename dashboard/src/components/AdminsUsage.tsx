@@ -25,7 +25,7 @@ import { type ChangeEvent, type FC, useEffect, useMemo, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
-import { AdminRole, AdminTrafficLimitMode, type Admin } from "types/Admin";
+import { type Admin, AdminRole, AdminTrafficLimitMode } from "types/Admin";
 import type {
 	ServiceAdminUsage,
 	ServiceAdminUsageResponse,
@@ -176,7 +176,7 @@ const AdminsUsage: FC = () => {
 		[],
 	);
 
-	const [range, setRange] = useState<DateRangeValue>(() => {
+	const buildDefaultRange = (): DateRangeValue => {
 		const end = dayjs().utc().endOf("day");
 		const start = end.subtract(30, "day").startOf("day");
 		return {
@@ -185,7 +185,11 @@ const AdminsUsage: FC = () => {
 			presetKey: "1m",
 			key: "1m",
 		};
-	});
+	};
+	const [serviceUsageRange, setServiceUsageRange] =
+		useState<DateRangeValue>(buildDefaultRange);
+	const [adminUsageRange, setAdminUsageRange] =
+		useState<DateRangeValue>(buildDefaultRange);
 	const [selectedAdmin, setSelectedAdmin] = useState<string | null>(null);
 	const [points, setPoints] = useState<DailyUsagePoint[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -284,8 +288,8 @@ const AdminsUsage: FC = () => {
 			`/v2/services/${selectedServiceId}/usage/admins`,
 			{
 				query: {
-					start: formatApiStart(range.start),
-					end: formatApiEnd(range.end),
+					start: formatApiStart(serviceUsageRange.start),
+					end: formatApiEnd(serviceUsageRange.end),
 				},
 			},
 		)
@@ -304,7 +308,7 @@ const AdminsUsage: FC = () => {
 		return () => {
 			cancelled = true;
 		};
-	}, [selectedServiceId, range.start, range.end]);
+	}, [selectedServiceId, serviceUsageRange.start, serviceUsageRange.end]);
 
 	// load all admins (not paginated) for the select list
 	useEffect(() => {
@@ -331,10 +335,13 @@ const AdminsUsage: FC = () => {
 		if (!selectedAdmin) return;
 		let cancelled = false;
 		setLoading(true);
-		const isHourly = dayjs(range.start).isSame(range.end, "day");
+		const isHourly = dayjs(adminUsageRange.start).isSame(
+			adminUsageRange.end,
+			"day",
+		);
 		const query: Record<string, string> = {
-			start: formatApiStart(range.start),
-			end: formatApiEnd(range.end),
+			start: formatApiStart(adminUsageRange.start),
+			end: formatApiEnd(adminUsageRange.end),
 		};
 		if (isHourly) {
 			query.granularity = "hour";
@@ -408,7 +415,7 @@ const AdminsUsage: FC = () => {
 		return () => {
 			cancelled = true;
 		};
-	}, [selectedAdmin, range]);
+	}, [selectedAdmin, adminUsageRange]);
 
 	useEffect(() => {
 		if (!filteredAdmins || filteredAdmins.length === 0) return;
@@ -461,12 +468,8 @@ const AdminsUsage: FC = () => {
 					| "week"
 					| "month",
 			})),
-		[presets.map],
+		[presets],
 	);
-
-	const handleRangeChange = (value: DateRangeValue) => {
-		setRange(value);
-	};
 
 	return (
 		<VStack spacing={4} align="stretch">
@@ -474,9 +477,9 @@ const AdminsUsage: FC = () => {
 				title={t("admins.serviceUsageTitle", "Service usage distribution")}
 				headerActions={
 					<Stack
-						direction={{ base: "column", sm: "row" }}
+						direction={{ base: "column", lg: "row" }}
 						spacing={3}
-						align={{ base: "stretch", sm: "center" }}
+						align={{ base: "stretch", lg: "center" }}
 					>
 						<Select
 							value={selectedServiceId ?? ""}
@@ -494,6 +497,12 @@ const AdminsUsage: FC = () => {
 								</option>
 							))}
 						</Select>
+						<DateRangePicker
+							value={serviceUsageRange}
+							onChange={setServiceUsageRange}
+							presets={dateRangePresets}
+							defaultPreset="1m"
+						/>
 						<HStack
 							fontSize="sm"
 							color="gray.500"
@@ -638,8 +647,8 @@ const AdminsUsage: FC = () => {
 						w="full"
 					>
 						<DateRangePicker
-							value={range}
-							onChange={handleRangeChange}
+							value={adminUsageRange}
+							onChange={setAdminUsageRange}
 							presets={dateRangePresets}
 							defaultPreset="1m"
 						/>
@@ -683,7 +692,7 @@ const AdminsUsage: FC = () => {
 							{t("loading")}
 						</Text>
 					</VStack>
-				) : chartConfig.series?.length ? (
+				) : chartConfig.series[0]?.data?.length ? (
 					<ReactApexChart
 						options={chartConfig.options}
 						series={chartConfig.series}

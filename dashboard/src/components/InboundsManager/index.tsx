@@ -25,13 +25,7 @@ import {
 import { PencilIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
-import {
-	type FC,
-	useCallback,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import {
@@ -142,22 +136,20 @@ export const InboundsManager: FC = () => {
 					(inb.tag || "").trim().toLowerCase() === normalizedTag &&
 					(!isEditMode || inb.tag !== initial?.tag),
 			);
-			const portExists = inbounds.some(
-				(inb) => {
-					if (isEditMode && inb.tag === initial?.tag) {
-						return false;
-					}
-					const inboundTargets = inb.effective_targets?.length
-						? inb.effective_targets
-						: inb.targets?.length
-							? inb.targets
-							: ["master"];
-					return (
-						inb.port?.toString() === values.port &&
-						inboundTargets.some((targetId) => selectedTargets.has(targetId))
-					);
-				},
-			);
+			const portExists = inbounds.some((inb) => {
+				if (isEditMode && inb.tag === initial?.tag) {
+					return false;
+				}
+				const inboundTargets = inb.effective_targets?.length
+					? inb.effective_targets
+					: inb.targets?.length
+						? inb.targets
+						: ["master"];
+				return (
+					inb.port?.toString() === values.port &&
+					inboundTargets.some((targetId) => selectedTargets.has(targetId))
+				);
+			});
 			if (tagExists) {
 				throw new Error(
 					t("inbounds.error.tagExists", "Inbound tag already exists"),

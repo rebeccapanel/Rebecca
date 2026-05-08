@@ -57,8 +57,8 @@ import {
 	MagnifyingGlassIcon,
 	Squares2X2Icon,
 } from "@heroicons/react/24/outline";
-import { useDashboard } from "contexts/DashboardContext";
 import { NumericInput } from "components/common/NumericInput";
+import { useDashboard } from "contexts/DashboardContext";
 import {
 	FetchNodesQueryKey,
 	type NodeType,
@@ -208,8 +208,10 @@ export const NodesPage: FC = () => {
 	} = useNodes();
 	const queryClient = useQueryClient();
 	const toast = useToast();
-	const nodeCardBg = useColorModeValue("surface.light", "surface.dark");
-	const nodeCardBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const nodeCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const nodeCardBorder = useColorModeValue("blackAlpha.300", "whiteAlpha.300");
+	const nodePanelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const nodePanelBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const [editingNode, setEditingNode] = useState<NodeType | null>(null);
 	const [isAddNodeOpen, setAddNodeOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -324,7 +326,9 @@ export const NodesPage: FC = () => {
 		},
 	);
 	const panelInstallMode =
-		maintenanceInfo?.panel?.mode || maintenanceInfo?.panel?.install_mode || "docker";
+		maintenanceInfo?.panel?.mode ||
+		maintenanceInfo?.panel?.install_mode ||
+		"docker";
 	const hostActionsAvailable = panelInstallMode === "binary";
 
 	useEffect(() => {
@@ -357,24 +361,21 @@ export const NodesPage: FC = () => {
 		}
 	}, [masterState, masterLimitDirty, masterLimitInput]);
 
-	const currentNodeVersion = useMemo(
-		() => {
-			const versionedNode = nodes?.find(
-				(nodeItem) => nodeItem.node_binary_tag || nodeItem.node_service_version,
-			);
-			return (
-				versionedNode?.node_binary_tag ||
-				versionedNode?.node_service_version ||
-				""
-			);
-		},
-		[nodes],
-	);
+	const currentNodeVersion = useMemo(() => {
+		const versionedNode = nodes?.find(
+			(nodeItem) => nodeItem.node_binary_tag || nodeItem.node_service_version,
+		);
+		return (
+			versionedNode?.node_binary_tag ||
+			versionedNode?.node_service_version ||
+			""
+		);
+	}, [nodes]);
 	const detectedNodeUpdateChannel =
 		nodes?.find((nodeItem) => nodeItem.node_update_channel)
-			?.node_update_channel ||
-		maintenanceInfo?.node_update?.channel;
-	const nodeUpdateChannel = detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
+			?.node_update_channel || maintenanceInfo?.node_update?.channel;
+	const nodeUpdateChannel =
+		detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
 	const latestNodeVersion =
 		nodeUpdateChannel === "dev"
 			? maintenanceInfo?.node_update?.latest_dev?.tag || ""
@@ -1261,7 +1262,14 @@ export const NodesPage: FC = () => {
 
 	return (
 		<VStack spacing={6} align="stretch">
-			<Stack spacing={1}>
+			<Stack
+				spacing={1}
+				borderWidth="1px"
+				borderColor={nodePanelBorder}
+				borderRadius="md"
+				bg={nodePanelBg}
+				p={4}
+			>
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
 					{t("header.nodes")}
 				</Text>
@@ -1311,6 +1319,11 @@ export const NodesPage: FC = () => {
 				alignItems={{ base: "stretch", lg: "center" }}
 				justifyContent="space-between"
 				w="full"
+				borderWidth="1px"
+				borderColor={nodePanelBorder}
+				borderRadius="md"
+				bg={nodePanelBg}
+				p={3}
 			>
 				<Text fontWeight="semibold">
 					{t("nodes.manageNodesHeader", "Node list")}

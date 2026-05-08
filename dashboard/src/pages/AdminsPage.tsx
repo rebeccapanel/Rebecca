@@ -1,4 +1,4 @@
-import { Text, VStack } from "@chakra-ui/react";
+import { Box, Text, useColorModeValue, VStack } from "@chakra-ui/react";
 import AdminDetailsDrawer from "components/AdminDetailsDrawer";
 import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
@@ -11,6 +11,8 @@ import { useTranslation } from "react-i18next";
 
 export const AdminsPage: FC = () => {
 	const { t } = useTranslation();
+	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const panelBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
 	const openAdminDialog = useAdminsStore((s) => s.openAdminDialog);
 	const { userData, getUserIsSuccess } = useGetUser();
@@ -35,38 +37,80 @@ export const AdminsPage: FC = () => {
 	if (!canViewAdmins) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("admins.manageTab", "Admins")}
-				</Text>
-				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"admins.pageDescription",
-						"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-					)}
-				</Text>
-				<Text>
-					{t(
-						"admins.noPermission",
-						"You don't have permission to manage admins.",
-					)}
-				</Text>
+				<Box
+					borderWidth="1px"
+					borderColor={panelBorder}
+					borderRadius="md"
+					bg={panelBg}
+					p={4}
+				>
+					<Text as="h1" fontWeight="semibold" fontSize="2xl">
+						{t("admins.manageTab", "Admins")}
+					</Text>
+					<Text
+						fontSize="sm"
+						color="gray.500"
+						_dark={{ color: "gray.400" }}
+						mt={2}
+					>
+						{t(
+							"admins.pageDescription",
+							"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
+						)}
+					</Text>
+					<Text mt={3}>
+						{t(
+							"admins.noPermission",
+							"You don't have permission to manage admins.",
+						)}
+					</Text>
+				</Box>
 			</VStack>
 		);
 	}
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Text as="h1" fontWeight="semibold" fontSize="2xl">
-				{t("admins.manageTab", "Admins")}
-			</Text>
-			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-				{t(
-					"admins.pageDescription",
-					"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-				)}
-			</Text>
-			<Filters for="admins" />
-			<AdminsTable />
+			<Box
+				borderWidth="1px"
+				borderColor={panelBorder}
+				borderRadius="md"
+				bg={panelBg}
+				p={4}
+			>
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">
+					{t("admins.manageTab", "Admins")}
+				</Text>
+				<Text
+					fontSize="sm"
+					color="gray.500"
+					_dark={{ color: "gray.400" }}
+					mt={2}
+				>
+					{t(
+						"admins.pageDescription",
+						"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
+					)}
+				</Text>
+			</Box>
+			<Box
+				borderWidth="1px"
+				borderColor={panelBorder}
+				borderRadius="md"
+				bg={panelBg}
+				p={3}
+			>
+				<Filters for="admins" />
+			</Box>
+			<Box
+				borderWidth="1px"
+				borderColor={panelBorder}
+				borderRadius="md"
+				bg={panelBg}
+				overflow="hidden"
+			>
+				<AdminsTable />
+			</Box>
 			<Pagination for="admins" />
 			<AdminDialog />
 			<AdminDetailsDrawer />

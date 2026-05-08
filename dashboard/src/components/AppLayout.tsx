@@ -188,6 +188,21 @@ export function AppLayout() {
 		"0 6px 14px rgba(15, 23, 42, 0.1)",
 		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
+	const shellBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const shellHeaderBg = useColorModeValue(
+		"rgba(255, 255, 255, 0.92)",
+		"rgba(15, 23, 42, 0.86)",
+	);
+	const shellHeaderShadow = useColorModeValue(
+		"0 10px 24px rgba(15, 23, 42, 0.06)",
+		"0 10px 24px rgba(0, 0, 0, 0.24)",
+	);
+	const shellMainBg = useColorModeValue("gray.50", "blackAlpha.300");
+	const headerButtonBg = useColorModeValue("white", "whiteAlpha.50");
+	const headerButtonHoverBg = useColorModeValue(
+		"blackAlpha.50",
+		"whiteAlpha.100",
+	);
 
 	const setPreviewTabKeySafe = (value: string | null) => {
 		previewTabKeyRef.current = value;
@@ -711,12 +726,13 @@ export function AppLayout() {
 						h="16"
 						minH="16"
 						borderBottom="1px"
-						borderColor="light-border"
-						bg="surface.light"
-						_dark={{ borderColor: "whiteAlpha.200", bg: "surface.dark" }}
+						borderColor={shellBorder}
+						bg={shellHeaderBg}
+						backdropFilter="blur(16px)"
+						boxShadow={shellHeaderShadow}
 						display="flex"
 						alignItems="center"
-						px="6"
+						px={{ base: 3, md: 5 }}
 						justifyContent="space-between"
 						flexShrink={0}
 						position="sticky"
@@ -728,7 +744,7 @@ export function AppLayout() {
 						<HStack spacing={3} alignItems="center" flex="1" minW="0">
 							<IconButton
 								size="sm"
-								variant="ghost"
+								variant="outline"
 								aria-label="toggle sidebar"
 								onClick={() => {
 									if (isMobile) sidebarDrawer.onOpen();
@@ -736,6 +752,9 @@ export function AppLayout() {
 								}}
 								icon={<MenuIcon />}
 								flexShrink={0}
+								bg={headerButtonBg}
+								borderColor={shellBorder}
+								_hover={{ bg: headerButtonHoverBg }}
 							/>
 						</HStack>
 						<HStack spacing={2} alignItems="center" flexShrink={0}>
@@ -755,11 +774,14 @@ export function AppLayout() {
 									<MenuButton
 										as={Button}
 										size="sm"
-										variant="ghost"
+										variant="outline"
 										leftIcon={<UserIcon />}
 										aria-label="user menu"
 										fontSize="sm"
 										fontWeight="medium"
+										bg={headerButtonBg}
+										borderColor={shellBorder}
+										_hover={{ bg: headerButtonHoverBg }}
 										onClick={() => {
 											if (userMenu.isOpen) {
 												handleUserMenuClose();
@@ -943,6 +965,7 @@ export function AppLayout() {
 						pb={{ base: "28", md: "6" }}
 						overflow="auto"
 						minH="0"
+						bg={shellMainBg}
 					>
 						<Outlet />
 					</Box>
@@ -957,7 +980,7 @@ export function AppLayout() {
 						size="xs"
 					>
 						<DrawerOverlay />
-						<DrawerContent bg="surface.light" _dark={{ bg: "surface.dark" }}>
+						<DrawerContent bg={shellHeaderBg}>
 							<DrawerBody p={0}>
 								<AppSidebar
 									collapsed={false}

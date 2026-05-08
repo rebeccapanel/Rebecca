@@ -6,7 +6,7 @@ import {
 	Text,
 	useColorModeValue,
 } from "@chakra-ui/react";
-import type { FC } from "react";
+import { type FC, useState } from "react";
 
 import type { AdItem } from "types/Ads";
 
@@ -29,6 +29,13 @@ export const AdvertisementCard: FC<AdvertisementCardProps> = ({
 	const paddingX = compact ? 2 : 3;
 
 	const isImageAd = ad.type === "image" || Boolean(ad.image_url);
+	const imageUrl = ad.image_url ?? "";
+	const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+
+	if (isImageAd && (!imageUrl || failedImageUrl === imageUrl)) {
+		return null;
+	}
+
 	const maxSizePx = maxSize ?? 460;
 	const isImageAdOnly = isImageAd && compact;
 	const content = isImageAd ? (
@@ -44,11 +51,12 @@ export const AdvertisementCard: FC<AdvertisementCardProps> = ({
 				alt={ad.title || ad.text || "Advertisement"}
 				borderRadius={isImageAdOnly ? "lg" : "md"}
 				objectFit={isImageAdOnly ? "cover" : "contain"}
-				src={ad.image_url}
+				src={imageUrl}
 				maxH="100%"
 				maxW="100%"
 				h={isImageAdOnly ? "100%" : "auto"}
 				w={isImageAdOnly ? "100%" : "auto"}
+				onError={() => setFailedImageUrl(imageUrl)}
 			/>
 		</Box>
 	) : (

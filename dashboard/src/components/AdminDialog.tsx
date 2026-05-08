@@ -13,11 +13,7 @@ import {
 	InputGroup,
 	InputRightElement,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Radio,
 	RadioGroup,
@@ -41,13 +37,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
-import {
-	type FC,
-	useCallback,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
@@ -56,11 +46,7 @@ import type {
 	AdminPermissions,
 	AdminUpdatePayload,
 } from "types/Admin";
-import {
-	AdminRole,
-	AdminStatus,
-	AdminTrafficLimitMode,
-} from "types/Admin";
+import { AdminRole, AdminStatus, AdminTrafficLimitMode } from "types/Admin";
 import type { ServiceSummary } from "types/Service";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
@@ -73,6 +59,12 @@ import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
 import { NumericInput } from "./common/NumericInput";
 import { DateTimePicker } from "./DateTimePicker";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 const MB_IN_BYTES = 1024 * 1024;
@@ -566,6 +558,11 @@ export const AdminDialog: FC = () => {
 	const telegramIdValue = watch("telegram_id") ?? "";
 	const deleteUserUsageLimitValue = watch("delete_user_usage_limit") ?? "";
 	const dataLimitValue = watch("data_limit") ?? "";
+	const parsedGlobalDataLimit = Number(dataLimitValue);
+	const hasGlobalDataLimit =
+		String(dataLimitValue).trim().length > 0 &&
+		Number.isFinite(parsedGlobalDataLimit) &&
+		parsedGlobalDataLimit > 0;
 	const usersLimitValue = watch("users_limit") ?? "";
 	const maxDataLimitValue = watch("maxDataLimitPerUserGb") ?? "";
 	const isFullAccessRole = watchRole === AdminRole.FullAccess;
@@ -703,8 +700,7 @@ export const AdminDialog: FC = () => {
 				role: nextRole,
 				traffic_limit_mode:
 					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
-				use_service_traffic_limits:
-					admin?.use_service_traffic_limits ?? false,
+				use_service_traffic_limits: admin?.use_service_traffic_limits ?? false,
 				show_user_traffic: admin?.show_user_traffic ?? true,
 				delete_user_usage_limit_enabled:
 					admin?.delete_user_usage_limit_enabled ?? false,
@@ -1032,673 +1028,804 @@ export const AdminDialog: FC = () => {
 
 	const detailsForm = (
 		<VStack spacing={4} align="stretch">
-			{mode === "edit" && admin?.id !== undefined && (
-				<FormControl>
-					<FormLabel>{t("admins.idLabel", "Admin ID")}</FormLabel>
-					<Input value={String(admin.id)} isReadOnly />
-				</FormControl>
-			)}
-			{mode === "edit" && (
-				<FormControl>
-					<FormLabel>{t("admins.status", "Status")}</FormLabel>
-					<Input value={statusLabel} isReadOnly />
-				</FormControl>
-			)}
-			<FormControl isInvalid={!!errors.username}>
-				<FormLabel>{t("username")}</FormLabel>
-				<InputGroup dir={isRTL ? "rtl" : "ltr"}>
-					<Input
-						placeholder={t("admins.usernamePlaceholder", "Admin username")}
-						{...register("username")}
-						isDisabled={mode === "edit"}
-						{...(mode === "create" ? endPadding : {})}
-					/>
-					{mode === "create" && (
-						<InputRightElement
-							insetInlineEnd={endAdornmentProps.insetInlineEnd}
-							insetInlineStart={endAdornmentProps.insetInlineStart}
-							right={endAdornmentProps.right}
-							left={endAdornmentProps.left}
-						>
-							<IconButton
-								aria-label={t("admins.generateUsername", "Random")}
-								size="sm"
-								variant="ghost"
-								icon={<SparklesIcon width={20} />}
-								onClick={handleGenerateUsername}
-							/>
-						</InputRightElement>
+			<Box className="xray-dialog-section">
+				<Text fontSize="sm" fontWeight="semibold" mb={3}>
+					{t("admins.accountSection", "Account")}
+				</Text>
+				<VStack spacing={4} align="stretch">
+					{mode === "edit" && admin?.id !== undefined && (
+						<FormControl>
+							<FormLabel>{t("admins.idLabel", "Admin ID")}</FormLabel>
+							<Input value={String(admin.id)} isReadOnly />
+						</FormControl>
 					)}
-				</InputGroup>
-				<FormErrorMessage>
-					{errors.username?.message as string}
-				</FormErrorMessage>
-			</FormControl>
-			<FormControl isInvalid={!!errors.password}>
-				<FormLabel>{t("password")}</FormLabel>
-				<HStack spacing={2}>
-					<InputGroup dir={isRTL ? "rtl" : "ltr"}>
-						<Input
-							placeholder={t("admins.passwordPlaceholder", "Password")}
-							type={showPassword ? "text" : "password"}
-							{...register("password")}
-							{...endPadding}
-						/>
-						<InputRightElement
-							insetInlineEnd={endAdornmentProps.insetInlineEnd}
-							insetInlineStart={endAdornmentProps.insetInlineStart}
-							right={endAdornmentProps.right}
-							left={endAdornmentProps.left}
-						>
-							<IconButton
-								aria-label={
-									showPassword
-										? t("admins.hidePassword", "Hide")
-										: t("admins.showPassword", "Show")
-								}
-								size="sm"
-								variant="ghost"
-								icon={
-									showPassword ? (
-										<EyeSlashIcon width={16} />
-									) : (
-										<EyeIcon width={16} />
-									)
-								}
-								onClick={() => setShowPassword(!showPassword)}
-							/>
-						</InputRightElement>
-					</InputGroup>
-					<IconButton
-						aria-label={t("admins.generatePassword", "Random")}
-						size="md"
-						variant="outline"
-						icon={<SparklesIcon width={20} />}
-						onClick={handleGeneratePassword}
-					/>
-				</HStack>
-				<FormErrorMessage>
-					{errors.password?.message as string}
-				</FormErrorMessage>
-				{mode === "edit" && (
-					<Text fontSize="xs" color="gray.500" mt={1}>
-						{t(
-							"admins.passwordOptionalHint",
-							"Leave empty to keep current password.",
-						)}
-					</Text>
-				)}
-			</FormControl>
-			<FormControl>
-				<FormLabel>{t("admins.roleLabel", "Admin role")}</FormLabel>
-				<RadioGroup
-					value={watchRole ?? AdminRole.Standard}
-					onChange={(value) =>
-						setValue("role", value as AdminRole, { shouldDirty: true })
-					}
-				>
-					<VStack align="flex-start" spacing={2}>
-						<Radio value={AdminRole.Standard}>
-							<Text fontWeight="medium">
-								{t("admins.roles.standard", "Standard")}
-							</Text>
-							<FormHelperText m={0}>
-								{t(
-									"admins.roles.standardDescription",
-									"Can manage own users; only user-related permissions are available.",
-								)}
-							</FormHelperText>
-						</Radio>
-						<Radio value={AdminRole.Reseller} isDisabled>
-							<Text fontWeight="medium">
-								{t("admins.roles.reseller", "Reseller")}
-								<Box as="span" ml={2} fontSize="xs" color="orange.500">
-									{t("common.comingSoon", "Coming soon")}
-								</Box>
-							</Text>
-							<FormHelperText m={0}>
-								{t(
-									"admins.roles.resellerDescription",
-									"Can create and manage their own admins.",
-								)}
-							</FormHelperText>
-						</Radio>
-						<Radio value={AdminRole.Sudo}>
-							<Text fontWeight="medium">{t("admins.roles.sudo", "Sudo")}</Text>
-							<FormHelperText m={0}>
-								{t(
-									"admins.roles.sudoDescription",
-									"Extended access to settings and other admins.",
-								)}
-							</FormHelperText>
-						</Radio>
-						{canCreateFullAccess && (
-							<Radio value={AdminRole.FullAccess}>
-								<Text fontWeight="medium">
-									{t("admins.roles.fullAccess", "Full access")}
-								</Text>
-								<FormHelperText m={0}>
-									{t(
-										"admins.roles.fullAccessDescription",
-										"Complete control, including other sudo admins.",
-									)}
-								</FormHelperText>
-							</Radio>
-						)}
-					</VStack>
-				</RadioGroup>
-			</FormControl>
-			{mode === "edit" &&
-				(admin?.role === AdminRole.FullAccess ? (
-					<Text fontSize="sm" color="gray.500">
-						{t("admins.permissions.fullAccessLocked")}
-					</Text>
-				) : (
-					<Button
-						alignSelf="flex-start"
-						onClick={() => setPermissionsModalOpen(true)}
-						variant="outline"
-					>
-						{t("admins.editPermissionsButton", "Edit permissions")}
-					</Button>
-				))}
-			<FormControl isInvalid={!!errors.telegram_id}>
-				<FormLabel>{t("admins.telegramId", "Telegram ID")}</FormLabel>
-				<NumericInput
-					placeholder={t(
-						"admins.telegramPlaceholder",
-						"Optional numeric Telegram ID",
+					{mode === "edit" && (
+						<FormControl>
+							<FormLabel>{t("admins.status", "Status")}</FormLabel>
+							<Input value={statusLabel} isReadOnly />
+						</FormControl>
 					)}
-					value={telegramIdValue}
-					precision={0}
-					onChange={(value) =>
-						setValue("telegram_id", value, {
-							shouldDirty: true,
-							shouldValidate: true,
-						})
-					}
-				/>
-				<FormErrorMessage>
-					{errors.telegram_id?.message as string}
-				</FormErrorMessage>
-			</FormControl>
-			{!isFullAccessRole && (
-				<VStack align="stretch" spacing={3}>
-					<Checkbox
-						isChecked={usePerServiceTrafficLimits}
-						onChange={(event) =>
-							setValue(
-								"use_service_traffic_limits",
-								event.target.checked,
-								{ shouldDirty: true },
-							)
-						}
-					>
-						{t(
-							"admins.usePerServiceTrafficLimits",
-							"Use per-service traffic limits",
-						)}
-					</Checkbox>
-					<Checkbox
-						isChecked={isCreatedTrafficMode}
-						isDisabled={usePerServiceTrafficLimits}
-						onChange={(event) =>
-							setValue(
-								"traffic_limit_mode",
-								event.target.checked
-									? AdminTrafficLimitMode.CreatedTraffic
-									: AdminTrafficLimitMode.UsedTraffic,
-								{ shouldDirty: true },
-							)
-						}
-					>
-						{t(
-							"admins.limitByCreatedTraffic",
-							"Limit admin by created traffic",
-						)}
-					</Checkbox>
-					{isCreatedTrafficMode && (
-						<Stack spacing={2} pl={1}>
-							<Checkbox
-								isChecked={Boolean(showUserTrafficValue)}
-								onChange={(event) =>
-									setValue(
-										"show_user_traffic",
-										event.target.checked,
-										{ shouldDirty: true },
-									)
-								}
-							>
-								{t(
-									"admins.showUserTraffic",
-									"Admin can view user traffic",
-								)}
-							</Checkbox>
-							<Checkbox
-								isChecked={Boolean(permissionsValue.users.delete)}
-								onChange={(event) =>
-									handleUserPermissionToggle(
-										"delete",
-										event.target.checked,
-									)
-								}
-							>
-								{t("admins.permissions.deleteUser", "Delete user")}
-							</Checkbox>
-							<Checkbox
-								isChecked={Boolean(deleteUserUsageLimitEnabled)}
-								isDisabled={!permissionsValue.users.delete}
-								onChange={(event) =>
-									setValue(
-										"delete_user_usage_limit_enabled",
-										event.target.checked,
-										{ shouldDirty: true },
-									)
-								}
-							>
-								{t(
-									"admins.deleteUserUsageCap",
-									"Limit delete by user usage",
-								)}
-							</Checkbox>
-							{deleteUserUsageLimitEnabled && (
-								<FormControl isInvalid={!!errors.delete_user_usage_limit}>
-									<FormLabel>
-										{t(
-											"admins.deleteUserUsageLimit",
-											"Max deletable user usage (MB)",
-										)}
-									</FormLabel>
-									<NumericInput
-										value={deleteUserUsageLimitValue}
-										precision={0}
-										onChange={(value) =>
-											setValue("delete_user_usage_limit", value, {
-												shouldDirty: true,
-												shouldValidate: true,
-											})
-										}
+					<FormControl isInvalid={!!errors.username}>
+						<FormLabel>{t("username")}</FormLabel>
+						<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+							<Input
+								placeholder={t("admins.usernamePlaceholder", "Admin username")}
+								{...register("username")}
+								isDisabled={mode === "edit"}
+								{...(mode === "create" ? endPadding : {})}
+							/>
+							{mode === "create" && (
+								<InputRightElement
+									insetInlineEnd={endAdornmentProps.insetInlineEnd}
+									insetInlineStart={endAdornmentProps.insetInlineStart}
+									right={endAdornmentProps.right}
+									left={endAdornmentProps.left}
+								>
+									<IconButton
+										aria-label={t("admins.generateUsername", "Random")}
+										size="sm"
+										variant="ghost"
+										icon={<SparklesIcon width={20} />}
+										onClick={handleGenerateUsername}
 									/>
-									<FormErrorMessage>
-										{errors.delete_user_usage_limit?.message as string}
-									</FormErrorMessage>
-								</FormControl>
+								</InputRightElement>
 							)}
-							<Checkbox
-								isChecked={Boolean(permissionsValue.users.reset_usage)}
-								onChange={(event) =>
-									handleUserPermissionToggle(
-										"reset_usage",
-										event.target.checked,
-									)
-								}
-							>
-								{t("admins.permissions.resetUsage", "Reset usage")}
-							</Checkbox>
-							<Text fontSize="xs" color="gray.500">
+						</InputGroup>
+						<FormErrorMessage>
+							{errors.username?.message as string}
+						</FormErrorMessage>
+					</FormControl>
+					<FormControl isInvalid={!!errors.password}>
+						<FormLabel>{t("password")}</FormLabel>
+						<HStack spacing={2}>
+							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+								<Input
+									placeholder={t("admins.passwordPlaceholder", "Password")}
+									type={showPassword ? "text" : "password"}
+									{...register("password")}
+									{...endPadding}
+								/>
+								<InputRightElement
+									insetInlineEnd={endAdornmentProps.insetInlineEnd}
+									insetInlineStart={endAdornmentProps.insetInlineStart}
+									right={endAdornmentProps.right}
+									left={endAdornmentProps.left}
+								>
+									<IconButton
+										aria-label={
+											showPassword
+												? t("admins.hidePassword", "Hide")
+												: t("admins.showPassword", "Show")
+										}
+										size="sm"
+										variant="ghost"
+										icon={
+											showPassword ? (
+												<EyeSlashIcon width={16} />
+											) : (
+												<EyeIcon width={16} />
+											)
+										}
+										onClick={() => setShowPassword(!showPassword)}
+									/>
+								</InputRightElement>
+							</InputGroup>
+							<IconButton
+								aria-label={t("admins.generatePassword", "Random")}
+								size="md"
+								variant="outline"
+								icon={<SparklesIcon width={20} />}
+								onClick={handleGeneratePassword}
+							/>
+						</HStack>
+						<FormErrorMessage>
+							{errors.password?.message as string}
+						</FormErrorMessage>
+						{mode === "edit" && (
+							<Text fontSize="xs" color="gray.500" mt={1}>
 								{t(
-									"admins.createdTrafficModeHint",
-									"These options stay synced with the Permissions tab.",
+									"admins.passwordOptionalHint",
+									"Leave empty to keep current password.",
 								)}
 							</Text>
-						</Stack>
-					)}
+						)}
+					</FormControl>
+					<FormControl isInvalid={!!errors.telegram_id}>
+						<FormLabel>{t("admins.telegramId", "Telegram ID")}</FormLabel>
+						<NumericInput
+							placeholder={t(
+								"admins.telegramPlaceholder",
+								"Optional numeric Telegram ID",
+							)}
+							value={telegramIdValue}
+							precision={0}
+							onChange={(value) =>
+								setValue("telegram_id", value, {
+									shouldDirty: true,
+									shouldValidate: true,
+								})
+							}
+						/>
+						<FormErrorMessage>
+							{errors.telegram_id?.message as string}
+						</FormErrorMessage>
+					</FormControl>
 				</VStack>
-			)}
-			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-				<FormControl isInvalid={!!errors.data_limit}>
-					<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
-					<NumericInput
-						placeholder={t(
-							"admins.dataLimitPlaceholder",
-							"e.g., 100 for 100GB (empty = unlimited)",
-						)}
-						value={dataLimitValue}
-						precision={0}
-						isDisabled={usePerServiceTrafficLimits}
-						onChange={(value) =>
-							setValue("data_limit", value, {
-								shouldDirty: true,
-								shouldValidate: true,
-							})
-						}
-					/>
-					<FormErrorMessage>
-						{errors.data_limit?.message as string}
-					</FormErrorMessage>
-					<Text fontSize="xs" color="gray.500" mt={1}>
-						{t("admins.dataLimitHint", "Leave empty for unlimited data")}
-					</Text>
-				</FormControl>
-				<FormControl isInvalid={!!errors.users_limit}>
-					<FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
-					<NumericInput
-						placeholder={t(
-							"admins.usersLimitPlaceholder",
-							"e.g., 100 (empty = unlimited)",
-						)}
-						value={usersLimitValue}
-						precision={0}
-						isDisabled={usePerServiceTrafficLimits}
-						onChange={(value) =>
-							setValue("users_limit", value, {
-								shouldDirty: true,
-								shouldValidate: true,
-							})
-						}
-					/>
-					<FormErrorMessage>
-						{errors.users_limit?.message as string}
-					</FormErrorMessage>
-					<Text fontSize="xs" color="gray.500" mt={1}>
-						{t("admins.usersLimitHint", "Leave empty for unlimited users")}
-					</Text>
-				</FormControl>
-			</SimpleGrid>
-			<FormControl>
-				<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
-				<DateTimePicker
-					value={adminExpireDate}
-					onChange={setAdminExpireDate}
-					placeholder={t("expires.selectDate", "Select expiration date")}
-					minDate={new Date()}
-				/>
-				{adminExpireUnix && adminExpireInfo.time ? (
-					<FormHelperText>
-						{t(adminExpireInfo.status, { time: adminExpireInfo.time })}
-					</FormHelperText>
-				) : (
-					<FormHelperText>
-						{t("admins.expireHint", "Leave empty for no time limit.")}
-					</FormHelperText>
-				)}
-			</FormControl>
-			<FormControl>
-				<FormLabel>{t("services", "Services")}</FormLabel>
-				<VStack align="stretch" spacing={3}>
-					<Checkbox
-						isChecked={
-							selectedServices.length === serviceOptions.length &&
-							serviceOptions.length > 0
-						}
-						isIndeterminate={
-							selectedServices.length > 0 &&
-							selectedServices.length < serviceOptions.length
-						}
-						onChange={handleToggleAllServices}
-						isDisabled={serviceOptions.length === 0}
-					>
-						{t("admins.selectAllServices", "Select all services")}
-					</Checkbox>
-					<Input
-						value={serviceSearch}
-						onChange={(event) => setServiceSearch(event.target.value)}
-						placeholder={t("admins.searchServices", "Search services")}
-						size="sm"
-					/>
-					<VStack
-						align="stretch"
-						spacing={2}
-						maxH="220px"
-						overflowY="auto"
-						borderWidth="1px"
-						borderRadius="md"
-						p={3}
-					>
-						{serviceOptions.length === 0 ? (
-							<Text fontSize="sm" color="gray.500">
-								{t("admins.noServicesFound", "No services available")}
-							</Text>
-						) : filteredServices.length === 0 ? (
-							<Text fontSize="sm" color="gray.500">
-								{t(
-									"admins.noServicesMatching",
-									"No services match your search",
+			</Box>
+			<Box className="xray-dialog-section">
+				<Text fontSize="sm" fontWeight="semibold" mb={3}>
+					{t("admins.roleSection", "Role")}
+				</Text>
+				<VStack spacing={4} align="stretch">
+					<FormControl>
+						<FormLabel>{t("admins.roleLabel", "Admin role")}</FormLabel>
+						<RadioGroup
+							value={watchRole ?? AdminRole.Standard}
+							onChange={(value) =>
+								setValue("role", value as AdminRole, { shouldDirty: true })
+							}
+						>
+							<VStack align="flex-start" spacing={2}>
+								<Radio value={AdminRole.Standard}>
+									<Text fontWeight="medium">
+										{t("admins.roles.standard", "Standard")}
+									</Text>
+									<FormHelperText m={0}>
+										{t(
+											"admins.roles.standardDescription",
+											"Can manage own users; only user-related permissions are available.",
+										)}
+									</FormHelperText>
+								</Radio>
+								<Radio value={AdminRole.Reseller} isDisabled>
+									<Text fontWeight="medium">
+										{t("admins.roles.reseller", "Reseller")}
+										<Box as="span" ml={2} fontSize="xs" color="orange.500">
+											{t("common.comingSoon", "Coming soon")}
+										</Box>
+									</Text>
+									<FormHelperText m={0}>
+										{t(
+											"admins.roles.resellerDescription",
+											"Can create and manage their own admins.",
+										)}
+									</FormHelperText>
+								</Radio>
+								<Radio value={AdminRole.Sudo}>
+									<Text fontWeight="medium">
+										{t("admins.roles.sudo", "Sudo")}
+									</Text>
+									<FormHelperText m={0}>
+										{t(
+											"admins.roles.sudoDescription",
+											"Extended access to settings and other admins.",
+										)}
+									</FormHelperText>
+								</Radio>
+								{canCreateFullAccess && (
+									<Radio value={AdminRole.FullAccess}>
+										<Text fontWeight="medium">
+											{t("admins.roles.fullAccess", "Full access")}
+										</Text>
+										<FormHelperText m={0}>
+											{t(
+												"admins.roles.fullAccessDescription",
+												"Complete control, including other sudo admins.",
+											)}
+										</FormHelperText>
+									</Radio>
 								)}
+							</VStack>
+						</RadioGroup>
+					</FormControl>
+					{mode === "edit" &&
+						(admin?.role === AdminRole.FullAccess ? (
+							<Text fontSize="sm" color="gray.500">
+								{t("admins.permissions.fullAccessLocked")}
 							</Text>
 						) : (
-							filteredServices.map((service) => {
-								const isSelected = selectedServicesSet.has(service.id);
-								return (
-									<Box
-										key={service.id}
-										borderWidth="1px"
-										borderRadius="md"
-										px={3}
-										py={2}
-										borderColor={isSelected ? "primary.400" : "gray.200"}
-										bg={isSelected ? "primary.50" : "transparent"}
-										_hover={{ borderColor: "primary.300", cursor: "pointer" }}
-										_dark={{
-											borderColor: isSelected ? "primary.300" : "gray.600",
-											bg: isSelected ? "gray.700" : "transparent",
-										}}
-										transition="all 0.1s ease-in-out"
-										onClick={() => handleServiceToggle(service.id)}
-										onKeyDown={(event) => {
-											if (event.key === "Enter" || event.key === " ") {
-												event.preventDefault();
-												handleServiceToggle(service.id);
-											}
-										}}
-										role="button"
-										tabIndex={0}
-									>
-										<HStack
-											justify="space-between"
-											align="flex-start"
-											spacing={3}
-										>
-											<VStack align="flex-start" spacing={1}>
-												<Text fontWeight="medium">{service.name}</Text>
-												<Text fontSize="xs" color="gray.500">
-													{t(
-														"admins.serviceStats",
-														"{{users}} users | {{hosts}} hosts",
-														{
-															users: service.user_count ?? 0,
-															hosts: service.host_count ?? 0,
-														},
-													)}
-												</Text>
-											</VStack>
-											{isSelected && (
-												<Badge colorScheme="primary" variant="subtle">
-													{t("admins.selectedService", "Selected")}
-												</Badge>
-											)}
-										</HStack>
-									</Box>
-								);
-							})
-						)}
-					</VStack>
-					{usePerServiceTrafficLimits && selectedServices.length > 0 && (
+							<Button
+								alignSelf="flex-start"
+								onClick={() => setPermissionsModalOpen(true)}
+								variant="outline"
+							>
+								{t("admins.editPermissionsButton", "Edit permissions")}
+							</Button>
+						))}
+				</VStack>
+			</Box>
+			<Box className="xray-dialog-section">
+				<Text fontSize="sm" fontWeight="semibold" mb={3}>
+					{t("admins.limitsSection", "Limits")}
+				</Text>
+				<VStack spacing={4} align="stretch">
+					{!isFullAccessRole && (
 						<VStack align="stretch" spacing={3}>
-							<Text fontWeight="semibold">
+							<Checkbox
+								isChecked={usePerServiceTrafficLimits}
+								onChange={(event) =>
+									setValue("use_service_traffic_limits", event.target.checked, {
+										shouldDirty: true,
+									})
+								}
+							>
 								{t(
-									"admins.perServiceLimitsTitle",
-									"Per-service limits",
+									"admins.usePerServiceTrafficLimits",
+									"Use per-service traffic limits",
 								)}
-							</Text>
-							{selectedServices.map((serviceId) => {
-								const service = serviceOptions.find(
-									(item) => item.id === serviceId,
-								);
-								const item = getServiceLimitValue(serviceId);
-								const isServiceCreatedMode =
-									item.traffic_limit_mode ===
-									AdminTrafficLimitMode.CreatedTraffic;
-								const configuredLimitBytes =
-									item.data_limit && Number(item.data_limit) > 0
-										? Number(item.data_limit) * GB_IN_BYTES
-										: 0;
-								const usageBytes = isServiceCreatedMode
-									? Number(item.created_traffic ?? 0)
-									: Number(item.used_traffic ?? 0);
-								return (
-									<Box
-										key={`service-limit-${serviceId}`}
-										borderWidth="1px"
-										borderRadius="md"
-										p={3}
-									>
-										<VStack align="stretch" spacing={3}>
-											<HStack justify="space-between" align="flex-start">
-												<Box>
-													<Text fontWeight="medium">
-														{service?.name ?? `#${serviceId}`}
-													</Text>
-													<Text color="gray.400" fontSize="xs">
-														{t(
-															"admins.deletedUserUsage",
-															"Deleted-user usage",
-														)}
-														: {formatBytes(Number(item.deleted_users_usage ?? 0), 2)}
-													</Text>
-												</Box>
-												<Text color="primary.200" fontSize="sm" fontWeight="medium">
-													{formatBytes(usageBytes, 2)} /{" "}
-													{configuredLimitBytes > 0
-														? formatBytes(configuredLimitBytes, 2)
-														: t("common.unlimited", "Unlimited")}
-												</Text>
-											</HStack>
-											<Checkbox
-												isChecked={isServiceCreatedMode}
-												onChange={(event) =>
-													setServiceLimitValue(serviceId, {
-														traffic_limit_mode: event.target.checked
-															? AdminTrafficLimitMode.CreatedTraffic
-															: AdminTrafficLimitMode.UsedTraffic,
-													})
-												}
-											>
-												{t(
-													"admins.limitByCreatedTraffic",
-													"Limit admin by created traffic",
-												)}
-											</Checkbox>
-											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-												<FormControl>
-													<FormLabel>
-														{t("admins.dataLimit", "Data Limit (GB)")}
-													</FormLabel>
-													<NumericInput
-														value={item.data_limit ?? ""}
-														precision={0}
-														onChange={(value) =>
-															setServiceLimitValue(serviceId, {
-																data_limit: value,
-															})
-														}
-													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("admins.usersLimit", "Users Limit")}
-													</FormLabel>
-													<NumericInput
-														value={item.users_limit ?? ""}
-														precision={0}
-														onChange={(value) =>
-															setServiceLimitValue(serviceId, {
-																users_limit: value,
-															})
-														}
-													/>
-												</FormControl>
-											</SimpleGrid>
-											{isServiceCreatedMode && (
-												<Stack spacing={2}>
-													<Checkbox
-														isChecked={item.show_user_traffic}
-														onChange={(event) =>
-															setServiceLimitValue(serviceId, {
-																show_user_traffic: event.target.checked,
-															})
-														}
-													>
-														{t(
-															"admins.showUserTraffic",
-															"Admin can view user traffic",
-														)}
-													</Checkbox>
-													<Checkbox
-														isChecked={
-															permissionsValue.users.delete &&
-															item.delete_user_usage_limit_enabled
-														}
-														isDisabled={!permissionsValue.users.delete}
-														onChange={(event) =>
-															setServiceLimitValue(serviceId, {
-																delete_user_usage_limit_enabled:
-																	event.target.checked,
-															})
-														}
-													>
-														{t(
-															"admins.deleteUserUsageCap",
-															"Limit delete by user usage",
-														)}
-													</Checkbox>
-													{item.delete_user_usage_limit_enabled && (
-														<FormControl>
-															<FormLabel>
-																{t(
-																	"admins.deleteUserUsageLimit",
-																	"Max deletable user usage (MB)",
-																)}
-															</FormLabel>
-															<NumericInput
-																value={item.delete_user_usage_limit ?? ""}
-																precision={0}
-																onChange={(value) =>
-																	setServiceLimitValue(serviceId, {
-																		delete_user_usage_limit: value,
-																	})
-																}
-															/>
-														</FormControl>
-													)}
-												</Stack>
-											)}
-										</VStack>
-									</Box>
-								);
-							})}
+							</Checkbox>
 						</VStack>
 					)}
+					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+						<FormControl isInvalid={!!errors.data_limit}>
+							<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
+							<NumericInput
+								placeholder={t(
+									"admins.dataLimitPlaceholder",
+									"e.g., 100 for 100GB (empty = unlimited)",
+								)}
+								value={dataLimitValue}
+								precision={0}
+								isDisabled={usePerServiceTrafficLimits}
+								onChange={(value) =>
+									setValue("data_limit", value, {
+										shouldDirty: true,
+										shouldValidate: true,
+									})
+								}
+							/>
+							<FormErrorMessage>
+								{errors.data_limit?.message as string}
+							</FormErrorMessage>
+							<Text fontSize="xs" color="gray.500" mt={1}>
+								{t("admins.dataLimitHint", "Leave empty for unlimited data")}
+							</Text>
+						</FormControl>
+						<FormControl isInvalid={!!errors.users_limit}>
+							<FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
+							<NumericInput
+								placeholder={t(
+									"admins.usersLimitPlaceholder",
+									"e.g., 100 (empty = unlimited)",
+								)}
+								value={usersLimitValue}
+								precision={0}
+								isDisabled={usePerServiceTrafficLimits}
+								onChange={(value) =>
+									setValue("users_limit", value, {
+										shouldDirty: true,
+										shouldValidate: true,
+									})
+								}
+							/>
+							<FormErrorMessage>
+								{errors.users_limit?.message as string}
+							</FormErrorMessage>
+							<Text fontSize="xs" color="gray.500" mt={1}>
+								{t("admins.usersLimitHint", "Leave empty for unlimited users")}
+							</Text>
+						</FormControl>
+					</SimpleGrid>
+					{!isFullAccessRole &&
+						!usePerServiceTrafficLimits &&
+						(hasGlobalDataLimit || isCreatedTrafficMode) && (
+							<VStack align="stretch" spacing={3}>
+								<Checkbox
+									isChecked={isCreatedTrafficMode}
+									onChange={(event) =>
+										setValue(
+											"traffic_limit_mode",
+											event.target.checked
+												? AdminTrafficLimitMode.CreatedTraffic
+												: AdminTrafficLimitMode.UsedTraffic,
+											{ shouldDirty: true },
+										)
+									}
+								>
+									{t(
+										"admins.limitByCreatedTraffic",
+										"Limit admin by created traffic",
+									)}
+								</Checkbox>
+								{isCreatedTrafficMode && (
+									<Stack spacing={2} pl={1}>
+										<Checkbox
+											isChecked={Boolean(showUserTrafficValue)}
+											onChange={(event) =>
+												setValue("show_user_traffic", event.target.checked, {
+													shouldDirty: true,
+												})
+											}
+										>
+											{t(
+												"admins.showUserTraffic",
+												"Admin can view user traffic",
+											)}
+										</Checkbox>
+										<Checkbox
+											isChecked={Boolean(permissionsValue.users.delete)}
+											onChange={(event) =>
+												handleUserPermissionToggle(
+													"delete",
+													event.target.checked,
+												)
+											}
+										>
+											{t("admins.permissions.deleteUser", "Delete user")}
+										</Checkbox>
+										<Checkbox
+											isChecked={Boolean(deleteUserUsageLimitEnabled)}
+											isDisabled={!permissionsValue.users.delete}
+											onChange={(event) =>
+												setValue(
+													"delete_user_usage_limit_enabled",
+													event.target.checked,
+													{ shouldDirty: true },
+												)
+											}
+										>
+											{t(
+												"admins.deleteUserUsageCap",
+												"Limit delete by user usage",
+											)}
+										</Checkbox>
+										{deleteUserUsageLimitEnabled && (
+											<FormControl isInvalid={!!errors.delete_user_usage_limit}>
+												<FormLabel>
+													{t(
+														"admins.deleteUserUsageLimit",
+														"Max deletable user usage (MB)",
+													)}
+												</FormLabel>
+												<NumericInput
+													value={deleteUserUsageLimitValue}
+													precision={0}
+													onChange={(value) =>
+														setValue("delete_user_usage_limit", value, {
+															shouldDirty: true,
+															shouldValidate: true,
+														})
+													}
+												/>
+												<FormErrorMessage>
+													{errors.delete_user_usage_limit?.message as string}
+												</FormErrorMessage>
+											</FormControl>
+										)}
+										<Checkbox
+											isChecked={Boolean(permissionsValue.users.reset_usage)}
+											onChange={(event) =>
+												handleUserPermissionToggle(
+													"reset_usage",
+													event.target.checked,
+												)
+											}
+										>
+											{t("admins.permissions.resetUsage", "Reset usage")}
+										</Checkbox>
+										<Text fontSize="xs" color="gray.500">
+											{t(
+												"admins.createdTrafficModeHint",
+												"These options stay synced with the Permissions tab.",
+											)}
+										</Text>
+									</Stack>
+								)}
+							</VStack>
+						)}
+					<FormControl>
+						<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
+						<DateTimePicker
+							value={adminExpireDate}
+							onChange={setAdminExpireDate}
+							placeholder={t("expires.selectDate", "Select expiration date")}
+							minDate={new Date()}
+						/>
+						{adminExpireUnix && adminExpireInfo.time ? (
+							<FormHelperText>
+								{t(adminExpireInfo.status, { time: adminExpireInfo.time })}
+							</FormHelperText>
+						) : (
+							<FormHelperText>
+								{t("admins.expireHint", "Leave empty for no time limit.")}
+							</FormHelperText>
+						)}
+					</FormControl>
 				</VStack>
-				<FormHelperText>
-					{t("admins.servicesHelper", "Assign services this admin can manage")}
-				</FormHelperText>
-			</FormControl>
+			</Box>
+			<Box className="xray-dialog-section admin-services-section">
+				<Text fontSize="sm" fontWeight="semibold" mb={3}>
+					{t("services", "Services")}
+				</Text>
+				<VStack spacing={3} align="stretch">
+					<FormControl>
+						<VStack align="stretch" spacing={2}>
+							<HStack
+								justify="space-between"
+								align={{ base: "flex-start", sm: "center" }}
+								spacing={3}
+								flexWrap="wrap"
+							>
+								<Checkbox
+									isChecked={
+										selectedServices.length === serviceOptions.length &&
+										serviceOptions.length > 0
+									}
+									isIndeterminate={
+										selectedServices.length > 0 &&
+										selectedServices.length < serviceOptions.length
+									}
+									onChange={handleToggleAllServices}
+									isDisabled={serviceOptions.length === 0}
+								>
+									{t("admins.selectAllServices", "Select all services")}
+								</Checkbox>
+								<Badge borderRadius="md" variant="subtle" colorScheme="primary">
+									{selectedServices.length} / {serviceOptions.length}
+								</Badge>
+							</HStack>
+							<Input
+								value={serviceSearch}
+								onChange={(event) => setServiceSearch(event.target.value)}
+								placeholder={t("admins.searchServices", "Search services")}
+								size="sm"
+							/>
+							<VStack
+								className="admin-services-list"
+								align="stretch"
+								spacing={1.5}
+								maxH="150px"
+								overflowY="auto"
+								borderWidth="1px"
+								borderRadius="md"
+								p={2}
+							>
+								{serviceOptions.length === 0 ? (
+									<Text fontSize="sm" color="gray.500">
+										{t("admins.noServicesFound", "No services available")}
+									</Text>
+								) : filteredServices.length === 0 ? (
+									<Text fontSize="sm" color="gray.500">
+										{t(
+											"admins.noServicesMatching",
+											"No services match your search",
+										)}
+									</Text>
+								) : (
+									filteredServices.map((service) => {
+										const isSelected = selectedServicesSet.has(service.id);
+										return (
+											<Box
+												key={service.id}
+												borderWidth="1px"
+												borderRadius="md"
+												px={2.5}
+												py={2}
+												borderColor={isSelected ? "primary.400" : "gray.200"}
+												bg={isSelected ? "primary.50" : "transparent"}
+												_hover={{
+													borderColor: "primary.300",
+													cursor: "pointer",
+												}}
+												_dark={{
+													borderColor: isSelected ? "primary.300" : "gray.600",
+													bg: isSelected ? "gray.700" : "transparent",
+												}}
+												transition="all 0.1s ease-in-out"
+												onClick={() => handleServiceToggle(service.id)}
+												onKeyDown={(event) => {
+													if (event.key === "Enter" || event.key === " ") {
+														event.preventDefault();
+														handleServiceToggle(service.id);
+													}
+												}}
+												role="button"
+												tabIndex={0}
+											>
+												<HStack
+													justify="space-between"
+													align="center"
+													spacing={3}
+												>
+													<Box minW={0}>
+														<Text fontWeight="medium" noOfLines={1}>
+															{service.name}
+														</Text>
+														<Text fontSize="xs" color="gray.500">
+															{t(
+																"admins.serviceStats",
+																"{{users}} users | {{hosts}} hosts",
+																{
+																	users: service.user_count ?? 0,
+																	hosts: service.host_count ?? 0,
+																},
+															)}
+														</Text>
+													</Box>
+													{isSelected && (
+														<Badge
+															colorScheme="primary"
+															variant="subtle"
+															borderRadius="md"
+															flexShrink={0}
+														>
+															{t("admins.selectedService", "Selected")}
+														</Badge>
+													)}
+												</HStack>
+											</Box>
+										);
+									})
+								)}
+							</VStack>
+							{usePerServiceTrafficLimits && selectedServices.length > 0 && (
+								<VStack align="stretch" spacing={2.5} pt={1}>
+									<HStack justify="space-between" align="center">
+										<Text fontWeight="semibold" fontSize="sm">
+											{t("admins.perServiceLimitsTitle", "Per-service limits")}
+										</Text>
+										<Badge borderRadius="md" variant="subtle">
+											{selectedServices.length}
+										</Badge>
+									</HStack>
+									<VStack
+										align="stretch"
+										spacing={2}
+										maxH="320px"
+										overflowY="auto"
+										pr={1}
+									>
+										{selectedServices.map((serviceId) => {
+											const service = serviceOptions.find(
+												(item) => item.id === serviceId,
+											);
+											const item = getServiceLimitValue(serviceId);
+											const isServiceCreatedMode =
+												item.traffic_limit_mode ===
+												AdminTrafficLimitMode.CreatedTraffic;
+											const configuredLimitBytes =
+												item.data_limit && Number(item.data_limit) > 0
+													? Number(item.data_limit) * GB_IN_BYTES
+													: 0;
+											const usageBytes = isServiceCreatedMode
+												? Number(item.created_traffic ?? 0)
+												: Number(item.used_traffic ?? 0);
+											const remainingBytes =
+												configuredLimitBytes > 0
+													? Math.max(configuredLimitBytes - usageBytes, 0)
+													: null;
+											return (
+												<Box
+													key={`service-limit-${serviceId}`}
+													className="admin-service-limit-card"
+													borderWidth="1px"
+													borderRadius="md"
+													p={2.5}
+												>
+													<VStack align="stretch" spacing={2.5}>
+														<HStack
+															justify="space-between"
+															align="flex-start"
+															spacing={3}
+														>
+															<Box minW={0}>
+																<Text fontWeight="medium" noOfLines={1}>
+																	{service?.name ?? `#${serviceId}`}
+																</Text>
+																<Text color="gray.400" fontSize="xs">
+																	{t(
+																		"admins.deletedUserUsage",
+																		"Deleted-user usage",
+																	)}
+																	:{" "}
+																	{formatBytes(
+																		Number(item.deleted_users_usage ?? 0),
+																		2,
+																	)}
+																</Text>
+															</Box>
+															<Text
+																color="primary.200"
+																fontSize="xs"
+																fontWeight="medium"
+																whiteSpace="nowrap"
+																textAlign="end"
+															>
+																<Box as="span" display="block">
+																	{formatBytes(usageBytes, 2)} /{" "}
+																	{configuredLimitBytes > 0
+																		? formatBytes(configuredLimitBytes, 2)
+																		: t("common.unlimited", "Unlimited")}
+																</Box>
+																<Box
+																	as="span"
+																	display="block"
+																	mt={0.5}
+																	color="gray.400"
+																>
+																	{t("admins.remaining", "Remaining")}:{" "}
+																	{remainingBytes === null
+																		? t("common.unlimited", "Unlimited")
+																		: formatBytes(remainingBytes, 2)}
+																</Box>
+															</Text>
+														</HStack>
+														<Checkbox
+															isChecked={isServiceCreatedMode}
+															onChange={(event) =>
+																setServiceLimitValue(serviceId, {
+																	traffic_limit_mode: event.target.checked
+																		? AdminTrafficLimitMode.CreatedTraffic
+																		: AdminTrafficLimitMode.UsedTraffic,
+																})
+															}
+														>
+															{t(
+																"admins.limitByCreatedTraffic",
+																"Limit admin by created traffic",
+															)}
+														</Checkbox>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
+															spacing={2}
+														>
+															<FormControl>
+																<FormLabel>
+																	{t("admins.dataLimit", "Data Limit (GB)")}
+																</FormLabel>
+																<NumericInput
+																	value={item.data_limit ?? ""}
+																	precision={0}
+																	size="sm"
+																	onChange={(value) =>
+																		setServiceLimitValue(serviceId, {
+																			data_limit: value,
+																		})
+																	}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>
+																	{t("admins.usersLimit", "Users Limit")}
+																</FormLabel>
+																<NumericInput
+																	value={item.users_limit ?? ""}
+																	precision={0}
+																	size="sm"
+																	onChange={(value) =>
+																		setServiceLimitValue(serviceId, {
+																			users_limit: value,
+																		})
+																	}
+																/>
+															</FormControl>
+														</SimpleGrid>
+														{isServiceCreatedMode && (
+															<Stack spacing={1.5}>
+																<Checkbox
+																	isChecked={item.show_user_traffic}
+																	onChange={(event) =>
+																		setServiceLimitValue(serviceId, {
+																			show_user_traffic: event.target.checked,
+																		})
+																	}
+																>
+																	{t(
+																		"admins.showUserTraffic",
+																		"Admin can view user traffic",
+																	)}
+																</Checkbox>
+																<Checkbox
+																	isChecked={
+																		permissionsValue.users.delete &&
+																		item.delete_user_usage_limit_enabled
+																	}
+																	isDisabled={!permissionsValue.users.delete}
+																	onChange={(event) =>
+																		setServiceLimitValue(serviceId, {
+																			delete_user_usage_limit_enabled:
+																				event.target.checked,
+																		})
+																	}
+																>
+																	{t(
+																		"admins.deleteUserUsageCap",
+																		"Limit delete by user usage",
+																	)}
+																</Checkbox>
+																{item.delete_user_usage_limit_enabled && (
+																	<FormControl>
+																		<FormLabel>
+																			{t(
+																				"admins.deleteUserUsageLimit",
+																				"Max deletable user usage (MB)",
+																			)}
+																		</FormLabel>
+																		<NumericInput
+																			value={item.delete_user_usage_limit ?? ""}
+																			precision={0}
+																			size="sm"
+																			onChange={(value) =>
+																				setServiceLimitValue(serviceId, {
+																					delete_user_usage_limit: value,
+																				})
+																			}
+																		/>
+																	</FormControl>
+																)}
+															</Stack>
+														)}
+													</VStack>
+												</Box>
+											);
+										})}
+									</VStack>
+								</VStack>
+							)}
+						</VStack>
+						<FormHelperText>
+							{t(
+								"admins.servicesHelper",
+								"Assign services this admin can manage",
+							)}
+						</FormHelperText>
+					</FormControl>
+				</VStack>
+			</Box>
 		</VStack>
 	);
 
 	return (
 		<>
-			<Modal isOpen={isOpen} onClose={closeAdminDialog} size="lg">
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader
-						display="flex"
-						alignItems="center"
-						justifyContent="space-between"
-						gap={3}
-						dir={isRTL ? "rtl" : "ltr"}
-					>
-						<Box as="span" textAlign="start">
-							{mode === "create"
-								? t("admins.addAdminTitle", "Add admin")
-								: t("admins.editAdminTitle", "Edit admin")}
-						</Box>
-						<ModalCloseButton position="static" />
-					</ModalHeader>
-					<ModalBody>
+			<Modal
+				isOpen={isOpen}
+				onClose={closeAdminDialog}
+				size="3xl"
+				scrollBehavior="inside"
+			>
+				<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+				<XrayModalContent
+					mx="3"
+					sx={{
+						".admin-services-section .chakra-form-control": {
+							display: "block",
+							gridTemplateColumns: "none",
+						},
+						".admin-services-section .chakra-form__label": {
+							mb: 1,
+						},
+						".admin-services-section .chakra-form__helper-text, .admin-services-section .chakra-form__error-message":
+							{
+								gridColumn: "auto",
+							},
+						".admin-services-section .chakra-simple-grid": {
+							gridTemplateColumns: {
+								base: "1fr",
+								md: "repeat(2, minmax(0, 1fr))",
+							},
+						},
+						".admin-services-section .chakra-checkbox__label": {
+							fontSize: "13px",
+						},
+						".admin-service-limit-card .chakra-form-control": {
+							display: "block",
+							gridTemplateColumns: "none",
+						},
+					}}
+				>
+					<XrayModalHeader dir={isRTL ? "rtl" : "ltr"}>
+						{mode === "create"
+							? t("admins.addAdminTitle", "Add admin")
+							: t("admins.editAdminTitle", "Edit admin")}
+					</XrayModalHeader>
+					<ModalCloseButton />
+					<XrayModalBody>
 						{mode === "create" ? (
-							<Tabs colorScheme="primary" isFitted variant="enclosed">
+							<Tabs
+								className="xray-dialog-auto-sections"
+								isFitted
+								variant="unstyled"
+							>
 								<TabList>
 									<Tab>{t("admins.detailsTabLabel", "Details")}</Tab>
 									<Tab>{t("admins.permissionsTabLabel", "Permissions")}</Tab>
@@ -1730,8 +1857,8 @@ export const AdminDialog: FC = () => {
 						) : (
 							detailsForm
 						)}
-					</ModalBody>
-					<ModalFooter>
+					</XrayModalBody>
+					<XrayModalFooter>
 						<HStack spacing={3}>
 							<Button variant="ghost" onClick={closeAdminDialog}>
 								{t("cancel")}
@@ -1746,8 +1873,8 @@ export const AdminDialog: FC = () => {
 									: t("save", "Save")}
 							</Button>
 						</HStack>
-					</ModalFooter>
-				</ModalContent>
+					</XrayModalFooter>
+				</XrayModalContent>
 			</Modal>
 			<AdminPermissionsModal
 				isOpen={permissionsModalOpen}

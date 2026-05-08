@@ -4,16 +4,14 @@ import {
 	Box,
 	Button,
 	FormControl,
-	FormHelperText,
 	FormLabel,
 	HStack,
-	Input,
 	Select,
 	SimpleGrid,
 	Stack,
 	Text,
-	VStack,
 	useToast,
+	VStack,
 } from "@chakra-ui/react";
 import {
 	ArrowDownTrayIcon,
@@ -23,14 +21,15 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "react-query";
 import {
-	type RebeccaBackupScope,
 	exportRebeccaBackup,
 	importRebeccaBackup,
+	type RebeccaBackupScope,
 } from "service/settings";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
+import { FileDropzone } from "./common/FileDropzone";
 
 const scopeLabels: Record<RebeccaBackupScope, string> = {
 	database: "Database only",
@@ -111,7 +110,10 @@ export const RebeccaBackupPanel = ({
 				if (result.warnings.length) {
 					toast({
 						status: "warning",
-						title: t("settings.backup.importWarnings", "Import completed with warnings"),
+						title: t(
+							"settings.backup.importWarnings",
+							"Import completed with warnings",
+						),
 						description: result.warnings.join("\n"),
 						duration: 8000,
 						isClosable: true,
@@ -129,7 +131,10 @@ export const RebeccaBackupPanel = ({
 		if (!selectedFile) {
 			toast({
 				status: "warning",
-				title: t("settings.backup.fileRequired", "Select a Rebecca backup file first."),
+				title: t(
+					"settings.backup.fileRequired",
+					"Select a Rebecca backup file first.",
+				),
 			});
 			return;
 		}
@@ -164,7 +169,12 @@ export const RebeccaBackupPanel = ({
 			) : null}
 
 			<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
-				<Box borderWidth="1px" borderRadius="lg" p={4}>
+				<Box
+					className="master-settings-card"
+					borderWidth="1px"
+					borderRadius="lg"
+					p={4}
+				>
 					<VStack align="stretch" spacing={4}>
 						<Box>
 							<Text fontWeight="semibold">
@@ -178,7 +188,9 @@ export const RebeccaBackupPanel = ({
 							</Text>
 						</Box>
 						<FormControl>
-							<FormLabel>{t("settings.backup.scope", "Backup scope")}</FormLabel>
+							<FormLabel>
+								{t("settings.backup.scope", "Backup scope")}
+							</FormLabel>
 							<Select
 								value={exportScope}
 								isDisabled={!backupActionsAvailable}
@@ -207,7 +219,12 @@ export const RebeccaBackupPanel = ({
 					</VStack>
 				</Box>
 
-				<Box borderWidth="1px" borderRadius="lg" p={4}>
+				<Box
+					className="master-settings-card"
+					borderWidth="1px"
+					borderRadius="lg"
+					p={4}
+				>
 					<VStack align="stretch" spacing={4}>
 						<Box>
 							<Text fontWeight="semibold">
@@ -225,7 +242,9 @@ export const RebeccaBackupPanel = ({
 							<Text fontSize="sm">{importWarning}</Text>
 						</Alert>
 						<FormControl>
-							<FormLabel>{t("settings.backup.restoreScope", "Restore scope")}</FormLabel>
+							<FormLabel>
+								{t("settings.backup.restoreScope", "Restore scope")}
+							</FormLabel>
 							<Select
 								value={importScope}
 								isDisabled={!backupActionsAvailable}
@@ -242,23 +261,24 @@ export const RebeccaBackupPanel = ({
 							</Select>
 						</FormControl>
 						<FormControl>
-							<FormLabel>{t("settings.backup.file", "Rebecca backup file")}</FormLabel>
-							<Input
-								type="file"
+							<FormLabel>
+								{t("settings.backup.file", "Rebecca backup file")}
+							</FormLabel>
+							<FileDropzone
 								accept=".rbbackup,application/vnd.rebecca.backup,application/gzip"
 								isDisabled={!backupActionsAvailable}
-								onChange={(event) =>
-									setSelectedFile(event.target.files?.[0] ?? null)
-								}
+								selectedFile={selectedFile}
+								title={t(
+									"settings.backup.dropTitle",
+									"Drop Rebecca backup here",
+								)}
+								description={t(
+									"settings.backup.dropHint",
+									"Drag a .rbbackup file here or select it from your device.",
+								)}
+								emptyText={t("settings.backup.selectFile", "Select file")}
+								onFileSelect={setSelectedFile}
 							/>
-							<FormHelperText>
-								{selectedFile
-									? selectedFile.name
-									: t(
-											"settings.backup.fileHint",
-											"Choose a .rbbackup file exported from Rebecca.",
-									  )}
-							</FormHelperText>
 						</FormControl>
 						<HStack justify="flex-end">
 							<Button

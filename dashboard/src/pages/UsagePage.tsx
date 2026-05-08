@@ -1,4 +1,5 @@
 import {
+	Box,
 	Flex,
 	Spinner,
 	Tab,
@@ -7,6 +8,7 @@ import {
 	TabPanels,
 	Tabs,
 	Text,
+	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
 import AdminsUsage from "components/AdminsUsage";
@@ -19,6 +21,9 @@ import { useTranslation } from "react-i18next";
 
 export const UsagePage: FC = () => {
 	const { t } = useTranslation();
+	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewUsage = Boolean(
 		getUserIsSuccess && userData.permissions?.sections.usage,
@@ -93,26 +98,59 @@ export const UsagePage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Text as="h1" fontWeight="semibold" fontSize="2xl">
-				{t("usage.title", "Usage Analytics")}
-			</Text>
-			<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-				{t(
-					"usage.description",
-					"Track usage trends across services, admins, and nodes from a single place.",
-				)}
-			</Text>
-
-			<Tabs
-				variant="enclosed"
-				colorScheme="primary"
-				index={activeTab}
-				onChange={handleTabChange}
+			<Box
+				borderWidth="1px"
+				borderColor={borderColor}
+				borderRadius="md"
+				bg={panelBg}
+				p={4}
 			>
-				<TabList>
-					<Tab>{t("usage.tabs.services", "Services")}</Tab>
-					<Tab>{t("usage.tabs.admins", "Admins")}</Tab>
-					<Tab>{t("usage.tabs.nodes", "Nodes")}</Tab>
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">
+					{t("usage.title", "Usage Analytics")}
+				</Text>
+				<Text
+					mt={2}
+					fontSize="sm"
+					color="gray.500"
+					_dark={{ color: "gray.400" }}
+				>
+					{t(
+						"usage.description",
+						"Track usage trends across services, admins, and nodes from a single place.",
+					)}
+				</Text>
+			</Box>
+
+			<Tabs variant="unstyled" index={activeTab} onChange={handleTabChange}>
+				<TabList
+					borderWidth="1px"
+					borderColor={borderColor}
+					borderRadius="md"
+					bg={panelBg}
+					p={2}
+					gap={2}
+					mb={4}
+					overflowX="auto"
+				>
+					{[
+						t("usage.tabs.services", "Services"),
+						t("usage.tabs.admins", "Admins"),
+						t("usage.tabs.nodes", "Nodes"),
+					].map((label) => (
+						<Tab
+							key={label}
+							borderRadius="md"
+							px={4}
+							py={2}
+							fontWeight="semibold"
+							color="gray.500"
+							whiteSpace="nowrap"
+							_selected={{ bg: activeTabBg, color: "white" }}
+							_dark={{ color: "gray.300" }}
+						>
+							{label}
+						</Tab>
+					))}
 				</TabList>
 				<TabPanels>
 					<TabPanel px={0}>

@@ -15,11 +15,7 @@ import {
 	InputGroup,
 	InputRightElement,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Popover,
 	PopoverArrow,
@@ -70,10 +66,16 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { NumericInput } from "./common/NumericInput";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { DeleteIcon } from "./DeleteUserModal";
 import { JsonEditor } from "./JsonEditor";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 type HostData = {
 	id: number | null;
@@ -244,6 +246,16 @@ const DYNAMIC_TOKENS: Array<{ token: string; labelKey: string }> = [
 	{ token: "{PROTOCOL}", labelKey: "hostsDialog.proxyProtocol" },
 	{ token: "{TRANSPORT}", labelKey: "hostsDialog.proxyMethod" },
 ];
+
+const HOST_MODAL_SX = {
+	".xray-dialog-section .chakra-form-control": {
+		display: "block",
+	},
+	".xray-dialog-section .chakra-form__label": {
+		whiteSpace: "nowrap",
+		mb: 1.5,
+	},
+};
 
 const DynamicTokensPopover: FC = () => {
 	const { t } = useTranslation();
@@ -923,29 +935,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 			isCentered
 			returnFocusOnClose={false}
 		>
-			<ModalOverlay />
-			<ModalContent>
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3" sx={HOST_MODAL_SX}>
 				<ModalCloseButton />
-				<ModalHeader pb={1}>
-					<VStack align="stretch" spacing={1}>
-						<Text fontWeight="semibold" fontSize="lg">
-							{isCloneMode
-								? t("hostsPage.clone.title")
-								: host.data.remark || t("hostsPage.untitledHost")}
-						</Text>
-						{isCloneMode && (
-							<Text
-								fontSize="sm"
-								color="gray.500"
-								_dark={{ color: "gray.300" }}
-							>
-								{t("hostsPage.clone.description")}
-							</Text>
-						)}
-					</VStack>
-				</ModalHeader>
-				<ModalBody>
-					<Tabs variant="enclosed" colorScheme="primary">
+				<XrayModalHeader
+					subtitle={isCloneMode ? t("hostsPage.clone.description") : undefined}
+				>
+					{isCloneMode
+						? t("hostsPage.clone.title")
+						: host.data.remark || t("hostsPage.untitledHost")}
+				</XrayModalHeader>
+				<XrayModalBody>
+					<Tabs className="xray-dialog-auto-sections" variant="unstyled">
 						<TabList>
 							<Tab>{t("form")}</Tab>
 							<Tab>{t("json")}</Tab>
@@ -953,7 +954,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 						<TabPanels>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={5}>
-									<Card variant="outline">
+									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
 												{t("hostsPage.section.general")}
@@ -1062,7 +1063,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardBody>
 									</Card>
 
-									<Card variant="outline">
+									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
 												{t("hostsPage.section.security")}
@@ -1160,7 +1161,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardBody>
 									</Card>
 
-									<Card variant="outline">
+									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
 												{t("hostsPage.section.advanced")}
@@ -1254,8 +1255,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							</TabPanel>
 						</TabPanels>
 					</Tabs>
-				</ModalBody>
-				<ModalFooter justifyContent="space-between">
+				</XrayModalBody>
+				<XrayModalFooter justifyContent="space-between">
 					{isCloneMode ? (
 						<Button size="sm" variant="ghost" onClick={onClose}>
 							{t("hostsPage.cancel")}
@@ -1305,8 +1306,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							{primaryLabel}
 						</Button>
 					</HStack>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };
@@ -1372,60 +1373,57 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		<Modal
 			isOpen={isOpen}
 			onClose={onClose}
-			size="lg"
+			size="2xl"
 			initialFocusRef={initialRef}
 			returnFocusOnClose={false}
 		>
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(6px)" />
-			<ModalContent>
-				<ModalHeader>
-					<HStack spacing={3}>
-						<AddIcon />
-						<Text fontWeight="semibold">{t("hostsPage.create.title")}</Text>
-					</HStack>
-				</ModalHeader>
-				<ModalCloseButton mt={2} />
-				<ModalBody as={VStack} align="stretch" spacing={4} pt={2}>
-					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-						{t("hostsPage.create.description")}
-					</Text>
-					<FormControl>
-						<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-						<Select
-							value={formState.inboundTag}
-							onChange={(event) =>
-								setFormState((prev) => ({
-									...prev,
-									inboundTag: event.target.value,
-								}))
-							}
-						>
-							{inboundOptions.map((option) => (
-								<option key={option.value} value={option.value}>
-									{option.label}
-								</option>
-							))}
-						</Select>
-					</FormControl>
-					<FormControl isRequired>
-						<FormLabel>{t("hostsDialog.remark")}</FormLabel>
-						<InputGroup>
-							<Input
-								ref={initialRef}
-								value={formState.remark}
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3" sx={HOST_MODAL_SX}>
+				<XrayModalHeader subtitle={t("hostsPage.create.description")}>
+					{t("hostsPage.create.title")}
+				</XrayModalHeader>
+				<ModalCloseButton />
+				<XrayModalBody>
+					<VStack className="xray-dialog-section" align="stretch" spacing={4}>
+						<Text fontSize="sm" fontWeight="semibold">
+							{t("hostsPage.section.general")}
+						</Text>
+						<FormControl>
+							<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
+							<Select
+								value={formState.inboundTag}
 								onChange={(event) =>
 									setFormState((prev) => ({
 										...prev,
-										remark: event.target.value,
+										inboundTag: event.target.value,
 									}))
 								}
-							/>
-							<InputRightElement width="auto" pr={2} pointerEvents="auto">
-								<DynamicTokensPopover />
-							</InputRightElement>
-						</InputGroup>
-					</FormControl>
-					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+							>
+								{inboundOptions.map((option) => (
+									<option key={option.value} value={option.value}>
+										{option.label}
+									</option>
+								))}
+							</Select>
+						</FormControl>
+						<FormControl isRequired>
+							<FormLabel>{t("hostsDialog.remark")}</FormLabel>
+							<InputGroup>
+								<Input
+									ref={initialRef}
+									value={formState.remark}
+									onChange={(event) =>
+										setFormState((prev) => ({
+											...prev,
+											remark: event.target.value,
+										}))
+									}
+								/>
+								<InputRightElement width="auto" pr={2} pointerEvents="auto">
+									<DynamicTokensPopover />
+								</InputRightElement>
+							</InputGroup>
+						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.address")}</FormLabel>
 							<InputGroup>
@@ -1443,20 +1441,32 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								</InputRightElement>
 							</InputGroup>
 						</FormControl>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.port")}</FormLabel>
-							<NumericInput
-								value={formState.port ?? ""}
-								onChange={(_, num) =>
-									setFormState((prev) => ({
-										...prev,
-										port: Number.isNaN(num) ? null : num,
-									}))
-								}
-							/>
-						</FormControl>
-					</SimpleGrid>
-					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+							<FormControl>
+								<FormLabel>{t("hostsDialog.port")}</FormLabel>
+								<NumericInput
+									value={formState.port ?? ""}
+									onChange={(_, num) =>
+										setFormState((prev) => ({
+											...prev,
+											port: Number.isNaN(num) ? null : num,
+										}))
+									}
+								/>
+							</FormControl>
+							<FormControl>
+								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+								<Input
+									value={formState.sni}
+									onChange={(event) =>
+										setFormState((prev) => ({
+											...prev,
+											sni: event.target.value,
+										}))
+									}
+								/>
+							</FormControl>
+						</SimpleGrid>
 						<FormControl>
 							<FormLabel>{t("hostsDialog.path")}</FormLabel>
 							<Input
@@ -1470,59 +1480,50 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							/>
 						</FormControl>
 						<FormControl>
-							<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-							<Input
-								value={formState.sni}
-								onChange={(event) =>
-									setFormState((prev) => ({ ...prev, sni: event.target.value }))
-								}
-							/>
+							<FormLabel>{t("hostsDialog.host")}</FormLabel>
+							<InputGroup>
+								<Input
+									value={formState.host}
+									onChange={(event) =>
+										setFormState((prev) => ({
+											...prev,
+											host: event.target.value,
+										}))
+									}
+								/>
+								<InputRightElement width="auto" pr={2} pointerEvents="auto">
+									<DynamicTokensPopover />
+								</InputRightElement>
+							</InputGroup>
 						</FormControl>
-					</SimpleGrid>
-					<FormControl>
-						<FormLabel>{t("hostsDialog.host")}</FormLabel>
-						<InputGroup>
-							<Input
-								value={formState.host}
-								onChange={(event) =>
+						<FormControl>
+							<FormLabel>{t("hostsDialog.sort")}</FormLabel>
+							<NumericInput
+								value={Number.isFinite(formState.sort) ? formState.sort : ""}
+								onChange={(_, num) =>
 									setFormState((prev) => ({
 										...prev,
-										host: event.target.value,
+										sort: Number.isNaN(num) ? prev.sort : num,
 									}))
 								}
 							/>
-							<InputRightElement width="auto" pr={2} pointerEvents="auto">
-								<DynamicTokensPopover />
-							</InputRightElement>
-						</InputGroup>
-					</FormControl>
-					<FormControl>
-						<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-						<NumericInput
-							value={Number.isFinite(formState.sort) ? formState.sort : ""}
-							onChange={(_, num) =>
-								setFormState((prev) => ({
-									...prev,
-									sort: Number.isNaN(num) ? prev.sort : num,
-								}))
-							}
-						/>
-					</FormControl>
-					<Box
-						borderRadius="md"
-						bg="gray.50"
-						color="gray.600"
-						fontSize="sm"
-						px={4}
-						py={3}
-						_dark={{ bg: "gray.800", color: "gray.300" }}
-					>
-						{t("hostsPage.create.sortHint", {
-							value: formState.sort ?? defaultSort,
-						})}
-					</Box>
-				</ModalBody>
-				<ModalFooter gap={2}>
+						</FormControl>
+						<Box
+							borderRadius="md"
+							bg="gray.50"
+							color="gray.600"
+							fontSize="sm"
+							px={4}
+							py={3}
+							_dark={{ bg: "gray.800", color: "gray.300" }}
+						>
+							{t("hostsPage.create.sortHint", {
+								value: formState.sort ?? defaultSort,
+							})}
+						</Box>
+					</VStack>
+				</XrayModalBody>
+				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="ghost" onClick={onClose}>
 						{t("hostsPage.cancel")}
 					</Button>
@@ -1533,8 +1534,8 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 					>
 						{t("hostsPage.create.submit")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };
@@ -2110,9 +2111,7 @@ export const HostsManager: FC = () => {
 		if (!host) return;
 		setDeletingUid(uid);
 		try {
-			const nextHosts = hostItemsRef.current.filter(
-				(item) => item.uid !== uid,
-			);
+			const nextHosts = hostItemsRef.current.filter((item) => item.uid !== uid);
 			applyHostItems(nextHosts);
 			const payload = buildInboundPayload(nextHosts, [
 				host.inboundTag,

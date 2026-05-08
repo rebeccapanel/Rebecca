@@ -6,6 +6,7 @@ import {
 	Text,
 	Tooltip,
 	useColorMode,
+	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
 import {
@@ -206,6 +207,22 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		: undefined;
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
+	const sidebarBg = useColorModeValue("white", "surface.dark");
+	const sidebarBorderColor = useColorModeValue(
+		"blackAlpha.200",
+		"whiteAlpha.200",
+	);
+	const sidebarPanelBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const sidebarPanelBorder = useColorModeValue(
+		"blackAlpha.100",
+		"whiteAlpha.100",
+	);
+	const itemColor = useColorModeValue("gray.700", "gray.300");
+	const activeItemBg = useColorModeValue("primary.50", "whiteAlpha.100");
+	const activeItemColor = useColorModeValue("primary.700", "primary.200");
+	const hoverItemBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
+	const subNavBorder = useColorModeValue("blackAlpha.100", "whiteAlpha.100");
+	const logoTextColor = useColorModeValue("primary.700", "primary.200");
 	const defaultSelfPermissions = {
 		self_myaccount: false,
 		self_change_password: false,
@@ -261,9 +278,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					setHasNewTutorials(activeUnseen.length > 0);
 					return;
 				}
-				const mergedUnseen = Array.from(
-					new Set([...activeUnseen, ...newIds]),
-				);
+				const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
 				writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
 				setHasNewTutorials(mergedUnseen.length > 0);
 				return;
@@ -433,14 +448,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			w={inDrawer ? "full" : collapsed ? "16" : "60"}
 			h={inDrawer ? "100%" : "100vh"}
 			maxH={inDrawer ? "100%" : "100vh"}
-			bg="surface.light"
+			bg={sidebarBg}
 			borderRight={inDrawer || isRTL ? undefined : "1px"}
 			borderLeft={inDrawer || !isRTL ? undefined : "1px"}
-			borderColor={inDrawer ? undefined : "light-border"}
-			_dark={{
-				bg: "surface.dark",
-				borderColor: inDrawer ? undefined : "whiteAlpha.200",
-			}}
+			borderColor={inDrawer ? undefined : sidebarBorderColor}
 			transition="width 0.3s"
 			position={inDrawer ? "relative" : "fixed"}
 			top={inDrawer ? undefined : "0"}
@@ -460,7 +471,17 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			>
 				<Box flex="1" overflowY="auto">
 					{!collapsed ? (
-						<HStack spacing={3} align="center" mb={6} px={2}>
+						<HStack
+							spacing={3}
+							align="center"
+							mb={5}
+							px={3}
+							py={3}
+							borderWidth="1px"
+							borderColor={sidebarPanelBorder}
+							borderRadius="md"
+							bg={sidebarPanelBg}
+						>
 							<LogoIcon
 								src={logoUrl}
 								alt="Rebecca"
@@ -468,17 +489,20 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 									colorMode === "dark" ? "brightness(0) invert(1)" : "none"
 								}
 							/>
-							<Text
-								fontSize="lg"
-								fontWeight="bold"
-								color="primary.600"
-								_dark={{ color: "primary.300" }}
-							>
+							<Text fontSize="lg" fontWeight="bold" color={logoTextColor}>
 								{t("menu")}
 							</Text>
 						</HStack>
 					) : (
-						<HStack justify="center" mb={6}>
+						<HStack
+							justify="center"
+							mb={5}
+							borderWidth="1px"
+							borderColor={sidebarPanelBorder}
+							borderRadius="md"
+							bg={sidebarPanelBg}
+							py={2}
+						>
 							<Tooltip label="Rebecca" placement="right" hasArrow>
 								<LogoIcon
 									src={logoUrl}
@@ -517,19 +541,12 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												py={2}
 												borderRadius="md"
 												cursor="pointer"
-												bg={isActive ? "primary.50" : "transparent"}
-												color={isActive ? "primary.600" : "gray.700"}
-												_dark={{
-													bg: isActive ? "primary.900" : "transparent",
-													color: isActive ? "primary.200" : "gray.300",
-												}}
+												bg={isActive ? activeItemBg : "transparent"}
+												color={isActive ? activeItemColor : itemColor}
 												_hover={{
-													bg: isActive ? "primary.50" : "gray.50",
-													_dark: {
-														bg: isActive ? "primary.900" : "gray.700",
-													},
+													bg: isActive ? activeItemBg : hoverItemBg,
 												}}
-												transition="all 0.2s"
+												transition="background 0.15s ease, color 0.15s ease"
 												justifyContent={collapsed ? "center" : "space-between"}
 												onClick={() => {
 													if (collapsed) {
@@ -566,7 +583,15 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 										</Tooltip>
 										{!collapsed && (
 											<Collapse in={isSettingsOpen} animateOpacity>
-												<VStack align="stretch" pl={6} spacing={1} mt={2}>
+												<VStack
+													align="stretch"
+													ps={4}
+													ms={3}
+													spacing={1}
+													mt={2}
+													borderInlineStartWidth="1px"
+													borderColor={subNavBorder}
+												>
 													{item.subItems.map((subItem) => {
 														const isSubActive =
 															location.pathname === subItem.url;
@@ -584,28 +609,17 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 																	borderRadius="md"
 																	cursor="pointer"
 																	bg={
-																		isSubActive ? "primary.50" : "transparent"
+																		isSubActive ? activeItemBg : "transparent"
 																	}
 																	color={
-																		isSubActive ? "primary.600" : "gray.700"
+																		isSubActive ? activeItemColor : itemColor
 																	}
-																	_dark={{
-																		bg: isSubActive
-																			? "primary.900"
-																			: "transparent",
-																		color: isSubActive
-																			? "primary.200"
-																			: "gray.300",
-																	}}
 																	_hover={{
-																		bg: isSubActive ? "primary.50" : "gray.50",
-																		_dark: {
-																			bg: isSubActive
-																				? "primary.900"
-																				: "gray.700",
-																		},
+																		bg: isSubActive
+																			? activeItemBg
+																			: hoverItemBg,
 																	}}
-																	transition="all 0.2s"
+																	transition="background 0.15s ease, color 0.15s ease"
 																>
 																	<SubIcon
 																		w={collapsed ? 5 : undefined}
@@ -643,19 +657,12 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												py={2}
 												borderRadius="md"
 												cursor="pointer"
-												bg={isActive ? "primary.50" : "transparent"}
-												color={isActive ? "primary.600" : "gray.700"}
-												_dark={{
-													bg: isActive ? "primary.900" : "transparent",
-													color: isActive ? "primary.200" : "gray.300",
-												}}
+												bg={isActive ? activeItemBg : "transparent"}
+												color={isActive ? activeItemColor : itemColor}
 												_hover={{
-													bg: isActive ? "primary.50" : "gray.50",
-													_dark: {
-														bg: isActive ? "primary.900" : "gray.700",
-													},
+													bg: isActive ? activeItemBg : hoverItemBg,
 												}}
-												transition="all 0.2s"
+												transition="background 0.15s ease, color 0.15s ease"
 												justifyContent={collapsed ? "center" : "flex-start"}
 											>
 												{showTutorialBadge && collapsed ? (
@@ -709,7 +716,19 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					})}
 				</Box>
 				{sidebarAd && !collapsed && (
-					<Box px={collapsed ? 2 : 2.5} py={2.5} mt={4} w="full">
+					<Box
+						px={collapsed ? 2 : 2.5}
+						py={2.5}
+						mt={4}
+						w="full"
+						sx={{
+							"&:empty": {
+								display: "none",
+								marginTop: 0,
+								padding: 0,
+							},
+						}}
+					>
 						<AdvertisementCard ad={sidebarAd} maxSize={440} />
 					</Box>
 				)}

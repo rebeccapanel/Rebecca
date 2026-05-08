@@ -4,21 +4,22 @@ import {
 	Button,
 	HStack,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	SimpleGrid,
 	Stack,
 	Text,
-	useColorModeValue,
 } from "@chakra-ui/react";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
+import {
+	XrayModalBody,
+	XrayModalContent,
+	XrayModalFooter,
+	XrayModalHeader,
+} from "./xray/XrayDialog";
 
 const formatLimit = (limit?: number | null, unlimitedLabel?: string) => {
 	if (!limit || limit <= 0) {
@@ -48,8 +49,6 @@ export const AdminDetailsDrawer = () => {
 		adminInDetails: state.adminInDetails,
 		closeAdminDetails: state.closeAdminDetails,
 	}));
-
-	const headerBg = useColorModeValue("gray.50", "whiteAlpha.50");
 
 	const activeUsers = admin?.active_users ?? 0;
 	const usersLimit = admin?.users_limit ?? null;
@@ -96,52 +95,51 @@ export const AdminDetailsDrawer = () => {
 			scrollBehavior="inside"
 			size="xl"
 		>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader bg={headerBg}>
-					<Stack spacing={1}>
-						<HStack spacing={2}>
-							<Text fontWeight="semibold" fontSize="lg">
-								{admin?.username ?? t("admins.details.title", "Admin details")}
-							</Text>
-							{admin && (
-								<Badge
-									fontSize="xs"
-									px={2}
-									py={0.5}
-									borderRadius="full"
-									colorScheme={
-										admin.role === AdminRole.FullAccess
-											? "orange"
-											: admin.role === AdminRole.Sudo
-												? "purple"
-												: "gray"
-									}
-								>
-									{admin.role === AdminRole.FullAccess
-										? t("admins.roles.fullAccess", "Full access")
-										: admin.role === AdminRole.Sudo
-											? t("admins.roles.sudo", "Sudo")
-											: t("admins.roles.standard", "Standard")}
-								</Badge>
-							)}
-						</HStack>
-						{admin && (
-							<Text fontSize="sm" color="gray.500">
-								{t("admins.details.summary", {
+			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
+			<XrayModalContent mx="3">
+				<XrayModalHeader
+					subtitle={
+						admin
+							? t("admins.details.summary", {
 									active: activeUsers,
 									limit: usersLimitLabel,
-								})}
-							</Text>
+								})
+							: undefined
+					}
+				>
+					<HStack spacing={2}>
+						<Text as="span">
+							{admin?.username ?? t("admins.details.title", "Admin details")}
+						</Text>
+						{admin && (
+							<Badge
+								fontSize="xs"
+								px={2}
+								py={0.5}
+								borderRadius="full"
+								colorScheme={
+									admin.role === AdminRole.FullAccess
+										? "orange"
+										: admin.role === AdminRole.Sudo
+											? "purple"
+											: "gray"
+								}
+							>
+								{admin.role === AdminRole.FullAccess
+									? t("admins.roles.fullAccess", "Full access")
+									: admin.role === AdminRole.Sudo
+										? t("admins.roles.sudo", "Sudo")
+										: t("admins.roles.standard", "Standard")}
+							</Badge>
 						)}
-					</Stack>
-				</ModalHeader>
+					</HStack>
+				</XrayModalHeader>
 				<ModalCloseButton />
 
-				<ModalBody>
+				<XrayModalBody>
 					{admin ? (
 						<Stack spacing={8}>
-							<Box>
+							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
 									{t("admins.details.usersSection", "Users")}
 								</Text>
@@ -190,7 +188,7 @@ export const AdminDetailsDrawer = () => {
 								</SimpleGrid>
 							</Box>
 
-							<Box>
+							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
 									{t("admins.details.dataSection", "Data usage")}
 								</Text>
@@ -245,7 +243,7 @@ export const AdminDetailsDrawer = () => {
 									/>
 								</SimpleGrid>
 							</Box>
-							<Box>
+							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
 									{t("admins.details.allocationSection", "Data allocation")}
 								</Text>
@@ -276,20 +274,20 @@ export const AdminDetailsDrawer = () => {
 							</Box>
 						</Stack>
 					) : (
-						<Box py={8}>
+						<Box className="xray-dialog-section" py={8}>
 							<Text color="gray.500">
 								{t("admins.details.empty", "Select an admin to view details.")}
 							</Text>
 						</Box>
 					)}
-				</ModalBody>
+				</XrayModalBody>
 
-				<ModalFooter>
+				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="outline" mr={3} onClick={closeAdminDetails}>
 						{t("close", "Close")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
+				</XrayModalFooter>
+			</XrayModalContent>
 		</Modal>
 	);
 };

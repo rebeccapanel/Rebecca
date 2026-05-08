@@ -29,7 +29,6 @@ import { AdminManagementPermission, AdminRole } from "types/Admin";
 import { formatBytes } from "utils/formatByte";
 import {
 	buildRangeFromPreset,
-	normalizeCustomRange,
 	type RangeState as SharedRangeState,
 	type UsagePreset as SharedUsagePreset,
 } from "utils/usageRange";
@@ -131,11 +130,16 @@ const rangeStateToDateRangeValue = (range: RangeState): DateRangeValue => ({
 });
 
 const dateRangeValueToRangeState = (value: DateRangeValue): RangeState => {
-	if (value.presetKey && value.presetKey !== "custom") {
-		// It's a preset, use normalizeCustomRange to get proper RangeState
-		return normalizeCustomRange(value.start, value.end);
-	}
 	const unit: "day" | "hour" = value.unit === "hour" ? "hour" : "day";
+	const key = (value.presetKey || value.key || "custom") as RangeKey;
+	if (key !== "custom") {
+		return {
+			key,
+			start: value.start,
+			end: value.end,
+			unit,
+		};
+	}
 	return {
 		key: "custom",
 		start: value.start,

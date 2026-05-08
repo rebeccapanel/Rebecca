@@ -1,9 +1,6 @@
 import {
 	Box,
 	Button,
-	Card,
-	CardBody,
-	CardHeader,
 	Collapse,
 	chakra,
 	Flex,
@@ -63,18 +60,19 @@ import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import type { User, UserListItem } from "types/User";
-import { relativeExpiryDate } from "utils/dateFormatter";
-import { formatBytes } from "utils/formatByte";
 import {
 	canDeleteUserByTrafficCap,
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
+import { relativeExpiryDate } from "utils/dateFormatter";
+import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
+import { ChartBox } from "./common/ChartBox";
+import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 
 type TranslateFn = (key: string, defaultValue?: string) => string;
 
@@ -192,66 +190,50 @@ const SummaryStat: FC<SummaryStatProps> = ({
 	accentColor = "primary.500",
 	isMobile = false,
 }) => {
-	const glassBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.76)",
-		"rgba(16, 20, 28, 0.72)",
-	);
-	const glassBorder = useColorModeValue(
-		"rgba(255, 255, 255, 0.48)",
-		"rgba(255, 255, 255, 0.14)",
-	);
-	const glassShadow = useColorModeValue(
-		"0 18px 36px -24px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.65)",
-		"0 16px 32px -22px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
-	);
-	const baseBorder = useColorModeValue("light-border", "whiteAlpha.200");
+	const bg = useColorModeValue("white", "whiteAlpha.50");
+	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const helperColor = useColorModeValue("gray.600", "gray.400");
+	const accentBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	return (
 		<Box
 			borderWidth="1px"
-			borderColor={isMobile ? glassBorder : baseBorder}
-			borderRadius="xl"
-			p={4}
-			bg={isMobile ? glassBg : "surface.light"}
-			backdropFilter={isMobile ? "saturate(175%) blur(16px)" : undefined}
-			sx={
-				isMobile
-					? { WebkitBackdropFilter: "saturate(175%) blur(16px)" }
-					: undefined
-			}
-			boxShadow={isMobile ? glassShadow : undefined}
-			transform={isMobile ? "translateY(-1px)" : undefined}
-			transition="transform 0.2s ease, box-shadow 0.2s ease"
+			borderColor={borderColor}
+			borderRadius="md"
+			p={isMobile ? 3 : 4}
+			bg={bg}
+			transition="border-color 0.15s ease, background 0.15s ease"
 			position="relative"
 			overflow="hidden"
-			_dark={
-				isMobile
-					? {
-							bg: glassBg,
-							borderColor: glassBorder,
-						}
-					: { bg: "surface.dark", borderColor: "whiteAlpha.200" }
-			}
-			_before={
-				isMobile
-					? {
-							content: '""',
-							position: "absolute",
-							inset: "0",
-							background:
-								"linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0))",
-							opacity: 0.6,
-							pointerEvents: "none",
-						}
-					: undefined
-			}
+			minH="92px"
+			_before={{
+				content: '""',
+				position: "absolute",
+				insetBlockStart: 0,
+				insetInlineStart: 0,
+				w: "4px",
+				h: "full",
+				bg: accentColor,
+			}}
+			_after={{
+				content: '""',
+				position: "absolute",
+				insetInlineEnd: 0,
+				insetBlockStart: 0,
+				w: "72px",
+				h: "72px",
+				bg: accentBg,
+				borderEndStartRadius: "72px",
+				pointerEvents: "none",
+			}}
 		>
-			<Text fontSize="sm" color="gray.700" _dark={{ color: "gray.300" }}>
+			<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
 				{label}
 			</Text>
 			<Text
-				mt={1}
+				mt={2}
 				fontWeight="bold"
-				fontSize="2xl"
+				fontSize={{ base: "xl", md: "2xl" }}
 				color={accentColor}
 				dir="ltr"
 				sx={{ unicodeBidi: "isolate" }}
@@ -259,12 +241,7 @@ const SummaryStat: FC<SummaryStatProps> = ({
 				{value}
 			</Text>
 			{helper ? (
-				<Text
-					mt={1}
-					fontSize="xs"
-					color="gray.600"
-					_dark={{ color: "gray.400" }}
-				>
+				<Text mt={1} fontSize="xs" color={helperColor}>
 					{helper}
 				</Text>
 			) : null}
@@ -375,6 +352,14 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const toast = useToast();
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
+	const tableBorderColor = useColorModeValue(
+		"blackAlpha.200",
+		"whiteAlpha.200",
+	);
+	const tableHeaderBg = useColorModeValue("gray.50", "whiteAlpha.100");
+	const rowHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
+	const tableSurfaceBg = useColorModeValue("white", "whiteAlpha.50");
+	const mutedColor = useColorModeValue("gray.600", "gray.400");
 
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
@@ -398,14 +383,22 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
 	const canOpenUserDialog =
-		!isAdminDisabled && (canCreateUsers || hasFullAccess) && !userManagementLocked;
+		!isAdminDisabled &&
+		(canCreateUsers || hasFullAccess) &&
+		!userManagementLocked;
 	const canToggleUserStatus =
-		!isAdminDisabled && (canCreateUsers || hasFullAccess || userManagementLocked);
-	const canMutateUsers = !isAdminDisabled && canCreateUsers && !userManagementLocked;
+		!isAdminDisabled &&
+		(canCreateUsers || hasFullAccess || userManagementLocked);
+	const canMutateUsers =
+		!isAdminDisabled && canCreateUsers && !userManagementLocked;
 	const canDeleteUserActions = !isAdminDisabled && canDeleteUsers;
 	const canResetUsageActions =
-		!isAdminDisabled && canResetUsage && canViewTraffic && !userManagementLocked;
-	const canRevokeSubActions = !isAdminDisabled && canRevokeSub && !userManagementLocked;
+		!isAdminDisabled &&
+		canResetUsage &&
+		canViewTraffic &&
+		!userManagementLocked;
+	const canRevokeSubActions =
+		!isAdminDisabled && canRevokeSub && !userManagementLocked;
 	const disabledReason = userData.disabled_reason;
 
 	const rowsToRender = filters.limit || 10;
@@ -755,12 +748,26 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		width: "100%",
 		borderCollapse: "collapse",
 		borderSpacing: 0,
+		bg: tableSurfaceBg,
 		"& th, & td": {
 			paddingInlineStart: "14px",
 			paddingInlineEnd: "14px",
 			paddingTop: "12px",
 			paddingBottom: "12px",
 			verticalAlign: "middle",
+			borderColor: tableBorderColor,
+		},
+		"& thead th": {
+			bg: tableHeaderBg,
+			color: mutedColor,
+			fontSize: "xs",
+			fontWeight: "semibold",
+			letterSpacing: 0,
+			textTransform: "none",
+			borderColor: tableBorderColor,
+		},
+		"& tbody tr.interactive:hover td": {
+			bg: rowHoverBg,
 		},
 	};
 	const tableClassName = isRTL
@@ -838,7 +845,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	];
 
 	const usageForSummary = canViewTraffic
-		? filteredUsageTotal ?? userUsage
+		? (filteredUsageTotal ?? userUsage)
 		: null;
 
 	if (usageForSummary !== null) {
@@ -1231,108 +1238,80 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 				</SimpleGrid>
 			)}
 			<Box position="relative">
-				<Card
-					borderWidth="1px"
-					borderColor="light-border"
-					bg="surface.light"
-					_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
+				<ChartBox
 					filter={isAdminDisabled ? "blur(4px)" : undefined}
 					pointerEvents={isAdminDisabled ? "none" : undefined}
 					aria-hidden={isAdminDisabled ? true : undefined}
-				>
-					<CardHeader
-						borderBottomWidth="1px"
-						borderColor="light-border"
-						_dark={{ borderColor: "whiteAlpha.200" }}
-						pb={3}
-					>
-						<Stack spacing={3}>
-							<Flex
-								align={{ base: "flex-start", md: "center" }}
-								justify="space-between"
-								gap={3}
-								flexWrap="wrap"
+					title={t("users")}
+					headerActions={
+						<HStack spacing={2} align="center" flexWrap="wrap">
+							<Text fontSize="sm" color={mutedColor}>
+								{t("usersTable.status")}
+							</Text>
+							<Select
+								value={filters.status ?? ""}
+								fontSize="sm"
+								size="sm"
+								onChange={handleStatusFilter}
+								minW={{ base: "160px", md: "200px" }}
 							>
-								<VStack align="flex-start" spacing={0}>
-									<Text fontWeight="semibold">{t("users")}</Text>
-									<Text
-										fontSize="sm"
-										color="gray.600"
-										_dark={{ color: "gray.400" }}
-									>
-										{t("usersTable.total")}:{" "}
-										<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-											{formatCount(usersResponse.total, locale)}
-										</chakra.span>
-										{isFiltered ? ` • ${t("usersPage.filtered")}` : ""}
-									</Text>
-								</VStack>
-								<HStack spacing={2} align="center">
-									<Text
-										fontSize="sm"
-										color="gray.600"
-										_dark={{ color: "gray.400" }}
-									>
-										{t("usersTable.status")}
-									</Text>
-									<Select
-										value={filters.status ?? ""}
-										fontSize="sm"
-										onChange={handleStatusFilter}
-										minW={{ base: "160px", md: "200px" }}
-									>
-										<option value="">
-											{t("usersPage.statusAll", "All statuses")}
-										</option>
-										<option value="active">{t("status.active")}</option>
-										<option value="on_hold">{t("status.on_hold")}</option>
-										<option value="disabled">{t("status.disabled")}</option>
-										<option value="limited">{t("status.limited")}</option>
-										<option value="expired">{t("status.expired")}</option>
-									</Select>
-								</HStack>
-							</Flex>
-							{!isDesktop && !(isMobile && hasSearchQuery) && (
-								<SimpleGrid columns={{ base: 2 }} gap={3}>
-									{summaryItems.map((item, idx) => (
-										<SummaryStat
-											key={`${item.label}-${idx}`}
-											{...item}
-											isMobile={isMobile}
-										/>
-									))}
-								</SimpleGrid>
-							)}
-						</Stack>
-					</CardHeader>
-					<CardBody
-						px={{
-							base: 3,
-							md: 4,
-						}}
-						py={{
-							base: 3,
-							md: 4,
-						}}
-					>
+								<option value="">
+									{t("usersPage.statusAll", "All statuses")}
+								</option>
+								<option value="active">{t("status.active")}</option>
+								<option value="on_hold">{t("status.on_hold")}</option>
+								<option value="disabled">{t("status.disabled")}</option>
+								<option value="limited">{t("status.limited")}</option>
+								<option value="expired">{t("status.expired")}</option>
+							</Select>
+						</HStack>
+					}
+				>
+					<Stack spacing={3}>
+						<Flex
+							align={{ base: "flex-start", md: "center" }}
+							justify="space-between"
+							gap={3}
+							flexWrap="wrap"
+						>
+							<Text fontSize="sm" color={mutedColor}>
+								{t("usersTable.total")}:{" "}
+								<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+									{formatCount(usersResponse.total, locale)}
+								</chakra.span>
+								{isFiltered ? ` • ${t("usersPage.filtered")}` : ""}
+							</Text>
+						</Flex>
+						{!isDesktop && !(isMobile && hasSearchQuery) && (
+							<SimpleGrid columns={{ base: 2 }} gap={3}>
+								{summaryItems.map((item, idx) => (
+									<SummaryStat
+										key={`${item.label}-${idx}`}
+										{...item}
+										isMobile={isMobile}
+									/>
+								))}
+							</SimpleGrid>
+						)}
 						<Box
 							w="full"
 							px={{
-								base: 2,
+								base: 0,
 								md: 0,
 							}}
 						>
 							<Box
 								w="full"
 								borderWidth="1px"
-								borderRadius="xl"
+								borderColor={tableBorderColor}
+								borderRadius="md"
 								overflow="hidden"
 							>
 								{isDesktop ? desktopTable : mobileList}
 							</Box>
 						</Box>
-					</CardBody>
-				</Card>
+					</Stack>
+				</ChartBox>
 				{isAdminDisabled && (
 					<Flex
 						position="absolute"
@@ -1451,9 +1430,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 											<ChevronRightIcon
 												width={14}
 												style={{
-													transform: isRTL
-														? "rotate(180deg)"
-														: undefined,
+													transform: isRTL ? "rotate(180deg)" : undefined,
 												}}
 											/>
 										}
@@ -1484,14 +1461,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 												variant="ghost"
 												justifyContent="flex-start"
 												onClick={() =>
-													handleAdjustTraffic(
-														contextMenu.user!,
-														gigabytes,
-													)
+													handleAdjustTraffic(contextMenu.user!, gigabytes)
 												}
-												isLoading={
-													contextAction === `traffic-${gigabytes}`
-												}
+												isLoading={contextAction === `traffic-${gigabytes}`}
 											>
 												{t("usersTable.addGb", "Add {{count}} GB", {
 													count: gigabytes,
@@ -1517,23 +1489,23 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 							)}
 						{canDeleteUserActions &&
 							canDeleteUserByTrafficCap(userData, contextMenu.user) && (
-							<DeleteConfirmPopover
-								message={t("deleteUser.prompt", {
-									username: contextMenu.user.username,
-								})}
-								isLoading={contextAction === "delete"}
-								onConfirm={() => handleDeleteUser(contextMenu.user!)}
-							>
-								<Button
-									variant="ghost"
-									justifyContent="flex-start"
-									colorScheme="red"
-									leftIcon={<DeleteIcon />}
+								<DeleteConfirmPopover
+									message={t("deleteUser.prompt", {
+										username: contextMenu.user.username,
+									})}
+									isLoading={contextAction === "delete"}
+									onConfirm={() => handleDeleteUser(contextMenu.user!)}
 								>
-									{t("deleteUser.title", "Delete user")}
-								</Button>
-							</DeleteConfirmPopover>
-						)}
+									<Button
+										variant="ghost"
+										justifyContent="flex-start"
+										colorScheme="red"
+										leftIcon={<DeleteIcon />}
+									>
+										{t("deleteUser.title", "Delete user")}
+									</Button>
+								</DeleteConfirmPopover>
+							)}
 					</Stack>
 				</Box>
 			)}
