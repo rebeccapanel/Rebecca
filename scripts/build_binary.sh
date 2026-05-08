@@ -19,6 +19,8 @@ if ! python -c "import PyInstaller" >/dev/null 2>&1; then
     fi
 fi
 
+bash scripts/build_go_bridge.sh
+
 if [[ "${OS:-}" == "Windows_NT" ]]; then
     PYINSTALLER_DATA_SEP=";"
 else
@@ -85,8 +87,22 @@ COMMON_PYINSTALLER_ARGS=(
     --hidden-import pymysql
 )
 
+GO_BRIDGE_BINARY_ARGS=()
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+    GO_BRIDGE_PATH="go/build/rebecca_bridge.dll"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+    GO_BRIDGE_PATH="go/build/librebecca_bridge.dylib"
+else
+    GO_BRIDGE_PATH="go/build/librebecca_bridge.so"
+fi
+
+if [ -f "$GO_BRIDGE_PATH" ]; then
+    GO_BRIDGE_BINARY_ARGS+=(--add-binary "$(pyinstaller_add_data "$GO_BRIDGE_PATH" "go_bridge")")
+fi
+
 env REBECCA_SKIP_RUNTIME_INIT=1 DEBUG=false DOCS=false python -m PyInstaller \
     "${COMMON_PYINSTALLER_ARGS[@]}" \
+    "${GO_BRIDGE_BINARY_ARGS[@]}" \
     "${XRAY_PROTO_HIDDEN_IMPORT_ARGS[@]}" \
     "${JOB_HIDDEN_IMPORT_ARGS[@]}" \
     --name rebecca-server \

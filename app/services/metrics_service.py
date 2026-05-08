@@ -6,6 +6,7 @@ Routers delegate here to fetch chart/usage data from database-backed crud helper
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -13,6 +14,9 @@ from app.db import crud, Session
 from app.db.models import Admin as AdminModel, AdminServiceLink, Service as ServiceModel, User as UserModel
 from app.models.admin import AdminTrafficLimitMode, admin_uses_created_traffic_limit
 from app.models.user import UserStatus
+from app.services import go_usage
+
+logger = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 300
 
@@ -362,7 +366,11 @@ def get_user_usage(db: Session, user: UserModel, start: datetime, end: datetime)
     if cached is not None:
         return cached
 
-    rows = crud.get_user_usages(db, user, start, end)
+    try:
+        rows = go_usage.get_user_usage(int(user.id), start, end)
+    except go_usage.GoUsageUnavailable as exc:
+        logger.warning("Go usage bridge unavailable, using Python usage fallback: %s", exc)
+        rows = crud.get_user_usages(db, user, start, end)
     _cache_set(key, rows)
     return rows
 
@@ -375,6 +383,10 @@ def get_users_usage(db: Session, admins: Optional[List[str]], start: datetime, e
     if cached is not None:
         return cached
 
-    rows = crud.get_all_users_usages(db=db, start=start, end=end, admin=admins)
+    try:
+        rows = go_usage.get_users_usage(admins, start, end)
+    except go_usage.GoUsageUnavailable as exc:
+        logger.warning("Go usage bridge unavailable, using Python usage fallback: %s", exc)
+        rows = crud.get_all_users_usages(db=db, start=start, end=end, admin=admins)
     _cache_set(key, rows)
     return rows

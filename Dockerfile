@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     libc6-dev \
     build-essential \
+    golang-go \
     curl \
     unzip \
     && rm -rf /var/lib/apt/lists/*
@@ -30,6 +31,8 @@ ADD . /build
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
+
+RUN bash scripts/build_go_bridge.sh
 
 FROM python:$PYTHON_VERSION-slim-bookworm
 

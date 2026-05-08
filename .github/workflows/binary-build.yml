@@ -141,6 +141,7 @@ jobs:
                 curl \
                 gcc \
                 git \
+                golang-go \
                 libffi-dev \
                 libssl-dev \
                 pkg-config \
