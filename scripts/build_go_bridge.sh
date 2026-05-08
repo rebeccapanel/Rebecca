@@ -32,7 +32,7 @@ esac
 
 (
     cd "$GO_DIR"
-    CGO_ENABLED=1 go build -trimpath -buildmode=c-shared -o "$output" ./cmd/rebecca_bridge
+    CGO_ENABLED=1 go build -trimpath -buildvcs=false -buildmode=c-shared -o "$output" ./cmd/rebecca_bridge
 )
 
 echo "Rebecca Go bridge built at $output"
