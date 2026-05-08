@@ -1966,7 +1966,7 @@ services:
       - /var/lib/rebecca/logs:/var/lib/rebecca-node
     depends_on:
       mariadb:
-        condition: service_healthy
+        condition: service_started
 
   mariadb:
     image: mariadb:lts
@@ -1997,12 +1997,11 @@ services:
     volumes:
       - /var/lib/rebecca/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      start_period: 10s
-      start_interval: 3s
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
+      start_period: 30s
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 30
 EOF
         echo "----------------------------"
         colorized_echo red "Using MariaDB as database"
@@ -2026,8 +2025,7 @@ EOF
         sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
 
 
-        prompt_for_rebecca_password
-        MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+        ensure_docker_mysql_credentials
         MYSQL_PASSWORD_URL_ENCODED=$(urlencode_value "$MYSQL_PASSWORD")
         
         echo "" >> "$ENV_FILE"
@@ -2067,7 +2065,7 @@ services:
       - /var/lib/rebecca/logs:/var/lib/rebecca-node
     depends_on:
       mysql:
-        condition: service_healthy
+        condition: service_started
 
   mysql:
     image: mysql:8.4
@@ -2098,11 +2096,11 @@ services:
     volumes:
       - /var/lib/rebecca/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "rebecca", "--password=\${MYSQL_PASSWORD}"]
-      start_period: 5s
-      interval: 5s
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
+      start_period: 30s
+      interval: 10s
       timeout: 5s
-      retries: 55
+      retries: 30
       
 EOF
         echo "----------------------------"
@@ -2127,8 +2125,7 @@ EOF
         sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
 
 
-        prompt_for_rebecca_password
-        MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+        ensure_docker_mysql_credentials
         MYSQL_PASSWORD_URL_ENCODED=$(urlencode_value "$MYSQL_PASSWORD")
         
         echo "" >> "$ENV_FILE"
@@ -2551,7 +2548,18 @@ up_rebecca() {
         return
     fi
 
+    repair_docker_compose_startup_gates
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" up -d --remove-orphans
+}
+
+repair_docker_compose_startup_gates() {
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        return
+    fi
+
+    if grep -q "condition:[[:space:]]*service_healthy" "$COMPOSE_FILE" 2>/dev/null; then
+        sed -i -E 's/condition:[[:space:]]*service_healthy/condition: service_started/g' "$COMPOSE_FILE"
+    fi
 }
 
 follow_rebecca_logs() {
@@ -2611,6 +2619,10 @@ prompt_for_rebecca_password() {
     if [ -n "${MYSQL_PASSWORD:-}" ]; then
         return
     fi
+    MYSQL_PASSWORD=$(get_env_value "MYSQL_PASSWORD")
+    if [ -n "${MYSQL_PASSWORD:-}" ]; then
+        return
+    fi
     if [ ! -t 0 ]; then
         MYSQL_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
         colorized_echo green "A secure database password has been generated automatically."
@@ -2631,6 +2643,22 @@ prompt_for_rebecca_password() {
 
     # Пауза 3 секунды перед продолжением
     sleep 3
+}
+
+ensure_docker_mysql_credentials() {
+    local existing_root_password
+
+    prompt_for_rebecca_password
+
+    existing_root_password=$(get_env_value "MYSQL_ROOT_PASSWORD")
+    if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+        return
+    fi
+    if [ -n "$existing_root_password" ]; then
+        MYSQL_ROOT_PASSWORD="$existing_root_password"
+    else
+        MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+    fi
 }
 
 sql_escape_literal() {
