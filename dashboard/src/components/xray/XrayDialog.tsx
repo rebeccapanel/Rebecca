@@ -39,21 +39,31 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 			borderColor={borderColor}
 			borderRadius="md"
 			overflow="hidden"
-			maxH="calc(100vh - 48px)"
+			maxH={{ base: "100dvh", md: "calc(100vh - 48px)" }}
+			h={{ base: "100dvh", md: "auto" }}
+			display="flex"
+			flexDirection="column"
 			boxShadow="xl"
 			sx={{
 				".chakra-modal__body": {
 					bg: bodyBg,
+					minH: 0,
+					overflowY: "auto",
+					overflowX: "hidden",
+					WebkitOverflowScrolling: "touch",
+					overscrollBehavior: "contain",
 				},
 				".chakra-modal__header": {
 					bg,
 					borderBottom: "1px solid",
 					borderColor,
+					flexShrink: 0,
 				},
 				".chakra-modal__footer": {
 					bg,
 					borderTop: "1px solid",
 					borderColor,
+					flexShrink: 0,
 				},
 				".chakra-form__label": {
 					mb: 1,
@@ -165,6 +175,31 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 						fontWeight: "semibold",
 						mb: 3,
 					},
+				"@media (max-width: 30em)": {
+					"input, select, textarea": {
+						fontSize: "16px",
+					},
+					"input, select": {
+						minH: "42px",
+					},
+					".chakra-button": {
+						minH: "40px",
+					},
+					".chakra-tabs__tab": {
+						minH: "38px",
+						px: 3,
+					},
+					".xray-dialog-section": {
+						p: 3,
+					},
+					".chakra-modal__footer": {
+						position: "sticky",
+						bottom: 0,
+						zIndex: 1,
+						boxShadow: "0 -14px 28px rgba(0, 0, 0, 0.22)",
+						paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+					},
+				},
 				...sx,
 			}}
 			{...props}

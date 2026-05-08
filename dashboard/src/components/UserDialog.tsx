@@ -37,7 +37,9 @@ import {
 	Text,
 	Textarea,
 	Tooltip,
+	useBreakpointValue,
 	useColorMode,
+	useColorModeValue,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -652,6 +654,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isMobileDialog =
+		useBreakpointValue({ base: true, md: false }) ?? false;
 	const DATA_UNIT = "GB";
 	const DAYS_UNIT = t("userDialog.days", "Days");
 	const basePad = "0.75rem";
@@ -673,6 +677,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			};
 
 	const { colorMode } = useColorMode();
+	const footerBg = useColorModeValue("white", "gray.900");
+	const footerBorderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 
 	const UNIT_RADIUS = "6px";
 
@@ -2014,15 +2020,22 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		<Modal
 			isOpen={isOpen}
 			onClose={onClose}
-			size={shouldCompactModal ? "lg" : "2xl"}
+			size={isMobileDialog ? "full" : shouldCompactModal ? "lg" : "2xl"}
+			scrollBehavior="inside"
 		>
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
 
 			<FormProvider {...form}>
 				<XrayModalContent
-					mx="3"
+					mx={{ base: 0, md: 3 }}
+					my={{ base: 0, md: "3.75rem" }}
 					position="relative"
 					overflow="hidden"
+					h={{ base: "100dvh", md: "auto" }}
+					maxH={{ base: "100dvh", md: "calc(100vh - 48px)" }}
+					borderRadius={{ base: 0, md: "md" }}
+					display="flex"
+					flexDirection="column"
 					dir={isRTL ? "rtl" : "ltr"}
 				>
 					<ModalCloseButton
@@ -2043,8 +2056,20 @@ export const UserDialog: FC<UserDialogProps> = () => {
 						pointerEvents={limitReached ? "none" : "auto"}
 						filter={limitReached ? "blur(6px)" : "none"}
 						transition="filter 0.2s ease"
+						minH={0}
+						flex="1"
+						display="flex"
+						flexDirection="column"
 					>
-						<form onSubmit={form.handleSubmit(submit)}>
+						<form
+							onSubmit={form.handleSubmit(submit)}
+							style={{
+								minHeight: 0,
+								flex: 1,
+								display: "flex",
+								flexDirection: "column",
+							}}
+						>
 							<ModalHeader
 								px={{ base: 4, md: 5 }}
 								py={3}
@@ -2074,7 +2099,18 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								</Text>
 							</ModalHeader>
 
-							<XrayModalBody>
+							<XrayModalBody
+								flex="1"
+								minH={0}
+								overflowY="auto"
+								overflowX="hidden"
+								px={{ base: 3, sm: 4, md: 5 }}
+								py={{ base: 3, md: 4 }}
+								sx={{
+									WebkitOverflowScrolling: "touch",
+									overscrollBehavior: "contain",
+								}}
+							>
 								{isEditing && isServiceManagedUser && (
 									<SlideFade
 										in={serviceNoticeVisible}
@@ -2209,13 +2245,25 @@ export const UserDialog: FC<UserDialogProps> = () => {
 									isLazy
 									w="full"
 								>
-									<TabList>
-										<Tab>{t("userDialog.tabs.edit", "Edit")}</Tab>
+									<TabList
+										overflowX="auto"
+										overflowY="hidden"
+										whiteSpace="nowrap"
+										sx={{
+											scrollbarWidth: "none",
+											"&::-webkit-scrollbar": { display: "none" },
+										}}
+									>
+										<Tab flexShrink={0}>{t("userDialog.tabs.edit", "Edit")}</Tab>
 										{isEditing && canViewTraffic && (
-											<Tab>{t("userDialog.tabs.usage", "Usage")}</Tab>
+											<Tab flexShrink={0}>
+												{t("userDialog.tabs.usage", "Usage")}
+											</Tab>
 										)}
 										{isEditing && (
-											<Tab>{t("userDialog.tabs.links", "Links")}</Tab>
+											<Tab flexShrink={0}>
+												{t("userDialog.tabs.links", "Links")}
+											</Tab>
 										)}
 									</TabList>
 									<TabPanels>
@@ -4096,7 +4144,25 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								</Tabs>
 							</XrayModalBody>
 
-							<XrayModalFooter>
+							<XrayModalFooter
+								position={{ base: "sticky", md: "static" }}
+								bottom={0}
+								zIndex="sticky"
+								flexShrink={0}
+								bg={footerBg}
+								borderTopWidth="1px"
+								borderColor={footerBorderColor}
+								px={{ base: 3, sm: 4, md: 5 }}
+								pt={{ base: 2.5, md: 3 }}
+								pb={{
+									base: "max(0.625rem, env(safe-area-inset-bottom))",
+									md: 3,
+								}}
+								boxShadow={{
+									base: "0 -14px 28px rgba(0, 0, 0, 0.28)",
+									md: "none",
+								}}
+							>
 								<HStack
 									justifyContent="space-between"
 									w="full"
@@ -4114,6 +4180,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 											sm: "unset",
 										}}
+										spacing={2}
+										flexWrap="wrap"
 									>
 										{isEditing && (
 											<>
@@ -4126,7 +4194,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														onConfirm={handleDeleteUser}
 													>
 														<Tooltip label={t("delete")} placement="top">
-															<IconButton aria-label="Delete" size="sm">
+															<IconButton
+																aria-label="Delete"
+																size={{ base: "md", sm: "sm" }}
+															>
 																<DeleteIcon />
 															</IconButton>
 														</Tooltip>
@@ -4134,13 +4205,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
 												)}
 
 												{canResetUsageVisible && (
-													<Button onClick={handleResetUsage} size="sm">
+													<Button
+														onClick={handleResetUsage}
+														size={{ base: "md", sm: "sm" }}
+														flex={{ base: "1 1 auto", sm: "0 0 auto" }}
+													>
 														{t("userDialog.resetUsage")}
 													</Button>
 												)}
 
 												{canRevokeSubscriptionVisible && (
-													<Button onClick={handleRevokeSubscription} size="sm">
+													<Button
+														onClick={handleRevokeSubscription}
+														size={{ base: "md", sm: "sm" }}
+														flex={{ base: "1 1 auto", sm: "0 0 auto" }}
+													>
 														{t("userDialog.revokeSubscription")}
 													</Button>
 												)}
@@ -4152,14 +4231,23 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										w="full"
 										maxW={{ md: "50%", base: "full" }}
 										justify="end"
+										flexShrink={0}
 									>
 										<Button
 											type="submit"
-											size="sm"
+											size={{ base: "md", sm: "sm" }}
 											px="8"
 											colorScheme="primary"
 											leftIcon={loading ? <Spinner size="xs" /> : undefined}
 											disabled={submitDisabled}
+											w={{ base: "full", sm: "auto" }}
+											minH={{ base: "44px", sm: "36px" }}
+											boxShadow={{ base: "sm", sm: "none" }}
+											_disabled={{
+												opacity: 0.65,
+												cursor: "not-allowed",
+												boxShadow: "none",
+											}}
 										>
 											{isEditing ? t("userDialog.editUser") : t("createUser")}
 										</Button>
