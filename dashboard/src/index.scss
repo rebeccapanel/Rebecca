@@ -24,6 +24,14 @@
 
 :root {
   --rb-font-stack: "Arad", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --rb-dialog-viewport-height: 100dvh;
+  --rb-dialog-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@supports (height: 100svh) {
+  :root {
+    --rb-dialog-viewport-height: 100svh;
+  }
 }
 
 /* Prevent accidental horizontal scrolling on small screens */
@@ -50,18 +58,75 @@ textarea,
     overscroll-behavior: none;
   }
 
+  .chakra-modal__overlay {
+    z-index: 16000 !important;
+  }
+
+  .chakra-modal__content-container {
+    align-items: stretch !important;
+    padding: 0 !important;
+    z-index: 16001 !important;
+  }
+
   .chakra-modal__content {
+    width: 100vw !important;
     max-width: 100vw !important;
+    height: var(--rb-dialog-viewport-height) !important;
+    max-height: var(--rb-dialog-viewport-height) !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chakra-modal__header {
+    flex-shrink: 0;
+    padding-inline-end: 3.25rem;
   }
 
   .chakra-modal__body,
   .chakra-drawer__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .chakra-modal__footer {
+    flex-shrink: 0;
     flex-wrap: wrap;
     gap: 0.5rem;
+    width: 100%;
+    padding-bottom: var(--rb-dialog-safe-bottom) !important;
+    box-shadow: 0 -12px 28px rgb(0 0 0 / 18%);
+  }
+
+  .chakra-modal__footer > .chakra-stack,
+  .chakra-modal__footer > .chakra-wrap,
+  .chakra-modal__footer > .chakra-button__group {
+    width: 100%;
+  }
+
+  .chakra-modal__footer .chakra-button {
+    min-width: 0;
+  }
+
+  .chakra-modal__body .chakra-tabs__tab-panel {
+    padding-inline-start: 0;
+    padding-inline-end: 0;
+  }
+
+  .chakra-modal__body .chakra-form-control,
+  .chakra-modal__body .chakra-input__group,
+  .chakra-modal__body .chakra-numberinput,
+  .chakra-modal__body .chakra-select__wrapper,
+  .chakra-modal__body .chakra-textarea,
+  .chakra-modal__body .chakra-stack,
+  .chakra-modal__body .chakra-simple-grid,
+  .chakra-modal__body .chakra-grid {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .chakra-modal__footer .chakra-button,
