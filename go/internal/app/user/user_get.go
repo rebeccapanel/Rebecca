@@ -38,7 +38,10 @@ func (r Repository) UserGet(ctx context.Context, req UserGetRequest) (UserDetail
 	if err != nil {
 		return UserDetail{}, err
 	}
-	row.NextPlans = nextPlans[row.ID]
+	row.NextPlans = []NextPlan{}
+	if plans, ok := nextPlans[row.ID]; ok {
+		row.NextPlans = plans
+	}
 	if len(row.NextPlans) > 0 {
 		row.NextPlan = &row.NextPlans[0]
 	}
