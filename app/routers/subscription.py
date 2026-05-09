@@ -14,6 +14,7 @@ from app.dependencies import (
     validate_dates,
 )
 from app.models.user import SubscriptionUserResponse, UserResponse
+from app.services.go_subscription import generate_v2ray_subscription
 from app.subscription.share import encode_title, generate_subscription, is_credential_key
 from app.services.subscription_settings import SubscriptionSettingsService
 from app.templates import render_template
@@ -83,6 +84,25 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
+def _generate_subscription_config(
+    *,
+    user: UserResponse,
+    config_format: str,
+    as_base64: bool,
+    reverse: bool,
+    settings,
+) -> str:
+    if config_format == "v2ray":
+        return generate_v2ray_subscription(user=user, as_base64=as_base64, reverse=reverse)
+    return generate_subscription(
+        user=user,
+        config_format=config_format,
+        as_base64=as_base64,
+        reverse=reverse,
+        settings=settings,
+    )
+
+
 def _serve_subscription_response(
     request: Request,
     token_identifier: str,
@@ -130,25 +150,25 @@ def _serve_subscription_response(
     }
 
     if re.match(r"^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)", user_agent):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="clash-meta", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="text/yaml", headers=response_headers)
 
     if re.match(r"^([Cc]lash|[Ss]tash)", user_agent):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="clash", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="text/yaml", headers=response_headers)
 
     if re.match(r"^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)", user_agent):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="sing-box", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="application/json", headers=response_headers)
 
     if re.match(r"^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)", user_agent):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="outline", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="application/json", headers=response_headers)
@@ -158,17 +178,19 @@ def _serve_subscription_response(
     ):
         version_str = re.match(r"^v2rayN/(\d+\.\d+)", user_agent).group(1)
         if LooseVersion(version_str) >= LooseVersion("6.40"):
-            conf = generate_subscription(
+            conf = _generate_subscription_config(
                 user=user, config_format="v2ray-json", as_base64=False, reverse=False, settings=settings
             )
             return Response(content=conf, media_type="application/json", headers=response_headers)
-        conf = generate_subscription(user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings)
+        conf = _generate_subscription_config(
+            user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+        )
         return Response(content=conf, media_type="text/plain", headers=response_headers)
 
     if (settings.use_custom_json_default or settings.use_custom_json_for_v2rayng) and re.match(
         r"^v2rayng/(\d+\.\d+)", user_agent, re.IGNORECASE
     ):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="v2ray-json", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="application/json", headers=response_headers)
@@ -178,22 +200,26 @@ def _serve_subscription_response(
     ):
         version_str = re.match(r"^Happ/(\d+\.\d+\.\d+)", user_agent).group(1)
         if LooseVersion(version_str) >= LooseVersion("1.63.1"):
-            conf = generate_subscription(
+            conf = _generate_subscription_config(
                 user=user, config_format="v2ray-json", as_base64=False, reverse=False, settings=settings
             )
             return Response(content=conf, media_type="application/json", headers=response_headers)
-        conf = generate_subscription(user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings)
+        conf = _generate_subscription_config(
+            user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+        )
         return Response(content=conf, media_type="text/plain", headers=response_headers)
 
     if (settings.use_custom_json_default or settings.use_custom_json_for_streisand) and re.match(
         r"^Streisand", user_agent
     ):
-        conf = generate_subscription(
+        conf = _generate_subscription_config(
             user=user, config_format="v2ray-json", as_base64=False, reverse=False, settings=settings
         )
         return Response(content=conf, media_type="application/json", headers=response_headers)
 
-    conf = generate_subscription(user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings)
+    conf = _generate_subscription_config(
+        user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+    )
     return Response(content=conf, media_type="text/plain", headers=response_headers)
 
 
@@ -214,7 +240,7 @@ def _subscription_with_client_type(request: Request, dbuser: UserResponse, clien
         "subscription-userinfo": "; ".join(f"{key}={val}" for key, val in get_subscription_user_info(user).items()),
     }
     config = client_config.get(client_type)
-    conf = generate_subscription(
+    conf = _generate_subscription_config(
         user=user,
         config_format=config["config_format"],
         as_base64=config["as_base64"],
