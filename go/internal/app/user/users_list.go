@@ -104,6 +104,7 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 	items := make([]UserListItem, 0, len(rows))
 	for _, row := range rows {
 		item := row.item
+		item.Links = []string{}
 		admin := AdminLinkSettings{}
 		if item.AdminID != nil {
 			admin = admins[*item.AdminID]
