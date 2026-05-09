@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -55,7 +56,9 @@ func Open(databaseURL string) (Pool, error) {
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
 
-	if err := sqlDB.Ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
 		sqlDB.Close()
 		return Pool{}, err
 	}
@@ -132,6 +135,9 @@ func parseMySQLURL(databaseURL string) (driver string, dsn string, dialect strin
 		DBName:               strings.TrimPrefix(parsed.Path, "/"),
 		ParseTime:            true,
 		Loc:                  time.UTC,
+		Timeout:              10 * time.Second,
+		ReadTimeout:          30 * time.Second,
+		WriteTimeout:         30 * time.Second,
 		AllowNativePasswords: true,
 		Params: map[string]string{
 			"charset":   "utf8mb4",

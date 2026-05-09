@@ -72,7 +72,7 @@ def _dt(value: datetime) -> str:
     return value.isoformat()
 
 
-def _call(action: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _call(action: str, payload: dict[str, Any]) -> Any:
     bridge = _load_bridge()
     request = {
         "action": action,
@@ -93,6 +93,10 @@ def _call(action: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
     if not response.get("ok"):
         raise GoUsageError(str(response.get("error") or "Rebecca Go usage bridge failed"))
     return response.get("data") or []
+
+
+def call_bridge(action: str, payload: dict[str, Any]) -> Any:
+    return _call(action, payload)
 
 
 def get_user_usage(user_id: int, start: datetime, end: datetime) -> list[dict[str, Any]]:

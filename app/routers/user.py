@@ -614,12 +614,25 @@ def add_user(
 
 @router.get("/user/{username}", response_model=UserResponse, responses={403: responses._403, 404: responses._404})
 def get_user(
+    username: str,
     request: Request,
-    dbuser: UserResponse = Depends(get_validated_user),
     admin: Admin = Depends(Admin.get_current),
 ):
     """Get user information"""
-    return _sanitize_user_response(admin, _user_response(request, dbuser))
+    from app.services.go_usage import GoUsageError
+    from app.services.go_user import get_user_detail
+
+    try:
+        user = get_user_detail(username, admin=admin, request_origin=get_request_origin(request))
+    except GoUsageError as exc:
+        detail = str(exc)
+        lowered = detail.lower()
+        if "not found" in lowered:
+            raise HTTPException(status_code=404, detail="User not found")
+        if "not allowed" in lowered:
+            raise HTTPException(status_code=403, detail="You're not allowed")
+        raise
+    return _sanitize_user_response(admin, user)
 
 
 @router.put(
