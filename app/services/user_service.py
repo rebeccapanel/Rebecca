@@ -8,6 +8,7 @@ operations still use the Python CRUD layer until their migration phase.
 from typing import List, Optional
 
 from app.db import crud, Session
+from app.db.models import User
 from app.models.user import UserCreate, UserModify, UserResponse, UserStatus, UsersResponse
 
 
@@ -33,20 +34,20 @@ def get_users_list(
     from app.services import go_user
 
     return go_user.get_users_list(
-    	offset=offset,
-    	limit=limit,
-    	username=username,
-    	search=search,
-    	status=status,
-    	sort=sort,
-    	advanced_filters=advanced_filters,
-    	service_id=service_id,
-    	dbadmin=dbadmin,
-    	owners=owners,
-    	users_limit=users_limit,
-    	active_total=active_total,
-    	include_links=include_links,
-    	request_origin=request_origin,
+        offset=offset,
+        limit=limit,
+        username=username,
+        search=search,
+        status=status,
+        sort=sort,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        dbadmin=dbadmin,
+        owners=owners,
+        users_limit=users_limit,
+        active_total=active_total,
+        include_links=include_links,
+        request_origin=request_origin,
     )
 
 
@@ -74,16 +75,16 @@ def get_users_list_db_only(
     return go_user.get_users_list(
         offset=offset,
         limit=limit,
-    	username=username,
-    	search=search,
-    	status=status,
-    	sort=sort,
-    	advanced_filters=advanced_filters,
-    	service_id=service_id,
-    	dbadmin=dbadmin,
-    	owners=owners,
-    	users_limit=users_limit,
-    	active_total=active_total,
+        username=username,
+        search=search,
+        status=status,
+        sort=sort,
+        advanced_filters=advanced_filters,
+        service_id=service_id,
+        dbadmin=dbadmin,
+        owners=owners,
+        users_limit=users_limit,
+        active_total=active_total,
         include_links=include_links,
         request_origin=request_origin,
     )
