@@ -87,13 +87,14 @@ def get_subscription_user_info(user: UserResponse) -> dict:
 def _generate_subscription_config(
     *,
     user: UserResponse,
+    user_id=None,
     config_format: str,
     as_base64: bool,
     reverse: bool,
     settings,
 ) -> str:
     if config_format == "v2ray":
-        return generate_v2ray_subscription(user=user, as_base64=as_base64, reverse=reverse)
+        return generate_v2ray_subscription(user=user, user_id=user_id, as_base64=as_base64, reverse=reverse)
     return generate_subscription(
         user=user,
         config_format=config_format,
@@ -183,7 +184,12 @@ def _serve_subscription_response(
             )
             return Response(content=conf, media_type="application/json", headers=response_headers)
         conf = _generate_subscription_config(
-            user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+            user=user,
+            user_id=getattr(dbuser, "id", None),
+            config_format="v2ray",
+            as_base64=True,
+            reverse=False,
+            settings=settings,
         )
         return Response(content=conf, media_type="text/plain", headers=response_headers)
 
@@ -205,7 +211,12 @@ def _serve_subscription_response(
             )
             return Response(content=conf, media_type="application/json", headers=response_headers)
         conf = _generate_subscription_config(
-            user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+            user=user,
+            user_id=getattr(dbuser, "id", None),
+            config_format="v2ray",
+            as_base64=True,
+            reverse=False,
+            settings=settings,
         )
         return Response(content=conf, media_type="text/plain", headers=response_headers)
 
@@ -218,7 +229,12 @@ def _serve_subscription_response(
         return Response(content=conf, media_type="application/json", headers=response_headers)
 
     conf = _generate_subscription_config(
-        user=user, config_format="v2ray", as_base64=True, reverse=False, settings=settings
+        user=user,
+        user_id=getattr(dbuser, "id", None),
+        config_format="v2ray",
+        as_base64=True,
+        reverse=False,
+        settings=settings,
     )
     return Response(content=conf, media_type="text/plain", headers=response_headers)
 
@@ -242,6 +258,7 @@ def _subscription_with_client_type(request: Request, dbuser: UserResponse, clien
     config = client_config.get(client_type)
     conf = _generate_subscription_config(
         user=user,
+        user_id=getattr(dbuser, "id", None),
         config_format=config["config_format"],
         as_base64=config["as_base64"],
         reverse=config["reverse"],

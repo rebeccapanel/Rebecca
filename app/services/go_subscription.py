@@ -6,8 +6,8 @@ from typing import Any
 from app.services.go_usage import call_bridge
 
 
-def generate_v2ray_subscription(*, user: Any, as_base64: bool, reverse: bool = False) -> str:
-    user_id = getattr(user, "id", None)
+def generate_v2ray_subscription(*, user: Any, as_base64: bool, reverse: bool = False, user_id: Any = None) -> str:
+    user_id = user_id if user_id is not None else getattr(user, "id", None)
     if user_id is None:
         raise ValueError("user id is required for Go subscription generation")
 
