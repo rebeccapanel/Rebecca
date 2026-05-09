@@ -346,6 +346,37 @@ def _load_service_host_map_from_db(service_ids: list[int], inbound_tags: set[str
     return host_map
 
 
+def _load_host_map_from_db(inbound_tags: set[str]) -> dict:
+    from sqlalchemy import or_
+
+    from app.db import GetDB
+    from app.db import models as db_models
+
+    host_map = {tag: [] for tag in inbound_tags}
+    if not inbound_tags:
+        return host_map
+
+    with GetDB() as db:
+        rows = (
+            db.query(db_models.ProxyHost)
+            .filter(db_models.ProxyHost.inbound_tag.in_(inbound_tags))
+            .filter(
+                or_(
+                    db_models.ProxyHost.is_disabled.is_(False),
+                    db_models.ProxyHost.is_disabled.is_(None),
+                )
+            )
+            .all()
+        )
+
+    for host in rows:
+        host_map.setdefault(host.inbound_tag, []).append(_host_to_subscription_dict(host))
+    for tag in list(host_map):
+        host_map[tag].sort(key=lambda h: (h.get("sort", 0), h.get("id") or 0))
+
+    return host_map
+
+
 def process_inbounds_and_tags(
     inbounds: dict,
     proxies: dict,
@@ -488,6 +519,23 @@ def process_inbounds_and_tags(
                 host_map = fallback_host_map
         except Exception:
             pass
+
+    elif inbounds:
+        requested_tags = {tag for tags in inbounds.values() for tag in tags}
+        missing_requested_host = any(not (host_map or {}).get(tag) for tag in requested_tags)
+        if missing_requested_host:
+            try:
+                fallback_host_map = _load_host_map_from_db(requested_tags)
+                if _host_map_has_hosts(fallback_host_map):
+                    merged_host_map = dict(host_map or {})
+                    for tag, hosts in fallback_host_map.items():
+                        if hosts:
+                            merged_host_map[tag] = hosts
+                        else:
+                            merged_host_map.setdefault(tag, hosts)
+                    host_map = merged_host_map
+            except Exception:
+                pass
 
     if service_ids:
         allowed_tags = {tag for tag, hosts in (host_map or {}).items() if hosts}
