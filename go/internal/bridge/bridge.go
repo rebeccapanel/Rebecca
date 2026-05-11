@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	dashboardread "github.com/rebeccapanel/rebecca/go/internal/app/dashboard"
 	"github.com/rebeccapanel/rebecca/go/internal/app/usage"
 	userread "github.com/rebeccapanel/rebecca/go/internal/app/user"
 	"github.com/rebeccapanel/rebecca/go/internal/platform/db"
@@ -62,6 +63,8 @@ func Call(input []byte) []byte {
 		return handleUsersList(ctx, pool, req.Payload)
 	case userread.ActionUserGet:
 		return handleUserGet(ctx, pool, req.Payload)
+	case dashboardread.ActionSystemSummary:
+		return handleDashboardSystemSummary(ctx, pool, req.Payload)
 	default:
 		return encodeError(fmt.Errorf("unknown action: %s", req.Action))
 	}
@@ -217,6 +220,18 @@ func handleUserGet(ctx context.Context, pool db.Pool, payload json.RawMessage) [
 	}
 	service := userread.NewService(userread.NewRepository(pool.DB, pool.Dialect))
 	result, err := service.UserGet(ctx, req)
+	if err != nil {
+		return encodeError(err)
+	}
+	return encodeData(result)
+}
+
+func handleDashboardSystemSummary(ctx context.Context, pool db.Pool, payload json.RawMessage) []byte {
+	var req dashboardread.SystemSummaryRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return encodeError(err)
+	}
+	result, err := dashboardread.NewRepository(pool.DB, pool.Dialect).SystemSummary(ctx, req)
 	if err != nil {
 		return encodeError(err)
 	}

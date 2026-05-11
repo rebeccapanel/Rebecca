@@ -8,28 +8,26 @@ import subprocess
 import time
 from collections import deque
 from copy import deepcopy
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import commentjson
 import psutil
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import func
 
 from app import __version__
 from app.runtime import xray
 from app.db import Session, crud, get_db
-from app.db.models import Admin as AdminModel, System as SystemModel, ProxyHost as DbProxyHost, ServiceHostLink
-from app.models.admin import Admin, AdminRole, AdminStatus
+from app.db.models import ProxyHost as DbProxyHost, ServiceHostLink
+from app.models.admin import Admin, AdminRole
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
-from app.services import metrics_service
+from app.services import go_dashboard
 from app.models.system import (
     AdminOverviewStats,
     PersonalUsageStats,
     SystemStats,
     UsageStats,
 )
-from app.models.user import UserStatus
 from app.utils import responses
 from app.utils.binary_control import (
     build_rebecca_update_args,
@@ -126,26 +124,27 @@ def _queue_service_users_refresh(bg: BackgroundTasks, service_ids: set[int]) -> 
 
 
 @router.get("/system", response_model=SystemStats)
-def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin.get_current)):
+def get_system_stats(admin: Admin = Depends(Admin.get_current)):
     """Fetch system stats including CPU and user metrics."""
     cpu = cpu_usage()
-    system = crud.get_system_usage(db) or SystemModel(uplink=0, downlink=0)
-    dbadmin: Union[Admin, None] = crud.get_admin(db, admin.username)
-
-    scoped_admin = None if admin.role in (AdminRole.sudo, AdminRole.full_access) else dbadmin
-    total_user = crud.get_users_count(db, admin=scoped_admin)
-    users_active = crud.get_users_count(db, status=UserStatus.active, admin=scoped_admin)
-    users_disabled = crud.get_users_count(db, status=UserStatus.disabled, admin=scoped_admin)
-    users_on_hold = crud.get_users_count(db, status=UserStatus.on_hold, admin=scoped_admin)
-    users_expired = crud.get_users_count(db, status=UserStatus.expired, admin=scoped_admin)
-    users_limited = crud.get_users_count(db, status=UserStatus.limited, admin=scoped_admin)
-    online_users = crud.count_online_users(db, None, scoped_admin)
+    dashboard_summary = go_dashboard.get_system_summary(admin)
+    total_user = int(dashboard_summary.get("total_user") or 0)
+    users_active = int(dashboard_summary.get("users_active") or 0)
+    users_disabled = int(dashboard_summary.get("users_disabled") or 0)
+    users_on_hold = int(dashboard_summary.get("users_on_hold") or 0)
+    users_expired = int(dashboard_summary.get("users_expired") or 0)
+    users_limited = int(dashboard_summary.get("users_limited") or 0)
+    online_users = int(dashboard_summary.get("online_users") or 0)
+    incoming_bandwidth = int(dashboard_summary.get("incoming_bandwidth") or 0)
+    outgoing_bandwidth = int(dashboard_summary.get("outgoing_bandwidth") or 0)
+    panel_total_bandwidth = int(
+        dashboard_summary.get("panel_total_bandwidth") or incoming_bandwidth + outgoing_bandwidth
+    )
     realtime_bandwidth_stats = realtime_bandwidth()
     now = time.time()
     system_memory = psutil.virtual_memory()
     system_swap = psutil.swap_memory()
     system_disk = psutil.disk_usage(os.path.abspath(os.sep))
-    panel_total_bandwidth = int((system.uplink or 0) + (system.downlink or 0))
     load_avg: List[float] = []
     try:
         load_avg = list(psutil.getloadavg())
@@ -196,48 +195,23 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
     _panel_history["cpu"].append({"timestamp": timestamp, "value": panel_cpu_percent})
     _panel_history["memory"].append({"timestamp": timestamp, "value": panel_memory_percent})
 
-    personal_total_users = total_user if scoped_admin else 0
-    if dbadmin and admin.role in (AdminRole.sudo, AdminRole.full_access):
-        personal_total_users = crud.get_users_count(db, admin=dbadmin)
-
-    consumed_bytes = metrics_service.get_admin_effective_usage_total(dbadmin) if dbadmin else 0
-    built_bytes = int(getattr(dbadmin, "lifetime_usage", 0) or 0)
-    reset_bytes = max(built_bytes - consumed_bytes, 0)
+    personal_payload = dashboard_summary.get("personal_usage") or {}
     personal_usage = PersonalUsageStats(
-        total_users=personal_total_users,
-        consumed_bytes=consumed_bytes,
-        built_bytes=built_bytes,
-        reset_bytes=reset_bytes,
+        total_users=int(personal_payload.get("total_users") or 0),
+        consumed_bytes=int(personal_payload.get("consumed_bytes") or 0),
+        built_bytes=int(personal_payload.get("built_bytes") or 0),
+        reset_bytes=int(personal_payload.get("reset_bytes") or 0),
     )
 
-    role_counts = {
-        (role.name if isinstance(role, AdminRole) else str(role)): count
-        for role, count in (
-            db.query(AdminModel.role, func.count())
-            .filter(AdminModel.status != AdminStatus.deleted)
-            .group_by(AdminModel.role)
-            .all()
-        )
-    }
-    total_admins = int(sum(role_counts.values()))
+    admin_overview_payload = dashboard_summary.get("admin_overview") or {}
     admin_overview = AdminOverviewStats(
-        total_admins=total_admins,
-        sudo_admins=int(role_counts.get(AdminRole.sudo.name, 0)),
-        full_access_admins=int(role_counts.get(AdminRole.full_access.name, 0)),
-        standard_admins=int(role_counts.get(AdminRole.standard.name, 0)),
-        top_admin_username=None,
-        top_admin_usage=0,
+        total_admins=int(admin_overview_payload.get("total_admins") or 0),
+        sudo_admins=int(admin_overview_payload.get("sudo_admins") or 0),
+        full_access_admins=int(admin_overview_payload.get("full_access_admins") or 0),
+        standard_admins=int(admin_overview_payload.get("standard_admins") or 0),
+        top_admin_username=admin_overview_payload.get("top_admin_username"),
+        top_admin_usage=int(admin_overview_payload.get("top_admin_usage") or 0),
     )
-    top_admin = None
-    top_admin_usage = 0
-    for candidate in db.query(AdminModel).filter(AdminModel.status != AdminStatus.deleted).all():
-        candidate_usage = metrics_service.get_admin_effective_usage_total(candidate)
-        if top_admin is None or candidate_usage > top_admin_usage:
-            top_admin = candidate
-            top_admin_usage = candidate_usage
-    if top_admin:
-        admin_overview.top_admin_username = top_admin.username
-        admin_overview.top_admin_usage = int(top_admin_usage or 0)
 
     # Get last Telegram error (only for sudo/full_access admins)
     last_telegram_error = None
@@ -269,8 +243,8 @@ def get_system_stats(db: Session = Depends(get_db), admin: Admin = Depends(Admin
         users_expired=users_expired,
         users_limited=users_limited,
         users_on_hold=users_on_hold,
-        incoming_bandwidth=system.uplink,
-        outgoing_bandwidth=system.downlink,
+        incoming_bandwidth=incoming_bandwidth,
+        outgoing_bandwidth=outgoing_bandwidth,
         panel_total_bandwidth=panel_total_bandwidth,
         incoming_bandwidth_speed=realtime_bandwidth_stats.incoming_bytes,
         outgoing_bandwidth_speed=realtime_bandwidth_stats.outgoing_bytes,
