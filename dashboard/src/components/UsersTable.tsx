@@ -1675,6 +1675,8 @@ const MobileUserCard: FC<UserCardProps> = ({
 			dir={isRTL ? "rtl" : "ltr"}
 			onClick={toggle}
 			cursor="pointer"
+			_active={{ transform: "scale(0.995)" }}
+			transition="border-color 0.15s ease, transform 0.15s ease"
 		>
 			<Stack spacing={3}>
 				<HStack justify="space-between" align="flex-start" spacing={3}>
@@ -1729,6 +1731,56 @@ const MobileUserCard: FC<UserCardProps> = ({
 						) : null}
 					</VStack>
 				</HStack>
+				{showUsage ? (
+					<UsageMeter
+						status={user.status}
+						totalUsedTraffic={user.lifetime_used_traffic}
+						dataLimitResetStrategy={user.data_limit_reset_strategy}
+						used={user.used_traffic}
+						total={user.data_limit}
+						isRTL={isRTL}
+						t={t}
+					/>
+				) : null}
+				<HStack
+					justify="space-between"
+					align="center"
+					spacing={3}
+					w="full"
+					flexWrap="wrap"
+					onClick={(e) => e.stopPropagation()}
+					borderTopWidth="1px"
+					borderColor="blackAlpha.100"
+					_dark={{ borderColor: "whiteAlpha.100" }}
+					pt={2}
+				>
+					<ActionButtons
+						user={user}
+						isRTL={isRTL}
+						onEdit={canEdit ? onEdit : undefined}
+						onDelete={onDelete}
+					/>
+					<Button
+						size="sm"
+						variant="ghost"
+						h="40px"
+						rightIcon={
+							<ChevronDownIcon
+								width={16}
+								style={{
+									transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+									transition: "transform 0.15s ease",
+								}}
+							/>
+						}
+						onClick={(event) => {
+							event.stopPropagation();
+							toggle();
+						}}
+					>
+						{t("usersTable.details", "Details")}
+					</Button>
+				</HStack>
 				<Collapse in={isOpen} animateOpacity>
 					<Stack spacing={3} pt={1}>
 						<HStack justify="space-between" align="flex-start" spacing={4}>
@@ -1767,34 +1819,11 @@ const MobileUserCard: FC<UserCardProps> = ({
 								</Text>
 							</Box>
 						</HStack>
-						{showUsage ? (
-							<UsageMeter
-								status={user.status}
-								totalUsedTraffic={user.lifetime_used_traffic}
-								dataLimitResetStrategy={user.data_limit_reset_strategy}
-								used={user.used_traffic}
-								total={user.data_limit}
-								isRTL={isRTL}
-								t={t}
-							/>
-						) : (
+						{!showUsage ? (
 							<Text color="gray.500" _dark={{ color: "gray.400" }}>
 								-
 							</Text>
-						)}
-						<HStack
-							justify="flex-start"
-							align="center"
-							spacing={3}
-							onClick={(e) => e.stopPropagation()}
-						>
-							<ActionButtons
-								user={user}
-								isRTL={isRTL}
-								onEdit={canEdit ? onEdit : undefined}
-								onDelete={onDelete}
-							/>
-						</HStack>
+						) : null}
 					</Stack>
 				</Collapse>
 			</Stack>
@@ -1849,6 +1878,8 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 		<HStack
 			dir={isRTL ? "rtl" : "ltr"}
 			justifyContent={isRTL ? "flex-start" : "flex-end"}
+			spacing={{ base: 1, md: 2 }}
+			flexWrap="wrap"
 			onClick={(e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1869,7 +1900,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 							p="0 !important"
 							aria-label="copy subscription link"
 							variant="ghost"
-							size={{ base: "sm", md: "md" }}
+							size={{ base: "md", md: "md" }}
+							minW={{ base: "40px", md: "auto" }}
+							h={{ base: "40px", md: "auto" }}
 						>
 							{copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
 						</IconButton>
@@ -1895,7 +1928,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 							p="0 !important"
 							aria-label="copy config links"
 							variant="ghost"
-							size={{ base: "sm", md: "md" }}
+							size={{ base: "md", md: "md" }}
+							minW={{ base: "40px", md: "auto" }}
+							h={{ base: "40px", md: "auto" }}
 							isDisabled={!hasConfigLinks}
 						>
 							{copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
@@ -1908,7 +1943,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 					p="0 !important"
 					aria-label="qr code"
 					variant="ghost"
-					size={{ base: "sm", md: "md" }}
+					size={{ base: "md", md: "md" }}
+					minW={{ base: "40px", md: "auto" }}
+					h={{ base: "40px", md: "auto" }}
 					onClick={() => {
 						const links = generateUserLinks(user, linkTemplates);
 						setQRCode(links);
@@ -1924,7 +1961,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 						p="0 !important"
 						aria-label="edit user"
 						variant="ghost"
-						size={{ base: "sm", md: "md" }}
+						size={{ base: "md", md: "md" }}
+						minW={{ base: "40px", md: "auto" }}
+						h={{ base: "40px", md: "auto" }}
 						onClick={(e) => {
 							e.stopPropagation();
 							onEdit();
@@ -1945,7 +1984,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 							aria-label="delete user"
 							variant="ghost"
 							colorScheme="red"
-							size={{ base: "sm", md: "md" }}
+							size={{ base: "md", md: "md" }}
+							minW={{ base: "40px", md: "auto" }}
+							h={{ base: "40px", md: "auto" }}
 							onClick={(event) => event.stopPropagation()}
 						>
 							<DeleteIcon />

@@ -39,21 +39,42 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 			borderColor={borderColor}
 			borderRadius="md"
 			overflow="hidden"
-			maxH="calc(100vh - 48px)"
+			maxH={{
+				base: "var(--rb-dialog-viewport-height, 100dvh)",
+				md: "calc(100vh - 48px)",
+			}}
+			h={{ base: "var(--rb-dialog-viewport-height, 100dvh)", md: "auto" }}
+			display="flex"
+			flexDirection="column"
 			boxShadow="xl"
 			sx={{
+				"@media (max-width: 48em)": {
+					width: "100vw !important",
+					maxWidth: "100vw !important",
+					height: "var(--rb-dialog-viewport-height, 100dvh) !important",
+					maxHeight: "var(--rb-dialog-viewport-height, 100dvh) !important",
+					margin: "0 !important",
+					borderRadius: "0 !important",
+				},
 				".chakra-modal__body": {
 					bg: bodyBg,
+					minH: 0,
+					overflowY: "auto",
+					overflowX: "hidden",
+					WebkitOverflowScrolling: "touch",
+					overscrollBehavior: "contain",
 				},
 				".chakra-modal__header": {
 					bg,
 					borderBottom: "1px solid",
 					borderColor,
+					flexShrink: 0,
 				},
 				".chakra-modal__footer": {
 					bg,
 					borderTop: "1px solid",
 					borderColor,
+					flexShrink: 0,
 				},
 				".chakra-form__label": {
 					mb: 1,
@@ -76,6 +97,15 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					borderRadius: "4px",
 					fontSize: "13px",
 					width: "100%",
+				},
+				".chakra-numberinput__field": {
+					width: "100%",
+				},
+				".chakra-input__left-addon, .chakra-input__right-addon": {
+					bg: fieldBg,
+					fontSize: "13px",
+					fontWeight: "semibold",
+					whiteSpace: "nowrap",
 				},
 				".chakra-input__group, .chakra-numberinput, .chakra-select__wrapper": {
 					width: "100%",
@@ -165,6 +195,46 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 						fontWeight: "semibold",
 						mb: 3,
 					},
+				"@media (max-width: 30em)": {
+					"input, select, textarea": {
+						fontSize: "16px",
+					},
+					"input, select": {
+						minH: "42px",
+					},
+					".chakra-input__left-addon, .chakra-input__right-addon": {
+						minH: "42px",
+						minW: "3.25rem",
+						px: 3,
+					},
+					".chakra-numberinput": {
+						flex: "1 1 auto",
+					},
+					".chakra-numberinput__field": {
+						minH: "42px",
+						paddingInlineEnd: "0.75rem !important",
+					},
+					".chakra-numberinput__stepper-group": {
+						display: "none !important",
+					},
+					".chakra-button": {
+						minH: "40px",
+					},
+					".chakra-tabs__tab": {
+						minH: "38px",
+						px: 3,
+					},
+					".xray-dialog-section": {
+						p: 3,
+					},
+					".chakra-modal__footer": {
+						position: "sticky",
+						bottom: 0,
+						zIndex: 1,
+						boxShadow: "0 -14px 28px rgba(0, 0, 0, 0.22)",
+						paddingBottom: "var(--rb-dialog-safe-bottom)",
+					},
+				},
 				...sx,
 			}}
 			{...props}

@@ -101,7 +101,7 @@ def _collect_usage_params(api_instances):
                 node_batches[node_id] = node_batch_id
                 result = result.get("stats") or []
             if node_batch_id:
-                api_params[node_id] = usage_delivery_buffer.replace_user_stats(node_id, result)
+                api_params[node_id] = usage_delivery_buffer.replace_user_stats(node_id, result, node_batch_id)
             else:
                 api_params[node_id] = usage_delivery_buffer.add_user_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
@@ -131,8 +131,25 @@ def _aggregate_user_usage(api_params, usage_coefficient):
 
 def _load_user_mapping(user_ids):
     with GetDB() as db:
-        rows = db.query(User.id, User.admin_id, User.service_id).filter(User.id.in_(user_ids)).all()
+        rows = (
+            db.query(User.id, User.admin_id, User.service_id)
+            .filter(User.id.in_(user_ids), User.status.in_((UserStatus.active, UserStatus.on_hold)))
+            .all()
+        )
     return {row[0]: (row[1], row[2]) for row in rows}
+
+
+def _filter_usage_for_runtime_users(users_usage, api_params, mapping):
+    runtime_user_ids = {int(uid) for uid in mapping.keys()}
+    if not runtime_user_ids:
+        return [], {node_id: [] for node_id in api_params.keys()}
+
+    filtered_usage = [entry for entry in users_usage if int(entry["uid"]) in runtime_user_ids]
+    filtered_api_params = {
+        node_id: [param for param in params if int(param["uid"]) in runtime_user_ids]
+        for node_id, params in api_params.items()
+    }
+    return filtered_usage, filtered_api_params
 
 
 def _collect_admin_service_usage(users_usage, mapping: Dict[int, Tuple[Optional[int], Optional[int]]]):
@@ -614,17 +631,24 @@ def record_user_usages():
 
     users_usage = _aggregate_user_usage(api_params, usage_coefficient)
     if not users_usage:
+        usage_delivery_buffer.ack_user_stats_for(api_params.keys(), node_batches)
         _ack_node_user_batches(node_batches)
         return
 
     user_ids = [int(entry["uid"]) for entry in users_usage]
     mapping = _load_user_mapping(user_ids)
+    users_usage, api_params = _filter_usage_for_runtime_users(users_usage, api_params, mapping)
+    if not users_usage:
+        usage_delivery_buffer.ack_user_stats_for(api_params.keys(), node_batches)
+        _ack_node_user_batches(node_batches)
+        return
+
     admin_usage, service_usage, admin_service_usage = _collect_admin_service_usage(users_usage, mapping)
 
     del user_ids
     admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
 
-    usage_delivery_buffer.ack_user_stats_for(api_params.keys())
+    usage_delivery_buffer.ack_user_stats_for(api_params.keys(), node_batches)
     _ack_node_user_batches(node_batches)
 
     # Notify admin limit triggers.
