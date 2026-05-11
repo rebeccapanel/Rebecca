@@ -281,7 +281,7 @@ def record_node_usages():
                 node_batches[node_id] = node_batch_id
                 result = result.get("stats") or []
             if node_batch_id:
-                api_params[node_id] = usage_delivery_buffer.replace_outbound_stats(node_id, result)
+                api_params[node_id] = usage_delivery_buffer.replace_outbound_stats(node_id, result, node_batch_id)
             else:
                 api_params[node_id] = usage_delivery_buffer.add_outbound_stats(node_id, result)
         except Exception as exc:  # pragma: no cover - defensive
@@ -296,11 +296,12 @@ def record_node_usages():
             total_down += param["down"]
 
     if not (total_up or total_down):
+        usage_delivery_buffer.ack_outbound_stats_for(api_params.keys(), node_batches)
         _ack_node_outbound_batches(node_batches)
         return
 
     status_events = _persist_node_usage_batch(api_params, total_up, total_down)
-    usage_delivery_buffer.ack_outbound_stats_for(api_params.keys())
+    usage_delivery_buffer.ack_outbound_stats_for(api_params.keys(), node_batches)
     _ack_node_outbound_batches(node_batches)
     _dispatch_node_limit_events(status_events)
 
