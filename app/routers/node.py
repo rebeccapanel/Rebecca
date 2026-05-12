@@ -26,6 +26,7 @@ from app.models.proxy import ProxyHost
 from app.utils import responses, report
 from app.db.models import MasterNodeState as DBMasterNodeState, Node as DBNode
 from app.routers.core import GEO_TEMPLATES_INDEX_DEFAULT, _resolve_geo_template_index_url
+from app.services import go_usage
 from app.utils.binary_control import build_rebecca_update_args, require_binary_runtime
 from app.utils.xray_logs import normalize_log_chunk, sort_log_lines
 from app.utils.crypto import (
@@ -431,7 +432,6 @@ def remove_node(
 
 @router.get("/nodes/usage", response_model=NodesUsageResponse)
 def get_usage(
-    db: Session = Depends(get_db),
     start: str = "",
     end: str = "",
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -439,7 +439,7 @@ def get_usage(
     """Retrieve usage statistics for nodes within a specified date range."""
     start, end = validate_dates(start, end)
 
-    usages = crud.get_nodes_usage(db, start, end)
+    usages = go_usage.get_nodes_usage(start, end)
 
     return {"usages": usages}
 
@@ -466,7 +466,7 @@ def get_node_usage_daily(
     if not dbnode:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    usages = crud.get_node_usage_by_day(db, node_id, start, end, granularity)
+    usages = go_usage.get_node_usage_by_day(node_id, start, end, granularity)
     return {"node_id": node_id, "node_name": dbnode.name, "usages": usages}
 
 

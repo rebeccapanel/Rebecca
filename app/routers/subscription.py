@@ -14,6 +14,7 @@ from app.dependencies import (
     validate_dates,
 )
 from app.models.user import SubscriptionUserResponse, UserResponse
+from app.services import go_usage
 from app.services.go_subscription import generate_v2ray_subscription
 from app.subscription.share import encode_title, generate_subscription, is_credential_key
 from app.services.subscription_settings import SubscriptionSettingsService
@@ -282,27 +283,27 @@ def _build_usage_payload(
         raise HTTPException(status_code=400, detail="Invalid date range or format") from exc
 
     try:
-        timeline_daily = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="day")
+        timeline_daily = go_usage.get_user_usage_timeseries(dbuser.id, start_dt, end_dt, granularity="day")
         daily_usages = [
             {
-                "date": entry["timestamp"].date().isoformat(),
-                "used_traffic": int(entry["total"] or 0),
+                "date": str(entry.get("date") or entry.get("timestamp", "")[:10]),
+                "used_traffic": int(entry.get("used_traffic") or 0),
             }
             for entry in timeline_daily
         ]
 
         hourly_usages: List[Dict[str, Union[str, int]]] = []
         if start_dt.date() == end_dt.date():
-            timeline_hourly = crud.get_user_usage_timeseries(db, dbuser, start_dt, end_dt, granularity="hour")
+            timeline_hourly = go_usage.get_user_usage_timeseries(dbuser.id, start_dt, end_dt, granularity="hour")
             hourly_usages = [
                 {
-                    "timestamp": entry["timestamp"].isoformat(),
-                    "used_traffic": int(entry["total"] or 0),
+                    "timestamp": entry.get("timestamp"),
+                    "used_traffic": int(entry.get("used_traffic") or 0),
                 }
                 for entry in timeline_hourly
             ]
 
-        node_usages = crud.get_user_usage_by_nodes(db, dbuser, start_dt, end_dt)
+        node_usages = go_usage.get_user_usage_by_nodes(dbuser.id, start_dt, end_dt)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to load usage data") from exc
 

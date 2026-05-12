@@ -68,6 +68,58 @@ func (r Repository) UserUsage(ctx context.Context, userID int64, start time.Time
 	return result, rows.Err()
 }
 
+func (r Repository) UserUsageTimeseries(ctx context.Context, userID int64, granularity string, start time.Time, end time.Time) ([]TimeseriesRow, error) {
+	startBucket := alignBucket(start, granularity)
+	endBucket := alignBucket(end, granularity)
+	if startBucket.After(endBucket) {
+		return []TimeseriesRow{}, nil
+	}
+
+	usage := map[string]int64{}
+	for cursor := startBucket; !cursor.After(endBucket); cursor = addBucket(cursor, granularity) {
+		usage[bucketKey(cursor, granularity)] = 0
+	}
+
+	bucket := r.bucketExpr("created_at", granularity)
+	startArg, endArg := r.timeRangeArgs(start, end)
+	rows, err := r.db.QueryContext(
+		ctx,
+		fmt.Sprintf(`SELECT %s AS bucket, COALESCE(SUM(used_traffic), 0)
+		  FROM node_user_usages
+		  WHERE user_id = ? AND created_at >= ? AND created_at <= ?
+		  GROUP BY bucket`, bucket),
+		userID,
+		startArg,
+		endArg,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if err := mergeBucketRows(rows, usage); err != nil {
+		return nil, err
+	}
+	return timeseriesFromMap(usage, granularity), nil
+}
+
+func (r Repository) UserUsageByNodes(ctx context.Context, userID int64, start time.Time, end time.Time) ([]NodeTrafficRow, error) {
+	rows, err := r.UserUsage(ctx, userID, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]NodeTrafficRow, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, NodeTrafficRow{
+			NodeID:   row.NodeID,
+			NodeName: row.NodeName,
+			Uplink:   0,
+			Downlink: row.UsedTraffic,
+		})
+	}
+	return result, nil
+}
+
 func (r Repository) AdminsUsage(ctx context.Context, admins []string, start time.Time, end time.Time) ([]UsageRow, error) {
 	result, index, err := r.baseNodeUsage(ctx)
 	if err != nil {
@@ -191,6 +243,99 @@ func (r Repository) AdminUsageByNodes(ctx context.Context, adminID int64, start 
 		return sortNodeID(result[i].NodeID) < sortNodeID(result[j].NodeID)
 	})
 	return result, nil
+}
+
+func (r Repository) NodesUsage(ctx context.Context, start time.Time, end time.Time) ([]NodeTrafficRow, error) {
+	names, err := r.nodeNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := []NodeTrafficRow{{NodeID: nil, NodeName: masterNodeName, Uplink: 0, Downlink: 0}}
+	index := map[string]int{nodeKey(nil): 0}
+	nodeIDs := make([]int64, 0, len(names))
+	for id := range names {
+		nodeIDs = append(nodeIDs, id)
+	}
+	sort.Slice(nodeIDs, func(i, j int) bool { return nodeIDs[i] < nodeIDs[j] })
+	for _, id := range nodeIDs {
+		nodeID := id
+		index[nodeKey(&nodeID)] = len(result)
+		result = append(result, NodeTrafficRow{NodeID: &nodeID, NodeName: names[id], Uplink: 0, Downlink: 0})
+	}
+
+	startArg, endArg := r.timeRangeArgs(start, end)
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT node_id, COALESCE(SUM(uplink), 0), COALESCE(SUM(downlink), 0)
+		  FROM node_usages
+		  WHERE created_at >= ? AND created_at <= ?
+		  GROUP BY node_id`,
+		startArg,
+		endArg,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var nodeID sql.NullInt64
+		var uplink sql.NullInt64
+		var downlink sql.NullInt64
+		if err := rows.Scan(&nodeID, &uplink, &downlink); err != nil {
+			return nil, err
+		}
+
+		var idPtr *int64
+		name := masterNodeName
+		if nodeID.Valid {
+			id := nodeID.Int64
+			idPtr = &id
+			if nodeName, ok := names[id]; ok {
+				name = nodeName
+			} else {
+				name = fmt.Sprintf("Node %d", id)
+			}
+		}
+		key := nodeKey(idPtr)
+		row := NodeTrafficRow{NodeID: idPtr, NodeName: name, Uplink: uplink.Int64, Downlink: downlink.Int64}
+		if i, ok := index[key]; ok {
+			result[i].Uplink += row.Uplink
+			result[i].Downlink += row.Downlink
+			continue
+		}
+		index[key] = len(result)
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return sortNodeID(result[i].NodeID) < sortNodeID(result[j].NodeID)
+	})
+	return result, nil
+}
+
+func (r Repository) NodeUsageByDay(ctx context.Context, nodeID int64, granularity string, start time.Time, end time.Time) ([]DateUsageRow, error) {
+	bucket := r.bucketExpr("created_at", granularity)
+	startArg, endArg := r.timeRangeArgs(start, end)
+	rows, err := r.db.QueryContext(
+		ctx,
+		fmt.Sprintf(`SELECT %s AS bucket, COALESCE(SUM(used_traffic), 0)
+		  FROM node_user_usages
+		  WHERE node_id = ? AND created_at >= ? AND created_at <= ?
+		  GROUP BY bucket ORDER BY bucket`, bucket),
+		nodeID,
+		startArg,
+		endArg,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanDateUsageRows(rows)
 }
 
 func (r Repository) ServiceUsageTimeseries(ctx context.Context, serviceID int64, granularity string, start time.Time, end time.Time) ([]TimeseriesRow, error) {

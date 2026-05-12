@@ -110,6 +110,34 @@ def get_user_usage(user_id: int, start: datetime, end: datetime) -> list[dict[st
     )
 
 
+def get_user_usage_timeseries(
+    user_id: int,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> list[dict[str, Any]]:
+    return _call(
+        "usage.user.timeseries",
+        {
+            "user_id": int(user_id),
+            "start": _dt(start),
+            "end": _dt(end),
+            "granularity": granularity,
+        },
+    )
+
+
+def get_user_usage_by_nodes(user_id: int, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    return _call(
+        "usage.user.by_nodes",
+        {
+            "user_id": int(user_id),
+            "start": _dt(start),
+            "end": _dt(end),
+        },
+    )
+
+
 def get_users_usage(admins: list[str] | None, start: datetime, end: datetime) -> list[dict[str, Any]]:
     return _call(
         "usage.admins",
@@ -147,6 +175,33 @@ def get_admin_usage_by_nodes(admin_id: int, start: datetime, end: datetime) -> l
             "admin_id": int(admin_id),
             "start": _dt(start),
             "end": _dt(end),
+        },
+    )
+
+
+def get_nodes_usage(start: datetime, end: datetime) -> list[dict[str, Any]]:
+    return _call(
+        "usage.nodes",
+        {
+            "start": _dt(start),
+            "end": _dt(end),
+        },
+    )
+
+
+def get_node_usage_by_day(
+    node_id: int,
+    start: datetime,
+    end: datetime,
+    granularity: str = "day",
+) -> list[dict[str, Any]]:
+    return _call(
+        "usage.node.by_day",
+        {
+            "node_id": int(node_id),
+            "start": _dt(start),
+            "end": _dt(end),
+            "granularity": granularity,
         },
     )
 

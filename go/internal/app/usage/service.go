@@ -25,6 +25,28 @@ func (s Service) UserUsage(ctx context.Context, req UsageRequest) ([]UsageRow, e
 	return s.repo.UserUsage(ctx, req.UserID, start, end)
 }
 
+func (s Service) UserUsageTimeseries(ctx context.Context, req UsageRequest) ([]TimeseriesRow, error) {
+	if req.UserID <= 0 {
+		return nil, fmt.Errorf("user_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.UserUsageTimeseries(ctx, req.UserID, normalizeGranularity(req.Granularity), start, end)
+}
+
+func (s Service) UserUsageByNodes(ctx context.Context, req UsageRequest) ([]NodeTrafficRow, error) {
+	if req.UserID <= 0 {
+		return nil, fmt.Errorf("user_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.UserUsageByNodes(ctx, req.UserID, start, end)
+}
+
 func (s Service) AdminsUsage(ctx context.Context, req UsageRequest) ([]UsageRow, error) {
 	start, end, err := parseRange(req)
 	if err != nil {
@@ -53,6 +75,25 @@ func (s Service) AdminUsageByNodes(ctx context.Context, req UsageRequest) ([]Nod
 		return nil, err
 	}
 	return s.repo.AdminUsageByNodes(ctx, req.AdminID, start, end)
+}
+
+func (s Service) NodesUsage(ctx context.Context, req UsageRequest) ([]NodeTrafficRow, error) {
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.NodesUsage(ctx, start, end)
+}
+
+func (s Service) NodeUsageByDay(ctx context.Context, req UsageRequest) ([]DateUsageRow, error) {
+	if req.NodeID == nil || *req.NodeID <= 0 {
+		return nil, fmt.Errorf("node_id is required")
+	}
+	start, end, err := parseRange(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.NodeUsageByDay(ctx, *req.NodeID, normalizeGranularity(req.Granularity), start, end)
 }
 
 func (s Service) ServiceUsageTimeseries(ctx context.Context, req UsageRequest) ([]TimeseriesRow, error) {
