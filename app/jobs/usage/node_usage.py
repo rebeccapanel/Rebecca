@@ -7,7 +7,7 @@ from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.db import GetDB, crud
 from app.db.models import Node, NodeUsage, System
-from app.jobs.usage.collectors import get_outbounds_stats
+from app.jobs.usage.collectors import get_outbounds_stats, resolve_stats_api
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.jobs.usage.outbound_traffic import _persist_outbound_traffic
 from app.jobs.usage.utils import hour_bucket, is_retryable_db_error, retry_delay, safe_execute, utcnow_naive
@@ -93,6 +93,10 @@ def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
 
 
 def _collect_node_outbound_stats(node):
+    api = resolve_stats_api(node)
+    if api is not None:
+        return {"stats": get_outbounds_stats(api), "node_batch_id": ""}
+
     if not hasattr(node, "collect_outbound_stats"):
         return {"stats": get_outbounds_stats(node.api), "node_batch_id": ""}
     try:

@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db import GetDB, crud
 from app.db.models import Admin, AdminServiceLink, NodeUserUsage, Service, User
-from app.jobs.usage.collectors import get_users_stats
+from app.jobs.usage.collectors import get_users_stats, resolve_stats_api
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.jobs.usage.utils import hour_bucket, is_retryable_db_error, retry_delay, safe_execute, utcnow_naive
 from app.models.admin import Admin as AdminSchema, AdminStatus
@@ -49,6 +49,10 @@ def _is_missing_node_usage_endpoint(exc: Exception) -> bool:
 
 
 def _collect_user_stats(source):
+    api = resolve_stats_api(source)
+    if api is not None:
+        return {"stats": get_users_stats(api), "node_batch_id": ""}
+
     if not hasattr(source, "collect_user_stats"):
         return {"stats": get_users_stats(source), "node_batch_id": ""}
     try:

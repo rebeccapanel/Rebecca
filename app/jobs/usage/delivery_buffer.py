@@ -1,4 +1,4 @@
-"""In-memory delivery buffer for usage samples collected with Xray reset=True."""
+"""In-memory delivery buffer for usage samples until the database write succeeds."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Optional
 
 
 class UsageDeliveryBuffer:
-    """Keep reset Xray samples pending until the database write succeeds."""
+    """Keep usage samples pending until the database write succeeds."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
