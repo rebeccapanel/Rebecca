@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY scripts/rebecca/install_latest_xray.sh /tmp/install_latest_xray.sh
 
-RUN bash /tmp/install_latest_xray.sh \
+RUN sed -i 's/\r$//' /tmp/install_latest_xray.sh \
+    && bash /tmp/install_latest_xray.sh \
     && apt-get remove --purge -y curl unzip \
     && rm -f /tmp/install_latest_xray.sh \
     && rm -rf /var/lib/apt/lists/*
@@ -47,6 +48,7 @@ WORKDIR /code
 
 ENV PATH="/code/.venv/bin:$PATH"
 
-RUN chmod +x /code/scripts/entrypoint.sh
+RUN find /code/scripts -type f -name '*.sh' -exec sed -i 's/\r$//' {} + \
+    && chmod +x /code/scripts/entrypoint.sh
 
 ENTRYPOINT ["/code/scripts/entrypoint.sh"]

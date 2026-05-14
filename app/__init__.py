@@ -98,20 +98,13 @@ if not SKIP_RUNTIME_INIT:
 
 
 if not SKIP_RUNTIME_INIT:
-    def _trigger_node_autoconnect(config=None):
+    def _trigger_node_autoconnect():
         """
         Fire-and-forget connect requests for all enabled nodes.
         Runs on startup to make sure nodes attempt connection even if main core is absent.
         """
         if not xray:
             return
-
-        try:
-            if config is None:
-                config = xray.config.include_db_users()
-        except Exception as e:
-            logger.error(f"Failed to build Xray config for node auto-connect: {e}", exc_info=True)
-            config = None
 
         try:
             from app.models.node import NodeStatus
@@ -130,7 +123,7 @@ if not SKIP_RUNTIME_INIT:
                 try:
                     if node_id in xray.nodes and getattr(xray.nodes[node_id], "connected", False):
                         continue
-                    xray.operations.connect_node(node_id, config)
+                    xray.operations.connect_node(node_id)
                 except Exception as e:
                     logger.error(f"Failed to schedule connect for node {node_id}: {e}", exc_info=True)
         except Exception as e:
@@ -159,7 +152,7 @@ if not SKIP_RUNTIME_INIT:
             if xray.core.available and not xray.core.started:
                 logger.error("Master Xray core failed to start; check binary path/config.")
 
-        _trigger_node_autoconnect(config=config)
+        _trigger_node_autoconnect()
 
     def on_startup():
         if IS_RUNNING_TESTS:
