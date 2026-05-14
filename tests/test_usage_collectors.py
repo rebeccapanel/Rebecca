@@ -23,8 +23,14 @@ class FakeStatsAPI:
             for stat_type, name, link, value in self.snapshots.pop(0)
         ]
 
+    def get_users_stats(self, reset=False, timeout=None):
+        return self.query_stats("user>>>", reset=reset, timeout=timeout)
 
-def test_user_stats_use_cumulative_deltas_without_resetting_xray():
+    def get_outbounds_stats(self, reset=False, timeout=None):
+        return self.query_stats("outbound>>>", reset=reset, timeout=timeout)
+
+
+def test_user_stats_reset_xray_counters_like_marzban():
     api = FakeStatsAPI(
         [
             [
@@ -38,12 +44,12 @@ def test_user_stats_use_cumulative_deltas_without_resetting_xray():
         ]
     )
 
-    assert get_users_stats(api) == []
-    assert get_users_stats(api) == [{"uid": "42", "value": 200}]
-    assert [call["reset"] for call in api.calls] == [False, False]
+    assert get_users_stats(api) == [{"uid": "42", "value": 400}]
+    assert get_users_stats(api) == [{"uid": "42", "value": 600}]
+    assert [call["reset"] for call in api.calls] == [True, True]
 
 
-def test_user_stats_rebaseline_when_xray_counter_goes_backwards():
+def test_user_stats_records_each_reset_batch_without_in_memory_baseline():
     api = FakeStatsAPI(
         [
             [("user", "42.alice", "uplink", 100)],
@@ -53,13 +59,13 @@ def test_user_stats_rebaseline_when_xray_counter_goes_backwards():
         ]
     )
 
-    assert get_users_stats(api) == []
-    assert get_users_stats(api) == [{"uid": "42", "value": 50}]
-    assert get_users_stats(api) == []
-    assert get_users_stats(api) == [{"uid": "42", "value": 15}]
+    assert get_users_stats(api) == [{"uid": "42", "value": 100}]
+    assert get_users_stats(api) == [{"uid": "42", "value": 150}]
+    assert get_users_stats(api) == [{"uid": "42", "value": 20}]
+    assert get_users_stats(api) == [{"uid": "42", "value": 35}]
 
 
-def test_outbound_stats_use_cumulative_deltas_and_ignore_api_outbound():
+def test_outbound_stats_reset_xray_counters_and_ignore_api_outbound():
     api = FakeStatsAPI(
         [
             [
@@ -75,9 +81,9 @@ def test_outbound_stats_use_cumulative_deltas_and_ignore_api_outbound():
         ]
     )
 
-    assert get_outbounds_stats(api) == []
-    assert get_outbounds_stats(api) == [{"up": 7, "down": 11, "tag": "proxy"}]
-    assert [call["reset"] for call in api.calls] == [False, False]
+    assert get_outbounds_stats(api) == [{"up": 10, "down": 20, "tag": "proxy"}]
+    assert get_outbounds_stats(api) == [{"up": 17, "down": 31, "tag": "proxy"}]
+    assert [call["reset"] for call in api.calls] == [True, True]
 
 
 def test_node_user_collection_prefers_direct_stats_api_over_rest_batches():
@@ -99,6 +105,6 @@ def test_node_user_collection_prefers_direct_stats_api_over_rest_batches():
 
     node = NodeWithBothPaths()
 
-    assert _collect_user_stats(node) == {"stats": [], "node_batch_id": ""}
-    assert _collect_user_stats(node) == {"stats": [{"uid": "42", "value": 15}], "node_batch_id": ""}
+    assert _collect_user_stats(node) == {"stats": [{"uid": "42", "value": 10}], "node_batch_id": ""}
+    assert _collect_user_stats(node) == {"stats": [{"uid": "42", "value": 25}], "node_batch_id": ""}
     assert node.rest_called is False
