@@ -11,7 +11,6 @@ import {
 	Box,
 	Button,
 	ButtonGroup,
-	Collapse,
 	chakra,
 	Divider,
 	HStack,
@@ -20,6 +19,10 @@ import {
 	InputGroup,
 	InputLeftElement,
 	InputRightElement,
+	Menu,
+	MenuButton,
+	MenuItem,
+	MenuList,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -32,13 +35,20 @@ import {
 	PopoverBody,
 	PopoverContent,
 	PopoverTrigger,
+	Portal,
 	SimpleGrid,
 	Spinner,
 	Stack,
 	Switch,
+	Table,
 	Tag,
+	Tbody,
+	Td,
 	Text,
+	Th,
+	Thead,
 	Tooltip,
+	Tr,
 	useClipboard,
 	useColorModeValue,
 	useDisclosure,
@@ -51,14 +61,21 @@ import {
 	ArrowPathIcon,
 	Bars3Icon,
 	BookOpenIcon,
+	CheckCircleIcon,
+	CpuChipIcon,
 	TrashIcon as DeleteIcon,
 	DocumentDuplicateIcon,
 	PencilIcon as EditIcon,
+	EllipsisVerticalIcon,
+	GlobeAltIcon,
 	MagnifyingGlassIcon,
+	NoSymbolIcon,
+	ShieldCheckIcon,
 	Squares2X2Icon,
+	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { NumericInput } from "components/common/NumericInput";
-import { useDashboard } from "contexts/DashboardContext";
+import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import {
 	FetchNodesQueryKey,
 	type NodeType,
@@ -114,8 +131,30 @@ const DownloadIconStyled = chakra(ArrowDownTrayIcon, {
 const TutorialIconStyled = chakra(BookOpenIcon, {
 	baseStyle: { w: 4, h: 4 },
 });
+const MoreIconStyled = chakra(EllipsisVerticalIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const EnableIconStyled = chakra(CheckCircleIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const DisableIconStyled = chakra(NoSymbolIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const CoreIconStyled = chakra(CpuChipIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const GeoIconStyled = chakra(GlobeAltIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const CertificateIconStyled = chakra(ShieldCheckIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
+const ServiceIconStyled = chakra(WrenchScrewdriverIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
 
 const BYTES_IN_GB = 1024 ** 3;
+const EMPTY_CELL_VALUE = "-";
 
 interface MasterNodeSummary {
 	status: NodeType["status"];
@@ -156,6 +195,113 @@ const convertLimitInputToBytes = (value: string): number | null | undefined => {
 	return Math.round(numeric * BYTES_IN_GB);
 };
 
+const formatCellValue = (value?: string | number | null): string => {
+	if (value === null || value === undefined || value === "") {
+		return EMPTY_CELL_VALUE;
+	}
+	return String(value);
+};
+
+const uniqueValues = (items: string[]): string[] =>
+	Array.from(new Set(items.filter(Boolean)));
+
+const getConfigInbounds = (config: NodeType["xray_config"]): string[] => {
+	if (!config || typeof config !== "object" || Array.isArray(config)) {
+		return [];
+	}
+
+	const inbounds = (config as { inbounds?: unknown }).inbounds;
+	if (!Array.isArray(inbounds)) {
+		return [];
+	}
+
+	return inbounds
+		.map((inbound) => {
+			if (!inbound || typeof inbound !== "object") {
+				return "";
+			}
+			const item = inbound as {
+				tag?: unknown;
+				remark?: unknown;
+			};
+			return typeof item.tag === "string" && item.tag
+				? item.tag
+				: typeof item.remark === "string" && item.remark
+					? item.remark
+					: "inbound";
+		})
+		.filter(Boolean);
+};
+
+const getNodeServiceUpdateAvailable = (
+	currentVersion?: string | null,
+	latestVersion?: string | null,
+): boolean => {
+	const current = normalizeVersion(currentVersion);
+	const latest = normalizeVersion(latestVersion);
+	return Boolean(current && latest && current !== latest);
+};
+
+const NodeInboundTags: FC<{
+	tags: string[];
+	emptyLabel: string;
+	detailsLabel: string;
+}> = ({ tags, emptyLabel, detailsLabel }) => {
+	const visibleTags = tags.slice(0, 3);
+	const hiddenTags = tags.slice(3);
+
+	if (!tags.length) {
+		return <Text color="gray.400">{emptyLabel}</Text>;
+	}
+
+	return (
+		<HStack spacing={1.5} align="center" flexWrap="wrap">
+			{visibleTags.map((tag) => (
+				<Tag key={tag} size="sm" colorScheme="teal">
+					{tag}
+				</Tag>
+			))}
+			{hiddenTags.length > 0 && (
+				<Popover
+					trigger="hover"
+					placement="bottom-start"
+					openDelay={120}
+					closeDelay={120}
+					isLazy
+				>
+					<PopoverTrigger>
+						<Tag
+							size="sm"
+							colorScheme="teal"
+							variant="outline"
+							cursor="default"
+						>
+							+{hiddenTags.length}
+						</Tag>
+					</PopoverTrigger>
+					<PopoverContent w="auto" minW="180px" maxW="320px" p={2}>
+						<PopoverArrow />
+						<PopoverBody p={1}>
+							<VStack align="stretch" spacing={1}>
+								<Text fontSize="xs" fontWeight="semibold" color="gray.500">
+									{detailsLabel}
+								</Text>
+								<HStack spacing={1.5} align="center" flexWrap="wrap">
+									{tags.map((tag) => (
+										<Tag key={tag} size="sm" colorScheme="teal">
+											{tag}
+										</Tag>
+									))}
+								</HStack>
+							</VStack>
+						</PopoverBody>
+					</PopoverContent>
+				</Popover>
+			)}
+		</HStack>
+	);
+};
+
 interface CoreStatsResponse {
 	version: string | null;
 	started: string | null;
@@ -184,7 +330,7 @@ export const NodesPage: FC = () => {
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canManageNodes =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.nodes);
-	const { onEditingNodes } = useDashboard();
+	const { inbounds, onEditingNodes } = useDashboard();
 	const isEditingNodes = useDashboard((state) => state.isEditingNodes);
 	const {
 		data: nodes,
@@ -223,9 +369,6 @@ export const NodesPage: FC = () => {
 		const saved = window.localStorage.getItem(viewModeStorageKey);
 		return saved === "list" ? "list" : "grid";
 	});
-	const [expandedNodeKeys, setExpandedNodeKeys] = useState<
-		Record<string, boolean>
-	>({});
 	const [versionDialogTarget, setVersionDialogTarget] =
 		useState<VersionDialogTarget | null>(null);
 	const [geoDialogTarget, setGeoDialogTarget] =
@@ -275,6 +418,11 @@ export const NodesPage: FC = () => {
 		isOpen: isMasterResetOpen,
 		onOpen: openMasterReset,
 		onClose: closeMasterReset,
+	} = useDisclosure();
+	const {
+		isOpen: isMasterEditOpen,
+		onOpen: openMasterEdit,
+		onClose: closeMasterEdit,
 	} = useDisclosure();
 	const masterResetCancelRef = useRef<HTMLButtonElement | null>(null);
 
@@ -330,6 +478,15 @@ export const NodesPage: FC = () => {
 		maintenanceInfo?.panel?.install_mode ||
 		"docker";
 	const hostActionsAvailable = panelInstallMode === "binary";
+	const defaultInboundSummaries = useMemo(
+		() =>
+			uniqueValues(
+				Array.from(inbounds.values()).flatMap((items) =>
+					items.map((inbound) => inbound.tag),
+				),
+			),
+		[inbounds],
+	);
 
 	useEffect(() => {
 		if (!canManageNodes) {
@@ -342,6 +499,12 @@ export const NodesPage: FC = () => {
 			onEditingNodes(false);
 		};
 	}, [canManageNodes, onEditingNodes]);
+
+	useEffect(() => {
+		if (canManageNodes && !inbounds.size) {
+			fetchInbounds();
+		}
+	}, [canManageNodes, inbounds.size]);
 
 	useEffect(() => {
 		if (!masterState) {
@@ -576,6 +739,7 @@ export const NodesPage: FC = () => {
 				);
 				refetchMasterState();
 				setMasterLimitDirty(false);
+				closeMasterEdit();
 			},
 			onError: (err) => {
 				generateErrorMessage(err, toast);
@@ -630,10 +794,7 @@ export const NodesPage: FC = () => {
 		masterRemainingBytes !== null && masterRemainingBytes !== undefined
 			? formatBytes(masterRemainingBytes, 2)
 			: null;
-	const nodeGridColumns = useMemo(
-		() => (viewMode === "list" ? { base: 1 } : { base: 1, md: 2, xl: 3 }),
-		[viewMode],
-	);
+	const nodeGridColumns = useMemo(() => ({ base: 1, md: 2, xl: 3 }), []);
 
 	const handleMasterLimitInputChange = (value: string) => {
 		setMasterLimitDirty(true);
@@ -674,10 +835,6 @@ export const NodesPage: FC = () => {
 		toggleNodeStatus({ ...node, status: nextStatus });
 	};
 
-	const toggleExpandedNode = (key: string) => {
-		setExpandedNodeKeys((prev) => ({ ...prev, [key]: !prev[key] }));
-	};
-
 	const handleResetNodeUsage = (node: NodeType) => {
 		if (!node?.id) return;
 		setResetCandidate(node);
@@ -713,6 +870,28 @@ export const NodesPage: FC = () => {
 			...node,
 			channel: node.node_update_channel === "dev" ? "dev" : nodeUpdateChannel,
 		});
+	};
+
+	const copyToClipboard = async (
+		value: string | null | undefined,
+		label: string,
+	) => {
+		const text = value?.trim();
+		if (!text) {
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(text);
+			toast({
+				title: t("nodes.copySuccess", "{{label}} copied", { label }),
+				status: "success",
+				isClosable: true,
+				position: "top",
+				duration: 1800,
+			});
+		} catch (error) {
+			generateErrorMessage(error, toast);
+		}
 	};
 
 	const confirmResetUsage = () => {
@@ -1071,7 +1250,15 @@ export const NodesPage: FC = () => {
 					<Text fontWeight="semibold" fontSize="lg">
 						{masterLabel}
 					</Text>
-					<Tag colorScheme="purple" size="sm">
+					<Tag
+						as="button"
+						type="button"
+						colorScheme="purple"
+						size="sm"
+						cursor="pointer"
+						_hover={{ opacity: 0.82 }}
+						onClick={() => setVersionDialogTarget({ type: "master" })}
+					>
 						{coreStats?.version
 							? `Xray ${coreStats.version}`
 							: t("nodes.versionUnknown", "Version unknown")}
@@ -1466,6 +1653,676 @@ export const NodesPage: FC = () => {
 						),
 					)}
 				</SimpleGrid>
+			) : viewMode === "list" ? (
+				<Box
+					w="full"
+					bg={nodeCardBg}
+					borderWidth="1px"
+					borderColor={nodeCardBorder}
+					borderRadius="lg"
+					boxShadow="sm"
+					overflowX="auto"
+				>
+					<Table size="sm" variant="simple" minW="1680px">
+						<Thead bg={nodePanelBg}>
+							<Tr>
+								<Th minW="180px">{t("nodes.columns.name", "Name")}</Th>
+								<Th minW="170px">{t("nodes.columns.address", "Address")}</Th>
+								<Th minW="180px">{t("nodes.columns.ports", "Ports")}</Th>
+								<Th minW="130px">{t("nodes.columns.status", "Status")}</Th>
+								<Th minW="240px">{t("nodes.columns.inbounds", "Inbounds")}</Th>
+								<Th minW="140px">
+									{t("nodes.columns.xrayVersion", "Xray version")}
+								</Th>
+								<Th minW="150px">
+									{t("nodes.columns.nodeVersion", "Node version")}
+								</Th>
+								<Th minW="170px">{t("nodes.columns.install", "Install")}</Th>
+								<Th minW="210px">{t("nodes.columns.traffic", "Traffic")}</Th>
+								<Th minW="240px">{t("nodes.columns.limit", "Limit")}</Th>
+								<Th minW="150px">
+									{t("nodes.columns.coefficient", "Coefficient")}
+								</Th>
+								<Th minW="210px">{t("nodes.columns.proxy", "Proxy")}</Th>
+								<Th minW="220px">
+									{t("nodes.columns.certificate", "Certificate")}
+								</Th>
+							</Tr>
+						</Thead>
+						<Tbody>
+							{masterMatchesSearch && (
+								<Tr key="master-node-table">
+									<Td>
+										<HStack align="center" spacing={3}>
+											<Menu
+												placement="bottom-start"
+												strategy="fixed"
+												autoSelect={false}
+											>
+												<MenuButton
+													as={IconButton}
+													size="xs"
+													variant="ghost"
+													aria-label={t("nodes.actions", "Node actions")}
+													icon={<MoreIconStyled />}
+												/>
+												<Portal>
+													<MenuList
+														minW="220px"
+														maxW="calc(100vw - 24px)"
+														maxH="min(70vh, 420px)"
+														overflowY="auto"
+													>
+														<MenuItem
+															icon={<EditIconStyled />}
+															onClick={openMasterEdit}
+														>
+															{t("edit")}
+														</MenuItem>
+														<MenuItem
+															icon={<CoreIconStyled />}
+															onClick={() =>
+																setVersionDialogTarget({ type: "master" })
+															}
+															isDisabled={!hostActionsAvailable}
+														>
+															{t("nodes.updateCoreAction")}
+														</MenuItem>
+														<MenuItem
+															icon={<GeoIconStyled />}
+															onClick={() =>
+																setGeoDialogTarget({ type: "master" })
+															}
+															isDisabled={!hostActionsAvailable}
+														>
+															{t("nodes.updateGeoAction", "Update geo")}
+														</MenuItem>
+														<MenuItem
+															icon={<ArrowPathIconStyled />}
+															color="red.500"
+															onClick={handleResetMasterUsageRequest}
+														>
+															{t("nodes.resetUsage", "Reset usage")}
+														</MenuItem>
+													</MenuList>
+												</Portal>
+											</Menu>
+											<VStack align="flex-start" spacing={1}>
+												<Text fontWeight="semibold">{masterLabel}</Text>
+												<Text
+													fontSize="xs"
+													color="gray.500"
+													_dark={{ color: "gray.400" }}
+												>
+													{t("nodes.thisNode", "this node")}
+												</Text>
+											</VStack>
+										</HStack>
+									</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+									<Td>
+										<VStack align="flex-start" spacing={2}>
+											<NodeModalStatusBadge status={masterStatus} compact />
+											{masterState?.limit_exceeded && (
+												<Tag colorScheme="red" size="sm">
+													{t("nodes.limitReached", "Limit reached")}
+												</Tag>
+											)}
+										</VStack>
+									</Td>
+									<Td>
+										<NodeInboundTags
+											tags={defaultInboundSummaries}
+											emptyLabel={t(
+												"nodes.noInboundsConfigured",
+												"No inbounds configured",
+											)}
+											detailsLabel={t("nodes.inbounds", "Inbounds")}
+										/>
+									</Td>
+									<Td>
+										<Tag
+											as="button"
+											type="button"
+											colorScheme="purple"
+											size="sm"
+											cursor="pointer"
+											_hover={{ opacity: 0.82 }}
+											onClick={() => setVersionDialogTarget({ type: "master" })}
+										>
+											{coreStats?.version
+												? `Xray ${coreStats.version}`
+												: t("nodes.versionUnknown", "Version unknown")}
+										</Tag>
+									</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+									<Td>
+										<Tag size="sm" colorScheme="gray">
+											{panelInstallMode}
+										</Tag>
+									</Td>
+									<Td>
+										<VStack align="flex-start" spacing={1}>
+											<Text fontWeight="medium">{masterUsageDisplay}</Text>
+											<Text fontSize="xs" color="gray.500">
+												{t("nodes.uplink", "Uplink")}:{" "}
+												{formatBytes(masterState?.uplink ?? 0, 2)}
+											</Text>
+											<Text fontSize="xs" color="gray.500">
+												{t("nodes.downlink", "Downlink")}:{" "}
+												{formatBytes(masterState?.downlink ?? 0, 2)}
+											</Text>
+										</VStack>
+									</Td>
+									<Td>
+										<VStack align="flex-start" spacing={1}>
+											<Text fontWeight="medium">{masterDataLimitDisplay}</Text>
+											{masterRemainingDisplay && (
+												<Text fontSize="xs" color="gray.500">
+													{t("nodes.remainingData", "Remaining data")}:{" "}
+													{masterRemainingDisplay}
+												</Text>
+											)}
+										</VStack>
+									</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+									<Td>{EMPTY_CELL_VALUE}</Td>
+								</Tr>
+							)}
+							{filteredNodes.map((node) => {
+								const status = node.status || "error";
+								const nodeId = node?.id as number | undefined;
+								const isEnabled = status !== "disabled" && status !== "limited";
+								const pending =
+									nodeId != null ? pendingStatus[nodeId] : undefined;
+								const displayEnabled = pending ?? isEnabled;
+								const isToggleLoading =
+									nodeId != null && togglingNodeId === nodeId && isToggling;
+								const isCoreUpdating =
+									nodeId != null && updatingCoreNodeId === nodeId;
+								const isGeoUpdating =
+									nodeId != null && updatingGeoNodeId === nodeId;
+								const isRestartingMaintenance =
+									isRestartingService &&
+									nodeId != null &&
+									restartingServiceNodeId === nodeId;
+								const isUpdatingMaintenance =
+									isUpdatingService &&
+									nodeId != null &&
+									updatingServiceNodeId === nodeId;
+								const nodeHostActionsAvailable =
+									hostActionsAvailable && node.node_install_mode === "binary";
+								const nodeRuntimeVersion =
+									node.node_binary_tag || node.node_service_version;
+								const nodeServiceUpdateAvailable =
+									getNodeServiceUpdateAvailable(
+										nodeRuntimeVersion,
+										latestNodeVersion,
+									);
+								const totalUsage = (node.uplink ?? 0) + (node.downlink ?? 0);
+								const remainingData =
+									node.data_limit != null && node.data_limit > 0
+										? Math.max(node.data_limit - totalUsage, 0)
+										: null;
+								const customInbounds = uniqueValues(
+									getConfigInbounds(node.xray_config),
+								);
+								const inboundSummaries = customInbounds.length
+									? customInbounds
+									: defaultInboundSummaries;
+								const proxyLabel =
+									node.proxy_enabled && node.proxy_type
+										? `${node.proxy_type} ${formatCellValue(
+												node.proxy_host,
+											)}:${formatCellValue(node.proxy_port)}`
+										: t("nodes.proxyDisabled", "Disabled");
+								const certificateCopyValue =
+									node.node_certificate || node.certificate_public_key || "";
+								const statusBadge = (
+									<NodeModalStatusBadge status={status} compact />
+								);
+								const statusDisplay =
+									status === "error" && node.message ? (
+										<Popover
+											trigger="hover"
+											placement="top"
+											openDelay={250}
+											closeDelay={150}
+											isLazy
+											closeOnBlur={false}
+										>
+											<PopoverTrigger>
+												<Box as="span">{statusBadge}</Box>
+											</PopoverTrigger>
+											<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
+												<PopoverArrow />
+												<PopoverBody>{node.message}</PopoverBody>
+											</PopoverContent>
+										</Popover>
+									) : (
+										statusBadge
+									);
+
+								return (
+									<Tr key={node.id ?? node.name}>
+										<Td>
+											<HStack align="center" spacing={3}>
+												<Menu
+													placement="bottom-start"
+													strategy="fixed"
+													autoSelect={false}
+												>
+													<MenuButton
+														as={IconButton}
+														size="xs"
+														variant="ghost"
+														aria-label={t("nodes.actions", "Node actions")}
+														icon={<MoreIconStyled />}
+													/>
+													<Portal>
+														<MenuList
+															minW="240px"
+															maxW="calc(100vw - 24px)"
+															maxH="min(70vh, 420px)"
+															overflowY="auto"
+														>
+															<MenuItem
+																icon={<EditIconStyled />}
+																onClick={() => setEditingNode(node)}
+															>
+																{t("edit")}
+															</MenuItem>
+															<MenuItem
+																icon={
+																	displayEnabled ? (
+																		<DisableIconStyled />
+																	) : (
+																		<EnableIconStyled />
+																	)
+																}
+																onClick={() => handleToggleNode(node)}
+																isDisabled={!nodeId || isToggleLoading}
+															>
+																{displayEnabled
+																	? t("nodes.disableNode", "Disable node")
+																	: t("nodes.enableNode", "Enable node")}
+															</MenuItem>
+															{node.status === "error" && (
+																<MenuItem
+																	icon={<ArrowPathIconStyled />}
+																	onClick={() => reconnect(node)}
+																	isDisabled={isReconnecting}
+																>
+																	{t("nodes.reconnect")}
+																</MenuItem>
+															)}
+															<MenuItem
+																icon={<CoreIconStyled />}
+																onClick={() =>
+																	nodeId &&
+																	setVersionDialogTarget({
+																		type: "node",
+																		node,
+																	})
+																}
+																isDisabled={
+																	!nodeId ||
+																	!nodeHostActionsAvailable ||
+																	isCoreUpdating
+																}
+															>
+																{t("nodes.updateCoreAction")}
+															</MenuItem>
+															<MenuItem
+																icon={<GeoIconStyled />}
+																onClick={() =>
+																	nodeId &&
+																	setGeoDialogTarget({ type: "node", node })
+																}
+																isDisabled={
+																	!nodeId ||
+																	!nodeHostActionsAvailable ||
+																	isGeoUpdating
+																}
+															>
+																{t("nodes.updateGeoAction", "Update geo")}
+															</MenuItem>
+															<MenuItem
+																icon={<ServiceIconStyled />}
+																onClick={() => handleRestartNodeService(node)}
+																isDisabled={
+																	!nodeId ||
+																	!nodeHostActionsAvailable ||
+																	isRestartingMaintenance
+																}
+															>
+																{t(
+																	"nodes.restartServiceAction",
+																	"Restart node service",
+																)}
+															</MenuItem>
+															<MenuItem
+																icon={<DownloadIconStyled />}
+																onClick={() => handleUpdateNodeService(node)}
+																isDisabled={
+																	!nodeId ||
+																	!nodeHostActionsAvailable ||
+																	isUpdatingMaintenance
+																}
+															>
+																{t(
+																	"nodes.updateServiceAction",
+																	"Update node service",
+																)}
+															</MenuItem>
+															<MenuItem
+																icon={<ArrowPathIconStyled />}
+																color="red.500"
+																onClick={() => handleResetNodeUsage(node)}
+																isDisabled={!nodeId}
+															>
+																{t("nodes.resetUsage", "Reset usage")}
+															</MenuItem>
+															{node.uses_default_certificate && (
+																<MenuItem
+																	icon={<CertificateIconStyled />}
+																	onClick={() =>
+																		nodeId && regenerateNodeCertMutate(node)
+																	}
+																	isDisabled={
+																		!nodeId ||
+																		(isRegenerating &&
+																			nodeId != null &&
+																			regeneratingNodeId === nodeId)
+																	}
+																>
+																	{t(
+																		"nodes.generatePrivateCert",
+																		"Generate private certificate",
+																	)}
+																</MenuItem>
+															)}
+															<DeleteConfirmPopover
+																message={t("deleteNode.prompt", {
+																	name: node.name,
+																})}
+																isLoading={isDeletingNode}
+																onConfirm={() => deleteNodeMutate(node)}
+															>
+																<MenuItem
+																	icon={<DeleteIconStyled />}
+																	color="red.500"
+																>
+																	{t("delete")}
+																</MenuItem>
+															</DeleteConfirmPopover>
+														</MenuList>
+													</Portal>
+												</Menu>
+												<VStack align="flex-start" spacing={1}>
+													<Text fontWeight="semibold">
+														{node.name ||
+															t("nodes.unnamedNode", "Unnamed node")}
+													</Text>
+													<Text fontSize="xs" color="gray.500">
+														{t("nodes.id", "ID")}: {node.id ?? EMPTY_CELL_VALUE}
+													</Text>
+												</VStack>
+											</HStack>
+										</Td>
+										<Td>
+											<Tooltip label={t("copy", "Copy")}>
+												<Text
+													as="button"
+													type="button"
+													dir="ltr"
+													sx={{ unicodeBidi: "isolate" }}
+													cursor="pointer"
+													textAlign="start"
+													_hover={{ color: "primary.500" }}
+													onClick={() =>
+														copyToClipboard(
+															node.address,
+															t("nodes.nodeAddress", "Address"),
+														)
+													}
+												>
+													{formatCellValue(node.address)}
+												</Text>
+											</Tooltip>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Text dir="ltr">
+													{t("nodes.nodePort", "Node port")}:{" "}
+													{formatCellValue(node.port)}
+												</Text>
+												<Text fontSize="xs" color="gray.500" dir="ltr">
+													{t("nodes.nodeAPIPort", "API port")}:{" "}
+													{formatCellValue(node.api_port)}
+												</Text>
+												{node.use_nobetci && (
+													<Text fontSize="xs" color="gray.500" dir="ltr">
+														{t("nodes.nobetciPort", "Nobetci")}:{" "}
+														{formatCellValue(node.nobetci_port)}
+													</Text>
+												)}
+											</VStack>
+										</Td>
+										<Td>{statusDisplay}</Td>
+										<Td>
+											<NodeInboundTags
+												tags={inboundSummaries}
+												emptyLabel={t(
+													"nodes.noInboundsConfigured",
+													"No inbounds configured",
+												)}
+												detailsLabel={t("nodes.inbounds", "Inbounds")}
+											/>
+										</Td>
+										<Td>
+											<Tag
+												as="button"
+												type="button"
+												colorScheme="blue"
+												size="sm"
+												cursor="pointer"
+												_hover={{ opacity: 0.82 }}
+												onClick={() =>
+													nodeId &&
+													setVersionDialogTarget({ type: "node", node })
+												}
+											>
+												{node.xray_version
+													? `Xray ${node.xray_version}`
+													: t("nodes.versionUnknown", "Version unknown")}
+											</Tag>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Tag colorScheme="green" size="sm">
+													{nodeRuntimeVersion
+														? t("nodes.nodeServiceVersionTag", {
+																version: nodeRuntimeVersion,
+															})
+														: t(
+																"nodes.nodeServiceVersionUnknown",
+																"Node version unknown",
+															)}
+												</Tag>
+												{nodeServiceUpdateAvailable && (
+													<Button
+														size="xs"
+														variant="link"
+														colorScheme="orange"
+														leftIcon={<DownloadIconStyled />}
+														onClick={() => handleUpdateNodeService(node)}
+														isLoading={isUpdatingMaintenance}
+														isDisabled={!nodeId || !nodeHostActionsAvailable}
+													>
+														{t("nodes.updateAvailable", "Update available")}
+													</Button>
+												)}
+											</VStack>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Tag size="sm" colorScheme="gray">
+													{formatCellValue(node.node_install_mode)}
+												</Tag>
+												<Text fontSize="xs" color="gray.500">
+													{t("nodes.updateChannel", "Channel")}:{" "}
+													{formatCellValue(node.node_update_channel)}
+												</Text>
+											</VStack>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Text fontWeight="medium">
+													{formatBytes(totalUsage, 2)}
+												</Text>
+												<Text fontSize="xs" color="gray.500">
+													{t("nodes.uplink", "Uplink")}:{" "}
+													{formatBytes(node.uplink ?? 0, 2)}
+												</Text>
+												<Text fontSize="xs" color="gray.500">
+													{t("nodes.downlink", "Downlink")}:{" "}
+													{formatBytes(node.downlink ?? 0, 2)}
+												</Text>
+											</VStack>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Text fontWeight="medium">
+													{node.data_limit != null && node.data_limit > 0
+														? formatBytes(node.data_limit, 2)
+														: t("nodes.unlimited", "Unlimited")}
+												</Text>
+												{remainingData !== null && (
+													<Text fontSize="xs" color="gray.500">
+														{t("nodes.remainingData", "Remaining data")}:{" "}
+														{formatBytes(remainingData, 2)}
+													</Text>
+												)}
+											</VStack>
+										</Td>
+										<Td>{formatCellValue(node.usage_coefficient)}</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<Tag
+													size="sm"
+													colorScheme={node.proxy_enabled ? "green" : "gray"}
+												>
+													{proxyLabel}
+												</Tag>
+												{node.proxy_username && (
+													<Text fontSize="xs" color="gray.500">
+														{node.proxy_username}
+													</Text>
+												)}
+											</VStack>
+										</Td>
+										<Td>
+											<VStack align="flex-start" spacing={1}>
+												<HStack
+													spacing={1}
+													role={certificateCopyValue ? "button" : undefined}
+													tabIndex={certificateCopyValue ? 0 : undefined}
+													cursor={certificateCopyValue ? "pointer" : "default"}
+													onClick={() =>
+														copyToClipboard(
+															certificateCopyValue,
+															t("nodes.certificateLabel", "Certificate"),
+														)
+													}
+													onKeyDown={(event) => {
+														if (
+															certificateCopyValue &&
+															(event.key === "Enter" || event.key === " ")
+														) {
+															event.preventDefault();
+															copyToClipboard(
+																certificateCopyValue,
+																t("nodes.certificateLabel", "Certificate"),
+															);
+														}
+													}}
+												>
+													<Tag
+														size="sm"
+														colorScheme={
+															node.uses_default_certificate
+																? "orange"
+																: node.has_custom_certificate
+																	? "green"
+																	: "gray"
+														}
+													>
+														{node.uses_default_certificate
+															? t("nodes.legacyCertificate", "Legacy shared")
+															: node.has_custom_certificate
+																? t("nodes.privateCertificate", "Private")
+																: EMPTY_CELL_VALUE}
+													</Tag>
+													<IconButton
+														aria-label={t("copy", "Copy")}
+														icon={<CopyIconStyled />}
+														size="xs"
+														variant="ghost"
+														isDisabled={!certificateCopyValue}
+														pointerEvents="none"
+													/>
+												</HStack>
+												{node.certificate_public_key && (
+													<Tooltip label={node.certificate_public_key}>
+														<Text
+															as="button"
+															type="button"
+															fontSize="xs"
+															color="gray.500"
+															noOfLines={1}
+															maxW="180px"
+															cursor="pointer"
+															textAlign="start"
+															onClick={() =>
+																copyToClipboard(
+																	certificateCopyValue,
+																	t("nodes.certificateLabel", "Certificate"),
+																)
+															}
+														>
+															{node.certificate_public_key}
+														</Text>
+													</Tooltip>
+												)}
+											</VStack>
+										</Td>
+									</Tr>
+								);
+							})}
+							{!masterMatchesSearch && filteredNodes.length === 0 && (
+								<Tr>
+									<Td colSpan={13}>
+										<Text
+											fontSize="sm"
+											color="gray.500"
+											_dark={{ color: "gray.400" }}
+											textAlign="center"
+											py={6}
+										>
+											{t(
+												"nodes.noNodesFound",
+												"No nodes match the current filters.",
+											)}
+										</Text>
+									</Td>
+								</Tr>
+							)}
+						</Tbody>
+					</Table>
+				</Box>
 			) : (
 				<SimpleGrid columns={nodeGridColumns} spacing={4}>
 					{masterMatchesSearch && (
@@ -1475,44 +2332,12 @@ export const NodesPage: FC = () => {
 							borderWidth="1px"
 							borderColor={nodeCardBorder}
 							borderRadius="lg"
-							p={viewMode === "list" ? 4 : 6}
+							p={6}
 							boxShadow="sm"
 							_hover={{ boxShadow: "md" }}
 							transition="box-shadow 0.2s ease-in-out"
 						>
-							{viewMode === "list" ? (
-								<VStack align="stretch" spacing={3}>
-									<HStack
-										justify="space-between"
-										align="center"
-										onClick={() => toggleExpandedNode("master")}
-										cursor="pointer"
-									>
-										<VStack align="flex-start" spacing={0} flex="1">
-											<Text fontWeight="semibold">{masterLabel}</Text>
-											<Text
-												fontSize="sm"
-												color="gray.500"
-												_dark={{ color: "gray.400" }}
-											>
-												{t("nodes.thisNode", "this node")}
-											</Text>
-										</VStack>
-										<NodeModalStatusBadge status={masterStatus} compact />
-									</HStack>
-									<Collapse
-										in={Boolean(expandedNodeKeys.master)}
-										animateOpacity
-									>
-										<Box pt={4}>
-											<Divider mb={4} />
-											{masterContent}
-										</Box>
-									</Collapse>
-								</VStack>
-							) : (
-								masterContent
-							)}
+							{masterContent}
 						</Box>
 					)}
 
@@ -1542,6 +2367,10 @@ export const NodesPage: FC = () => {
 								hostActionsAvailable && node.node_install_mode === "binary";
 							const nodeRuntimeVersion =
 								node.node_binary_tag || node.node_service_version;
+							const nodeServiceUpdateAvailable = getNodeServiceUpdateAvailable(
+								nodeRuntimeVersion,
+								latestNodeVersion,
+							);
 							const statusBadge = (
 								<NodeModalStatusBadge status={status} compact />
 							);
@@ -1566,10 +2395,6 @@ export const NodesPage: FC = () => {
 								) : (
 									statusBadge
 								);
-							const nodeKey =
-								nodeId != null
-									? `node-${nodeId}`
-									: `node-${node.name ?? node.address ?? "unknown"}`;
 							const nodeContent = (
 								<VStack align="stretch" spacing={4}>
 									<Stack spacing={2}>
@@ -1603,7 +2428,18 @@ export const NodesPage: FC = () => {
 										<HStack spacing={2} flexWrap="wrap">
 											{statusDisplay}
 											<HStack spacing={1} align="center">
-												<Tag colorScheme="blue" size="sm">
+												<Tag
+													as="button"
+													type="button"
+													colorScheme="blue"
+													size="sm"
+													cursor="pointer"
+													_hover={{ opacity: 0.82 }}
+													onClick={() =>
+														nodeId &&
+														setVersionDialogTarget({ type: "node", node })
+													}
+												>
 													{node.xray_version
 														? `Xray ${node.xray_version}`
 														: t("nodes.versionUnknown", "Version unknown")}
@@ -1618,6 +2454,19 @@ export const NodesPage: FC = () => {
 																"Node version unknown",
 															)}
 												</Tag>
+												{nodeServiceUpdateAvailable && (
+													<Button
+														size="xs"
+														variant="link"
+														colorScheme="orange"
+														leftIcon={<DownloadIconStyled />}
+														onClick={() => handleUpdateNodeService(node)}
+														isLoading={isUpdatingMaintenance}
+														isDisabled={!nodeId || !nodeHostActionsAvailable}
+													>
+														{t("nodes.updateAvailable", "Update available")}
+													</Button>
+												)}
 												<Button
 													size="xs"
 													variant="ghost"
@@ -1750,7 +2599,24 @@ export const NodesPage: FC = () => {
 											>
 												{t("nodes.nodeAddress")}
 											</Text>
-											<Text fontWeight="medium">{node.address}</Text>
+											<Tooltip label={t("copy", "Copy")}>
+												<Text
+													as="button"
+													type="button"
+													fontWeight="medium"
+													textAlign="start"
+													cursor="pointer"
+													_hover={{ color: "primary.500" }}
+													onClick={() =>
+														copyToClipboard(
+															node.address,
+															t("nodes.nodeAddress", "Address"),
+														)
+													}
+												>
+													{node.address}
+												</Text>
+											</Tooltip>
 										</Box>
 										<Box>
 											<Text
@@ -1857,47 +2723,12 @@ export const NodesPage: FC = () => {
 									borderWidth="1px"
 									borderColor={nodeCardBorder}
 									borderRadius="lg"
-									p={viewMode === "list" ? 4 : 6}
+									p={6}
 									boxShadow="sm"
 									_hover={{ boxShadow: "md" }}
 									transition="box-shadow 0.2s ease-in-out"
 								>
-									{viewMode === "list" ? (
-										<VStack align="stretch" spacing={3}>
-											<HStack
-												justify="space-between"
-												align="center"
-												onClick={() => toggleExpandedNode(nodeKey)}
-												cursor="pointer"
-											>
-												<VStack align="flex-start" spacing={0} flex="1">
-													<Text fontWeight="semibold">
-														{node.name ||
-															t("nodes.unnamedNode", "Unnamed node")}
-													</Text>
-													<Text
-														fontSize="sm"
-														color="gray.500"
-														_dark={{ color: "gray.400" }}
-													>
-														{node.address}
-													</Text>
-												</VStack>
-												{statusDisplay}
-											</HStack>
-											<Collapse
-												in={Boolean(expandedNodeKeys[nodeKey])}
-												animateOpacity
-											>
-												<Box pt={4}>
-													<Divider mb={4} />
-													{nodeContent}
-												</Box>
-											</Collapse>
-										</VStack>
-									) : (
-										nodeContent
-									)}
+									{nodeContent}
 								</Box>
 							);
 						})
@@ -1944,6 +2775,72 @@ export const NodesPage: FC = () => {
 				showMasterOptions={geoDialogTarget?.type === "master"}
 				isSubmitting={geoDialogLoading}
 			/>
+			<Modal isOpen={isMasterEditOpen} onClose={closeMasterEdit} size="md">
+				<ModalOverlay />
+				<ModalContent>
+					<ModalHeader>{t("nodes.editMasterNode", "Edit master")}</ModalHeader>
+					<ModalCloseButton />
+					<ModalBody>
+						<VStack align="stretch" spacing={3}>
+							<Text fontSize="sm" color="gray.500">
+								{t("nodes.dataLimitLabel", "Data limit")}
+							</Text>
+							<InputGroup size="sm">
+								<NumericInput
+									step={0.01}
+									min={0}
+									value={masterLimitInput}
+									onChange={(value) => handleMasterLimitInputChange(value)}
+									placeholder={t(
+										"nodes.dataLimitPlaceholder",
+										"e.g., 500 (empty = unlimited)",
+									)}
+								/>
+								<InputRightElement pointerEvents="none">
+									<Text fontSize="xs" color="gray.500">
+										GB
+									</Text>
+								</InputRightElement>
+							</InputGroup>
+							{masterLimitInvalid && (
+								<Text fontSize="xs" color="red.500">
+									{t(
+										"nodes.dataLimitValidation",
+										"Data limit must be a non-negative number",
+									)}
+								</Text>
+							)}
+						</VStack>
+					</ModalBody>
+					<ModalFooter gap={2}>
+						<Button variant="ghost" size="sm" onClick={closeMasterEdit}>
+							{t("cancel", "Cancel")}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleMasterLimitClear}
+							isDisabled={masterDataLimit === null || isUpdatingMasterLimit}
+							isLoading={isUpdatingMasterLimit && masterDataLimit === null}
+						>
+							{t("nodes.clearDataLimit", "Clear limit")}
+						</Button>
+						<Button
+							colorScheme="primary"
+							size="sm"
+							onClick={handleMasterLimitSave}
+							isDisabled={
+								!hasMasterLimitChanged ||
+								masterLimitInvalid ||
+								isUpdatingMasterLimit
+							}
+							isLoading={isUpdatingMasterLimit}
+						>
+							{t("save", "Save")}
+						</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
 			<AlertDialog
 				isOpen={isResetConfirmOpen}
 				leastDestructiveRef={cancelResetRef}
