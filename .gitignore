@@ -174,3 +174,4 @@ data/redis_backup/
 dashboard/build/
 
 .tmp*
+tmp/
