@@ -18,6 +18,7 @@ from app.subscription.share import encode_title, generate_subscription, is_crede
 from app.services.subscription_settings import SubscriptionSettingsService
 from app.templates import render_template
 from app.utils.proxy_uuid import ensure_user_proxy_uuids
+from config import SUBSCRIPTION_READ_ONLY
 
 client_config = {
     "clash-meta": {
@@ -68,6 +69,12 @@ router = APIRouter(tags=["Subscription"], prefix="/sub")
 def _resolve_support_url(settings) -> str:
     support_url = (getattr(settings, "subscription_support_url", "") or "").strip()
     return support_url
+
+
+def _update_subscription_access_if_enabled(db: Session, dbuser: UserResponse, user_agent: str) -> None:
+    if SUBSCRIPTION_READ_ONLY:
+        return
+    crud.update_user_sub(db, dbuser, user_agent)
 
 
 def get_subscription_user_info(user: UserResponse) -> dict:
