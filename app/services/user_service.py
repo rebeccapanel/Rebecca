@@ -22,6 +22,7 @@ from app.utils.credentials import UUID_PROTOCOLS, uuid_to_key
 from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
 from app.db.models import ServiceHostLink
 from app.db.crud.user import ONLINE_ACTIVE_WINDOW, OFFLINE_STALE_WINDOW, UPDATE_STALE_WINDOW, STATUS_FILTER_MAP
+from config import USERS_LIST_SUBSCRIPTION_URLS_ENABLED
 
 
 def _log_users_step(step: str, started_at: float) -> None:
@@ -42,6 +43,9 @@ def _compute_subscription_links(
     Compute subscription links for list items without constructing heavy models.
     Falls back to empty values on failure.
     """
+    if not USERS_LIST_SUBSCRIPTION_URLS_ENABLED:
+        return "", {}
+
     try:
         payload = SimpleNamespace(username=username, credential_key=credential_key, admin=admin, admin_id=admin_id)
         links = build_subscription_links(payload, request_origin=request_origin)

@@ -102,3 +102,26 @@ def test_user_list_timeout_guard_recognizes_mysql_interrupt():
     exc = SimpleNamespace(orig=SimpleNamespace(args=(1317, "Query execution was interrupted")))
 
     assert guard.interrupted_error(exc) is True
+
+
+def test_user_list_subscription_urls_flag_can_skip_link_building(monkeypatch):
+    from app.services import user_service
+
+    build_subscription_links = Mock()
+    monkeypatch.setattr(user_service, "USERS_LIST_SUBSCRIPTION_URLS_ENABLED", False)
+    monkeypatch.setattr(user_service, "build_subscription_links", build_subscription_links)
+
+    item = user_service._map_raw_to_list_item(
+        {
+            "username": "test-user",
+            "credential_key": "test-key",
+            "status": "active",
+            "used_traffic": 0,
+            "lifetime_used_traffic": 0,
+            "created_at": "2026-01-01T00:00:00",
+        }
+    )
+
+    build_subscription_links.assert_not_called()
+    assert item.subscription_url == ""
+    assert item.subscription_urls == {}
