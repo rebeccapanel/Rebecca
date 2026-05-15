@@ -125,7 +125,7 @@ def _serve_subscription_response(
             )
         )
 
-    crud.update_user_sub(db, dbuser, user_agent)
+    _update_subscription_access_if_enabled(db, dbuser, user_agent)
     support_url = _resolve_support_url(settings)
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',
