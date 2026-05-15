@@ -127,6 +127,7 @@ XRAY_ASSETS_PATH = _resolve_xray_assets_path()
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default="").split()
 XRAY_SUBSCRIPTION_URL_PREFIX = ""  # subscription prefix now comes from DB
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
+SUBSCRIPTION_READ_ONLY = config("SUBSCRIPTION_READ_ONLY", cast=_cast_bool_compat, default=False)
 XRAY_JSON = config("XRAY_JSON", default="/var/lib/rebecca/xray_config.json")
 XRAY_LOG_DIR = config("XRAY_LOG_DIR", default="").strip()
 
@@ -176,6 +177,7 @@ USERS_AUTODELETE_DAYS = config("USERS_AUTODELETE_DAYS", default=-1, cast=int)
 USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config(
     "USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=_cast_bool_compat
 )
+USERS_LIST_LINKS_ENABLED = config("USERS_LIST_LINKS_ENABLED", default=True, cast=_cast_bool_compat)
 
 
 # USERNAME: PASSWORD

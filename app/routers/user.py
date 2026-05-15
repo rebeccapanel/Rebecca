@@ -42,6 +42,7 @@ from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
+from config import USERS_LIST_LINKS_ENABLED
 
 # region Helpers
 
@@ -50,6 +51,10 @@ xray = runtime.xray
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
 _AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-(\d+)$", re.IGNORECASE)
+
+
+def _should_include_user_config_links(links_requested: bool) -> bool:
+    return bool(links_requested and USERS_LIST_LINKS_ENABLED)
 
 
 def _ensure_service_visibility(service, admin: Admin):
@@ -992,8 +997,9 @@ def get_users(
     - **service_id**: Filter users who belong to a specific service.
     """
     start_ts = time.perf_counter()
+    include_config_links = _should_include_user_config_links(links)
     logger.info(
-        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s links=%s",
+        "GET /users called with params: offset=%s limit=%s username=%s search=%s owner=%s status=%s filters=%s service_id=%s sort=%s links=%s effective_links=%s",
         offset,
         limit,
         username,
@@ -1004,6 +1010,7 @@ def get_users(
         service_id,
         sort,
         links,
+        include_config_links,
     )
     if sort is not None:
         opts = sort.strip(",").split(",")
@@ -1034,7 +1041,7 @@ def get_users(
     from app.services import user_service
 
     request_origin = get_request_origin(request)
-    if links:
+    if include_config_links:
         # Generating share links requires DB-loaded proxies/inbounds.
         with use_subscription_request_origin(request):
             response = user_service.get_users_list_db_only(
