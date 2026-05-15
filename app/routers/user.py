@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
+import threading
 import time
 import re
 
 from anyio import from_thread
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.db import Session, crud, get_db
 from app.db.exceptions import UsersLimitReachedError
@@ -42,7 +43,7 @@ from app.utils.subscription_links import build_subscription_links
 from app import runtime
 from app.runtime import logger
 from app.services import metrics_service
-from config import USERS_LIST_LINKS_ENABLED
+from config import USERS_LIST_LINKS_ENABLED, USERS_LIST_TIMEOUT_KILL_QUERY, USERS_LIST_TIMEOUT_SECONDS
 
 # region Helpers
 
@@ -55,6 +56,96 @@ _AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-(\d+)$", re.IGNORECASE)
 
 def _should_include_user_config_links(links_requested: bool) -> bool:
     return bool(links_requested and USERS_LIST_LINKS_ENABLED)
+
+
+def _get_users_list_timeout_seconds() -> float:
+    try:
+        return max(0.0, float(USERS_LIST_TIMEOUT_SECONDS or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _mysql_error_code(exc: BaseException) -> Optional[int]:
+    original = getattr(exc, "orig", exc)
+    args = getattr(original, "args", ())
+    if not args:
+        return None
+    try:
+        return int(args[0])
+    except (TypeError, ValueError):
+        return None
+
+
+class _UsersListTimeoutGuard:
+    """Interrupt the active MySQL query if the synchronous /users handler runs too long."""
+
+    _INTERRUPTED_ERROR_CODES = {1317, 3024, 2013, 2006}
+
+    def __init__(self, db: Session, timeout_seconds: float, kill_query: bool) -> None:
+        self.db = db
+        self.timeout_seconds = timeout_seconds
+        self.kill_query = kill_query
+        self.connection_id: Optional[int] = None
+        self._timer: Optional[threading.Timer] = None
+        self._finished = threading.Event()
+        self._timed_out = threading.Event()
+
+    @property
+    def timed_out(self) -> bool:
+        return self._timed_out.is_set()
+
+    def __enter__(self):
+        if self.timeout_seconds <= 0 or not self.kill_query:
+            return self
+
+        try:
+            connection = self.db.connection()
+            if connection.dialect.name not in {"mysql", "mariadb"}:
+                return self
+            connection_id = connection.exec_driver_sql("SELECT CONNECTION_ID()").scalar()
+            if connection_id is None:
+                return self
+            self.connection_id = int(connection_id)
+        except Exception as exc:  # pragma: no cover - defensive logging only
+            logger.warning("USERS: failed to arm MySQL timeout guard: %s", exc)
+            return self
+
+        self._timer = threading.Timer(self.timeout_seconds, self._kill_active_query)
+        self._timer.daemon = True
+        self._timer.start()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self._finished.set()
+        if self._timer is not None:
+            self._timer.cancel()
+
+    def _kill_active_query(self) -> None:
+        if self._finished.is_set() or self.connection_id is None:
+            return
+
+        self._timed_out.set()
+        try:
+            bind = self.db.get_bind()
+            if bind is None:
+                return
+            with bind.connect() as killer:
+                killer.exec_driver_sql(f"KILL QUERY {self.connection_id}")
+            logger.warning(
+                "USERS: killed MySQL query for connection %s after %.3f seconds",
+                self.connection_id,
+                self.timeout_seconds,
+            )
+        except Exception as exc:  # pragma: no cover - depends on live MySQL state
+            logger.warning(
+                "USERS: failed to kill MySQL query for connection %s after %.3f seconds: %s",
+                self.connection_id,
+                self.timeout_seconds,
+                exc,
+            )
+
+    def interrupted_error(self, exc: BaseException) -> bool:
+        return self.timed_out or _mysql_error_code(exc) in self._INTERRUPTED_ERROR_CODES
 
 
 def _ensure_service_visibility(service, admin: Admin):
@@ -1041,45 +1132,62 @@ def get_users(
     from app.services import user_service
 
     request_origin = get_request_origin(request)
-    if include_config_links:
-        # Generating share links requires DB-loaded proxies/inbounds.
-        with use_subscription_request_origin(request):
-            response = user_service.get_users_list_db_only(
-                db,
-                offset=offset,
-                limit=limit,
-                username=username,
-                search=search,
-                status=status,
-                sort=sort,
-                advanced_filters=advanced_filters,
-                service_id=service_id,
-                dbadmin=dbadmin,
-                owners=owners,
-                users_limit=users_limit,
-                active_total=active_total,
-                include_links=True,
-                request_origin=request_origin,
-            )
-    else:
-        with use_subscription_request_origin(request):
-            response = user_service.get_users_list(
-                db,
-                offset=offset,
-                limit=limit,
-                username=username,
-                search=search,
-                status=status,
-                sort=sort,
-                advanced_filters=advanced_filters,
-                service_id=service_id,
-                dbadmin=dbadmin,
-                owners=owners,
-                users_limit=users_limit,
-                active_total=active_total,
-                include_links=False,
-                request_origin=request_origin,
-            )
+    timeout_guard = _UsersListTimeoutGuard(
+        db,
+        timeout_seconds=_get_users_list_timeout_seconds(),
+        kill_query=USERS_LIST_TIMEOUT_KILL_QUERY,
+    )
+    try:
+        with timeout_guard, use_subscription_request_origin(request):
+            if include_config_links:
+                # Generating share links requires DB-loaded proxies/inbounds.
+                response = user_service.get_users_list_db_only(
+                    db,
+                    offset=offset,
+                    limit=limit,
+                    username=username,
+                    search=search,
+                    status=status,
+                    sort=sort,
+                    advanced_filters=advanced_filters,
+                    service_id=service_id,
+                    dbadmin=dbadmin,
+                    owners=owners,
+                    users_limit=users_limit,
+                    active_total=active_total,
+                    include_links=True,
+                    request_origin=request_origin,
+                )
+            else:
+                response = user_service.get_users_list(
+                    db,
+                    offset=offset,
+                    limit=limit,
+                    username=username,
+                    search=search,
+                    status=status,
+                    sort=sort,
+                    advanced_filters=advanced_filters,
+                    service_id=service_id,
+                    dbadmin=dbadmin,
+                    owners=owners,
+                    users_limit=users_limit,
+                    active_total=active_total,
+                    include_links=False,
+                    request_origin=request_origin,
+                )
+    except OperationalError as exc:
+        if timeout_guard.interrupted_error(exc):
+            db.rollback()
+            logger.warning("USERS: handler timed out after %.3f s", time.perf_counter() - start_ts)
+            raise HTTPException(status_code=504, detail="Users list query timed out") from exc
+        raise
+
+    if timeout_guard.timed_out:
+        db.rollback()
+        logger.warning("USERS: handler exceeded timeout and finished after %.3f s", time.perf_counter() - start_ts)
+        raise HTTPException(status_code=504, detail="Users list query timed out")
+
     logger.info("USERS: handler finished in %.3f s", time.perf_counter() - start_ts)
     return _sanitize_users_response(admin, response)
 

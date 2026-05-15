@@ -80,3 +80,48 @@ def test_user_list_links_flag_preserves_default_behavior(monkeypatch):
 
     assert user._should_include_user_config_links(True) is True
     assert user._should_include_user_config_links(False) is False
+
+
+def test_user_list_timeout_seconds_env_is_normalized(monkeypatch):
+    from app.routers import user
+
+    monkeypatch.setattr(user, "USERS_LIST_TIMEOUT_SECONDS", "3.5")
+    assert user._get_users_list_timeout_seconds() == 3.5
+
+    monkeypatch.setattr(user, "USERS_LIST_TIMEOUT_SECONDS", "-10")
+    assert user._get_users_list_timeout_seconds() == 0
+
+    monkeypatch.setattr(user, "USERS_LIST_TIMEOUT_SECONDS", "not-a-number")
+    assert user._get_users_list_timeout_seconds() == 0
+
+
+def test_user_list_timeout_guard_recognizes_mysql_interrupt():
+    from app.routers import user
+
+    guard = user._UsersListTimeoutGuard(Mock(), timeout_seconds=1, kill_query=True)
+    exc = SimpleNamespace(orig=SimpleNamespace(args=(1317, "Query execution was interrupted")))
+
+    assert guard.interrupted_error(exc) is True
+
+
+def test_user_list_subscription_urls_flag_can_skip_link_building(monkeypatch):
+    from app.services import user_service
+
+    build_subscription_links = Mock()
+    monkeypatch.setattr(user_service, "USERS_LIST_SUBSCRIPTION_URLS_ENABLED", False)
+    monkeypatch.setattr(user_service, "build_subscription_links", build_subscription_links)
+
+    item = user_service._map_raw_to_list_item(
+        {
+            "username": "test-user",
+            "credential_key": "test-key",
+            "status": "active",
+            "used_traffic": 0,
+            "lifetime_used_traffic": 0,
+            "created_at": "2026-01-01T00:00:00",
+        }
+    )
+
+    build_subscription_links.assert_not_called()
+    assert item.subscription_url == ""
+    assert item.subscription_urls == {}
