@@ -5,6 +5,7 @@ Routers call into this module to apply user business rules and build API respons
 """
 
 import json
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Union
@@ -21,6 +22,12 @@ from app.utils.credentials import UUID_PROTOCOLS, uuid_to_key
 from app.services.data_access import get_inbounds_by_tag_cached, get_service_host_map_cached
 from app.db.models import ServiceHostLink
 from app.db.crud.user import ONLINE_ACTIVE_WINDOW, OFFLINE_STALE_WINDOW, UPDATE_STALE_WINDOW, STATUS_FILTER_MAP
+
+
+def _log_users_step(step: str, started_at: float) -> None:
+    elapsed = time.perf_counter() - started_at
+    if elapsed >= 0.5:
+        logger.info("USERS: %s finished in %.3f s", step, elapsed)
 
 
 def _compute_subscription_links(
@@ -530,6 +537,7 @@ def get_users_list_db_only(
 ) -> UsersResponse:
     """Build a user list directly from database queries."""
     if include_links:
+        step_started = time.perf_counter()
         users, count = crud.get_users(
             db=db,
             offset=offset,
@@ -545,7 +553,9 @@ def get_users_list_db_only(
             return_with_count=True,
             force_db=True,
         )
+        _log_users_step("list-fetch-with-links", step_started)
 
+        step_started = time.perf_counter()
         for user in users:
             _apply_pending_usage_to_model(user)
         link_context = _build_links_context(db, users)
@@ -558,7 +568,9 @@ def get_users_list_db_only(
             )
             for u in users
         ]
+        _log_users_step("list-map-with-links", step_started)
     else:
+        step_started = time.perf_counter()
         users, count = crud.get_users_list_rows(
             db=db,
             offset=offset,
@@ -573,7 +585,9 @@ def get_users_list_db_only(
             admins=owners,
             return_with_count=True,
         )
+        _log_users_step("list-fetch-rows", step_started)
 
+        step_started = time.perf_counter()
         for user in users:
             _apply_pending_usage_to_dict(user)
         admin_lookup = _build_admin_lookup(db, users)
@@ -586,10 +600,14 @@ def get_users_list_db_only(
             )
             for u in users
         ]
+        _log_users_step("list-map-rows", step_started)
 
     if active_total is None and dbadmin:
+        step_started = time.perf_counter()
         active_total = crud.get_users_count(db, status=UserStatus.active, admin=dbadmin)
+        _log_users_step("active-total", step_started)
 
+    step_started = time.perf_counter()
     status_breakdown = crud.get_users_status_breakdown(
         db=db,
         search=search,
@@ -599,6 +617,8 @@ def get_users_list_db_only(
         advanced_filters=advanced_filters,
         service_id=service_id,
     )
+    _log_users_step("status-breakdown", step_started)
+    step_started = time.perf_counter()
     usage_total = crud.get_users_usage_sum(
         db=db,
         search=search,
@@ -608,6 +628,8 @@ def get_users_list_db_only(
         advanced_filters=advanced_filters,
         service_id=service_id,
     )
+    _log_users_step("usage-total", step_started)
+    step_started = time.perf_counter()
     online_total = crud.get_users_online_count(
         db=db,
         search=search,
@@ -617,6 +639,7 @@ def get_users_list_db_only(
         advanced_filters=advanced_filters,
         service_id=service_id,
     )
+    _log_users_step("online-total", step_started)
 
     return UsersResponse(
         users=items,

@@ -178,6 +178,8 @@ USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS = config(
     "USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS", default=False, cast=_cast_bool_compat
 )
 USERS_LIST_LINKS_ENABLED = config("USERS_LIST_LINKS_ENABLED", default=True, cast=_cast_bool_compat)
+USERS_LIST_TIMEOUT_SECONDS = config("USERS_LIST_TIMEOUT_SECONDS", default=0, cast=float)
+USERS_LIST_TIMEOUT_KILL_QUERY = config("USERS_LIST_TIMEOUT_KILL_QUERY", default=True, cast=_cast_bool_compat)
 
 
 # USERNAME: PASSWORD
