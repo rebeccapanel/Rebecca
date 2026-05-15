@@ -104,7 +104,7 @@ def test_user_list_timeout_guard_recognizes_mysql_interrupt():
     assert guard.interrupted_error(exc) is True
 
 
-def test_user_list_subscription_urls_flag_can_skip_link_building(monkeypatch):
+def test_user_list_subscription_urls_flag_keeps_primary_link(monkeypatch):
     from app.services import user_service
 
     build_subscription_links = Mock()
@@ -119,9 +119,13 @@ def test_user_list_subscription_urls_flag_can_skip_link_building(monkeypatch):
             "used_traffic": 0,
             "lifetime_used_traffic": 0,
             "created_at": "2026-01-01T00:00:00",
-        }
+        },
+        list_link_context={
+            "default_subscription_type": "key",
+            "settings_by_admin_id": {},
+        },
     )
 
     build_subscription_links.assert_not_called()
-    assert item.subscription_url == ""
-    assert item.subscription_urls == {}
+    assert item.subscription_url == "/sub/test-key"
+    assert item.subscription_urls == {"key": "/sub/test-key"}
