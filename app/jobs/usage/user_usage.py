@@ -2,6 +2,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from itertools import islice
+import time
 from typing import Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import and_, bindparam, case, func, insert, or_, select, text, update
@@ -23,6 +24,9 @@ from config import (
     JOB_RECORD_USER_USAGE_WORKERS,
     JOB_USAGE_DB_LOCK_WAIT_TIMEOUT,
     JOB_USAGE_DB_MAX_RETRIES,
+    JOB_USAGE_DUE_ENFORCE_BATCH_SIZE,
+    JOB_USAGE_DUE_ENFORCE_MAX_BATCHES,
+    JOB_USAGE_DUE_ENFORCE_TIME_BUDGET,
     JOB_USAGE_ENFORCE_BATCH_SIZE,
     JOB_USAGE_WRITE_BATCH_SIZE,
 )
@@ -413,21 +417,38 @@ def _get_due_active_user_ids(
     return [int(row[0]) for row in rows if row and row[0] is not None]
 
 
-def _enforce_due_active_users(db, *, batch_size: int = 500) -> int:
+def _enforce_due_active_users(
+    db,
+    *,
+    batch_size: int = 500,
+    max_batches: int = 1,
+    time_budget_seconds: int = 5,
+) -> int:
     """
     Enforce limit/expiry for due active users even without fresh usage samples.
     This prevents users from staying active until their next connection.
     """
+    batch_size = max(int(batch_size or 0), 0)
+    max_batches = max(int(max_batches or 0), 0)
+    time_budget_seconds = max(int(time_budget_seconds or 0), 0)
+    if batch_size <= 0 or max_batches <= 0:
+        return 0
+
     now_ts = datetime.now(timezone.utc).timestamp()
     changed_total = 0
     last_id: Optional[int] = None
+    batches = 0
+    deadline = time.monotonic() + time_budget_seconds if time_budget_seconds else None
 
-    while True:
+    while batches < max_batches:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         due_ids = _get_due_active_user_ids(db, now_ts=now_ts, batch_size=batch_size, after_id=last_id)
         if not due_ids:
             break
 
         changed_total += len(_enforce_user_limits_and_expiry(db, due_ids))
+        batches += 1
         last_id = due_ids[-1]
 
         if len(due_ids) < batch_size:
@@ -459,16 +480,32 @@ def _get_due_active_admin_ids(
     return [int(row[0]) for row in rows if row and row[0] is not None]
 
 
-def _enforce_due_active_admins(db, *, batch_size: int = 500) -> int:
+def _enforce_due_active_admins(
+    db,
+    *,
+    batch_size: int = 500,
+    max_batches: int = 1,
+    time_budget_seconds: int = 5,
+) -> int:
     """
     Enforce time-limit expiry for admins even if no admin/user edit request happens.
     This keeps account status aligned with the configured admin expiration timestamp.
     """
+    batch_size = max(int(batch_size or 0), 0)
+    max_batches = max(int(max_batches or 0), 0)
+    time_budget_seconds = max(int(time_budget_seconds or 0), 0)
+    if batch_size <= 0 or max_batches <= 0:
+        return 0
+
     now_ts = datetime.now(timezone.utc).timestamp()
     changed_total = 0
     last_id: Optional[int] = None
+    batches = 0
+    deadline = time.monotonic() + time_budget_seconds if time_budget_seconds else None
 
-    while True:
+    while batches < max_batches:
+        if deadline is not None and time.monotonic() >= deadline:
+            break
         due_ids = _get_due_active_admin_ids(db, now_ts=now_ts, batch_size=batch_size, after_id=last_id)
         if not due_ids:
             break
@@ -483,6 +520,7 @@ def _enforce_due_active_admins(db, *, batch_size: int = 500) -> int:
         if batch_changed:
             db.commit()
 
+        batches += 1
         last_id = due_ids[-1]
         if len(due_ids) < batch_size:
             break
@@ -738,8 +776,18 @@ def record_user_usages():
     # Always enforce due limits/expiry first, even if no current usage was collected.
     try:
         with GetDB() as db:
-            _enforce_due_active_admins(db)
-            _enforce_due_active_users(db)
+            _enforce_due_active_admins(
+                db,
+                batch_size=JOB_USAGE_DUE_ENFORCE_BATCH_SIZE,
+                max_batches=JOB_USAGE_DUE_ENFORCE_MAX_BATCHES,
+                time_budget_seconds=JOB_USAGE_DUE_ENFORCE_TIME_BUDGET,
+            )
+            _enforce_due_active_users(
+                db,
+                batch_size=JOB_USAGE_DUE_ENFORCE_BATCH_SIZE,
+                max_batches=JOB_USAGE_DUE_ENFORCE_MAX_BATCHES,
+                time_budget_seconds=JOB_USAGE_DUE_ENFORCE_TIME_BUDGET,
+            )
     except Exception as exc:  # pragma: no cover - best-effort
         logger.warning(f"Failed to enforce due active account limits/expiry: {exc}")
 

@@ -182,6 +182,31 @@ def test_collect_usage_params_uses_pending_memory_when_node_times_out(monkeypatc
     usage_delivery_buffer.clear()
 
 
+def test_due_active_user_enforcement_honors_batch_budget(monkeypatch):
+    batches = [[1, 2], [3, 4]]
+    enforced = []
+
+    def fake_due_ids(db, *, now_ts=None, batch_size=500, after_id=None):
+        return batches.pop(0) if batches else []
+
+    def fake_enforce(db, user_ids):
+        enforced.append(list(user_ids))
+        return []
+
+    monkeypatch.setattr(user_usage, "_get_due_active_user_ids", fake_due_ids)
+    monkeypatch.setattr(user_usage, "_enforce_user_limits_and_expiry", fake_enforce)
+
+    changed = user_usage._enforce_due_active_users(
+        object(),
+        batch_size=2,
+        max_batches=1,
+        time_budget_seconds=60,
+    )
+
+    assert changed == 0
+    assert enforced == [[1, 2]]
+
+
 def test_node_outbound_usage_replaces_cumulative_node_batches(monkeypatch):
     usage_delivery_buffer.clear()
 
