@@ -175,3 +175,4 @@ dashboard/build/
 
 .tmp*
 tmp/
+artifacts/
