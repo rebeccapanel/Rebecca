@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from tests.conftest import TestingSessionLocal
 from app.db import crud
+from app.db.models import User
 from app.db.crud.proxy import ProxyInboundRepository
 from app.models.user import UserStatus
 from app.models.proxy import ProxyHost
@@ -88,6 +89,33 @@ def test_get_users(auth_client: TestClient):
     assert response.status_code == 200
     data = response.json()
     assert "users" in data
+
+
+def test_online_filter_uses_recent_traffic_window():
+    prefix = f"online_window_{uuid4().hex[:8]}"
+    fresh_username = f"{prefix}_fresh"
+    stale_username = f"{prefix}_stale"
+
+    now = datetime.now(timezone.utc)
+    db = TestingSessionLocal()
+    try:
+        db.add_all(
+            [
+                User(username=fresh_username, status=UserStatus.active, online_at=now),
+                User(
+                    username=stale_username,
+                    status=UserStatus.active,
+                    online_at=now - crud.ONLINE_ACTIVE_WINDOW - timedelta(seconds=1),
+                ),
+            ]
+        )
+        db.commit()
+
+        online_total = crud.get_users_online_count(db, search=prefix, advanced_filters=["online"])
+        assert online_total == 1
+        assert crud.ONLINE_ACTIVE_WINDOW <= timedelta(seconds=20)
+    finally:
+        db.close()
 
 
 def test_delete_user(auth_client: TestClient):
