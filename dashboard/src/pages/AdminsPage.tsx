@@ -21,7 +21,7 @@ export const AdminsPage: FC = () => {
 
 	useEffect(() => {
 		if (canViewAdmins) {
-			fetchAdmins();
+			fetchAdmins(undefined, { force: true });
 		}
 	}, [fetchAdmins, canViewAdmins]);
 

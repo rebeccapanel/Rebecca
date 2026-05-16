@@ -46,7 +46,7 @@ import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
 import type React from "react";
-import { type FC, useEffect, useState } from "react";
+import { type FC, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	AdminManagementPermission,
@@ -137,23 +137,6 @@ const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
 
 export type FilterProps = { for?: "users" | "admins" } & BoxProps;
 
-const setSearchField = debounce(
-	(search: string, target: "users" | "admins") => {
-		if (target === "users") {
-			useDashboard.getState().onFilterChange({
-				search,
-				offset: 0,
-			});
-		} else {
-			useAdminsStore.getState().onFilterChange({
-				search,
-				offset: 0,
-			});
-		}
-	},
-	300,
-);
-
 export const Filters: FC<FilterProps> = ({
 	for: target = "users",
 	...props
@@ -191,9 +174,7 @@ export const Filters: FC<FilterProps> = ({
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Create]);
 	const showCreateButton =
 		target === "users"
-			? canCreateUsers &&
-				!isCurrentAdminDisabled &&
-				!userManagementLocked
+			? canCreateUsers && !isCurrentAdminDisabled && !userManagementLocked
 			: canManageAdmins;
 
 	const loading = target === "users" ? usersLoading : adminsLoading;
@@ -205,16 +186,39 @@ export const Filters: FC<FilterProps> = ({
 	const serviceId = userFiltersOnly?.serviceId;
 	const ownerFilter = userFiltersOnly?.owner;
 	const { services, fetchServices } = useServicesStore();
+	const debouncedSearchChange = useMemo(
+		() =>
+			debounce((nextSearch: string) => {
+				if (isUserFilters) {
+					onUserFilterChange({
+						search: nextSearch,
+						offset: 0,
+					});
+				} else {
+					onAdminFilterChange({
+						search: nextSearch,
+						offset: 0,
+					});
+				}
+			}, 300),
+		[isUserFilters, onAdminFilterChange, onUserFilterChange],
+	);
+
+	useEffect(() => {
+		return () => {
+			debouncedSearchChange.cancel();
+		};
+	}, [debouncedSearchChange]);
 
 	useEffect(() => {
 		fetchServices({ limit: 500 });
 	}, [fetchServices]);
 
 	useEffect(() => {
-		if (hasPrivilegedRole) {
-			fetchAdmins({ limit: 200, offset: 0 });
+		if (isUserFilters && hasPrivilegedRole) {
+			fetchAdmins({ search: "", limit: 200, offset: 0, sort: "username" });
 		}
-	}, [fetchAdmins, hasPrivilegedRole]);
+	}, [fetchAdmins, hasPrivilegedRole, isUserFilters]);
 
 	useEffect(() => {
 		const nextSearch = isUserFilters
@@ -269,9 +273,10 @@ export const Filters: FC<FilterProps> = ({
 
 	const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setSearch(e.target.value);
-		setSearchField(e.target.value, target);
+		debouncedSearchChange(e.target.value);
 	};
 	const clear = () => {
+		debouncedSearchChange.cancel();
 		setSearch("");
 		if (isUserFilters) {
 			onUserFilterChange({
@@ -291,7 +296,7 @@ export const Filters: FC<FilterProps> = ({
 		if (target === "users") {
 			refetchUsers(true);
 		} else {
-			fetchAdmins();
+			fetchAdmins(undefined, { force: true });
 		}
 	};
 

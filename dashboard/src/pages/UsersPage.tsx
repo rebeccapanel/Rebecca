@@ -19,7 +19,7 @@ export const UsersPage: FC = () => {
 	const mutedColor = useColorModeValue("gray.600", "gray.400");
 
 	useEffect(() => {
-		useDashboard.getState().refetchUsers();
+		useDashboard.getState().refetchUsers(true);
 		fetchInbounds();
 	}, []);
 

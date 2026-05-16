@@ -9,8 +9,8 @@ import type {
 	UserListItem,
 	UsersListResponse,
 } from "types/User";
-import { queryClient } from "utils/react-query";
 import { getAuthToken } from "utils/authStorage";
+import { queryClient } from "utils/react-query";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -86,6 +86,80 @@ const buildUsersCacheKey = (query: FilterType): string => {
 	);
 };
 
+const isAbortError = (error: unknown): boolean => {
+	if (!error || typeof error !== "object") {
+		return false;
+	}
+	const maybeError = error as { name?: string; message?: string };
+	return (
+		maybeError.name === "AbortError" || maybeError.message === "AbortError"
+	);
+};
+
+const getUserSearchRank = (user: UserListItem, search: string): number => {
+	const normalizedSearch = search.trim().toLowerCase();
+	if (!normalizedSearch) {
+		return Number.MAX_SAFE_INTEGER;
+	}
+	const username = user.username?.toLowerCase() ?? "";
+	if (username === normalizedSearch) {
+		return 0;
+	}
+	if (username.includes(normalizedSearch)) {
+		return 1;
+	}
+	const searchableValues = [
+		user.subscription_url,
+		...(user.subscription_urls ? Object.values(user.subscription_urls) : []),
+		...(user.links ?? []),
+		user.service_name,
+		user.admin_username,
+	]
+		.filter((value): value is string => Boolean(value))
+		.map((value) => value.toLowerCase());
+	return searchableValues.some((value) => value.includes(normalizedSearch))
+		? 2
+		: Number.MAX_SAFE_INTEGER;
+};
+
+const normalizeUsersListResponse = (
+	response: UsersListResponse,
+	query: FilterType,
+): UsersListResponse => {
+	const seen = new Set<string>();
+	let users = (response.users ?? []).filter((user) => {
+		const key = user.username || user.subscription_url;
+		if (!key || seen.has(key)) {
+			return false;
+		}
+		seen.add(key);
+		return true;
+	});
+	const total = response.total ?? users.length;
+	const search = query.search?.trim();
+	if (search && users.length > total) {
+		const rankedMatches = users
+			.map((user, index) => ({
+				user,
+				index,
+				rank: getUserSearchRank(user, search),
+			}))
+			.filter((entry) => entry.rank < Number.MAX_SAFE_INTEGER)
+			.sort((a, b) => a.rank - b.rank || a.index - b.index)
+			.map((entry) => entry.user);
+		if (rankedMatches.length >= Math.max(total, 1)) {
+			users = rankedMatches.slice(0, Math.max(total, 0));
+		} else if (total >= 0) {
+			users = users.slice(0, total);
+		}
+	}
+	return {
+		...response,
+		users,
+		total,
+	};
+};
+
 export type InboundType = {
 	tag: string;
 	protocol: ProtocolType;
@@ -140,6 +214,7 @@ type DashboardStateType = {
 };
 
 let usersFetchSequence = 0;
+let usersAbortController: AbortController | null = null;
 
 const fetchUsers = (
 	query: FilterType,
@@ -163,6 +238,9 @@ const fetchUsers = (
 	}
 
 	const requestId = ++usersFetchSequence;
+	usersAbortController?.abort();
+	const abortController = new AbortController();
+	usersAbortController = abortController;
 	useDashboard.setState({ loading: true });
 	const requestQuery: Record<string, unknown> = {
 		...sanitizedQuery,
@@ -181,13 +259,20 @@ const fetchUsers = (
 	delete requestQuery.owner;
 	delete requestQuery.serviceId;
 
-	return fetch<UsersListResponse>("/users", { query: requestQuery })
+	return fetch<UsersListResponse>("/users", {
+		query: requestQuery,
+		signal: abortController.signal,
+	})
 		.then((usersResponse) => {
-			if (requestId !== usersFetchSequence) {
-				return usersResponse;
+			if (requestId !== usersFetchSequence || abortController.signal.aborted) {
+				return useDashboard.getState().users;
 			}
-			const limit = usersResponse.users_limit ?? null;
-			const activeTotal = usersResponse.active_total ?? null;
+			const normalizedResponse = normalizeUsersListResponse(
+				usersResponse,
+				sanitizedQuery,
+			);
+			const limit = normalizedResponse.users_limit ?? null;
+			const activeTotal = normalizedResponse.active_total ?? null;
 			const isUserLimitReached =
 				limit !== null &&
 				limit !== undefined &&
@@ -196,17 +281,40 @@ const fetchUsers = (
 					? activeTotal >= limit
 					: false;
 			useDashboard.setState({
-				users: usersResponse,
-				linkTemplates: usersResponse.link_templates, // Store link_templates separately for easy access
+				users: normalizedResponse,
+				linkTemplates: normalizedResponse.link_templates, // Store link_templates separately for easy access
 				isUserLimitReached,
 				lastUsersFetchAt: Date.now(),
 				usersCacheKey: cacheKey,
 				usersCacheAuthToken: currentAuthToken,
 			});
-			return usersResponse;
+			return normalizedResponse;
+		})
+		.catch((error) => {
+			if (
+				requestId !== usersFetchSequence ||
+				abortController.signal.aborted ||
+				isAbortError(error)
+			) {
+				return useDashboard.getState().users;
+			}
+			console.error("Failed to fetch users:", error);
+			const emptyResponse = createEmptyUsersResponse();
+			useDashboard.setState({
+				users: emptyResponse,
+				linkTemplates: undefined,
+				isUserLimitReached: false,
+				lastUsersFetchAt: null,
+				usersCacheKey: null,
+				usersCacheAuthToken: null,
+			});
+			return emptyResponse;
 		})
 		.finally(() => {
 			if (requestId === usersFetchSequence) {
+				if (usersAbortController === abortController) {
+					usersAbortController = null;
+				}
 				useDashboard.setState({ loading: false });
 			}
 		});
@@ -226,6 +334,8 @@ export const fetchInbounds = () => {
 
 export const clearDashboardCache = () => {
 	usersFetchSequence += 1;
+	usersAbortController?.abort();
+	usersAbortController = null;
 	useDashboard.setState({
 		users: createEmptyUsersResponse(),
 		linkTemplates: undefined,
@@ -298,7 +408,7 @@ export const useDashboard = create(
 					...filters,
 				},
 			});
-			get().refetchUsers();
+			get().refetchUsers(true);
 		},
 		setQRCode: (QRcodeLinks) => {
 			set({ QRcodeLinks });
