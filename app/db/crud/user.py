@@ -50,6 +50,7 @@ from app.models.user import (
 from app.utils.jwt import get_subscription_payload
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from config import (
+    ONLINE_ACTIVE_WINDOW_SECONDS,
     USERS_AUTODELETE_DAYS,
     XRAY_SUBSCRIPTION_PATH,
 )
@@ -176,7 +177,7 @@ UsersSortingOptions = Enum(
     },
 )
 
-ONLINE_ACTIVE_WINDOW = timedelta(minutes=5)
+ONLINE_ACTIVE_WINDOW = timedelta(seconds=max(1, ONLINE_ACTIVE_WINDOW_SECONDS))
 OFFLINE_STALE_WINDOW = timedelta(hours=24)
 UPDATE_STALE_WINDOW = timedelta(hours=24)
 _HEX_DIGITS = frozenset("0123456789abcdef")

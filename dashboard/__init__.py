@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from app import app
-from config import DEBUG, VITE_BASE_API, DASHBOARD_PATH
+from config import DEBUG, VITE_BASE_API, DASHBOARD_PATH, ONLINE_ACTIVE_WINDOW_SECONDS
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -50,7 +50,11 @@ def register_dashboard_login_redirects():
 def build():
     proc = subprocess.Popen(
         ["npm", "run", "build", "--", "--outDir", build_dir, "--assetsDir", "statics"],
-        env={**os.environ, "VITE_BASE_API": VITE_BASE_API},
+        env={
+            **os.environ,
+            "VITE_BASE_API": VITE_BASE_API,
+            "VITE_ONLINE_ACTIVE_WINDOW_SECONDS": str(ONLINE_ACTIVE_WINDOW_SECONDS),
+        },
         cwd=base_dir,
     )
     proc.wait()
@@ -74,7 +78,11 @@ def run_dev():
             "--base",
             os.path.join(DASHBOARD_PATH, ""),
         ],
-        env={**os.environ, "VITE_BASE_API": VITE_BASE_API},
+        env={
+            **os.environ,
+            "VITE_BASE_API": VITE_BASE_API,
+            "VITE_ONLINE_ACTIVE_WINDOW_SECONDS": str(ONLINE_ACTIVE_WINDOW_SECONDS),
+        },
         cwd=base_dir,
     )
 
