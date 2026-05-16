@@ -1,8 +1,8 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from functools import partial
 from typing import Union
 
-from sqlalchemy import and_, bindparam, insert, select, update
+from sqlalchemy import and_, bindparam, insert, select, text, update
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 
 from app.db import GetDB, crud
@@ -14,10 +14,28 @@ from app.jobs.usage.utils import hour_bucket, is_retryable_db_error, retry_delay
 from app.models.node import NodeResponse, NodeStatus
 from app.runtime import logger, xray
 from app.utils import report
-from config import DISABLE_RECORDING_NODE_USAGE
+from config import (
+    DISABLE_RECORDING_NODE_USAGE,
+    JOB_RECORD_NODE_USAGE_COLLECT_TIMEOUT,
+    JOB_RECORD_NODE_USAGE_WORKERS,
+    JOB_USAGE_DB_LOCK_WAIT_TIMEOUT,
+    JOB_USAGE_DB_MAX_RETRIES,
+)
 
 
 """Node and master usage pipeline: aggregate outbound stats, enforce limits, and persist to DB."""
+
+
+def _set_usage_lock_wait_timeout(db) -> None:
+    timeout = int(JOB_USAGE_DB_LOCK_WAIT_TIMEOUT or 0)
+    if timeout <= 0:
+        return
+    try:
+        if getattr(db.bind, "name", "") == "mysql":
+            db.execute(text("SET SESSION innodb_lock_wait_timeout = :timeout"), {"timeout": timeout})
+    except Exception as exc:  # pragma: no cover - advisory tuning only
+        logger.debug(f"Failed to set node usage DB lock wait timeout: {exc}")
+
 
 # region Limit helpers (node and master)
 
@@ -163,9 +181,7 @@ def record_node_stats(params: dict, node_id: Union[int, None]):
                     db, dbnode, total_up, total_down
                 )
         elif node_id is None and (total_up or total_down):
-            limited_triggered, limit_cleared, status_change_payload = _update_master_limits(
-                db, total_up, total_down
-            )
+            limited_triggered, limit_cleared, status_change_payload = _update_master_limits(db, total_up, total_down)
 
     if status_change_payload:
         node_resp, prev_status = status_change_payload
@@ -190,9 +206,7 @@ def _persist_node_stats_in_session(db, params: list, node_id: Union[int, None], 
     total_up = sum(item.get("up", 0) for item in params)
     total_down = sum(item.get("down", 0) for item in params)
 
-    usage_query = db.query(NodeUsage).filter(
-        and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at)
-    )
+    usage_query = db.query(NodeUsage).filter(and_(NodeUsage.node_id == node_id, NodeUsage.created_at == created_at))
     usage_row = usage_query.with_for_update().first()
     if usage_row is None:
         usage_row = NodeUsage(created_at=created_at, node_id=node_id, uplink=0, downlink=0)
@@ -213,13 +227,14 @@ def _persist_node_stats_in_session(db, params: list, node_id: Union[int, None], 
 
 
 def _persist_node_usage_batch(api_params: dict, total_up: int, total_down: int):
-    max_retries = 8
+    max_retries = max(int(JOB_USAGE_DB_MAX_RETRIES or 1), 1)
     tries = 0
     while True:
         created_at = hour_bucket()
         status_events = []
         try:
             with GetDB() as db:
+                _set_usage_lock_wait_timeout(db)
                 stmt = update(System).values(uplink=System.uplink + total_up, downlink=System.downlink + total_down)
                 db.execute(stmt)
 
@@ -238,7 +253,9 @@ def _persist_node_usage_batch(api_params: dict, total_up: int, total_down: int):
             tries += 1
             if not is_retryable_db_error(exc) or tries >= max_retries:
                 raise
-            logger.warning("Retryable database error while recording node usage, retrying (%s/%s)...", tries, max_retries)
+            logger.warning(
+                "Retryable database error while recording node usage, retrying (%s/%s)...", tries, max_retries
+            )
             retry_delay(tries)
 
 
@@ -272,11 +289,18 @@ def record_node_usages():
         if node.connected and node.started:
             collectors[node_id] = partial(_collect_node_outbound_stats, node)
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {node_id: executor.submit(collector) for node_id, collector in collectors.items()}
+    if not collectors:
+        return
+
+    max_workers = max(1, min(int(JOB_RECORD_NODE_USAGE_WORKERS or 1), len(collectors)))
+    timeout = max(int(JOB_RECORD_NODE_USAGE_COLLECT_TIMEOUT or 1), 1)
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {executor.submit(collector): node_id for node_id, collector in collectors.items()}
+    done, pending = wait(futures.keys(), timeout=timeout)
     api_params = {}
     node_batches = {}
-    for node_id, future in futures.items():
+    for future in done:
+        node_id = futures[future]
         try:
             result = future.result()
             node_batch_id = ""
@@ -292,6 +316,20 @@ def record_node_usages():
             logger.warning(f"Failed to get outbound stats from node {node_id}: {exc}")
             api_params[node_id] = usage_delivery_buffer.pending_outbound_stats(node_id)
 
+    for future in pending:
+        node_id = futures[future]
+        logger.warning(f"Timed out getting outbound stats from node {node_id} after {timeout}s")
+        api_params[node_id] = usage_delivery_buffer.pending_outbound_stats(node_id)
+        try:
+            future.cancel()
+        except Exception:
+            pass
+
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except TypeError:
+        executor.shutdown(wait=False)
+
     total_up = 0
     total_down = 0
     for node_id, params in api_params.items():
@@ -304,7 +342,18 @@ def record_node_usages():
         _ack_node_outbound_batches(node_batches)
         return
 
-    status_events = _persist_node_usage_batch(api_params, total_up, total_down)
+    try:
+        status_events = _persist_node_usage_batch(api_params, total_up, total_down)
+    except (OperationalError, SQLTimeoutError) as exc:
+        if is_retryable_db_error(exc):
+            sample_count = sum(len(params or []) for params in api_params.values())
+            logger.warning(
+                "Deferred node usage write after retryable database error; %s samples remain in memory: %s",
+                sample_count,
+                exc,
+            )
+            return
+        raise
     usage_delivery_buffer.ack_outbound_stats_for(api_params.keys(), node_batches)
     _ack_node_outbound_batches(node_batches)
     _dispatch_node_limit_events(status_events)

@@ -1,9 +1,10 @@
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timezone
+from itertools import islice
 from typing import Dict, List, Optional, Tuple, Union
 
-from sqlalchemy import and_, bindparam, case, func, insert, or_, select, update
+from sqlalchemy import and_, bindparam, case, func, insert, or_, select, text, update
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 from sqlalchemy.orm import selectinload
 
@@ -16,10 +17,44 @@ from app.models.admin import Admin as AdminSchema, AdminStatus
 from app.models.user import UserResponse, UserStatus
 from app.runtime import logger, xray
 from app.utils import report
-from config import DISABLE_RECORDING_NODE_USAGE
+from config import (
+    DISABLE_RECORDING_NODE_USAGE,
+    JOB_RECORD_USER_USAGE_COLLECT_TIMEOUT,
+    JOB_RECORD_USER_USAGE_WORKERS,
+    JOB_USAGE_DB_LOCK_WAIT_TIMEOUT,
+    JOB_USAGE_DB_MAX_RETRIES,
+    JOB_USAGE_ENFORCE_BATCH_SIZE,
+    JOB_USAGE_WRITE_BATCH_SIZE,
+)
 
 
 """User/admin/service usage pipeline: collect, aggregate, and persist usage in the database."""
+
+
+def _chunked(items, size: int):
+    iterator = iter(items)
+    size = max(int(size or 1), 1)
+    while chunk := list(islice(iterator, size)):
+        yield chunk
+
+
+def _execute_in_chunks(connection, stmt, params, *, batch_size: int):
+    if not params:
+        return
+    for chunk in _chunked(params, batch_size):
+        connection.execute(stmt, chunk)
+
+
+def _set_usage_lock_wait_timeout(db) -> None:
+    timeout = int(JOB_USAGE_DB_LOCK_WAIT_TIMEOUT or 0)
+    if timeout <= 0:
+        return
+    try:
+        if getattr(db.bind, "name", "") == "mysql":
+            db.execute(text("SET SESSION innodb_lock_wait_timeout = :timeout"), {"timeout": timeout})
+    except Exception as exc:  # pragma: no cover - advisory tuning only
+        logger.debug(f"Failed to set usage DB lock wait timeout: {exc}")
+
 
 # region Collect & aggregate per-user stats from Xray
 
@@ -91,14 +126,18 @@ def _collect_usage_params(api_instances):
     if not api_instances:
         return {}, {}
 
-    executor = ThreadPoolExecutor(max_workers=10)
-    futures = {node_id: executor.submit(_collect_user_stats, source) for node_id, source in api_instances.items()}
+    max_workers = max(1, min(int(JOB_RECORD_USER_USAGE_WORKERS or 1), len(api_instances)))
+    timeout = max(int(JOB_RECORD_USER_USAGE_COLLECT_TIMEOUT or 1), 1)
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {executor.submit(_collect_user_stats, source): node_id for node_id, source in api_instances.items()}
+    done, pending = wait(futures.keys(), timeout=timeout)
 
     api_params = {}
     node_batches = {}
-    for node_id, future in futures.items():
+    for future in done:
+        node_id = futures[future]
         try:
-            result = future.result(timeout=30)
+            result = future.result()
             node_batch_id = ""
             if isinstance(result, dict):
                 node_batch_id = result.get("node_batch_id") or ""
@@ -115,6 +154,15 @@ def _collect_usage_params(api_instances):
                 future.cancel()
             except Exception:
                 pass
+
+    for future in pending:
+        node_id = futures[future]
+        logger.warning(f"Timed out getting user usage stats from node {node_id} after {timeout}s")
+        api_params[node_id] = usage_delivery_buffer.pending_user_stats(node_id)
+        try:
+            future.cancel()
+        except Exception:
+            pass
 
     try:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -490,12 +538,54 @@ def record_user_stats(params: list, node_id: Union[int, None], consumption_facto
 # region Admin/Service aggregates and persistence
 
 
+def _usage_enforcement_candidates(db, user_ids: List[int], *, batch_size: int = 500) -> List[int]:
+    """Return only users whose status may change after the fresh usage update."""
+    if not user_ids:
+        return []
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    candidate_ids: list[int] = []
+    seen: set[int] = set()
+    for chunk in _chunked([int(uid) for uid in user_ids if uid], batch_size):
+        rows = (
+            db.query(User.id)
+            .filter(
+                User.id.in_(chunk),
+                or_(
+                    User.status == UserStatus.on_hold,
+                    and_(
+                        User.status == UserStatus.active,
+                        User.expire.isnot(None),
+                        User.expire > 0,
+                        User.expire <= now_ts,
+                    ),
+                    and_(
+                        User.status == UserStatus.active,
+                        User.data_limit.isnot(None),
+                        User.data_limit > 0,
+                        func.coalesce(User.used_traffic, 0) >= User.data_limit,
+                    ),
+                ),
+            )
+            .all()
+        )
+        for row in rows:
+            user_id = int(row[0])
+            if user_id not in seen:
+                seen.add(user_id)
+                candidate_ids.append(user_id)
+
+    return candidate_ids
+
+
 def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_service_usage):
     # DB path: apply deltas to users, admins, services, and admin-service links.
     admin_limit_events = []
 
     with GetDB() as db:
+        _set_usage_lock_wait_timeout(db)
         connection = db.connection()
+        user_ids = [int(usage["uid"]) for usage in users_usage if usage.get("uid")]
         stmt = (
             update(User)
             .where(User.id == bindparam("uid"))
@@ -510,7 +600,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 ),
             )
         )
-        connection.execute(stmt, users_usage)
+        _execute_in_chunks(connection, stmt, users_usage, batch_size=JOB_USAGE_WRITE_BATCH_SIZE)
 
         admin_data = [{"admin_id": admin_id, "value": value} for admin_id, value in admin_usage.items()]
         if admin_data:
@@ -539,9 +629,11 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                     lifetime_usage=Admin.lifetime_usage + bindparam("value"),
                 )
             )
-            connection.execute(
+            _execute_in_chunks(
+                connection,
                 admin_update_stmt,
                 [{"b_admin_id": entry["admin_id"], "value": entry["value"]} for entry in admin_data],
+                batch_size=JOB_USAGE_WRITE_BATCH_SIZE,
             )
 
         if service_usage:
@@ -555,7 +647,7 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 )
             )
             service_params = [{"b_service_id": sid, "value": value} for sid, value in service_usage.items()]
-            connection.execute(service_update_stmt, service_params)
+            _execute_in_chunks(connection, service_update_stmt, service_params, batch_size=JOB_USAGE_WRITE_BATCH_SIZE)
 
         if admin_service_usage:
             admin_service_update_stmt = (
@@ -576,7 +668,12 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 {"b_admin_id": admin_id, "b_service_id": service_id, "value": value}
                 for (admin_id, service_id), value in admin_service_usage.items()
             ]
-            connection.execute(admin_service_update_stmt, admin_service_params)
+            _execute_in_chunks(
+                connection,
+                admin_service_update_stmt,
+                admin_service_params,
+                batch_size=JOB_USAGE_WRITE_BATCH_SIZE,
+            )
             for admin_id, service_id in admin_service_usage.keys():
                 link = (
                     db.query(AdminServiceLink)
@@ -593,14 +690,19 @@ def _apply_usage_to_db_once(users_usage, admin_usage, service_usage, admin_servi
                 crud.enforce_admin_data_limit(db, dbadmin)
 
         # Enforce per-user limits/expiry immediately using the freshly updated usage.
-        _enforce_user_limits_and_expiry(db, [int(usage["uid"]) for usage in users_usage if usage.get("uid")])
+        user_ids_to_enforce = _usage_enforcement_candidates(
+            db,
+            user_ids,
+            batch_size=JOB_USAGE_ENFORCE_BATCH_SIZE,
+        )
+        _enforce_user_limits_and_expiry(db, user_ids_to_enforce)
         db.commit()
 
     return admin_limit_events
 
 
 def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage):
-    max_retries = 8
+    max_retries = max(int(JOB_USAGE_DB_MAX_RETRIES or 1), 1)
     tries = 0
     while True:
         try:
@@ -609,8 +711,21 @@ def _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_us
             tries += 1
             if not is_retryable_db_error(exc) or tries >= max_retries:
                 raise
-            logger.warning("Retryable database error while recording user usage, retrying (%s/%s)...", tries, max_retries)
+            logger.warning(
+                "Retryable database error while recording user usage, retrying (%s/%s)...", tries, max_retries
+            )
             retry_delay(tries)
+
+
+def _log_deferred_usage_write(exc: Exception, api_params: dict) -> None:
+    sample_count = sum(len(params or []) for params in api_params.values())
+    node_count = len([node_id for node_id, params in api_params.items() if params])
+    logger.warning(
+        "Deferred user usage write after retryable database error; %s samples across %s nodes remain in memory: %s",
+        sample_count,
+        node_count,
+        exc,
+    )
 
 
 # endregion
@@ -640,7 +755,13 @@ def record_user_usages():
         return
 
     user_ids = [int(entry["uid"]) for entry in users_usage]
-    mapping = _load_user_mapping(user_ids)
+    try:
+        mapping = _load_user_mapping(user_ids)
+    except (OperationalError, SQLTimeoutError) as exc:
+        if is_retryable_db_error(exc):
+            _log_deferred_usage_write(exc, api_params)
+            return
+        raise
     users_usage, api_params = _filter_usage_for_runtime_users(users_usage, api_params, mapping)
     if not users_usage:
         usage_delivery_buffer.ack_user_stats_for(api_params.keys(), node_batches)
@@ -650,7 +771,13 @@ def record_user_usages():
     admin_usage, service_usage, admin_service_usage = _collect_admin_service_usage(users_usage, mapping)
 
     del user_ids
-    admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
+    try:
+        admin_limit_events = _apply_usage_to_db(users_usage, admin_usage, service_usage, admin_service_usage)
+    except (OperationalError, SQLTimeoutError) as exc:
+        if is_retryable_db_error(exc):
+            _log_deferred_usage_write(exc, api_params)
+            return
+        raise
 
     usage_delivery_buffer.ack_user_stats_for(api_params.keys(), node_batches)
     _ack_node_user_batches(node_batches)
