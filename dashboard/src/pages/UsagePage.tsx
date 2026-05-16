@@ -127,10 +127,21 @@ export const UsagePage: FC = () => {
 					borderColor={borderColor}
 					borderRadius="md"
 					bg={panelBg}
-					p={2}
-					gap={2}
+					p={{ base: 1, md: 2 }}
+					gap={{ base: 1.5, md: 2 }}
 					mb={4}
 					overflowX="auto"
+					overflowY="hidden"
+					flexWrap="nowrap"
+					maxW="full"
+					sx={{
+						WebkitOverflowScrolling: "touch",
+						overscrollBehaviorInline: "contain",
+						scrollbarWidth: "none",
+						scrollPaddingInline: "8px",
+						scrollSnapType: "x proximity",
+						"&::-webkit-scrollbar": { display: "none" },
+					}}
 				>
 					{[
 						t("usage.tabs.services", "Services"),
@@ -140,11 +151,14 @@ export const UsagePage: FC = () => {
 						<Tab
 							key={label}
 							borderRadius="md"
-							px={4}
+							px={{ base: 3, md: 4 }}
 							py={2}
+							minH={{ base: "40px", md: "36px" }}
+							flexShrink={0}
 							fontWeight="semibold"
 							color="gray.500"
 							whiteSpace="nowrap"
+							sx={{ scrollSnapAlign: "start" }}
 							_selected={{ bg: activeTabBg, color: "white" }}
 							_dark={{ color: "gray.300" }}
 						>

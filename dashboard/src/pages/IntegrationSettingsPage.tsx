@@ -1468,6 +1468,27 @@ export const IntegrationSettingsPage = () => {
 						fontSize: "xs",
 						fontWeight: "semibold",
 					},
+				".master-settings-tabs": {
+					maxW: "full",
+					overflowX: "auto",
+					overflowY: "hidden",
+					flexWrap: "nowrap",
+					WebkitOverflowScrolling: "touch",
+					overscrollBehaviorInline: "contain",
+					scrollbarWidth: "none",
+					scrollPaddingInline: "8px",
+					scrollSnapType: "x proximity",
+				},
+				".master-settings-tabs::-webkit-scrollbar": {
+					display: "none",
+				},
+				".master-settings-tabs .chakra-tabs__tab": {
+					flexShrink: 0,
+					scrollSnapAlign: "start",
+					whiteSpace: "nowrap",
+					minH: { base: "40px", md: "36px" },
+					px: { base: 3, md: 4 },
+				},
 			}}
 		>
 			<Box
@@ -1497,12 +1518,13 @@ export const IntegrationSettingsPage = () => {
 				onChange={handleIntegrationTabChange}
 			>
 				<TabList
+					className="master-settings-tabs"
 					borderWidth="1px"
 					borderColor={borderColor}
 					borderRadius="md"
 					bg={panelBg}
-					p={2}
-					gap={2}
+					p={{ base: 1, md: 2 }}
+					gap={{ base: 1.5, md: 2 }}
 					mb={4}
 					overflowX="auto"
 				>

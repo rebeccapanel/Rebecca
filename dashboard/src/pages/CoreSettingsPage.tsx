@@ -402,7 +402,15 @@ const TableCard: FC<{ children: ReactNode }> = ({ children }) => {
 			bg={bg}
 			overflow="hidden"
 		>
-			<Box overflowX="auto">{children}</Box>
+			<Box
+				overflowX="auto"
+				sx={{
+					WebkitOverflowScrolling: "touch",
+					overscrollBehaviorInline: "contain",
+				}}
+			>
+				{children}
+			</Box>
 		</Box>
 	);
 };
@@ -2393,26 +2401,36 @@ export const CoreSettingsPage: FC = () => {
 			>
 				<TabList
 					overflowX="auto"
-					flexWrap={{ base: "wrap", md: "nowrap" }}
-					gap={2}
+					overflowY="hidden"
+					flexWrap="nowrap"
+					maxW="full"
+					gap={{ base: 1.5, md: 2 }}
 					bg={tabShellBg}
 					borderWidth="1px"
 					borderColor={pageShellBorder}
 					borderRadius="md"
-					p={1.5}
+					p={{ base: 1, md: 1.5 }}
 					sx={{
+						WebkitOverflowScrolling: "touch",
+						overscrollBehaviorInline: "contain",
+						scrollbarWidth: "none",
+						scrollPaddingInline: "8px",
+						scrollSnapType: "x proximity",
 						"&::-webkit-scrollbar": { display: "none" },
 						button: {
 							flexShrink: 0,
-							fontSize: "sm",
+							scrollSnapAlign: "start",
+							fontSize: { base: "xs", md: "sm" },
 							minW: "max-content",
-							px: 3,
+							minH: { base: "38px", md: "34px" },
+							px: { base: 2.5, md: 3 },
 							py: 1.5,
 							borderRadius: "md",
 							borderWidth: "1px",
 							borderColor: "transparent",
 							color: tabIdleColor,
 							fontWeight: "semibold",
+							whiteSpace: "nowrap",
 							transitionProperty: "common",
 							transitionDuration: "normal",
 							_hover: {
@@ -2427,11 +2445,6 @@ export const CoreSettingsPage: FC = () => {
 							},
 							"&[aria-selected=true] svg": {
 								color: tabActiveColor,
-							},
-							"@media (min-width: 48em)": {
-								fontSize: "sm",
-								px: 3,
-								py: 1.5,
 							},
 						},
 					}}
@@ -2485,7 +2498,7 @@ export const CoreSettingsPage: FC = () => {
 						</HStack>
 					</Tab>
 				</TabList>
-				<TabPanels mt={3}>
+				<TabPanels mt={{ base: 2, md: 3 }}>
 					<TabPanel p={0}>
 						<VStack spacing={4} align="stretch">
 							<VStack spacing={3} align="stretch">
