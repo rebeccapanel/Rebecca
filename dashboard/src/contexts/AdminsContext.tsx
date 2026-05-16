@@ -6,6 +6,7 @@ import type {
 	StandardAdminPermissionsBulkPayload,
 	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
+import { getAuthToken } from "utils/authStorage";
 import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 
@@ -21,6 +22,7 @@ type AdminsStore = {
 	total: number;
 	loading: boolean;
 	lastFetchedAt: number | null;
+	cacheAuthToken: string | null;
 	currentRequestKey: string | null;
 	inflight: Promise<void> | null;
 	filters: AdminFilters;
@@ -53,11 +55,75 @@ type AdminsStore = {
 	closeAdminDetails: () => void;
 };
 
-const defaultFilters: AdminFilters = {
+const createDefaultFilters = (): AdminFilters => ({
 	search: "",
 	limit: getAdminsPerPageLimitSize(),
 	offset: 0,
 	sort: "username",
+});
+
+const isAbortError = (error: unknown): boolean => {
+	if (!error || typeof error !== "object") {
+		return false;
+	}
+	const maybeError = error as { name?: string; message?: string };
+	return (
+		maybeError.name === "AbortError" || maybeError.message === "AbortError"
+	);
+};
+
+const normalizeAdminsResponse = (
+	admins: Admin[],
+	total: number,
+	filters: AdminFilters,
+): { admins: Admin[]; total: number } => {
+	const seen = new Set<string>();
+	let normalizedAdmins = admins.filter((admin) => {
+		const key = admin.username || String(admin.id);
+		if (!key || seen.has(key)) {
+			return false;
+		}
+		seen.add(key);
+		return true;
+	});
+	const search = filters.search?.trim().toLowerCase();
+	if (search && normalizedAdmins.length > total) {
+		const matching = normalizedAdmins.filter((admin) =>
+			admin.username.toLowerCase().includes(search),
+		);
+		if (matching.length >= Math.max(total, 1)) {
+			normalizedAdmins = matching.slice(0, Math.max(total, 0));
+		} else if (total >= 0) {
+			normalizedAdmins = normalizedAdmins.slice(0, total);
+		}
+	}
+	return {
+		admins: normalizedAdmins,
+		total,
+	};
+};
+
+let adminsFetchSequence = 0;
+let adminsAbortController: AbortController | null = null;
+
+export const clearAdminsCache = () => {
+	adminsFetchSequence += 1;
+	adminsAbortController?.abort();
+	adminsAbortController = null;
+	useAdminsStore.setState({
+		admins: [],
+		total: 0,
+		loading: false,
+		lastFetchedAt: null,
+		cacheAuthToken: null,
+		currentRequestKey: null,
+		inflight: null,
+		filters: createDefaultFilters(),
+		isAdminDialogOpen: false,
+		adminInDialog: null,
+		isAdminDetailsOpen: false,
+		adminInDetails: null,
+	});
 };
 
 export const useAdminsStore = create<AdminsStore>((set, get) => ({
@@ -65,9 +131,10 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 	total: 0,
 	loading: false,
 	lastFetchedAt: null,
+	cacheAuthToken: null,
 	currentRequestKey: null,
 	inflight: null,
-	filters: defaultFilters,
+	filters: createDefaultFilters(),
 	isAdminDialogOpen: false,
 	adminInDialog: null,
 	isAdminDetailsOpen: false,
@@ -76,23 +143,15 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		const {
 			filters: stateFilters,
 			lastFetchedAt,
+			cacheAuthToken,
 			loading,
 			currentRequestKey,
 			inflight,
 		} = get();
 		const now = Date.now();
 		const force = options?.force === true;
+		const currentAuthToken = getAuthToken();
 
-		// Throttle identical fetches to at most once per minute unless forced or filters changed
-		const hasOverrides = Boolean(overrides && Object.keys(overrides).length);
-		if (
-			!force &&
-			!hasOverrides &&
-			lastFetchedAt &&
-			now - lastFetchedAt < 60_000
-		) {
-			return;
-		}
 		const filters = {
 			...stateFilters,
 			...overrides,
@@ -125,21 +184,37 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			!force &&
 			lastFetchedAt &&
 			now - lastFetchedAt < 60_000 &&
+			cacheAuthToken === currentAuthToken &&
 			currentRequestKey === requestKey
 		) {
 			return;
 		}
 
+		const requestId = ++adminsFetchSequence;
+		adminsAbortController?.abort();
+		const abortController = new AbortController();
+		adminsAbortController = abortController;
 		set({ loading: true });
 		const promise = (async () => {
 			try {
 				const data = await fetch<{ admins: Admin[]; total: number } | Admin[]>(
 					"/admins",
-					{ query },
+					{ query, signal: abortController.signal },
 				);
-				const { admins, total } = Array.isArray(data)
+				if (
+					requestId !== adminsFetchSequence ||
+					abortController.signal.aborted
+				) {
+					return;
+				}
+				const parsed = Array.isArray(data)
 					? { admins: data, total: data.length }
 					: { admins: data.admins || [], total: data.total || 0 };
+				const { admins, total } = normalizeAdminsResponse(
+					parsed.admins,
+					parsed.total,
+					filters,
+				);
 
 				set((state) => {
 					const currentDetails = state.adminInDetails
@@ -152,20 +227,34 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 						total,
 						adminInDetails: currentDetails,
 						lastFetchedAt: now,
+						cacheAuthToken: currentAuthToken,
 						currentRequestKey: requestKey,
 					};
 				});
 			} catch (error) {
+				if (
+					requestId !== adminsFetchSequence ||
+					abortController.signal.aborted ||
+					isAbortError(error)
+				) {
+					return;
+				}
 				console.error("Failed to fetch admins:", error);
 				set({
 					admins: [],
 					total: 0,
 					adminInDetails: null,
-					lastFetchedAt: now,
-					currentRequestKey: requestKey,
+					lastFetchedAt: null,
+					cacheAuthToken: null,
+					currentRequestKey: null,
 				});
 			} finally {
-				set({ loading: false, inflight: null });
+				if (requestId === adminsFetchSequence) {
+					if (adminsAbortController === abortController) {
+						adminsAbortController = null;
+					}
+					set({ loading: false, inflight: null });
+				}
 			}
 		})();
 
@@ -181,13 +270,12 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		}));
 	},
 	onFilterChange(partial) {
-		set((state) => ({
-			filters: {
-				...state.filters,
-				...partial,
-			},
-		}));
-		get().fetchAdmins(partial, { force: true });
+		const filters = {
+			...get().filters,
+			...partial,
+		};
+		set({ filters });
+		get().fetchAdmins(undefined, { force: true });
 	},
 	async createAdmin(payload) {
 		const created = await fetch<Admin>("/admin", {
@@ -216,10 +304,13 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		await get().fetchAdmins(undefined, { force: true });
 	},
 	async resetDeletedUsersUsage(username, serviceId) {
-		await fetch(`/admin/${encodeURIComponent(username)}/deleted-users-usage/reset`, {
-			method: "POST",
-			body: { service_id: serviceId ?? null },
-		});
+		await fetch(
+			`/admin/${encodeURIComponent(username)}/deleted-users-usage/reset`,
+			{
+				method: "POST",
+				body: { service_id: serviceId ?? null },
+			},
+		);
 		await get().fetchAdmins(undefined, { force: true });
 	},
 	async disableAdmin(username, reason) {
