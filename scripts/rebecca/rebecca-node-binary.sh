@@ -647,9 +647,27 @@ detect_node_binary_arch() {
         amd64|x86_64)
             echo "amd64"
         ;;
+        arm64|aarch64)
+            echo "arm64"
+        ;;
+        i386|i486|i586|i686)
+            echo "386"
+        ;;
+        armv5l|armv5tel|armv5tejl)
+            echo "armv5"
+        ;;
+        armv6l|armv6)
+            echo "armv6"
+        ;;
+        armv7l|armv7)
+            echo "armv7"
+        ;;
+        s390x)
+            echo "s390x"
+        ;;
         *)
-            colorized_echo red "Rebecca-node binary install currently supports linux/amd64 only." >&2
-            colorized_echo yellow "Use Dockerized install on this architecture." >&2
+            colorized_echo red "Rebecca-node binary install is not available for architecture: $(uname -m)" >&2
+            colorized_echo yellow "Use Dockerized install for this server." >&2
             exit 1
         ;;
     esac
