@@ -68,7 +68,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    dialect = bind.dialect.name
     inspector = sa.inspect(bind)
 
     if _column_exists(inspector, "services", "flow"):

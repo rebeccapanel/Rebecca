@@ -6,6 +6,7 @@ from functools import partial
 
 from app.db import GetDB
 from app.db.models import Node, OutboundTraffic
+from app.jobs.usage.collectors import get_outbounds_stats, resolve_stats_api
 from app.jobs.usage.delivery_buffer import usage_delivery_buffer
 from app.runtime import xray
 from app.utils.outbound import extract_outbound_metadata, generate_outbound_id

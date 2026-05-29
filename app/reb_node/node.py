@@ -21,7 +21,11 @@ from websocket import (
 )
 
 from app.reb_node.config import XRayConfig
-from config import NODE_HEALTH_CACHE_SECONDS
+from config import (
+    JOB_RECORD_NODE_USAGE_COLLECT_TIMEOUT,
+    JOB_RECORD_USER_USAGE_COLLECT_TIMEOUT,
+    NODE_HEALTH_CACHE_SECONDS,
+)
 
 
 def _enum_or_raw_value(value):
@@ -221,6 +225,14 @@ def _as_float(value, default: float | None = None) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _bounded_usage_timeout(value: int | None, fallback: int) -> int:
+    try:
+        timeout = int(value or 0)
+    except (TypeError, ValueError):
+        timeout = 0
+    return max(timeout or fallback, 1)
 
 
 def _extract_certificate_identity(pem_data: str) -> str | None:

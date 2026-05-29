@@ -74,7 +74,7 @@ def upgrade() -> None:
                     if not is_duplicate_error:
                         raise
                     # Otherwise, silently ignore (index already exists)
-        except Exception as schema_error:
+        except Exception:
             # If information_schema query fails, fall back to inspector
             inspector = sa.inspect(bind)
             existing_indexes = {index['name'] for index in inspector.get_indexes('users')}
