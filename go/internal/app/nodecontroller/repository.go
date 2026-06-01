@@ -208,7 +208,7 @@ func (r Repository) ServiceAllowedTags(ctx context.Context) (map[int64]map[strin
 	rows, err := r.db.QueryContext(ctx, `
 SELECT sh.service_id, h.inbound_tag
 FROM service_hosts sh
-JOIN proxy_hosts h ON h.id = sh.host_id
+JOIN hosts h ON h.id = sh.host_id
 WHERE COALESCE(h.is_disabled, 0) = 0`)
 	if err != nil {
 		return nil, err
