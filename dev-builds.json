@@ -1,0 +1,34 @@
+{
+  "builds": [
+    {
+      "assets": {
+        "linux-amd64": {
+          "name": "rebecca-linux-amd64-dev-f68d087.tar.gz",
+          "sha256": "55b03771aaa91d1800c59b2fb41cee727b903eee2e66f57c0683682657b27446",
+          "size": 135504209,
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-f68d087.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "rebecca-windows-amd64-dev-f68d087.zip",
+          "sha256": "c351d40536fbdf43b75e258a38075c53e8f930e765936a9ae8cc429c5cb38771",
+          "size": 92476559,
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-f68d087.zip"
+        }
+      },
+      "branch": "dev",
+      "created_at": "2026-06-03T20:25:47Z",
+      "run_id": "26910595105",
+      "run_number": "240",
+      "sha": "f68d0878360c34ecd7ac1bfcc76f2353f9991710",
+      "short_sha": "f68d087",
+      "tag": "dev-f68d087",
+      "workflow": "Binary Build"
+    }
+  ],
+  "channel": "dev",
+  "latest": "dev-f68d087",
+  "project": "Rebecca",
+  "release_tag": "dev-builds",
+  "schema": 1,
+  "updated_at": "2026-06-03T20:25:47Z"
+}
