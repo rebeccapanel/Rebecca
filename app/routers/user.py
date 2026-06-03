@@ -40,6 +40,7 @@ from app.utils import report, responses
 from app.utils.credentials import ensure_user_credential_key
 from app.utils.request_context import get_request_origin, use_subscription_request_origin
 from app.utils.subscription_links import build_subscription_links
+from app import runtime as runtime_state
 from app.runtime import logger
 from app.services import metrics_service, node_operations
 from config import USERS_LIST_LINKS_ENABLED, USERS_LIST_TIMEOUT_KILL_QUERY, USERS_LIST_TIMEOUT_SECONDS
@@ -47,6 +48,11 @@ from config import USERS_LIST_LINKS_ENABLED, USERS_LIST_TIMEOUT_KILL_QUERY, USER
 # region Helpers
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
+
+# Compatibility target for older tests and import paths that patch inbound
+# metadata through app.routers.user.xray. Runtime node communication remains
+# owned by the Go Master API sidecar.
+xray = runtime_state.xray
 
 
 _AUTO_SERVICE_INBOUND_RE = re.compile(r"^setservice-(\d+)$", re.IGNORECASE)
