@@ -3,6 +3,30 @@
     {
       "assets": {
         "linux-amd64": {
+          "name": "rebecca-linux-amd64-dev-a62d29f.tar.gz",
+          "sha256": "33a4e455b0205c2a3fc69f6ede31f7c78f7a7176548e6c88bb9d8721185c5683",
+          "size": 135511008,
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-a62d29f.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "rebecca-windows-amd64-dev-a62d29f.zip",
+          "sha256": "281374ee87d33f5efcdee64900cc8d32ca346bb07cf2e88e3e793775017d3977",
+          "size": 92483136,
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-a62d29f.zip"
+        }
+      },
+      "branch": "dev",
+      "created_at": "2026-06-04T07:58:26Z",
+      "run_id": "26938543971",
+      "run_number": "247",
+      "sha": "a62d29f5f3cb7751c27930505c5453e976877b2f",
+      "short_sha": "a62d29f",
+      "tag": "dev-a62d29f",
+      "workflow": "Binary Build"
+    },
+    {
+      "assets": {
+        "linux-amd64": {
           "name": "rebecca-linux-amd64-dev-7d3550e.tar.gz",
           "sha256": "bfa21cf5381f0f24345a5ce91a23f14222b3f2a5a563b36de853f2f9db8d063d",
           "size": 135506730,
@@ -98,9 +122,9 @@
     }
   ],
   "channel": "dev",
-  "latest": "dev-7d3550e",
+  "latest": "dev-a62d29f",
   "project": "Rebecca",
   "release_tag": "dev-builds",
   "schema": 1,
-  "updated_at": "2026-06-03T22:05:32Z"
+  "updated_at": "2026-06-04T07:58:26Z"
 }
