@@ -161,8 +161,9 @@ const formValuesToRule = (values: RuleFormValues): RoutingRule => {
 
 	if (values.type) rule.type = values.type;
 	if (values.domainMatcher) rule.domainMatcher = values.domainMatcher;
-	if (values.outboundTags.length === 1) rule.outboundTag = values.outboundTags[0];
-	if (values.outboundTags.length > 1) rule.outboundTag = values.outboundTags;
+	const outboundTags = toTagArray(values.outboundTags);
+	if (outboundTags.length === 1) rule.outboundTag = outboundTags[0];
+	if (outboundTags.length > 1) rule.outboundTag = outboundTags;
 	if (values.balancerTag) rule.balancerTag = values.balancerTag;
 	if (values.inboundTags.length) rule.inboundTag = values.inboundTags;
 	if (values.networks.length) rule.network = values.networks;

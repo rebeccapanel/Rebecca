@@ -150,7 +150,7 @@ const compactActionButtonProps = {
 const serializeConfig = (value: any) => JSON.stringify(value ?? {});
 const formatList = (value: string | string[] | undefined) =>
 	Array.isArray(value) ? value.join(",") : (value ?? "");
-const toTagArray = (value?: string | string[]) => {
+const toTagArray = (value?: string | string[]): string[] => {
 	if (!value) return [];
 	const values = Array.isArray(value) ? value : [value];
 	return values
@@ -159,7 +159,7 @@ const toTagArray = (value?: string | string[]) => {
 };
 const hasTag = (value: string | string[] | undefined, tag: string) =>
 	toTagArray(value).includes(tag);
-const firstTag = (value?: string | string[]) => toTagArray(value)[0] ?? "";
+const firstTag = (value?: string | string[]): string => toTagArray(value)[0] ?? "";
 const normalizeSearchValue = (value: unknown): string => {
 	if (Array.isArray(value)) return value.map(normalizeSearchValue).join(" ");
 	if (value && typeof value === "object") return JSON.stringify(value);
@@ -740,7 +740,7 @@ export const CoreSettingsPage: FC = () => {
 	const buildRoutingRuleRows = useCallback(
 		(rules: RoutingRule[]) =>
 			rules.map((rule, index) => ({
-				key: `${index}-${rule.outboundTag ?? rule.balancerTag ?? "rule"}`,
+				key: `${index}-${formatList(rule.outboundTag) || rule.balancerTag || "rule"}`,
 				source: rule.source ?? [],
 				sourcePort: rule.sourcePort ?? [],
 				network: rule.network ?? [],
@@ -835,7 +835,7 @@ export const CoreSettingsPage: FC = () => {
 				) {
 					indices.push(index);
 				}
-				if (reverse.type === "portal" && rule.outboundTag === reverse.tag) {
+				if (reverse.type === "portal" && hasTag(rule.outboundTag, reverse.tag)) {
 					indices.push(index);
 				}
 				return indices;
@@ -887,7 +887,7 @@ export const CoreSettingsPage: FC = () => {
 						),
 				);
 			}
-			return rules.filter((rule) => rule.outboundTag !== reverse.tag);
+			return rules.filter((rule) => !hasTag(rule.outboundTag, reverse.tag));
 		},
 		[],
 	);
@@ -1891,17 +1891,18 @@ export const CoreSettingsPage: FC = () => {
 		const domainRule = domainRules[0];
 		const routeRule = routeRules[0];
 
-		return {
+		const initial: ReverseFormValues = {
 			type: editingReverseRow.type,
 			tag: editingReverseRow.tag,
 			domain: editingReverseRow.domain,
-			interconnectionOutboundTag: domainRule?.outboundTag ?? "",
-			outboundTag: routeRule?.outboundTag ?? "",
+			interconnectionOutboundTag: firstTag(domainRule?.outboundTag),
+			outboundTag: firstTag(routeRule?.outboundTag),
 			interconnectionInboundTags: domainRules.flatMap(
 				(rule) => rule.inboundTag ?? [],
 			),
 			inboundTags: routeRules.flatMap((rule) => rule.inboundTag ?? []),
 		};
+		return initial;
 	}, [canonicalRoutingRules, editingReverseRow, getReverseRules]);
 
 	const existingReverseTags = useMemo(
@@ -1978,7 +1979,7 @@ export const CoreSettingsPage: FC = () => {
 
 	const warpDomains = useMemo<string[]>(() => {
 		const rule = canonicalRoutingRules.find(
-			(routingRule) => routingRule.outboundTag === "warp",
+			(routingRule) => hasTag(routingRule.outboundTag, "warp"),
 		);
 		return Array.isArray(rule?.domain) ? rule.domain : [];
 	}, [canonicalRoutingRules]);
@@ -1992,7 +1993,7 @@ export const CoreSettingsPage: FC = () => {
 
 		const currentRules = getRoutingRules();
 		const existingIndex = currentRules.findIndex(
-			(rule) => rule.outboundTag === "warp",
+			(rule) => hasTag(rule.outboundTag, "warp"),
 		);
 
 		if (normalized.length === 0) {
@@ -2244,11 +2245,11 @@ export const CoreSettingsPage: FC = () => {
 		return {
 			interconnection:
 				reverse.type === "bridge"
-					? domainRules[0]?.outboundTag
+					? firstTag(domainRules[0]?.outboundTag)
 					: domainRules.flatMap((rule) => rule.inboundTag ?? []),
 			target:
 				reverse.type === "bridge"
-					? routeRules[0]?.outboundTag
+					? firstTag(routeRules[0]?.outboundTag)
 					: routeRules.flatMap((rule) => rule.inboundTag ?? []),
 		};
 	};
@@ -3060,7 +3061,7 @@ export const CoreSettingsPage: FC = () => {
 													<Td>{renderTextValue(rule.port)}</Td>
 													<Td>{renderChipList(rule.inboundTag, "teal")}</Td>
 													<Td>{renderChipList(rule.user, "cyan")}</Td>
-													<Td>{renderTextValue(rule.outboundTag)}</Td>
+													<Td>{renderChipList(rule.outboundTag, "orange")}</Td>
 													<Td>{renderTextValue(rule.balancerTag)}</Td>
 												</Tr>
 											),
