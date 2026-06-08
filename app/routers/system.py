@@ -4,7 +4,7 @@ import time
 from collections import deque
 
 import psutil
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends
 
 from app import __version__
 from app.db import Session, crud, get_db

@@ -19,9 +19,6 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from rebecca.common.serial import typed_message_pb2 as rebecca_dot_common_dot_serial_dot_typed__message__pb2
-from rebecca.common.net import port_pb2 as rebecca_dot_common_dot_net_dot_port__pb2
-from rebecca.common.net import network_pb2 as rebecca_dot_common_dot_net_dot_network__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(

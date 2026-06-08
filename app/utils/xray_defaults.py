@@ -7,7 +7,6 @@ import os
 
 import commentjson
 
-from config import XRAY_LOG_DIR, XRAY_ASSETS_PATH
 
 
 _DEFAULT_XRAY_CONFIG: dict[str, Any] = {

@@ -24,7 +24,7 @@ from app.db import models as db_models
 from app.models.proxy import ProxyTypes, ProxySettings
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
-from app.utils.credentials import runtime_proxy_settings, UUID_PROTOCOLS, normalize_flow_value
+from app.utils.credentials import runtime_proxy_settings, normalize_flow_value
 from app.utils.xray_defaults import (
     VERIFY_PEER_CERT_BY_NAME_MIN_VERSION,
     apply_log_paths,

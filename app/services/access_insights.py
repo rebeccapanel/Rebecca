@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import ipaddress
-import json
 import re
 import threading
-from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

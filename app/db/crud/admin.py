@@ -5,7 +5,7 @@ Functions for managing proxy hosts, users, user templates, nodes, and administra
 import logging
 import secrets
 from hashlib import sha256
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, case, func, or_, select, delete

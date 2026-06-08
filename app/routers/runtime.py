@@ -9,7 +9,6 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks, Request
 from starlette.websockets import WebSocketDisconnect
 
-from app.runtime import logger
 from app.services import access_insights, node_operations
 from app.db import Session, get_db, crud, GetDB
 from app.db.models import OutboundTraffic

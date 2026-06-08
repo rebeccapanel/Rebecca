@@ -13,7 +13,7 @@ from app.services.data_access import get_inbounds_by_tag_cached
 from app.utils.concurrency import threaded_function
 from app.db.models import Service, User
 from app.dependencies import validate_dates
-from app.models.admin import Admin, AdminRole, UserPermission
+from app.models.admin import Admin, AdminRole
 from app.models.service import (
     ServiceAdmin,
     ServiceBase,
@@ -31,10 +31,7 @@ from app.models.service import (
     ServiceDeletePayload,
 )
 from app.models.user import (
-    AdvancedUserAction,
-    BulkUsersActionRequest,
     UserResponse,
-    UserStatus,
     UsersResponse,
 )
 from app.utils import responses
