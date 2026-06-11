@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, Body, BackgroundTasks, Request
 from app.db import Session, get_db
 from app.models.admin import Admin
 from app.utils import responses
 
 router = APIRouter(tags=["Runtime"], prefix="/api", responses={401: responses._401})
 
+MASTER_TARGET_ID = "master"
 # TODO(go-access-insights): rebuild Access Insights in Go with node gRPC log
 # streaming, then remove these disabled compatibility endpoints.
 ACCESS_INSIGHTS_DISABLED_DETAIL = (
