@@ -3,7 +3,6 @@ from app.utils.request_context import capture_subscription_request_origin
 from . import (
     ads,
     home,
-    settings,
 )
 
 api_router = APIRouter()
@@ -11,7 +10,6 @@ api_router = APIRouter()
 routers = [
     ads.router,
     home.router,
-    settings.router,
 ]
 
 for router in routers:

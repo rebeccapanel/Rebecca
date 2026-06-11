@@ -89,6 +89,14 @@ func NewServer(cfg Config) (*Server, error) {
 			http.Error(w, "Telegram integration is temporarily disabled and tracked in TODO_GO_TELEGRAM.md.", http.StatusGone)
 			return
 		}
+		if isNativeSettingsRoute(r) {
+			if masterProxy == nil {
+				http.Error(w, "native Go Master API unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			masterProxy.ServeHTTP(w, r)
+			return
+		}
 		if isDeprecatedMasterNodeRoute(r) {
 			http.Error(w, "master node usage/runtime routes have been removed", http.StatusGone)
 			return
@@ -336,6 +344,44 @@ func deprecatedRuntimeRouteDetail(r *http.Request) string {
 func isDeprecatedTelegramSettingsRoute(r *http.Request) bool {
 	path := strings.TrimRight(r.URL.Path, "/")
 	return path == "/api/settings/telegram"
+}
+
+func isNativeSettingsRoute(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	path := strings.TrimRight(r.URL.Path, "/")
+	switch path {
+	case "/api/settings/panel":
+		return r.Method == http.MethodGet || r.Method == http.MethodPut
+	case "/api/settings/backup/export":
+		return r.Method == http.MethodGet
+	case "/api/settings/backup/import":
+		return r.Method == http.MethodPost
+	case "/api/settings/subscriptions":
+		return r.Method == http.MethodGet || r.Method == http.MethodPut
+	case "/api/settings/subscriptions/certificates/issue", "/api/settings/subscriptions/certificates/renew":
+		return r.Method == http.MethodPost
+	case "/api/settings/database/3xui/preview", "/api/settings/database/3xui/import":
+		return r.Method == http.MethodPost
+	}
+	if strings.HasPrefix(path, "/api/settings/subscriptions/admins/") {
+		rest := strings.TrimPrefix(path, "/api/settings/subscriptions/admins/")
+		if rest == "" || strings.Contains(rest, "/") {
+			return false
+		}
+		_, err := strconv.ParseInt(rest, 10, 64)
+		return err == nil && r.Method == http.MethodPut
+	}
+	if strings.HasPrefix(path, "/api/settings/subscriptions/templates/") {
+		rest := strings.TrimPrefix(path, "/api/settings/subscriptions/templates/")
+		return rest != "" && !strings.Contains(rest, "/") && (r.Method == http.MethodGet || r.Method == http.MethodPut)
+	}
+	if strings.HasPrefix(path, "/api/settings/database/3xui/jobs/") {
+		rest := strings.TrimPrefix(path, "/api/settings/database/3xui/jobs/")
+		return rest != "" && !strings.Contains(rest, "/") && r.Method == http.MethodGet
+	}
+	return false
 }
 
 func isNativeXrayHelperRoute(r *http.Request) bool {

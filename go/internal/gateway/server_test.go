@@ -619,7 +619,6 @@ func TestIsNativeAdminRoute(t *testing.T) {
 		{name: "myaccount password", method: http.MethodPost, path: "/api/myaccount/change_password", want: true},
 		{name: "myaccount api key delete", method: http.MethodDelete, path: "/api/myaccount/api-keys/7", want: true},
 		{name: "admin websocket stays python", method: http.MethodGet, path: "/api/admin", header: "websocket", want: false},
-		{name: "settings admins stays python", method: http.MethodPut, path: "/api/settings/subscriptions/admins/1", want: false},
 	}
 
 	for _, tt := range tests {
@@ -632,6 +631,149 @@ func TestIsNativeAdminRoute(t *testing.T) {
 				t.Fatalf("isNativeAdminRoute() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsNativeSettingsRoute(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		header string
+		want   bool
+	}{
+		{name: "panel get", method: http.MethodGet, path: "/api/settings/panel", want: true},
+		{name: "panel put", method: http.MethodPut, path: "/api/settings/panel", want: true},
+		{name: "backup export", method: http.MethodGet, path: "/api/settings/backup/export", want: true},
+		{name: "backup import", method: http.MethodPost, path: "/api/settings/backup/import", want: true},
+		{name: "subscriptions get", method: http.MethodGet, path: "/api/settings/subscriptions", want: true},
+		{name: "subscriptions put", method: http.MethodPut, path: "/api/settings/subscriptions", want: true},
+		{name: "admin override", method: http.MethodPut, path: "/api/settings/subscriptions/admins/42", want: true},
+		{name: "template get", method: http.MethodGet, path: "/api/settings/subscriptions/templates/clash_subscription_template", want: true},
+		{name: "template put", method: http.MethodPut, path: "/api/settings/subscriptions/templates/clash_subscription_template", want: true},
+		{name: "certificate issue", method: http.MethodPost, path: "/api/settings/subscriptions/certificates/issue", want: true},
+		{name: "certificate renew", method: http.MethodPost, path: "/api/settings/subscriptions/certificates/renew", want: true},
+		{name: "3xui preview", method: http.MethodPost, path: "/api/settings/database/3xui/preview", want: true},
+		{name: "3xui import", method: http.MethodPost, path: "/api/settings/database/3xui/import", want: true},
+		{name: "3xui job", method: http.MethodGet, path: "/api/settings/database/3xui/jobs/job-1", want: true},
+		{name: "telegram remains deprecated", method: http.MethodGet, path: "/api/settings/telegram", want: false},
+		{name: "bad admin id", method: http.MethodPut, path: "/api/settings/subscriptions/admins/nope", want: false},
+		{name: "admin wrong method", method: http.MethodGet, path: "/api/settings/subscriptions/admins/42", want: false},
+		{name: "template nested path", method: http.MethodGet, path: "/api/settings/subscriptions/templates/a/b", want: false},
+		{name: "certificate wrong method", method: http.MethodGet, path: "/api/settings/subscriptions/certificates/issue", want: false},
+		{name: "websocket stays python", method: http.MethodGet, path: "/api/settings/panel", header: "websocket", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			if tt.header != "" {
+				req.Header.Set("Upgrade", tt.header)
+			}
+			if got := isNativeSettingsRoute(req); got != tt.want {
+				t.Fatalf("isNativeSettingsRoute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNativeSettingsRoutesProxyToMasterAPI(t *testing.T) {
+	python := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("native settings route reached python: %s %s", r.Method, r.URL.Path)
+	}))
+	defer python.Close()
+	masterHits := 0
+	master := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		masterHits++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer master.Close()
+	pythonURL := strings.TrimPrefix(python.URL, "http://")
+	host, portValue, err := net.SplitHostPort(pythonURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewServer(Config{
+		Addr:         "127.0.0.1:0",
+		PythonHost:   host,
+		PythonPort:   port,
+		MasterAPIURL: master.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/settings/panel"},
+		{method: http.MethodPut, path: "/api/settings/panel"},
+		{method: http.MethodGet, path: "/api/settings/backup/export"},
+		{method: http.MethodPost, path: "/api/settings/backup/import"},
+		{method: http.MethodGet, path: "/api/settings/subscriptions"},
+		{method: http.MethodPut, path: "/api/settings/subscriptions"},
+		{method: http.MethodPut, path: "/api/settings/subscriptions/admins/1"},
+		{method: http.MethodGet, path: "/api/settings/subscriptions/templates/clash_subscription_template"},
+		{method: http.MethodPut, path: "/api/settings/subscriptions/templates/clash_subscription_template"},
+		{method: http.MethodPost, path: "/api/settings/subscriptions/certificates/issue"},
+		{method: http.MethodPost, path: "/api/settings/subscriptions/certificates/renew"},
+		{method: http.MethodPost, path: "/api/settings/database/3xui/preview"},
+		{method: http.MethodPost, path: "/api/settings/database/3xui/import"},
+		{method: http.MethodGet, path: "/api/settings/database/3xui/jobs/job-1"},
+	}
+	for _, tc := range routes {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			server.server.Handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	if masterHits != len(routes) {
+		t.Fatalf("master hits=%d want %d", masterHits, len(routes))
+	}
+}
+
+func TestNativeSettingsRoutesReturnUnavailableWhenMasterAPIDown(t *testing.T) {
+	python := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("native settings route reached python while master API was down: %s %s", r.Method, r.URL.Path)
+	}))
+	defer python.Close()
+	pythonURL := strings.TrimPrefix(python.URL, "http://")
+	host, portValue, err := net.SplitHostPort(pythonURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewServer(Config{
+		Addr:       "127.0.0.1:0",
+		PythonHost: host,
+		PythonPort: port,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/subscriptions", nil)
+	rec := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "native Go Master API unavailable") {
+		t.Fatalf("unexpected body=%s", rec.Body.String())
 	}
 }
 

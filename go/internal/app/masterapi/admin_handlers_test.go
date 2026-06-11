@@ -19,8 +19,10 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	adminapp "github.com/rebeccapanel/rebecca/go/internal/app/admin"
+	backupapp "github.com/rebeccapanel/rebecca/go/internal/app/backup"
 	nodeapp "github.com/rebeccapanel/rebecca/go/internal/app/node"
 	"github.com/rebeccapanel/rebecca/go/internal/app/nodecontroller"
+	settingsapp "github.com/rebeccapanel/rebecca/go/internal/app/settings"
 	warpapp "github.com/rebeccapanel/rebecca/go/internal/app/warp"
 	"github.com/rebeccapanel/rebecca/go/internal/app/xrayconfig"
 )
@@ -258,6 +260,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 	warpRepo := warpapp.NewRepository(db, "sqlite")
 	return &Server{
 		cfg: Config{
+			Database:                    "sqlite:///" + filepath.ToSlash(path),
 			JWTAccessTokenExpireMinutes: 1440,
 			SudoUsername:                "env-admin",
 			SudoPassword:                "env-pass",
@@ -273,6 +276,8 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		nodeMutations:  nodeapp.NewRepository(db, "sqlite"),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
 		configRepo:     xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{}),
+		settingsRepo:   settingsapp.NewRepository(db, "sqlite"),
+		backupService:  backupapp.NewService(db, "sqlite", "sqlite:///"+filepath.ToSlash(path)),
 	}, db
 }
 

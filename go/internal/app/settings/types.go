@@ -1,0 +1,100 @@
+package settings
+
+type PanelSettings struct {
+	UseNobetci              bool   `json:"use_nobetci"`
+	DefaultSubscriptionType string `json:"default_subscription_type"`
+}
+
+type PanelSettingsUpdate struct {
+	UseNobetci              *bool   `json:"use_nobetci,omitempty"`
+	DefaultSubscriptionType *string `json:"default_subscription_type,omitempty"`
+}
+
+type SubscriptionSettings struct {
+	SubscriptionURLPrefix       string   `json:"subscription_url_prefix"`
+	SubscriptionProfileTitle    string   `json:"subscription_profile_title"`
+	SubscriptionSupportURL      string   `json:"subscription_support_url"`
+	SubscriptionUpdateInterval  string   `json:"subscription_update_interval"`
+	CustomTemplatesDirectory    *string  `json:"custom_templates_directory"`
+	ClashSubscriptionTemplate   string   `json:"clash_subscription_template"`
+	ClashSettingsTemplate       string   `json:"clash_settings_template"`
+	SubscriptionPageTemplate    string   `json:"subscription_page_template"`
+	HomePageTemplate            string   `json:"home_page_template"`
+	V2RaySubscriptionTemplate   string   `json:"v2ray_subscription_template"`
+	V2RaySettingsTemplate       string   `json:"v2ray_settings_template"`
+	SingBoxSubscriptionTemplate string   `json:"singbox_subscription_template"`
+	SingBoxSettingsTemplate     string   `json:"singbox_settings_template"`
+	MuxTemplate                 string   `json:"mux_template"`
+	UseCustomJSONDefault        bool     `json:"use_custom_json_default"`
+	UseCustomJSONForV2RayN      bool     `json:"use_custom_json_for_v2rayn"`
+	UseCustomJSONForV2RayNG     bool     `json:"use_custom_json_for_v2rayng"`
+	UseCustomJSONForStreisand   bool     `json:"use_custom_json_for_streisand"`
+	UseCustomJSONForHapp        bool     `json:"use_custom_json_for_happ"`
+	SubscriptionPath            string   `json:"subscription_path"`
+	SubscriptionAliases         []string `json:"subscription_aliases"`
+	SubscriptionPorts           []int    `json:"subscription_ports"`
+}
+
+type SubscriptionSettingsUpdate struct {
+	SubscriptionURLPrefix       *string   `json:"subscription_url_prefix,omitempty"`
+	SubscriptionProfileTitle    *string   `json:"subscription_profile_title,omitempty"`
+	SubscriptionSupportURL      *string   `json:"subscription_support_url,omitempty"`
+	SubscriptionUpdateInterval  *string   `json:"subscription_update_interval,omitempty"`
+	CustomTemplatesDirectory    *string   `json:"custom_templates_directory,omitempty"`
+	ClashSubscriptionTemplate   *string   `json:"clash_subscription_template,omitempty"`
+	ClashSettingsTemplate       *string   `json:"clash_settings_template,omitempty"`
+	SubscriptionPageTemplate    *string   `json:"subscription_page_template,omitempty"`
+	HomePageTemplate            *string   `json:"home_page_template,omitempty"`
+	V2RaySubscriptionTemplate   *string   `json:"v2ray_subscription_template,omitempty"`
+	V2RaySettingsTemplate       *string   `json:"v2ray_settings_template,omitempty"`
+	SingBoxSubscriptionTemplate *string   `json:"singbox_subscription_template,omitempty"`
+	SingBoxSettingsTemplate     *string   `json:"singbox_settings_template,omitempty"`
+	MuxTemplate                 *string   `json:"mux_template,omitempty"`
+	UseCustomJSONDefault        *bool     `json:"use_custom_json_default,omitempty"`
+	UseCustomJSONForV2RayN      *bool     `json:"use_custom_json_for_v2rayn,omitempty"`
+	UseCustomJSONForV2RayNG     *bool     `json:"use_custom_json_for_v2rayng,omitempty"`
+	UseCustomJSONForStreisand   *bool     `json:"use_custom_json_for_streisand,omitempty"`
+	UseCustomJSONForHapp        *bool     `json:"use_custom_json_for_happ,omitempty"`
+	SubscriptionPath            *string   `json:"subscription_path,omitempty"`
+	SubscriptionAliases         *[]string `json:"subscription_aliases,omitempty"`
+	SubscriptionPorts           *[]int    `json:"subscription_ports,omitempty"`
+}
+
+type AdminSubscriptionSettings struct {
+	ID                   int64          `json:"id"`
+	Username             string         `json:"username"`
+	SubscriptionDomain   *string        `json:"subscription_domain"`
+	SubscriptionSettings map[string]any `json:"subscription_settings"`
+}
+
+type AdminSubscriptionSettingsUpdate struct {
+	SubscriptionDomain   *string         `json:"subscription_domain,omitempty"`
+	SubscriptionSettings *map[string]any `json:"subscription_settings,omitempty"`
+}
+
+type SubscriptionCertificate struct {
+	ID            *int64   `json:"id"`
+	Domain        string   `json:"domain"`
+	AdminID       *int64   `json:"admin_id"`
+	Email         *string  `json:"email"`
+	Provider      *string  `json:"provider"`
+	AltNames      []string `json:"alt_names"`
+	LastIssuedAt  *string  `json:"last_issued_at"`
+	LastRenewedAt *string  `json:"last_renewed_at"`
+	Path          string   `json:"path"`
+}
+
+type SubscriptionBundle struct {
+	Settings     SubscriptionSettings        `json:"settings"`
+	Admins       []AdminSubscriptionSettings `json:"admins"`
+	Certificates []SubscriptionCertificate   `json:"certificates"`
+}
+
+type TemplateContent struct {
+	TemplateKey     string  `json:"template_key"`
+	TemplateName    string  `json:"template_name"`
+	CustomDirectory *string `json:"custom_directory"`
+	ResolvedPath    *string `json:"resolved_path"`
+	AdminID         *int64  `json:"admin_id"`
+	Content         string  `json:"content"`
+}

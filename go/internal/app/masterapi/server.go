@@ -13,8 +13,10 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/go/internal/app/admin"
+	backupapp "github.com/rebeccapanel/rebecca/go/internal/app/backup"
 	nodeapp "github.com/rebeccapanel/rebecca/go/internal/app/node"
 	"github.com/rebeccapanel/rebecca/go/internal/app/nodecontroller"
+	settingsapp "github.com/rebeccapanel/rebecca/go/internal/app/settings"
 	systemapp "github.com/rebeccapanel/rebecca/go/internal/app/system"
 	"github.com/rebeccapanel/rebecca/go/internal/app/usage"
 	userapp "github.com/rebeccapanel/rebecca/go/internal/app/user"
@@ -37,6 +39,8 @@ type Server struct {
 	userService    userapp.Service
 	warpService    warpapp.Service
 	configRepo     xrayconfig.Repository
+	settingsRepo   settingsapp.Repository
+	backupService  *backupapp.Service
 }
 
 func New(cfg Config) (*Server, error) {
@@ -50,6 +54,8 @@ func New(cfg Config) (*Server, error) {
 	usageRepo := usage.NewRepository(pool.DB, pool.Dialect)
 	userRepo := userapp.NewRepository(pool.DB, pool.Dialect)
 	warpRepo := warpapp.NewRepository(pool.DB, pool.Dialect)
+	settingsRepo := settingsapp.NewRepository(pool.DB, pool.Dialect)
+	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
 	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		FallbackInboundTag:  cfg.XrayFallbackInboundTag,
 		ExcludedInboundTags: cfg.XrayExcludeInboundTags,
@@ -72,6 +78,8 @@ func New(cfg Config) (*Server, error) {
 		userService:    userapp.NewService(userRepo),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient(cfg.WarpAPIBase)),
 		configRepo:     configRepo,
+		settingsRepo:   settingsRepo,
+		backupService:  backupService,
 	}, nil
 }
 
@@ -124,6 +132,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/maintenance/update", s.requireSudo(s.handleMaintenanceUpdate))
 	mux.HandleFunc("/api/maintenance/restart", s.requireSudo(s.handleMaintenanceRestart))
 	mux.HandleFunc("/api/maintenance/soft-reload", s.requireSudo(s.handleMaintenanceSoftReload))
+	mux.HandleFunc("/api/settings/backup/export", s.requireSudo(s.handleBackupExport))
+	mux.HandleFunc("/api/settings/backup/import", s.requireSudo(s.handleBackupImport))
+	mux.HandleFunc("/api/settings/panel", s.requireAdmin(s.handlePanelSettings))
+	mux.HandleFunc("/api/settings/subscriptions/certificates/issue", s.requireSudo(s.handleSettingsDisabledRoute))
+	mux.HandleFunc("/api/settings/subscriptions/certificates/renew", s.requireSudo(s.handleSettingsDisabledRoute))
+	mux.HandleFunc("/api/settings/subscriptions/admins/", s.requireSudo(s.handleAdminSubscriptionSettingsPath))
+	mux.HandleFunc("/api/settings/subscriptions/templates/", s.requireSudo(s.handleSubscriptionTemplatePath))
+	mux.HandleFunc("/api/settings/subscriptions", s.requireSudo(s.handleSubscriptionSettings))
+	mux.HandleFunc("/api/settings/database/3xui/", s.requireSudo(s.handleThreeXUISettingsPath))
 	mux.HandleFunc("/api/v2/services", s.requireAdmin(s.handleServicesRoot))
 	mux.HandleFunc("/api/v2/services/", s.requireAdmin(s.handleServicePath))
 	mux.HandleFunc("/api/v2/users/", s.requireAdmin(s.handleUserV2Path))
