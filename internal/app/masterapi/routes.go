@@ -10,6 +10,15 @@ func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 
 	r.HandleFunc("/__rebecca_api/healthz", s.handleHealth)
+	r.HandleFunc("/openapi.json", s.handleOpenAPIJSON)
+	r.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		http.Redirect(w, r, "/docs/", http.StatusMovedPermanently)
+	})
+	r.Handle("/docs/*", swaggerUIHandler())
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/internal/admin/validate", s.handleInternalAdminValidate)
 	r.HandleFunc("/xray/*", s.requireSudo(s.handleXrayHelperPath))

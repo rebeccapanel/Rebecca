@@ -9,6 +9,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/shirou/gopsutil/v4 v4.26.5
+	github.com/swaggest/swgui v1.8.8
 	golang.org/x/crypto v0.31.0
 	golang.org/x/net v0.26.0
 	golang.org/x/term v0.27.0
@@ -32,6 +33,7 @@ require (
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/vearutop/statigz v1.4.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
