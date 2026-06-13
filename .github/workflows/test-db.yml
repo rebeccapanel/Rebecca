@@ -5,7 +5,6 @@ on:
     paths:
       - "cmd/**"
       - "internal/**"
-      - "proto/**"
       - "go.mod"
       - "go.sum"
       - "scripts/build_go_cli.sh"
@@ -14,7 +13,6 @@ on:
     paths:
       - "cmd/**"
       - "internal/**"
-      - "proto/**"
       - "go.mod"
       - "go.sum"
       - "scripts/build_go_cli.sh"

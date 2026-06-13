@@ -30,8 +30,7 @@ Keep pull requests focused. Avoid mixing formatting, documentation moves, and be
 ```text
 .
 |-- cmd/                 # Rebecca server and CLI entrypoints
-|-- internal/            # Go gateway, Master API, migrations, node controller, and domain packages
-|-- proto/               # Source protobuf contracts
+|-- internal/            # Go gateway, Master API, migrations, node controller, proto schema, and domain packages
 |-- dashboard/           # React dashboard. npm package files live here.
 |-- templates/           # Built-in subscription and home templates used by Go
 |-- docs/                # Project docs, translated READMEs, contributor docs
