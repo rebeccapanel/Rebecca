@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rebeccapanel/rebecca/internal/app/masterapi"
+	"github.com/rebeccapanel/rebecca/internal/app/api"
 	"github.com/rebeccapanel/rebecca/internal/gateway"
 )
 
@@ -18,11 +18,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	apiCfg, err := masterapi.LoadConfig()
+	apiCfg, err := api.LoadConfig()
 	if err != nil {
 		log.Fatalf("failed to load Rebecca API config: %v", err)
 	}
-	api, err := masterapi.New(apiCfg)
+	api, err := api.New(apiCfg)
 	if err != nil {
 		log.Fatalf("failed to initialize Rebecca API: %v", err)
 	}
