@@ -482,6 +482,9 @@ func (c *cli) adminCreate(args []string) error {
 	}
 	generatedPassword := ""
 	if randomPassword {
+		if !jsonOutput {
+			return errors.New("--random requires --json so the generated password is not written to terminal logs")
+		}
 		generatedPassword, err = generatePassword(24)
 		if err != nil {
 			return err
@@ -555,9 +558,6 @@ INSERT INTO admins (
 		return writeJSON(payload)
 	}
 	fmt.Printf("Admin %q created successfully.\n", username)
-	if generatedPassword != "" {
-		writeSensitiveLine("Generated password: ", generatedPassword)
-	}
 	return nil
 }
 
@@ -736,6 +736,9 @@ func (c *cli) adminSetPassword(args []string) error {
 		username = c.mustPrompt("Username", "")
 	}
 	if randomPassword {
+		if !jsonOutput {
+			return errors.New("--random requires --json so the generated password is not written to terminal logs")
+		}
 		generated, err := generatePassword(24)
 		if err != nil {
 			return err
@@ -773,9 +776,6 @@ func (c *cli) adminSetPassword(args []string) error {
 		return writeJSON(payload)
 	}
 	fmt.Printf("Password for %q reset successfully.\n", admin.Username)
-	if randomPassword {
-		writeSensitiveLine("Generated password: ", password)
-	}
 	return nil
 }
 
@@ -1565,12 +1565,6 @@ func (c *cli) subscriptionGetConfig(args []string) error {
 	}
 	_, err = os.Stdout.WriteString(config + "\n")
 	return err
-}
-
-func writeSensitiveLine(label string, value string) {
-	_, _ = os.Stdout.WriteString(label)
-	_, _ = os.Stdout.Write([]byte(value))
-	_, _ = os.Stdout.WriteString("\n")
 }
 
 func (c *cli) getSubscriptionUser(username string) (subscriptionUser, error) {
