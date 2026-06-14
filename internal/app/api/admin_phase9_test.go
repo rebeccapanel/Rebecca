@@ -109,6 +109,41 @@ func TestPhase9AdminAuthRejectsExpiredAndDataExhaustedAdmins(t *testing.T) {
 	}
 }
 
+func TestPhase9AdminLifecycleDisablesAndReenablesLimitExhaustedAdmins(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "root", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 2, "seller", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
+	if _, err := db.Exec(`UPDATE admins SET data_limit = 100, users_usage = 100, traffic_limit_mode = 'used_traffic' WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	holdUntil := time.Now().UTC().Add(time.Hour).Format("2006-01-02 15:04:05.000000")
+	if _, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, on_hold_timeout) VALUES
+		(201, 'seller-active', 2, 'active', NULL),
+		(202, 'seller-hold', 2, 'on_hold', ?)`, holdUntil); err != nil {
+		t.Fatal(err)
+	}
+
+	server.reviewAdminLifecycle(context.Background())
+
+	assertDBString(t, db, `SELECT status FROM admins WHERE id = 2`, "disabled")
+	assertDBString(t, db, `SELECT COALESCE(disabled_reason, '') FROM admins WHERE id = 2`, adminDataLimitExhaustedReason)
+	assertDBString(t, db, `SELECT status FROM users WHERE id = 201`, "disabled")
+	assertDBString(t, db, `SELECT status FROM users WHERE id = 202`, "disabled")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM users WHERE admin_id = 2 AND admin_disabled_at IS NOT NULL`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user'`, 2)
+
+	rootToken := adminBearerToken(t, server, "root", "pass123")
+	rec := adminJSONRequest(t, server, http.MethodPut, "/api/admin/seller", rootToken, `{"data_limit":1000}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("raise data limit status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM admins WHERE id = 2`, "active")
+	assertDBString(t, db, `SELECT status FROM users WHERE id = 201`, "active")
+	assertDBString(t, db, `SELECT status FROM users WHERE id = 202`, "on_hold")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM users WHERE admin_id = 2 AND admin_disabled_at IS NOT NULL`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user'`, 2)
+}
+
 func TestPhase9AdminGlobalAndPerServiceLimitsRoundTrip(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "root", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)

@@ -359,6 +359,14 @@ func TestServiceAdminLimitsEnforcedForUserCreate(t *testing.T) {
 		t.Fatalf("users_limit status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
+	if _, err := db.Exec(`UPDATE users SET status = 'on_hold' WHERE id = 40`); err != nil {
+		t.Fatal(err)
+	}
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/v2/users", sellerToken, `{"username":"too_many_on_hold","service_id":1,"data_limit":50}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("on-hold users_limit status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
 	if _, err := db.Exec(`UPDATE users SET status = 'disabled' WHERE id = 40`); err != nil {
 		t.Fatal(err)
 	}

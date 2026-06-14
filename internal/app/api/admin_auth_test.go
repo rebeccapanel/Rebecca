@@ -748,10 +748,11 @@ func TestAdminManagementDisableEnableUsersAndNodeOperations(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertMasterAPIAdmin(t, db, 2, "seller", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
-	_, err := db.Exec(`INSERT INTO users (id, username, admin_id, status) VALUES
-		(20, 'active-user', 2, 'active'),
-		(21, 'hold-user', 2, 'on_hold'),
-		(22, 'disabled-user', 2, 'disabled')`)
+	futureHold := time.Now().UTC().Add(time.Hour).Format("2006-01-02 15:04:05.000000")
+	_, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, on_hold_timeout) VALUES
+		(20, 'active-user', 2, 'active', NULL),
+		(21, 'hold-user', 2, 'on_hold', ?),
+		(22, 'disabled-user', 2, 'disabled', NULL)`, futureHold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,8 +773,15 @@ func TestAdminManagementDisableEnableUsersAndNodeOperations(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user'`).Scan(&disabledOps); err != nil {
 		t.Fatal(err)
 	}
-	if disabledOps != 1 {
-		t.Fatalf("expected one disable_user for active admin-disable user, got %d", disabledOps)
+	if disabledOps != 2 {
+		t.Fatalf("expected disable_user for active and on-hold admin-disable users, got %d", disabledOps)
+	}
+	var disabledByAdmin int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE admin_id = 2 AND status = 'disabled' AND admin_disabled_at IS NOT NULL`).Scan(&disabledByAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if disabledByAdmin != 2 {
+		t.Fatalf("expected active and on-hold users marked admin-disabled, got %d", disabledByAdmin)
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/admin/seller/enable", token, `{}`)
@@ -784,8 +792,17 @@ func TestAdminManagementDisableEnableUsersAndNodeOperations(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user'`).Scan(&enableOps); err != nil {
 		t.Fatal(err)
 	}
-	if enableOps != 1 {
-		t.Fatalf("expected one enable_user for restored user, got %d", enableOps)
+	if enableOps != 2 {
+		t.Fatalf("expected enable_user for restored active and on-hold users, got %d", enableOps)
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'active-user'`, "active")
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'hold-user'`, "on_hold")
+	var stillDisabledByAdmin int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE admin_id = 2 AND admin_disabled_at IS NOT NULL`).Scan(&stillDisabledByAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if stillDisabledByAdmin != 0 {
+		t.Fatalf("expected admin_disabled_at cleared after enable, got %d", stillDisabledByAdmin)
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/admin/seller/users/disable", token, `{}`)

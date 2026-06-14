@@ -395,6 +395,13 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			}
 		}
 		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
+		if err != nil {
+			return err
+		}
+		if _, err := reconcileAdminLimitStateTx(r.Context(), tx, updated, time.Now().UTC()); err != nil {
+			return err
+		}
+		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
 		return err
 	})
 	if err != nil {
@@ -474,11 +481,11 @@ func (s *Server) handleDisableAdmin(w http.ResponseWriter, r *http.Request, user
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET status = ?, disabled_reason = ? WHERE id = ?`, string(adminapp.StatusDisabled), reason, target.ID); err != nil {
 			return err
 		}
-		userIDs, err := userIDsByAdminTx(r.Context(), tx, target.ID, "active")
+		userIDs, err := userIDsByAdminStatusInTx(r.Context(), tx, target.ID, []string{"active", "on_hold"})
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = ?, last_status_change = ?, admin_disabled_at = ? WHERE admin_id = ? AND status = ?`, "disabled", now, now, target.ID, "active"); err != nil {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = ?, last_status_change = ?, admin_disabled_at = ? WHERE admin_id = ? AND status IN (?, ?)`, "disabled", now, now, target.ID, "active", "on_hold"); err != nil {
 			return err
 		}
 		for _, userID := range userIDs {
@@ -546,6 +553,13 @@ func (s *Server) handleEnableAdmin(w http.ResponseWriter, r *http.Request, usern
 			if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{}); err != nil {
 				return err
 			}
+		}
+		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
+		if err != nil {
+			return err
+		}
+		if _, err := reconcileAdminLimitStateTx(r.Context(), tx, updated, nowTime); err != nil {
+			return err
 		}
 		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
 		return err
@@ -663,6 +677,13 @@ func (s *Server) handleAdminUsageResetPath(w http.ResponseWriter, r *http.Reques
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins_services SET used_traffic = 0, created_traffic = 0 WHERE admin_id = ?`, target.ID); err != nil {
+			return err
+		}
+		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
+		if err != nil {
+			return err
+		}
+		if _, err := reconcileAdminLimitStateTx(r.Context(), tx, updated, time.Now().UTC()); err != nil {
 			return err
 		}
 		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)

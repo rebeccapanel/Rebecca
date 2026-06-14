@@ -94,6 +94,7 @@ func New(cfg Config) (*Server, error) {
 func (s *Server) StartBackground(ctx context.Context) {
 	s.backgroundOnce.Do(func() {
 		go s.runNodeOperationsWorker(ctx)
+		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 	})
 }

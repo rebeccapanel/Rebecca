@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Database                     string
 	NodeOperationsPollInterval   string
+	AdminLifecycleInterval       string
 	UserLifecycleInterval        string
 	UserLifecycleBatchSize       int
 	UserUsageResetInterval       string
@@ -47,6 +48,7 @@ func LoadConfig() (Config, error) {
 	cfg := Config{
 		Database:                     lookup("SQLALCHEMY_DATABASE_URL", "DATABASE_URL"),
 		NodeOperationsPollInterval:   lookup("REBECCA_NODE_OPERATIONS_POLL_INTERVAL"),
+		AdminLifecycleInterval:       lookup("REBECCA_ADMIN_LIFECYCLE_INTERVAL"),
 		UserLifecycleInterval:        firstNonEmpty(lookup("REBECCA_USER_LIFECYCLE_INTERVAL"), secondsEnv(lookup("JOB_REVIEW_USERS_INTERVAL"))),
 		UserLifecycleBatchSize:       parseIntDefault(lookup("REBECCA_USER_LIFECYCLE_BATCH_SIZE", "JOB_REVIEW_USERS_BATCH_SIZE"), 500),
 		UserUsageResetInterval:       lookup("REBECCA_USER_USAGE_RESET_INTERVAL"),
