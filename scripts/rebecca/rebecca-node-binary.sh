@@ -1137,6 +1137,39 @@ configure_binary_node_env() {
     set_env_value "SERVICE_PROTOCOL" "rest"
 }
 
+normalize_node_dev_artifact() {
+    local tmp_dir="$1"
+    local binary_arch="$2"
+    local candidate
+
+    if [ -f "$tmp_dir/rebecca-node" ]; then
+        chmod +x "$tmp_dir/rebecca-node"
+        return 0
+    fi
+
+    while IFS= read -r archive; do
+        [ -n "$archive" ] || continue
+        tar -xzf "$archive" -C "$tmp_dir" >/dev/null 2>&1 || true
+    done < <(find "$tmp_dir" -maxdepth 3 -type f \( -name "*.tar.gz" -o -name "*.tgz" \) 2>/dev/null)
+
+    candidate=$(
+        find "$tmp_dir" -maxdepth 5 -type f \
+            \( -name "rebecca-node" -o -name "rebecca-node*linux-${binary_arch}" -o -name "rebecca-node-*" \) \
+            ! -name "*.sha256" ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.tgz" 2>/dev/null \
+        | while IFS= read -r file; do
+            size=$(wc -c < "$file" 2>/dev/null || echo 0)
+            printf '%s\t%s\n' "$size" "$file"
+        done \
+        | sort -nr \
+        | cut -f2- \
+        | head -n 1
+    )
+
+    if [ -n "$candidate" ]; then
+        install -m 755 "$candidate" "$tmp_dir/rebecca-node"
+    fi
+}
+
 install_binary_rebecca_node() {
     local node_version="$1"
     local configure="${2:-1}"
@@ -1171,13 +1204,7 @@ install_binary_rebecca_node() {
         package_path="$tmp_dir/rebecca-node-binaries.zip"
         ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
         ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
-        if [ ! -f "$tmp_dir/rebecca-node" ]; then
-            local extracted_binary
-            extracted_binary=$(find "$tmp_dir" -maxdepth 1 -type f -name "rebecca-node*linux-${binary_arch}" ! -name "*.sha256" | head -n 1)
-            if [ -n "$extracted_binary" ]; then
-                mv "$extracted_binary" "$tmp_dir/rebecca-node"
-            fi
-        fi
+        normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
     else
         IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
         ui_spinner_run "Downloading Rebecca-node binary" curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
