@@ -111,7 +111,8 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			status TEXT NOT NULL,
 			on_hold_timeout DATETIME NULL,
 			last_status_change DATETIME NULL,
-			admin_disabled_at DATETIME NULL
+			admin_disabled_at DATETIME NULL,
+			online_at DATETIME NULL
 		)`,
 		`CREATE TABLE services (
 			id INTEGER PRIMARY KEY,
@@ -673,9 +674,9 @@ func TestAdminListAndUsageRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`INSERT INTO users (id, username, admin_id, status) VALUES
-		(31, 'active-one', 2, 'active'),
-		(32, 'disabled-one', 2, 'disabled')`)
+	_, err = db.Exec(`INSERT INTO users (id, username, admin_id, status, online_at) VALUES
+		(31, 'active-one', 2, 'active', ?),
+		(32, 'disabled-one', 2, 'disabled', NULL)`, dbTimestamp(time.Now().UTC()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +705,7 @@ func TestAdminListAndUsageRoutes(t *testing.T) {
 	if listBody.Total != 1 || len(listBody.Admins) != 1 || listBody.Admins[0]["username"] != "seller" {
 		t.Fatalf("unexpected admins list: %#v", listBody)
 	}
-	if listBody.Admins[0]["active_users"].(float64) != 1 || listBody.Admins[0]["disabled_users"].(float64) != 1 {
+	if listBody.Admins[0]["active_users"].(float64) != 1 || listBody.Admins[0]["disabled_users"].(float64) != 1 || listBody.Admins[0]["online_users"].(float64) != 1 {
 		t.Fatalf("unexpected admin counts: %#v", listBody.Admins[0])
 	}
 

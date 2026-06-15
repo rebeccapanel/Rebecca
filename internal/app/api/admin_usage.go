@@ -321,6 +321,17 @@ func addAdminCountsTx(ctx context.Context, tx *sql.Tx, adminID int64, response m
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	onlineCutoff := dbTimestamp(time.Now().UTC().Add(-5 * time.Minute))
+	onlineUsers := int64(0)
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM users WHERE admin_id = ? AND status != ? AND online_at IS NOT NULL AND online_at >= ?`,
+		adminID,
+		"deleted",
+		onlineCutoff,
+	).Scan(&onlineUsers); err != nil {
+		return err
+	}
 	total := int64(0)
 	for _, count := range statusCounts {
 		total += count
@@ -331,7 +342,7 @@ func addAdminCountsTx(ctx context.Context, tx *sql.Tx, adminID int64, response m
 	response["expired_users"] = statusCounts["expired"]
 	response["on_hold_users"] = statusCounts["on_hold"]
 	response["disabled_users"] = statusCounts["disabled"]
-	response["online_users"] = int64(0)
+	response["online_users"] = onlineUsers
 	return nil
 }
 

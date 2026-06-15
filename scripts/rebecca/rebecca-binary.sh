@@ -2200,7 +2200,8 @@ backup_service() {
 
     colorized_echo green "Backup service configuration saved in $ENV_FILE."
 
-    local backup_command="$(which bash) -c '$APP_NAME backup'"
+    local backup_command
+    backup_command="$(backup_cron_command)"
     add_cron_job "$cron_schedule" "$backup_command"
 
     colorized_echo green "Backup service successfully configured."
@@ -2219,7 +2220,7 @@ add_cron_job() {
     local temp_cron=$(mktemp)
 
     crontab -l 2>/dev/null > "$temp_cron" || true
-    grep -v "$command" "$temp_cron" > "${temp_cron}.tmp" && mv "${temp_cron}.tmp" "$temp_cron"
+    sed -i '/# rebecca-backup-service/d' "$temp_cron"
     echo "$schedule $command # rebecca-backup-service" >> "$temp_cron"
     
     if crontab "$temp_cron"; then
@@ -2254,6 +2255,116 @@ remove_backup_service() {
     rm -f "$temp_cron"
 
     colorized_echo green "Backup service has been removed."
+}
+
+backup_cron_command() {
+    local script_path="${REBECCA_SCRIPT_INSTALL_PATH:-}"
+    if [ -z "$script_path" ] || [ ! -x "$script_path" ]; then
+        script_path="$(command -v "$APP_NAME" 2>/dev/null || true)"
+    fi
+    if [ -z "$script_path" ]; then
+        script_path="/usr/local/bin/$APP_NAME"
+    fi
+    printf '%s backup' "$script_path"
+}
+
+backup_strip_quotes() {
+    local value="$1"
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    printf '%s' "$value"
+}
+
+backup_url_decode() {
+    local value="$1"
+    value="${value//%/\\x}"
+    printf '%b' "$value"
+}
+
+backup_parse_database_url() {
+    local raw
+    raw="$(backup_strip_quotes "$1")"
+    BACKUP_DB_TYPE=""
+    BACKUP_SQLITE_FILE=""
+    BACKUP_DB_USER=""
+    BACKUP_DB_PASSWORD=""
+    BACKUP_DB_HOST=""
+    BACKUP_DB_PORT=""
+    BACKUP_DB_NAME=""
+    BACKUP_DB_SOCKET=""
+
+    case "$raw" in
+        sqlite:///*)
+            BACKUP_DB_TYPE="sqlite"
+            BACKUP_SQLITE_FILE="${raw#sqlite:///}"
+            if [[ ! "$BACKUP_SQLITE_FILE" =~ ^/ ]]; then
+                BACKUP_SQLITE_FILE="/$BACKUP_SQLITE_FILE"
+            fi
+            return 0
+            ;;
+        mysql*://*|mariadb*://*)
+            BACKUP_DB_TYPE="mysql"
+            local rest="${raw#*://}"
+            local authority="${rest%%/*}"
+            local path_query="${rest#*/}"
+            local query=""
+            BACKUP_DB_NAME="${path_query%%\?*}"
+            if [[ "$path_query" == *"?"* ]]; then
+                query="${path_query#*\?}"
+            fi
+            if [[ "$authority" == *"@"* ]]; then
+                local credentials="${authority%@*}"
+                local hostport="${authority##*@}"
+                BACKUP_DB_USER="$(backup_url_decode "${credentials%%:*}")"
+                if [[ "$credentials" == *":"* ]]; then
+                    BACKUP_DB_PASSWORD="$(backup_url_decode "${credentials#*:}")"
+                fi
+                authority="$hostport"
+            fi
+            if [[ "$authority" == *":"* ]]; then
+                BACKUP_DB_HOST="${authority%%:*}"
+                BACKUP_DB_PORT="${authority##*:}"
+            else
+                BACKUP_DB_HOST="$authority"
+                BACKUP_DB_PORT="3306"
+            fi
+            BACKUP_DB_HOST="${BACKUP_DB_HOST:-127.0.0.1}"
+            BACKUP_DB_PORT="${BACKUP_DB_PORT:-3306}"
+            BACKUP_DB_NAME="$(backup_url_decode "$BACKUP_DB_NAME")"
+            if [ -n "$query" ]; then
+                IFS='&' read -ra query_parts <<< "$query"
+                for query_part in "${query_parts[@]}"; do
+                    case "$query_part" in
+                        unix_socket=*|socket=*)
+                            BACKUP_DB_SOCKET="$(backup_url_decode "${query_part#*=}")"
+                            ;;
+                    esac
+                done
+            fi
+            [ -n "$BACKUP_DB_NAME" ]
+            return
+            ;;
+    esac
+    return 1
+}
+
+write_mysql_backup_defaults() {
+    local defaults_file="$1"
+    {
+        echo "[client]"
+        [ -n "${BACKUP_DB_USER:-}" ] && printf 'user=%s\n' "$BACKUP_DB_USER"
+        [ -n "${BACKUP_DB_PASSWORD:-}" ] && printf 'password=%s\n' "$BACKUP_DB_PASSWORD"
+        if [ -n "${BACKUP_DB_SOCKET:-}" ]; then
+            printf 'socket=%s\n' "$BACKUP_DB_SOCKET"
+        else
+            printf 'host=%s\n' "${BACKUP_DB_HOST:-127.0.0.1}"
+            printf 'port=%s\n' "${BACKUP_DB_PORT:-3306}"
+            echo "protocol=tcp"
+        fi
+    } > "$defaults_file"
+    chmod 600 "$defaults_file"
 }
 
 backup_command() {
@@ -2297,11 +2408,15 @@ backup_command() {
 
     local db_type=""
     local sqlite_file=""
-    if grep -q "image: mariadb" "$COMPOSE_FILE"; then
+    local container_name=""
+    if [ -n "${SQLALCHEMY_DATABASE_URL:-}" ] && backup_parse_database_url "$SQLALCHEMY_DATABASE_URL"; then
+        db_type="$BACKUP_DB_TYPE"
+        sqlite_file="$BACKUP_SQLITE_FILE"
+    elif grep -q "image: mariadb" "$COMPOSE_FILE" 2>/dev/null; then
         db_type="mariadb"
         container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mariadb || echo "mariadb")
 
-    elif grep -q "image: mysql" "$COMPOSE_FILE"; then
+    elif grep -q "image: mysql" "$COMPOSE_FILE" 2>/dev/null; then
         db_type="mysql"
         container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mysql || echo "mysql")
 
@@ -2318,13 +2433,41 @@ backup_command() {
         echo "Database detected: $db_type" >> "$log_file"
         case $db_type in
             mariadb)
-                if ! docker exec "$container_name" mariadb-dump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases --ignore-database=mysql --ignore-database=performance_schema --ignore-database=information_schema --ignore-database=sys --events --triggers > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
-                    error_messages+=("MariaDB dump failed.")
+                if [ -n "$container_name" ]; then
+                    if ! docker exec "$container_name" mariadb-dump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases --ignore-database=mysql --ignore-database=performance_schema --ignore-database=information_schema --ignore-database=sys --events --triggers > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                        error_messages+=("MariaDB dump failed.")
+                    fi
+                else
+                    local dump_bin
+                    dump_bin="$(command -v mariadb-dump 2>/dev/null || command -v mysqldump 2>/dev/null || true)"
+                    if [ -z "$dump_bin" ]; then
+                        error_messages+=("mariadb-dump or mysqldump is not installed.")
+                    else
+                        local defaults_file="$temp_dir/mysql-client.cnf"
+                        write_mysql_backup_defaults "$defaults_file"
+                        if ! "$dump_bin" --defaults-extra-file="$defaults_file" --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 "$BACKUP_DB_NAME" > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                            error_messages+=("MariaDB dump failed.")
+                        fi
+                    fi
                 fi
                 ;;
             mysql)
-                if ! docker exec "$container_name" mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" rebecca --events --triggers  > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
-                    error_messages+=("MySQL dump failed.")
+                if [ -n "$container_name" ]; then
+                    if ! docker exec "$container_name" mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" rebecca --events --triggers  > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                        error_messages+=("MySQL dump failed.")
+                    fi
+                else
+                    local dump_bin
+                    dump_bin="$(command -v mysqldump 2>/dev/null || command -v mariadb-dump 2>/dev/null || true)"
+                    if [ -z "$dump_bin" ]; then
+                        error_messages+=("mysqldump or mariadb-dump is not installed.")
+                    else
+                        local defaults_file="$temp_dir/mysql-client.cnf"
+                        write_mysql_backup_defaults "$defaults_file"
+                        if ! "$dump_bin" --defaults-extra-file="$defaults_file" --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 "$BACKUP_DB_NAME" > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                            error_messages+=("MySQL dump failed.")
+                        fi
+                    fi
                 fi
                 ;;
             sqlite)

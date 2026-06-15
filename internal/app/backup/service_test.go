@@ -118,6 +118,38 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	}
 }
 
+func TestMySQLBackupURLParsing(t *testing.T) {
+	service := NewService(nil, "mysql", "mysql+pymysql://rebecca:p%40ss%21@127.0.0.1:3306/rebecca")
+	name, err := service.mysqlDatabaseName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "rebecca" {
+		t.Fatalf("unexpected database name: %s", name)
+	}
+	dir := t.TempDir()
+	defaults, err := service.writeMySQLDefaultsFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, expected := range []string{
+		"user=rebecca",
+		"password=p@ss!",
+		"host=127.0.0.1",
+		"port=3306",
+		"protocol=tcp",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("defaults file missing %q in %q", expected, text)
+		}
+	}
+}
+
 func openSQLiteForBackupTest(t *testing.T, path string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", "file:"+path+"?_busy_timeout=30000")
