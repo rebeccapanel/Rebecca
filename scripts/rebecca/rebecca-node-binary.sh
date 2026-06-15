@@ -134,12 +134,14 @@ if [ -z "$NODE_IP" ]; then
     NODE_IP=$(curl -s -6 ifconfig.io)
 fi
 
-if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" ]] && [ -z "$APP_NAME" ]; then
-    APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
-fi
-# Set script name if APP_NAME is not set
-if [ -z "$APP_NAME" ]; then
-    APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+if [ "$APP_NAME_FROM_ARG" -eq 0 ]; then
+    if [ -n "${REBECCA_NODE_APP_NAME:-}" ]; then
+        APP_NAME="$REBECCA_NODE_APP_NAME"
+    elif [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "script-install" ]]; then
+        APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+    elif [ -z "${APP_NAME:-}" ]; then
+        APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+    fi
 fi
 ensure_valid_app_name
 
