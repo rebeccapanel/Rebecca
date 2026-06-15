@@ -122,6 +122,7 @@ type NodeListItem struct {
 	UsesDefaultCertificate bool    `json:"uses_default_certificate"`
 	CertificatePublicKey   *string `json:"certificate_public_key"`
 	NodeCertificate        *string `json:"node_certificate"`
+	NodeCertificateKey     *string `json:"node_certificate_key,omitempty"`
 }
 
 type CPUInfo struct {

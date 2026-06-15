@@ -133,6 +133,18 @@ const formatCPUFrequency = (value?: number | null) => {
 	return `${Math.round((value / 1_000_000_000) * 100) / 100} GHz`;
 };
 
+const buildNodeInstallBundle = (
+	certificate?: string | null,
+	certificateKey?: string | null,
+) => {
+	const cert = certificate?.trim() ?? "";
+	const key = certificateKey?.trim() ?? "";
+	if (cert && key) {
+		return `${cert}\n${key}\n`;
+	}
+	return cert;
+};
+
 const OverviewItem: FC<{
 	detail?: ReactNode;
 	label: ReactNode;
@@ -233,7 +245,9 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		},
 	});
 
-	const nodeCertificateValue = (!isAddMode && node?.node_certificate) || "";
+	const nodeCertificateValue = !isAddMode
+		? buildNodeInstallBundle(node?.node_certificate, node?.node_certificate_key)
+		: "";
 	const { onCopy: copyNodeCertificate, hasCopied: nodeCertificateCopied } =
 		useClipboard(nodeCertificateValue);
 	const useNobetci = form.watch("use_nobetci");
@@ -419,7 +433,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		const url = URL.createObjectURL(blob);
 		const anchor = document.createElement("a");
 		anchor.href = url;
-		anchor.download = "node_certificate.pem";
+		anchor.download = "node_install_bundle.pem";
 		anchor.click();
 		URL.revokeObjectURL(url);
 	};

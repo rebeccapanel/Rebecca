@@ -195,6 +195,15 @@ const formatNodeLimit = (value?: number | null) =>
 const formatNodeSpeed = (value?: number | null) =>
 	value !== null && value !== undefined ? `${formatBytes(value, 2)}/s` : "-";
 
+const getNodeInstallBundle = (node: NodeType): string => {
+	const cert = node.node_certificate?.trim() ?? "";
+	const key = node.node_certificate_key?.trim() ?? "";
+	if (cert && key) {
+		return `${cert}\n${key}\n`;
+	}
+	return cert || node.certificate_public_key?.trim() || "";
+};
+
 type NodeSortKey = "name" | "status" | "usage" | "bandwidth" | "cpu" | "ram";
 type NodeSortDirection = "asc" | "desc";
 
@@ -1432,8 +1441,7 @@ export const NodesPage: FC = () => {
 								const nodeBandwidthDisplay = `${formatNodeSpeed(
 									node.upload_speed,
 								)} / ${formatNodeSpeed(node.download_speed)}`;
-								const certificateCopyValue =
-									node.node_certificate || node.certificate_public_key || "";
+								const certificateCopyValue = getNodeInstallBundle(node);
 								const statusBadge = (
 									<NodeModalStatusBadge status={status} compact />
 								);

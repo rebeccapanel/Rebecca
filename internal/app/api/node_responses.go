@@ -43,6 +43,7 @@ func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 		"uses_default_certificate": node.UsesDefaultCertificate,
 		"certificate_public_key":   node.CertificatePublicKey,
 		"node_certificate":         node.NodeCertificate,
+		"node_certificate_key":     node.NodeCertificateKey,
 	}
 }
 

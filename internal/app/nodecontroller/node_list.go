@@ -8,11 +8,12 @@ import (
 	"sync"
 	"time"
 
+	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 )
 
 func (c Controller) List(ctx context.Context, req Request) (NodeListResult, error) {
-	rows, defaultCert, err := c.repo.ListNodeItems(ctx, 0)
+	rows, defaultCert, defaultKey, err := c.repo.ListNodeItems(ctx, 0)
 	if err != nil {
 		return NodeListResult{}, err
 	}
@@ -26,7 +27,7 @@ func (c Controller) List(ctx context.Context, req Request) (NodeListResult, erro
 	sem := make(chan struct{}, 8)
 
 	for idx := range rows {
-		enrichCertificateFields(&rows[idx], defaultCert)
+		enrichCertificateFields(&rows[idx], defaultCert, defaultKey)
 		if rows[idx].Status == "disabled" || rows[idx].Status == "limited" {
 			continue
 		}
@@ -60,7 +61,7 @@ func (c Controller) List(ctx context.Context, req Request) (NodeListResult, erro
 }
 
 func (c Controller) Get(ctx context.Context, req Request) (NodeListItem, error) {
-	rows, defaultCert, err := c.repo.ListNodeItems(ctx, req.NodeID)
+	rows, defaultCert, defaultKey, err := c.repo.ListNodeItems(ctx, req.NodeID)
 	if err != nil {
 		return NodeListItem{}, err
 	}
@@ -68,7 +69,7 @@ func (c Controller) Get(ctx context.Context, req Request) (NodeListItem, error) 
 		return NodeListItem{}, sql.ErrNoRows
 	}
 	item := rows[0]
-	enrichCertificateFields(&item, defaultCert)
+	enrichCertificateFields(&item, defaultCert, defaultKey)
 	if item.Status != "disabled" && item.Status != "limited" {
 		metricsCtx, cancel := withListMetricsTimeout(ctx)
 		runtime, err := c.Metrics(metricsCtx, Request{NodeID: item.ID})
@@ -135,20 +136,47 @@ func applyRuntimeToNodeItem(item *NodeListItem, runtime RuntimeResult) {
 	item.Transfer = runtime.Transfer
 }
 
-func enrichCertificateFields(item *NodeListItem, defaultCert string) {
+func enrichCertificateFields(item *NodeListItem, defaultCert string, defaultKey string) {
 	cert := ""
 	if item.NodeCertificate != nil {
 		cert = strings.TrimSpace(*item.NodeCertificate)
 	}
 	defaultCert = strings.TrimSpace(defaultCert)
+	defaultKey = strings.TrimSpace(defaultKey)
 	if cert == "" || (defaultCert != "" && cert == defaultCert) {
 		item.HasCustomCertificate = false
 		item.UsesDefaultCertificate = true
-		item.NodeCertificate = nil
+		if defaultCert != "" {
+			item.NodeCertificate = &defaultCert
+		}
+		if item.NodeCertificateKey == nil && defaultKey != "" {
+			item.NodeCertificateKey = &defaultKey
+		}
+		setCertificatePublicKey(item, defaultCert)
 		return
 	}
 	item.HasCustomCertificate = true
 	item.UsesDefaultCertificate = false
+	if item.NodeCertificate != nil {
+		trimmed := strings.TrimSpace(*item.NodeCertificate)
+		item.NodeCertificate = &trimmed
+		setCertificatePublicKey(item, trimmed)
+	}
+	if item.NodeCertificateKey != nil {
+		trimmed := strings.TrimSpace(*item.NodeCertificateKey)
+		item.NodeCertificateKey = &trimmed
+	}
+}
+
+func setCertificatePublicKey(item *NodeListItem, cert string) {
+	if strings.TrimSpace(cert) == "" {
+		return
+	}
+	publicKey, err := nodeapp.ExtractPublicKeyFromCertificate(cert)
+	if err != nil {
+		return
+	}
+	item.CertificatePublicKey = &publicKey
 }
 
 func withListMetricsTimeout(parent context.Context) (context.Context, context.CancelFunc) {
