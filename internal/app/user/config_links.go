@@ -780,10 +780,13 @@ func vmessShareLink(remark string, address string, path string, inbound Resolved
 		}
 	case "splithttp", "xhttp":
 		extra := map[string]any{}
+		copyOptional(extra, "scMaxBufferedPosts", inbound)
 		copyOptional(extra, "scMaxEachPostBytes", inbound)
 		copyOptional(extra, "scMaxConcurrentPosts", inbound)
 		copyOptional(extra, "scMinPostsIntervalMs", inbound)
+		copyOptional(extra, "scStreamUpServerSecs", inbound)
 		copyOptional(extra, "xPaddingBytes", inbound)
+		copyOptional(extra, "noSSEHeader", inbound)
 		copyOptional(extra, "noGRPCHeader", inbound)
 		copyOptional(extra, "xmux", inbound)
 		if mode, ok := inbound["mode"]; ok {
@@ -845,7 +848,22 @@ func trojanShareLink(remark string, address string, path string, inbound Resolve
 
 func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
 	userInfo := stringValue(settings["method"]) + ":" + stringValue(settings["password"])
-	return "ss://" + base64.StdEncoding.EncodeToString([]byte(userInfo)) + "@" + address + ":" + portString(inbound["port"]) + "#" + percentEncode(remark, "/", false)
+	params := []queryParam{}
+	tls := stringValue(inbound["tls"])
+	netValue := stringValue(inbound["network"])
+	if tls != "" && tls != "none" {
+		params = append(params, queryParam{"security", tls})
+	}
+	if netValue != "" && netValue != "tcp" {
+		params = append(params, queryParam{"type", netValue})
+		params = appendNetworkParams(params, netValue, stringValue(inbound["path"]), inbound)
+	}
+	params = appendTLSParams(params, tls, inbound)
+	query := ""
+	if len(params) > 0 {
+		query = "?" + urlencodeOrdered(params)
+	}
+	return "ss://" + base64.StdEncoding.EncodeToString([]byte(userInfo)) + "@" + address + ":" + portString(inbound["port"]) + query + "#" + percentEncode(remark, "/", false)
 }
 
 func appendNetworkParams(params []queryParam, netValue string, path string, inbound ResolvedInbound) []queryParam {
@@ -865,11 +883,14 @@ func appendNetworkParams(params []queryParam, netValue string, path string, inbo
 		if mode, ok := inbound["mode"]; ok {
 			params = append(params, queryParam{"mode", mode})
 		}
-		extra := make([]queryParam, 0, 7)
+		extra := make([]queryParam, 0, 10)
+		extra = appendOptionalParam(extra, "scMaxBufferedPosts", inbound)
 		extra = appendOptionalParam(extra, "scMaxEachPostBytes", inbound)
 		extra = appendOptionalParam(extra, "scMaxConcurrentPosts", inbound)
 		extra = appendOptionalParam(extra, "scMinPostsIntervalMs", inbound)
+		extra = appendOptionalParam(extra, "scStreamUpServerSecs", inbound)
 		extra = appendOptionalParam(extra, "xPaddingBytes", inbound)
+		extra = appendOptionalParam(extra, "noSSEHeader", inbound)
 		extra = appendOptionalParam(extra, "noGRPCHeader", inbound)
 		if keepAlive, ok := inbound["keepAlivePeriod"]; ok && intValue(keepAlive) > 0 {
 			extra = append(extra, queryParam{"keepAlivePeriod", keepAlive})
@@ -1005,12 +1026,15 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	case "splithttp", "xhttp":
 		resolved["path"] = stringValue(networkSettings["path"])
 		resolved["host"] = stringList(networkSettings["host"])
+		copyOptional(resolved, "scMaxBufferedPosts", networkSettings)
 		copyOptional(resolved, "scMaxEachPostBytes", networkSettings)
 		copyOptional(resolved, "scMaxConcurrentPosts", networkSettings)
 		copyOptional(resolved, "scMinPostsIntervalMs", networkSettings)
+		copyOptional(resolved, "scStreamUpServerSecs", networkSettings)
 		copyOptional(resolved, "xPaddingBytes", networkSettings)
 		copyOptional(resolved, "xmux", networkSettings)
 		copyOptional(resolved, "mode", networkSettings)
+		copyOptional(resolved, "noSSEHeader", networkSettings)
 		copyOptional(resolved, "noGRPCHeader", networkSettings)
 		copyOptional(resolved, "keepAlivePeriod", networkSettings)
 	case "kcp":
@@ -1389,9 +1413,9 @@ func pythonStringValue(value any) string {
 func pythonJSONDumpsOrdered(params []queryParam) string {
 	parts := make([]string, 0, len(params))
 	for _, param := range params {
-		parts = append(parts, strconv.QuoteToASCII(param.key)+": "+pythonJSONDumpsValue(param.value, false))
+		parts = append(parts, strconv.QuoteToASCII(param.key)+":"+pythonJSONDumpsValue(param.value, false))
 	}
-	return "{" + strings.Join(parts, ", ") + "}"
+	return "{" + strings.Join(parts, ",") + "}"
 }
 
 func pythonJSONDumpsSorted(value map[string]any) string {

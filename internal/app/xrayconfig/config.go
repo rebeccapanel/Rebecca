@@ -505,8 +505,9 @@ func applyNetworkSettings(resolved ResolvedInbound, network string, settings map
 		resolved["path"] = stringValue(settings["path"])
 		resolved["host"] = stringList(settings["host"])
 		for _, key := range []string{
-			"scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs", "xPaddingBytes",
-			"xmux", "mode", "noGRPCHeader", "keepAlivePeriod",
+			"scMaxBufferedPosts", "scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs",
+			"scStreamUpServerSecs", "xPaddingBytes", "noSSEHeader", "xmux", "mode", "noGRPCHeader",
+			"keepAlivePeriod",
 		} {
 			copyOptional(resolved, key, settings)
 		}

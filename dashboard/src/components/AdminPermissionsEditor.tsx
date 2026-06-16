@@ -31,6 +31,7 @@ type AdminPermissionsEditorProps = {
 	onReset?: () => void;
 	hideExtendedSections?: boolean;
 	isReadOnly?: boolean;
+	forceDesktopLayout?: boolean;
 };
 
 const userPermissionKeys: Array<{ key: UserPermissionToggle; label: string }> =
@@ -133,8 +134,10 @@ export const AdminPermissionsEditor = ({
 	onReset,
 	hideExtendedSections = false,
 	isReadOnly = false,
+	forceDesktopLayout = false,
 }: AdminPermissionsEditorProps) => {
 	const { t } = useTranslation();
+	const gridColumns = forceDesktopLayout ? 2 : { base: 1, md: 2 };
 
 	const updatePermissions = <T extends keyof PermissionKeyMap>(
 		section: T,
@@ -185,7 +188,7 @@ export const AdminPermissionsEditor = ({
 					</Button>
 				)}
 			</HStack>
-			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+			<SimpleGrid columns={gridColumns} spacing={3}>
 				{userPermissionKeys.map(({ key, label }) => (
 					<HStack
 						key={key}
@@ -255,7 +258,7 @@ export const AdminPermissionsEditor = ({
 					<Text fontWeight="semibold">
 						{t("admins.permissions.manageAdminsTitle", "Admin management")}
 					</Text>
-					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+					<SimpleGrid columns={gridColumns} spacing={3}>
 						{adminManagementKeys.map(({ key, label }) => (
 							<HStack
 								key={key}
@@ -287,7 +290,7 @@ export const AdminPermissionsEditor = ({
 					<Text fontWeight="semibold">
 						{t("admins.permissions.sectionAccess", "Section access")}
 					</Text>
-					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+					<SimpleGrid columns={gridColumns} spacing={3}>
 						{sectionPermissionKeys.map(({ key, label }) => (
 							<HStack
 								key={key}
@@ -312,7 +315,7 @@ export const AdminPermissionsEditor = ({
 			)}
 			<Stack spacing={3}>
 				<Text fontWeight="semibold">{t("admins.permissions.self.title")}</Text>
-				<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+				<SimpleGrid columns={gridColumns} spacing={3}>
 					{selfPermissionKeys.map(({ key, label }) => (
 						<HStack
 							key={key}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -41,6 +42,7 @@ type adminWritePayload struct {
 	UsersLimit                  *int64           `json:"users_limit"`
 	Services                    *[]int64         `json:"services"`
 	ServiceLimits               *[]serviceLimit  `json:"service_limits"`
+	fields                      map[string]json.RawMessage
 }
 
 type serviceLimit struct {
@@ -66,6 +68,27 @@ type deletedUsersUsageResetPayload struct {
 	ServiceID *int64 `json:"service_id"`
 }
 
+func decodeAdminWritePayload(w http.ResponseWriter, r *http.Request) (adminWritePayload, error) {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		return adminWritePayload{}, errors.New("invalid request body")
+	}
+	fields := map[string]json.RawMessage{}
+	if len(strings.TrimSpace(string(raw))) > 0 {
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return adminWritePayload{}, err
+		}
+	}
+	var payload adminWritePayload
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return adminWritePayload{}, err
+		}
+	}
+	payload.fields = fields
+	return payload, nil
+}
+
 func (s *Server) handleAdminRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/admin" {
 		writeError(w, http.StatusNotFound, "not found")
@@ -88,7 +111,9 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload adminWritePayload
-	if err := decodeOptionalJSON(r, &payload); err != nil {
+	var err error
+	payload, err = decodeAdminWritePayload(w, r)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -259,13 +284,13 @@ func (s *Server) handleAdminMutationPath(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, username string) {
 	principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-	var payload adminWritePayload
-	if err := decodeOptionalJSON(r, &payload); err != nil {
+	payload, err := decodeAdminWritePayload(w, r)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	var updated adminapp.Admin
-	err := s.withTx(r.Context(), func(tx *sql.Tx) error {
+	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		target, err := adminByUsernameTx(r.Context(), tx, username)
 		if err != nil {
 			return err
@@ -333,38 +358,38 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			assignments = append(assignments, field+" = ?")
 			args = append(args, value)
 		}
-		if payload.TelegramID != nil {
+		if _, ok := payload.fields["telegram_id"]; ok {
 			appendNullable("telegram_id", nullableInt64(payload.TelegramID))
 		}
-		if payload.SubscriptionDomain != nil {
+		if _, ok := payload.fields["subscription_domain"]; ok {
 			appendNullable("subscription_domain", nullableTrimmedString(payload.SubscriptionDomain))
 		}
-		if payload.SubscriptionSettings != nil {
+		if _, ok := payload.fields["subscription_settings"]; ok {
 			appendNullable("subscription_settings", normalizeJSONPayload(payload.SubscriptionSettings, "{}"))
 		}
-		if payload.DataLimit != nil {
+		if _, ok := payload.fields["data_limit"]; ok {
 			appendNullable("data_limit", nullableInt64(payload.DataLimit))
 		}
-		if payload.Expire != nil {
+		if _, ok := payload.fields["expire"]; ok {
 			appendNullable("expire", normalizePositiveInt64(payload.Expire))
 		}
-		if payload.UsersLimit != nil {
+		if _, ok := payload.fields["users_limit"]; ok {
 			appendNullable("users_limit", nullableInt64(payload.UsersLimit))
 		}
 		if role != adminapp.RoleFullAccess {
-			if payload.TrafficLimitMode != nil {
+			if _, ok := payload.fields["traffic_limit_mode"]; ok {
 				appendNullable("traffic_limit_mode", optionalString(payload.TrafficLimitMode, string(adminapp.TrafficLimitUsedTraffic)))
 			}
-			if payload.ShowUserTraffic != nil {
-				appendNullable("show_user_traffic", boolInt(*payload.ShowUserTraffic))
+			if _, ok := payload.fields["show_user_traffic"]; ok {
+				appendNullable("show_user_traffic", boolPtrInt(payload.ShowUserTraffic, true))
 			}
-			if payload.UseServiceTrafficLimits != nil {
-				appendNullable("use_service_traffic_limits", boolInt(*payload.UseServiceTrafficLimits))
+			if _, ok := payload.fields["use_service_traffic_limits"]; ok {
+				appendNullable("use_service_traffic_limits", boolPtrInt(payload.UseServiceTrafficLimits, false))
 			}
-			if payload.DeleteUserUsageLimitEnabled != nil {
-				appendNullable("delete_user_usage_limit_enabled", boolInt(*payload.DeleteUserUsageLimitEnabled && perms.Users.Delete))
+			if _, ok := payload.fields["delete_user_usage_limit_enabled"]; ok {
+				appendNullable("delete_user_usage_limit_enabled", boolInt(boolPtrValue(payload.DeleteUserUsageLimitEnabled) && perms.Users.Delete))
 			}
-			if payload.DeleteUserUsageLimit != nil {
+			if _, ok := payload.fields["delete_user_usage_limit"]; ok {
 				appendNullable("delete_user_usage_limit", nullableInt64(payload.DeleteUserUsageLimit))
 			}
 		}
@@ -1468,6 +1493,10 @@ func optionalBool(value *bool, fallback bool) bool {
 		return fallback
 	}
 	return *value
+}
+
+func boolPtrInt(value *bool, fallback bool) int {
+	return boolInt(optionalBool(value, fallback))
 }
 
 func boolInt(value bool) int {

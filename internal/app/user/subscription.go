@@ -878,6 +878,9 @@ func v2rayShadowsocksOutbound(parsed *url.URL) (string, map[string]any, bool) {
 			}},
 		},
 	}
+	if stream := v2rayStreamSettings(parsed.Query()); len(stream) > 0 {
+		outbound["streamSettings"] = stream
+	}
 	return v2rayLinkRemark(parsed), outbound, true
 }
 
@@ -1020,8 +1023,25 @@ func v2rayStreamSettings(query url.Values) map[string]any {
 		if mode := query.Get("mode"); mode != "" {
 			settings["mode"] = mode
 		}
+		if extra := query.Get("extra"); extra != "" {
+			extraSettings := map[string]any{}
+			if err := json.Unmarshal([]byte(extra), &extraSettings); err == nil {
+				for _, key := range []string{
+					"scMaxBufferedPosts", "scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs",
+					"scStreamUpServerSecs", "xPaddingBytes", "noSSEHeader", "noGRPCHeader", "keepAlivePeriod", "xmux",
+				} {
+					if value, ok := extraSettings[key]; ok {
+						settings[key] = value
+					}
+				}
+			}
+		}
 		if len(settings) > 0 {
-			stream["splithttpSettings"] = settings
+			if network == "xhttp" {
+				stream["xhttpSettings"] = settings
+			} else {
+				stream["splithttpSettings"] = settings
+			}
 		}
 	}
 	return stream

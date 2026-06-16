@@ -142,10 +142,6 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		[page, noPages],
 	);
 
-	if (total <= perPageNum && page === 0) {
-		return null;
-	}
-
 	return (
 		<HStack
 			justifyContent="space-between"
@@ -177,42 +173,44 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 				</HStack>
 			</Box>
 
-			<ButtonGroup
-				size="sm"
-				isAttached
-				variant="outline"
-				order={{ base: 1, md: 2 }}
-			>
-				<Button
-					leftIcon={<PrevIcon />}
-					onClick={() => changePage(page - 1)}
-					isDisabled={!canPrev}
+			{noPages > 1 && (
+				<ButtonGroup
+					size="sm"
+					isAttached
+					variant="outline"
+					order={{ base: 1, md: 2 }}
 				>
-					{t("previous")}
-				</Button>
+					<Button
+						leftIcon={<PrevIcon />}
+						onClick={() => changePage(page - 1)}
+						isDisabled={!canPrev}
+					>
+						{t("previous")}
+					</Button>
 
-				{pages.map((pageIndex) => {
-					if (typeof pageIndex === "string")
-						return <Button key={pageIndex}>...</Button>;
-					return (
-						<Button
-							key={pageIndex}
-							variant={pageIndex === page ? "solid" : "outline"}
-							onClick={() => changePage(pageIndex)}
-						>
-							{pageIndex + 1}
-						</Button>
-					);
-				})}
+					{pages.map((pageIndex) => {
+						if (typeof pageIndex === "string")
+							return <Button key={pageIndex}>...</Button>;
+						return (
+							<Button
+								key={pageIndex}
+								variant={pageIndex === page ? "solid" : "outline"}
+								onClick={() => changePage(pageIndex)}
+							>
+								{pageIndex + 1}
+							</Button>
+						);
+					})}
 
-				<Button
-					rightIcon={<NextIcon />}
-					onClick={() => changePage(page + 1)}
-					isDisabled={!canNext}
-				>
-					{t("next")}
-				</Button>
-			</ButtonGroup>
+					<Button
+						rightIcon={<NextIcon />}
+						onClick={() => changePage(page + 1)}
+						isDisabled={!canNext}
+					>
+						{t("next")}
+					</Button>
+				</ButtonGroup>
+			)}
 		</HStack>
 	);
 };

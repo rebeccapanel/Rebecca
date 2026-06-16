@@ -929,6 +929,15 @@ export const AdminDialog: FC = () => {
 			const serviceLimitPayload = values.use_service_traffic_limits
 				? buildServiceLimitPayload()
 				: undefined;
+			const globalDataLimit = values.data_limit
+				? Number(values.data_limit) * GB_IN_BYTES
+				: null;
+			const globalUsersLimit = values.users_limit
+				? Number(values.users_limit)
+				: null;
+			const globalDeleteUserUsageLimit = values.delete_user_usage_limit
+				? Number(values.delete_user_usage_limit) * MB_IN_BYTES
+				: null;
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
@@ -941,9 +950,7 @@ export const AdminDialog: FC = () => {
 						: undefined,
 					data_limit: values.use_service_traffic_limits
 						? undefined
-						: values.data_limit
-							? Number(values.data_limit) * GB_IN_BYTES
-							: undefined,
+						: globalDataLimit,
 					traffic_limit_mode:
 						selectedRole === AdminRole.FullAccess ||
 						values.use_service_traffic_limits
@@ -964,15 +971,11 @@ export const AdminDialog: FC = () => {
 									permissionsValue.users.delete &&
 										values.delete_user_usage_limit_enabled,
 								),
-					delete_user_usage_limit: values.delete_user_usage_limit
-						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
-						: undefined,
+					delete_user_usage_limit: globalDeleteUserUsageLimit,
 					expire: expireValue,
 					users_limit: values.use_service_traffic_limits
 						? undefined
-						: values.users_limit
-							? Number(values.users_limit)
-							: undefined,
+						: globalUsersLimit,
 				};
 				const createdAdmin = await createAdmin(payload);
 				let shouldFetch = true;
@@ -1033,9 +1036,7 @@ export const AdminDialog: FC = () => {
 						: undefined,
 					data_limit: values.use_service_traffic_limits
 						? undefined
-						: values.data_limit
-							? Number(values.data_limit) * GB_IN_BYTES
-							: undefined,
+						: globalDataLimit,
 					traffic_limit_mode:
 						selectedRole === AdminRole.FullAccess ||
 						values.use_service_traffic_limits
@@ -1056,15 +1057,11 @@ export const AdminDialog: FC = () => {
 									permissionsValue.users.delete &&
 										values.delete_user_usage_limit_enabled,
 								),
-					delete_user_usage_limit: values.delete_user_usage_limit
-						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
-						: undefined,
+					delete_user_usage_limit: globalDeleteUserUsageLimit,
 					expire: expireValue,
 					users_limit: values.use_service_traffic_limits
 						? undefined
-						: values.users_limit
-							? Number(values.users_limit)
-							: undefined,
+						: globalUsersLimit,
 					service_limits: serviceLimitPayload,
 				};
 				if (values.password) {

@@ -45,7 +45,6 @@ import {
 	Thead,
 	Tr,
 	useBreakpointValue,
-	useClipboard,
 	useColorModeValue,
 	useDisclosure,
 	useToast,
@@ -134,6 +133,23 @@ const createStableKey = () => {
 		return crypto.randomUUID();
 	}
 	return Math.random().toString(36).slice(2);
+};
+
+const copyTextToClipboard = async (value: string) => {
+	if (!value) return;
+	if (navigator.clipboard?.writeText) {
+		await navigator.clipboard.writeText(value);
+		return;
+	}
+	const textarea = document.createElement("textarea");
+	textarea.value = value;
+	textarea.style.position = "fixed";
+	textarea.style.opacity = "0";
+	document.body.appendChild(textarea);
+	textarea.focus();
+	textarea.select();
+	document.execCommand("copy");
+	document.body.removeChild(textarea);
 };
 
 const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
@@ -375,6 +391,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	} = useAdminsStore();
 	const disableCancelRef = useRef<HTMLButtonElement | null>(null);
 	const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+	const quickPassCancelRef = useRef<HTMLButtonElement | null>(null);
 	const {
 		isOpen: isDisableDialogOpen,
 		onOpen: openDisableDialog,
@@ -433,7 +450,12 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		onOpen: openQuickPassModal,
 		onClose: closeQuickPassModal,
 	} = useDisclosure();
-	const { onCopy, setValue: setClipboard } = useClipboard("");
+	const {
+		isOpen: isQuickPassConfirmOpen,
+		onOpen: openQuickPassConfirm,
+		onClose: closeQuickPassConfirm,
+	} = useDisclosure();
+	const [quickPassAdmin, setQuickPassAdmin] = useState<Admin | null>(null);
 	const [isBulkPanelOpen, setBulkPanelOpen] = useState(false);
 	const [bulkPermissions, setBulkPermissions] = useState<
 		UserPermissionToggle[]
@@ -851,20 +873,23 @@ export const AdminsTable: FC<TableProps> = (props) => {
 		if (!canManageAdminAccount(admin)) {
 			return;
 		}
-		const confirmText = t(
-			"admins.quickPasswordConfirm",
-			"Generate a new password for this admin?",
-			{ username: admin.username },
-		);
-		if (!window.confirm(confirmText)) {
-			closeContextMenu();
-			return;
-		}
+		setQuickPassAdmin(admin);
+		closeContextMenu();
+		openQuickPassConfirm();
+	};
+
+	const confirmQuickPassword = async () => {
+		if (!quickPassAdmin) return;
 		setContextAction("quickPassword");
 		const newPassword = generateRandomPassword(12);
 		try {
-			await updateAdmin(admin.username, { password: newPassword });
-			setQuickPassInfo({ username: admin.username, password: newPassword });
+			await updateAdmin(quickPassAdmin.username, { password: newPassword });
+			setQuickPassInfo({
+				username: quickPassAdmin.username,
+				password: newPassword,
+			});
+			closeQuickPassConfirm();
+			setQuickPassAdmin(null);
 			openQuickPassModal();
 			generateSuccessMessage(
 				t("admins.quickPasswordSuccess", "Password updated"),
@@ -875,7 +900,6 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			generateErrorMessage(error, toast);
 		} finally {
 			setContextAction(null);
-			closeContextMenu();
 		}
 	};
 
@@ -2328,6 +2352,58 @@ export const AdminsTable: FC<TableProps> = (props) => {
 				</AlertDialogOverlay>
 			</AlertDialog>
 
+			<AlertDialog
+				isOpen={isQuickPassConfirmOpen}
+				leastDestructiveRef={quickPassCancelRef}
+				onClose={() => {
+					if (contextAction === "quickPassword") return;
+					closeQuickPassConfirm();
+					setQuickPassAdmin(null);
+				}}
+			>
+				<AlertDialogOverlay bg="blackAlpha.300" backdropFilter="blur(10px)">
+					<AlertDialogContent
+						bg={dialogBg}
+						borderWidth="1px"
+						borderColor={dialogBorderColor}
+					>
+						<AlertDialogHeader fontSize="lg" fontWeight="bold">
+							{t(
+								"admins.quickPasswordConfirmTitle",
+								"Generate new credentials",
+							)}
+						</AlertDialogHeader>
+						<AlertDialogBody>
+							{t(
+								"admins.quickPasswordConfirm",
+								"Generate a new password for {{username}}? The old password will stop working immediately.",
+								{ username: quickPassAdmin?.username ?? "" },
+							)}
+						</AlertDialogBody>
+						<AlertDialogFooter>
+							<Button
+								ref={quickPassCancelRef}
+								onClick={() => {
+									closeQuickPassConfirm();
+									setQuickPassAdmin(null);
+								}}
+								isDisabled={contextAction === "quickPassword"}
+							>
+								{t("cancel", "Cancel")}
+							</Button>
+							<Button
+								colorScheme="primary"
+								onClick={confirmQuickPassword}
+								ml={3}
+								isLoading={contextAction === "quickPassword"}
+							>
+								{t("admins.quickPasswordAction", "Generate")}
+							</Button>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialogOverlay>
+			</AlertDialog>
+
 			<Modal isOpen={isQuickPassOpen} onClose={handleCloseQuickPass} isCentered>
 				<ModalOverlay />
 				<ModalContent>
@@ -2353,15 +2429,18 @@ export const AdminsTable: FC<TableProps> = (props) => {
 										<Button
 											size="sm"
 											variant="ghost"
-											onClick={() => {
+											onClick={async () => {
 												if (quickPassInfo?.password) {
-													setClipboard(quickPassInfo.password);
-													onCopy();
-													toast({
-														title: t("copied", "Copied"),
-														status: "success",
-														duration: 1200,
-													});
+													try {
+														await copyTextToClipboard(quickPassInfo.password);
+														toast({
+															title: t("copied", "Copied"),
+															status: "success",
+															duration: 1200,
+														});
+													} catch (error) {
+														generateErrorMessage(error, toast);
+													}
 												}
 											}}
 										>

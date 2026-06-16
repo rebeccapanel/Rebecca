@@ -1,4 +1,5 @@
 import {
+	Box,
 	Button,
 	Modal,
 	ModalBody,
@@ -83,44 +84,47 @@ export const AdminPermissionsModal = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="lg">
+		<Modal isOpen={isOpen} onClose={onClose} size="4xl">
 			<ModalOverlay />
-			<ModalContent>
+			<ModalContent maxW={{ base: "calc(100vw - 24px)", lg: "960px" }}>
 				<ModalHeader>
 					{t("admins.permissions.modalTitle", {
 						username: admin?.username ?? "",
 					})}
 				</ModalHeader>
 				<ModalCloseButton />
-				<ModalBody>
+				<ModalBody overflowX="auto">
 					{isFullAccess && (
 						<Text color="gray.500" mb={3}>
 							{t("admins.permissions.fullAccessLocked")}
 						</Text>
 					)}
-					<AdminPermissionsEditor
-						value={permissionsDraft}
-						onChange={setPermissionsDraft}
-						showReset={!isFullAccess}
-						onReset={() => setPermissionsDraft(DEFAULT_ADMIN_PERMISSIONS)}
-						maxDataLimitValue={maxDataLimitValue}
-						onMaxDataLimitChange={(value) => {
-							setMaxDataLimitValue(value);
-							const parsed = Number(value);
-							setPermissionsDraft((prev) => ({
-								...prev,
-								users: {
-									...prev.users,
-									max_data_limit_per_user:
-										!value || Number.isNaN(parsed)
-											? null
-											: Math.max(0, parsed) * 1024 * 1024 * 1024,
-								},
-							}));
-						}}
-						hideExtendedSections={admin?.role === AdminRole.Standard}
-						isReadOnly={isFullAccess}
-					/>
+					<Box minW={{ base: "680px", md: "auto" }}>
+						<AdminPermissionsEditor
+							value={permissionsDraft}
+							onChange={setPermissionsDraft}
+							showReset={!isFullAccess}
+							onReset={() => setPermissionsDraft(DEFAULT_ADMIN_PERMISSIONS)}
+							maxDataLimitValue={maxDataLimitValue}
+							onMaxDataLimitChange={(value) => {
+								setMaxDataLimitValue(value);
+								const parsed = Number(value);
+								setPermissionsDraft((prev) => ({
+									...prev,
+									users: {
+										...prev.users,
+										max_data_limit_per_user:
+											!value || Number.isNaN(parsed)
+												? null
+												: Math.max(0, parsed) * 1024 * 1024 * 1024,
+									},
+								}));
+							}}
+							hideExtendedSections={admin?.role === AdminRole.Standard}
+							isReadOnly={isFullAccess}
+							forceDesktopLayout
+						/>
+					</Box>
 				</ModalBody>
 				<ModalFooter>
 					<Button variant="ghost" mr={3} onClick={onClose}>

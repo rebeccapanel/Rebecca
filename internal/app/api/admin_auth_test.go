@@ -642,6 +642,19 @@ FROM admins_services WHERE admin_id = (SELECT id FROM admins WHERE username = 's
 		t.Fatalf("unexpected update role=%s dataLimit=%#v", role, dataLimit)
 	}
 
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/admin/seller", token, `{"data_limit":null,"users_limit":null}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear admin limits status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var clearedDataLimit sql.NullInt64
+	var clearedUsersLimit sql.NullInt64
+	if err := db.QueryRow(`SELECT data_limit, users_limit FROM admins WHERE username = 'seller'`).Scan(&clearedDataLimit, &clearedUsersLimit); err != nil {
+		t.Fatal(err)
+	}
+	if clearedDataLimit.Valid || clearedUsersLimit.Valid {
+		t.Fatalf("expected limits to be null, got data=%#v users=%#v", clearedDataLimit, clearedUsersLimit)
+	}
+
 	insertMasterAPIAdmin(t, db, 3, "standard2", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/admin/permissions/standard/bulk", token, `{
 		"permissions":["create","allow_next_plan"],
