@@ -83,7 +83,7 @@ func New(cfg Config) (*Server, error) {
 		systemService:  systemapp.NewService(pool.DB, pool.Dialect, systemapp.DefaultVersion),
 		maintenance:    systemapp.NewMaintenanceService(),
 		usageService:   usage.NewService(usageRepo),
-		userService:    userapp.NewService(userRepo),
+		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient(cfg.WarpAPIBase)),
 		configRepo:     configRepo,
 		settingsRepo:   settingsRepo,

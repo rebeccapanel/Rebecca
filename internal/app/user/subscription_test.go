@@ -79,25 +79,33 @@ func TestRenderV2RayJSONSubscriptionBuildsImportableConfig(t *testing.T) {
 }
 
 func TestSubscriptionPageTemplateIncludesLinks(t *testing.T) {
-	var body strings.Builder
-	err := subscriptionPageTemplate.Execute(&body, subscriptionHTMLData{
-		Username:       "alice",
-		Status:         "active",
-		StatusClass:    "active",
-		DataLimit:      "∞",
-		DataUsed:       "1.00 MB",
-		Expire:         "∞",
-		Links:          []string{"vless://id@example.com:443#alice"},
-		UsageURL:       "/sub/token/usage",
-		HasActiveLinks: true,
-	})
+	html, err := renderSubscriptionPageTemplate(fallbackSubscriptionPageTemplate, UserDetail{
+		Username:               "alice",
+		Status:                 "active",
+		UsedTraffic:            1024 * 1024,
+		DataLimitResetStrategy: "no_reset",
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	html := body.String()
 	for _, expected := range []string{"Subscription Information", "User Information", "Links:", "vless://id@example.com:443#alice"} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected %q in html:\n%s", expected, html)
 		}
+	}
+}
+
+func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
+	html, err := renderSubscriptionPageTemplate(fallbackSubscriptionPageTemplate, UserDetail{
+		Username:               "alice",
+		Status:                 "on_hold",
+		UsedTraffic:            1024,
+		DataLimitResetStrategy: "no_reset",
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "vless://id@example.com:443#alice") {
+		t.Fatalf("expected on_hold subscription page to include links:\n%s", html)
 	}
 }

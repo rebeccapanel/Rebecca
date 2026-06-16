@@ -1,7 +1,6 @@
 package user
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -9,13 +8,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/flosch/pongo2/v6"
 	"github.com/rebeccapanel/rebecca/internal/app/usage"
 )
 
@@ -651,25 +651,17 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if parsed, err := url.Parse(req.URL); err == nil {
 		path = strings.TrimRight(parsed.Path, "/")
 	}
-	data := subscriptionHTMLData{
-		Username:       user.Username,
-		Status:         user.Status,
-		StatusClass:    subscriptionStatusClass(user.Status),
-		DataLimit:      subscriptionBytes(user.DataLimit),
-		DataUsed:       formatBytes(user.UsedTraffic),
-		ResetStrategy:  user.DataLimitResetStrategy,
-		Expire:         subscriptionExpire(user.Expire),
-		RemainingDays:  subscriptionRemainingDays(user.Expire),
-		Links:          links.Links,
-		UsageURL:       path + "/usage",
-		SupportURL:     strings.TrimSpace(settings.SubscriptionSupportURL),
-		HasActiveLinks: user.Status == "active" && len(links.Links) > 0,
+	content := fallbackSubscriptionPageTemplate
+	if s.templates != nil {
+		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(templateContent.Content) != "" {
+			content = templateContent.Content
+		}
 	}
-	var out bytes.Buffer
-	if err := subscriptionPageTemplate.Execute(&out, data); err != nil {
-		return "", err
-	}
-	return out.String(), nil
+	return renderSubscriptionPageTemplate(content, user, links.Links, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier)
 }
 
 func renderClashLikeYAML(username string, links []string, meta bool) string {
@@ -1098,22 +1090,7 @@ func listAny(value any) []any {
 	}
 }
 
-type subscriptionHTMLData struct {
-	Username       string
-	Status         string
-	StatusClass    string
-	DataLimit      string
-	DataUsed       string
-	ResetStrategy  string
-	Expire         string
-	RemainingDays  string
-	Links          []string
-	UsageURL       string
-	SupportURL     string
-	HasActiveLinks bool
-}
-
-var subscriptionPageTemplate = template.Must(template.New("subscription_page").Parse(`<!DOCTYPE html>
+const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -1136,28 +1113,28 @@ var subscriptionPageTemplate = template.Must(template.New("subscription_page").P
 </head>
 <body>
     <h1>User Information</h1>
-    <p>Username: {{ .Username }}</p>
-    <p>Status: <span class="status {{ .StatusClass }}">{{ .Status }}</span></p>
-    <p>Data Limit: {{ .DataLimit }}</p>
-    <p>Data Used: {{ .DataUsed }}{{ if and .ResetStrategy (ne .ResetStrategy "no_reset") }} (resets every {{ .ResetStrategy }}){{ end }}</p>
-    <p>Expiration Date: {{ .Expire }}{{ if .RemainingDays }} ({{ .RemainingDays }} days remaining){{ end }}</p>
-    <p><a href="{{ .UsageURL }}">Usage</a>{{ if .SupportURL }} · <a href="{{ .SupportURL }}">Support</a>{{ end }}</p>
-    {{ if .HasActiveLinks }}
+    <p>Username: {{ user.username }}</p>
+    <p>Status: <span class="status {{ user.status_class }}">{{ user.status }}</span></p>
+    <p>Data Limit: {% if not user.data_limit %}∞{% else %}{{ user.data_limit | bytesformat }}{% endif %}</p>
+    <p>Data Used: {{ user.used_traffic | bytesformat }}{% if user.data_limit_reset_strategy != 'no_reset' %} (resets every {{ user.data_limit_reset_strategy }}){% endif %}</p>
+    <p>Expiration Date: {% if not user.expire %}∞{% else %}{{ user.expire | datetime }} ({{ remaining_days | int }} days remaining){% endif %}</p>
+    <p><a href="{{ usage_url }}">Usage</a>{% if support_url %} · <a href="{{ support_url }}">Support</a>{% endif %}</p>
+    {% if user.status == 'active' or user.status == 'on_hold' %}
     <h2>Links:</h2>
     <ul>
-        {{ range .Links }}
+        {% for link in user.links %}
         <li class="link-input">
-            <input type="text" value="{{ . }}" readonly>
+            <input type="text" value="{{ link }}" readonly>
             <button class="copy-button" onclick="copyLink(this.previousElementSibling.value, this)">Copy</button>
-            <button class="qr-button" data-link="{{ . }}">QR Code</button>
+            <button class="qr-button" data-link="{{ link }}">QR Code</button>
         </li>
-        {{ end }}
+        {% endfor %}
     </ul>
     <div class="qr-popup" id="qrPopup">
         <div class="qr-close-button"><button onclick="closeQrPopup()">X</button></div>
         <div id="qrCodeContainer"></div>
     </div>
-    {{ end }}
+    {% endif %}
     <script>
         function copyLink(link, button) {
             const tempInput = document.createElement('input');
@@ -1183,37 +1160,127 @@ var subscriptionPageTemplate = template.Must(template.New("subscription_page").P
         function closeQrPopup() { document.getElementById('qrPopup').style.display = 'none'; }
     </script>
 </body>
-</html>`))
+</html>`
+
+var (
+	subscriptionTemplateFiltersOnce sync.Once
+	subscriptionTemplateFiltersErr  error
+	subscriptionTemplateTagPattern  = regexp.MustCompile(`(?s)(\{\{.*?\}\}|\{%.*?%\})`)
+	subscriptionRemainingSetPattern = regexp.MustCompile(`\{% set remaining_days = .*?%\}`)
+)
+
+func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string) (string, error) {
+	if err := registerSubscriptionTemplateFilters(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(content) == "" {
+		content = fallbackSubscriptionPageTemplate
+	}
+	tpl, err := pongo2.FromString(normalizeLegacySubscriptionTemplate(content))
+	if err != nil {
+		return "", err
+	}
+	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, token))
+	if err != nil {
+		return "", err
+	}
+	return rendered, nil
+}
+
+func registerSubscriptionTemplateFilters() error {
+	subscriptionTemplateFiltersOnce.Do(func() {
+		for name, filter := range map[string]pongo2.FilterFunction{
+			"bytesformat": subscriptionBytesFilter,
+			"datetime":    subscriptionDatetimeFilter,
+			"int":         subscriptionIntFilter,
+		} {
+			if err := pongo2.RegisterFilter(name, filter); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already") {
+				subscriptionTemplateFiltersErr = err
+				return
+			}
+		}
+	})
+	return subscriptionTemplateFiltersErr
+}
+
+func normalizeLegacySubscriptionTemplate(content string) string {
+	normalized := subscriptionTemplateTagPattern.ReplaceAllStringFunc(content, func(tag string) string {
+		return strings.Join(strings.Fields(tag), " ")
+	})
+	normalized = strings.ReplaceAll(normalized, "user.status.value", "user.status")
+	normalized = strings.ReplaceAll(normalized, "user.data_limit_reset_strategy.value", "user.data_limit_reset_strategy")
+	normalized = strings.ReplaceAll(normalized, "{% set current_timestamp = now().timestamp() %}", "")
+	normalized = subscriptionRemainingSetPattern.ReplaceAllString(normalized, "")
+	normalized = strings.ReplaceAll(normalized, "user.status == 'active'", "user.status == 'active' or user.status == 'on_hold'")
+	normalized = strings.ReplaceAll(normalized, `user.status == "active"`, `user.status == "active" or user.status == "on_hold"`)
+	return normalized
+}
+
+func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, token string) pongo2.Context {
+	var dataLimit any
+	if user.DataLimit != nil && *user.DataLimit > 0 {
+		dataLimit = *user.DataLimit
+	}
+	var expire any
+	if user.Expire != nil && *user.Expire > 0 {
+		expire = *user.Expire
+	}
+	resetStrategy := strings.TrimSpace(user.DataLimitResetStrategy)
+	if resetStrategy == "" {
+		resetStrategy = "no_reset"
+	}
+	return pongo2.Context{
+		"user": map[string]any{
+			"username":                  user.Username,
+			"status":                    user.Status,
+			"status_class":              subscriptionStatusClass(user.Status),
+			"data_limit":                dataLimit,
+			"used_traffic":              user.UsedTraffic,
+			"data_limit_reset_strategy": resetStrategy,
+			"expire":                    expire,
+			"links":                     links,
+			"subscription_url":          user.SubscriptionURL,
+			"subscription_urls":         user.SubscriptionURLs,
+			"service_id":                user.ServiceID,
+			"service_name":              user.ServiceName,
+		},
+		"links":          links,
+		"usage_url":      usageURL,
+		"support_url":    supportURL,
+		"token":          token,
+		"remaining_days": subscriptionRemainingDaysInt(user.Expire),
+	}
+}
+
+func subscriptionBytesFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(formatBytes(int64(in.Integer()))), nil
+}
+
+func subscriptionDatetimeFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(time.Unix(int64(in.Integer()), 0).UTC().Format("2006-01-02 15:04:05")), nil
+}
+
+func subscriptionIntFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(in.Integer()), nil
+}
 
 func subscriptionStatusClass(status string) string {
 	switch status {
 	case "active", "limited", "expired", "disabled":
 		return status
+	case "on_hold":
+		return "active"
 	default:
 		return "disabled"
 	}
 }
 
-func subscriptionBytes(value *int64) string {
+func subscriptionRemainingDaysInt(value *int64) int64 {
 	if value == nil || *value <= 0 {
-		return "∞"
-	}
-	return formatBytes(*value)
-}
-
-func subscriptionExpire(value *int64) string {
-	if value == nil || *value <= 0 {
-		return "∞"
-	}
-	return time.Unix(*value, 0).UTC().Format("2006-01-02 15:04:05")
-}
-
-func subscriptionRemainingDays(value *int64) string {
-	if value == nil || *value <= 0 {
-		return ""
+		return 0
 	}
 	days := int64(time.Until(time.Unix(*value, 0).UTC()).Hours() / 24)
-	return strconv.FormatInt(days, 10)
+	return days
 }
 
 func formatBytes(value int64) string {

@@ -8,14 +8,24 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
 )
 
+type SubscriptionTemplateReader interface {
+	ReadTemplateContent(ctx context.Context, templateKey string, adminID *int64) (settingsapp.TemplateContent, error)
+}
+
 type Service struct {
-	repo Repository
+	repo      Repository
+	templates SubscriptionTemplateReader
 }
 
 func NewService(repo Repository) Service {
 	return Service{repo: repo}
+}
+
+func NewServiceWithTemplates(repo Repository, templates SubscriptionTemplateReader) Service {
+	return Service{repo: repo, templates: templates}
 }
 
 func (s Service) LinkPrerequisites(ctx context.Context, req LinkPrerequisitesRequest) (LinkPrerequisites, error) {

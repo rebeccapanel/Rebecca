@@ -151,3 +151,59 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 		t.Fatalf("expected global sync to be done, got %q", status)
 	}
 }
+
+func TestRepositoryListNodeItemsNormalizesLegacyStatus(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "nodes.db")+"?_busy_timeout=30000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	note TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	usage_coefficient REAL,
+	data_limit INTEGER,
+	use_nobetci BOOLEAN DEFAULT 0,
+	nobetci_port INTEGER,
+	proxy_enabled BOOLEAN DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT,
+	status TEXT,
+	message TEXT,
+	xray_version TEXT,
+	geo_mode TEXT,
+	xray_config_mode TEXT,
+	uplink INTEGER DEFAULT 0,
+	downlink INTEGER DEFAULT 0,
+	certificate TEXT,
+	certificate_key TEXT
+);
+INSERT INTO nodes (id, name, address, port, api_port, usage_coefficient, status, geo_mode, xray_config_mode)
+VALUES (1, 'legacy-node', '127.0.0.1', 62050, 62051, 1, 'active', 'default', 'default');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	nodes, _, _, err := repo.ListNodeItems(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected one node, got %d", len(nodes))
+	}
+	if nodes[0].Status != "connecting" {
+		t.Fatalf("expected legacy status to normalize to connecting, got %q", nodes[0].Status)
+	}
+}

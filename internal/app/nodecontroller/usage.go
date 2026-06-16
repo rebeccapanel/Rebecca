@@ -19,7 +19,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		collectUsers = true
 		collectOutbound = true
 	}
-	reset := req.Reset
+	reset := usageCollectionShouldReset(req)
 
 	nodes, err := c.repo.UsageNodes(ctx, req.NodeID, req.Limit)
 	if err != nil {
@@ -124,6 +124,13 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		cancel()
 	}
 	return result, nil
+}
+
+func usageCollectionShouldReset(req CollectUsageRequest) bool {
+	if req.NoReset {
+		return false
+	}
+	return true
 }
 
 func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta) error {

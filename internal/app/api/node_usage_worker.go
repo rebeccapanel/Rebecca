@@ -39,6 +39,7 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		Limit:    s.cfg.NodeUsageCollectionLimit,
 		Users:    true,
 		Outbound: true,
+		Reset:    true,
 	})
 	if err != nil {
 		log.Printf("Go node usage collection failed: %v", err)

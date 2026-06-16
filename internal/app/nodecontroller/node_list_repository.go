@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+
+	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 )
 
 func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeListItem, string, string, error) {
@@ -104,6 +106,7 @@ FROM nodes`
 		item.ProxyPassword = stringPtrFromNull(proxyPassword)
 		item.Message = stringPtrFromNull(message)
 		item.XrayVersion = stringPtrFromNull(xrayVersion)
+		item.Status = normalizeNodeListStatus(item.Status)
 		if certificate.Valid && strings.TrimSpace(certificate.String) != "" {
 			certValue := strings.TrimSpace(certificate.String)
 			item.NodeCertificate = &certValue
@@ -118,6 +121,23 @@ FROM nodes`
 		result = append(result, item)
 	}
 	return result, defaultCert, defaultKey, rows.Err()
+}
+
+func normalizeNodeListStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case nodeapp.StatusConnected:
+		return nodeapp.StatusConnected
+	case nodeapp.StatusConnecting:
+		return nodeapp.StatusConnecting
+	case nodeapp.StatusError:
+		return nodeapp.StatusError
+	case nodeapp.StatusDisabled:
+		return nodeapp.StatusDisabled
+	case nodeapp.StatusLimited:
+		return nodeapp.StatusLimited
+	default:
+		return nodeapp.StatusConnecting
+	}
 }
 
 func stringPtrFromNull(value sql.NullString) *string {

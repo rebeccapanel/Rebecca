@@ -37,6 +37,7 @@ type CollectUsageRequest struct {
 	Users    bool  `json:"users,omitempty"`
 	Outbound bool  `json:"outbound,omitempty"`
 	Reset    bool  `json:"reset,omitempty"`
+	NoReset  bool  `json:"no_reset,omitempty"`
 }
 
 type CollectUsageResult struct {
