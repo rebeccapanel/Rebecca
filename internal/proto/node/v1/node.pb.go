@@ -1465,6 +1465,7 @@ type SystemMetrics struct {
 	MemoryUsed         uint64                 `protobuf:"varint,4,opt,name=memory_used,json=memoryUsed,proto3" json:"memory_used,omitempty"`
 	MemoryTotal        uint64                 `protobuf:"varint,5,opt,name=memory_total,json=memoryTotal,proto3" json:"memory_total,omitempty"`
 	MemoryUsagePercent float64                `protobuf:"fixed64,6,opt,name=memory_usage_percent,json=memoryUsagePercent,proto3" json:"memory_usage_percent,omitempty"`
+	UptimeSeconds      uint64                 `protobuf:"varint,7,opt,name=uptime_seconds,json=uptimeSeconds,proto3" json:"uptime_seconds,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1537,6 +1538,13 @@ func (x *SystemMetrics) GetMemoryTotal() uint64 {
 func (x *SystemMetrics) GetMemoryUsagePercent() float64 {
 	if x != nil {
 		return x.MemoryUsagePercent
+	}
+	return 0
+}
+
+func (x *SystemMetrics) GetUptimeSeconds() uint64 {
+	if x != nil {
+		return x.UptimeSeconds
 	}
 	return 0
 }
@@ -2196,7 +2204,7 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x14ServiceUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\"\xf8\x01\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\"\x9f\x02\n" +
 	"\rSystemMetrics\x12\x1b\n" +
 	"\tcpu_cores\x18\x01 \x01(\x05R\bcpuCores\x12(\n" +
 	"\x10cpu_frequency_hz\x18\x02 \x01(\x01R\x0ecpuFrequencyHz\x12*\n" +
@@ -2204,7 +2212,8 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\vmemory_used\x18\x04 \x01(\x04R\n" +
 	"memoryUsed\x12!\n" +
 	"\fmemory_total\x18\x05 \x01(\x04R\vmemoryTotal\x120\n" +
-	"\x14memory_usage_percent\x18\x06 \x01(\x01R\x12memoryUsagePercent\"\xa5\x01\n" +
+	"\x14memory_usage_percent\x18\x06 \x01(\x01R\x12memoryUsagePercent\x12%\n" +
+	"\x0euptime_seconds\x18\a \x01(\x04R\ruptimeSeconds\"\xa5\x01\n" +
 	"\x0fTransferMetrics\x12!\n" +
 	"\fuplink_total\x18\x01 \x01(\x04R\vuplinkTotal\x12%\n" +
 	"\x0edownlink_total\x18\x02 \x01(\x04R\rdownlinkTotal\x12!\n" +

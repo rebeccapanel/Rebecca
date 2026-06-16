@@ -682,9 +682,6 @@ const SystemOverviewCard: FC<{
 					<Tag colorScheme="blue">
 						{t("panelUptime")}: {formatDuration(data.panel_uptime_seconds)}
 					</Tag>
-					<Tag colorScheme="orange">
-						{t("xrayUptime")}: {formatDuration(data.xray_uptime_seconds)}
-					</Tag>
 				</Stack>
 				{data.last_xray_error && !data.xray_running && (
 					<Box

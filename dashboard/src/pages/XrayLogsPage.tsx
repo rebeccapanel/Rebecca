@@ -35,6 +35,7 @@ import type { RawInbound } from "utils/inbounds";
 const MAX_NUMBER_OF_LOGS = 500;
 
 const getWebsocketUrl = (nodeID: string) => {
+	if (!nodeID) return null;
 	try {
 		const baseURL = new URL(
 			import.meta.env.VITE_BASE_API.startsWith("/")
@@ -46,7 +47,7 @@ const getWebsocketUrl = (nodeID: string) => {
 			(baseURL.protocol === "https:" ? "wss://" : "ws://") +
 			joinPaths([
 				baseURL.host + baseURL.pathname,
-				!nodeID ? "/core/logs" : `/node/${nodeID}/logs`,
+				`/node/${nodeID}/logs`,
 			]) +
 			"?interval=1&token=" +
 			getAuthToken()
@@ -97,14 +98,23 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 
 	const handleLog = (id: string) => {
 		if (id === selectedNode) return;
-		if (!id) {
-			setNode("");
-			setLogs([]);
-			return;
-		}
 		setNode(id);
 		setLogs([]);
 	};
+
+	useEffect(() => {
+		if (!nodes?.length) {
+			if (selectedNode) {
+				setNode("");
+				setLogs([]);
+			}
+			return;
+		}
+		if (!selectedNode || !nodes.some((node) => String(node.id) === selectedNode)) {
+			setNode(String(nodes[0].id));
+			setLogs([]);
+		}
+	}, [nodes, selectedNode]);
 
 	const appendLog = useCallback(
 		debounce((line: string) => {
@@ -358,7 +368,6 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 							onChange={(e) => handleLog(e.target.value)}
 							value={selectedNode}
 						>
-							<option value="">{t("core.master")}</option>
 							{nodes.map((s) => (
 								<option key={s.address} value={String(s.id)}>
 									{t(s.name)}

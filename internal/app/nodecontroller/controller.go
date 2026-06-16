@@ -535,6 +535,7 @@ func runtimeResult(node NodeRow, state *nodev1.RuntimeState, metrics *nodev1.Met
 			TotalBytes:   system.GetMemoryTotal(),
 			UsagePercent: system.GetMemoryUsagePercent(),
 		}
+		result.UptimeSeconds = system.GetUptimeSeconds()
 		result.Transfer = NetInfo{
 			UploadSpeed:   transfer.GetUploadSpeed(),
 			DownloadSpeed: transfer.GetDownloadSpeed(),

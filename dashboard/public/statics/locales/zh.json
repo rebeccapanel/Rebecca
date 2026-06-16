@@ -385,6 +385,7 @@
 	"nodes.updateServiceAction": "更新节点服务",
 	"nodes.updateServiceConfirm": "向 {{name}} 发送更新请求？节点将下载更新并重启。",
 	"nodes.updateServiceTriggered": "已发送节点更新请求",
+	"nodes.uptime": "运行时间",
 	"nodes.show-certificate": "如何证书",
 	"nodes.status": "Status",
 	"nodes.title": "使用 Rebecca-Node，您可以通过在不同的服务器上添加不同的节点来提供多节点负载。",

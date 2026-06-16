@@ -675,6 +675,7 @@
 	"nodes.nodeUpdateAvailable": "Update available",
 	"nodes.ram": "RAM",
 	"nodes.runtime": "Runtime",
+	"nodes.uptime": "Uptime",
 	"network": "Network",
 	"port": "Port",
 	"nodes.pageDescription": "Manage node availability, edit configurations, and reconnect problematic nodes.",

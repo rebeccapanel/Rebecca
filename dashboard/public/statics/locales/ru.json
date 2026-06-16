@@ -381,6 +381,7 @@
 	"nodes.updateServiceAction": "Обновить сервис ноды",
 	"nodes.updateServiceConfirm": "Отправить запрос на обновление для {{name}}? Нода скачает обновление и перезапустится.",
 	"nodes.updateServiceTriggered": "Запрос на обновление ноды отправлен",
+	"nodes.uptime": "Время работы",
 	"nodes.show-certificate": "Показать сертификат",
 	"nodes.status": "Status",
 	"nodes.title": "Используя Rebecca-Node, Вы можете масштабировать инфраструктуру, добавляя узлы на разных серверах.",

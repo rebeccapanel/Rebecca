@@ -82,6 +82,7 @@ const getStatus = (status: string) => {
 };
 
 const getWebsocketUrl = (nodeID: string) => {
+	if (!nodeID) return null;
 	try {
 		const baseURL = new URL(
 			import.meta.env.VITE_BASE_API.startsWith("/")
@@ -93,7 +94,7 @@ const getWebsocketUrl = (nodeID: string) => {
 			(baseURL.protocol === "https:" ? "wss://" : "ws://") +
 			joinPaths([
 				baseURL.host + baseURL.pathname,
-				!nodeID ? "/core/logs" : `/node/${nodeID}/logs`,
+				`/node/${nodeID}/logs`,
 			]) +
 			"?interval=1&token=" +
 			getAuthToken()
@@ -113,15 +114,11 @@ const CoreSettingModalContent: FC = () => {
 	const disabled = false;
 	const [selectedNode, setNode] = useState<string>("");
 
-	const handleLog = (id: string, _title: string) => {
+	const handleLog = (id: string) => {
 		if (id === selectedNode) return;
-		else if (id === "host") {
-			setNode("");
-			setLogs([]);
-		} else {
-			setNode(id);
-			setLogs([]);
-		}
+		logsTmp = [];
+		setNode(id);
+		setLogs([]);
 	};
 
 	const { isEditingCore } = useDashboard();
@@ -150,6 +147,22 @@ const CoreSettingModalContent: FC = () => {
 	useEffect(() => {
 		if (isEditingCore) fetchCoreSettings();
 	}, [isEditingCore, fetchCoreSettings]);
+
+	useEffect(() => {
+		if (!nodes?.length) {
+			if (selectedNode) {
+				logsTmp = [];
+				setNode("");
+				setLogs([]);
+			}
+			return;
+		}
+		if (!selectedNode || !nodes.some((node) => String(node.id) === selectedNode)) {
+			logsTmp = [];
+			setNode(String(nodes[0].id));
+			setLogs([]);
+		}
+	}, [nodes, selectedNode]);
 	"".startsWith;
 	const scrollShouldStayOnEnd = useRef(true);
 	const updateLogs = useCallback(
@@ -168,17 +181,22 @@ const CoreSettingModalContent: FC = () => {
 		[],
 	);
 
-	const { readyState } = useWebSocket(getWebsocketUrl(selectedNode), {
-		onMessage: (e: MessageEvent) => {
-			logsTmp.push(e.data);
-			if (logsTmp.length > MAX_NUMBER_OF_LOGS)
-				logsTmp = logsTmp.splice(0, logsTmp.length - MAX_NUMBER_OF_LOGS);
-			updateLogs([...logsTmp]);
+	const socketUrl = getWebsocketUrl(selectedNode);
+	const { readyState } = useWebSocket(
+		socketUrl,
+		{
+			onMessage: (e: MessageEvent) => {
+				logsTmp.push(e.data);
+				if (logsTmp.length > MAX_NUMBER_OF_LOGS)
+					logsTmp = logsTmp.splice(0, logsTmp.length - MAX_NUMBER_OF_LOGS);
+				updateLogs([...logsTmp]);
+			},
+			shouldReconnect: () => Boolean(socketUrl),
+			reconnectAttempts: 10,
+			reconnectInterval: 1000,
 		},
-		shouldReconnect: () => true,
-		reconnectAttempts: 10,
-		reconnectInterval: 1000,
-	});
+		Boolean(socketUrl),
+	);
 
 	useEffect(() => {
 		if (logsDiv.current && scrollShouldStayOnEnd.current)
@@ -294,16 +312,9 @@ const CoreSettingModalContent: FC = () => {
 												colorMode === "dark" ? "#222C3B" : "white",
 										},
 									}}
-									onChange={(v) =>
-										handleLog(
-											v.currentTarget.value,
-											v.currentTarget.selectedOptions[0].text,
-										)
-									}
+									onChange={(v) => handleLog(v.currentTarget.value)}
+									value={selectedNode}
 								>
-									<option key={"host"} value={"host"} defaultChecked>
-										Master
-									</option>
 									{nodes?.map((s) => {
 										return (
 											<option key={s.address} value={String(s.id)}>

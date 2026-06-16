@@ -664,6 +664,7 @@
 	"nodes.nodeUpdateAvailable": "به‌روزرسانی موجود",
 	"nodes.ram": "RAM",
 	"nodes.runtime": "اجرا",
+	"nodes.uptime": "آپتایم",
 	"network": "شبکه",
 	"port": "پورت",
 	"nodes.pageDescription": "اینجا می‌توانید نودها را مدیریت کنید، وضعیتشان را فعال یا غیرفعال کنید و در صورت بروز خطا دوباره متصل شوید.",

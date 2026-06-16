@@ -65,6 +65,7 @@ type RuntimeResult struct {
 	CPU                CPUInfo  `json:"cpu"`
 	Memory             MemInfo  `json:"memory"`
 	Transfer           NetInfo  `json:"transfer"`
+	UptimeSeconds      uint64   `json:"uptime_seconds"`
 	Logs               []string `json:"logs,omitempty"`
 }
 
@@ -115,6 +116,7 @@ type NodeListItem struct {
 	CPU                    CPUInfo `json:"cpu"`
 	Memory                 MemInfo `json:"memory"`
 	Transfer               NetInfo `json:"transfer"`
+	UptimeSeconds          uint64  `json:"uptime_seconds"`
 	GeoMode                string  `json:"geo_mode"`
 	XrayConfigMode         string  `json:"xray_config_mode"`
 	Uplink                 int64   `json:"uplink"`

@@ -90,6 +90,7 @@ import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useNavigate } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import { formatBytes } from "utils/formatByte";
+import { formatDuration } from "utils/formatDuration";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -195,6 +196,11 @@ const formatNodeLimit = (value?: number | null) =>
 const formatNodeSpeed = (value?: number | null) =>
 	value !== null && value !== undefined ? `${formatBytes(value, 2)}/s` : "-";
 
+const formatNodeUptime = (value?: number | null) =>
+	value !== null && value !== undefined && Number.isFinite(value) && value > 0
+		? formatDuration(value)
+		: "-";
+
 const getNodeInstallBundle = (node: NodeType): string => {
 	const cert = node.node_certificate?.trim() ?? "";
 	const key = node.node_certificate_key?.trim() ?? "";
@@ -204,7 +210,14 @@ const getNodeInstallBundle = (node: NodeType): string => {
 	return cert || node.certificate_public_key?.trim() || "";
 };
 
-type NodeSortKey = "name" | "status" | "usage" | "bandwidth" | "cpu" | "ram";
+type NodeSortKey =
+	| "name"
+	| "status"
+	| "usage"
+	| "bandwidth"
+	| "cpu"
+	| "ram"
+	| "uptime";
 type NodeSortDirection = "asc" | "desc";
 
 const getNodeUsage = (node: NodeType) => (node.uplink ?? 0) + (node.downlink ?? 0);
@@ -886,6 +899,9 @@ export const NodesPage: FC = () => {
 						(left.memory_usage_percent ?? -1) -
 						(right.memory_usage_percent ?? -1);
 					break;
+				case "uptime":
+					result = (left.uptime_seconds ?? -1) - (right.uptime_seconds ?? -1);
+					break;
 				case "status":
 					result = compareText(left.status || "error", right.status || "error");
 					break;
@@ -921,7 +937,11 @@ export const NodesPage: FC = () => {
 		}
 		setSortKey(key);
 		setSortDirection(
-			key === "usage" || key === "bandwidth" || key === "cpu" || key === "ram"
+			key === "usage" ||
+				key === "bandwidth" ||
+				key === "cpu" ||
+				key === "ram" ||
+				key === "uptime"
 				? "desc"
 				: "asc",
 		);
@@ -1342,6 +1362,13 @@ export const NodesPage: FC = () => {
 									{t("nodes.columns.nodeRuntime", "Node / install")}
 								</Th>
 								<Th
+									minW="120px"
+									cursor="pointer"
+									onClick={() => handleSort("uptime")}
+								>
+									{sortLabel("uptime", t("nodes.columns.uptime", "Uptime"))}
+								</Th>
+								<Th
 									minW="150px"
 									cursor="pointer"
 									onClick={() => handleSort("usage")}
@@ -1441,6 +1468,9 @@ export const NodesPage: FC = () => {
 								const nodeBandwidthDisplay = `${formatNodeSpeed(
 									node.upload_speed,
 								)} / ${formatNodeSpeed(node.download_speed)}`;
+								const nodeUptimeDisplay = formatNodeUptime(
+									node.uptime_seconds,
+								);
 								const certificateCopyValue = getNodeInstallBundle(node);
 								const statusBadge = (
 									<NodeModalStatusBadge status={status} compact />
@@ -1717,6 +1747,9 @@ export const NodesPage: FC = () => {
 											</VStack>
 										</Td>
 										<Td>
+											<Text fontWeight="medium">{nodeUptimeDisplay}</Text>
+										</Td>
+										<Td>
 											<VStack align="flex-start" spacing={1}>
 												<Text fontWeight="medium">{nodeTrafficLimitDisplay}</Text>
 												{nodeRemainingDataDisplay && (
@@ -1821,7 +1854,7 @@ export const NodesPage: FC = () => {
 							})}
 							{filteredNodes.length === 0 && (
 								<Tr>
-									<Td colSpan={10}>
+									<Td colSpan={11}>
 										<Text
 											fontSize="sm"
 											color="gray.500"
@@ -1891,6 +1924,7 @@ export const NodesPage: FC = () => {
 							const nodeBandwidthDisplay = `${formatNodeSpeed(
 								node.upload_speed,
 							)} / ${formatNodeSpeed(node.download_speed)}`;
+							const nodeUptimeDisplay = formatNodeUptime(node.uptime_seconds);
 							const statusBadge = (
 								<NodeModalStatusBadge status={status} compact />
 							);
@@ -2143,6 +2177,16 @@ export const NodesPage: FC = () => {
 											<Text fontSize="xs" color="gray.500">
 												{nodeInstallLabel}
 											</Text>
+										</Box>
+										<Box>
+											<Text
+												fontSize="xs"
+												textTransform="uppercase"
+												color="gray.500"
+											>
+												{t("nodes.uptime", "Uptime")}
+											</Text>
+											<Text fontWeight="medium">{nodeUptimeDisplay}</Text>
 										</Box>
 										<Box>
 											<Text

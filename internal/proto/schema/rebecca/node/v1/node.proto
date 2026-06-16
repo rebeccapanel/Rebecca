@@ -185,6 +185,7 @@ message SystemMetrics {
   uint64 memory_used = 4;
   uint64 memory_total = 5;
   double memory_usage_percent = 6;
+  uint64 uptime_seconds = 7;
 }
 
 message TransferMetrics {
