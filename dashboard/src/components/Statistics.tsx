@@ -643,7 +643,7 @@ const SystemOverviewCard: FC<{
 								colorScheme="orange"
 								variant="outline"
 								onClick={() => {
-									window.location.href = "/integrations";
+									window.location.href = "/integrations#telegram";
 								}}
 							>
 								{t("goToTelegramSettings", "Go to Telegram Settings")}
