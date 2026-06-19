@@ -1952,7 +1952,7 @@ export const NodesPage: FC = () => {
 							const nodeContent = (
 								<VStack align="stretch" spacing={4}>
 									<Stack spacing={2}>
-										<HStack spacing={3} align="center" flexWrap="wrap">
+<HStack spacing={3} align="center" flexWrap="wrap">
 											<Text
 												fontWeight="semibold"
 												fontSize="lg"
@@ -1963,6 +1963,42 @@ export const NodesPage: FC = () => {
 												{node.name || t("nodes.unnamedNode", "Unnamed node")}
 											</Text>
 											{statusDisplay}
+											{nodeServiceUpdateAvailable && (
+												<Tag
+													as="button"
+													type="button"
+													display="inline-flex"
+													alignItems="center"
+													justifyContent="center"
+													h="24px"
+													fontSize="12px"
+													fontWeight="700"
+													borderRadius="9999px"
+													px="10px"
+													bg="rgba(237, 137, 54, 0.16)"
+													color="rgb(237, 137, 54)"
+													cursor={(!nodeId || !nodeHostActionsAvailable || isUpdatingMaintenance) ? "not-allowed" : "pointer"}
+													opacity={(!nodeId || !nodeHostActionsAvailable || isUpdatingMaintenance) ? 0.6 : 1}
+													whiteSpace="nowrap"
+													gap="6px"
+													transition="background 0.2s ease-in-out"
+													_hover={{ bg: (!nodeId || !nodeHostActionsAvailable || isUpdatingMaintenance) ? "rgba(237, 137, 54, 0.16)" : "rgba(237, 137, 54, 0.28)" }}
+													onClick={() => {
+														if (nodeId && nodeHostActionsAvailable && !isUpdatingMaintenance) {
+															handleUpdateNodeService(node);
+														}
+													}}
+												>
+													{isUpdatingMaintenance ? (
+														<Spinner size="xs" display="block" />
+													) : (
+														<DownloadIconStyled w="14px" h="14px" display="block" flexShrink={0} />
+													)}
+													<span style={{ position: "relative", top: "2px" }}>
+														{t("nodes.nodeUpdateAvailable", "Update available")}
+													</span>
+												</Tag>
+											)}
 											<Switch
 												size="sm"
 												colorScheme="primary"
@@ -1981,6 +2017,7 @@ export const NodesPage: FC = () => {
 													leftIcon={<ArrowPathIconStyled />}
 													onClick={() => reconnect(node)}
 													isLoading={isReconnecting}
+													whiteSpace="nowrap"
 												>
 													{t("nodes.reconnect")}
 												</Button>
@@ -1997,7 +2034,7 @@ export const NodesPage: FC = () => {
 											</Text>
 										)}
 										<HStack spacing={2} flexWrap="wrap">
-											<Tag colorScheme="blue" size="sm">
+											<Tag colorScheme="blue" size="sm" whiteSpace="nowrap">
 												{node.xray_version
 													? `Xray ${node.xray_version}`
 													: t("nodes.versionUnknown", "Version unknown")}
@@ -2012,6 +2049,7 @@ export const NodesPage: FC = () => {
 												}
 												isLoading={isCoreUpdating}
 												isDisabled={!nodeId || !nodeHostActionsAvailable}
+												whiteSpace="nowrap"
 											>
 												{t("nodes.updateCoreAction")}
 											</Button>
@@ -2023,6 +2061,7 @@ export const NodesPage: FC = () => {
 												}
 												isLoading={isGeoUpdating}
 												isDisabled={!nodeId || !nodeHostActionsAvailable}
+												whiteSpace="nowrap"
 											>
 												{t("nodes.updateGeoAction", "Update geo")}
 											</Button>
@@ -2033,6 +2072,7 @@ export const NodesPage: FC = () => {
 												onClick={() => handleRestartNodeService(node)}
 												isLoading={isRestartingMaintenance}
 												isDisabled={!nodeId || !nodeHostActionsAvailable}
+												whiteSpace="nowrap"
 											>
 												{t(
 													"nodes.restartServiceAction",
@@ -2046,6 +2086,7 @@ export const NodesPage: FC = () => {
 												onClick={() => handleUpdateNodeService(node)}
 												isLoading={isUpdatingMaintenance}
 												isDisabled={!nodeId || !nodeHostActionsAvailable}
+												whiteSpace="nowrap"
 											>
 												{t("nodes.updateServiceAction", "Update node service")}
 											</Button>
@@ -2060,6 +2101,7 @@ export const NodesPage: FC = () => {
 													resettingNodeId === nodeId
 												}
 												isDisabled={!nodeId}
+												whiteSpace="nowrap"
 											>
 												{t("nodes.resetUsage", "Reset usage")}
 											</Button>
