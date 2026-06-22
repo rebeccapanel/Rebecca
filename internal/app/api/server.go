@@ -24,6 +24,7 @@ import (
 	"github.com/rebeccapanel/rebecca/internal/app/usage"
 	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
 	warpapp "github.com/rebeccapanel/rebecca/internal/app/warp"
+	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 	"github.com/rebeccapanel/rebecca/internal/platform/db"
 )
@@ -47,6 +48,8 @@ type Server struct {
 	telegramSender  telegramapp.Sender
 	telegramReports telegramapp.Reporter
 	telegramBackup  telegramapp.BackupDelivery
+	webhookRepo     webhookapp.Repository
+	webhookDispatch webhookapp.Dispatcher
 	backupService   *backupapp.Service
 	backgroundOnce  sync.Once
 }
@@ -73,6 +76,13 @@ func New(cfg Config) (*Server, error) {
 	settingsRepo := settingsapp.NewRepository(pool.DB, pool.Dialect)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
+	webhookRepo := webhookapp.NewRepository(pool.DB, pool.Dialect)
+	webhookDispatch := webhookapp.NewDispatcher(webhookRepo, webhookapp.Config{
+		Addresses:     cfg.WebhookAddresses,
+		Secret:        cfg.WebhookSecret,
+		MaxRetries:    cfg.WebhookMaxRetries,
+		RetryInterval: parseWorkerInterval(cfg.WebhookRetryInterval, 30*time.Second),
+	})
 	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
 	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		FallbackInboundTag:  cfg.XrayFallbackInboundTag,
@@ -103,8 +113,10 @@ func New(cfg Config) (*Server, error) {
 			telegramRepo,
 			telegramSender,
 		),
-		telegramBackup: telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
-		backupService:  backupService,
+		telegramBackup:  telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
+		webhookRepo:     webhookRepo,
+		webhookDispatch: webhookDispatch,
+		backupService:   backupService,
 	}, nil
 }
 
@@ -115,6 +127,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
+		go s.runWebhookWorker(ctx)
 	})
 }
 

@@ -16,6 +16,7 @@ import (
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 	"github.com/rebeccapanel/rebecca/internal/app/usage"
 	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
+	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 )
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +253,9 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeUserMutationError(w, err)
 		return
 	}
-	s.telegramReports.UserCreated(r.Context(), userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw))
+	createdReport := userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw)
+	s.telegramReports.UserCreated(r.Context(), createdReport)
+	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserCreated, createdReport))
 	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusCreated)
 }
 
@@ -274,8 +277,10 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request, userna
 	}
 	report := userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw)
 	s.telegramReports.UserUpdated(r.Context(), report)
+	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserUpdated, report))
 	if rawJSONHasField(raw, "status") && strings.TrimSpace(result.Status) != "" {
 		s.telegramReports.UserStatusChanged(r.Context(), report)
+		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookUserStatusAction(result.Status), report))
 	}
 	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusOK)
 }
@@ -291,12 +296,14 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request, userna
 		writeUserMutationError(w, err)
 		return
 	}
-	s.telegramReports.UserDeleted(r.Context(), telegramapp.UserReport{
+	deletedReport := telegramapp.UserReport{
 		Username: result.Username,
 		Owner:    principal.Context.Admin.Username,
 		Actor:    principal.Context.Admin.Username,
 		Status:   result.Status,
-	})
+	}
+	s.telegramReports.UserDeleted(r.Context(), deletedReport)
+	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserDeleted, deletedReport))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"username": result.Username,
 		"status":   result.Status,
@@ -341,10 +348,13 @@ func (s *Server) handleUserMutationAction(w http.ResponseWriter, r *http.Request
 	switch suffix {
 	case "reset":
 		s.telegramReports.UserUsageReset(r.Context(), report)
+		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionDataUsageReset, report))
 	case "revoke_sub":
 		s.telegramReports.UserSubscriptionRevoked(r.Context(), report)
+		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionSubscriptionRevoked, report))
 	case "active-next":
 		s.telegramReports.UserNextPlanApplied(r.Context(), report)
+		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionAutoRenewApplied, report))
 	}
 	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusOK)
 }

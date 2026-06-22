@@ -18,6 +18,7 @@ import (
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
+	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 )
 
 const (
@@ -220,13 +221,15 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminCreated(r.Context(), telegramapp.AdminReport{
+	createdReport := telegramapp.AdminReport{
 		Username:   created.Username,
 		Actor:      telegramActor(r),
 		Role:       string(created.Role),
 		UsersLimit: created.UsersLimit,
 		DataLimit:  created.DataLimit,
-	})
+	}
+	s.telegramReports.AdminCreated(r.Context(), createdReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminCreated, createdReport))
 	writeJSON(w, http.StatusOK, adminResponse(created))
 }
 
@@ -445,12 +448,14 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminUpdated(r.Context(), telegramapp.AdminReport{
+	updatedReport := telegramapp.AdminReport{
 		Username: updated.Username,
 		Actor:    telegramActor(r),
 		Role:     string(updated.Role),
 		Changes:  adminTelegramChanges(previous, updated),
-	})
+	}
+	s.telegramReports.AdminUpdated(r.Context(), updatedReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminUpdated, updatedReport))
 	if limitTransition.Disabled {
 		s.telegramReports.AdminLimitReached(r.Context(), telegramAdminLimitReport(updated.Username, limitTransition.Reason, telegramActor(r)))
 	}
@@ -502,10 +507,12 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminDeleted(r.Context(), telegramapp.AdminReport{
+	deletedReport := telegramapp.AdminReport{
 		Username: deletedUsername,
 		Actor:    telegramActor(r),
-	})
+	}
+	s.telegramReports.AdminDeleted(r.Context(), deletedReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminDeleted, deletedReport))
 	writeJSON(w, http.StatusOK, map[string]any{"detail": "Admin removed successfully"})
 }
 
@@ -552,11 +559,13 @@ func (s *Server) handleDisableAdmin(w http.ResponseWriter, r *http.Request, user
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminUpdated(r.Context(), telegramapp.AdminReport{
+	disabledReport := telegramapp.AdminReport{
 		Username: updated.Username,
 		Actor:    telegramActor(r),
 		Changes:  []string{"<b>Status:</b> <code>disabled</code>"},
-	})
+	}
+	s.telegramReports.AdminUpdated(r.Context(), disabledReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminUpdated, disabledReport))
 	writeJSON(w, http.StatusOK, adminResponse(updated))
 }
 
@@ -625,11 +634,13 @@ func (s *Server) handleEnableAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminUpdated(r.Context(), telegramapp.AdminReport{
+	enabledReport := telegramapp.AdminReport{
 		Username: updated.Username,
 		Actor:    telegramActor(r),
 		Changes:  []string{"<b>Status:</b> <code>active</code>"},
-	})
+	}
+	s.telegramReports.AdminUpdated(r.Context(), enabledReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminUpdated, enabledReport))
 	writeJSON(w, http.StatusOK, adminResponse(updated))
 }
 
@@ -755,10 +766,12 @@ func (s *Server) handleAdminUsageResetPath(w http.ResponseWriter, r *http.Reques
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminUsageReset(r.Context(), telegramapp.AdminReport{
+	usageResetReport := telegramapp.AdminReport{
 		Username: updated.Username,
 		Actor:    telegramActor(r),
-	})
+	}
+	s.telegramReports.AdminUsageReset(r.Context(), usageResetReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminUsageReset, usageResetReport))
 	writeJSON(w, http.StatusOK, adminResponse(updated))
 }
 
@@ -795,10 +808,12 @@ func (s *Server) handleDeletedUsersUsageReset(w http.ResponseWriter, r *http.Req
 		writeStatusError(w, err)
 		return
 	}
-	s.telegramReports.AdminUsageReset(r.Context(), telegramapp.AdminReport{
+	usageResetReport := telegramapp.AdminReport{
 		Username: updated.Username,
 		Actor:    telegramActor(r),
-	})
+	}
+	s.telegramReports.AdminUsageReset(r.Context(), usageResetReport)
+	s.enqueueWebhook(r.Context(), webhookAdminEvent(webhookapp.ActionAdminUsageReset, usageResetReport))
 	writeJSON(w, http.StatusOK, adminResponse(updated))
 }
 
