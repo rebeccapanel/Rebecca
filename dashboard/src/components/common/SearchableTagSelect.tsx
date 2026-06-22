@@ -121,7 +121,7 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 					overflowY="auto"
 					p={1}
 					borderColor={borderColor}
-					zIndex="popover"
+					zIndex={16050}
 					sx={{
 						scrollbarWidth: "none",
 						msOverflowStyle: "none",
