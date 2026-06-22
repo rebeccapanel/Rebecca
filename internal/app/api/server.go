@@ -128,6 +128,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
 		go s.runWebhookWorker(ctx)
+		go s.runTelegramBot(ctx)
 	})
 }
 
