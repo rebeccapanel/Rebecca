@@ -1,21 +1,15 @@
 import { Box } from "@chakra-ui/react";
 import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { FC } from "react";
+import { parseServerTimeToUnix } from "utils/dateFormatter";
 
 type UserStatusProps = {
 	lastOnline?: string | null;
 };
 
-const convertDateFormat = (lastOnline?: string | null): number | null => {
-	if (!lastOnline) return null;
-
-	const date = new Date(`${lastOnline}Z`);
-	return Math.floor(date.getTime() / 1000);
-};
-
 export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-	const unixTime = convertDateFormat(lastOnline);
+	const unixTime = parseServerTimeToUnix(lastOnline);
 
 	if (!lastOnline || unixTime === null) {
 		return (

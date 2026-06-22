@@ -5,20 +5,12 @@ import { useTranslation } from "react-i18next";
 import {
 	buildRelativeTimeParts,
 	formatRelativeTimeParts,
+	parseServerTimeToUnix,
 } from "utils/dateFormatter";
 
 type UserStatusProps = {
 	lastOnline: string | null;
 	withMargin?: boolean;
-};
-
-const convertDateFormat = (lastOnline: string | null): number | null => {
-	if (!lastOnline) {
-		return null;
-	}
-
-	const date = new Date(`${lastOnline}Z`);
-	return Math.floor(date.getTime() / 1000);
 };
 
 export const OnlineStatus: FC<UserStatusProps> = ({
@@ -28,7 +20,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.language === "fa";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-	const unixTime = convertDateFormat(lastOnline);
+	const unixTime = parseServerTimeToUnix(lastOnline);
 	const marginLeft = withMargin ? "2" : undefined;
 
 	const timeDifferenceInSeconds = unixTime
