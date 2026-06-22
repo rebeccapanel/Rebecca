@@ -453,9 +453,9 @@ func (r Repository) resetUserMutation(ctx context.Context, admin adminapp.Admin,
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET used_traffic = 0, status = ?, last_status_change = ? WHERE id = ?`, newStatus, dbTime(now), existing.ID); err != nil {
 		return MutationResult{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_usages WHERE user_id = ?`, existing.ID); err != nil {
-		return MutationResult{}, err
-	}
+	// Keep node_user_usages history so the usage report/charts survive a reset.
+	// Zeroing the live used_traffic counter (above) plus the reset snapshot logged
+	// in user_usage_logs are enough to begin a fresh accounting period.
 	if op := operationForStatusChange(existing.Status, UserStatus(newStatus)); op != "" {
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, op, existing.ID, now); err != nil {
 			return MutationResult{}, err

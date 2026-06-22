@@ -93,7 +93,8 @@ func TestAdminUsageByDayAndNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDay := []DateUsageRow{{Date: "2026-05-08", UsedTraffic: 1000}}
+	// Deleted user u3 (999) is included in usage reports.
+	wantDay := []DateUsageRow{{Date: "2026-05-08", UsedTraffic: 1999}}
 	if !reflect.DeepEqual(dayRows, wantDay) {
 		t.Fatalf("AdminUsageByDay() = %#v, want %#v", dayRows, wantDay)
 	}
@@ -112,7 +113,7 @@ func TestAdminUsageByDayAndNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantNodes := []NodeTrafficRow{
-		{NodeID: int64Ptr(10), NodeName: "edge-a", Uplink: 0, Downlink: 600},
+		{NodeID: int64Ptr(10), NodeName: "edge-a", Uplink: 0, Downlink: 1599},
 	}
 	if !reflect.DeepEqual(nodeRows, wantNodes) {
 		t.Fatalf("AdminUsageByNodes() = %#v, want %#v", nodeRows, wantNodes)
@@ -128,7 +129,7 @@ func TestServiceUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantTimeseries := []TimeseriesRow{
-		{Timestamp: "2026-05-08T00:00:00Z", Date: "2026-05-08", UsedTraffic: 1050},
+		{Timestamp: "2026-05-08T00:00:00Z", Date: "2026-05-08", UsedTraffic: 2049},
 		{Timestamp: "2026-05-09T00:00:00Z", Date: "2026-05-09", UsedTraffic: 0},
 	}
 	if !reflect.DeepEqual(timeseries, wantTimeseries) {

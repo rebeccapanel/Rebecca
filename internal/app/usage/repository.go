@@ -134,7 +134,8 @@ func (r Repository) AdminsUsage(ctx context.Context, admins []string, start time
 		query += ` JOIN admins a ON a.id = u.admin_id`
 	}
 
-	query += ` WHERE nu.created_at >= ? AND nu.created_at <= ? AND u.status != 'deleted'`
+	// Deleted users keep contributing their historical traffic to usage reports.
+	query += ` WHERE nu.created_at >= ? AND nu.created_at <= ?`
 
 	if len(admins) > 0 {
 		placeholders := strings.TrimRight(strings.Repeat("?,", len(admins)), ",")
@@ -165,7 +166,7 @@ func (r Repository) AdminUsageByDay(ctx context.Context, adminID int64, nodeID *
 	query := fmt.Sprintf(`SELECT %s AS bucket, COALESCE(SUM(nu.used_traffic), 0)
 		  FROM node_user_usages nu
 		  JOIN users u ON u.id = nu.user_id
-		  WHERE u.admin_id = ? AND u.status != 'deleted'
+		  WHERE u.admin_id = ?
 		    AND nu.created_at >= ? AND nu.created_at <= ?`, bucket)
 
 	if nodeID != nil {
@@ -198,7 +199,7 @@ func (r Repository) AdminUsageByNodes(ctx context.Context, adminID int64, start 
 		`SELECT nu.node_id, COALESCE(SUM(nu.used_traffic), 0)
 		  FROM node_user_usages nu
 		  JOIN users u ON u.id = nu.user_id
-		  WHERE u.admin_id = ? AND u.status != 'deleted'
+		  WHERE u.admin_id = ?
 		    AND nu.created_at >= ? AND nu.created_at <= ?
 		  GROUP BY nu.node_id`,
 		adminID,
@@ -350,7 +351,7 @@ func (r Repository) ServiceUsageTimeseries(ctx context.Context, serviceID int64,
 		fmt.Sprintf(`SELECT %s AS bucket, COALESCE(SUM(nu.used_traffic), 0)
 		  FROM node_user_usages nu
 		  JOIN users u ON u.id = nu.user_id
-		  WHERE u.service_id = ? AND u.status != 'deleted'
+		  WHERE u.service_id = ?
 		    AND nu.created_at >= ? AND nu.created_at <= ?
 		  GROUP BY bucket`, bucket),
 		serviceID,
