@@ -94,6 +94,9 @@ func (r Repository) SaveTargetRawConfig(ctx context.Context, targetID string, pa
 	if _, err := Parse(normalized, r.options); err != nil {
 		return nil, err
 	}
+	if err := ValidateCertificateFiles(normalized); err != nil {
+		return nil, err
+	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
