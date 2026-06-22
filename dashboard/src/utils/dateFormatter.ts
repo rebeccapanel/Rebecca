@@ -15,6 +15,37 @@ const unitKeyMap: Record<
 export type RelativeTimeUnit = keyof typeof unitKeyMap;
 export type RelativeTimePart = { value: number; unit: RelativeTimeUnit };
 
+const HAS_TIMEZONE_RE = /[zZ]$|[+-]\d{2}:?\d{2}$/;
+
+/**
+ * Parse a server-provided timestamp into Unix seconds.
+ *
+ * The backend may return either a naive UTC timestamp without a timezone
+ * (e.g. SQLite `"2006-01-02 15:04:05.000000"` or legacy `"...T15:04:05"`) or an
+ * RFC3339 value that already carries a `Z`/offset (e.g. Postgres
+ * `"2006-01-02T15:04:05Z"`). We only append `Z` when the value has no timezone;
+ * blindly appending it to an RFC3339 value produces `"...ZZ"`, an invalid date
+ * that made online users render as "Not Connected Yet".
+ */
+export const parseServerTimeToUnix = (
+	value?: string | null,
+): number | null => {
+	if (!value) {
+		return null;
+	}
+	const raw = value.trim();
+	if (!raw) {
+		return null;
+	}
+	const isoLike = raw.replace(" ", "T");
+	const normalized = HAS_TIMEZONE_RE.test(isoLike) ? isoLike : `${isoLike}Z`;
+	const date = new Date(normalized);
+	if (Number.isNaN(date.getTime())) {
+		return null;
+	}
+	return Math.floor(date.getTime() / 1000);
+};
+
 const RTL_LANGUAGE_RE = /^(fa|ar|he|ur)(-|_)?/i;
 
 const getLanguage = () => i18n.resolvedLanguage || i18n.language || "en";
