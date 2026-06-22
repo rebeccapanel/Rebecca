@@ -144,6 +144,7 @@ message OutboundTestRequest {
   string outbound_protocol = 3;
   string all_outbounds_json = 4;
   string test_url = 5;
+  string test_type = 6;
 }
 
 message OutboundTestResponse {
@@ -151,6 +152,10 @@ message OutboundTestResponse {
   int64 delay = 2;
   int32 status_code = 3;
   string error = 4;
+  string test_type = 5;
+  string address = 6;
+  int32 port = 7;
+  string output = 8;
 }
 
 message RuntimeUpdateRequest {

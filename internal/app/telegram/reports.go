@@ -312,6 +312,10 @@ func actorOrSystem(value string) string {
 }
 
 func formatOptionalBytes(value *int64) string {
+	return FormatOptionalBytes(value)
+}
+
+func FormatOptionalBytes(value *int64) string {
 	if value == nil || *value <= 0 {
 		return "∞"
 	}
@@ -325,7 +329,14 @@ func formatOptionalBytes(value *int64) string {
 	if unit == 0 {
 		return fmt.Sprintf("%d %s", *value, units[unit])
 	}
-	return fmt.Sprintf("%.2f %s", size, units[unit])
+	switch {
+	case size >= 100 || size == float64(int64(size)):
+		return fmt.Sprintf("%.0f %s", size, units[unit])
+	case size >= 10:
+		return fmt.Sprintf("%.1f %s", size, units[unit])
+	default:
+		return fmt.Sprintf("%.2f %s", size, units[unit])
+	}
 }
 
 func formatOptionalInt(value *int64) string {

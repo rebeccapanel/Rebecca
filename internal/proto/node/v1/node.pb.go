@@ -1060,6 +1060,7 @@ type OutboundTestRequest struct {
 	OutboundProtocol string                 `protobuf:"bytes,3,opt,name=outbound_protocol,json=outboundProtocol,proto3" json:"outbound_protocol,omitempty"`
 	AllOutboundsJson string                 `protobuf:"bytes,4,opt,name=all_outbounds_json,json=allOutboundsJson,proto3" json:"all_outbounds_json,omitempty"`
 	TestUrl          string                 `protobuf:"bytes,5,opt,name=test_url,json=testUrl,proto3" json:"test_url,omitempty"`
+	TestType         string                 `protobuf:"bytes,6,opt,name=test_type,json=testType,proto3" json:"test_type,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1129,12 +1130,23 @@ func (x *OutboundTestRequest) GetTestUrl() string {
 	return ""
 }
 
+func (x *OutboundTestRequest) GetTestType() string {
+	if x != nil {
+		return x.TestType
+	}
+	return ""
+}
+
 type OutboundTestResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	Delay         int64                  `protobuf:"varint,2,opt,name=delay,proto3" json:"delay,omitempty"`
 	StatusCode    int32                  `protobuf:"varint,3,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
 	Error         string                 `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	TestType      string                 `protobuf:"bytes,5,opt,name=test_type,json=testType,proto3" json:"test_type,omitempty"`
+	Address       string                 `protobuf:"bytes,6,opt,name=address,proto3" json:"address,omitempty"`
+	Port          int32                  `protobuf:"varint,7,opt,name=port,proto3" json:"port,omitempty"`
+	Output        string                 `protobuf:"bytes,8,opt,name=output,proto3" json:"output,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1193,6 +1205,34 @@ func (x *OutboundTestResponse) GetStatusCode() int32 {
 func (x *OutboundTestResponse) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *OutboundTestResponse) GetTestType() string {
+	if x != nil {
+		return x.TestType
+	}
+	return ""
+}
+
+func (x *OutboundTestResponse) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *OutboundTestResponse) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *OutboundTestResponse) GetOutput() string {
+	if x != nil {
+		return x.Output
 	}
 	return ""
 }
@@ -2177,19 +2217,24 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x10PublicIPsRequest\";\n" +
 	"\x11PublicIPsResponse\x12\x12\n" +
 	"\x04ipv4\x18\x01 \x01(\tR\x04ipv4\x12\x12\n" +
-	"\x04ipv6\x18\x02 \x01(\tR\x04ipv6\"\xd1\x01\n" +
+	"\x04ipv6\x18\x02 \x01(\tR\x04ipv6\"\xee\x01\n" +
 	"\x13OutboundTestRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12!\n" +
 	"\foutbound_tag\x18\x02 \x01(\tR\voutboundTag\x12+\n" +
 	"\x11outbound_protocol\x18\x03 \x01(\tR\x10outboundProtocol\x12,\n" +
 	"\x12all_outbounds_json\x18\x04 \x01(\tR\x10allOutboundsJson\x12\x19\n" +
-	"\btest_url\x18\x05 \x01(\tR\atestUrl\"}\n" +
+	"\btest_url\x18\x05 \x01(\tR\atestUrl\x12\x1b\n" +
+	"\ttest_type\x18\x06 \x01(\tR\btestType\"\xe0\x01\n" +
 	"\x14OutboundTestResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05delay\x18\x02 \x01(\x03R\x05delay\x12\x1f\n" +
 	"\vstatus_code\x18\x03 \x01(\x05R\n" +
 	"statusCode\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"S\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\x12\x1b\n" +
+	"\ttest_type\x18\x05 \x01(\tR\btestType\x12\x18\n" +
+	"\aaddress\x18\x06 \x01(\tR\aaddress\x12\x12\n" +
+	"\x04port\x18\a \x01(\x05R\x04port\x12\x16\n" +
+	"\x06output\x18\b \x01(\tR\x06output\"S\n" +
 	"\x14RuntimeUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\"e\n" +

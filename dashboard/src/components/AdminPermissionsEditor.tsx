@@ -193,13 +193,18 @@ export const AdminPermissionsEditor = ({
 					<HStack
 						key={key}
 						justify="space-between"
+						align="center"
 						borderWidth="1px"
 						borderRadius="md"
 						px={3}
 						py={2}
+						minW={0}
 					>
-						<Text fontSize="sm">{t(label)}</Text>
+						<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+							{t(label)}
+						</Text>
 						<Switch
+							flexShrink={0}
 							isChecked={Boolean(value.users[key])}
 							isDisabled={isReadOnly}
 							onChange={(event) =>
@@ -263,13 +268,18 @@ export const AdminPermissionsEditor = ({
 							<HStack
 								key={key}
 								justify="space-between"
+								align="center"
 								borderWidth="1px"
 								borderRadius="md"
 								px={3}
 								py={2}
+								minW={0}
 							>
-								<Text fontSize="sm">{t(label)}</Text>
+								<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+									{t(label)}
+								</Text>
 								<Switch
+									flexShrink={0}
 									isChecked={Boolean(value.admin_management[key])}
 									isDisabled={isReadOnly}
 									onChange={(event) =>
@@ -295,13 +305,18 @@ export const AdminPermissionsEditor = ({
 							<HStack
 								key={key}
 								justify="space-between"
+								align="center"
 								borderWidth="1px"
 								borderRadius="md"
 								px={3}
 								py={2}
+								minW={0}
 							>
-								<Text fontSize="sm">{t(label)}</Text>
+								<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+									{t(label)}
+								</Text>
 								<Switch
+									flexShrink={0}
 									isChecked={Boolean(value.sections[key])}
 									isDisabled={isReadOnly}
 									onChange={(event) =>
@@ -320,13 +335,18 @@ export const AdminPermissionsEditor = ({
 						<HStack
 							key={key}
 							justify="space-between"
+							align="center"
 							borderWidth="1px"
 							borderRadius="md"
 							px={3}
 							py={2}
+							minW={0}
 						>
-							<Text fontSize="sm">{t(label)}</Text>
+							<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+								{t(label)}
+							</Text>
 							<Switch
+								flexShrink={0}
 								isChecked={Boolean(value.self_permissions?.[key])}
 								isDisabled={isReadOnly}
 								onChange={(event) =>

@@ -12,6 +12,7 @@ type Request struct {
 	OutboundProtocol string `json:"outbound_protocol,omitempty"`
 	AllOutboundsJSON string `json:"all_outbounds_json,omitempty"`
 	OutboundTestURL  string `json:"test_url,omitempty"`
+	OutboundTestType string `json:"test_type,omitempty"`
 }
 
 type File struct {
@@ -84,6 +85,10 @@ type OutboundTestResult struct {
 	Delay      int64  `json:"delay,omitempty"`
 	StatusCode int32  `json:"statusCode,omitempty"`
 	Error      string `json:"error,omitempty"`
+	TestType   string `json:"test_type,omitempty"`
+	Address    string `json:"address,omitempty"`
+	Port       int32  `json:"port,omitempty"`
+	Output     string `json:"output,omitempty"`
 }
 
 type NodeListResult struct {

@@ -32,7 +32,7 @@ func adminTelegramChanges(before adminapp.Admin, after adminapp.Admin) []string 
 	add("Role", before.Role, after.Role)
 	add("Status", before.Status, after.Status)
 	add("Traffic Mode", before.TrafficLimitMode, after.TrafficLimitMode)
-	add("Data Limit", ptrIntText(before.DataLimit), ptrIntText(after.DataLimit))
+	add("Data Limit", telegramapp.FormatOptionalBytes(before.DataLimit), telegramapp.FormatOptionalBytes(after.DataLimit))
 	add("Users Limit", ptrIntText(before.UsersLimit), ptrIntText(after.UsersLimit))
 	add("Expire", ptrIntText(before.Expire), ptrIntText(after.Expire))
 	if before.UseServiceTrafficLimits != after.UseServiceTrafficLimits {

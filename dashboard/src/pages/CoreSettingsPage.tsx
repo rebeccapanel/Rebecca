@@ -218,11 +218,16 @@ const LOG_CLEANUP_INTERVAL_OPTIONS = [
 ];
 
 type OutboundJson = Record<string, any>;
+type OutboundTestType = "latency" | "tcp" | "icmp";
 type OutboundTestResult = {
 	success: boolean;
 	delay?: number;
 	error?: string;
 	statusCode?: number;
+	test_type?: OutboundTestType;
+	address?: string;
+	port?: number;
+	output?: string;
 };
 type OutboundTestState = {
 	testing: boolean;
@@ -606,6 +611,8 @@ export const CoreSettingsPage: FC = () => {
 
 	const [outboundData, setOutboundData] = useState<any[]>([]);
 	const [outboundSearch, setOutboundSearch] = useState("");
+	const [outboundTestType, setOutboundTestType] =
+		useState<OutboundTestType>("latency");
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
 	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
 	const [balancersData, setBalancersData] = useState<BalancerRow[]>([]);
@@ -642,6 +649,37 @@ export const CoreSettingsPage: FC = () => {
 	const selectedTargetInfo = useMemo(
 		() => configTargets.find((target) => target.id === selectedTarget),
 		[configTargets, selectedTarget],
+	);
+	const isMasterTarget =
+		selectedTarget === "master" || selectedTargetInfo?.type === "master";
+	const outboundNodeTargetRequiredMessage = t(
+		"pages.xray.outbound.testNodeTargetRequired",
+		"Change the target to a node before testing this outbound.",
+	);
+	const outboundTestTypeLabels: Record<OutboundTestType, string> = {
+		latency: t("pages.xray.outbound.testTypeLatency", "Latency"),
+		tcp: t("pages.xray.outbound.testTypeTcp", "TCP"),
+		icmp: t("pages.xray.outbound.testTypeIcmp", "ICMP"),
+	};
+	const outboundTestResultLabel = useCallback(
+		(result: OutboundTestResult) => {
+			const delayLabel =
+				typeof result.delay === "number" && result.delay > 0
+					? `${result.delay}ms`
+					: "-";
+			const targetLabel = result.address
+				? result.port
+					? `${result.address}:${result.port}`
+					: result.address
+				: "";
+			const statusCodeLabel = result.statusCode
+				? ` (${result.statusCode})`
+				: "";
+			return [delayLabel + statusCodeLabel, targetLabel]
+				.filter(Boolean)
+				.join(" · ");
+		},
+		[],
 	);
 	const hasNodeTargets = useMemo(
 		() => configTargets.some((target) => target.type === "node"),
@@ -1141,6 +1179,17 @@ export const CoreSettingsPage: FC = () => {
 			return;
 		}
 
+		if (isMasterTarget) {
+			toast({
+				title: outboundNodeTargetRequiredMessage,
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+
 		const outboundTag = String(outbound.tag ?? "").trim();
 		const protocol = String(outbound.protocol ?? "")
 			.trim()
@@ -1175,6 +1224,7 @@ export const CoreSettingsPage: FC = () => {
 					outbound: JSON.stringify(outbound),
 					allOutbounds: JSON.stringify(outbounds),
 					target_id: selectedTarget,
+					test_type: outboundTestType,
 				},
 			});
 
@@ -1186,12 +1236,8 @@ export const CoreSettingsPage: FC = () => {
 				}));
 
 				if (result.success) {
-					const delayLabel = `${result.delay ?? 0}ms`;
-					const statusCodeLabel = result.statusCode
-						? ` (${result.statusCode})`
-						: "";
 					toast({
-						title: `${t("pages.xray.outbound.testSuccess", "Outbound test successful")}: ${delayLabel}${statusCodeLabel}`,
+						title: `${t("pages.xray.outbound.testSuccess", "Outbound test successful")}: ${outboundTestResultLabel(result)}`,
 						status: "success",
 						isClosable: true,
 						position: "top",
@@ -3108,6 +3154,29 @@ export const CoreSettingsPage: FC = () => {
 								>
 									{t("pages.xray.outbound.resetAll", "Reset all")}
 								</Button>
+								<RadioGroup
+									size="sm"
+									value={outboundTestType}
+									onChange={(value) =>
+										setOutboundTestType(value as OutboundTestType)
+									}
+								>
+									<HStack
+										spacing={2}
+										borderWidth="1px"
+										borderRadius="md"
+										px={2}
+										py={1}
+									>
+										{(["latency", "tcp", "icmp"] as OutboundTestType[]).map(
+											(type) => (
+												<Radio key={type} value={type} size="sm">
+													{outboundTestTypeLabels[type]}
+												</Radio>
+											),
+										)}
+									</HStack>
+								</RadioGroup>
 								<Input
 									size="xs"
 									maxW="240px"
@@ -3233,36 +3302,54 @@ export const CoreSettingsPage: FC = () => {
 													</Td>
 													<Td>
 														<VStack align="start" spacing={1}>
-															<IconButton
-																aria-label={t(
-																	"pages.xray.outbound.test",
-																	"Test",
-																)}
-																icon={<BoltIconStyled />}
-																size="xs"
-																variant="ghost"
-																colorScheme="yellow"
-																isLoading={Boolean(
-																	outboundTestStates[originalIndex]?.testing,
-																)}
-																isDisabled={
-																	outbound.protocol === "blackhole" ||
-																	String(outbound.tag ?? "")
-																		.toLowerCase()
-																		.trim() === "blocked"
-																}
-																onClick={() => testOutbound(originalIndex)}
-															/>
+															<Tooltip
+																hasArrow
+																isDisabled={!isMasterTarget}
+																label={outboundNodeTargetRequiredMessage}
+																shouldWrapChildren
+															>
+																<IconButton
+																	aria-label={t(
+																		"pages.xray.outbound.test",
+																		"Test",
+																	)}
+																	icon={<BoltIconStyled />}
+																	size="xs"
+																	variant="ghost"
+																	colorScheme="yellow"
+																	isLoading={Boolean(
+																		outboundTestStates[originalIndex]
+																			?.testing,
+																	)}
+																	isDisabled={
+																		isMasterTarget ||
+																		outbound.protocol === "blackhole" ||
+																		String(outbound.tag ?? "")
+																			.toLowerCase()
+																			.trim() === "blocked"
+																	}
+																	onClick={() => testOutbound(originalIndex)}
+																/>
+															</Tooltip>
 															{outboundTestStates[originalIndex]?.result ? (
 																outboundTestStates[originalIndex].result
 																	.success ? (
-																	<Tag colorScheme="green">
-																		{`${outboundTestStates[originalIndex].result.delay ?? 0}ms`}
-																		{outboundTestStates[originalIndex].result
-																			.statusCode
-																			? ` (${outboundTestStates[originalIndex].result.statusCode})`
-																			: ""}
-																	</Tag>
+																	<Tooltip
+																		label={
+																			outboundTestStates[originalIndex].result
+																				.output ||
+																			outboundTestResultLabel(
+																				outboundTestStates[originalIndex].result,
+																			)
+																		}
+																		whiteSpace="pre-wrap"
+																	>
+																		<Tag colorScheme="green">
+																			{outboundTestResultLabel(
+																				outboundTestStates[originalIndex].result,
+																			)}
+																		</Tag>
+																	</Tooltip>
 																) : (
 																	<Tooltip
 																		label={

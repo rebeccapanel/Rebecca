@@ -36,6 +36,7 @@ func (c Controller) TestOutbound(ctx context.Context, req Request) (OutboundTest
 		OutboundProtocol: strings.TrimSpace(req.OutboundProtocol),
 		AllOutboundsJson: req.AllOutboundsJSON,
 		TestUrl:          strings.TrimSpace(req.OutboundTestURL),
+		TestType:         strings.TrimSpace(req.OutboundTestType),
 	})
 	if err != nil {
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
@@ -46,5 +47,9 @@ func (c Controller) TestOutbound(ctx context.Context, req Request) (OutboundTest
 		Delay:      res.GetDelay(),
 		StatusCode: res.GetStatusCode(),
 		Error:      res.GetError(),
+		TestType:   res.GetTestType(),
+		Address:    res.GetAddress(),
+		Port:       res.GetPort(),
+		Output:     res.GetOutput(),
 	}, nil
 }

@@ -1,5 +1,4 @@
 import {
-	Box,
 	Button,
 	Modal,
 	ModalBody,
@@ -86,48 +85,51 @@ export const AdminPermissionsModal = ({
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="4xl">
 			<ModalOverlay />
-			<ModalContent maxW={{ base: "calc(100vw - 24px)", lg: "960px" }}>
-				<ModalHeader>
+			<ModalContent
+				maxW={{ base: "100vw", md: "calc(100vw - 24px)", lg: "960px" }}
+				h={{ base: "100dvh", md: "auto" }}
+				maxH={{ base: "100dvh", md: "calc(100dvh - 7.5rem)" }}
+				my={{ base: 0, md: "3.75rem" }}
+				borderRadius={{ base: 0, md: "md" }}
+			>
+				<ModalHeader pr={12} fontSize={{ base: "xl", md: "2xl" }}>
 					{t("admins.permissions.modalTitle", {
 						username: admin?.username ?? "",
 					})}
 				</ModalHeader>
 				<ModalCloseButton />
-				<ModalBody overflowX="auto">
+				<ModalBody overflowX="hidden" overflowY="auto">
 					{isFullAccess && (
 						<Text color="gray.500" mb={3}>
 							{t("admins.permissions.fullAccessLocked")}
 						</Text>
 					)}
-					<Box minW={{ base: "680px", md: "auto" }}>
-						<AdminPermissionsEditor
-							value={permissionsDraft}
-							onChange={setPermissionsDraft}
-							showReset={!isFullAccess}
-							onReset={() => setPermissionsDraft(DEFAULT_ADMIN_PERMISSIONS)}
-							maxDataLimitValue={maxDataLimitValue}
-							onMaxDataLimitChange={(value) => {
-								setMaxDataLimitValue(value);
-								const parsed = Number(value);
-								setPermissionsDraft((prev) => ({
-									...prev,
-									users: {
-										...prev.users,
-										max_data_limit_per_user:
-											!value || Number.isNaN(parsed)
-												? null
-												: Math.max(0, parsed) * 1024 * 1024 * 1024,
-									},
-								}));
-							}}
-							hideExtendedSections={admin?.role === AdminRole.Standard}
-							isReadOnly={isFullAccess}
-							forceDesktopLayout
-						/>
-					</Box>
+					<AdminPermissionsEditor
+						value={permissionsDraft}
+						onChange={setPermissionsDraft}
+						showReset={!isFullAccess}
+						onReset={() => setPermissionsDraft(DEFAULT_ADMIN_PERMISSIONS)}
+						maxDataLimitValue={maxDataLimitValue}
+						onMaxDataLimitChange={(value) => {
+							setMaxDataLimitValue(value);
+							const parsed = Number(value);
+							setPermissionsDraft((prev) => ({
+								...prev,
+								users: {
+									...prev.users,
+									max_data_limit_per_user:
+										!value || Number.isNaN(parsed)
+											? null
+											: Math.max(0, parsed) * 1024 * 1024 * 1024,
+								},
+							}));
+						}}
+						hideExtendedSections={false}
+						isReadOnly={isFullAccess}
+					/>
 				</ModalBody>
-				<ModalFooter>
-					<Button variant="ghost" mr={3} onClick={onClose}>
+				<ModalFooter gap={3}>
+					<Button variant="ghost" onClick={onClose}>
 						{t("cancel")}
 					</Button>
 					<Button

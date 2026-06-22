@@ -73,29 +73,32 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isNode || nodeID <= 0 {
-		writeError(w, http.StatusBadRequest, "node target is required for outbound test")
+		writeError(w, http.StatusBadRequest, "Outbound tests run on nodes only. Change the target to a node before testing this outbound.")
 		return
 	}
 	outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
 	outboundProtocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
 	if outboundTag == "" {
 		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success: false,
-			Error:   "Outbound has no tag",
+			Success:  false,
+			Error:    "Outbound has no tag",
+			TestType: outboundTestType(payload),
 		}))
 		return
 	}
 	if outboundProtocol == "blackhole" || strings.EqualFold(outboundTag, "blocked") {
 		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success: false,
-			Error:   "Blocked/blackhole outbound cannot be tested",
+			Success:  false,
+			Error:    "Blocked/blackhole outbound cannot be tested",
+			TestType: outboundTestType(payload),
 		}))
 		return
 	}
 	if !outboundTestLock.TryLock() {
 		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success: false,
-			Error:   "Another outbound test is already running, please wait",
+			Success:  false,
+			Error:    "Another outbound test is already running, please wait",
+			TestType: outboundTestType(payload),
 		}))
 		return
 	}
@@ -107,6 +110,7 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
+	testType := outboundTestType(payload)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	result, err := s.nodeController.TestOutbound(ctx, nodecontroller.Request{
@@ -115,11 +119,13 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		OutboundProtocol: outboundProtocol,
 		AllOutboundsJSON: string(allOutboundsJSON),
 		OutboundTestURL:  testURL,
+		OutboundTestType: testType,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success: false,
-			Error:   "Selected node is not available for outbound test",
+			Success:  false,
+			Error:    "Selected node is not available for outbound test",
+			TestType: testType,
 		}))
 		return
 	}
@@ -128,6 +134,18 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 
 func outboundTestEnvelope(result nodecontroller.OutboundTestResult) map[string]any {
 	obj := map[string]any{"success": result.Success}
+	if strings.TrimSpace(result.TestType) != "" {
+		obj["test_type"] = result.TestType
+	}
+	if strings.TrimSpace(result.Address) != "" {
+		obj["address"] = result.Address
+	}
+	if result.Port > 0 {
+		obj["port"] = result.Port
+	}
+	if strings.TrimSpace(result.Output) != "" {
+		obj["output"] = result.Output
+	}
 	if result.Success {
 		obj["delay"] = result.Delay
 		obj["statusCode"] = result.StatusCode
@@ -137,6 +155,24 @@ func outboundTestEnvelope(result nodecontroller.OutboundTestResult) map[string]a
 		obj["error"] = "Outbound test failed"
 	}
 	return map[string]any{"success": true, "obj": obj}
+}
+
+func outboundTestType(payload map[string]any) string {
+	value := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		stringFromAny(payload["test_type"]),
+		stringFromAny(payload["testType"]),
+		stringFromAny(payload["type"]),
+	)))
+	switch value {
+	case "", "latency":
+		return "latency"
+	case "tcp":
+		return "tcp"
+	case "icmp", "ping":
+		return "icmp"
+	default:
+		return "latency"
+	}
 }
 
 func outboundTestPayload(payload map[string]any) (map[string]any, []map[string]any, error) {
