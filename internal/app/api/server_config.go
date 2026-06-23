@@ -33,6 +33,11 @@ type Config struct {
 	XrayFallbackInboundTag       string
 	XrayExcludeInboundTags       []string
 	APIDocsEnabled               bool
+	WebhookAddresses             []string
+	WebhookSecret                string
+	WebhookSendInterval          string
+	WebhookMaxRetries            int
+	WebhookRetryInterval         string
 }
 
 func LoadConfig() (Config, error) {
@@ -73,6 +78,11 @@ func LoadConfig() (Config, error) {
 		XrayFallbackInboundTag:       firstNonEmpty(lookup("XRAY_FALLBACKS_INBOUND_TAG"), lookup("XRAY_FALLBACK_INBOUND_TAG")),
 		XrayExcludeInboundTags:       splitWhitespace(lookup("XRAY_EXCLUDE_INBOUND_TAGS")),
 		APIDocsEnabled:               parseBoolDefault(lookup("REBECCA_API_DOCS_ENABLED"), false),
+		WebhookAddresses:             splitWebhookAddresses(lookup("WEBHOOK_ADDRESS")),
+		WebhookSecret:                lookup("WEBHOOK_SECRET"),
+		WebhookSendInterval:          firstNonEmpty(lookup("REBECCA_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),
+		WebhookMaxRetries:            parseIntDefault(lookup("NUMBER_OF_RECURRENT_NOTIFICATIONS"), 3),
+		WebhookRetryInterval:         firstNonEmpty(lookup("REBECCA_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
 	}
 	if cfg.Database == "" {
 		return Config{}, fmt.Errorf("SQLALCHEMY_DATABASE_URL is required")
@@ -86,6 +96,24 @@ func splitWhitespace(value string) []string {
 		return nil
 	}
 	return parts
+}
+
+// splitWebhookAddresses parses WEBHOOK_ADDRESS, which may list several endpoints
+// separated by commas or whitespace.
+func splitWebhookAddresses(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func firstNonEmpty(values ...string) string {

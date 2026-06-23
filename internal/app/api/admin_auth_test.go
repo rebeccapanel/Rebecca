@@ -25,6 +25,7 @@ import (
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
+	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 	warpapp "github.com/rebeccapanel/rebecca/internal/app/warp"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 )
@@ -261,7 +262,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 
 	repo := adminapp.NewRepository(db, "sqlite")
 	warpRepo := warpapp.NewRepository(db, "sqlite")
-	return &Server{
+	server := &Server{
 		cfg: Config{
 			Database:                    "sqlite:///" + filepath.ToSlash(path),
 			JWTAccessTokenExpireMinutes: 1440,
@@ -281,7 +282,14 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		configRepo:     xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{}),
 		settingsRepo:   settingsapp.NewRepository(db, "sqlite"),
 		backupService:  backupapp.NewService(db, "sqlite", "sqlite:///"+filepath.ToSlash(path)),
-	}, db
+	}
+	telegramRepo := telegramapp.NewRepository(db, "sqlite")
+	telegramSender := telegramapp.NewSender(telegramRepo, "")
+	server.telegramRepo = telegramRepo
+	server.telegramSender = telegramSender
+	server.telegramReports = telegramapp.NewReporter(telegramRepo, telegramSender)
+	server.telegramBackup = telegramapp.NewBackupDelivery(telegramRepo, telegramSender)
+	return server, db
 }
 
 func insertMasterAPIAdmin(t *testing.T, db *sql.DB, id int64, username string, password string, role adminapp.AdminRole, status adminapp.AdminStatus) {

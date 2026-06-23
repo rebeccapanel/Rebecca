@@ -74,6 +74,9 @@ func DefaultForumTopics() map[string]TopicSettings {
 }
 
 func (r Repository) Settings(ctx context.Context) (Settings, error) {
+	if r.db == nil {
+		return Settings{}, ErrNotConfigured
+	}
 	if err := r.ensureRecord(ctx); err != nil {
 		return Settings{}, err
 	}
@@ -81,6 +84,9 @@ func (r Repository) Settings(ctx context.Context) (Settings, error) {
 }
 
 func (r Repository) UpdateSettings(ctx context.Context, raw map[string]json.RawMessage) (Settings, error) {
+	if r.db == nil {
+		return Settings{}, ErrNotConfigured
+	}
 	if err := r.ensureRecord(ctx); err != nil {
 		return Settings{}, err
 	}
