@@ -74,6 +74,10 @@ func (s *Server) registerMyAccountRoutes(r chi.Router) {
 
 func (s *Server) registerCoreRoutes(r chi.Router) {
 	r.HandleFunc("/core/logs", s.requireSudo(s.handleRuntimeLogsWebSocket))
+	r.HandleFunc("/core/access/insights/multi-node", s.requireSudo(s.handleAccessInsights))
+	r.HandleFunc("/core/access/insights", s.requireSudo(s.handleAccessInsights))
+	r.HandleFunc("/core/access/logs/raw", s.requireSudo(s.handleAccessLogsRaw))
+	r.HandleFunc("/core/access/operators", s.requireSudo(s.handleAccessOperators))
 	r.HandleFunc("/core/restart", s.requireSudo(s.handleCoreRestart))
 	r.HandleFunc("/core/ips", s.requireAdmin(s.handleCoreIPs))
 	r.HandleFunc("/core/xray/releases", s.requireSudo(s.handleCoreXrayReleases))

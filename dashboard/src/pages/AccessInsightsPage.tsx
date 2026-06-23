@@ -87,8 +87,7 @@ import TciSvg from "../assets/operators/tci-svgrepo-com.svg";
 const REFRESH_INTERVAL = 5000;
 const DEFAULT_LIMIT = 250;
 const DEFAULT_WINDOW_SECONDS = 120;
-// TODO(go-access-insights): re-enable once the backend is rebuilt in Go.
-const ACCESS_INSIGHTS_COMING_SOON = true;
+const ACCESS_INSIGHTS_COMING_SOON = false;
 const ACCESS_INSIGHTS_PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
 const ACCESS_INSIGHTS_PAGE_SIZE_STORAGE_KEY =
 	"rebecca-access-insights-per-page";

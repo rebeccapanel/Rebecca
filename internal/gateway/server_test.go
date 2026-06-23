@@ -115,7 +115,6 @@ func TestRemovedAndDeprecatedRoutes(t *testing.T) {
 		want   int
 	}{
 		{method: http.MethodPost, path: "/api/core/xray/update", want: http.StatusGone},
-		{method: http.MethodGet, path: "/api/core/access/insights", want: http.StatusGone},
 		{method: http.MethodGet, path: "/api/node/master", want: http.StatusGone},
 		{method: http.MethodPost, path: "/api/node/master/usage/reset", want: http.StatusGone},
 	}
