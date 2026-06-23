@@ -92,6 +92,17 @@ func TestValidateCertificateFilesInlineContentSkipsFileCheck(t *testing.T) {
 	}
 }
 
+func TestValidateCertificateFilesRejectsPathTraversal(t *testing.T) {
+	payload := tlsInboundPayload(map[string]any{
+		"certificateFile": "/etc/rebecca/../../etc/shadow",
+	})
+
+	err := ValidateCertificateFiles(payload)
+	if err == nil || !strings.Contains(err.Error(), "..") {
+		t.Fatalf("expected path traversal rejection, got %v", err)
+	}
+}
+
 func TestValidateCertificateFilesNoTLS(t *testing.T) {
 	payload := map[string]any{
 		"inbounds": []any{

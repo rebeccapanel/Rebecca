@@ -3,6 +3,7 @@ package xrayconfig
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -62,7 +63,14 @@ func validateCertificateFile(certificate map[string]any, contentKey string, path
 	if path == "" {
 		return nil
 	}
-	info, err := os.Stat(path)
+	// The path comes from the saved config (operator-controlled). Reject path
+	// traversal before touching the filesystem so a stored config cannot probe
+	// arbitrary locations via "..", and normalize the value before use.
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("%s path %q must not contain %q", contentKey, path, "..")
+	}
+	cleanPath := filepath.Clean(path)
+	info, err := os.Stat(cleanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%s file %q does not exist", contentKey, path)
