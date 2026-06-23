@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +21,25 @@ const (
 	defaultAccessLimit    = 200
 	defaultAccessWindow   = 600
 )
+
+// loadAccessInsightsData loads the ISP/operator table at startup: an explicit
+// configured file if set, otherwise a cached copy fetched once from the public
+// geo-templates source (when a data directory is configured). Best effort.
+func (s *Server) loadAccessInsightsData(ctx context.Context) {
+	if s.cfg.AccessISPPath != "" {
+		if err := accessinsights.EnsureOperators(ctx, s.cfg.AccessISPPath, "", nil); err != nil {
+			log.Printf("access insights ISP data: %v", err)
+		}
+		return
+	}
+	if strings.TrimSpace(s.cfg.DataDir) == "" {
+		return
+	}
+	cache := filepath.Join(s.cfg.DataDir, "access", "ISPbyrange.json")
+	if err := accessinsights.EnsureOperators(ctx, cache, s.cfg.AccessISPURL, nil); err != nil {
+		log.Printf("access insights ISP data: %v", err)
+	}
+}
 
 type accessNode struct {
 	ID     int64

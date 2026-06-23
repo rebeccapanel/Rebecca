@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -64,20 +65,22 @@ func (t *operatorTable) lookup(ip string) (string, string, bool) {
 	return "", "", false
 }
 
-// ispRangeFile is the on-disk schema for ISP ranges. Entries may use either a
-// CIDR or an explicit start/end pair.
-type ispRangeFile struct {
-	Ranges []struct {
-		CIDR      string `json:"cidr"`
-		Start     string `json:"start"`
-		End       string `json:"end"`
-		ShortName string `json:"short_name"`
-		Owner     string `json:"owner"`
-	} `json:"ranges"`
+// ispRangeEntry is one entry of the ISPbyrange.json file (a top-level array).
+// Ranges are given as inclusive from/to IPv4 strings; cidr/start/end are also
+// accepted for flexibility.
+type ispRangeEntry struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	CIDR      string `json:"cidr"`
+	Start     string `json:"start"`
+	End       string `json:"end"`
+	ShortName string `json:"short_name"`
+	Owner     string `json:"owner"`
 }
 
-// LoadOperators loads an ISP-range table from a JSON file. A missing path is not
-// an error; lookups simply return no metadata until a valid file is loaded.
+// LoadOperators loads an ISP-range table from a JSON file (the ISPbyrange.json
+// format from the geo-templates project: a top-level array of from/to ranges).
+// A missing path is not an error; lookups return no metadata until loaded.
 func LoadOperators(path string) error {
 	if path == "" {
 		return nil
@@ -89,13 +92,18 @@ func LoadOperators(path string) error {
 		}
 		return err
 	}
-	var parsed ispRangeFile
-	if err := json.Unmarshal(raw, &parsed); err != nil {
+	return applyOperatorBytes(raw)
+}
+
+// applyOperatorBytes parses ISP-range JSON and installs it as the active table.
+func applyOperatorBytes(raw []byte) error {
+	entries, err := decodeISPRanges(raw)
+	if err != nil {
 		return err
 	}
 	table := &operatorTable{}
-	for _, entry := range parsed.Ranges {
-		start, end, ok := rangeBounds(entry.CIDR, entry.Start, entry.End)
+	for _, entry := range entries {
+		start, end, ok := rangeBounds(entry.CIDR, firstNonEmpty(entry.From, entry.Start), firstNonEmpty(entry.To, entry.End))
 		if !ok {
 			continue
 		}
@@ -106,6 +114,35 @@ func LoadOperators(path string) error {
 	loadedOperators = table
 	operatorMu.Unlock()
 	return nil
+}
+
+// decodeISPRanges accepts either a top-level array of entries or an object with
+// a "ranges" array.
+func decodeISPRanges(raw []byte) ([]ispRangeEntry, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "[") {
+		var entries []ispRangeEntry
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			return nil, err
+		}
+		return entries, nil
+	}
+	var wrapper struct {
+		Ranges []ispRangeEntry `json:"ranges"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err != nil {
+		return nil, err
+	}
+	return wrapper.Ranges, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func rangeBounds(cidr, startStr, endStr string) (uint32, uint32, bool) {

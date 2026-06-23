@@ -20,10 +20,11 @@ func TestLookupOperatorsUnloaded(t *testing.T) {
 func TestLoadAndLookupOperators(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "isp.json")
-	content := `{"ranges":[
-		{"cidr":"5.160.0.0/16","short_name":"MCI","owner":"Hamrah Aval"},
-		{"start":"2.144.0.0","end":"2.144.255.255","short_name":"Irancell","owner":"MTN Irancell"}
-	]}`
+	// Real ISPbyrange.json format: a top-level array of from/to ranges.
+	content := `[
+		{"from":"5.160.0.0","to":"5.160.255.255","short_name":"MCI","owner":"Hamrah Aval"},
+		{"from":"2.144.0.0","to":"2.144.255.255","short_name":"Irancell","owner":"MTN Irancell"}
+	]`
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

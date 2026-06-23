@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/rebeccapanel/rebecca/internal/app/accessinsights"
 )
 
 type Config struct {
@@ -38,6 +40,9 @@ type Config struct {
 	WebhookSendInterval          string
 	WebhookMaxRetries            int
 	WebhookRetryInterval         string
+	AccessISPPath                string
+	AccessISPURL                 string
+	DataDir                      string
 }
 
 func LoadConfig() (Config, error) {
@@ -83,6 +88,9 @@ func LoadConfig() (Config, error) {
 		WebhookSendInterval:          firstNonEmpty(lookup("REBECCA_WEBHOOK_SEND_INTERVAL"), secondsEnv(lookup("JOB_SEND_NOTIFICATIONS_INTERVAL"))),
 		WebhookMaxRetries:            parseIntDefault(lookup("NUMBER_OF_RECURRENT_NOTIFICATIONS"), 3),
 		WebhookRetryInterval:         firstNonEmpty(lookup("REBECCA_WEBHOOK_RETRY_INTERVAL"), secondsEnv(lookup("RECURRENT_NOTIFICATIONS_TIMEOUT"))),
+		AccessISPPath:                lookup("REBECCA_ACCESS_ISP_PATH"),
+		AccessISPURL:                 firstNonEmpty(lookup("REBECCA_ACCESS_ISP_URL"), accessinsights.DefaultISPURL),
+		DataDir:                      lookup("REBECCA_DATA_DIR"),
 	}
 	if cfg.Database == "" {
 		return Config{}, fmt.Errorf("SQLALCHEMY_DATABASE_URL is required")
