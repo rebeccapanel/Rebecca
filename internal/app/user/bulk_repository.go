@@ -340,32 +340,27 @@ func (r Repository) ensureBulkActivateCapacityTx(ctx context.Context, tx *sql.Tx
 		if required <= 0 {
 			return nil
 		}
-		if targetAdmin.UseServiceTrafficLimits {
-			if payload.ServiceID == nil {
-				return nil
+		// Per-service cap (when the admin is governed by per-service limits).
+		if targetAdmin.UseServiceTrafficLimits && payload.ServiceID != nil {
+			if limit := AdminServiceLimit(*targetAdmin, payload.ServiceID); limit != nil && limit.UsersLimit != nil && *limit.UsersLimit > 0 {
+				active, err := r.activeUsersForScopeTx(ctx, tx, targetAdmin.ID, payload.ServiceID)
+				if err != nil {
+					return err
+				}
+				if active+required > *limit.UsersLimit {
+					return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *limit.UsersLimit))
+				}
 			}
-			limit := AdminServiceLimit(*targetAdmin, payload.ServiceID)
-			if limit == nil || limit.UsersLimit == nil || *limit.UsersLimit <= 0 {
-				return nil
-			}
-			active, err := r.activeUsersForScopeTx(ctx, tx, targetAdmin.ID, payload.ServiceID)
+		}
+		// The global users_limit always applies when set, regardless of mode.
+		if targetAdmin.UsersLimit != nil && *targetAdmin.UsersLimit > 0 {
+			active, err := r.activeUsersForScopeTx(ctx, tx, targetAdmin.ID, nil)
 			if err != nil {
 				return err
 			}
-			if active+required > *limit.UsersLimit {
-				return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *limit.UsersLimit))
+			if active+required > *targetAdmin.UsersLimit {
+				return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *targetAdmin.UsersLimit))
 			}
-			return nil
-		}
-		if targetAdmin.UsersLimit == nil || *targetAdmin.UsersLimit <= 0 {
-			return nil
-		}
-		active, err := r.activeUsersForScopeTx(ctx, tx, targetAdmin.ID, nil)
-		if err != nil {
-			return err
-		}
-		if active+required > *targetAdmin.UsersLimit {
-			return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *targetAdmin.UsersLimit))
 		}
 		return nil
 	}
@@ -428,20 +423,51 @@ func (r Repository) ensureBulkActivateCapacityTx(ctx context.Context, tx *sql.Tx
 					return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", serviceUsersLimit.Int64))
 				}
 			}
-			continue
-		}
-		if trafficMode == string(adminapp.TrafficLimitUsedTraffic) && dataLimit.Valid && dataLimit.Int64 > 0 && usersUsage >= dataLimit.Int64 {
+		} else if trafficMode == string(adminapp.TrafficLimitUsedTraffic) && dataLimit.Valid && dataLimit.Int64 > 0 && usersUsage >= dataLimit.Int64 {
 			return clientError(403, "Admin traffic limit reached. You can't activate users for this admin.")
 		}
-		if !usersLimit.Valid || usersLimit.Int64 <= 0 {
-			continue
+		// The global users_limit always applies when set, regardless of mode.
+		if usersLimit.Valid && usersLimit.Int64 > 0 {
+			active, err := r.activeUsersForScopeTx(ctx, tx, item.adminID, nil)
+			if err != nil {
+				return err
+			}
+			if active+item.count > usersLimit.Int64 {
+				return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", usersLimit.Int64))
+			}
 		}
-		active, err := r.activeUsersForScopeTx(ctx, tx, item.adminID, nil)
+	}
+	return nil
+}
+
+// ensureActivationCapacityTx enforces the admin's user limits when a single user
+// transitions into the active state (e.g. resetting a limited user back to
+// active). The global users_limit always applies when set; the per-service limit
+// applies on top when the admin is governed by per-service limits. The user being
+// activated is not counted as active yet, so an existing active count at or above
+// the limit means there is no free slot.
+func (r Repository) ensureActivationCapacityTx(ctx context.Context, tx *sql.Tx, admin adminapp.Admin, serviceID *int64) error {
+	if admin.Role == adminapp.RoleFullAccess {
+		return nil
+	}
+	if admin.UseServiceTrafficLimits && serviceID != nil {
+		if limit := AdminServiceLimit(admin, serviceID); limit != nil && limit.UsersLimit != nil && *limit.UsersLimit > 0 {
+			active, err := r.activeUsersForScopeTx(ctx, tx, admin.ID, serviceID)
+			if err != nil {
+				return err
+			}
+			if active >= *limit.UsersLimit {
+				return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *limit.UsersLimit))
+			}
+		}
+	}
+	if admin.UsersLimit != nil && *admin.UsersLimit > 0 {
+		active, err := r.activeUsersForScopeTx(ctx, tx, admin.ID, nil)
 		if err != nil {
 			return err
 		}
-		if active+item.count > usersLimit.Int64 {
-			return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", usersLimit.Int64))
+		if active >= *admin.UsersLimit {
+			return clientError(400, fmt.Sprintf("Users limit reached. Maximum active users: %d", *admin.UsersLimit))
 		}
 	}
 	return nil

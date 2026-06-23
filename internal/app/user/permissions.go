@@ -229,20 +229,21 @@ func EnsureUsersLimit(admin adminapp.Admin, serviceID *int64, ctx MutationContex
 	if admin.Role == adminapp.RoleFullAccess {
 		return nil
 	}
+	// Per-service cap applies when the admin is governed by per-service limits.
 	if admin.UseServiceTrafficLimits {
 		if serviceID == nil {
 			return PermissionError{Detail: "This admin must create users inside an assigned service."}
 		}
-		limit := AdminServiceLimit(admin, serviceID)
-		if limit == nil || limit.UsersLimit == nil || *limit.UsersLimit <= 0 {
-			return nil
+		if limit := AdminServiceLimit(admin, serviceID); limit != nil && limit.UsersLimit != nil && *limit.UsersLimit > 0 {
+			if ctx.ServiceActiveUsers[*serviceID] >= *limit.UsersLimit {
+				return PermissionError{Detail: fmt.Sprintf("Users limit reached. Maximum active users: %d", *limit.UsersLimit)}
+			}
 		}
-		active := ctx.ServiceActiveUsers[*serviceID]
-		if active >= *limit.UsersLimit {
-			return PermissionError{Detail: fmt.Sprintf("Users limit reached. Maximum active users: %d", *limit.UsersLimit)}
-		}
-		return nil
 	}
+	// The global users_limit is an absolute cap that always applies when set,
+	// regardless of the per-service traffic-limit mode. Without this, an admin in
+	// service-limit mode whose service has no per-service users_limit could create
+	// unlimited users even though the dashboard shows/sells the global limit.
 	if admin.UsersLimit != nil && *admin.UsersLimit > 0 && ctx.ActiveUsers >= *admin.UsersLimit {
 		return PermissionError{Detail: fmt.Sprintf("Users limit reached. Maximum active users: %d", *admin.UsersLimit)}
 	}

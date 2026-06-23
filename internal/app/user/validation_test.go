@@ -282,6 +282,29 @@ func TestCreatedTrafficAndServiceLimits(t *testing.T) {
 	}
 }
 
+func TestUsersLimitGlobalCapAlwaysEnforced(t *testing.T) {
+	// Regression: an admin in per-service-limit mode with a global users_limit
+	// but no per-service users_limit was able to create unlimited users because
+	// the global cap was skipped. The global limit must always apply when set.
+	admin := standardAdmin()
+	admin.UseServiceTrafficLimits = true
+	admin.UsersLimit = i64(10)
+	admin.ServiceLimits = []adminapp.AdminServiceLimit{{ServiceID: 7}} // no per-service UsersLimit
+
+	if err := EnsureUsersLimit(admin, i64(7), MutationContext{ActiveUsers: 9, ServiceActiveUsers: map[int64]int64{7: 9}}); err != nil {
+		t.Fatalf("expected allowed below global cap, got %v", err)
+	}
+	if err := EnsureUsersLimit(admin, i64(7), MutationContext{ActiveUsers: 10, ServiceActiveUsers: map[int64]int64{7: 10}}); err == nil || !strings.Contains(err.Error(), "Users limit") {
+		t.Fatalf("expected global users limit enforced in service mode, got %v", err)
+	}
+
+	// The per-service cap still applies on top of the global cap.
+	admin.ServiceLimits[0].UsersLimit = i64(3)
+	if err := EnsureUsersLimit(admin, i64(7), MutationContext{ActiveUsers: 5, ServiceActiveUsers: map[int64]int64{7: 3}}); err == nil || !strings.Contains(err.Error(), "Users limit") {
+		t.Fatalf("expected per-service cap enforced, got %v", err)
+	}
+}
+
 func TestServiceVisibilityAndDeleteUsageCap(t *testing.T) {
 	admin := standardAdmin()
 	service := ServiceInfo{ID: 3, AdminIDs: []int64{99}, HasActiveHosts: true}

@@ -449,6 +449,11 @@ func (r Repository) resetUserMutation(ctx context.Context, admin adminapp.Admin,
 	newStatus := string(existing.Status)
 	if existing.Status == UserStatusLimited {
 		newStatus = string(UserStatusActive)
+		// Reactivating a limited user consumes an active slot, so re-check the
+		// admin's user limit just like creation/activation does.
+		if err := r.ensureActivationCapacityTx(ctx, tx, admin, existing.ServiceID); err != nil {
+			return MutationResult{}, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET used_traffic = 0, status = ?, last_status_change = ? WHERE id = ?`, newStatus, dbTime(now), existing.ID); err != nil {
 		return MutationResult{}, err
