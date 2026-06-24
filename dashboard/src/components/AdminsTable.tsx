@@ -369,6 +369,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
+	const inlineMenuBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
 	const {
 		adminOptions,
 		admins,
@@ -441,6 +442,9 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	});
 	const contextMenuRef = useRef<HTMLDivElement | null>(null);
 	const [contextAction, setContextAction] = useState<string | null>(null);
+	const [openTrafficMenuFor, setOpenTrafficMenuFor] = useState<string | null>(
+		null,
+	);
 	const [quickPassInfo, setQuickPassInfo] = useState<{
 		username: string;
 		password: string;
@@ -665,6 +669,7 @@ export const AdminsTable: FC<TableProps> = (props) => {
 	};
 
 	const closeContextMenu = useCallback(() => {
+		setOpenTrafficMenuFor(null);
 		setContextMenu({ visible: false, x: 0, y: 0, admin: null });
 	}, []);
 	const closeDeleteDialogAndReset = () => {
@@ -990,66 +995,86 @@ export const AdminsTable: FC<TableProps> = (props) => {
 			disabledReasonLabel,
 		};
 	};
-	const renderAddTrafficSubmenu = (admin: Admin, onDone?: () => void) => (
-		<Box position="relative" role="group">
-			<Button
-				variant="ghost"
-				justifyContent="flex-start"
-				w="full"
-				isLoading={contextAction?.startsWith("addData-")}
-				isDisabled={contextAction?.startsWith("addData-")}
-			>
-				<HStack w="full" justify="space-between" spacing={3}>
-					<HStack spacing={2} minW={0}>
-						<AddDataIcon />
-						<Text as="span" noOfLines={1}>
-							{t("admins.addTraffic", "Add traffic")}
-						</Text>
+	const renderAddTrafficSubmenu = (admin: Admin, onDone?: () => void) => {
+		const isOpen = openTrafficMenuFor === admin.username;
+		const closeAfterSelection = () => {
+			setOpenTrafficMenuFor(null);
+			onDone?.();
+		};
+		return (
+			<Box>
+				<Button
+					variant="ghost"
+					justifyContent="flex-start"
+					w="full"
+					isLoading={contextAction?.startsWith("addData-")}
+					isDisabled={contextAction?.startsWith("addData-")}
+					aria-expanded={isOpen}
+					onClick={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						setOpenTrafficMenuFor((current) =>
+							current === admin.username ? null : admin.username,
+						);
+					}}
+				>
+					<HStack w="full" justify="space-between" spacing={3}>
+						<HStack spacing={2} minW={0}>
+							<AddDataIcon />
+							<Text as="span" noOfLines={1}>
+								{t("admins.addTraffic", "Add traffic")}
+							</Text>
+						</HStack>
+						<ChevronRightIcon
+							width={14}
+							style={{
+								flexShrink: 0,
+								transform: isOpen
+									? "rotate(90deg)"
+									: isRTL
+										? "rotate(180deg)"
+										: undefined,
+								transition: "transform 0.15s ease",
+							}}
+						/>
 					</HStack>
-					<ChevronRightIcon
-						width={14}
-						style={{
-							flexShrink: 0,
-							transform: isRTL ? "rotate(180deg)" : undefined,
-						}}
-					/>
-				</HStack>
-			</Button>
-			<Stack
-				display="none"
-				_groupHover={{ display: "flex" }}
-				_groupFocusWithin={{ display: "flex" }}
-				position="absolute"
-				top={0}
-				left={isRTL ? "auto" : "100%"}
-				right={isRTL ? "100%" : "auto"}
-				minW="120px"
-				spacing={1}
-				p={2}
-				bg={dialogBg}
-				borderWidth="1px"
-				borderColor={dialogBorderColor}
-				borderRadius="md"
-				boxShadow="lg"
-				zIndex={1501}
-			>
-				{ADMIN_TRAFFIC_OPTIONS.map((option) => (
-					<Button
-						key={option.label}
-						variant="ghost"
-						justifyContent="flex-start"
-						onClick={() =>
-							handleAddDataLimit(admin, option.gigabytes, onDone)
-						}
-						isLoading={contextAction === `addData-${option.gigabytes}`}
-						isDisabled={contextAction?.startsWith("addData-")}
+				</Button>
+				<Collapse in={isOpen} unmountOnExit>
+					<SimpleGrid
+						columns={{ base: 2, sm: 3 }}
+						spacing={1}
+						mt={1}
+						p={2}
+						bg={inlineMenuBg}
+						borderWidth="1px"
+						borderColor={dialogBorderColor}
+						borderRadius="md"
 					>
-						{option.label}
-					</Button>
-				))}
-			</Stack>
-		</Box>
-	);
+						{ADMIN_TRAFFIC_OPTIONS.map((option) => (
+							<Button
+								key={option.label}
+								size="sm"
+								variant="ghost"
+								justifyContent="center"
+								onClick={(event) => {
+									event.stopPropagation();
+									handleAddDataLimit(
+										admin,
+										option.gigabytes,
+										closeAfterSelection,
+									);
+								}}
+								isLoading={contextAction === `addData-${option.gigabytes}`}
+								isDisabled={contextAction?.startsWith("addData-")}
+							>
+								{option.label}
+							</Button>
+						))}
+					</SimpleGrid>
+				</Collapse>
+			</Box>
+		);
+	};
 	const renderAdminActionsMenu = (admin: Admin) => {
 		const meta = getAdminRowMeta(admin);
 		const hasActions =
@@ -1065,7 +1090,12 @@ export const AdminsTable: FC<TableProps> = (props) => {
 
 		return (
 			<Box onClick={(event) => event.stopPropagation()}>
-				<Menu placement="bottom-start" strategy="fixed" autoSelect={false}>
+				<Menu
+					placement="bottom-start"
+					strategy="fixed"
+					autoSelect={false}
+					onClose={() => setOpenTrafficMenuFor(null)}
+				>
 					{({ onClose }) => (
 						<>
 							<MenuButton
@@ -1080,7 +1110,8 @@ export const AdminsTable: FC<TableProps> = (props) => {
 									minW="240px"
 									maxW="calc(100vw - 24px)"
 									maxH="min(70vh, 420px)"
-									overflow="visible"
+									overflowY="auto"
+									overflowX="hidden"
 								>
 									{meta.canManage && (
 										<MenuItem
@@ -2212,7 +2243,8 @@ export const AdminsTable: FC<TableProps> = (props) => {
 							minW="220px"
 							maxW="calc(100vw - 24px)"
 							maxH="min(70vh, 420px)"
-							overflow="visible"
+							overflowY="auto"
+							overflowX="hidden"
 							onClick={(e) => e.stopPropagation()}
 							onContextMenu={(e) => {
 								e.preventDefault();
