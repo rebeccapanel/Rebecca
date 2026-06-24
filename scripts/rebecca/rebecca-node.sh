@@ -1206,10 +1206,15 @@ install_binary_rebecca_node() {
         artifact_url="local-override"
     elif [ "$node_version" = "dev" ]; then
         IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
-        package_path="$tmp_dir/rebecca-node-binaries.zip"
-        ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
-        ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
-        normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
+        if [[ "$artifact_url" == *.zip ]]; then
+            package_path="$tmp_dir/rebecca-node-binaries.zip"
+            ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
+            ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
+            normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
+        else
+            ui_spinner_run "Downloading Rebecca-node dev binary" curl -fL "$artifact_url" -o "$tmp_dir/rebecca-node"
+            chmod +x "$tmp_dir/rebecca-node"
+        fi
     else
         IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
         ui_spinner_run "Downloading Rebecca-node binary" curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
