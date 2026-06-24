@@ -100,6 +100,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
+import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
@@ -171,11 +172,39 @@ const uniqueValues = (items: string[]): string[] =>
 const getNodeServiceUpdateAvailable = (
 	currentVersion?: string | null,
 	latestVersion?: string | null,
+	channel?: string | null,
 ): boolean => {
+	if (channel === "dev" && !/^dev-[0-9a-f]{7,40}$/i.test(currentVersion ?? "")) {
+		return false;
+	}
 	const current = normalizeVersion(currentVersion);
 	const latest = normalizeVersion(latestVersion);
 	return Boolean(current && latest && current !== latest);
 };
+
+const getNodeUpdateChannel = (
+	node?: Pick<NodeType, "node_update_channel"> | null,
+	fallback?: string,
+) => (node?.node_update_channel === "dev" ? "dev" : fallback === "dev" ? "dev" : "latest");
+
+const getNodeRuntimeVersion = (node: NodeType) =>
+	node.node_binary_tag || node.node_service_version || "";
+
+const getNodeRuntimeDisplayVersion = (node: NodeType) => {
+	const version = getNodeRuntimeVersion(node);
+	if (node.node_update_channel === "dev" && !/^dev-[0-9a-f]{7,40}$/i.test(version)) {
+		return version ? `dev (${version})` : "dev";
+	}
+	return version;
+};
+
+const getLatestNodeVersionForChannel = (
+	maintenanceInfo: MaintenanceInfo | undefined,
+	channel: string,
+) =>
+	channel === "dev"
+		? maintenanceInfo?.node_update?.latest_dev?.tag || ""
+		: maintenanceInfo?.node_update?.latest_release?.tag || "";
 
 const formatNodeBytes = (value?: number | null, precision = 2) =>
 	value !== null && value !== undefined ? formatBytes(value, precision) : "-";
@@ -234,6 +263,11 @@ type VersionDialogTarget =
 	| { type: "bulk" };
 
 type GeoDialogTarget = { type: "node"; node: NodeType };
+
+type ServiceActionConfirm =
+	| { type: "restart"; node: NodeType; label: string }
+	| { type: "update"; node: NodeType; label: string }
+	| { type: "update-all"; count: number };
 
 type MaintenanceInfo = {
 	panel?: { mode?: string; install_mode?: string } | null;
@@ -320,6 +354,9 @@ export const NodesPage: FC = () => {
 	const [updatingServiceNodeId, setUpdatingServiceNodeId] = useState<
 		number | null
 	>(null);
+	const [updatingBulkService, setUpdatingBulkService] = useState(false);
+	const [serviceActionConfirm, setServiceActionConfirm] =
+		useState<ServiceActionConfirm | null>(null);
 	const [newNodeCertificate, setNewNodeCertificate] = useState<{
 		certificate: string;
 		certificate_key?: string | null;
@@ -419,15 +456,22 @@ export const NodesPage: FC = () => {
 			?.node_update_channel || maintenanceInfo?.node_update?.channel;
 	const nodeUpdateChannel =
 		detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
-	const latestNodeVersion =
-		nodeUpdateChannel === "dev"
-			? maintenanceInfo?.node_update?.latest_dev?.tag || ""
-			: maintenanceInfo?.node_update?.latest_release?.tag || "";
+	const latestNodeVersion = getLatestNodeVersionForChannel(
+		maintenanceInfo,
+		nodeUpdateChannel,
+	);
+	const currentNodeDisplayVersion =
+		nodeUpdateChannel === "dev" &&
+		currentNodeVersion &&
+		!/^dev-[0-9a-f]{7,40}$/i.test(currentNodeVersion)
+			? `dev (${currentNodeVersion})`
+			: currentNodeVersion;
 	const isNodeUpdateAvailable =
-		normalizeVersion(latestNodeVersion) &&
-		normalizeVersion(currentNodeVersion) &&
-		normalizeVersion(latestNodeVersion) !==
-			normalizeVersion(currentNodeVersion);
+		getNodeServiceUpdateAvailable(
+			currentNodeVersion,
+			latestNodeVersion,
+			nodeUpdateChannel,
+	);
 
 	const { isLoading: isAdding, mutate: addNodeMutate } = useMutation(addNode, {
 		onSuccess: (createdNode: NodeType) => {
@@ -637,32 +681,13 @@ export const NodesPage: FC = () => {
 	const handleRestartNodeService = (node: NodeType) => {
 		if (!node?.id) return;
 		const label = node.name || node.address || t("nodes.thisNode", "this node");
-		const confirmed = window.confirm(
-			t(
-				"nodes.restartServiceConfirm",
-				"Send a restart request to {{name}}? Services will be interrupted briefly.",
-				{ name: label },
-			),
-		);
-		if (!confirmed) return;
-		restartServiceMutate(node);
+		setServiceActionConfirm({ type: "restart", node, label });
 	};
 
 	const handleUpdateNodeService = (node: NodeType) => {
 		if (!node?.id) return;
 		const label = node.name || node.address || t("nodes.thisNode", "this node");
-		const confirmed = window.confirm(
-			t(
-				"nodes.updateServiceConfirm",
-				"Send an update request to {{name}}? The node will download updates and restart.",
-				{ name: label },
-			),
-		);
-		if (!confirmed) return;
-		updateServiceMutate({
-			...node,
-			channel: node.node_update_channel === "dev" ? "dev" : nodeUpdateChannel,
-		});
+		setServiceActionConfirm({ type: "update", node, label });
 	};
 
 	const copyToClipboard = async (
@@ -696,6 +721,109 @@ export const NodesPage: FC = () => {
 	const handleCloseResetConfirm = () => {
 		setResetCandidate(null);
 		closeResetConfirm();
+	};
+
+	const handleUpdateAllNodeServices = () => {
+		const targetNodes = (nodes ?? []).filter(
+			(node) => node.id != null && node.node_install_mode === "binary",
+		);
+		if (targetNodes.length === 0) {
+			toast({
+				title: t(
+					"nodes.noBinaryNodesForServiceUpdate",
+					"No binary nodes are available for service update.",
+				),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+			});
+			return;
+		}
+		setServiceActionConfirm({
+			type: "update-all",
+			count: targetNodes.length,
+		});
+	};
+
+	const closeServiceActionConfirm = () => {
+		if (isRestartingService || isUpdatingService || updatingBulkService) {
+			return;
+		}
+		setServiceActionConfirm(null);
+	};
+
+	const confirmServiceAction = async () => {
+		if (!serviceActionConfirm) {
+			return;
+		}
+		if (serviceActionConfirm.type === "restart") {
+			restartServiceMutate(serviceActionConfirm.node);
+			setServiceActionConfirm(null);
+			return;
+		}
+		if (serviceActionConfirm.type === "update") {
+			updateServiceMutate({
+				...serviceActionConfirm.node,
+				channel: getNodeUpdateChannel(
+					serviceActionConfirm.node,
+					nodeUpdateChannel,
+				),
+			});
+			setServiceActionConfirm(null);
+			return;
+		}
+
+		const targetNodes = (nodes ?? []).filter(
+			(node) => node.id != null && node.node_install_mode === "binary",
+		);
+		if (targetNodes.length === 0) {
+			setServiceActionConfirm(null);
+			return;
+		}
+
+		setUpdatingBulkService(true);
+		setServiceActionConfirm(null);
+		let successCount = 0;
+		let failedCount = 0;
+		for (const node of targetNodes) {
+			try {
+				await apiFetch(`/node/${node.id}/service/update`, {
+					method: "POST",
+					body: {
+						channel: getNodeUpdateChannel(node, nodeUpdateChannel),
+					},
+				});
+				successCount += 1;
+			} catch (err) {
+				failedCount += 1;
+				generateErrorMessage(err, toast);
+			}
+		}
+		setUpdatingBulkService(false);
+		queryClient.invalidateQueries(FetchNodesQueryKey);
+		refetchNodes();
+		if (successCount > 0) {
+			generateSuccessMessage(
+				t(
+					"nodes.updateAllNodeServicesTriggered",
+					"Node service update requested for {{count}} nodes.",
+					{ count: successCount },
+				),
+				toast,
+			);
+		}
+		if (failedCount > 0) {
+			toast({
+				title: t(
+					"nodes.updateAllNodeServicesFailed",
+					"{{count}} node service updates failed.",
+					{ count: failedCount },
+				),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		}
 	};
 
 	const closeVersionDialog = () => setVersionDialogTarget(null);
@@ -978,6 +1106,13 @@ export const NodesPage: FC = () => {
 			),
 		[nodes],
 	);
+	const hasBinaryNodes = useMemo(
+		() =>
+			(nodes ?? []).some(
+				(node) => node.id != null && node.node_install_mode === "binary",
+			),
+		[nodes],
+	);
 
 	const errorMessage = useMemo(() => {
 		if (!error) return undefined;
@@ -1005,6 +1140,46 @@ export const NodesPage: FC = () => {
 			? geoDialogTarget.node.id != null &&
 				updatingGeoNodeId === geoDialogTarget.node.id
 			: false;
+
+	const serviceActionConfirmTitle =
+		serviceActionConfirm?.type === "restart"
+			? t("nodes.restartServiceAction", "Restart node service")
+			: serviceActionConfirm?.type === "update"
+				? t("nodes.updateServiceAction", "Update node service")
+				: serviceActionConfirm?.type === "update-all"
+					? t("nodes.updateAllNodeServices", "Update all node services")
+					: "";
+
+	const serviceActionConfirmMessage =
+		serviceActionConfirm?.type === "restart"
+			? t(
+					"nodes.restartServiceConfirm",
+					"Send a restart request to {{name}}? Services will be interrupted briefly.",
+					{ name: serviceActionConfirm.label },
+				)
+			: serviceActionConfirm?.type === "update"
+				? t(
+						"nodes.updateServiceConfirm",
+						"Send an update request to {{name}}? The node will download updates and restart.",
+						{ name: serviceActionConfirm.label },
+					)
+				: serviceActionConfirm?.type === "update-all"
+					? t(
+							"nodes.updateAllNodeServicesConfirm",
+							"Send update requests to {{count}} binary nodes? Each node will download updates and restart.",
+							{ count: serviceActionConfirm.count },
+						)
+					: "";
+
+	const serviceActionConfirmLabel =
+		serviceActionConfirm?.type === "restart"
+			? t("nodes.restartServiceAction", "Restart node service")
+			: serviceActionConfirm?.type === "update-all"
+				? t("nodes.updateAllNodeServices", "Update all node services")
+				: t("nodes.updateServiceAction", "Update node service");
+
+	const serviceActionConfirmLoading =
+		isRestartingService || isUpdatingService || updatingBulkService;
 
 	const versionDialogTitle =
 		versionDialogTarget?.type === "bulk"
@@ -1086,10 +1261,10 @@ export const NodesPage: FC = () => {
 					)}
 				</Text>
 				<HStack spacing={2} flexWrap="wrap" pt={1}>
-					{currentNodeVersion ? (
+					{currentNodeDisplayVersion ? (
 						<Tag size="sm" colorScheme="gray">
 							{t("nodes.nodeServiceVersionTag", {
-								version: currentNodeVersion,
+								version: currentNodeDisplayVersion,
 							})}
 						</Tag>
 					) : (
@@ -1280,6 +1455,20 @@ export const NodesPage: FC = () => {
 							{t("nodes.updateAllNodesCore")}
 						</Button>
 						<Button
+							variant="outline"
+							size="sm"
+							leftIcon={<DownloadIconStyled />}
+							onClick={handleUpdateAllNodeServices}
+							isLoading={updatingBulkService}
+							isDisabled={
+								!hostActionsAvailable || !hasBinaryNodes || updatingBulkService
+							}
+							w={{ base: "auto", sm: "auto" }}
+							px={{ base: 4, sm: 4 }}
+						>
+							{t("nodes.updateAllNodeServices", "Update all node services")}
+						</Button>
+						<Button
 							leftIcon={<AddIconStyled />}
 							colorScheme="primary"
 							size="sm"
@@ -1439,12 +1628,22 @@ export const NodesPage: FC = () => {
 									updatingServiceNodeId === nodeId;
 								const nodeHostActionsAvailable =
 									hostActionsAvailable && node.node_install_mode === "binary";
-								const nodeRuntimeVersion =
-									node.node_binary_tag || node.node_service_version;
+								const nodeRuntimeVersion = getNodeRuntimeVersion(node);
+								const nodeRuntimeDisplayVersion =
+									getNodeRuntimeDisplayVersion(node);
+								const nodeEffectiveUpdateChannel = getNodeUpdateChannel(
+									node,
+									nodeUpdateChannel,
+								);
+								const nodeLatestVersion = getLatestNodeVersionForChannel(
+									maintenanceInfo,
+									nodeEffectiveUpdateChannel,
+								);
 								const nodeServiceUpdateAvailable =
 									getNodeServiceUpdateAvailable(
 										nodeRuntimeVersion,
-										latestNodeVersion,
+										nodeLatestVersion,
+										nodeEffectiveUpdateChannel,
 									);
 								const totalUsage = (node.uplink ?? 0) + (node.downlink ?? 0);
 								const nodeInstallLabel =
@@ -1727,9 +1926,9 @@ export const NodesPage: FC = () => {
 										<Td>
 											<VStack align="flex-start" spacing={1}>
 												<Tag colorScheme="green" size="sm">
-													{nodeRuntimeVersion
+													{nodeRuntimeDisplayVersion
 														? t("nodes.nodeServiceVersionTag", {
-																version: nodeRuntimeVersion,
+																version: nodeRuntimeDisplayVersion,
 															})
 														: t(
 																"nodes.nodeServiceVersionUnknown",
@@ -1907,8 +2106,8 @@ export const NodesPage: FC = () => {
 								updatingServiceNodeId === nodeId;
 							const nodeHostActionsAvailable =
 								hostActionsAvailable && node.node_install_mode === "binary";
-							const nodeRuntimeVersion =
-								node.node_binary_tag || node.node_service_version;
+							const nodeRuntimeDisplayVersion =
+								getNodeRuntimeDisplayVersion(node);
 							const nodeInstallLabel =
 								[node.node_install_mode, node.node_update_channel]
 									.filter(Boolean)
@@ -2173,9 +2372,9 @@ export const NodesPage: FC = () => {
 												{t("nodes.runtime", "Runtime")}
 											</Text>
 											<Text fontWeight="medium" lineHeight="short">
-												{nodeRuntimeVersion
+												{nodeRuntimeDisplayVersion
 													? t("nodes.nodeServiceVersionTag", {
-															version: nodeRuntimeVersion,
+															version: nodeRuntimeDisplayVersion,
 														})
 													: t(
 															"nodes.nodeServiceVersionUnknown",
@@ -2384,13 +2583,32 @@ export const NodesPage: FC = () => {
 				showMasterOptions={false}
 				isSubmitting={geoDialogLoading}
 			/>
+			<ConfirmActionDialog
+				isOpen={Boolean(serviceActionConfirm)}
+				onClose={closeServiceActionConfirm}
+				onConfirm={confirmServiceAction}
+				title={serviceActionConfirmTitle}
+				message={serviceActionConfirmMessage}
+				confirmLabel={serviceActionConfirmLabel}
+				cancelLabel={t("cancel", "Cancel")}
+				colorScheme={serviceActionConfirm?.type === "restart" ? "orange" : "blue"}
+				isLoading={serviceActionConfirmLoading}
+			/>
 			<AlertDialog
 				isOpen={isDeleteConfirmOpen}
 				leastDestructiveRef={cancelDeleteRef}
 				onClose={handleCloseDeleteConfirm}
 			>
 				<AlertDialogOverlay>
-					<AlertDialogContent>
+					<AlertDialogContent
+						onKeyDown={(event) => {
+							if (event.key !== "Enter" || isDeletingNode || !deleteCandidate) {
+								return;
+							}
+							event.preventDefault();
+							confirmDeleteNode();
+						}}
+					>
 						<AlertDialogHeader fontSize="lg" fontWeight="bold">
 							{t("delete")}
 						</AlertDialogHeader>
@@ -2432,7 +2650,15 @@ export const NodesPage: FC = () => {
 				onClose={handleCloseResetConfirm}
 			>
 				<AlertDialogOverlay>
-					<AlertDialogContent>
+					<AlertDialogContent
+						onKeyDown={(event) => {
+							if (event.key !== "Enter" || isResettingUsage || !resetCandidate) {
+								return;
+							}
+							event.preventDefault();
+							confirmResetUsage();
+						}}
+					>
 						<AlertDialogHeader fontSize="lg" fontWeight="bold">
 							{t("nodes.resetUsage", "Reset usage")}
 						</AlertDialogHeader>

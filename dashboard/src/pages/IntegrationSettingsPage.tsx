@@ -86,6 +86,7 @@ import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
+import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
@@ -772,6 +773,7 @@ export const IntegrationSettingsPage = () => {
 		useState<SubscriptionTemplateContentResponse | null>(null);
 	const [templateIsJson, setTemplateIsJson] = useState<boolean>(true);
 	const [templateLoading, setTemplateLoading] = useState<boolean>(false);
+	const [isDevUpdateConfirmOpen, setDevUpdateConfirmOpen] = useState(false);
 	const [certificateForm, setCertificateForm] = useState<{
 		email: string;
 		domains: string;
@@ -866,16 +868,14 @@ export const IntegrationSettingsPage = () => {
 
 	const handlePanelUpdateClick = () => {
 		if (selectedUpdateChannel === "dev") {
-			const confirmed = window.confirm(
-				t(
-					"settings.panel.devChannelConfirm",
-					"You are switching/updating this panel to the dev channel. Dev builds are not stable and can include unfinished changes, breaking migrations, or temporary bugs. Continue?",
-				),
-			);
-			if (!confirmed) {
-				return;
-			}
+			setDevUpdateConfirmOpen(true);
+			return;
 		}
+		updateMutation.mutate();
+	};
+
+	const confirmDevPanelUpdate = () => {
+		setDevUpdateConfirmOpen(false);
 		updateMutation.mutate();
 	};
 
@@ -4139,6 +4139,23 @@ export const IntegrationSettingsPage = () => {
 					</TabPanel>
 				</TabPanels>
 			</Tabs>
+			<ConfirmActionDialog
+				isOpen={isDevUpdateConfirmOpen}
+				onClose={() => setDevUpdateConfirmOpen(false)}
+				onConfirm={confirmDevPanelUpdate}
+				title={t(
+					"settings.panel.devChannelConfirmTitle",
+					"Update to dev build?",
+				)}
+				message={t(
+					"settings.panel.devChannelConfirm",
+					"You are switching/updating this panel to the dev channel. Dev builds are not stable and can include unfinished changes, breaking migrations, or temporary bugs. Continue?",
+				)}
+				confirmLabel={t("settings.panel.updatePanel", "Update panel")}
+				cancelLabel={t("cancel", "Cancel")}
+				colorScheme="yellow"
+				isLoading={updateMutation.isLoading}
+			/>
 			<Modal
 				isOpen={Boolean(templateDialog)}
 				onClose={closeTemplateEditor}
