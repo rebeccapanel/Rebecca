@@ -44,6 +44,49 @@ func NormalizeCredentialKeyInput(value string) (string, error) {
 	return cleaned, nil
 }
 
+func applyCredentialKeyFromLegacyProxies(payload *UserPayloadBase) {
+	if payload == nil {
+		return
+	}
+	if payload.CredentialKey != nil && strings.TrimSpace(*payload.CredentialKey) != "" {
+		return
+	}
+	if key, ok := credentialKeyFromLegacyProxies(payload.Proxies); ok {
+		payload.CredentialKey = &key
+	}
+}
+
+func credentialKeyFromLegacyProxies(proxies ProxyPayload) (string, bool) {
+	for _, protocol := range []string{"vless", "vmess"} {
+		if key, ok := credentialKeyFromProxySettings(proxies[protocol]); ok {
+			return key, true
+		}
+	}
+	for protocol, settings := range proxies {
+		if _, ok := uuidProxyProtocols[normalizeProtocol(protocol)]; !ok {
+			continue
+		}
+		if key, ok := credentialKeyFromProxySettings(settings); ok {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+func credentialKeyFromProxySettings(settings map[string]any) (string, bool) {
+	for _, field := range []string{"id", "uuid"} {
+		raw := strings.TrimSpace(stringValueAny(settings[field]))
+		if raw == "" {
+			continue
+		}
+		key, err := NormalizeCredentialKeyInput(raw)
+		if err == nil {
+			return key, true
+		}
+	}
+	return "", false
+}
+
 func normalizeProxyPayload(proxies ProxyPayload, credentialKey string, preserveExisting bool, existing map[string]map[string]any) (ProxyPayload, error) {
 	result := ProxyPayload{}
 	for protocol, settings := range proxies {

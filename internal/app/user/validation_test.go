@@ -76,12 +76,11 @@ func TestUserPayloadValidation(t *testing.T) {
 			wantErr: "Unsupported flow",
 		},
 		{
-			name: "proxies payload removed",
+			name: "legacy proxies payload accepted",
 			payload: UserCreate{
 				Username:        "valid-user",
 				UserPayloadBase: UserPayloadBase{Proxies: map[string]map[string]any{"vless": {}}},
 			},
-			wantErr: ProxiesPayloadRemovedMessage,
 		},
 		{
 			name: "on hold needs duration",
@@ -159,6 +158,40 @@ func TestUserPayloadValidation(t *testing.T) {
 				t.Fatalf("error = %v, want contains %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLegacyProxiesCredentialKeyCompatibility(t *testing.T) {
+	payload := UserPayloadBase{
+		Proxies: ProxyPayload{
+			"vless": {"id": "11111111-1111-4111-8111-111111111111"},
+		},
+	}
+	applyCredentialKeyFromLegacyProxies(&payload)
+	if payload.CredentialKey == nil || *payload.CredentialKey != "11111111111141118111111111111111" {
+		t.Fatalf("credential_key from proxies = %v", payload.CredentialKey)
+	}
+
+	explicit := "22222222222242228222222222222222"
+	payload = UserPayloadBase{
+		CredentialKey: &explicit,
+		Proxies: ProxyPayload{
+			"vless": {"id": "11111111-1111-4111-8111-111111111111"},
+		},
+	}
+	applyCredentialKeyFromLegacyProxies(&payload)
+	if payload.CredentialKey == nil || *payload.CredentialKey != explicit {
+		t.Fatalf("explicit credential_key was not preserved: %v", payload.CredentialKey)
+	}
+
+	payload = UserPayloadBase{
+		Proxies: ProxyPayload{
+			"trojan": {"password": "legacy-password"},
+		},
+	}
+	applyCredentialKeyFromLegacyProxies(&payload)
+	if payload.CredentialKey != nil {
+		t.Fatalf("password-only legacy proxies must be ignored, got %v", *payload.CredentialKey)
 	}
 }
 

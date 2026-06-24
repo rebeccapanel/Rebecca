@@ -137,9 +137,7 @@ func (s Service) CreateUser(ctx context.Context, admin adminapp.Admin, raw []byt
 	if rawFieldPresent(fields, "next_plan") {
 		return MutationResult{}, clientError(400, NextPlanRemovedMessage)
 	}
-	if rawFieldPresent(fields, "proxies") {
-		return MutationResult{}, clientError(400, ProxiesPayloadRemovedMessage)
-	}
+	applyCredentialKeyFromLegacyProxies(&payload.UserPayloadBase)
 	if auto, err := DetectAutoServiceFromInbounds(payload.Inbounds); err != nil {
 		return MutationResult{}, clientError(400, err.Error())
 	} else if serviceID == nil && auto.Detected {
@@ -173,9 +171,7 @@ func (s Service) UpdateUser(ctx context.Context, admin adminapp.Admin, username 
 	if rawFieldPresent(fields, "next_plan") {
 		return MutationResult{}, clientError(400, NextPlanRemovedMessage)
 	}
-	if rawFieldPresent(fields, "proxies") {
-		return MutationResult{}, clientError(400, ProxiesPayloadRemovedMessage)
-	}
+	applyCredentialKeyFromLegacyProxies(&payload.UserPayloadBase)
 	if rawFieldPresent(fields, "service_id") && rawIsNull(fields["service_id"]) {
 		return MutationResult{}, clientError(400, "service_id is required. Users must be assigned to a service.")
 	}

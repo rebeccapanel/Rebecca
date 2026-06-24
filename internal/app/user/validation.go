@@ -9,7 +9,6 @@ import (
 
 const UsernameValidationMessage = "Username only can be 3 to 32 characters and contain a-z, 0-9, underscores, hyphens, dots, or @."
 const ManualInboundSelectionRemovedMessage = "Manual inbound selection was removed in v0.2.0. Assign a service to the user, or use the service inbound tag setservice-<id> for legacy clients."
-const ProxiesPayloadRemovedMessage = "proxies payload was removed in v0.2.0. Use credential_key to set a custom UUID or credential key."
 const NextPlanRemovedMessage = "next_plan was removed in v0.2.0; use next_plans instead."
 
 var (
@@ -315,18 +314,8 @@ func validateNextPlan(plan *NextPlanPayload) error {
 }
 
 func validateProxies(proxies ProxyPayload) error {
-	if len(proxies) > 0 {
-		return ValidationError{Detail: ProxiesPayloadRemovedMessage}
-	}
-	for protocol, settings := range proxies {
-		protocol = normalizeProtocol(protocol)
-		if !validProxyProtocol(protocol) {
-			return ValidationError{Detail: fmt.Sprintf("Unsupported proxy type %s", protocol)}
-		}
-		if settings == nil {
-			return ValidationError{Detail: fmt.Sprintf("%s proxy settings must be an object", protocol)}
-		}
-	}
+	// Legacy clients may still send proxies. New users do not persist proxy rows,
+	// but vmess/vless IDs are accepted as credential_key compatibility input.
 	return nil
 }
 

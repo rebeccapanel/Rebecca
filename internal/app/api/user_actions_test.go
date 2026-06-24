@@ -56,9 +56,11 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/user", token, `{"username":"proxy_payload","service_id":1,"proxies":{"vless":{"id":"11111111-1111-4111-8111-111111111111"}}}`)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), userapp.ProxiesPayloadRemovedMessage) {
+	if rec.Code != http.StatusCreated {
 		t.Fatalf("proxies create status = %d body=%s", rec.Code, rec.Body.String())
 	}
+	assertDBString(t, db, `SELECT credential_key FROM users WHERE username = 'proxy_payload'`, "11111111111141118111111111111111")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM proxies WHERE user_id = (SELECT id FROM users WHERE username = 'proxy_payload')`, 0)
 
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"status":"disabled","data_limit":2000}`)
 	if rec.Code != http.StatusOK {
@@ -74,9 +76,11 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	assertUserOperationCount(t, db, "enable_user", "go_user", 1)
 
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"proxies":{"vless":{"id":"11111111-1111-4111-8111-111111111111"}}}`)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), userapp.ProxiesPayloadRemovedMessage) {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("proxies update status = %d body=%s", rec.Code, rec.Body.String())
 	}
+	assertDBString(t, db, `SELECT credential_key FROM users WHERE username = 'go_user'`, "11111111111141118111111111111111")
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM proxies WHERE user_id = (SELECT id FROM users WHERE username = 'go_user')`, 0)
 
 	rec = adminJSONRequest(t, server, http.MethodDelete, "/api/user/go_user", token, `{}`)
 	if rec.Code != http.StatusOK {

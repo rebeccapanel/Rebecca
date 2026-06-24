@@ -31,7 +31,7 @@
     },
     {
       "name": "Users",
-      "description": "User read, mutation, lifecycle, usage, and subscription operations. User creation now requires a service assignment. Manual inbound/proxies payloads are removed; use service_id or the legacy setservice-<id> auto-service inbound only. Mutations enqueue node operations when runtime user state must change."
+      "description": "User read, mutation, lifecycle, usage, and subscription operations. User creation now requires a service assignment. Manual inbound selection is removed; use service_id or the legacy setservice-<id> auto-service inbound only. Legacy proxies payloads are accepted for compatibility, and vmess/vless IDs are normalized into credential_key without persisting new proxy rows. Mutations enqueue node operations when runtime user state must change."
     },
     {
       "name": "Services",
