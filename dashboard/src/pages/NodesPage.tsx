@@ -1681,10 +1681,7 @@ export const NodesPage: FC = () => {
 			)}
 
 			<Stack
-				direction={{ base: "column", lg: "row" }}
-				spacing={{ base: 3, lg: 4 }}
-				alignItems={{ base: "stretch", lg: "center" }}
-				justifyContent="space-between"
+				spacing={3}
 				w="full"
 				borderWidth="1px"
 				borderColor={nodePanelBorder}
@@ -1692,39 +1689,92 @@ export const NodesPage: FC = () => {
 				bg={nodePanelBg}
 				p={3}
 			>
-				<VStack align="flex-start" spacing={1}>
-					<Text fontWeight="semibold">
-						{t("nodes.manageNodesHeader", "Node list")}
-					</Text>
-					<HStack spacing={2} flexWrap="wrap">
-						<Tag size="sm" colorScheme="gray" variant="subtle">
-							{t("nodes.summaryTotal", "Total")}: {nodeSummary.total}
-						</Tag>
-						<Tag size="sm" colorScheme="green" variant="subtle">
-							{t("nodes.summaryConnected", "Connected")}:{" "}
-							{nodeSummary.connected}
-						</Tag>
-						<Tag size="sm" colorScheme="gray" variant="subtle">
-							{t("nodes.summaryDisabled", "Disabled")}:{" "}
-							{nodeSummary.disabled}
-						</Tag>
-					</HStack>
-				</VStack>
 				<Stack
-					direction={{ base: "column", md: "row" }}
-					spacing={{ base: 3, md: 3 }}
-					alignItems={{ base: "stretch", md: "center" }}
-					justifyContent="flex-end"
-					w={{ base: "full", lg: "auto" }}
+					direction={{ base: "column", xl: "row" }}
+					spacing={3}
+					align={{ base: "stretch", xl: "center" }}
+					justify="space-between"
 				>
+					<VStack align="flex-start" spacing={1} minW="220px">
+						<Text fontWeight="semibold">
+							{t("nodes.manageNodesHeader", "Node list")}
+						</Text>
+						<HStack spacing={2} flexWrap="wrap">
+							<Tag size="sm" colorScheme="gray" variant="subtle">
+								{t("nodes.summaryTotal", "Total")}: {nodeSummary.total}
+							</Tag>
+							<Tag size="sm" colorScheme="green" variant="subtle">
+								{t("nodes.summaryConnected", "Connected")}:{" "}
+								{nodeSummary.connected}
+							</Tag>
+							<Tag size="sm" colorScheme="gray" variant="subtle">
+								{t("nodes.summaryDisabled", "Disabled")}:{" "}
+								{nodeSummary.disabled}
+							</Tag>
+						</HStack>
+					</VStack>
 					<HStack
 						spacing={2}
-						alignItems="center"
-						justifyContent="flex-end"
-						w={{ base: "full", md: "auto" }}
 						flexWrap="wrap"
+						justify={{ base: "flex-start", xl: "flex-end" }}
 					>
-						<InputGroup size="sm" maxW={{ base: "full", md: "260px" }}>
+						<Button
+							leftIcon={<TutorialIconStyled />}
+							variant="outline"
+							size="sm"
+							onClick={() =>
+								navigate("/tutorials?focus=section-nodes-admin-guide")
+							}
+						>
+							{t("nodes.nodeTutorial", "Node tutorial")}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							leftIcon={<CoreIconStyled />}
+							onClick={() => setVersionDialogTarget({ type: "bulk" })}
+							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
+						>
+							{t("nodes.updateAllNodesCore")}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							leftIcon={<DownloadIconStyled />}
+							onClick={handleUpdateAllNodeServices}
+							isLoading={updatingBulkService}
+							isDisabled={
+								!hostActionsAvailable || !hasBinaryNodes || updatingBulkService
+							}
+						>
+							{t("nodes.updateAllNodeServices", "Update all node services")}
+						</Button>
+						<Button
+							leftIcon={<AddIconStyled />}
+							colorScheme="primary"
+							size="sm"
+							onClick={() => setAddNodeOpen(true)}
+						>
+							{t("nodes.addNode")}
+						</Button>
+					</HStack>
+				</Stack>
+
+				<Divider />
+
+				<Stack
+					direction={{ base: "column", xl: "row" }}
+					spacing={3}
+					align={{ base: "stretch", xl: "center" }}
+					justify="space-between"
+				>
+					<Stack
+						direction={{ base: "column", md: "row" }}
+						spacing={2}
+						align={{ base: "stretch", md: "center" }}
+						flex="1"
+					>
+						<InputGroup size="sm" maxW={{ base: "full", xl: "300px" }}>
 							<InputLeftElement pointerEvents="none">
 								<SearchIcon color="gray.400" />
 							</InputLeftElement>
@@ -1738,7 +1788,7 @@ export const NodesPage: FC = () => {
 							size="sm"
 							value={statusFilter}
 							onChange={(event) => setStatusFilter(event.target.value)}
-							w={{ base: "full", sm: "150px" }}
+							w={{ base: "full", md: "150px" }}
 						>
 							<option value="all">{t("nodes.filters.allStatuses", "All status")}</option>
 							<option value="connected">{t("status.connected", "Connected")}</option>
@@ -1751,7 +1801,7 @@ export const NodesPage: FC = () => {
 							size="sm"
 							value={installModeFilter}
 							onChange={(event) => setInstallModeFilter(event.target.value)}
-							w={{ base: "full", sm: "150px" }}
+							w={{ base: "full", md: "150px" }}
 						>
 							<option value="all">{t("nodes.filters.allModes", "All modes")}</option>
 							<option value="binary">{t("nodes.installMode.binary", "Binary")}</option>
@@ -1766,7 +1816,7 @@ export const NodesPage: FC = () => {
 								setSortKey(nextKey as NodeSortKey);
 								setSortDirection(nextDirection as NodeSortDirection);
 							}}
-							w={{ base: "full", sm: "170px" }}
+							w={{ base: "full", md: "180px" }}
 						>
 							<option value="name.asc">{t("nodes.sort.nameAsc", "Name A-Z")}</option>
 							<option value="name.desc">{t("nodes.sort.nameDesc", "Name Z-A")}</option>
@@ -1781,6 +1831,38 @@ export const NodesPage: FC = () => {
 							<option value="ram.asc">{t("nodes.sort.ramAsc", "RAM low-high")}</option>
 							<option value="ram.desc">{t("nodes.sort.ramDesc", "RAM high-low")}</option>
 						</Select>
+					</Stack>
+					<HStack
+						spacing={2}
+						flexWrap="wrap"
+						justify={{ base: "flex-start", xl: "flex-end" }}
+					>
+						<Checkbox
+							size="sm"
+							isChecked={allPageSelected}
+							isIndeterminate={somePageSelected}
+							onChange={(event) =>
+								toggleCurrentPageSelection(event.target.checked)
+							}
+						>
+							{t("nodes.selectPage", "Select page")}
+						</Checkbox>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={selectAllFilteredNodes}
+							isDisabled={filteredNodeIds.length === 0 || allFilteredSelected}
+						>
+							{t("nodes.selectAllFiltered", "Select all")}
+						</Button>
+						<Button
+							size="sm"
+							variant="ghost"
+							onClick={deselectAllNodes}
+							isDisabled={selectedNodeIds.length === 0}
+						>
+							{t("nodes.deselectAll", "Deselect all")}
+						</Button>
 						<Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
 							<IconButton
 								aria-label={t("nodes.refreshNodes", "Refresh nodes")}
@@ -1791,80 +1873,27 @@ export const NodesPage: FC = () => {
 								isLoading={isFetching}
 							/>
 						</Tooltip>
-						<Tooltip label={t("nodes.viewList", "List view")}>
-							<IconButton
-								aria-label={t("nodes.viewList", "List view")}
-								icon={<ListViewIcon />}
-								variant={viewMode === "list" ? "solid" : "ghost"}
-								colorScheme={viewMode === "list" ? "primary" : undefined}
-								size="sm"
-								onClick={() => setViewMode("list")}
-							/>
-						</Tooltip>
-						<Tooltip label={t("nodes.viewGrid", "Grid view")}>
-							<IconButton
-								aria-label={t("nodes.viewGrid", "Grid view")}
-								icon={<GridViewIcon />}
-								variant={viewMode === "grid" ? "solid" : "ghost"}
-								colorScheme={viewMode === "grid" ? "primary" : undefined}
-								size="sm"
-								onClick={() => setViewMode("grid")}
-							/>
-						</Tooltip>
+						<ButtonGroup size="sm" isAttached variant="outline">
+							<Tooltip label={t("nodes.viewList", "List view")}>
+								<IconButton
+									aria-label={t("nodes.viewList", "List view")}
+									icon={<ListViewIcon />}
+									variant={viewMode === "list" ? "solid" : "outline"}
+									colorScheme={viewMode === "list" ? "primary" : undefined}
+									onClick={() => setViewMode("list")}
+								/>
+							</Tooltip>
+							<Tooltip label={t("nodes.viewGrid", "Grid view")}>
+								<IconButton
+									aria-label={t("nodes.viewGrid", "Grid view")}
+									icon={<GridViewIcon />}
+									variant={viewMode === "grid" ? "solid" : "outline"}
+									colorScheme={viewMode === "grid" ? "primary" : undefined}
+									onClick={() => setViewMode("grid")}
+								/>
+							</Tooltip>
+						</ButtonGroup>
 					</HStack>
-					<Stack
-						direction={{ base: "column", sm: "row" }}
-						spacing={2}
-						justify="flex-end"
-						alignItems={{ base: "flex-end", sm: "center" }}
-					>
-						<Button
-							leftIcon={<TutorialIconStyled />}
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								navigate("/tutorials?focus=section-nodes-admin-guide")
-							}
-							w={{ base: "auto", sm: "auto" }}
-							px={{ base: 4, sm: 4 }}
-						>
-							{t("nodes.nodeTutorial", "Node tutorial")}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setVersionDialogTarget({ type: "bulk" })}
-							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
-							w={{ base: "auto", sm: "auto" }}
-							px={{ base: 4, sm: 4 }}
-						>
-							{t("nodes.updateAllNodesCore")}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							leftIcon={<DownloadIconStyled />}
-							onClick={handleUpdateAllNodeServices}
-							isLoading={updatingBulkService}
-							isDisabled={
-								!hostActionsAvailable || !hasBinaryNodes || updatingBulkService
-							}
-							w={{ base: "auto", sm: "auto" }}
-							px={{ base: 4, sm: 4 }}
-						>
-							{t("nodes.updateAllNodeServices", "Update all node services")}
-						</Button>
-						<Button
-							leftIcon={<AddIconStyled />}
-							colorScheme="primary"
-							size="sm"
-							onClick={() => setAddNodeOpen(true)}
-							w={{ base: "auto", sm: "auto" }}
-							px={{ base: 4, sm: 5 }}
-						>
-							{t("nodes.addNode")}
-						</Button>
-					</Stack>
 				</Stack>
 			</Stack>
 
