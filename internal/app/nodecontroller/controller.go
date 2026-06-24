@@ -169,8 +169,13 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 
 	res, err := client.Runtime().Metrics(ctx, &nodev1.MetricsRequest{IncludeRuntime: true})
 	if err != nil {
-		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
-		return RuntimeResult{}, friendlyNodeError("metrics", req.NodeID, err)
+		result := runtimeResult(node, nil, nil)
+		result.Status = "connected"
+		result.Message = friendlyNodeError("metrics", req.NodeID, err).Error()
+		if setErr := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); setErr != nil {
+			return RuntimeResult{}, setErr
+		}
+		return result, nil
 	}
 	result := runtimeResult(node, res.GetRuntime(), res)
 	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
