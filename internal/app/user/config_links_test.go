@@ -113,6 +113,81 @@ func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 	}
 }
 
+func TestBuildConfigLinksFallsBackToInboundTransportSettingsWhenHostUsesDefaults(t *testing.T) {
+	serviceID := int64(1)
+	allowInsecure := false
+	emptyPath := ""
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            12,
+			Username:      "fallback",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{
+			"VLESS TLS": {
+				"tag":           "VLESS TLS",
+				"protocol":      "vless",
+				"port":          int64(443),
+				"network":       "ws",
+				"tls":           "tls",
+				"encryption":    "none",
+				"path":          "/from-inbound",
+				"host":          []string{"inbound-host.example.com"},
+				"sni":           []string{"inbound-sni.example.com"},
+				"fp":            "chrome",
+				"alpn":          "h2,http/1.1",
+				"ais":           true,
+				"allowinsecure": true,
+				"header_type":   "none",
+			},
+		},
+		[]string{"VLESS TLS"},
+		[]Host{{
+			ID:            1,
+			InboundTag:    "VLESS TLS",
+			Remark:        "fallback",
+			Address:       "edge.example.com",
+			Path:          &emptyPath,
+			Security:      "none",
+			ALPN:          "none",
+			Fingerprint:   "none",
+			AllowInsecure: &allowInsecure,
+			ServiceIDs:    []int64{1},
+		}},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one link, got %#v", links.Links)
+	}
+	parsed, err := url.Parse(links.Links[0])
+	if err != nil {
+		t.Fatalf("parse link: %v", err)
+	}
+	query := parsed.Query()
+	for key, expected := range map[string]string{
+		"security":      "tls",
+		"path":          "/from-inbound",
+		"host":          "inbound-host.example.com",
+		"sni":           "inbound-sni.example.com",
+		"fp":            "chrome",
+		"alpn":          "h2,http/1.1",
+		"allowInsecure": "1",
+	} {
+		if got := query.Get(key); got != expected {
+			t.Fatalf("expected query %s=%q, got %q link=%s", key, expected, got, links.Links[0])
+		}
+	}
+}
+
 func TestBuildConfigLinksKeepsRealityPublicKeyForXHTTP(t *testing.T) {
 	serviceID := int64(1)
 	inbound, err := resolveInbound(map[string]any{

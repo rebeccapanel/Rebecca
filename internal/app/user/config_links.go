@@ -285,7 +285,7 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	}
 
 	path := stringValue(inbound["path"])
-	if host.Path != nil {
+	if host.Path != nil && strings.TrimSpace(*host.Path) != "" {
 		path = *host.Path
 	}
 	path = applyFormat(path, variables)
@@ -297,13 +297,13 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	if tls := normalizedHostSecurity(host.Security); tls != "" {
 		effective["tls"] = tls
 	}
-	if host.ALPN != "" {
-		effective["alpn"] = host.ALPN
+	if alpn := nonDefaultHostText(host.ALPN); alpn != "" {
+		effective["alpn"] = alpn
 	}
 	if fp := nonDefaultHostFingerprint(host.Fingerprint); fp != "" {
 		effective["fp"] = fp
 	}
-	if host.AllowInsecure != nil {
+	if host.AllowInsecure != nil && *host.AllowInsecure {
 		effective["ais"] = *host.AllowInsecure
 	}
 	if host.FragmentSetting != nil {
@@ -374,13 +374,17 @@ func copyInbound(inbound ResolvedInbound) ResolvedInbound {
 
 func normalizedHostSecurity(value string) string {
 	cleaned := strings.TrimSpace(strings.ToLower(value))
-	if cleaned == "" || cleaned == "default" || cleaned == "inbound_default" || cleaned == "inbound-default" {
+	if cleaned == "" || cleaned == "none" || cleaned == "default" || cleaned == "inbound_default" || cleaned == "inbound-default" {
 		return ""
 	}
 	return cleaned
 }
 
 func nonDefaultHostFingerprint(value string) string {
+	return nonDefaultHostText(value)
+}
+
+func nonDefaultHostText(value string) string {
 	cleaned := strings.TrimSpace(value)
 	switch strings.ToLower(cleaned) {
 	case "", "none", "default", "inbound_default", "inbound-default":
