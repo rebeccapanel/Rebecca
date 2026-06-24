@@ -203,6 +203,13 @@ func ResolveDestinations(settings Settings, req DestinationRequest) ([]Destinati
 				Source:   "backup_chat_id",
 			}}, nil
 		}
+		if settings.LogsChatID != nil && *settings.LogsChatID != 0 {
+			return []Destination{{
+				ChatID:   *settings.LogsChatID,
+				ThreadID: topicThreadID(settings, settings.LogsChatIsForum, category),
+				Source:   "logs_chat_id",
+			}}, nil
+		}
 		destinations := adminDestinations(settings)
 		if len(destinations) == 0 {
 			return nil, ErrNoRecipient

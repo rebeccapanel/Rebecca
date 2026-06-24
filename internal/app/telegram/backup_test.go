@@ -160,8 +160,38 @@ func TestBackupDeliveryFailureReportsAndStoresError(t *testing.T) {
 	assertTelegramColumnContains(t, db, "backup_last_error", "export failed")
 }
 
-func TestBackupDestinationFallsBackToAdminChatsWithoutLogs(t *testing.T) {
+func TestBackupDestinationFallsBackToLogChatWhenBackupChatIsEmpty(t *testing.T) {
 	settings := Settings{AdminChatIDs: []int64{111, 222}, LogsChatID: int64PtrForBackupTest(-1001), ForumTopics: DefaultForumTopics()}
+	destinations, err := ResolveDestinations(settings, DestinationRequest{Purpose: DestinationBackup, Category: "backup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(destinations) != 1 || destinations[0].ChatID != -1001 || destinations[0].Source != "logs_chat_id" {
+		t.Fatalf("unexpected backup log fallback destination: %#v", destinations)
+	}
+}
+
+func TestBackupDestinationUsesLogChatThreadWhenBackupChatIsEmpty(t *testing.T) {
+	backupThread := int64(99)
+	settings := Settings{
+		AdminChatIDs:    []int64{111, 222},
+		LogsChatID:      int64PtrForBackupTest(-1001),
+		LogsChatIsForum: true,
+		ForumTopics: map[string]TopicSettings{
+			"backup": {Title: "Backup", TopicID: &backupThread},
+		},
+	}
+	destinations, err := ResolveDestinations(settings, DestinationRequest{Purpose: DestinationBackup, Category: "backup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(destinations) != 1 || destinations[0].ChatID != -1001 || destinations[0].ThreadID == nil || *destinations[0].ThreadID != backupThread {
+		t.Fatalf("unexpected backup thread fallback destination: %#v", destinations)
+	}
+}
+
+func TestBackupDestinationFallsBackToAdminChatsWithoutLogOrBackupChat(t *testing.T) {
+	settings := Settings{AdminChatIDs: []int64{111, 222}, ForumTopics: DefaultForumTopics()}
 	destinations, err := ResolveDestinations(settings, DestinationRequest{Purpose: DestinationBackup, Category: "backup"})
 	if err != nil {
 		t.Fatal(err)
