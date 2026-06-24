@@ -91,6 +91,69 @@ func TestOutboundTestRejectsMasterTarget(t *testing.T) {
 	}
 }
 
+func TestOutboundTestRejectsAddresslessTCPAndICMP(t *testing.T) {
+	server := &Server{}
+	for _, testType := range []string{"tcp", "icmp"} {
+		t.Run(testType, func(t *testing.T) {
+			payload := []byte(`{
+				"target_id": "node:7",
+				"test_type": "` + testType + `",
+				"outbound": "{\"tag\":\"direct\",\"protocol\":\"freedom\"}",
+				"allOutbounds": "[{\"tag\":\"direct\",\"protocol\":\"freedom\"}]"
+			}`)
+			req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/testOutbound", bytes.NewReader(payload))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			server.handleOutboundTest(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "require an outbound address") {
+				t.Fatalf("unexpected body=%s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestOutboundAddressDetection(t *testing.T) {
+	tests := map[string]struct {
+		outbound map[string]any
+		want     bool
+	}{
+		"freedom": {
+			outbound: map[string]any{"protocol": "freedom", "settings": map[string]any{}},
+			want:     false,
+		},
+		"vless": {
+			outbound: map[string]any{
+				"protocol": "vless",
+				"settings": map[string]any{
+					"vnext": []any{map[string]any{"address": "example.com", "port": 443}},
+				},
+			},
+			want: true,
+		},
+		"wireguard": {
+			outbound: map[string]any{
+				"protocol": "wireguard",
+				"settings": map[string]any{
+					"peers": []any{map[string]any{"endpoint": "1.1.1.1:2408"}},
+				},
+			},
+			want: true,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := outboundHasAddress(tc.outbound); got != tc.want {
+				t.Fatalf("outboundHasAddress()=%v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestOutboundTestTypeNormalization(t *testing.T) {
 	tests := map[string]struct {
 		payload map[string]any

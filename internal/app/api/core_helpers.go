@@ -94,11 +94,16 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		}))
 		return
 	}
+	testType := outboundTestType(payload)
+	if (testType == "tcp" || testType == "icmp") && !outboundHasAddress(outbound) {
+		writeError(w, http.StatusBadRequest, "TCP and ICMP outbound tests require an outbound address. Use latency test or configure an address for this outbound.")
+		return
+	}
 	if !outboundTestLock.TryLock() {
 		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
 			Success:  false,
 			Error:    "Another outbound test is already running, please wait",
-			TestType: outboundTestType(payload),
+			TestType: testType,
 		}))
 		return
 	}
@@ -110,7 +115,6 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
-	testType := outboundTestType(payload)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	result, err := s.nodeController.TestOutbound(ctx, nodecontroller.Request{
@@ -173,6 +177,61 @@ func outboundTestType(payload map[string]any) string {
 	default:
 		return "latency"
 	}
+}
+
+func outboundHasAddress(outbound map[string]any) bool {
+	for _, address := range outboundAddressCandidates(outbound) {
+		if strings.TrimSpace(address) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func outboundAddressCandidates(outbound map[string]any) []string {
+	protocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
+	settings := mapFromAny(outbound["settings"])
+	switch protocol {
+	case "vmess", "vless":
+		return addressesFromServerList(settings["vnext"])
+	case "http", "socks", "shadowsocks", "trojan":
+		return addressesFromServerList(settings["servers"])
+	case "dns":
+		return []string{stringFromAny(settings["address"])}
+	case "wireguard":
+		return wireguardPeerEndpoints(settings["peers"])
+	default:
+		return nil
+	}
+}
+
+func addressesFromServerList(value any) []string {
+	items, err := mapListFromAny(value)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		result = append(result, stringFromAny(item["address"]))
+	}
+	return result
+}
+
+func wireguardPeerEndpoints(value any) []string {
+	items, err := mapListFromAny(value)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		endpoint := strings.TrimSpace(stringFromAny(item["endpoint"]))
+		if host, _, err := net.SplitHostPort(endpoint); err == nil {
+			result = append(result, host)
+			continue
+		}
+		result = append(result, endpoint)
+	}
+	return result
 }
 
 func outboundTestPayload(payload map[string]any) (map[string]any, []map[string]any, error) {
@@ -242,6 +301,14 @@ func mapListFromAny(value any) ([]map[string]any, error) {
 		result = append(result, mapped)
 	}
 	return result, nil
+}
+
+func mapFromAny(value any) map[string]any {
+	mapped, ok := value.(map[string]any)
+	if !ok || mapped == nil {
+		return map[string]any{}
+	}
+	return mapped
 }
 
 func outboundListHasTag(outbounds []map[string]any, tag string) bool {

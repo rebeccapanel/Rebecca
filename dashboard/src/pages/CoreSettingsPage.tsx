@@ -155,6 +155,12 @@ const normalizeSearchValue = (value: unknown): string => {
 	if (value && typeof value === "object") return JSON.stringify(value);
 	return String(value ?? "");
 };
+const formatOutboundEndpoint = (address: unknown, port?: unknown) => {
+	const host = String(address ?? "").trim();
+	if (!host) return "";
+	const portValue = String(port ?? "").trim();
+	return portValue ? `${host}:${portValue}` : host;
+};
 const DNS_STRATEGY_OPTIONS = ["UseSystem", "UseIP", "UseIPv4", "UseIPv6"];
 const createDefaultDnsConfig = () => ({
 	servers: [] as any[],
@@ -655,6 +661,10 @@ export const CoreSettingsPage: FC = () => {
 	const outboundNodeTargetRequiredMessage = t(
 		"pages.xray.outbound.testNodeTargetRequired",
 		"Change the target to a node before testing this outbound.",
+	);
+	const outboundAddressRequiredMessage = t(
+		"pages.xray.outbound.testAddressRequired",
+		"TCP and ICMP tests require an outbound address. Use latency test or configure an address for this outbound.",
 	);
 	const outboundTestTypeLabels: Record<OutboundTestType, string> = {
 		latency: t("pages.xray.outbound.testTypeLatency", "Latency"),
@@ -1204,6 +1214,19 @@ export const CoreSettingsPage: FC = () => {
 				isClosable: true,
 				position: "top",
 				duration: 3000,
+			});
+			return;
+		}
+		if (
+			(outboundTestType === "tcp" || outboundTestType === "icmp") &&
+			findOutboundAddress(outbound).length === 0
+		) {
+			toast({
+				title: outboundAddressRequiredMessage,
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
 			});
 			return;
 		}
@@ -1772,22 +1795,31 @@ export const CoreSettingsPage: FC = () => {
 			case "vless":
 				return (
 					outbound.settings.vnext?.map(
-						(obj: any) => `${obj.address}:${obj.port}`,
+						(obj: any) => formatOutboundEndpoint(obj.address, obj.port),
 					) || []
-				);
+				).filter(Boolean);
 			case "http":
 			case "socks":
 			case "shadowsocks":
 			case "trojan":
 				return (
 					outbound.settings.servers?.map(
-						(obj: any) => `${obj.address}:${obj.port}`,
+						(obj: any) => formatOutboundEndpoint(obj.address, obj.port),
 					) || []
-				);
+				).filter(Boolean);
 			case "dns":
-				return [`${outbound.settings?.address}:${outbound.settings?.port}`];
+				return [
+					formatOutboundEndpoint(
+						outbound.settings?.address,
+						outbound.settings?.port,
+					),
+				].filter(Boolean);
 			case "wireguard":
-				return outbound.settings.peers?.map((peer: any) => peer.endpoint) || [];
+				return (
+					outbound.settings.peers?.map((peer: any) =>
+						String(peer.endpoint ?? "").trim(),
+					) || []
+				).filter(Boolean);
 			default:
 				return [];
 		}
@@ -3211,7 +3243,21 @@ export const CoreSettingsPage: FC = () => {
 											</Tr>
 										)}
 										{filteredOutboundData.map(
-											({ outbound, originalIndex }, _index) => (
+											({ outbound, originalIndex }, _index) => {
+												const outboundAddresses =
+													findOutboundAddress(outbound);
+												const requiresOutboundAddress =
+													outboundTestType === "tcp" ||
+													outboundTestType === "icmp";
+												const outboundTestAddressMissing =
+													requiresOutboundAddress &&
+													outboundAddresses.length === 0;
+												const outboundTestDisabledReason = isMasterTarget
+													? outboundNodeTargetRequiredMessage
+													: outboundTestAddressMissing
+														? outboundAddressRequiredMessage
+														: "";
+												return (
 												<Tr key={outbound.key}>
 													<Td>
 														<RowActionMenu
@@ -3289,11 +3335,9 @@ export const CoreSettingsPage: FC = () => {
 														)}
 													</Td>
 													<Td>
-														{findOutboundAddress(outbound).map(
-															(addr: string) => (
-																<Text key={addr}>{addr}</Text>
-															),
-														)}
+														{outboundAddresses.map((addr: string) => (
+															<Text key={addr}>{addr}</Text>
+														))}
 													</Td>
 													<Td>
 														<Tag colorScheme="green">
@@ -3304,8 +3348,8 @@ export const CoreSettingsPage: FC = () => {
 														<VStack align="start" spacing={1}>
 															<Tooltip
 																hasArrow
-																isDisabled={!isMasterTarget}
-																label={outboundNodeTargetRequiredMessage}
+																isDisabled={!outboundTestDisabledReason}
+																label={outboundTestDisabledReason}
 																shouldWrapChildren
 															>
 																<IconButton
@@ -3323,6 +3367,7 @@ export const CoreSettingsPage: FC = () => {
 																	)}
 																	isDisabled={
 																		isMasterTarget ||
+																		outboundTestAddressMissing ||
 																		outbound.protocol === "blackhole" ||
 																		String(outbound.tag ?? "")
 																			.toLowerCase()
@@ -3373,7 +3418,8 @@ export const CoreSettingsPage: FC = () => {
 														</VStack>
 													</Td>
 												</Tr>
-											),
+											);
+											},
 										)}
 									</Tbody>
 								</TableGrid>
