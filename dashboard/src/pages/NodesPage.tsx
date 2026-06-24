@@ -255,7 +255,7 @@ const NodeMetricDisplay = ({
 	const progressValue = boundedPercent(percent);
 	return (
 		<VStack align="flex-start" spacing={1} minW={0}>
-			<Text fontWeight="semibold" lineHeight="short" wordBreak="break-word">
+			<Text fontWeight="semibold" fontSize="sm" lineHeight="short" wordBreak="break-word">
 				{value}
 			</Text>
 			{helper && helper !== "-" ? (
@@ -269,7 +269,7 @@ const NodeMetricDisplay = ({
 					size="xs"
 					colorScheme={colorScheme}
 					borderRadius="full"
-					w="72px"
+					w="56px"
 					bg="blackAlpha.100"
 					_dark={{ bg: "whiteAlpha.200" }}
 				/>
@@ -1692,10 +1692,10 @@ export const NodesPage: FC = () => {
 				<Stack
 					direction={{ base: "column", xl: "row" }}
 					spacing={3}
-					align={{ base: "stretch", xl: "center" }}
+					align={{ base: "stretch", xl: "flex-start" }}
 					justify="space-between"
 				>
-					<VStack align="flex-start" spacing={1} minW="220px">
+					<VStack align="flex-start" spacing={1} minW={{ base: "0", xl: "210px" }}>
 						<Text fontWeight="semibold">
 							{t("nodes.manageNodesHeader", "Node list")}
 						</Text>
@@ -1713,15 +1713,18 @@ export const NodesPage: FC = () => {
 							</Tag>
 						</HStack>
 					</VStack>
-					<HStack
+					<SimpleGrid
+						columns={{ base: 1, sm: 2, lg: 4 }}
 						spacing={2}
-						flexWrap="wrap"
-						justify={{ base: "flex-start", xl: "flex-end" }}
+						w={{ base: "full", xl: "auto" }}
+						minW={{ xl: "590px" }}
+						maxW={{ xl: "720px" }}
 					>
 						<Button
 							leftIcon={<TutorialIconStyled />}
 							variant="outline"
 							size="sm"
+							w="full"
 							onClick={() =>
 								navigate("/tutorials?focus=section-nodes-admin-guide")
 							}
@@ -1732,6 +1735,7 @@ export const NodesPage: FC = () => {
 							variant="outline"
 							size="sm"
 							leftIcon={<CoreIconStyled />}
+							w="full"
 							onClick={() => setVersionDialogTarget({ type: "bulk" })}
 							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
 						>
@@ -1741,6 +1745,7 @@ export const NodesPage: FC = () => {
 							variant="outline"
 							size="sm"
 							leftIcon={<DownloadIconStyled />}
+							w="full"
 							onClick={handleUpdateAllNodeServices}
 							isLoading={updatingBulkService}
 							isDisabled={
@@ -1753,11 +1758,12 @@ export const NodesPage: FC = () => {
 							leftIcon={<AddIconStyled />}
 							colorScheme="primary"
 							size="sm"
+							w="full"
 							onClick={() => setAddNodeOpen(true)}
 						>
 							{t("nodes.addNode")}
 						</Button>
-					</HStack>
+					</SimpleGrid>
 				</Stack>
 
 				<Divider />
@@ -1773,8 +1779,9 @@ export const NodesPage: FC = () => {
 						spacing={2}
 						align={{ base: "stretch", md: "center" }}
 						flex="1"
+						flexWrap="wrap"
 					>
-						<InputGroup size="sm" maxW={{ base: "full", xl: "300px" }}>
+						<InputGroup size="sm" w={{ base: "full", md: "260px", xl: "280px" }}>
 							<InputLeftElement pointerEvents="none">
 								<SearchIcon color="gray.400" />
 							</InputLeftElement>
@@ -1816,7 +1823,7 @@ export const NodesPage: FC = () => {
 								setSortKey(nextKey as NodeSortKey);
 								setSortDirection(nextDirection as NodeSortDirection);
 							}}
-							w={{ base: "full", md: "180px" }}
+							w={{ base: "full", md: "170px" }}
 						>
 							<option value="name.asc">{t("nodes.sort.nameAsc", "Name A-Z")}</option>
 							<option value="name.desc">{t("nodes.sort.nameDesc", "Name Z-A")}</option>
@@ -1833,7 +1840,7 @@ export const NodesPage: FC = () => {
 						</Select>
 					</Stack>
 					<HStack
-						spacing={2}
+						spacing={1.5}
 						flexWrap="wrap"
 						justify={{ base: "flex-start", xl: "flex-end" }}
 					>
@@ -2077,12 +2084,28 @@ export const NodesPage: FC = () => {
 					borderColor={nodeCardBorder}
 					borderRadius="lg"
 					boxShadow="sm"
-					overflowX="auto"
+					overflowX={{ base: "auto", xl: "hidden" }}
 				>
-					<Table size="sm" variant="simple" minW="1240px">
+					<Table
+						size="sm"
+						variant="simple"
+						w="full"
+						minW={{ base: "1120px", xl: "100%" }}
+						sx={{
+							tableLayout: { base: "auto", xl: "fixed" },
+							"& th, & td": {
+								px: { base: 3, xl: 2 },
+								py: { base: 3, xl: 2.5 },
+								verticalAlign: "middle",
+							},
+							"& th:first-of-type, & td:first-of-type": {
+								px: { base: 2, xl: 1.5 },
+							},
+						}}
+					>
 						<Thead bg={nodePanelBg}>
 							<Tr>
-								<Th w="48px">
+								<Th w={{ base: "40px", xl: "34px" }}>
 									<Checkbox
 										isChecked={allPageSelected}
 										isIndeterminate={somePageSelected}
@@ -2096,35 +2119,35 @@ export const NodesPage: FC = () => {
 									/>
 								</Th>
 								<Th
-									minW="220px"
+									w={{ base: "190px", xl: "13%" }}
 									cursor="pointer"
 									onClick={() => handleSort("name")}
 								>
 									{sortLabel("name", t("nodes.columns.name", "Name"))}
 								</Th>
 								<Th
-									minW="130px"
+									w={{ base: "110px", xl: "8%" }}
 									cursor="pointer"
 									onClick={() => handleSort("status")}
 								>
 									{sortLabel("status", t("nodes.columns.status", "Status"))}
 								</Th>
-								<Th minW="150px">{t("nodes.columns.address", "Address")}</Th>
-								<Th minW="130px">
+								<Th w={{ base: "130px", xl: "10%" }}>{t("nodes.columns.address", "Address")}</Th>
+								<Th w={{ base: "110px", xl: "7%" }}>
 									{t("nodes.columns.xrayVersion", "Xray version")}
 								</Th>
-								<Th minW="150px">
+								<Th w={{ base: "130px", xl: "10%" }}>
 									{t("nodes.columns.nodeRuntime", "Node / install")}
 								</Th>
 								<Th
-									minW="120px"
+									w={{ base: "110px", xl: "8%" }}
 									cursor="pointer"
 									onClick={() => handleSort("uptime")}
 								>
 									{sortLabel("uptime", t("nodes.columns.uptime", "Uptime"))}
 								</Th>
 								<Th
-									minW="150px"
+									w={{ base: "140px", xl: "10%" }}
 									cursor="pointer"
 									onClick={() => handleSort("usage")}
 								>
@@ -2134,7 +2157,7 @@ export const NodesPage: FC = () => {
 									)}
 								</Th>
 								<Th
-									minW="130px"
+									w={{ base: "135px", xl: "10%" }}
 									cursor="pointer"
 									onClick={() => handleSort("bandwidth")}
 								>
@@ -2144,20 +2167,20 @@ export const NodesPage: FC = () => {
 									)}
 								</Th>
 								<Th
-									minW="110px"
+									w={{ base: "95px", xl: "7%" }}
 									cursor="pointer"
 									onClick={() => handleSort("cpu")}
 								>
 									{sortLabel("cpu", t("nodes.columns.cpu", "CPU"))}
 								</Th>
 								<Th
-									minW="130px"
+									w={{ base: "120px", xl: "9%" }}
 									cursor="pointer"
 									onClick={() => handleSort("ram")}
 								>
 									{sortLabel("ram", t("nodes.columns.ram", "RAM"))}
 								</Th>
-								<Th minW="160px">
+								<Th w={{ base: "145px", xl: "8%" }}>
 									{t("nodes.columns.certificate", "Certificate")}
 								</Th>
 							</Tr>
@@ -2291,7 +2314,7 @@ export const NodesPage: FC = () => {
 											)}
 										</Td>
 										<Td>
-											<HStack align="center" spacing={3}>
+											<HStack align="center" spacing={1.5} minW={0}>
 												<Menu
 													placement="bottom-start"
 													strategy="fixed"
@@ -2303,6 +2326,7 @@ export const NodesPage: FC = () => {
 														variant="ghost"
 														aria-label={t("nodes.actions", "Node actions")}
 														icon={<MoreIconStyled />}
+														flexShrink={0}
 													/>
 													<Portal>
 														<MenuList
@@ -2438,11 +2462,11 @@ export const NodesPage: FC = () => {
 														</MenuList>
 													</Portal>
 												</Menu>
-												<VStack align="flex-start" spacing={1} minW={0}>
+												<VStack align="flex-start" spacing={0.5} minW={0} flex="1">
 													<HStack spacing={2} align="center" flexWrap="wrap">
 														<Text
 															fontWeight="semibold"
-															maxW="220px"
+															maxW={{ base: "160px", xl: "120px", "2xl": "150px" }}
 															noOfLines={2}
 															wordBreak="break-word"
 														>
@@ -2450,14 +2474,14 @@ export const NodesPage: FC = () => {
 																t("nodes.unnamedNode", "Unnamed node")}
 														</Text>
 													</HStack>
-													<Text fontSize="xs" color="gray.500">
+													<Text fontSize="xs" color="gray.500" lineHeight="short">
 														{t("nodes.id", "ID")}: {node.id ?? EMPTY_CELL_VALUE}
 													</Text>
 													{node.note && (
 														<Text
 															fontSize="xs"
 															color="gray.500"
-															maxW="240px"
+															maxW={{ base: "170px", xl: "125px", "2xl": "150px" }}
 															noOfLines={2}
 															wordBreak="break-word"
 														>
@@ -2477,6 +2501,8 @@ export const NodesPage: FC = () => {
 													sx={{ unicodeBidi: "isolate" }}
 													cursor="pointer"
 													textAlign="start"
+													maxW="full"
+													noOfLines={1}
 													_hover={{ color: "primary.500" }}
 													onClick={() =>
 														copyToClipboard(
@@ -2519,7 +2545,7 @@ export const NodesPage: FC = () => {
 														"Node version unknown",
 															)}
 												</Tag>
-												<Text fontSize="xs" color="gray.500">
+												<Text fontSize="xs" color="gray.500" noOfLines={1}>
 													{nodeInstallLabel}
 												</Text>
 												{nodeServiceUpdateAvailable && (
@@ -2538,7 +2564,9 @@ export const NodesPage: FC = () => {
 											</VStack>
 										</Td>
 										<Td>
-											<Text fontWeight="medium">{nodeUptimeDisplay}</Text>
+											<Text fontWeight="medium" fontSize="sm" lineHeight="short">
+												{nodeUptimeDisplay}
+											</Text>
 										</Td>
 										<Td>
 											<NodeMetricDisplay
@@ -2577,7 +2605,7 @@ export const NodesPage: FC = () => {
 											<VStack align="flex-start" spacing={1}>
 												<HStack
 													spacing={1}
-													maxW="180px"
+													maxW="full"
 													flexWrap="nowrap"
 													role={certificateCopyValue ? "button" : undefined}
 													tabIndex={certificateCopyValue ? 0 : undefined}
@@ -2605,6 +2633,7 @@ export const NodesPage: FC = () => {
 														size="sm"
 														flexShrink={1}
 														minW={0}
+														maxW="88px"
 														colorScheme={
 															node.uses_default_certificate
 																? "orange"
@@ -2637,7 +2666,7 @@ export const NodesPage: FC = () => {
 															fontSize="xs"
 															color="gray.500"
 															noOfLines={1}
-															maxW="180px"
+															maxW="full"
 															cursor="pointer"
 															textAlign="start"
 															onClick={() =>
