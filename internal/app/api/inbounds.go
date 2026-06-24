@@ -135,6 +135,8 @@ func writeInboundError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "Inbound not found")
 	case errors.Is(err, xrayconfig.ErrDuplicateInboundTag), errors.Is(err, xrayconfig.ErrDuplicateInboundPort), errors.Is(err, xrayconfig.ErrReservedInboundTag), errors.Is(err, xrayconfig.ErrInvalidInbound):
 		writeError(w, http.StatusBadRequest, detail)
+	case strings.Contains(lowered, "invalid inbound"), strings.Contains(lowered, "xpaddingbytes"), strings.Contains(lowered, "realitysettings"), strings.Contains(lowered, "port must"):
+		writeError(w, http.StatusBadRequest, detail)
 	case strings.Contains(lowered, "invalid xray config target"), strings.Contains(lowered, "invalid target"):
 		writeError(w, http.StatusBadRequest, detail)
 	case strings.Contains(lowered, "node not found"):

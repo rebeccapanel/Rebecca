@@ -349,6 +349,124 @@ const parsePort = (value: string): number | string => {
 	return value.trim();
 };
 
+const isValidPortText = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!/^\d+$/.test(cleaned)) return false;
+	const port = Number(cleaned);
+	return Number.isInteger(port) && port >= 1 && port <= 65535;
+};
+
+const isHostPortTarget = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!cleaned || cleaned.includes("://") || cleaned.includes("/")) {
+		return false;
+	}
+	if (cleaned.startsWith("[")) {
+		const match = cleaned.match(/^\[[^\]]+\]:(\d+)$/);
+		return !!match && isValidPortText(match[1]);
+	}
+	const colon = cleaned.lastIndexOf(":");
+	if (colon <= 0 || colon === cleaned.length - 1) {
+		return false;
+	}
+	const host = cleaned.slice(0, colon).trim();
+	const port = cleaned.slice(colon + 1).trim();
+	return !!host && !host.includes(":") && isValidPortText(port);
+};
+
+const hasSchemePathOrPort = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!cleaned) return false;
+	if (cleaned.includes("://") || cleaned.includes("/")) return true;
+	if (cleaned.startsWith("[")) return /^\[[^\]]+\]:\d+$/.test(cleaned);
+	return /^[^:]+:\d+$/.test(cleaned);
+};
+
+const validatePath = (
+	errors: string[],
+	value: string,
+	label: string,
+): void => {
+	const cleaned = value.trim();
+	if (cleaned && !cleaned.startsWith("/")) {
+		errors.push(`${label} must start with /.`);
+	}
+};
+
+const validateXPadding = (
+	errors: string[],
+	value: string,
+	label: string,
+): void => {
+	const cleaned = value.trim();
+	if (!cleaned) return;
+	const match = cleaned.match(/^(\d+)(?:-(\d+))?$/);
+	if (!match) {
+		errors.push(`${label} must look like 100 or 100-1000.`);
+		return;
+	}
+	if (match[2] && Number(match[1]) > Number(match[2])) {
+		errors.push(`${label} range start must be less than or equal to end.`);
+	}
+};
+
+export const validateInboundFormValues = (
+	values: InboundFormValues,
+): string[] => {
+	const errors: string[] = [];
+	if (!values.tag.trim()) {
+		errors.push("Inbound tag is required.");
+	}
+	if (!isValidPortText(values.port)) {
+		errors.push("Port must be a number between 1 and 65535.");
+	}
+	if (values.streamNetwork === "ws") {
+		validatePath(errors, values.wsPath, "WebSocket path");
+	}
+	if (values.streamNetwork === "httpupgrade") {
+		validatePath(errors, values.httpupgradePath, "HTTPUpgrade path");
+	}
+	if (values.streamNetwork === "splithttp") {
+		validatePath(errors, values.splithttpPath, "SplitHTTP path");
+		validateXPadding(errors, values.splithttpXPaddingBytes, "SplitHTTP xPaddingBytes");
+	}
+	if (values.streamNetwork === "xhttp") {
+		validatePath(errors, values.xhttpPath, "XHTTP path");
+		validateXPadding(errors, values.xhttpPaddingBytes, "XHTTP xPaddingBytes");
+	}
+	if (values.streamSecurity === "reality") {
+		if (!isHostPortTarget(values.realityTarget)) {
+			errors.push(
+				"REALITY target must be host:port, for example google.com:443.",
+			);
+		}
+		if (!values.realityPrivateKey.trim()) {
+			errors.push("REALITY private key is required.");
+		}
+		const serverNames = splitLines(values.realityServerNames);
+		if (!serverNames.length) {
+			errors.push("REALITY server names are required.");
+		}
+		for (const serverName of serverNames) {
+			if (hasSchemePathOrPort(serverName)) {
+				errors.push("REALITY server names must not include scheme, path, or port.");
+				break;
+			}
+		}
+		const shortIds = splitLines(values.realityShortIds);
+		if (!shortIds.length) {
+			errors.push("REALITY short IDs are required.");
+		}
+		for (const shortId of shortIds) {
+			if (!/^[0-9a-fA-F]{2,16}$/.test(shortId) || shortId.length % 2 !== 0) {
+				errors.push("REALITY short IDs must be even-length hex with 2-16 characters.");
+				break;
+			}
+		}
+	}
+	return errors;
+};
+
 const cleanObject = (value: Record<string, any>) => {
 	Object.keys(value).forEach((key) => {
 		const current = value[key];
@@ -708,7 +826,25 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		: base.tlsCertificates;
 	const tlsAlpn = parseStringList(tlsSettings.alpn);
 	const realityServerNames = parseStringList(realitySettings.serverNames);
+	if (!realityServerNames.length) {
+		realityServerNames.push(
+			...parseStringList(
+				realitySettings.serverName ??
+					realitySettingsMeta.serverName ??
+					realitySettingsMeta.sni,
+			),
+		);
+	}
 	const realityShortIds = parseStringList(realitySettings.shortIds);
+	if (!realityShortIds.length) {
+		realityShortIds.push(
+			...parseStringList(
+				realitySettings.shortId ??
+					realitySettingsMeta.shortIds ??
+					realitySettingsMeta.shortId,
+			),
+		);
+	}
 
 	return {
 		...base,
@@ -800,8 +936,15 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityFingerprint:
 			realitySettingsMeta.fingerprint ?? base.realityFingerprint,
 		realityTarget:
-			realitySettings.target ?? realitySettings.dest ?? base.realityTarget,
-		realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
+			realitySettings.target ??
+			realitySettings.dest ??
+			realitySettingsMeta.target ??
+			realitySettingsMeta.dest ??
+			base.realityTarget,
+		realityPrivateKey:
+			realitySettings.privateKey ??
+			realitySettingsMeta.privateKey ??
+			base.realityPrivateKey,
 		realityServerNames: realityServerNames.length
 			? joinComma(realityServerNames)
 			: base.realityServerNames,

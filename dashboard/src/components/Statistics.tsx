@@ -690,7 +690,7 @@ const SystemOverviewCard: FC<{
 						{t("panelUptime")}: {formatDuration(data.panel_uptime_seconds)}
 					</Tag>
 				</Stack>
-				{data.last_xray_error && !data.xray_running && (
+				{data.last_xray_error && (
 					<Box
 						mt={4}
 						p={4}

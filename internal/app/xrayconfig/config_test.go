@@ -210,6 +210,7 @@ func TestRealityInboundDerivesPublicKey(t *testing.T) {
 				"security": "reality",
 				"realitySettings": map[string]any{
 					"privateKey":  strings.Repeat("02", 32),
+					"target":      "example.com:443",
 					"serverNames": []any{"example.com"},
 					"shortIds":    []any{"abcd"},
 				},
@@ -241,6 +242,7 @@ func TestRealityInboundAcceptsSettingsShortID(t *testing.T) {
 				"security": "reality",
 				"realitySettings": map[string]any{
 					"privateKey": strings.Repeat("02", 32),
+					"target":     "example.com:443",
 					"settings": map[string]any{
 						"serverName": "example.com",
 						"shortId":    "abcd",
@@ -263,6 +265,67 @@ func TestRealityInboundAcceptsSettingsShortID(t *testing.T) {
 	}
 	if got := stringValue(inbound["spx"]); got != "/spider" {
 		t.Fatalf("expected spiderX compatibility, got %#v", inbound)
+	}
+}
+
+func TestParseRejectsInvalidExecutableInbound(t *testing.T) {
+	cases := []struct {
+		name string
+		edit func(map[string]any)
+		want string
+	}{
+		{
+			name: "bad reality target",
+			edit: func(cfg map[string]any) {
+				cfg["inbounds"] = []any{map[string]any{
+					"tag":      "reality",
+					"port":     443,
+					"protocol": "vless",
+					"streamSettings": map[string]any{
+						"network":  "tcp",
+						"security": "reality",
+						"realitySettings": map[string]any{
+							"privateKey":  strings.Repeat("02", 32),
+							"target":      "google.com.443",
+							"serverNames": []any{"google.com"},
+							"shortIds":    []any{"abcd"},
+						},
+					},
+				}}
+			},
+			want: "host:port",
+		},
+		{
+			name: "bad inbound port",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				inbound["port"] = "443x"
+			},
+			want: "port must be a number",
+		},
+		{
+			name: "bad xpadding",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "xPaddingBytes": "+100-1000"}
+			},
+			want: "xPaddingBytes",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			tc.edit(cfg)
+			_, err := Parse(cfg, Options{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
 	}
 }
 

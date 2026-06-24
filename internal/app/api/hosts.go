@@ -469,6 +469,21 @@ func scanHostResponses(rows *sql.Rows) ([]hostResponse, error) {
 }
 
 func validateHostPayload(host hostPayload) error {
+	if strings.TrimSpace(host.Remark) == "" {
+		return statusError{status: http.StatusBadRequest, detail: "Host remark is required"}
+	}
+	if strings.TrimSpace(host.Address) == "" {
+		return statusError{status: http.StatusBadRequest, detail: "Host address is required"}
+	}
+	if host.Port != nil && (*host.Port < 1 || *host.Port > 65535) {
+		return statusError{status: http.StatusBadRequest, detail: "Host port must be between 1 and 65535"}
+	}
+	if host.Path != nil {
+		path := strings.TrimSpace(*host.Path)
+		if path != "" && !strings.HasPrefix(path, "/") {
+			return statusError{status: http.StatusBadRequest, detail: "Host path must start with /"}
+		}
+	}
 	if err := validateFormatString(host.Remark); err != nil {
 		return statusError{status: http.StatusBadRequest, detail: "Invalid formatting variables"}
 	}

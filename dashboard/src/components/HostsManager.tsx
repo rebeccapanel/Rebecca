@@ -331,6 +331,33 @@ const serializeHostData = (data: HostData) => ({
 	noise_setting: normalizeString(data.noise_setting),
 });
 
+const validateHostState = (
+	inboundTag: string,
+	data: HostData | CreateHostValues,
+): string[] => {
+	const errors: string[] = [];
+	if (!inboundTag.trim()) {
+		errors.push("Inbound is required.");
+	}
+	if (!data.remark.trim()) {
+		errors.push("Remark is required.");
+	}
+	if (!data.address.trim()) {
+		errors.push("Address is required.");
+	}
+	if (data.port !== null) {
+		const port = Number(data.port);
+		if (!Number.isInteger(port) || port < 1 || port > 65535) {
+			errors.push("Port must be a number between 1 and 65535.");
+		}
+	}
+	const path = data.path.trim();
+	if (path && !path.startsWith("/")) {
+		errors.push("Path must start with /.");
+	}
+	return errors;
+};
+
 const isHostDirty = (host: HostState) => {
 	const current = serializeHostData(host.data);
 	const original = serializeHostData(host.original);
@@ -1413,6 +1440,23 @@ export const HostsManager: FC = () => {
 	const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
 	const [deletingUid, setDeletingUid] = useState<string | null>(null);
 
+	const showHostValidationError = useCallback(
+		(errors: string[]) => {
+			if (!errors.length) {
+				return false;
+			}
+			toast({
+				title: t("hostsPage.error.invalidHost", "Host config is invalid"),
+				description: errors[0],
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+			return true;
+		},
+		[t, toast],
+	);
+
 	const viewModeStorageKey = "hostsViewMode";
 	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
 		if (typeof window === "undefined") {
@@ -1565,6 +1609,9 @@ export const HostsManager: FC = () => {
 	const saveHost = async (uid: string) => {
 		const host = hostItemsRef.current.find((item) => item.uid === uid);
 		if (!host) return;
+		if (showHostValidationError(validateHostState(host.inboundTag, host.data))) {
+			return;
+		}
 		setSavingHostUid(uid);
 		try {
 			const payload = buildInboundPayload(hostItemsRef.current, [
@@ -1655,6 +1702,13 @@ export const HostsManager: FC = () => {
 
 	const addCloneHost = async (uid: string) => {
 		if (!cloneHost || cloneHost.uid !== uid) return;
+		if (
+			showHostValidationError(
+				validateHostState(cloneHost.inboundTag, cloneHost.data),
+			)
+		) {
+			return;
+		}
 		const remark = cloneHost.data.remark.trim();
 		const address = cloneHost.data.address.trim();
 		if (!cloneHost.inboundTag || !remark || !address) {
@@ -1782,6 +1836,9 @@ export const HostsManager: FC = () => {
 	};
 
 	const handleCreateHost = async (values: CreateHostValues) => {
+		if (showHostValidationError(validateHostState(values.inboundTag, values))) {
+			return;
+		}
 		setSavingHostUid("create");
 		try {
 			const newHost: HostState = {

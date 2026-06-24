@@ -84,6 +84,7 @@ import {
 	tlsFingerprintOptions,
 	tlsUsageOptions,
 	tlsVersionOptions,
+	validateInboundFormValues,
 } from "utils/inbounds";
 import { NumericInput } from "../common/NumericInput";
 import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
@@ -410,11 +411,22 @@ export const InboundFormModal: FC<Props> = ({
 		supportsStreamSettings,
 		t,
 	]);
+	const formValidationErrors = useMemo(
+		() => validateInboundFormValues(formValues),
+		[formValues],
+	);
 	const _hasBlockingErrors = Boolean(
-		tagError || portError || streamCompatibilityError,
+		tagError ||
+			portError ||
+			streamCompatibilityError ||
+			formValidationErrors.length,
 	);
 	const hasBlockingErrorsWithJson = Boolean(
-		tagError || portError || jsonError || streamCompatibilityError,
+		tagError ||
+			portError ||
+			jsonError ||
+			streamCompatibilityError ||
+			formValidationErrors.length,
 	);
 	const computedVlessAuthOptions = useMemo(() => {
 		const labels = [
@@ -638,6 +650,18 @@ export const InboundFormModal: FC<Props> = ({
 	const sectionBorder = useColorModeValue("gray.200", "gray.700");
 
 	const submitForm = async (values: InboundFormValues) => {
+		const errors = validateInboundFormValues(values);
+		if (errors.length) {
+			setActiveTab(0);
+			toast({
+				title: t("inbounds.error.invalidConfig", "Inbound config is invalid"),
+				description: errors[0],
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+			return;
+		}
 		await onSubmit(values);
 	};
 
@@ -1014,6 +1038,26 @@ export const InboundFormModal: FC<Props> = ({
 						<TabPanels>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={6}>
+									{formValidationErrors.length > 0 && (
+										<Alert status="error" borderRadius="md" alignItems="flex-start">
+											<AlertIcon />
+											<Box>
+												<AlertTitle fontSize="sm">
+													{t(
+														"inbounds.error.invalidConfig",
+														"Inbound config is invalid",
+													)}
+												</AlertTitle>
+												<AlertDescription as="div" fontSize="sm">
+													<VStack align="stretch" spacing={1} mt={1}>
+														{formValidationErrors.map((error) => (
+															<Text key={error}>- {error}</Text>
+														))}
+													</VStack>
+												</AlertDescription>
+											</Box>
+										</Alert>
+									)}
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Text fontSize="sm" fontWeight="semibold">
 											{t("inbounds.basicSettings", "Basic settings")}

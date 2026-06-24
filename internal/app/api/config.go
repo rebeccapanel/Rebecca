@@ -105,6 +105,8 @@ func writeConfigError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "Node not found")
 	case strings.Contains(lowered, "config doesn't have"), strings.Contains(lowered, "all inbounds"), strings.Contains(lowered, "all outbounds"), strings.Contains(lowered, "duplicate"):
 		writeError(w, http.StatusBadRequest, detail)
+	case strings.Contains(lowered, "invalid inbound"), strings.Contains(lowered, "xpaddingbytes"), strings.Contains(lowered, "realitysettings"), strings.Contains(lowered, "port must"):
+		writeError(w, http.StatusBadRequest, detail)
 	case strings.Contains(lowered, "tls certificate"):
 		writeError(w, http.StatusBadRequest, detail)
 	default:

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -19,6 +21,26 @@ var proxyProtocols = map[string]struct{}{
 	"trojan":      {},
 	"shadowsocks": {},
 }
+
+var (
+	validInboundNetworks = map[string]struct{}{
+		"tcp":         {},
+		"raw":         {},
+		"ws":          {},
+		"grpc":        {},
+		"gun":         {},
+		"kcp":         {},
+		"quic":        {},
+		"http":        {},
+		"h2":          {},
+		"h3":          {},
+		"httpupgrade": {},
+		"splithttp":   {},
+		"xhttp":       {},
+	}
+	realityShortIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{2,16}$`)
+	xPaddingBytesPattern  = regexp.MustCompile(`^\d+(-\d+)?$`)
+)
 
 type Options struct {
 	APIHost                 string
@@ -159,6 +181,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate inbound tag: %s", tag)
 		}
 		seenInboundTags[tag] = struct{}{}
+		if err := validateExecutableInbound(inbound); err != nil {
+			return err
+		}
 	}
 
 	seenOutboundTags := map[string]struct{}{}
@@ -173,6 +198,213 @@ func (c *Config) validate() error {
 		seenOutboundTags[tag] = struct{}{}
 	}
 	return nil
+}
+
+func validateExecutableInbound(inbound map[string]any) error {
+	tag := stringValue(inbound["tag"])
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	if _, ok := proxyProtocols[protocol]; !ok {
+		return nil
+	}
+	if _, ok := inbound["port"]; !ok {
+		return fmt.Errorf("invalid inbound %q: port is required", tag)
+	}
+	port, err := parseConfigPort(inbound["port"])
+	if err != nil {
+		return fmt.Errorf("invalid inbound %q: %w", tag, err)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
+	}
+
+	stream := mapValue(inbound["streamSettings"])
+	if len(stream) == 0 {
+		return nil
+	}
+	network := normalizeNetwork(stringValue(stream["network"]))
+	if network == "" {
+		network = "tcp"
+	}
+	if _, ok := validInboundNetworks[network]; !ok {
+		return fmt.Errorf("invalid inbound %q: unsupported stream network %q", tag, network)
+	}
+	networkSettings := mapValue(stream[networkSettingsKey(network)])
+	if err := validateNetworkSettings(tag, network, networkSettings); err != nil {
+		return err
+	}
+
+	security := strings.ToLower(strings.TrimSpace(stringValue(stream["security"])))
+	switch security {
+	case "", "none":
+		return nil
+	case "tls":
+		return nil
+	case "reality":
+		return validateRealitySettings(tag, protocol, network, mapValue(stream["realitySettings"]))
+	default:
+		return fmt.Errorf("invalid inbound %q: unsupported stream security %q", tag, security)
+	}
+}
+
+func validateNetworkSettings(tag string, network string, settings map[string]any) error {
+	switch network {
+	case "ws":
+		if path := strings.TrimSpace(stringValue(settings["path"])); path != "" && !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("invalid inbound %q: WebSocket path must start with /", tag)
+		}
+	case "httpupgrade":
+		if path := strings.TrimSpace(stringValue(settings["path"])); path != "" && !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("invalid inbound %q: HTTPUpgrade path must start with /", tag)
+		}
+	case "splithttp", "xhttp":
+		if path := strings.TrimSpace(stringValue(settings["path"])); path != "" && !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("invalid inbound %q: %s path must start with /", tag, network)
+		}
+		if padding := strings.TrimSpace(stringValue(settings["xPaddingBytes"])); padding != "" {
+			if !xPaddingBytesPattern.MatchString(padding) {
+				return fmt.Errorf("invalid inbound %q: xPaddingBytes must look like 100 or 100-1000", tag)
+			}
+			parts := strings.Split(padding, "-")
+			if len(parts) == 2 {
+				left, _ := strconv.Atoi(parts[0])
+				right, _ := strconv.Atoi(parts[1])
+				if left > right {
+					return fmt.Errorf("invalid inbound %q: xPaddingBytes range start must be less than or equal to end", tag)
+				}
+			}
+		}
+	case "grpc", "gun":
+		if value := strings.TrimSpace(stringValue(settings["serviceName"])); strings.Contains(value, "/") {
+			return fmt.Errorf("invalid inbound %q: gRPC serviceName must not contain /", tag)
+		}
+	}
+	return nil
+}
+
+func validateRealitySettings(tag string, protocol string, network string, reality map[string]any) error {
+	if protocol != "vless" && protocol != "trojan" {
+		return fmt.Errorf("invalid inbound %q: REALITY is only supported for vless or trojan", tag)
+	}
+	switch network {
+	case "tcp", "raw", "grpc", "gun", "http", "h2", "xhttp", "splithttp":
+	default:
+		return fmt.Errorf("invalid inbound %q: REALITY is not supported on %s network", tag, network)
+	}
+	if len(reality) == 0 {
+		return fmt.Errorf("invalid inbound %q: realitySettings is required", tag)
+	}
+	settings := mapValue(reality["settings"])
+	target := firstNonEmptyString(reality["target"], reality["dest"], settings["target"], settings["dest"])
+	if err := validateHostPortTarget(target); err != nil {
+		return fmt.Errorf("invalid inbound %q: realitySettings target %w", tag, err)
+	}
+	privateKey := firstNonEmptyString(reality["privateKey"], settings["privateKey"])
+	if strings.TrimSpace(privateKey) == "" {
+		return fmt.Errorf("invalid inbound %q: realitySettings privateKey is required", tag)
+	}
+	if _, err := normalizeRealityPrivateKey(privateKey); err != nil {
+		return fmt.Errorf("invalid inbound %q: %w", tag, err)
+	}
+	serverNames := stringList(reality["serverNames"])
+	if len(serverNames) == 0 {
+		serverNames = nonEmptyStrings(firstNonEmptyString(reality["serverName"], settings["serverName"], settings["sni"]))
+	}
+	if len(serverNames) == 0 {
+		return fmt.Errorf("invalid inbound %q: realitySettings serverNames is required", tag)
+	}
+	for _, serverName := range serverNames {
+		if err := validateServerNameValue(serverName); err != nil {
+			return fmt.Errorf("invalid inbound %q: realitySettings serverName %w", tag, err)
+		}
+	}
+	shortIDs := stringList(reality["shortIds"])
+	if len(shortIDs) == 0 {
+		shortIDs = stringList(reality["shortId"])
+	}
+	if len(shortIDs) == 0 {
+		shortIDs = stringList(settings["shortIds"])
+		if len(shortIDs) == 0 {
+			shortIDs = stringList(settings["shortId"])
+		}
+	}
+	if len(shortIDs) == 0 {
+		return fmt.Errorf("invalid inbound %q: realitySettings shortIds is required", tag)
+	}
+	for _, shortID := range shortIDs {
+		clean := strings.TrimSpace(shortID)
+		if !realityShortIDPattern.MatchString(clean) || len(clean)%2 != 0 {
+			return fmt.Errorf("invalid inbound %q: realitySettings shortId must be even-length hex with 2-16 characters", tag)
+		}
+	}
+	return nil
+}
+
+func validateHostPortTarget(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("is required and must be host:port, for example google.com:443")
+	}
+	if strings.Contains(value, "://") || strings.Contains(value, "/") {
+		return fmt.Errorf("must be host:port without scheme or path")
+	}
+	host, portText, err := net.SplitHostPort(value)
+	if err != nil {
+		return fmt.Errorf("must be host:port, for example google.com:443")
+	}
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("host is required")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	return nil
+}
+
+func validateServerNameValue(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("is required")
+	}
+	if strings.Contains(value, "://") || strings.Contains(value, "/") {
+		return fmt.Errorf("must not include scheme or path")
+	}
+	if _, _, err := net.SplitHostPort(value); err == nil {
+		return fmt.Errorf("must not include a port")
+	}
+	return nil
+}
+
+func parseConfigPort(value any) (int, error) {
+	switch typed := value.(type) {
+	case int:
+		return typed, nil
+	case int64:
+		return int(typed), nil
+	case float64:
+		if typed != float64(int(typed)) {
+			return 0, fmt.Errorf("port must be an integer")
+		}
+		return int(typed), nil
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("port must be an integer")
+		}
+		return int(parsed), nil
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return 0, fmt.Errorf("port is required")
+		}
+		parsed, err := strconv.Atoi(text)
+		if err != nil {
+			return 0, fmt.Errorf("port must be a number")
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("port must be a number")
+	}
 }
 
 func (c *Config) migrateDeprecated() {
