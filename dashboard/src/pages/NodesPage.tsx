@@ -92,6 +92,10 @@ import { fetch as apiFetch } from "service/http";
 import { formatBytes } from "utils/formatByte";
 import { formatDuration } from "utils/formatDuration";
 import {
+	getNodesPerPageLimitSize,
+	setNodesPerPageLimitSize,
+} from "utils/userPreferenceStorage";
+import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
@@ -281,7 +285,7 @@ export const NodesPage: FC = () => {
 	const [sortDirection, setSortDirection] =
 		useState<NodeSortDirection>("asc");
 	const [page, setPage] = useState(1);
-	const [pageSize, setPageSize] = useState(12);
+	const [pageSize, setPageSize] = useState(() => getNodesPerPageLimitSize());
 	const viewModeStorageKey = "nodesViewMode";
 	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
 		if (typeof window === "undefined") {
@@ -354,6 +358,10 @@ export const NodesPage: FC = () => {
 			console.warn("Unable to persist nodes view mode", error);
 		}
 	}, [viewMode]);
+
+	useEffect(() => {
+		setNodesPerPageLimitSize(String(pageSize));
+	}, [pageSize]);
 
 	const { data: maintenanceInfo } = useQuery<MaintenanceInfo>(
 		["maintenance-info"],
@@ -2333,6 +2341,7 @@ export const NodesPage: FC = () => {
 							<option value={24}>24</option>
 							<option value={48}>48</option>
 							<option value={96}>96</option>
+							<option value={100}>100</option>
 						</Select>
 						<ButtonGroup size="sm" isAttached variant="outline">
 							<Button

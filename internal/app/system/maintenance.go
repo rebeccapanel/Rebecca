@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -326,6 +327,22 @@ type GitHubUpdateChecker struct {
 	ManifestBranch string
 	ManifestPath   string
 	Now            func() time.Time
+	CacheTTL       time.Duration
+	ErrorTTL       time.Duration
+
+	mu       sync.Mutex
+	cache    map[string]githubUpdateCacheEntry
+	inFlight map[string]*githubUpdateCall
+}
+
+type githubUpdateCacheEntry struct {
+	status    UpdateStatus
+	expiresAt time.Time
+}
+
+type githubUpdateCall struct {
+	done   chan struct{}
+	status UpdateStatus
 }
 
 func NewGitHubUpdateChecker() *GitHubUpdateChecker {
@@ -336,14 +353,64 @@ func NewGitHubUpdateChecker() *GitHubUpdateChecker {
 		ManifestBranch: firstEnv("REBECCA_BINARY_DEV_MANIFEST_BRANCH", "dev-build-manifest"),
 		ManifestPath:   "dev-builds.json",
 		Now:            time.Now,
+		CacheTTL:       10 * time.Minute,
+		ErrorTTL:       5 * time.Minute,
 	}
 }
 
 func (c *GitHubUpdateChecker) Status(ctx context.Context, repo string, current *string, channel string) UpdateStatus {
-	checkedAt := time.Now().Unix()
-	if c.Now != nil {
-		checkedAt = c.Now().Unix()
+	now := c.now()
+	key := c.statusCacheKey(repo, current, channel)
+
+	c.mu.Lock()
+	if c.cache == nil {
+		c.cache = map[string]githubUpdateCacheEntry{}
 	}
+	if c.inFlight == nil {
+		c.inFlight = map[string]*githubUpdateCall{}
+	}
+	if cached, ok := c.cache[key]; ok && now.Before(cached.expiresAt) {
+		status := cloneUpdateStatus(cached.status)
+		c.mu.Unlock()
+		return status
+	}
+	if call, ok := c.inFlight[key]; ok {
+		c.mu.Unlock()
+		select {
+		case <-call.done:
+			return cloneUpdateStatus(call.status)
+		case <-ctx.Done():
+			return c.errorStatus(repo, current, channel, now, ctx.Err().Error())
+		}
+	}
+	call := &githubUpdateCall{done: make(chan struct{})}
+	c.inFlight[key] = call
+	c.mu.Unlock()
+
+	status := c.statusUncached(ctx, repo, current, channel, now)
+	ttl := c.CacheTTL
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	if status.Error != "" {
+		ttl = c.ErrorTTL
+		if ttl <= 0 {
+			ttl = 5 * time.Minute
+		}
+	}
+
+	c.mu.Lock()
+	c.cache[key] = githubUpdateCacheEntry{status: cloneUpdateStatus(status), expiresAt: now.Add(ttl)}
+	delete(c.inFlight, key)
+	call.status = cloneUpdateStatus(status)
+	close(call.done)
+	c.mu.Unlock()
+
+	return status
+}
+
+func (c *GitHubUpdateChecker) statusUncached(ctx context.Context, repo string, current *string, channel string, now time.Time) UpdateStatus {
+	checkedAt := now.Unix()
 	currentChannel := strings.ToLower(strings.TrimSpace(channel))
 	if currentChannel == "" {
 		currentChannel = InferUpdateChannel(current)
@@ -381,6 +448,69 @@ func (c *GitHubUpdateChecker) Status(ctx context.Context, repo string, current *
 		}
 	}
 	return status
+}
+
+func (c *GitHubUpdateChecker) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+func (c *GitHubUpdateChecker) statusCacheKey(repo string, current *string, channel string) string {
+	currentValue := ""
+	if current != nil {
+		currentValue = strings.TrimSpace(*current)
+	}
+	return strings.ToLower(strings.TrimSpace(repo)) + "|" + strings.ToLower(strings.TrimSpace(channel)) + "|" + currentValue
+}
+
+func (c *GitHubUpdateChecker) errorStatus(repo string, current *string, channel string, now time.Time, detail string) UpdateStatus {
+	currentChannel := strings.ToLower(strings.TrimSpace(channel))
+	if currentChannel == "" {
+		currentChannel = InferUpdateChannel(current)
+	}
+	if currentChannel == "" {
+		currentChannel = "unknown"
+	}
+	return UpdateStatus{
+		Repo:      repo,
+		Current:   cloneStringPtr(current),
+		Channel:   currentChannel,
+		CheckedAt: now.Unix(),
+		Error:     detail,
+	}
+}
+
+func cloneUpdateStatus(status UpdateStatus) UpdateStatus {
+	clone := status
+	clone.Current = cloneStringPtr(status.Current)
+	clone.Target = cloneStringPtr(status.Target)
+	if status.LatestRelease != nil {
+		release := cloneReleaseInfo(*status.LatestRelease)
+		clone.LatestRelease = &release
+	}
+	if status.LatestDev != nil {
+		dev := cloneReleaseInfo(*status.LatestDev)
+		clone.LatestDev = &dev
+	}
+	return clone
+}
+
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func cloneReleaseInfo(info ReleaseInfo) ReleaseInfo {
+	clone := make(ReleaseInfo, len(info))
+	for key, value := range info {
+		clone[key] = value
+	}
+	return clone
 }
 
 func (c *GitHubUpdateChecker) latestRelease(ctx context.Context, repo string) (*ReleaseInfo, error) {
