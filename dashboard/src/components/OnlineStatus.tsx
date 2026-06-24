@@ -47,7 +47,16 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 		);
 	}
 
-	if (timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS) {
+	const parts = buildRelativeTimeParts(unixTime, currentTimeInSeconds);
+	const formattedParts = formatRelativeTimeParts(parts);
+
+	// A user seen between the online window and one minute ago produces no
+	// non-zero hour/minute parts, so the relative string is empty. Treat that
+	// sub-minute case as "Online" instead of rendering a bare "ago".
+	if (
+		timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS ||
+		formattedParts.trim() === ""
+	) {
 		return (
 			<Text
 				display="inline-flex"
@@ -66,9 +75,6 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 			</Text>
 		);
 	}
-
-	const parts = buildRelativeTimeParts(unixTime, currentTimeInSeconds);
-	const formattedParts = formatRelativeTimeParts(parts);
 
 	return (
 		<Text
