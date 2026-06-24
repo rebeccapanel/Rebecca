@@ -1488,6 +1488,35 @@ update_rebecca_node_script() {
     install_rebecca_node_script
 }
 
+reexec_updated_node_script() {
+    local target_path="/usr/local/bin/$APP_NAME"
+    local args=("update")
+
+    if [ "${REBECCA_NODE_SKIP_REEXEC:-0}" = "1" ]; then
+        return
+    fi
+    if [ ! -x "$target_path" ]; then
+        return
+    fi
+
+    if [ "$NODE_VERSION_SET" -eq 1 ]; then
+        case "${NODE_VERSION_REQUESTED:-}" in
+            dev)
+                args+=("--dev")
+            ;;
+            "")
+                args+=("--version" "latest")
+            ;;
+            *)
+                args+=("--version" "$NODE_VERSION_REQUESTED")
+            ;;
+        esac
+    fi
+
+    colorized_echo blue "Reloading updated $APP_NAME script"
+    REBECCA_NODE_SKIP_REEXEC=1 exec "$target_path" "${args[@]}"
+}
+
 update_rebecca_node() {
     local requested_version="${1:-}"
     if is_binary_install; then
@@ -1894,6 +1923,7 @@ update_command() {
     fi
 
     update_rebecca_node_script
+    reexec_updated_node_script
 
     if is_binary_install; then
         colorized_echo blue "Updating Rebecca-node binary files"
