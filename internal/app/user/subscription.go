@@ -1236,10 +1236,15 @@ const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
 </html>`
 
 var (
-	subscriptionTemplateFiltersOnce sync.Once
-	subscriptionTemplateFiltersErr  error
-	subscriptionTemplateTagPattern  = regexp.MustCompile(`(?s)(\{\{.*?\}\}|\{%.*?%\})`)
-	subscriptionRemainingSetPattern = regexp.MustCompile(`\{% set remaining_days = .*?%\}`)
+	subscriptionTemplateFiltersOnce        sync.Once
+	subscriptionTemplateFiltersErr         error
+	subscriptionTemplateTagPattern         = regexp.MustCompile(`(?s)(\{\{.*?\}\}|\{%.*?%\})`)
+	subscriptionCurrentTimeSetPattern      = regexp.MustCompile(`(?s)\{%\s*set\s+current_timestamp\s*=.*?%\}`)
+	subscriptionRemainingSetPattern        = regexp.MustCompile(`(?s)\{%\s*set\s+remaining_days\s*=.*?%\}`)
+	subscriptionPythonDatetimeFilter       = regexp.MustCompile(`\|\s*datetime\s*\([^)]*\)`)
+	subscriptionPythonBytesFormatFilter    = regexp.MustCompile(`\|\s*bytesformat\s*\([^)]*\)`)
+	subscriptionPythonIntFilter            = regexp.MustCompile(`\|\s*int\s*\([^)]*\)`)
+	subscriptionPythonDefaultFilterPattern = regexp.MustCompile(`\|\s*default\s*\(([^)]*)\)`)
 )
 
 func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string) (string, error) {
@@ -1282,8 +1287,14 @@ func normalizeLegacySubscriptionTemplate(content string) string {
 	})
 	normalized = strings.ReplaceAll(normalized, "user.status.value", "user.status")
 	normalized = strings.ReplaceAll(normalized, "user.data_limit_reset_strategy.value", "user.data_limit_reset_strategy")
-	normalized = strings.ReplaceAll(normalized, "{% set current_timestamp = now().timestamp() %}", "")
+	normalized = subscriptionCurrentTimeSetPattern.ReplaceAllString(normalized, "")
 	normalized = subscriptionRemainingSetPattern.ReplaceAllString(normalized, "")
+	normalized = strings.ReplaceAll(normalized, "now().timestamp()", "current_timestamp")
+	normalized = strings.ReplaceAll(normalized, "datetime.now().timestamp()", "current_timestamp")
+	normalized = subscriptionPythonDatetimeFilter.ReplaceAllString(normalized, "| datetime")
+	normalized = subscriptionPythonBytesFormatFilter.ReplaceAllString(normalized, "| bytesformat")
+	normalized = subscriptionPythonIntFilter.ReplaceAllString(normalized, "| int")
+	normalized = subscriptionPythonDefaultFilterPattern.ReplaceAllString(normalized, `| default:$1`)
 	normalized = strings.ReplaceAll(normalized, "user.status == 'active'", "user.status == 'active' or user.status == 'on_hold'")
 	normalized = strings.ReplaceAll(normalized, `user.status == "active"`, `user.status == "active" or user.status == "on_hold"`)
 	return normalized
@@ -1317,11 +1328,12 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 			"service_id":                user.ServiceID,
 			"service_name":              user.ServiceName,
 		},
-		"links":          links,
-		"usage_url":      usageURL,
-		"support_url":    supportURL,
-		"token":          token,
-		"remaining_days": subscriptionRemainingDaysInt(user.Expire),
+		"links":             links,
+		"usage_url":         usageURL,
+		"support_url":       supportURL,
+		"token":             token,
+		"current_timestamp": time.Now().UTC().Unix(),
+		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
 }
 

@@ -149,6 +149,40 @@ func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
 	}
 }
 
+func TestSubscriptionPageTemplateAcceptsLegacyJinjaHelpers(t *testing.T) {
+	expire := int64(4102444800)
+	template := `<!doctype html>
+<html>
+<body>
+{% if not user.expire %}
+never
+{% else %}
+{% set current_timestamp = now().timestamp() %}
+{% set remaining_days = ((user.expire - current_timestamp) // (24 * 3600)) %}
+{{ user.expire | datetime("%Y-%m-%d") }} / {{ user.used_traffic | bytesformat() }} / {{ remaining_days | int() }}
+{% endif %}
+{% if user.status == 'active' %}
+{% for link in user.links %}<a>{{ link }}</a>{% endfor %}
+{% endif %}
+</body>
+</html>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:               "alice",
+		Status:                 "on_hold",
+		Expire:                 &expire,
+		UsedTraffic:            1024 * 1024,
+		DataLimitResetStrategy: "no_reset",
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"2100-01-01", "1.00 MB", "vless://id@example.com:443#alice"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected %q in html:\n%s", expected, html)
+		}
+	}
+}
+
 func TestSubscriptionBrowserRequestsRenderHTMLEvenWithWildcardAccept(t *testing.T) {
 	req := SubscriptionRenderRequest{
 		Accept:    "*/*",

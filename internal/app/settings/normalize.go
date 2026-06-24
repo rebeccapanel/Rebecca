@@ -305,15 +305,29 @@ func persistentTemplateDirectory(adminID *int64) string {
 }
 
 func resolveExistingTemplatePath(templateName string, customDirectory *string) (string, error) {
-	if customDirectory != nil && strings.TrimSpace(*customDirectory) != "" {
-		if path, err := safeJoin(*customDirectory, templateName); err == nil {
-			if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
-				return path, nil
-			}
-		} else {
-			return "", err
-		}
+	if path, err := resolveCustomTemplatePath(templateName, customDirectory); err == nil {
+		return path, nil
+	} else if !errors.Is(err, ErrTemplateNotFound) {
+		return "", err
 	}
+	return resolveAppTemplatePath(templateName)
+}
+
+func resolveCustomTemplatePath(templateName string, customDirectory *string) (string, error) {
+	if customDirectory == nil || strings.TrimSpace(*customDirectory) == "" {
+		return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, templateName)
+	}
+	path, err := safeJoin(*customDirectory, templateName)
+	if err != nil {
+		return "", err
+	}
+	if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
+		return path, nil
+	}
+	return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, templateName)
+}
+
+func resolveAppTemplatePath(templateName string) (string, error) {
 	path, err := safeJoin(appTemplateBasePath(), templateName)
 	if err != nil {
 		return "", err

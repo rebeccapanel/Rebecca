@@ -393,6 +393,22 @@ func TestSubscriptionTemplateContentRoutes(t *testing.T) {
 		t.Fatalf("global template file missing: %v", err)
 	}
 
+	missingAdminDir := filepath.Join(t.TempDir(), "missing-admin-templates")
+	encodedOverrides, _ := json.Marshal(map[string]any{"custom_templates_directory": missingAdminDir})
+	if _, err := db.Exec(`UPDATE admins SET subscription_settings = ? WHERE id = 2`, string(encodedOverrides)); err != nil {
+		t.Fatal(err)
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/settings/subscriptions/templates/clash_subscription_template?admin_id=2", token, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("read admin missing template status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &content); err != nil {
+		t.Fatal(err)
+	}
+	if content.Content != "mode: Rule\n" || content.CustomDirectory == nil || *content.CustomDirectory != filepath.Join(dataDir, "templates") {
+		t.Fatalf("expected admin missing template to fall back to global custom template, got %#v", content)
+	}
+
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions/templates/clash_subscription_template?admin_id=2", token, `{"content":"mode: Direct\n"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("write admin template status = %d body=%s", rec.Code, rec.Body.String())

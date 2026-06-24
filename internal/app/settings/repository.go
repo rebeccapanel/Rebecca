@@ -523,24 +523,48 @@ func (r Repository) ReadTemplateContent(ctx context.Context, templateKey string,
 	if err != nil {
 		return TemplateContent{}, err
 	}
-	path, err := resolveExistingTemplatePath(selection.TemplateName, selection.CustomDirectory)
-	if err != nil {
-		if !errors.Is(err, ErrTemplateNotFound) {
+	if adminID != nil {
+		if content, ok, err := r.readTemplateSelection(templateKey, adminID, selection, true); err != nil || ok {
+			return content, err
+		}
+		globalSelection, err := r.templateSelection(ctx, templateKey, nil)
+		if err != nil {
 			return TemplateContent{}, err
 		}
-		resolved := displayTemplatePath(filepath.Join(appTemplateBasePath(), selection.TemplateName), selection.TemplateName, selection.CustomDirectory)
-		return TemplateContent{
-			TemplateKey:     templateKey,
-			TemplateName:    selection.TemplateName,
-			CustomDirectory: selection.CustomDirectory,
-			ResolvedPath:    &resolved,
-			AdminID:         adminID,
-			Content:         "",
-		}, nil
+		if content, ok, err := r.readTemplateSelection(templateKey, nil, globalSelection, true); err != nil || ok {
+			return content, err
+		}
+		if content, ok, err := r.readTemplateSelection(templateKey, adminID, selection, false); err != nil || ok {
+			return content, err
+		}
+		return r.emptyTemplateContent(templateKey, globalSelection, nil), nil
+	}
+	if content, ok, err := r.readTemplateSelection(templateKey, adminID, selection, true); err != nil || ok {
+		return content, err
+	}
+	if content, ok, err := r.readTemplateSelection(templateKey, adminID, selection, false); err != nil || ok {
+		return content, err
+	}
+	return r.emptyTemplateContent(templateKey, selection, adminID), nil
+}
+
+func (r Repository) readTemplateSelection(templateKey string, adminID *int64, selection templateSelection, customOnly bool) (TemplateContent, bool, error) {
+	var path string
+	var err error
+	if customOnly {
+		path, err = resolveCustomTemplatePath(selection.TemplateName, selection.CustomDirectory)
+	} else {
+		path, err = resolveAppTemplatePath(selection.TemplateName)
+	}
+	if err != nil {
+		if errors.Is(err, ErrTemplateNotFound) {
+			return TemplateContent{}, false, nil
+		}
+		return TemplateContent{}, false, err
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return TemplateContent{}, fmt.Errorf("unable to load template %s: %w", selection.TemplateName, err)
+		return TemplateContent{}, false, fmt.Errorf("unable to load template %s: %w", selection.TemplateName, err)
 	}
 	contentText := strings.ReplaceAll(string(content), "\r\n", "\n")
 	resolved := displayTemplatePath(path, selection.TemplateName, selection.CustomDirectory)
@@ -551,7 +575,19 @@ func (r Repository) ReadTemplateContent(ctx context.Context, templateKey string,
 		ResolvedPath:    &resolved,
 		AdminID:         adminID,
 		Content:         contentText,
-	}, nil
+	}, true, nil
+}
+
+func (r Repository) emptyTemplateContent(templateKey string, selection templateSelection, adminID *int64) TemplateContent {
+	resolved := displayTemplatePath(filepath.Join(appTemplateBasePath(), selection.TemplateName), selection.TemplateName, selection.CustomDirectory)
+	return TemplateContent{
+		TemplateKey:     templateKey,
+		TemplateName:    selection.TemplateName,
+		CustomDirectory: selection.CustomDirectory,
+		ResolvedPath:    &resolved,
+		AdminID:         adminID,
+		Content:         "",
+	}
 }
 
 func (r Repository) WriteTemplateContent(ctx context.Context, templateKey string, adminID *int64, content string) (TemplateContent, error) {
