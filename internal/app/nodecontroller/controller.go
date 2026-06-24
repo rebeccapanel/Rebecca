@@ -63,6 +63,12 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 			ConfigJson:  req.ConfigJSON,
 		})
 		if err != nil {
+			if result, legacyErr := c.legacySyncConfig(ctx, node, req.ConfigJSON); legacyErr == nil {
+				_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
+				return result, nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
 			_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 			return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
 		}
@@ -114,6 +120,11 @@ func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, er
 		ConfigJson:  configJSON,
 	})
 	if err != nil {
+		if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+			return result, nil
+		} else {
+			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
 	}
@@ -479,6 +490,11 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow) 
 			ConfigJson:  configJSON,
 		})
 		if err != nil {
+			if _, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+				return nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
 			_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
 			return err
 		}

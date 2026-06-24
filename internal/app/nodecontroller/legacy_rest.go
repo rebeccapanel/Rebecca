@@ -66,6 +66,7 @@ func (c Controller) legacyUpdateGeo(ctx context.Context, node NodeRow, files []F
 	if err != nil {
 		return RuntimeResult{}, err
 	}
+	client.httpClient.Timeout = 2 * time.Minute
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}
@@ -93,6 +94,7 @@ func (c Controller) legacyUpdateRuntime(ctx context.Context, node NodeRow, versi
 	if err != nil {
 		return RuntimeResult{}, err
 	}
+	client.httpClient.Timeout = 5 * time.Minute
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}

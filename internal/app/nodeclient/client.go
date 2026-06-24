@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+const MaxMessageSize = 64 << 20
+
 type Client struct {
 	conn    *grpc.ClientConn
 	control nodev1.NodeControlServiceClient
@@ -28,6 +30,10 @@ func Dial(ctx context.Context, address string, tlsConfig *tls.Config, options ..
 
 	dialOptions := []grpc.DialOption{
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(MaxMessageSize),
+			grpc.MaxCallSendMsgSize(MaxMessageSize),
+		),
 	}
 	dialOptions = append(dialOptions, options...)
 
