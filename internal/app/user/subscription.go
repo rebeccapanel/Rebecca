@@ -1246,6 +1246,7 @@ var (
 	subscriptionPythonIntFilter            = regexp.MustCompile(`\|\s*int\s*\([^)]*\)`)
 	subscriptionPythonDefaultFilterPattern = regexp.MustCompile(`\|\s*default\s*\(([^)]*)\)`)
 	subscriptionRemainingDaysClampPattern  = regexp.MustCompile(`\{\{\s*remaining_days\s*\|\s*int\s+if\s*\([^}]*remaining_days[^}]*\)\s*>\s*-?1\s+else\s+0\s*\}\}`)
+	subscriptionDirectUserLinksPattern     = regexp.MustCompile(`\{\{\s*user\.links\s*\}\}`)
 )
 
 func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string) (string, error) {
@@ -1297,6 +1298,7 @@ func normalizeLegacySubscriptionTemplate(content string) string {
 	normalized = subscriptionPythonIntFilter.ReplaceAllString(normalized, "| int")
 	normalized = subscriptionPythonDefaultFilterPattern.ReplaceAllString(normalized, `| default:$1`)
 	normalized = subscriptionRemainingDaysClampPattern.ReplaceAllString(normalized, `{{ remaining_days | int }}`)
+	normalized = subscriptionDirectUserLinksPattern.ReplaceAllString(normalized, `{{ links_text|safe }}`)
 	normalized = strings.ReplaceAll(normalized, "user.status == 'active'", "user.status == 'active' or user.status == 'on_hold'")
 	normalized = strings.ReplaceAll(normalized, `user.status == "active"`, `user.status == "active" or user.status == "on_hold"`)
 	return normalized
@@ -1331,12 +1333,26 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 			"service_name":              user.ServiceName,
 		},
 		"links":             links,
+		"links_text":        legacyTemplateStringList(links),
 		"usage_url":         usageURL,
 		"support_url":       supportURL,
 		"token":             token,
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
+}
+
+func legacyTemplateStringList(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		escaped := strings.ReplaceAll(value, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+		quoted = append(quoted, `'`+escaped+`'`)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 func subscriptionBytesFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {

@@ -207,6 +207,29 @@ func TestSubscriptionPageTemplateAcceptsLegacyInlineRemainingDaysClamp(t *testin
 	}
 }
 
+func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *testing.T) {
+	template := `<script>const subLinks = "{{ user.links }}";</script>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:               "alice",
+		Status:                 "active",
+		DataLimitResetStrategy: "no_reset",
+	}, []string{
+		"vless://id@example.com:443?security=tls&type=ws#alice",
+		"ss://method:pass@example.net:8388#ss",
+	}, "/sub/token/usage", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "<[]string Value>") {
+		t.Fatalf("legacy direct user.links rendered as pongo value: %s", html)
+	}
+	for _, expected := range []string{"['vless://id@example.com:443?security=tls&type=ws#alice'", "'ss://method:pass@example.net:8388#ss']"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected %q in html:\n%s", expected, html)
+		}
+	}
+}
+
 func TestSubscriptionBrowserRequestsRenderHTMLEvenWithWildcardAccept(t *testing.T) {
 	req := SubscriptionRenderRequest{
 		Accept:    "*/*",
