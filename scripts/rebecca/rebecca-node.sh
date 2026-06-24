@@ -1038,11 +1038,15 @@ read_node_certificate_bundle() {
             if [ "$bundle_started" -eq 0 ]; then
                 break
             fi
+            if grep -q -- "-----END CERTIFICATE-----" "$bundle_file" && grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$bundle_file"; then
+                bundle_completed=1
+                break
+            fi
             continue
         fi
         bundle_started=1
         echo "$line" >>"$bundle_file"
-        if [[ "$line" =~ ^-----END\ .+PRIVATE\ KEY-----$ ]] && grep -q -- "-----END CERTIFICATE-----" "$bundle_file"; then
+        if grep -q -- "-----END CERTIFICATE-----" "$bundle_file" && grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$bundle_file"; then
             bundle_completed=1
             break
         fi
@@ -1055,7 +1059,7 @@ read_node_certificate_bundle() {
     fi
 
     awk 'BEGIN{capture=0} /-----BEGIN CERTIFICATE-----/{capture=1} capture{print} /-----END CERTIFICATE-----/{exit}' "$bundle_file" >"$CERT_FILE"
-    awk 'BEGIN{capture=0} /-----BEGIN .*PRIVATE KEY-----/{capture=1} capture{print} /-----END .*PRIVATE KEY-----/{exit}' "$bundle_file" >"$CERT_KEY_FILE"
+    awk 'BEGIN{capture=0} /-----BEGIN( [^-]+)? PRIVATE KEY-----/{capture=1} capture{print} /-----END( [^-]+)? PRIVATE KEY-----/{exit}' "$bundle_file" >"$CERT_KEY_FILE"
     rm -f "$bundle_file"
 
     if ! grep -q -- "-----END CERTIFICATE-----" "$CERT_FILE"; then
@@ -1063,7 +1067,7 @@ read_node_certificate_bundle() {
         rm -f "$CERT_FILE" "$CERT_KEY_FILE"
         exit 1
     fi
-    if ! grep -Eq -- "-----END .+PRIVATE KEY-----" "$CERT_KEY_FILE"; then
+    if ! grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$CERT_KEY_FILE"; then
         colorized_echo red "The bundle does not contain a valid PEM private key."
         rm -f "$CERT_FILE" "$CERT_KEY_FILE"
         exit 1
