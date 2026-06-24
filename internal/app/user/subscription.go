@@ -438,7 +438,7 @@ func parseSubscriptionToken(token string, secret string) (subscriptionTokenPaylo
 	}
 	body := token[:len(token)-10]
 	signature := token[len(token)-10:]
-	if createSubscriptionTokenSignature(body, secret) != signature {
+	if !subscriptionTokenSignatureMatches(body, signature, secret) {
 		return subscriptionTokenPayload{}, false
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(body)

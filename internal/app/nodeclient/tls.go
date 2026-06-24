@@ -45,6 +45,7 @@ type PEMTLSConfig struct {
 	ClientKeyPEM  string
 	ServerCertPEM string
 	ServerName    string
+	LegacyREST    bool
 }
 
 func LoadClientTLSFromPEM(config PEMTLSConfig) (*tls.Config, error) {
@@ -58,6 +59,9 @@ func LoadClientTLSFromPEM(config PEMTLSConfig) (*tls.Config, error) {
 	}
 
 	tlsConfig := pinnedServerTLSConfig(serverCert, config.ServerName)
+	if config.LegacyREST {
+		tlsConfig = legacyRESTTLSConfig(config.ServerName)
+	}
 	if strings.TrimSpace(config.ClientCertPEM) != "" && strings.TrimSpace(config.ClientKeyPEM) != "" {
 		clientCert, err := tls.X509KeyPair([]byte(config.ClientCertPEM), []byte(config.ClientKeyPEM))
 		if err == nil {
@@ -65,6 +69,14 @@ func LoadClientTLSFromPEM(config PEMTLSConfig) (*tls.Config, error) {
 		}
 	}
 	return tlsConfig, nil
+}
+
+func legacyRESTTLSConfig(configuredServerName string) *tls.Config {
+	return &tls.Config{
+		ServerName:         strings.TrimSpace(configuredServerName),
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true,
+	}
 }
 
 func pinnedServerTLSConfig(serverCert *x509.Certificate, configuredServerName string) *tls.Config {

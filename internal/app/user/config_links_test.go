@@ -225,12 +225,13 @@ func TestBuildConfigLinksKeepsRealityMetadataForTCPAndJSON(t *testing.T) {
 		map[string]ResolvedInbound{"Reality TCP": inbound},
 		[]string{"Reality TCP"},
 		[]Host{{
-			ID:         1,
-			InboundTag: "Reality TCP",
-			Remark:     "reality-tcp",
-			Address:    "edge.example.com",
-			Security:   "inbound_default",
-			ServiceIDs: []int64{1},
+			ID:          1,
+			InboundTag:  "Reality TCP",
+			Remark:      "reality-tcp",
+			Address:     "edge.example.com",
+			Security:    "inbound_default",
+			Fingerprint: "none",
+			ServiceIDs:  []int64{1},
 		}},
 		map[string][]byte{},
 		false,
@@ -247,13 +248,14 @@ func TestBuildConfigLinksKeepsRealityMetadataForTCPAndJSON(t *testing.T) {
 	}
 	query := parsed.Query()
 	for key, expected := range map[string]string{
-		"security": "reality",
-		"type":     "tcp",
-		"sni":      "origin.example.com",
-		"fp":       "firefox",
-		"pbk":      "public-key-from-settings",
-		"sid":      "abcd",
-		"spx":      "/spider",
+		"security":   "reality",
+		"type":       "tcp",
+		"headerType": "none",
+		"sni":        "origin.example.com",
+		"fp":         "firefox",
+		"pbk":        "public-key-from-settings",
+		"sid":        "abcd",
+		"spx":        "/spider",
 	} {
 		if got := query.Get(key); got != expected {
 			t.Fatalf("expected query %s=%q, got %q link=%s", key, expected, got, links.Links[0])

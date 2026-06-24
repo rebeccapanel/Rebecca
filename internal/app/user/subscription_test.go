@@ -109,3 +109,23 @@ func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
 		t.Fatalf("expected on_hold subscription page to include links:\n%s", html)
 	}
 }
+
+func TestSubscriptionTokenAcceptsLegacyPythonAndRecentGoSignatures(t *testing.T) {
+	body := "YWxpY2UsMTcwMDAwMDAwMA"
+	secret := "subscription-secret"
+
+	legacy, ok := parseSubscriptionToken(body+createSubscriptionTokenSignature(body, secret), secret)
+	if !ok || legacy.Username != "alice" {
+		t.Fatalf("expected legacy python token to parse, got %#v ok=%v", legacy, ok)
+	}
+
+	recentGo, ok := parseSubscriptionToken(body+createSubscriptionTokenHMACSignature(body, secret), secret)
+	if !ok || recentGo.Username != "alice" {
+		t.Fatalf("expected recent Go HMAC token to parse, got %#v ok=%v", recentGo, ok)
+	}
+
+	generated := createSubscriptionToken("alice", secret, recentGo.CreatedAt)
+	if !strings.HasSuffix(generated, createSubscriptionTokenSignature(generated[:len(generated)-10], secret)) {
+		t.Fatalf("new tokens must use legacy python-compatible signatures: %s", generated)
+	}
+}

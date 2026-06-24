@@ -300,8 +300,8 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	if host.ALPN != "" {
 		effective["alpn"] = host.ALPN
 	}
-	if host.Fingerprint != "" {
-		effective["fp"] = host.Fingerprint
+	if fp := nonDefaultHostFingerprint(host.Fingerprint); fp != "" {
+		effective["fp"] = fp
 	}
 	if host.AllowInsecure != nil {
 		effective["ais"] = *host.AllowInsecure
@@ -378,6 +378,16 @@ func normalizedHostSecurity(value string) string {
 		return ""
 	}
 	return cleaned
+}
+
+func nonDefaultHostFingerprint(value string) string {
+	cleaned := strings.TrimSpace(value)
+	switch strings.ToLower(cleaned) {
+	case "", "none", "default", "inbound_default", "inbound-default":
+		return ""
+	default:
+		return cleaned
+	}
 }
 
 func firstHostOverride(value *string, fallback string) string {
@@ -851,7 +861,7 @@ func vlessShareLink(remark string, address string, path string, inbound Resolved
 	params := []queryParam{
 		{"security", stringValue(inbound["tls"])},
 		{"type", stringValue(inbound["network"])},
-		{"headerType", stringValue(inbound["header_type"])},
+		{"headerType", firstNonEmptyString(inbound["header_type"], "none")},
 	}
 	tls := stringValue(inbound["tls"])
 	netValue := stringValue(inbound["network"])
@@ -873,7 +883,7 @@ func trojanShareLink(remark string, address string, path string, inbound Resolve
 	params := []queryParam{
 		{"security", stringValue(inbound["tls"])},
 		{"type", stringValue(inbound["network"])},
-		{"headerType", stringValue(inbound["header_type"])},
+		{"headerType", firstNonEmptyString(inbound["header_type"], "none")},
 	}
 	tls := stringValue(inbound["tls"])
 	netValue := stringValue(inbound["network"])

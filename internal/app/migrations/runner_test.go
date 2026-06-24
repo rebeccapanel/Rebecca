@@ -754,6 +754,86 @@ VALUES (1, 'legacy_user', '00000000000000000000000000000000', 'deleted', 0, 100,
 	}
 }
 
+func TestLegacyMaskedCredentialMaterializesMissingProtocolWhenOtherProxyExists(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE jwt (
+	id INTEGER PRIMARY KEY,
+	secret_key VARCHAR(64),
+	subscription_secret_key VARCHAR(64) NOT NULL DEFAULT 'sub',
+	admin_secret_key VARCHAR(64) NOT NULL DEFAULT 'admin',
+	vmess_mask VARCHAR(32) NOT NULL DEFAULT '00000000000000000000000000000000',
+	vless_mask VARCHAR(32) NOT NULL DEFAULT '11111111111111111111111111111111'
+)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO jwt (id, secret_key, subscription_secret_key, admin_secret_key, vmess_mask, vless_mask)
+VALUES (1, 'legacy', 'sub', 'admin', '00000000000000000000000000000000', '11111111111111111111111111111111')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username VARCHAR(34),
+	credential_key VARCHAR(64),
+	status VARCHAR(32),
+	used_traffic BIGINT,
+	data_limit BIGINT,
+	admin_id INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, username, credential_key, status, used_traffic, data_limit, admin_id)
+VALUES (1, 'legacy_user', '00000000000000000000000000000000', 'active', 0, 100, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE proxies (id INTEGER PRIMARY KEY, user_id INTEGER, type VARCHAR(32) NOT NULL, settings TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO proxies (user_id, type, settings)
+VALUES
+	(1, 'vless', '{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}'),
+	(1, 'trojan', '{"password":"legacy-password"}')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT type, settings FROM proxies WHERE user_id = 1 ORDER BY type`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	ids := map[string]string{}
+	for rows.Next() {
+		var protocol string
+		var raw any
+		if err := rows.Scan(&protocol, &raw); err != nil {
+			t.Fatal(err)
+		}
+		ids[protocol] = stringValue(decodeJSONMap(raw)["id"])
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if ids["vmess"] != "00000000-0000-0000-0000-000000000000" {
+		t.Fatalf("vmess id = %q", ids["vmess"])
+	}
+	if ids["vless"] != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" {
+		t.Fatalf("existing vless id was overwritten: %q", ids["vless"])
+	}
+	if _, ok := ids["trojan"]; !ok {
+		t.Fatal("expected existing trojan proxy to be preserved")
+	}
+}
+
 func TestServiceMigrationPreservesLinksHostsAndUsage(t *testing.T) {
 	ctx := context.Background()
 	db := openSQLiteTestDB(t)

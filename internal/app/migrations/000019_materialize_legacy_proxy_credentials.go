@@ -76,14 +76,14 @@ func materializeLegacyProxyCredentials(ctx context.Context, tx *sql.Tx, dialect 
 	}
 
 	for _, row := range users {
-		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM proxies WHERE user_id = ?`, row.id).Scan(&count); err != nil {
-			return err
-		}
-		if count > 0 {
-			continue
-		}
 		for _, protocol := range []string{"vmess", "vless"} {
+			var count int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM proxies WHERE user_id = ? AND LOWER(type) = ?`, row.id, protocol).Scan(&count); err != nil {
+				return err
+			}
+			if count > 0 {
+				continue
+			}
 			id, err := migrationKeyToUUID(row.key, masks[protocol])
 			if err != nil {
 				return err

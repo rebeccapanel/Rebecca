@@ -686,8 +686,7 @@ func (r Repository) subscriptionUsernameFromToken(token string) string {
 	}
 	body := token[:len(token)-10]
 	signature := token[len(token)-10:]
-	sum := createSubscriptionTokenSignature(body, secret)
-	if signature != sum {
+	if !subscriptionTokenSignatureMatches(body, signature, secret) {
 		return ""
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(body)

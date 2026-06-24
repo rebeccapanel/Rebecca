@@ -101,6 +101,7 @@ func (c Controller) newLegacyRESTClient(ctx context.Context, node NodeRow) (*leg
 		ClientCertPEM: cert,
 		ClientKeyPEM:  key,
 		ServerCertPEM: cert,
+		LegacyREST:    true,
 	})
 	if err != nil {
 		return nil, err
