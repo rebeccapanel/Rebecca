@@ -1042,3 +1042,39 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 		t.Fatalf("deleted api key validate status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestExpiredAdminTokenReturnsPythonCompatibleAuthError(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+
+	// Mint a JWT that is already expired relative to now.
+	expired, err := adminapp.CreateAdminTokenAt(
+		"pouria",
+		adminapp.RoleFullAccess,
+		"admin-secret",
+		time.Minute,
+		time.Now().UTC().Add(-time.Hour),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+expired)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expired token status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+		t.Fatalf("expected WWW-Authenticate=Bearer, got %q", got)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["detail"] != "Could not validate credentials" {
+		t.Fatalf("expected Python-compatible auth error, got %#v", body)
+	}
+}
