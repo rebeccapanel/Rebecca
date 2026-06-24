@@ -961,7 +961,17 @@ func appendNetworkParams(params []queryParam, netValue string, path string, inbo
 			params = append(params, queryParam{"heartbeatPeriod", heartbeat})
 		}
 	default:
-		params = append(params, queryParam{"path", path}, queryParam{"host", host})
+		// For raw/tcp transports, omit empty path/host instead of emitting
+		// "path=&host=". Some clients (notably Clash/mihomo and several
+		// subscription converters) misread a path on a tcp stream as an http
+		// transport and rewrite it to http-opts, which breaks REALITY/TCP
+		// configs. Skipping the empty params restores the legacy link format.
+		if path != "" {
+			params = append(params, queryParam{"path", path})
+		}
+		if host != "" {
+			params = append(params, queryParam{"host", host})
+		}
 	}
 	return params
 }

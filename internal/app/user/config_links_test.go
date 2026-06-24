@@ -363,6 +363,74 @@ func TestBuildConfigLinksKeepsRealityMetadataForTCPAndJSON(t *testing.T) {
 	}
 }
 
+func TestBuildConfigLinksOmitsEmptyPathHostForRealityTCP(t *testing.T) {
+	serviceID := int64(1)
+	inbound, err := resolveInbound(map[string]any{
+		"tag":      "Reality TCP",
+		"protocol": "vless",
+		"port":     int64(443),
+		"settings": map[string]any{
+			"decryption": "none",
+		},
+		"streamSettings": map[string]any{
+			"network":  "tcp",
+			"security": "reality",
+			"realitySettings": map[string]any{
+				"settings": map[string]any{
+					"serverName":  "origin.example.com",
+					"publicKey":   "public-key-from-settings",
+					"fingerprint": "firefox",
+					"shortId":     "abcd",
+					"spiderX":     "/spider",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolveInbound error: %v", err)
+	}
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            11,
+			Username:      "erin",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{"Reality TCP": inbound},
+		[]string{"Reality TCP"},
+		[]Host{{
+			ID:          1,
+			InboundTag:  "Reality TCP",
+			Remark:      "reality-tcp",
+			Address:     "edge.example.com",
+			Security:    "inbound_default",
+			Fingerprint: "none",
+			ServiceIDs:  []int64{1},
+		}},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one link, got %#v", links.Links)
+	}
+	// A raw/tcp REALITY config has no transport path or host. Emitting empty
+	// "path=&host=" params breaks Clash/mihomo-based clients, so the link must
+	// not contain them at all.
+	if strings.Contains(links.Links[0], "path=") {
+		t.Fatalf("expected no empty path param, got %s", links.Links[0])
+	}
+	if strings.Contains(links.Links[0], "host=") {
+		t.Fatalf("expected no empty host param, got %s", links.Links[0])
+	}
+}
+
 func TestMergeResolvedInboundMetadataFillsDuplicateRealityTag(t *testing.T) {
 	target := ResolvedInbound{
 		"tag":      "Reality TCP",
