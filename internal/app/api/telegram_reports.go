@@ -33,6 +33,9 @@ func adminTelegramChanges(before adminapp.Admin, after adminapp.Admin) []string 
 	add("Status", before.Status, after.Status)
 	add("Traffic Mode", before.TrafficLimitMode, after.TrafficLimitMode)
 	add("Data Limit", telegramapp.FormatOptionalBytes(before.DataLimit), telegramapp.FormatOptionalBytes(after.DataLimit))
+	if delta := telegramapp.FormatOptionalBytesDelta(before.DataLimit, after.DataLimit); delta != "" {
+		changes = append(changes, fmt.Sprintf("<b>Changes:</b> <code>%s</code>", htmlSafeValue(delta)))
+	}
 	add("Users Limit", ptrIntText(before.UsersLimit), ptrIntText(after.UsersLimit))
 	add("Expire", ptrIntText(before.Expire), ptrIntText(after.Expire))
 	if before.UseServiceTrafficLimits != after.UseServiceTrafficLimits {
