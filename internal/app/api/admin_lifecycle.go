@@ -3,10 +3,10 @@ package api
 import (
 	"context"
 	"database/sql"
-	"log"
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 )
 
 const defaultAdminLifecycleInterval = 30 * time.Second
@@ -43,12 +43,13 @@ func (s *Server) reviewAdminLifecycle(ctx context.Context) {
 
 	result, err := s.reconcileAdminLifecycle(workerCtx)
 	if err != nil {
-		log.Printf("Go admin lifecycle review failed: %v", err)
+		logging.Warnf(logging.ComponentAdmin, "lifecycle review failed: %v", err)
 		return
 	}
 	if result.Disabled > 0 || result.Reenabled > 0 {
-		log.Printf(
-			"Go admin lifecycle checked=%d disabled=%d reenabled=%d",
+		logging.Infof(
+			logging.ComponentAdmin,
+			"lifecycle checked=%d disabled=%d reenabled=%d",
 			result.Checked,
 			result.Disabled,
 			result.Reenabled,

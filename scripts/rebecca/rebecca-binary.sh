@@ -278,7 +278,59 @@ ui_spinner_run() {
 }
 
 format_rebecca_journal_logs() {
-    sed -u -E "s/^[0-9-]+[ T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\\.[0-9]+)?([+-][0-9:]+|Z)? [^ ]+ [^:]+: /Rebecca-\1: /; s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+    while IFS= read -r line; do
+        local log_time=""
+        local message="$line"
+        if [[ "$line" =~ ^[0-9-]+[[:space:]T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\.[0-9]+)?([+-][0-9:]+|Z)?[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[4]}"
+        elif [[ "$line" =~ ^[A-Za-z]{3}[[:space:]][[:space:][:digit:]][[:digit:]][[:space:]]([0-9]{2}:[0-9]{2}:[0-9]{2})[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[2]}"
+        elif [[ "$line" =~ ^([0-9]{2}:[0-9]{2}:[0-9]{2})[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[2]}"
+        fi
+        if [[ "$message" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]](.*)$ ]]; then
+            message="${BASH_REMATCH[1]}"
+        fi
+        if [ -z "$log_time" ]; then
+            printf "%s\n" "$message"
+            continue
+        fi
+        ui_color "38;5;208;1" "Rebecca"
+        printf "-"
+        ui_color "38;5;245" "$log_time"
+        printf ": "
+        if [[ "$message" =~ ^\[([^]]+)\][[:space:]](DEBUG|INFO|WARN|ERROR)[[:space:]](.*)$ ]]; then
+            local component="${BASH_REMATCH[1]}"
+            local level="${BASH_REMATCH[2]}"
+            local text="${BASH_REMATCH[3]}"
+            local component_color="38;5;45;1"
+            local level_color="38;5;250"
+            case "$component" in
+                Admin) component_color="38;5;141;1" ;;
+                Database) component_color="38;5;220;1" ;;
+                Node) component_color="38;5;45;1" ;;
+                Runtime) component_color="38;5;82;1" ;;
+                Telegram) component_color="38;5;39;1" ;;
+                User) component_color="38;5;213;1" ;;
+                Webhook) component_color="38;5;214;1" ;;
+            esac
+            case "$level" in
+                DEBUG) level_color="38;5;245" ;;
+                INFO) level_color="38;5;82" ;;
+                WARN) level_color="38;5;220;1" ;;
+                ERROR) level_color="38;5;196;1" ;;
+            esac
+            ui_color "$component_color" "$component"
+            printf " "
+            ui_color "$level_color" "$level"
+            printf " : %s\n" "$text"
+        else
+            printf "%s\n" "$message"
+        fi
+    done
 }
 
 journal_output_format() {

@@ -2,13 +2,13 @@ package api
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 )
 
@@ -39,7 +39,7 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(credentials.Username)
 	password := credentials.Password
 	if username == "" || password == "" {
-		log.Printf("admin login failed username=%q remote=%s reason=missing_credentials", username, requestRemote(r))
+		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=missing_credentials", username, requestRemote(r))
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
 			Password: password,
@@ -52,12 +52,12 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 
 	role, ok, reason, err := s.validateLogin(r.Context(), username, password)
 	if err != nil {
-		log.Printf("admin login error username=%q remote=%s error=%v", username, requestRemote(r), err)
+		logging.Errorf(logging.ComponentAdmin, "login error username=%q remote=%s error=%v", username, requestRemote(r), err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !ok {
-		log.Printf("admin login failed username=%q remote=%s reason=%s", username, requestRemote(r), reason)
+		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=%s", username, requestRemote(r), reason)
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
 			Password: password,
@@ -82,7 +82,7 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("admin login success username=%q role=%s remote=%s", username, role, requestRemote(r))
+	logging.Infof(logging.ComponentAdmin, "login success username=%q role=%s remote=%s", username, role, requestRemote(r))
 	s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 		Username: username,
 		Password: password,

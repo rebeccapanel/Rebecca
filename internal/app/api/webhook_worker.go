@@ -2,9 +2,9 @@ package api
 
 import (
 	"context"
-	"log"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 )
 
@@ -37,7 +37,7 @@ func (s *Server) runWebhookWorker(ctx context.Context) {
 
 func (s *Server) dispatchWebhooks(ctx context.Context) {
 	if err := s.webhookDispatch.Dispatch(ctx); err != nil {
-		log.Printf("webhook dispatch: %v", err)
+		logging.Warnf(logging.ComponentWebhook, "dispatch failed: %v", err)
 	}
 }
 
@@ -48,6 +48,6 @@ func (s *Server) enqueueWebhook(ctx context.Context, event webhookapp.Event) {
 		return
 	}
 	if err := s.webhookRepo.Enqueue(ctx, event); err != nil {
-		log.Printf("webhook enqueue (%s): %v", event.Action, err)
+		logging.Warnf(logging.ComponentWebhook, "enqueue action=%s failed: %v", event.Action, err)
 	}
 }

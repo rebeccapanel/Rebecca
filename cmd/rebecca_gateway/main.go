@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/api"
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/gateway"
 )
 
@@ -20,18 +20,18 @@ func main() {
 
 	apiCfg, err := api.LoadConfig()
 	if err != nil {
-		log.Fatalf("failed to load Rebecca API config: %v", err)
+		logging.Fatalf(logging.ComponentRuntime, "failed to load Rebecca API config: %v", err)
 	}
 	api, err := api.New(apiCfg)
 	if err != nil {
-		log.Fatalf("failed to initialize Rebecca API: %v", err)
+		logging.Fatalf(logging.ComponentRuntime, "failed to initialize Rebecca API: %v", err)
 	}
 	api.StartBackground(ctx)
 	cfg.APIHandler = api.Handler()
 
 	server, err := gateway.NewServer(cfg)
 	if err != nil {
-		log.Fatalf("failed to initialize gateway: %v", err)
+		logging.Fatalf(logging.ComponentRuntime, "failed to initialize gateway: %v", err)
 	}
 
 	errCh := make(chan error, 1)
@@ -40,7 +40,7 @@ func main() {
 		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 			scheme = "https"
 		}
-		log.Printf("rebecca server listening on %s://%s", scheme, cfg.Addr)
+		logging.Infof(logging.ComponentRuntime, "server listening on %s://%s", scheme, cfg.Addr)
 		errCh <- server.Run()
 	}()
 
@@ -49,11 +49,11 @@ func main() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("gateway shutdown failed: %v", err)
+			logging.Warnf(logging.ComponentRuntime, "gateway shutdown failed: %v", err)
 		}
 	case err := <-errCh:
 		if err != nil {
-			log.Fatalf("gateway failed: %v", err)
+			logging.Fatalf(logging.ComponentRuntime, "gateway failed: %v", err)
 		}
 	}
 }

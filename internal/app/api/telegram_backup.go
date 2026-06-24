@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 )
 
@@ -63,7 +63,7 @@ func (s *Server) runTelegramBackupOnce(ctx context.Context) {
 	}
 	settings, err := s.telegramRepo.Settings(ctx)
 	if err != nil {
-		log.Printf("Go Telegram backup settings lookup failed: %v", err)
+		logging.Warnf(logging.ComponentTelegram, "backup settings lookup failed: %v", err)
 		return
 	}
 	if !telegramapp.BackupDue(settings, time.Now().UTC()) {
@@ -75,10 +75,10 @@ func (s *Server) runTelegramBackupOnce(ctx context.Context) {
 		return
 	}
 	if _, err := s.telegramBackupDelivery().Send(ctx, s.backup(), settings.BackupScope); err != nil {
-		log.Printf("Go Telegram backup delivery failed: %v", err)
+		logging.Warnf(logging.ComponentTelegram, "backup delivery failed: %v", err)
 		return
 	}
-	log.Printf("Go Telegram backup delivered scope=%s", firstNonEmpty(settings.BackupScope, backupapp.ScopeDatabase))
+	logging.Infof(logging.ComponentTelegram, "backup delivered scope=%s", firstNonEmpty(settings.BackupScope, backupapp.ScopeDatabase))
 }
 
 func (s *Server) telegramBackupDelivery() telegramapp.BackupDelivery {

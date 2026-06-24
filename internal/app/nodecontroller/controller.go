@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/nodeclient"
 	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 	"google.golang.org/grpc"
@@ -369,7 +369,7 @@ func (c Controller) processCoalescedOperations(ctx context.Context, operations [
 	result.Processed += len(claimed)
 	representative = claimed[0]
 	if len(claimed) > 1 {
-		log.Printf("Go node operation queue coalesced target=%s count=%d", operationCoalesceKey(representative), len(claimed))
+		logging.Debugf(logging.ComponentNode, "operation queue coalesced target=%s count=%d", operationCoalesceKey(representative), len(claimed))
 	}
 	opCtx, cancel := WithDefaultTimeout(ctx)
 	err := c.applyOperation(opCtx, representative)

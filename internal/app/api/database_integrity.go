@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 )
 
 func checkDatabaseIntegrity(ctx context.Context, db *sql.DB) error {
@@ -25,7 +26,7 @@ func checkDatabaseIntegrity(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("repair stale node operation queue: %w", err)
 		}
-		log.Printf("database integrity repair: removed %d stale node operation rows because the nodes table is empty", deleted)
+		logging.Warnf(logging.ComponentDatabase, "integrity repair removed %d stale node operation rows because the nodes table is empty", deleted)
 	}
 
 	orphanNodeUsages, err := countRows(ctx, db, `SELECT COUNT(*) FROM node_usages nu LEFT JOIN nodes n ON n.id = nu.node_id WHERE nu.node_id IS NOT NULL AND n.id IS NULL`)
@@ -45,7 +46,7 @@ func checkDatabaseIntegrity(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("repair orphan node operations: %w", err)
 		}
-		log.Printf("database integrity repair: removed %d node operation rows that referenced missing nodes", deleted)
+		logging.Warnf(logging.ComponentDatabase, "integrity repair removed %d node operation rows that referenced missing nodes", deleted)
 	}
 	if orphanNodeUsages > 0 || orphanUserUsages > 0 {
 		return fmt.Errorf("node references are inconsistent: node_usages=%d node_user_usages=%d point to missing nodes", orphanNodeUsages, orphanUserUsages)

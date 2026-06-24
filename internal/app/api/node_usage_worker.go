@@ -2,10 +2,10 @@ package api
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
@@ -42,12 +42,17 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		Reset:    true,
 	})
 	if err != nil {
-		log.Printf("Go node usage collection failed: %v", err)
+		if ctx.Err() != nil {
+			logging.Debugf(logging.ComponentNode, "usage collection stopped: %v", err)
+			return
+		}
+		logging.Warnf(logging.ComponentNode, "usage collection failed: %v", err)
 		return
 	}
 	if result.UserSamples > 0 || result.OutboundSamples > 0 || len(result.Errors) > 0 {
-		log.Printf(
-			"Go node usage collection nodes=%d user_samples=%d outbound_samples=%d user_acked=%d outbound_acked=%d errors=%d",
+		logging.Debugf(
+			logging.ComponentNode,
+			"usage collection nodes=%d user_samples=%d outbound_samples=%d user_acked=%d outbound_acked=%d errors=%d",
 			result.Nodes,
 			result.UserSamples,
 			result.OutboundSamples,
@@ -57,7 +62,7 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		)
 	}
 	for _, message := range result.Errors {
-		log.Printf("Go node usage collection warning: %s", message)
+		logging.Warnf(logging.ComponentNode, "usage collection warning: %s", message)
 	}
 }
 

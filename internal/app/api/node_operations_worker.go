@@ -2,10 +2,10 @@ package api
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
@@ -38,12 +38,17 @@ func (s *Server) processNodeOperations(ctx context.Context) {
 
 	result, err := s.nodeController.ProcessQueue(workerCtx, nodecontroller.ProcessOperationsRequest{Limit: defaultNodeOperationsBatchSize})
 	if err != nil {
-		log.Printf("Go node operation queue processing failed: %v", err)
+		if ctx.Err() != nil {
+			logging.Debugf(logging.ComponentNode, "operation queue stopped: %v", err)
+			return
+		}
+		logging.Warnf(logging.ComponentNode, "operation queue processing failed: %v", err)
 		return
 	}
 	if result.Processed > 0 {
-		log.Printf(
-			"Go node operation queue processed=%d done=%d retrying=%d failed=%d",
+		logging.Debugf(
+			logging.ComponentNode,
+			"operation queue processed=%d done=%d retrying=%d failed=%d",
 			result.Processed,
 			result.Done,
 			result.Retrying,
