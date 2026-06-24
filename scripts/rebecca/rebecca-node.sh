@@ -156,6 +156,7 @@ fi
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca}"
 REBECCA_NODE_RELEASE_REPO="${REBECCA_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
 REBECCA_NODE_BINARY_DEV_BRANCH="${REBECCA_NODE_BINARY_DEV_BRANCH:-dev}"
+REBECCA_NODE_BINARY_DEV_RELEASE_TAG="${REBECCA_NODE_BINARY_DEV_RELEASE_TAG:-dev-binaries}"
 REBECCA_NODE_BINARY_WORKFLOW_NAME="${REBECCA_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
 REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
 
@@ -905,6 +906,11 @@ get_node_binary_release_asset_metadata() {
 
 get_node_binary_dev_artifact_metadata() {
     local binary_arch="$1"
+    local release_api
+    local release_payload
+    local release_asset_name
+    local release_asset_url
+    local release_target
     local workflow_runs_api
     local workflow_runs_payload
     local matching_runs
@@ -917,6 +923,25 @@ get_node_binary_dev_artifact_metadata() {
     local artifact_url
     local nightly_workflow
     local workflow_path
+
+    release_asset_name="rebecca-node-dev-linux-${binary_arch}"
+    release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${REBECCA_NODE_BINARY_DEV_RELEASE_TAG}"
+    if release_payload=$(curl -fsSL "$release_api" 2>/dev/null); then
+        release_asset_url=$(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
+            .assets[]?
+            | select(.name == $name)
+            | .browser_download_url
+        ' | head -n 1)
+        if [ -n "$release_asset_url" ] && [ "$release_asset_url" != "null" ]; then
+            release_target=$(echo "$release_payload" | jq -r '.target_commitish // empty')
+            if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+                printf '%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url"
+            else
+                printf '%s|%s\n' "dev-${REBECCA_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
+            fi
+            return 0
+        fi
+    fi
 
     nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
     case "$nightly_workflow" in
