@@ -42,6 +42,7 @@ func (c Controller) legacySyncConfig(ctx context.Context, node NodeRow, configJS
 	if err != nil {
 		return RuntimeResult{}, err
 	}
+	client.httpClient.Timeout = 5 * time.Minute
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}
@@ -80,6 +81,29 @@ func (c Controller) legacyUpdateGeo(ctx context.Context, node NodeRow, files []F
 		return RuntimeResult{}, err
 	}
 	result := legacyRuntimeResult(node, payload, "geo assets updated")
+	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
+		return RuntimeResult{}, err
+	}
+	result.Status = "connected"
+	return result, nil
+}
+
+func (c Controller) legacyUpdateRuntime(ctx context.Context, node NodeRow, version string) (RuntimeResult, error) {
+	client, err := c.newLegacyRESTClient(ctx, node)
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	if _, err := client.connect(ctx); err != nil {
+		return RuntimeResult{}, err
+	}
+	var payload map[string]any
+	if err := client.post(ctx, "/update_core", map[string]any{
+		"session_id": client.sessionID,
+		"version":    strings.TrimSpace(version),
+	}, &payload); err != nil {
+		return RuntimeResult{}, err
+	}
+	result := legacyRuntimeResult(node, payload, "runtime updated")
 	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
 		return RuntimeResult{}, err
 	}

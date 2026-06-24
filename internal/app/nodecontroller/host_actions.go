@@ -12,6 +12,13 @@ import (
 func (c Controller) UpdateRuntime(ctx context.Context, req Request) (RuntimeResult, error) {
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
+		if node.ID != 0 {
+			if result, legacyErr := c.legacyUpdateRuntime(ctx, node, req.Version); legacyErr == nil {
+				return result, nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("update runtime", req.NodeID, err)
 	}

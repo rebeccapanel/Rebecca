@@ -15,6 +15,8 @@ import (
 
 func TestHandleCoreXrayReleasesUsesGitHubShape(t *testing.T) {
 	server, _ := testAdminServer(t)
+	resetXrayCoreReleaseCache()
+	t.Cleanup(resetXrayCoreReleaseCache)
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("per_page") != "2" {
 			t.Fatalf("per_page = %q, want 2", r.URL.Query().Get("per_page"))
@@ -40,6 +42,65 @@ func TestHandleCoreXrayReleasesUsesGitHubShape(t *testing.T) {
 	}
 	if strings.Join(body.Tags, ",") != "v1.8.0,v1.8.1" {
 		t.Fatalf("unexpected tags: %#v", body.Tags)
+	}
+}
+
+func TestHandleCoreXrayReleasesReturnsCleanUpstreamError(t *testing.T) {
+	server, _ := testAdminServer(t)
+	resetXrayCoreReleaseCache()
+	t.Cleanup(resetXrayCoreReleaseCache)
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>cloudflare bad gateway</body></html>`))
+	}))
+	defer mock.Close()
+	previous := xrayCoreReleasesURL
+	xrayCoreReleasesURL = mock.URL
+	defer func() { xrayCoreReleasesURL = previous }()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/core/xray/releases?limit=2", nil)
+	rec := httptest.NewRecorder()
+	server.handleCoreXrayReleases(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "<!DOCTYPE") {
+		t.Fatalf("raw HTML leaked into API response: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "HTML error page") {
+		t.Fatalf("expected sanitized HTML error, got %s", rec.Body.String())
+	}
+}
+
+func TestHandleCoreXrayReleasesUsesStaleCacheOnFailure(t *testing.T) {
+	server, _ := testAdminServer(t)
+	resetXrayCoreReleaseCache()
+	t.Cleanup(resetXrayCoreReleaseCache)
+	storeXrayCoreReleaseCache([]string{"v9.9.9", "v9.9.8"})
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"temporary"}`))
+	}))
+	defer mock.Close()
+	previous := xrayCoreReleasesURL
+	xrayCoreReleasesURL = mock.URL
+	defer func() { xrayCoreReleasesURL = previous }()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/core/xray/releases?limit=1", nil)
+	rec := httptest.NewRecorder()
+	server.handleCoreXrayReleases(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Tags  []string `json:"tags"`
+		Stale bool     `json:"stale"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Stale || strings.Join(body.Tags, ",") != "v9.9.9" {
+		t.Fatalf("unexpected cached response: %#v", body)
 	}
 }
 

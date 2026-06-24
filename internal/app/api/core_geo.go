@@ -4,16 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
-var xrayCoreReleasesURL = "https://api.github.com/repos/XTLS/Xray-core/releases"
+var (
+	xrayCoreReleasesURL        = "https://api.github.com/repos/XTLS/Xray-core/releases"
+	xrayCoreReleasesHTTPClient = &http.Client{Timeout: 15 * time.Second}
+	xrayCoreReleaseCache       = struct {
+		sync.Mutex
+		tags      []string
+		updatedAt time.Time
+	}{}
+)
 
 type geoTargetNode struct {
 	ID      int64
@@ -43,25 +53,52 @@ func (s *Server) handleCoreXrayReleases(w http.ResponseWriter, r *http.Request) 
 	if limit > 50 {
 		limit = 50
 	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, xrayCoreReleasesURL+"?per_page="+strconv.Itoa(limit), nil)
+	tags, stale, err := fetchXrayCoreReleaseTags(r.Context(), limit)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch releases: "+err.Error())
+		writeError(w, http.StatusBadGateway, "Failed to fetch Xray-core releases: "+err.Error())
 		return
 	}
-	response, err := http.DefaultClient.Do(request)
+	payload := map[string]any{"tags": tags}
+	if stale {
+		payload["stale"] = true
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func fetchXrayCoreReleaseTags(ctx context.Context, limit int) ([]string, bool, error) {
+	tags, err := requestXrayCoreReleaseTags(ctx, limit)
+	if err == nil {
+		storeXrayCoreReleaseCache(tags)
+		return tags, false, nil
+	}
+	if cached := cachedXrayCoreReleaseTags(limit); len(cached) > 0 {
+		return cached, true, nil
+	}
+	return nil, false, err
+}
+
+func requestXrayCoreReleaseTags(ctx context.Context, limit int) ([]string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, xrayCoreReleasesURL+"?per_page="+strconv.Itoa(limit), nil)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch releases: "+err.Error())
-		return
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("User-Agent", "Rebecca")
+	response, err := xrayCoreReleasesHTTPClient.Do(request)
+	if err != nil {
+		return nil, err
 	}
 	defer response.Body.Close()
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if readErr != nil {
+		return nil, readErr
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		writeError(w, http.StatusBadGateway, fmt.Sprintf("Failed to fetch releases: status %d", response.StatusCode))
-		return
+		return nil, fmt.Errorf("GitHub returned HTTP %d: %s", response.StatusCode, summarizeUpstreamBody(body))
 	}
 	var data []map[string]any
-	if err := json.NewDecoder(response.Body).Decode(&data); err != nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch releases: "+err.Error())
-		return
+	if err := json.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("invalid GitHub releases response: %s", summarizeUpstreamBody(body))
 	}
 	tags := make([]string, 0, len(data))
 	for _, item := range data {
@@ -70,7 +107,55 @@ func (s *Server) handleCoreXrayReleases(w http.ResponseWriter, r *http.Request) 
 			tags = append(tags, tag)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+	if len(tags) == 0 {
+		return nil, fmt.Errorf("GitHub returned no release tags")
+	}
+	return tags, nil
+}
+
+func storeXrayCoreReleaseCache(tags []string) {
+	if len(tags) == 0 {
+		return
+	}
+	xrayCoreReleaseCache.Lock()
+	defer xrayCoreReleaseCache.Unlock()
+	xrayCoreReleaseCache.tags = append([]string(nil), tags...)
+	xrayCoreReleaseCache.updatedAt = time.Now()
+}
+
+func cachedXrayCoreReleaseTags(limit int) []string {
+	xrayCoreReleaseCache.Lock()
+	defer xrayCoreReleaseCache.Unlock()
+	if len(xrayCoreReleaseCache.tags) == 0 || time.Since(xrayCoreReleaseCache.updatedAt) > 24*time.Hour {
+		return nil
+	}
+	tags := append([]string(nil), xrayCoreReleaseCache.tags...)
+	if limit > 0 && len(tags) > limit {
+		tags = tags[:limit]
+	}
+	return tags
+}
+
+func resetXrayCoreReleaseCache() {
+	xrayCoreReleaseCache.Lock()
+	defer xrayCoreReleaseCache.Unlock()
+	xrayCoreReleaseCache.tags = nil
+	xrayCoreReleaseCache.updatedAt = time.Time{}
+}
+
+func summarizeUpstreamBody(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return "empty response"
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 240 {
+		text = text[:240] + "..."
+	}
+	if strings.HasPrefix(strings.ToLower(text), "<!doctype html") || strings.HasPrefix(strings.ToLower(text), "<html") {
+		return "HTML error page from upstream"
+	}
+	return text
 }
 
 func (s *Server) handleGeoTemplates(w http.ResponseWriter, r *http.Request) {
