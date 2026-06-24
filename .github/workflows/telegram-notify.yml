@@ -58,6 +58,14 @@ jobs:
               *) ICON="⏳"; LABEL="$WF_CONCLUSION";;
             esac
 
+            # Build-dev is the dev branch aggregator: it waits for the related
+            # workflow runs and includes the deployment image digest. Sending a
+            # second Binary Build message for the same dev commit is noisy.
+            if [[ "$WF_NAME" == "Binary Build" && "$WF_EVENT" == "push" && "$BRANCH_RAW" == "dev" ]]; then
+              echo "Skipping duplicate Binary Build Telegram notification for dev; Build-dev sends the commit summary."
+              exit 0
+            fi
+
             if [[ "$WF_NAME" == "Build-dev" ]]; then
               HEADER="$ICON <b>dev build pipeline completed for <code>$BRANCH</code></b>"
             elif [[ "$WF_NAME" == "Binary Build" ]]; then
