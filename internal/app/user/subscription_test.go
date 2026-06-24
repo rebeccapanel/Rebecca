@@ -183,6 +183,30 @@ never
 	}
 }
 
+func TestSubscriptionPageTemplateAcceptsLegacyInlineRemainingDaysClamp(t *testing.T) {
+	expire := int64(1)
+	template := `<!doctype html>
+<html>
+<body>
+{% if not user.expire %}never{% else %}
+({{ remaining_days | int if (remaining_days | int) > -1 else 0 }})
+{% endif %}
+</body>
+</html>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:               "alice",
+		Status:                 "active",
+		Expire:                 &expire,
+		DataLimitResetStrategy: "no_reset",
+	}, nil, "/sub/token/usage", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "(0)") {
+		t.Fatalf("expected expired remaining days to be clamped to zero:\n%s", html)
+	}
+}
+
 func TestSubscriptionBrowserRequestsRenderHTMLEvenWithWildcardAccept(t *testing.T) {
 	req := SubscriptionRenderRequest{
 		Accept:    "*/*",

@@ -1245,6 +1245,7 @@ var (
 	subscriptionPythonBytesFormatFilter    = regexp.MustCompile(`\|\s*bytesformat\s*\([^)]*\)`)
 	subscriptionPythonIntFilter            = regexp.MustCompile(`\|\s*int\s*\([^)]*\)`)
 	subscriptionPythonDefaultFilterPattern = regexp.MustCompile(`\|\s*default\s*\(([^)]*)\)`)
+	subscriptionRemainingDaysClampPattern  = regexp.MustCompile(`\{\{\s*remaining_days\s*\|\s*int\s+if\s*\([^}]*remaining_days[^}]*\)\s*>\s*-?1\s+else\s+0\s*\}\}`)
 )
 
 func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string) (string, error) {
@@ -1295,6 +1296,7 @@ func normalizeLegacySubscriptionTemplate(content string) string {
 	normalized = subscriptionPythonBytesFormatFilter.ReplaceAllString(normalized, "| bytesformat")
 	normalized = subscriptionPythonIntFilter.ReplaceAllString(normalized, "| int")
 	normalized = subscriptionPythonDefaultFilterPattern.ReplaceAllString(normalized, `| default:$1`)
+	normalized = subscriptionRemainingDaysClampPattern.ReplaceAllString(normalized, `{{ remaining_days | int }}`)
 	normalized = strings.ReplaceAll(normalized, "user.status == 'active'", "user.status == 'active' or user.status == 'on_hold'")
 	normalized = strings.ReplaceAll(normalized, `user.status == "active"`, `user.status == "active" or user.status == "on_hold"`)
 	return normalized
@@ -1365,6 +1367,9 @@ func subscriptionRemainingDaysInt(value *int64) int64 {
 		return 0
 	}
 	days := int64(time.Until(time.Unix(*value, 0).UTC()).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
 	return days
 }
 

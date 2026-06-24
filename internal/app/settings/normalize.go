@@ -305,7 +305,7 @@ func persistentTemplateDirectory(adminID *int64) string {
 }
 
 func resolveExistingTemplatePath(templateName string, customDirectory *string) (string, error) {
-	if path, err := resolveCustomTemplatePath(templateName, customDirectory); err == nil {
+	if path, err := resolveCustomTemplatePath(templateName, customDirectory, nil); err == nil {
 		return path, nil
 	} else if !errors.Is(err, ErrTemplateNotFound) {
 		return "", err
@@ -313,11 +313,15 @@ func resolveExistingTemplatePath(templateName string, customDirectory *string) (
 	return resolveAppTemplatePath(templateName)
 }
 
-func resolveCustomTemplatePath(templateName string, customDirectory *string) (string, error) {
-	if customDirectory == nil || strings.TrimSpace(*customDirectory) == "" {
-		return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, templateName)
+func resolveCustomTemplatePath(templateName string, customDirectory *string, adminID *int64) (string, error) {
+	baseDir := ""
+	if customDirectory != nil {
+		baseDir = strings.TrimSpace(*customDirectory)
 	}
-	path, err := safeJoin(*customDirectory, templateName)
+	if baseDir == "" {
+		baseDir = persistentTemplateDirectory(adminID)
+	}
+	path, err := safeJoin(baseDir, templateName)
 	if err != nil {
 		return "", err
 	}

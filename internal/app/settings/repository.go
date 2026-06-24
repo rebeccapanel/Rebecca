@@ -552,7 +552,7 @@ func (r Repository) readTemplateSelection(templateKey string, adminID *int64, se
 	var path string
 	var err error
 	if customOnly {
-		path, err = resolveCustomTemplatePath(selection.TemplateName, selection.CustomDirectory)
+		path, err = resolveCustomTemplatePath(selection.TemplateName, selection.CustomDirectory, adminID)
 	} else {
 		path, err = resolveAppTemplatePath(selection.TemplateName)
 	}
