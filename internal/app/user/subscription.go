@@ -76,7 +76,7 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if err != nil {
 		return SubscriptionHTTPResponse{}, err
 	}
-	if strings.Contains(req.Accept, "text/html") && req.ClientType == "" {
+	if wantsSubscriptionHTML(req) && req.ClientType == "" {
 		settings := s.effectiveSettings(ctx, user.AdminID)
 		html, err := s.renderSubscriptionHTML(ctx, user, req, settings)
 		if err != nil {
@@ -109,6 +109,23 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 		Headers:   subscriptionHeaders(user, req, s.effectiveSettings(ctx, user.AdminID)),
 		Body:      []byte(body),
 	}, nil
+}
+
+func wantsSubscriptionHTML(req SubscriptionRenderRequest) bool {
+	accept := strings.ToLower(req.Accept)
+	if strings.Contains(accept, "text/html") || strings.Contains(accept, "application/xhtml+xml") {
+		return true
+	}
+	if strings.TrimSpace(req.ClientType) != "" {
+		return false
+	}
+	ua := strings.ToLower(req.UserAgent)
+	for _, marker := range []string{"mozilla/", "chrome/", "safari/", "firefox/", "edg/", "opr/"} {
+		if strings.Contains(ua, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderRequest) (UserDetail, error) {
@@ -289,7 +306,7 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 	case "outline":
 		return marshalPretty(map[string]any{"servers": raw})
 	case "v2ray-json":
-		return renderV2RayJSONSubscription(raw, false)
+		return renderV2RayJSONSubscriptionWithTemplate(raw, false, s.subscriptionTemplateContent(ctx, "v2ray_subscription_template", user.AdminID))
 	case "sing-box":
 		outbounds := make([]map[string]any, 0, len(raw)+1)
 		for i, link := range raw {
@@ -301,6 +318,17 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 	default:
 		return "", clientError(404, "Unsupported client type")
 	}
+}
+
+func (s Service) subscriptionTemplateContent(ctx context.Context, templateKey string, adminID *int64) string {
+	if s.templates == nil {
+		return ""
+	}
+	templateContent, err := s.templates.ReadTemplateContent(ctx, templateKey, adminID)
+	if err != nil {
+		return ""
+	}
+	return templateContent.Content
 }
 
 func (r Repository) subscriptionUserByUsername(ctx context.Context, username string) (UserDetail, error) {
@@ -708,13 +736,23 @@ func renderClashLikeYAML(username string, links []string, meta bool) string {
 }
 
 func renderV2RayJSONSubscription(links []string, reverse bool) (string, error) {
+	return renderV2RayJSONSubscriptionWithTemplate(links, reverse, "")
+}
+
+func renderV2RayJSONSubscriptionWithTemplate(links []string, reverse bool, templateContent string) (string, error) {
 	configs := make([]map[string]any, 0, len(links))
+	templateConfig := defaultV2RayClientConfig()
+	if strings.TrimSpace(templateContent) != "" {
+		if err := json.Unmarshal([]byte(templateContent), &templateConfig); err != nil {
+			return "", fmt.Errorf("invalid v2ray subscription template: %w", err)
+		}
+	}
 	for _, link := range links {
 		remark, outbound, ok := v2rayOutboundFromShareLink(link)
 		if !ok {
 			continue
 		}
-		config := defaultV2RayClientConfig()
+		config := cloneJSONMap(templateConfig)
 		config["remarks"] = remark
 		existing := listAny(config["outbounds"])
 		config["outbounds"] = append([]any{outbound}, existing...)
@@ -726,6 +764,21 @@ func renderV2RayJSONSubscription(links []string, reverse bool) (string, error) {
 		}
 	}
 	return marshalPretty(configs)
+}
+
+func cloneJSONMap(source map[string]any) map[string]any {
+	if len(source) == 0 {
+		return map[string]any{}
+	}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		return map[string]any{}
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return map[string]any{}
+	}
+	return cloned
 }
 
 func defaultV2RayClientConfig() map[string]any {

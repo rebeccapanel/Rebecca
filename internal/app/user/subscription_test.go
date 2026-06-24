@@ -78,6 +78,45 @@ func TestRenderV2RayJSONSubscriptionBuildsImportableConfig(t *testing.T) {
 	}
 }
 
+func TestRenderV2RayJSONSubscriptionUsesConfiguredTemplate(t *testing.T) {
+	template := `{
+		"log": {"loglevel": "debug"},
+		"inbounds": [],
+		"outbounds": [{"tag": "DIRECT", "protocol": "freedom"}],
+		"routing": {"domainStrategy": "IPIfNonMatch", "rules": []}
+	}`
+	body, err := renderV2RayJSONSubscriptionWithTemplate(
+		[]string{
+			"vless://7819215e-9bc0-7cdc-845b-16a174a7b6c6@example.com:443?security=tls&type=ws&path=%2Fws&host=edge.example.com&sni=edge.example.com&fp=chrome&encryption=none#edge",
+		},
+		false,
+		template,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configs []map[string]any
+	if err := json.Unmarshal([]byte(body), &configs); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, body)
+	}
+	if len(configs) != 1 {
+		t.Fatalf("expected one config, got %d: %s", len(configs), body)
+	}
+	if got := configs[0]["log"].(map[string]any)["loglevel"]; got != "debug" {
+		t.Fatalf("configured template loglevel was not preserved: %#v", configs[0]["log"])
+	}
+	if got := configs[0]["routing"].(map[string]any)["domainStrategy"]; got != "IPIfNonMatch" {
+		t.Fatalf("configured template routing was not preserved: %#v", configs[0]["routing"])
+	}
+	outbounds := configs[0]["outbounds"].([]any)
+	if len(outbounds) != 2 {
+		t.Fatalf("expected generated outbound plus template outbound, got %#v", outbounds)
+	}
+	if outbounds[0].(map[string]any)["protocol"] != "vless" || outbounds[1].(map[string]any)["tag"] != "DIRECT" {
+		t.Fatalf("unexpected outbound order/content: %#v", outbounds)
+	}
+}
+
 func TestSubscriptionPageTemplateIncludesLinks(t *testing.T) {
 	html, err := renderSubscriptionPageTemplate(fallbackSubscriptionPageTemplate, UserDetail{
 		Username:               "alice",
@@ -107,6 +146,30 @@ func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
 	}
 	if !strings.Contains(html, "vless://id@example.com:443#alice") {
 		t.Fatalf("expected on_hold subscription page to include links:\n%s", html)
+	}
+}
+
+func TestSubscriptionBrowserRequestsRenderHTMLEvenWithWildcardAccept(t *testing.T) {
+	req := SubscriptionRenderRequest{
+		Accept:    "*/*",
+		UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+	}
+	if !wantsSubscriptionHTML(req) {
+		t.Fatal("expected browser subscription request to render HTML")
+	}
+	req.ClientType = "v2ray"
+	if wantsSubscriptionHTML(req) {
+		t.Fatal("explicit client type must not render HTML")
+	}
+}
+
+func TestSubscriptionNonBrowserWildcardAcceptKeepsConfigResponse(t *testing.T) {
+	req := SubscriptionRenderRequest{
+		Accept:    "*/*",
+		UserAgent: "v2rayN/6.40",
+	}
+	if wantsSubscriptionHTML(req) {
+		t.Fatal("expected client subscription request to render config")
 	}
 }
 
