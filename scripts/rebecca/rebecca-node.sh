@@ -907,7 +907,8 @@ get_node_binary_dev_artifact_metadata() {
     local binary_arch="$1"
     local workflow_runs_api
     local workflow_runs_payload
-    local latest_run_json
+    local matching_runs
+    local run_json
     local run_id
     local head_sha
     local artifacts_api
@@ -929,40 +930,53 @@ get_node_binary_dev_artifact_metadata() {
         exit 1
     }
 
-    latest_run_json=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
+    matching_runs=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
         .workflow_runs[]?
-        | select(.head_branch == $branch and .event == "push" and .conclusion == "success" and .path == $workflow_path)
-    ' | head -n 1)
+        | select(
+            .head_branch == $branch
+            and (.event == "push" or .event == "workflow_dispatch")
+            and .conclusion == "success"
+            and .path == $workflow_path
+        )
+    ')
 
-    if [ -z "$latest_run_json" ]; then
+    if [ -z "$matching_runs" ]; then
         colorized_echo red "No successful Rebecca-node binary workflow run was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
         exit 1
     fi
 
-    run_id=$(echo "$latest_run_json" | jq -r '.id // empty')
-    head_sha=$(echo "$latest_run_json" | jq -r '.head_sha // empty')
-    artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
-    artifacts_payload=$(curl -fsSL "$artifacts_api") || {
-        colorized_echo red "Unable to read Rebecca-node binary workflow artifacts: $artifacts_api" >&2
-        exit 1
-    }
+    while IFS= read -r run_json; do
+        [ -n "$run_json" ] || continue
 
-    artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
-        [
-            .artifacts[]?
-            | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
-        ]
-        | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
-        | .[0].name // empty
-    ')
+        run_id=$(echo "$run_json" | jq -r '.id // empty')
+        head_sha=$(echo "$run_json" | jq -r '.head_sha // empty')
+        artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+        if ! artifacts_payload=$(curl -fsSL "$artifacts_api"); then
+            colorized_echo yellow "Unable to read Rebecca-node binary artifacts for workflow run ${run_id}; checking an older successful run." >&2
+            continue
+        fi
 
-    if [ -z "$artifact_name" ]; then
-        colorized_echo red "No usable Rebecca-node binary dev artifact was found for workflow run ${run_id}." >&2
-        exit 1
-    fi
+        artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
+            [
+                .artifacts[]?
+                | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
+            ]
+            | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
+            | .[0].name // empty
+        ')
 
-    artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
-    printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+        if [ -n "$artifact_name" ]; then
+            artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+            printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+            return 0
+        fi
+
+        colorized_echo yellow "Rebecca-node binary workflow run ${run_id} has no usable linux-${binary_arch} artifact; checking an older successful run." >&2
+    done <<< "$matching_runs"
+
+    colorized_echo red "No usable Rebecca-node linux-${binary_arch} dev artifact was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
+    colorized_echo yellow "The dev binary workflow must publish ${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch} before this server can install the dev binary." >&2
+    exit 1
 }
 
 write_node_binary_release_metadata() {
@@ -1088,50 +1102,10 @@ configure_binary_node_env() {
 
     get_occupied_ports
 
-    if ! grep -qE '^[[:space:]]*SERVICE_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
-        while true; do
-            read -p "Enter the SERVICE_PORT (default 62050): " -r SERVICE_PORT
-            if [[ -z "$SERVICE_PORT" ]]; then
-                SERVICE_PORT=62050
-            fi
-            if [[ "$SERVICE_PORT" -ge 1 && "$SERVICE_PORT" -le 65535 ]]; then
-                if is_port_occupied "$SERVICE_PORT"; then
-                    colorized_echo red "Port $SERVICE_PORT is already in use. Please enter another port."
-                else
-                    break
-                fi
-            else
-                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
-            fi
-        done
-        set_env_value "SERVICE_PORT" "$SERVICE_PORT"
-    fi
-    SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
-    SERVICE_PORT="${SERVICE_PORT:-62050}"
+    SERVICE_PORT=$(prompt_node_port_setting "SERVICE_PORT" "SERVICE_PORT" "62050")
     set_env_value "SERVICE_PORT" "$SERVICE_PORT"
 
-    if ! grep -qE '^[[:space:]]*XRAY_API_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
-        while true; do
-            read -p "Enter the XRAY_API_PORT (default 62051): " -r XRAY_API_PORT
-            if [[ -z "$XRAY_API_PORT" ]]; then
-                XRAY_API_PORT=62051
-            fi
-            if [[ "$XRAY_API_PORT" -ge 1 && "$XRAY_API_PORT" -le 65535 ]]; then
-                if is_port_occupied "$XRAY_API_PORT"; then
-                    colorized_echo red "Port $XRAY_API_PORT is already in use. Please enter another port."
-                elif [[ "$XRAY_API_PORT" -eq "$SERVICE_PORT" ]]; then
-                    colorized_echo red "Port $XRAY_API_PORT cannot be the same as SERVICE_PORT. Please enter another port."
-                else
-                    break
-                fi
-            else
-                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
-            fi
-        done
-        set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
-    fi
-    XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
-    XRAY_API_PORT="${XRAY_API_PORT:-62051}"
+    XRAY_API_PORT=$(prompt_node_port_setting "XRAY_API_PORT" "XRAY_API_PORT" "62051" "$SERVICE_PORT")
     set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
 
     set_env_value "REBECCA_DATA_DIR" "$DATA_DIR"
@@ -1283,6 +1257,34 @@ is_port_occupied() {
     else
         return 1
     fi
+}
+
+prompt_node_port_setting() {
+    local key="$1"
+    local label="$2"
+    local fallback="$3"
+    local other_port="${4:-}"
+    local current_port
+    local value
+
+    current_port=$(get_env_value "$key")
+    fallback="${current_port:-$fallback}"
+
+    while true; do
+        printf "Enter the %s (default %s): " "$label" "$fallback" >&2
+        IFS= read -r value
+        value="${value:-$fallback}"
+        if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
+            colorized_echo red "Invalid port. Please enter a port between 1 and 65535." >&2
+        elif [ -n "$other_port" ] && [ "$value" -eq "$other_port" ]; then
+            colorized_echo red "Port $value cannot be the same as SERVICE_PORT. Please enter another port." >&2
+        elif is_port_occupied "$value" && [ "$value" != "$current_port" ]; then
+            colorized_echo red "Port $value is already in use. Please enter another port." >&2
+        else
+            echo "$value"
+            return 0
+        fi
+    done
 }
 
 install_rebecca_node() {
@@ -1569,7 +1571,7 @@ install_command() {
     up_rebecca_node
     SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
     XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
-    echo "Use your IP: $NODE_IP and defaults ports: $SERVICE_PORT and $XRAY_API_PORT to setup your Rebecca Main Panel"
+    echo "Use your IP: $NODE_IP and selected ports: $SERVICE_PORT and $XRAY_API_PORT to setup your Rebecca Main Panel"
     colorized_echo yellow "Run '$APP_NAME logs' if you want to follow live node logs."
 }
 
