@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 
-RELEASE_TAG="latest"
+DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.5.9}"
+RELEASE_TAG="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}"
 DATA_DIR="${REBECCA_DATA_DIR:-/var/lib/rebecca}"
 INSTALL_DIR="${XRAY_INSTALL_DIR:-$DATA_DIR/xray-core}"
 ASSETS_DIR="${XRAY_ASSETS_DIR:-$INSTALL_DIR}"
 
 if [[ "$1" ]]; then
     RELEASE_TAG="$1"
+fi
+
+if [[ "$RELEASE_TAG" != "latest" && "$RELEASE_TAG" != v* ]]; then
+    RELEASE_TAG="v$RELEASE_TAG"
 fi
 
 check_if_running_as_root() {
