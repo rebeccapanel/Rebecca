@@ -309,15 +309,15 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 			return result, err
 		}
 	}
+	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
+		return result, err
+	}
 	for _, key := range coalescedOrder {
 		if key == "all" {
 			if err := c.processCoalescedOperations(ctx, coalesced[key], blockedNodes, &result); err != nil {
 				return result, err
 			}
 		}
-	}
-	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
-		return result, err
 	}
 	return result, nil
 }
