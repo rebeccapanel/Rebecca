@@ -84,6 +84,7 @@ import {
 	tlsFingerprintOptions,
 	tlsUsageOptions,
 	tlsVersionOptions,
+	validateInboundFormFields,
 	validateInboundFormValues,
 } from "utils/inbounds";
 import { NumericInput } from "../common/NumericInput";
@@ -411,22 +412,26 @@ export const InboundFormModal: FC<Props> = ({
 		supportsStreamSettings,
 		t,
 	]);
-	const formValidationErrors = useMemo(
-		() => validateInboundFormValues(formValues),
+	const fieldValidationErrors = useMemo(
+		() => validateInboundFormFields(formValues),
 		[formValues],
+	);
+	const fieldValidationMessages = useMemo(
+		() => Object.values(fieldValidationErrors).filter(Boolean),
+		[fieldValidationErrors],
 	);
 	const _hasBlockingErrors = Boolean(
 		tagError ||
 			portError ||
 			streamCompatibilityError ||
-			formValidationErrors.length,
+			fieldValidationMessages.length,
 	);
 	const hasBlockingErrorsWithJson = Boolean(
 		tagError ||
 			portError ||
 			jsonError ||
 			streamCompatibilityError ||
-			formValidationErrors.length,
+			fieldValidationMessages.length,
 	);
 	const computedVlessAuthOptions = useMemo(() => {
 		const labels = [
@@ -1038,40 +1043,23 @@ export const InboundFormModal: FC<Props> = ({
 						<TabPanels>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={6}>
-									{formValidationErrors.length > 0 && (
-										<Alert status="error" borderRadius="md" alignItems="flex-start">
-											<AlertIcon />
-											<Box>
-												<AlertTitle fontSize="sm">
-													{t(
-														"inbounds.error.invalidConfig",
-														"Inbound config is invalid",
-													)}
-												</AlertTitle>
-												<AlertDescription as="div" fontSize="sm">
-													<VStack align="stretch" spacing={1} mt={1}>
-														{formValidationErrors.map((error) => (
-															<Text key={error}>- {error}</Text>
-														))}
-													</VStack>
-												</AlertDescription>
-											</Box>
-										</Alert>
-									)}
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Text fontSize="sm" fontWeight="semibold">
 											{t("inbounds.basicSettings", "Basic settings")}
 										</Text>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl isRequired isInvalid={!!tagError}>
+											<FormControl
+												isRequired
+												isInvalid={!!tagError || !!fieldValidationErrors.tag}
+											>
 												<FormLabel>{t("inbounds.tag", "Tag")}</FormLabel>
 												<Input
 													{...register("tag", { required: true })}
 													isDisabled={isEditMode}
 												/>
-												{tagError && (
+												{(tagError || fieldValidationErrors.tag) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{tagError}
+														{tagError || fieldValidationErrors.tag}
 													</Text>
 												)}
 											</FormControl>
@@ -1083,7 +1071,10 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 										</SimpleGrid>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-											<FormControl isRequired isInvalid={!!portError}>
+											<FormControl
+												isRequired
+												isInvalid={!!portError || !!fieldValidationErrors.port}
+											>
 												<FormLabel>{t("inbounds.port", "Port")}</FormLabel>
 												<Input
 													placeholder="443"
@@ -1117,9 +1108,9 @@ export const InboundFormModal: FC<Props> = ({
 														{portWarning}
 													</Text>
 												)}
-												{portError && (
+												{(portError || fieldValidationErrors.port) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{portError}
+														{portError || fieldValidationErrors.port}
 													</Text>
 												)}
 											</FormControl>
@@ -1503,7 +1494,9 @@ export const InboundFormModal: FC<Props> = ({
 											{streamNetwork === "ws" && (
 												<Stack spacing={3}>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-														<FormControl>
+														<FormControl
+															isInvalid={!!fieldValidationErrors.wsPath}
+														>
 															<FormLabel>
 																{t("inbounds.ws.path", "WebSocket path")}
 															</FormLabel>
@@ -1511,6 +1504,11 @@ export const InboundFormModal: FC<Props> = ({
 																{...register("wsPath")}
 																placeholder="/ws"
 															/>
+															{fieldValidationErrors.wsPath && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.wsPath}
+																</Text>
+															)}
 														</FormControl>
 														<FormControl>
 															<FormLabel>
@@ -1682,11 +1680,18 @@ export const InboundFormModal: FC<Props> = ({
 
 											{streamNetwork === "httpupgrade" && (
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-													<FormControl>
+													<FormControl
+														isInvalid={!!fieldValidationErrors.httpupgradePath}
+													>
 														<FormLabel>
 															{t("inbounds.httpUpgrade.path", "Path")}
 														</FormLabel>
 														<Input {...register("httpupgradePath")} />
+														{fieldValidationErrors.httpupgradePath && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.httpupgradePath}
+															</Text>
+														)}
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -1699,11 +1704,18 @@ export const InboundFormModal: FC<Props> = ({
 
 											{streamNetwork === "splithttp" && (
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-													<FormControl>
+													<FormControl
+														isInvalid={!!fieldValidationErrors.splithttpPath}
+													>
 														<FormLabel>
 															{t("inbounds.splitHttp.path", "Path")}
 														</FormLabel>
 														<Input {...register("splithttpPath")} />
+														{fieldValidationErrors.splithttpPath && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.splithttpPath}
+															</Text>
+														)}
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -1726,7 +1738,9 @@ export const InboundFormModal: FC<Props> = ({
 																placeholder="example.com"
 															/>
 														</FormControl>
-														<FormControl>
+														<FormControl
+															isInvalid={!!fieldValidationErrors.xhttpPath}
+														>
 															<FormLabel>
 																{t("inbounds.xhttp.path", "Path")}
 															</FormLabel>
@@ -1734,6 +1748,11 @@ export const InboundFormModal: FC<Props> = ({
 																{...register("xhttpPath")}
 																placeholder="/"
 															/>
+															{fieldValidationErrors.xhttpPath && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.xhttpPath}
+																</Text>
+															)}
 														</FormControl>
 													</SimpleGrid>
 													<Stack spacing={2}>
@@ -1805,7 +1824,9 @@ export const InboundFormModal: FC<Props> = ({
 																))}
 															</Select>
 														</FormControl>
-														<FormControl>
+														<FormControl
+															isInvalid={!!fieldValidationErrors.xhttpPaddingBytes}
+														>
 															<FormLabel>
 																{t(
 																	"inbounds.xhttp.paddingBytes",
@@ -1816,6 +1837,11 @@ export const InboundFormModal: FC<Props> = ({
 																{...register("xhttpPaddingBytes")}
 																placeholder="100-1000"
 															/>
+															{fieldValidationErrors.xhttpPaddingBytes && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.xhttpPaddingBytes}
+																</Text>
+															)}
 														</FormControl>
 													</SimpleGrid>
 													{xhttpMode === "packet-up" && (
@@ -2473,7 +2499,10 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											<FormControl
 												isRequired
-												isInvalid={Boolean(errors.realityTarget)}
+												isInvalid={Boolean(
+													errors.realityTarget ||
+														fieldValidationErrors.realityTarget,
+												)}
 											>
 												<FormLabel>
 													<HStack spacing={2}>
@@ -2495,15 +2524,20 @@ export const InboundFormModal: FC<Props> = ({
 													{...register("realityTarget", { required: true })}
 													placeholder="example.com:443"
 												/>
-												{errors.realityTarget && (
+												{(errors.realityTarget ||
+													fieldValidationErrors.realityTarget) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{t("validation.required", "This field is required")}
+														{fieldValidationErrors.realityTarget ||
+															t("validation.required", "This field is required")}
 													</Text>
 												)}
 											</FormControl>
 											<FormControl
 												isRequired
-												isInvalid={Boolean(errors.realityServerNames)}
+												isInvalid={Boolean(
+													errors.realityServerNames ||
+														fieldValidationErrors.realityServerNames,
+												)}
 											>
 												<FormLabel>
 													<HStack spacing={2}>
@@ -2536,9 +2570,11 @@ export const InboundFormModal: FC<Props> = ({
 														"Separate entries with commas.",
 													)}
 												</Box>
-												{errors.realityServerNames && (
+												{(errors.realityServerNames ||
+													fieldValidationErrors.realityServerNames) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{t("validation.required", "This field is required")}
+														{fieldValidationErrors.realityServerNames ||
+															t("validation.required", "This field is required")}
 													</Text>
 												)}
 											</FormControl>
@@ -2587,7 +2623,13 @@ export const InboundFormModal: FC<Props> = ({
 													/>
 												</FormControl>
 											</SimpleGrid>
-											<FormControl isInvalid={Boolean(errors.realityShortIds)}>
+											<FormControl
+												isRequired
+												isInvalid={Boolean(
+													errors.realityShortIds ||
+														fieldValidationErrors.realityShortIds,
+												)}
+											>
 												<FormLabel>
 													<HStack spacing={2}>
 														<Text>
@@ -2623,9 +2665,11 @@ export const InboundFormModal: FC<Props> = ({
 														"Separate entries with commas.",
 													)}
 												</Box>
-												{errors.realityShortIds && (
+												{(errors.realityShortIds ||
+													fieldValidationErrors.realityShortIds) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{t("validation.required", "This field is required")}
+														{fieldValidationErrors.realityShortIds ||
+															t("validation.required", "This field is required")}
 													</Text>
 												)}
 											</FormControl>
@@ -2646,7 +2690,10 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											<FormControl
 												isRequired
-												isInvalid={Boolean(errors.realityPrivateKey)}
+												isInvalid={Boolean(
+													errors.realityPrivateKey ||
+														fieldValidationErrors.realityPrivateKey,
+												)}
 											>
 												<FormLabel>
 													{t(
@@ -2657,9 +2704,11 @@ export const InboundFormModal: FC<Props> = ({
 												<Input
 													{...register("realityPrivateKey", { required: true })}
 												/>
-												{errors.realityPrivateKey && (
+												{(errors.realityPrivateKey ||
+													fieldValidationErrors.realityPrivateKey) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
-														{t("validation.required", "This field is required")}
+														{fieldValidationErrors.realityPrivateKey ||
+															t("validation.required", "This field is required")}
 													</Text>
 												)}
 											</FormControl>

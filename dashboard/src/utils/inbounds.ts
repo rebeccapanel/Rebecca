@@ -382,90 +382,107 @@ const hasSchemePathOrPort = (value: string): boolean => {
 	return /^[^:]+:\d+$/.test(cleaned);
 };
 
-const validatePath = (
-	errors: string[],
-	value: string,
-	label: string,
-): void => {
+const validatePath = (value: string, label: string): string | null => {
 	const cleaned = value.trim();
 	if (cleaned && !cleaned.startsWith("/")) {
-		errors.push(`${label} must start with /.`);
+		return `${label} must start with /.`;
 	}
+	return null;
 };
 
-const validateXPadding = (
-	errors: string[],
-	value: string,
-	label: string,
-): void => {
+const validateXPadding = (value: string, label: string): string | null => {
 	const cleaned = value.trim();
-	if (!cleaned) return;
+	if (!cleaned) return null;
 	const match = cleaned.match(/^(\d+)(?:-(\d+))?$/);
 	if (!match) {
-		errors.push(`${label} must look like 100 or 100-1000.`);
-		return;
+		return `${label} must look like 100 or 100-1000.`;
 	}
 	if (match[2] && Number(match[1]) > Number(match[2])) {
-		errors.push(`${label} range start must be less than or equal to end.`);
+		return `${label} range start must be less than or equal to end.`;
 	}
+	return null;
 };
 
-export const validateInboundFormValues = (
+export type InboundFormValidationErrors = Partial<
+	Record<keyof InboundFormValues, string>
+>;
+
+export const validateInboundFormFields = (
 	values: InboundFormValues,
-): string[] => {
-	const errors: string[] = [];
-	if (!values.tag.trim()) {
-		errors.push("Inbound tag is required.");
+): InboundFormValidationErrors => {
+	const errors: InboundFormValidationErrors = {};
+	if (!values.tag?.trim()) {
+		errors.tag = "Inbound tag is required.";
 	}
-	if (!isValidPortText(values.port)) {
-		errors.push("Port must be a number between 1 and 65535.");
+	if (!isValidPortText(values.port ?? "")) {
+		errors.port = "Port must be a number between 1 and 65535.";
 	}
 	if (values.streamNetwork === "ws") {
-		validatePath(errors, values.wsPath, "WebSocket path");
+		const error = validatePath(values.wsPath ?? "", "WebSocket path");
+		if (error) errors.wsPath = error;
 	}
 	if (values.streamNetwork === "httpupgrade") {
-		validatePath(errors, values.httpupgradePath, "HTTPUpgrade path");
+		const error = validatePath(
+			values.httpupgradePath ?? "",
+			"HTTPUpgrade path",
+		);
+		if (error) errors.httpupgradePath = error;
 	}
 	if (values.streamNetwork === "splithttp") {
-		validatePath(errors, values.splithttpPath, "SplitHTTP path");
-		validateXPadding(errors, values.splithttpXPaddingBytes, "SplitHTTP xPaddingBytes");
+		const pathError = validatePath(values.splithttpPath ?? "", "SplitHTTP path");
+		if (pathError) errors.splithttpPath = pathError;
+		const paddingError = validateXPadding(
+			values.splithttpXPaddingBytes ?? "",
+			"SplitHTTP xPaddingBytes",
+		);
+		if (paddingError) errors.splithttpXPaddingBytes = paddingError;
 	}
 	if (values.streamNetwork === "xhttp") {
-		validatePath(errors, values.xhttpPath, "XHTTP path");
-		validateXPadding(errors, values.xhttpPaddingBytes, "XHTTP xPaddingBytes");
+		const pathError = validatePath(values.xhttpPath ?? "", "XHTTP path");
+		if (pathError) errors.xhttpPath = pathError;
+		const paddingError = validateXPadding(
+			values.xhttpPaddingBytes ?? "",
+			"XHTTP xPaddingBytes",
+		);
+		if (paddingError) errors.xhttpPaddingBytes = paddingError;
 	}
 	if (values.streamSecurity === "reality") {
-		if (!isHostPortTarget(values.realityTarget)) {
-			errors.push(
-				"REALITY target must be host:port, for example google.com:443.",
-			);
+		if (!isHostPortTarget(values.realityTarget ?? "")) {
+			errors.realityTarget =
+				"REALITY target must be host:port, for example google.com:443.";
 		}
-		if (!values.realityPrivateKey.trim()) {
-			errors.push("REALITY private key is required.");
+		if (!values.realityPrivateKey?.trim()) {
+			errors.realityPrivateKey = "REALITY private key is required.";
 		}
-		const serverNames = splitLines(values.realityServerNames);
+		const serverNames = splitLines(values.realityServerNames ?? "");
 		if (!serverNames.length) {
-			errors.push("REALITY server names are required.");
+			errors.realityServerNames = "REALITY server names are required.";
 		}
 		for (const serverName of serverNames) {
 			if (hasSchemePathOrPort(serverName)) {
-				errors.push("REALITY server names must not include scheme, path, or port.");
+				errors.realityServerNames =
+					"REALITY server names must not include scheme, path, or port.";
 				break;
 			}
 		}
-		const shortIds = splitLines(values.realityShortIds);
+		const shortIds = splitLines(values.realityShortIds ?? "");
 		if (!shortIds.length) {
-			errors.push("REALITY short IDs are required.");
+			errors.realityShortIds = "REALITY short IDs are required.";
 		}
 		for (const shortId of shortIds) {
 			if (!/^[0-9a-fA-F]{2,16}$/.test(shortId) || shortId.length % 2 !== 0) {
-				errors.push("REALITY short IDs must be even-length hex with 2-16 characters.");
+				errors.realityShortIds =
+					"REALITY short IDs must be even-length hex with 2-16 characters.";
 				break;
 			}
 		}
 	}
 	return errors;
 };
+
+export const validateInboundFormValues = (
+	values: InboundFormValues,
+): string[] => Object.values(validateInboundFormFields(values));
 
 const cleanObject = (value: Record<string, any>) => {
 	Object.keys(value).forEach((key) => {
