@@ -76,9 +76,13 @@ func principalFromContext(authCtx adminapp.EffectiveAdminContext) adminPrincipal
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {
-	status := http.StatusUnauthorized
 	if errors.Is(err, adminapp.ErrPermissionDenied) {
-		status = http.StatusForbidden
+		writeError(w, http.StatusForbidden, err.Error())
+		return
 	}
-	writeError(w, status, err.Error())
+	// Match the Python panel's response for every token authentication failure
+	// (invalid, expired, missing, etc.) so Marzban-compatible sales bots
+	// recognize an expired admin token and re-authenticate via /admin/token.
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	writeError(w, http.StatusUnauthorized, "Could not validate credentials")
 }
