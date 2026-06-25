@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
@@ -20,6 +21,8 @@ import (
 type Controller struct {
 	repo Repository
 }
+
+const maxConcurrentCoalescedNodeOperations = 8
 
 func NewController(repo Repository) Controller {
 	return Controller{repo: repo}
@@ -307,11 +310,86 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 		}
 	}
 	for _, key := range coalescedOrder {
-		if err := c.processCoalescedOperations(ctx, coalesced[key], blockedNodes, &result); err != nil {
-			return result, err
+		if key == "all" {
+			if err := c.processCoalescedOperations(ctx, coalesced[key], blockedNodes, &result); err != nil {
+				return result, err
+			}
 		}
 	}
+	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+func (c Controller) processCoalescedNodeOperationGroups(ctx context.Context, coalescedOrder []string, coalesced map[string][]OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
+	type groupResult struct {
+		result ProcessOperationsResult
+		err    error
+	}
+	groups := make([][]OperationRow, 0, len(coalescedOrder))
+	for _, key := range coalescedOrder {
+		if key == "all" {
+			continue
+		}
+		groups = append(groups, coalesced[key])
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	workers := maxConcurrentCoalescedNodeOperations
+	if workers > len(groups) {
+		workers = len(groups)
+	}
+	jobs := make(chan []OperationRow)
+	results := make(chan groupResult, len(groups))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for operations := range jobs {
+				localResult := ProcessOperationsResult{}
+				localBlocked := cloneBlockedNodes(blockedNodes)
+				err := c.processCoalescedOperations(ctx, operations, localBlocked, &localResult)
+				results <- groupResult{result: localResult, err: err}
+			}
+		}()
+	}
+	for _, operations := range groups {
+		select {
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			close(results)
+			return ctx.Err()
+		case jobs <- operations:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+	for item := range results {
+		if item.err != nil {
+			return item.err
+		}
+		result.Processed += item.result.Processed
+		result.Done += item.result.Done
+		result.Retrying += item.result.Retrying
+		result.Failed += item.result.Failed
+	}
+	return nil
+}
+
+func cloneBlockedNodes(blockedNodes map[int64]bool) map[int64]bool {
+	if len(blockedNodes) == 0 {
+		return map[int64]bool{}
+	}
+	clone := make(map[int64]bool, len(blockedNodes))
+	for nodeID, blocked := range blockedNodes {
+		clone[nodeID] = blocked
+	}
+	return clone
 }
 
 func (c Controller) processSingleOperation(ctx context.Context, operation OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
