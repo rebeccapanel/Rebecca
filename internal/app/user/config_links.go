@@ -80,6 +80,13 @@ func BuildConfigLinks(
 	}
 
 	links := make([]string, 0)
+	type tagBinding struct {
+		settings map[string]any
+		protocol string
+	}
+	// Resolve, per inbound tag, which proxy (protocol) and runtime settings it
+	// belongs to. A tag maps to a single protocol, so first match wins.
+	bindings := make(map[string]tagBinding)
 	for _, proxy := range proxies {
 		protocol := normalizeProxyProtocol(proxy.Type)
 		if _, ok := proxyProtocols[protocol]; !ok {
@@ -89,8 +96,7 @@ func BuildConfigLinks(
 		if err != nil {
 			return ConfigLinksResponse{}, err
 		}
-		tags := selectProxyInboundTags(item, proxy, protocol, inbounds, inboundOrder, hostsByTag)
-		for _, tag := range tags {
+		for _, tag := range selectProxyInboundTags(item, proxy, protocol, inbounds, inboundOrder, hostsByTag) {
 			inbound, ok := inbounds[tag]
 			if !ok {
 				continue
@@ -98,24 +104,41 @@ func BuildConfigLinks(
 			if normalizeProxyProtocol(stringValue(inbound["protocol"])) != protocol {
 				continue
 			}
-			for _, host := range hostsByTag[tag] {
-				inboundVariables := cloneFormatVariables(formatVariables)
-				inboundVariables["PROTOCOL"] = strings.ToUpper(protocol)
-				inboundVariables["protocol"] = protocol
-				inboundVariables["TRANSPORT"] = configTransportName(inbound)
-				inboundVariables["transport"] = strings.ToLower(inboundVariables["TRANSPORT"])
-				remark, address, effective, ok := effectiveInboundForHost(username, inboundVariables, inbound, host.host)
-				if !ok {
-					continue
-				}
-				link, err := buildShareLink(remark, address, effective, settings)
-				if err != nil {
-					return ConfigLinksResponse{}, err
-				}
-				if link != "" {
-					links = append(links, link)
-				}
+			if _, exists := bindings[tag]; !exists {
+				bindings[tag] = tagBinding{settings: settings, protocol: protocol}
 			}
+		}
+	}
+
+	// Emit links following the service's configured host order (host-major).
+	// Iterating per protocol instead would group configs by protocol and, for
+	// virtual proxies whose protocols are sorted alphabetically, pull some
+	// protocols (e.g. shadowsocks) to the top regardless of the service order.
+	for _, selected := range selectedHosts {
+		host := selected.host
+		binding, ok := bindings[host.InboundTag]
+		if !ok {
+			continue
+		}
+		inbound, ok := inbounds[host.InboundTag]
+		if !ok {
+			continue
+		}
+		inboundVariables := cloneFormatVariables(formatVariables)
+		inboundVariables["PROTOCOL"] = strings.ToUpper(binding.protocol)
+		inboundVariables["protocol"] = binding.protocol
+		inboundVariables["TRANSPORT"] = configTransportName(inbound)
+		inboundVariables["transport"] = strings.ToLower(inboundVariables["TRANSPORT"])
+		remark, address, effective, ok := effectiveInboundForHost(username, inboundVariables, inbound, host)
+		if !ok {
+			continue
+		}
+		link, err := buildShareLink(remark, address, effective, binding.settings)
+		if err != nil {
+			return ConfigLinksResponse{}, err
+		}
+		if link != "" {
+			links = append(links, link)
 		}
 	}
 
