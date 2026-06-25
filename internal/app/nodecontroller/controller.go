@@ -376,8 +376,12 @@ func (c Controller) processCoalescedOperations(ctx context.Context, operations [
 	if len(claimed) > 1 {
 		logging.Debugf(logging.ComponentNode, "operation queue coalesced target=%s count=%d", operationCoalesceKey(representative), len(claimed))
 	}
+	supersededIDs, err := c.repo.CoalescibleOperationIDsForTarget(ctx, representative)
+	if err != nil {
+		return err
+	}
 	opCtx, cancel := WithDefaultTimeout(ctx)
-	err := c.applyOperation(opCtx, representative)
+	err = c.applyOperation(opCtx, representative)
 	cancel()
 	if err != nil {
 		if isPermanentOperationError(err) {
@@ -396,12 +400,22 @@ func (c Controller) processCoalescedOperations(ctx context.Context, operations [
 		}
 		return nil
 	}
-	for _, operation := range claimed {
-		if err := c.repo.MarkOperationDone(ctx, operation.ID); err != nil {
-			return err
-		}
+	done, err := c.repo.MarkOperationsDone(ctx, supersededIDs)
+	if err != nil {
+		return err
 	}
-	result.Done += len(claimed)
+	if done == 0 {
+		for _, operation := range claimed {
+			if err := c.repo.MarkOperationDone(ctx, operation.ID); err != nil {
+				return err
+			}
+		}
+		done = len(claimed)
+	}
+	if done > len(claimed) {
+		logging.Debugf(logging.ComponentNode, "operation queue cleared target=%s count=%d", operationCoalesceKey(representative), done)
+	}
+	result.Done += done
 	return nil
 }
 

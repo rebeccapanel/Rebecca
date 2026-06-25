@@ -129,17 +129,23 @@ CREATE TABLE node_operations (
 );
 INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
 VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', NULL, NULL, '{"queued_at":"2026-06-25T00:00:00Z"}', 'pending', 'global-sync-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('update_user', NULL, 10, '{"queued_at":"2026-06-25T00:00:00Z"}', 'pending', 'global-sync-3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'global-custom', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 `)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	controller := NewController(NewRepository(db, "sqlite"))
-	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 10})
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Done != 1 || result.Failed != 0 || result.Retrying != 0 {
+	if result.Processed != 1 || result.Done != 3 || result.Failed != 0 || result.Retrying != 0 {
 		t.Fatalf("unexpected process result: %#v", result)
 	}
 
@@ -149,6 +155,20 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 	}
 	if status != "done" {
 		t.Fatalf("expected global sync to be done, got %q", status)
+	}
+	var done int64
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_operations WHERE status = 'done'`).Scan(&done); err != nil {
+		t.Fatal(err)
+	}
+	if done != 3 {
+		t.Fatalf("expected three coalescible operations to be done, got %d", done)
+	}
+	var customStatus string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE id = 4`).Scan(&customStatus); err != nil {
+		t.Fatal(err)
+	}
+	if customStatus != "pending" {
+		t.Fatalf("expected custom config operation to remain pending, got %q", customStatus)
 	}
 }
 

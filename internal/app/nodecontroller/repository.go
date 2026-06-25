@@ -307,6 +307,78 @@ func (r Repository) MarkOperationDone(ctx context.Context, id int64) error {
 	return err
 }
 
+func (r Repository) CoalescibleOperationIDsForTarget(ctx context.Context, representative OperationRow) ([]int64, error) {
+	query := `SELECT id, operation_type, node_id, user_id, payload, attempts
+FROM node_operations
+WHERE status IN ('pending', 'retrying', 'running')
+  AND operation_type IN ('sync_config', 'add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`
+	args := []any{}
+	if representative.NodeID.Valid {
+		query += ` AND node_id = ?`
+		args = append(args, representative.NodeID.Int64)
+	} else {
+		query += ` AND node_id IS NULL`
+	}
+	query += ` ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := []int64{}
+	for rows.Next() {
+		var row OperationRow
+		var payload []byte
+		if err := rows.Scan(&row.ID, &row.OperationType, &row.NodeID, &row.UserID, &payload, &row.Attempts); err != nil {
+			return nil, err
+		}
+		row.Payload = append(row.Payload[:0], payload...)
+		if canCoalesceRuntimeSyncOperation(row) {
+			ids = append(ids, row.ID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (r Repository) MarkOperationsDone(ctx context.Context, ids []int64) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := r.timeArg(time.Now().UTC())
+	affectedTotal := 0
+	for start := 0; start < len(ids); start += 500 {
+		end := start + 500
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+		args := []any{now}
+		args = append(args, int64Args(chunk)...)
+		res, err := r.db.ExecContext(
+			ctx,
+			`UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE status IN ('pending', 'retrying', 'running') AND id IN (`+placeholders(len(chunk))+`)`,
+			args...,
+		)
+		if err != nil {
+			return affectedTotal, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			affectedTotal += len(chunk)
+			continue
+		}
+		affectedTotal += int(affected)
+	}
+	return affectedTotal, nil
+}
+
 func (r Repository) MarkOperationRetrying(ctx context.Context, id int64, message string) error {
 	if len(message) > 4096 {
 		message = message[:4096]
