@@ -284,7 +284,7 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 
 	sets := []string{"edit_at = ?", "last_status_change = CASE WHEN status != ? THEN ? ELSE last_status_change END"}
 	args := []any{dbTime(time.Now().UTC()), newStatus, dbTime(time.Now().UTC())}
-	if payload.Status != "" {
+	if payload.Status != "" || UserStatus(newStatus) != existing.Status {
 		sets = append(sets, "status = ?", "admin_disabled_at = NULL")
 		args = append(args, newStatus)
 	}

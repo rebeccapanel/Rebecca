@@ -75,6 +75,26 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	}
 	assertUserOperationCount(t, db, "enable_user", "go_user", 1)
 
+	if _, err := db.Exec(`UPDATE users SET status = 'limited', used_traffic = 1500, data_limit = 1000 WHERE username = 'go_user'`); err != nil {
+		t.Fatal(err)
+	}
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"data_limit":2000}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("limited traffic update status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'go_user'`, "active")
+	assertUserOperationCount(t, db, "enable_user", "go_user", 2)
+
+	if _, err := db.Exec(`UPDATE users SET status = 'expired', expire = 1000 WHERE username = 'go_user'`); err != nil {
+		t.Fatal(err)
+	}
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"expire":2000000000}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expired time update status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'go_user'`, "active")
+	assertUserOperationCount(t, db, "enable_user", "go_user", 3)
+
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"proxies":{"vless":{"id":"11111111-1111-4111-8111-111111111111"}}}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("proxies update status = %d body=%s", rec.Code, rec.Body.String())
