@@ -451,12 +451,27 @@ VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
 func (r Repository) updateStatus(ctx context.Context, nodeID int64, status string, message string, version string) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		`UPDATE nodes SET status = ?, message = ?, xray_version = COALESCE(NULLIF(?, ''), xray_version), last_status_change = ? WHERE id = ?`,
+		`UPDATE nodes
+SET status = ?,
+    message = ?,
+    xray_version = COALESCE(NULLIF(?, ''), xray_version),
+    last_status_change = CASE WHEN COALESCE(status, '') <> ? THEN ? ELSE last_status_change END
+WHERE id = ?
+  AND (
+    COALESCE(status, '') <> ?
+    OR COALESCE(message, '') <> ?
+    OR (? <> '' AND COALESCE(xray_version, '') <> ?)
+  )`,
 		status,
 		nullableString(message),
 		version,
+		status,
 		r.timeArg(time.Now().UTC()),
 		nodeID,
+		status,
+		strings.TrimSpace(message),
+		version,
+		version,
 	)
 	return err
 }

@@ -28,7 +28,17 @@ type runtimeUserRow struct {
 	Settings      map[string]any
 }
 
+type runtimeConfigData struct {
+	users       []runtimeUserRow
+	serviceTags map[int64]map[string]bool
+	masks       map[string][]byte
+}
+
 func (c Controller) buildRuntimeConfig(ctx context.Context, node NodeRow) (string, error) {
+	return c.buildRuntimeConfigWithData(ctx, node, nil)
+}
+
+func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow, data *runtimeConfigData) (string, error) {
 	raw, err := c.repo.NodeRawConfig(ctx, node)
 	if err != nil {
 		return "", err
@@ -37,7 +47,7 @@ func (c Controller) buildRuntimeConfig(ctx context.Context, node NodeRow) (strin
 	if err := inlineTLSCertificateFiles(raw); err != nil {
 		return "", err
 	}
-	if err := c.includeDBUsers(ctx, raw); err != nil {
+	if err := c.includeDBUsers(ctx, raw, data); err != nil {
 		return "", err
 	}
 	encoded, err := json.Marshal(raw)
@@ -47,7 +57,7 @@ func (c Controller) buildRuntimeConfig(ctx context.Context, node NodeRow) (strin
 	return string(encoded), nil
 }
 
-func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any) error {
+func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data *runtimeConfigData) error {
 	inbounds := listOfMaps(raw["inbounds"])
 	inboundsByProtocol := map[string][]map[string]any{}
 	for _, inbound := range inbounds {
@@ -63,30 +73,25 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any) erro
 		return nil
 	}
 
-	users, err := c.repo.RuntimeUsers(ctx)
-	if err != nil {
-		return err
-	}
-	serviceTags, err := c.repo.ServiceAllowedTags(ctx)
-	if err != nil {
-		return err
-	}
-	masks, err := c.repo.UUIDMasks(ctx)
-	if err != nil {
-		return err
+	if data == nil {
+		loaded, err := c.loadRuntimeConfigData(ctx)
+		if err != nil {
+			return err
+		}
+		data = loaded
 	}
 
-	for _, user := range users {
+	for _, user := range data.users {
 		if !user.ServiceID.Valid || user.ServiceID.Int64 <= 0 {
 			continue
 		}
 		targets := inboundsByProtocol[user.Protocol]
 		for _, inbound := range targets {
 			tag := stringValue(inbound["tag"])
-			if !serviceTags[user.ServiceID.Int64][tag] {
+			if !data.serviceTags[user.ServiceID.Int64][tag] {
 				continue
 			}
-			settings, err := userread.RuntimeProxySettings(user.Settings, user.Protocol, user.CredentialKey, user.Flow, masks)
+			settings, err := userread.RuntimeProxySettings(user.Settings, user.Protocol, user.CredentialKey, user.Flow, data.masks)
 			if err != nil {
 				continue
 			}
@@ -99,6 +104,22 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any) erro
 		}
 	}
 	return nil
+}
+
+func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {
+	users, err := c.repo.RuntimeUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	serviceTags, err := c.repo.ServiceAllowedTags(ctx)
+	if err != nil {
+		return nil, err
+	}
+	masks, err := c.repo.UUIDMasks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &runtimeConfigData{users: users, serviceTags: serviceTags, masks: masks}, nil
 }
 
 func applyRuntimeAPI(raw map[string]any, apiPort int) {

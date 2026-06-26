@@ -1,5 +1,3 @@
-//go:build cgo
-
 package nodecontroller
 
 import (
@@ -8,12 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func TestRepositoryProcessesOperationState(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "queue.db")+"?_busy_timeout=30000")
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +90,7 @@ VALUES ('sync_config', 7, 42, '{"config_json":"{}"}', 'pending', 'op-1', CURRENT
 
 func TestControllerCompletesGlobalSyncConfigWhenNoNodesExist(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "queue-global.db")+"?_busy_timeout=30000")
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-global.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +172,7 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 
 func TestRepositoryListNodeItemsNormalizesLegacyStatus(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "nodes.db")+"?_busy_timeout=30000")
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "nodes.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,5 +223,52 @@ VALUES (1, 'legacy-node', '127.0.0.1', 62050, 62051, 1, 'active', 'default', 'de
 	}
 	if nodes[0].Status != "connecting" {
 		t.Fatalf("expected legacy status to normalize to connecting, got %q", nodes[0].Status)
+	}
+}
+
+func TestRepositorySkipsUnchangedNodeStatusUpdate(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "node-status.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	status TEXT,
+	message TEXT,
+	xray_version TEXT,
+	last_status_change DATETIME
+);
+INSERT INTO nodes (id, status, message, xray_version, last_status_change)
+VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.SetConnected(ctx, 1, "1.0.0", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryString(t, db, `SELECT last_status_change FROM nodes WHERE id = 1`, "2026-06-26T00:00:00Z")
+
+	if err := repo.SetConnected(ctx, 1, "1.0.1", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryString(t, db, `SELECT xray_version FROM nodes WHERE id = 1`, "1.0.1")
+	assertRepositoryString(t, db, `SELECT last_status_change FROM nodes WHERE id = 1`, "2026-06-26T00:00:00Z")
+}
+
+func assertRepositoryString(t *testing.T, db *sql.DB, query string, expected string) {
+	t.Helper()
+	var actual string
+	if err := db.QueryRow(query).Scan(&actual); err != nil {
+		t.Fatal(err)
+	}
+	if actual != expected {
+		t.Fatalf("%s: expected %q, got %q", query, expected, actual)
 	}
 }

@@ -22,7 +22,7 @@ type Controller struct {
 	repo Repository
 }
 
-const maxConcurrentCoalescedNodeOperations = 8
+const maxConcurrentCoalescedNodeOperations = 3
 
 func NewController(repo Repository) Controller {
 	return Controller{repo: repo}
@@ -404,7 +404,7 @@ func (c Controller) processSingleOperation(ctx context.Context, operation Operat
 		return nil
 	}
 	result.Processed++
-	opCtx, cancel := WithDefaultTimeout(ctx)
+	opCtx, cancel := operationContext(ctx, operation)
 	err = c.applyOperation(opCtx, operation)
 	cancel()
 	if err != nil {
@@ -458,7 +458,7 @@ func (c Controller) processCoalescedOperations(ctx context.Context, operations [
 	if err != nil {
 		return err
 	}
-	opCtx, cancel := WithDefaultTimeout(ctx)
+	opCtx, cancel := operationContext(ctx, representative)
 	err = c.applyOperation(opCtx, representative)
 	cancel()
 	if err != nil {
@@ -525,6 +525,10 @@ func operationCoalesceKey(operation OperationRow) string {
 }
 
 func (c Controller) applyOperation(ctx context.Context, operation OperationRow) error {
+	return c.applyOperationWithConfigData(ctx, operation, nil)
+}
+
+func (c Controller) applyOperationWithConfigData(ctx context.Context, operation OperationRow, configData *runtimeConfigData) error {
 	var payload operationPayload
 	if len(operation.Payload) > 0 {
 		if err := json.Unmarshal(operation.Payload, &payload); err != nil {
@@ -544,10 +548,20 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow) 
 		if len(nodes) == 0 && operation.OperationType != "sync_config" {
 			return fmt.Errorf("no active nodes available")
 		}
+		if len(nodes) > 0 && strings.TrimSpace(payload.ConfigJSON) == "" && operationNeedsRuntimeConfig(operation.OperationType) {
+			loaded, err := c.loadRuntimeConfigData(ctx)
+			if err != nil {
+				return err
+			}
+			configData = loaded
+		}
 		for _, node := range nodes {
 			nodeOperation := operation
 			nodeOperation.NodeID = sql.NullInt64{Int64: node.ID, Valid: true}
-			if err := c.applyOperation(ctx, nodeOperation); err != nil {
+			nodeCtx, cancel := WithDefaultTimeout(ctx)
+			err := c.applyOperationWithConfigData(nodeCtx, nodeOperation, configData)
+			cancel()
+			if err != nil {
 				return err
 			}
 		}
@@ -577,7 +591,7 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow) 
 		defer client.Close()
 		configJSON := strings.TrimSpace(payload.ConfigJSON)
 		if configJSON == "" {
-			configJSON, err = c.buildRuntimeConfig(ctx, node)
+			configJSON, err = c.buildRuntimeConfigWithData(ctx, node, configData)
 			if err != nil {
 				return err
 			}
@@ -604,7 +618,7 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow) 
 			if err != nil {
 				return err
 			}
-			configJSON, err = c.buildRuntimeConfig(ctx, node)
+			configJSON, err = c.buildRuntimeConfigWithData(ctx, node, configData)
 			if err != nil {
 				return err
 			}
@@ -613,6 +627,22 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow) 
 		return err
 	default:
 		return fmt.Errorf("unsupported node operation: %s", operation.OperationType)
+	}
+}
+
+func operationContext(parent context.Context, operation OperationRow) (context.Context, context.CancelFunc) {
+	if !operation.NodeID.Valid {
+		return context.WithCancel(parent)
+	}
+	return WithDefaultTimeout(parent)
+}
+
+func operationNeedsRuntimeConfig(operationType string) bool {
+	switch operationType {
+	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user", "restart_node":
+		return true
+	default:
+		return false
 	}
 }
 

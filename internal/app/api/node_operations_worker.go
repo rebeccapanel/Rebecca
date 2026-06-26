@@ -10,7 +10,7 @@ import (
 )
 
 const defaultNodeOperationsPollInterval = 15 * time.Second
-const defaultNodeOperationsBatchSize = 500
+const defaultNodeOperationsBatchSize = 200
 
 func (s *Server) runNodeOperationsWorker(ctx context.Context) {
 	interval := parseNodeOperationsPollInterval(s.cfg.NodeOperationsPollInterval)
@@ -18,16 +18,17 @@ func (s *Server) runNodeOperationsWorker(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	s.processNodeOperations(ctx)
 	for {
+		s.processNodeOperations(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			s.processNodeOperations(ctx)
+		case <-timer.C:
 		}
 	}
 }
