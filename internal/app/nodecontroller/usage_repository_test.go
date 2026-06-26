@@ -1,5 +1,3 @@
-//go:build cgo
-
 package nodecontroller
 
 import (
@@ -8,12 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func TestRepositoryPersistsCollectedUsageAccounting(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "usage.db")+"?_busy_timeout=30000")
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +61,7 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 
 func TestRepositoryPersistsOnlineOnlyUserUsage(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "file:"+filepath.Join(t.TempDir(), "usage-online.db")+"?_busy_timeout=30000")
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-online.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +95,53 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, 0)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE user_id = 10 AND node_id = 7`, 0)
 	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE id = 10 AND online_at IS NOT NULL`, 1)
+}
+
+func TestRepositoryPersistsCollectedUsageInChunks(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-chunks.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := usagePersistBatchSize + 5
+	deltas := make([]UserUsageDelta, 0, count)
+	for i := 0; i < count; i++ {
+		userID := int64(1000 + i)
+		if _, err := db.ExecContext(ctx, `INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (?, 'active', 0, 100000, 1, 2)`, userID); err != nil {
+			t.Fatal(err)
+		}
+		deltas = append(deltas, UserUsageDelta{UserID: userID, Value: 10, Online: true})
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.PersistCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, deltas, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := int64(count * 10)
+	assertInt64(t, db, `SELECT COALESCE(SUM(used_traffic), 0) FROM users`, expected)
+	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE online_at IS NOT NULL`, int64(count))
+	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, expected)
+	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, expected)
+	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, expected)
+	assertInt64(t, db, `SELECT lifetime_used_traffic FROM services WHERE id = 2`, expected)
+	assertInt64(t, db, `SELECT users_usage FROM services WHERE id = 2`, expected)
+	assertInt64(t, db, `SELECT used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, expected)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE node_id = 7`, int64(count))
+	assertInt64(t, db, `SELECT COALESCE(SUM(used_traffic), 0) FROM node_user_usages WHERE node_id = 7`, expected)
 }
 
 func TestParseUserUsageSampleUID(t *testing.T) {

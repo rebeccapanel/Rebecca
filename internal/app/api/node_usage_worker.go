@@ -17,16 +17,17 @@ func (s *Server) runNodeUsageCollector(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	s.collectNodeUsage(ctx)
 	for {
+		s.collectNodeUsage(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			s.collectNodeUsage(ctx)
+		case <-timer.C:
 		}
 	}
 }

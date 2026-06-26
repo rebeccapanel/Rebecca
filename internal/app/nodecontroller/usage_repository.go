@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const usagePersistBatchSize = 200
 
 type UserUsageDelta struct {
 	UserID int64
@@ -209,42 +212,31 @@ func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeR
 		return map[int64]int64{}, nil, nil
 	}
 
+	onlineUserIDs := make([]int64, 0, len(onlineUsers))
 	for userID := range onlineUsers {
 		if _, ok := mapping[userID]; !ok {
 			continue
 		}
-		if _, err := tx.ExecContext(
-			ctx,
-			`UPDATE users
-SET online_at = CASE WHEN status IN ('active', 'on_hold') THEN ? ELSE online_at END
-WHERE id = ?`,
-			r.timeArg(now),
-			userID,
-		); err != nil {
-			return nil, nil, fmt.Errorf("update user %d online status: %w", userID, err)
-		}
+		onlineUserIDs = append(onlineUserIDs, userID)
+	}
+	sort.Slice(onlineUserIDs, func(i, j int) bool { return onlineUserIDs[i] < onlineUserIDs[j] })
+	if err := r.batchTouchUsersOnline(ctx, tx, onlineUserIDs, now); err != nil {
+		return nil, nil, fmt.Errorf("update user online status: %w", err)
 	}
 
 	adminUsage := map[int64]int64{}
 	serviceUsage := map[int64]int64{}
 	adminServiceUsage := map[[2]int64]int64{}
+	persistedUserUsage := map[int64]int64{}
 
-	for userID, value := range aggregated {
+	for _, userID := range keysInt64(aggregated) {
+		value := aggregated[userID]
 		row, ok := mapping[userID]
 		if !ok {
 			delete(aggregated, userID)
 			continue
 		}
-		if _, err := tx.ExecContext(
-			ctx,
-			`UPDATE users
-SET used_traffic = COALESCE(used_traffic, 0) + ?
-WHERE id = ?`,
-			value,
-			userID,
-		); err != nil {
-			return nil, nil, fmt.Errorf("update user %d: %w", userID, err)
-		}
+		persistedUserUsage[userID] = value
 		if row.AdminID.Valid {
 			adminUsage[row.AdminID.Int64] += value
 		}
@@ -254,12 +246,18 @@ WHERE id = ?`,
 				adminServiceUsage[[2]int64{row.AdminID.Int64, row.ServiceID.Int64}] += value
 			}
 		}
-		if err := r.upsertNodeUserUsage(ctx, tx, bucket, userID, node.ID, value); err != nil {
-			return nil, nil, fmt.Errorf("upsert node user usage user=%d node=%d: %w", userID, node.ID, err)
+	}
+	if len(persistedUserUsage) > 0 {
+		if err := r.batchIncrementUsersUsage(ctx, tx, persistedUserUsage); err != nil {
+			return nil, nil, fmt.Errorf("update user usage: %w", err)
+		}
+		if err := r.batchUpsertNodeUserUsage(ctx, tx, bucket, node.ID, persistedUserUsage); err != nil {
+			return nil, nil, fmt.Errorf("upsert node user usage node=%d: %w", node.ID, err)
 		}
 	}
 
-	for adminID, value := range adminUsage {
+	for _, adminID := range keysInt64(adminUsage) {
+		value := adminUsage[adminID]
 		if _, err := tx.ExecContext(
 			ctx,
 			`UPDATE admins
@@ -274,7 +272,8 @@ WHERE id = ?`,
 		}
 	}
 
-	for serviceID, value := range serviceUsage {
+	for _, serviceID := range keysInt64(serviceUsage) {
+		value := serviceUsage[serviceID]
 		if _, err := tx.ExecContext(
 			ctx,
 			`UPDATE services
@@ -293,7 +292,8 @@ WHERE id = ?`,
 		}
 	}
 
-	for key, value := range adminServiceUsage {
+	for _, key := range keysAdminService(adminServiceUsage) {
+		value := adminServiceUsage[key]
 		if _, err := tx.ExecContext(
 			ctx,
 			`UPDATE admins_services
@@ -311,11 +311,11 @@ WHERE admin_id = ? AND service_id = ?`,
 		}
 	}
 
-	operations, err := r.enforceUsageLifecycle(ctx, tx, keysInt64(aggregated), now)
+	operations, err := r.enforceUsageLifecycle(ctx, tx, keysInt64(persistedUserUsage), now)
 	if err != nil {
 		return nil, nil, fmt.Errorf("enforce lifecycle: %w", err)
 	}
-	return aggregated, operations, nil
+	return persistedUserUsage, operations, nil
 }
 
 func (r Repository) loadUsageUserMapping(ctx context.Context, tx *sql.Tx, userIDs []int64) (map[int64]usageUserMapping, error) {
@@ -339,6 +339,65 @@ func (r Repository) loadUsageUserMapping(ctx context.Context, tx *sql.Tx, userID
 	return result, rows.Err()
 }
 
+func (r Repository) batchTouchUsersOnline(ctx context.Context, tx *sql.Tx, userIDs []int64, now time.Time) error {
+	return forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
+		query := `UPDATE users
+SET online_at = ?
+WHERE status IN ('active', 'on_hold')
+  AND id IN (` + placeholders(len(chunk)) + `)`
+		args := make([]any, 0, 1+len(chunk))
+		args = append(args, r.timeArg(now))
+		args = append(args, int64Args(chunk)...)
+		_, err := tx.ExecContext(ctx, query, args...)
+		return err
+	})
+}
+
+func (r Repository) batchIncrementUsersUsage(ctx context.Context, tx *sql.Tx, usageByUser map[int64]int64) error {
+	userIDs := keysInt64(usageByUser)
+	return forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
+		var builder strings.Builder
+		builder.WriteString(`UPDATE users SET used_traffic = COALESCE(used_traffic, 0) + CASE id `)
+		args := make([]any, 0, len(chunk)*3)
+		for _, userID := range chunk {
+			builder.WriteString("WHEN ? THEN ? ")
+			args = append(args, userID, usageByUser[userID])
+		}
+		builder.WriteString(`ELSE 0 END WHERE id IN (`)
+		builder.WriteString(placeholders(len(chunk)))
+		builder.WriteString(`)`)
+		args = append(args, int64Args(chunk)...)
+		_, err := tx.ExecContext(ctx, builder.String(), args...)
+		return err
+	})
+}
+
+func (r Repository) batchUpsertNodeUserUsage(ctx context.Context, tx *sql.Tx, bucket time.Time, nodeID int64, usageByUser map[int64]int64) error {
+	userIDs := keysInt64(usageByUser)
+	return forEachInt64Chunk(userIDs, usagePersistBatchSize, func(chunk []int64) error {
+		var builder strings.Builder
+		builder.WriteString(`INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES `)
+		args := make([]any, 0, len(chunk)*4)
+		for i, userID := range chunk {
+			if i > 0 {
+				builder.WriteString(",")
+			}
+			builder.WriteString("(?, ?, ?, ?)")
+			args = append(args, r.timeArg(bucket), userID, nodeID, usageByUser[userID])
+		}
+		if r.dialect == "sqlite" {
+			builder.WriteString(`
+ON CONFLICT(created_at, user_id, node_id) DO UPDATE
+SET used_traffic = COALESCE(node_user_usages.used_traffic, 0) + excluded.used_traffic`)
+		} else {
+			builder.WriteString(`
+ON DUPLICATE KEY UPDATE used_traffic = COALESCE(used_traffic, 0) + VALUES(used_traffic)`)
+		}
+		_, err := tx.ExecContext(ctx, builder.String(), args...)
+		return err
+	})
+}
+
 func (r Repository) enforceUsageLifecycle(ctx context.Context, tx *sql.Tx, userIDs []int64, now time.Time) ([]usageQueuedOperation, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
@@ -357,7 +416,8 @@ func (r Repository) enforceUsageLifecycle(ctx context.Context, tx *sql.Tx, userI
        last_status_change
 FROM users
 WHERE id IN (` + placeholders(len(userIDs)) + `)
-  AND status IN ('active', 'on_hold')`
+  AND status IN ('active', 'on_hold')
+ORDER BY id`
 	args := int64Args(userIDs)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -521,34 +581,6 @@ WHERE id = ?
 		}
 	}
 	return nil
-}
-
-func (r Repository) upsertNodeUserUsage(ctx context.Context, tx *sql.Tx, bucket time.Time, userID int64, nodeID int64, value int64) error {
-	if r.dialect == "sqlite" {
-		_, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic)
-VALUES (?, ?, ?, ?)
-ON CONFLICT(created_at, user_id, node_id) DO UPDATE
-SET used_traffic = COALESCE(node_user_usages.used_traffic, 0) + excluded.used_traffic`,
-			r.timeArg(bucket),
-			userID,
-			nodeID,
-			value,
-		)
-		return err
-	}
-	_, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic)
-VALUES (?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE used_traffic = COALESCE(used_traffic, 0) + VALUES(used_traffic)`,
-		r.timeArg(bucket),
-		userID,
-		nodeID,
-		value,
-	)
-	return err
 }
 
 func (r Repository) upsertNodeUsage(ctx context.Context, tx *sql.Tx, bucket time.Time, nodeID int64, up int64, down int64) error {
@@ -891,6 +923,21 @@ func keysInt64(values map[int64]int64) []int64 {
 	for key := range values {
 		result = append(result, key)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+func keysAdminService(values map[[2]int64]int64) [][2]int64 {
+	result := make([][2]int64, 0, len(values))
+	for key := range values {
+		result = append(result, key)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i][0] == result[j][0] {
+			return result[i][1] < result[j][1]
+		}
+		return result[i][0] < result[j][0]
+	})
 	return result
 }
 
@@ -906,6 +953,7 @@ func unionInt64Keys(values map[int64]int64, keys map[int64]struct{}) []int64 {
 	for key := range seen {
 		result = append(result, key)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
 }
 
@@ -915,6 +963,22 @@ func int64Args(values []int64) []any {
 		result = append(result, value)
 	}
 	return result
+}
+
+func forEachInt64Chunk(values []int64, size int, fn func([]int64) error) error {
+	if size <= 0 {
+		size = usagePersistBatchSize
+	}
+	for start := 0; start < len(values); start += size {
+		end := start + size
+		if end > len(values) {
+			end = len(values)
+		}
+		if err := fn(values[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func placeholders(count int) string {

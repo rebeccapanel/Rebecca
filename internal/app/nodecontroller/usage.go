@@ -228,14 +228,28 @@ func parseUserUsageSampleUID(raw string) (int64, bool, bool) {
 }
 
 func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta) error {
-	err := c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas)
-	if err == nil || !errors.Is(err, driver.ErrBadConn) {
-		return err
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas)
+		if err == nil || !isTransientUsagePersistError(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
+		}
 	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(100 * time.Millisecond):
+	return err
+}
+
+func isTransientUsagePersistError(err error) bool {
+	if errors.Is(err, driver.ErrBadConn) {
+		return true
 	}
-	return c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas)
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "deadlock found") ||
+		strings.Contains(message, "try restarting transaction") ||
+		strings.Contains(message, "lock wait timeout") ||
+		strings.Contains(message, "invalid connection")
 }
