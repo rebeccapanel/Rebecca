@@ -270,7 +270,7 @@ func selectProxyInboundTags(
 }
 
 func effectiveInboundForHost(username string, variables map[string]string, inbound ResolvedInbound, host Host) (string, string, ResolvedInbound, bool) {
-	addressRaw := selectHostRotationValue(host.ID, "address", host.AddressOptions, host.AddressMode, host.AddressTTL, firstCSV(host.Address))
+	addressRaw := selectHostRotationValue(host.ID, "address", host.Address, host.AddressOptions, host.AddressMode, host.AddressTTL)
 	address := applyWildcard(applyFormat(addressRaw, variables), username)
 	if address == "" {
 		return "", "", nil, false
@@ -281,8 +281,8 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 		remark = address
 	}
 
-	sniRaw := selectHostRotationValue(host.ID, "sni", host.SNIOptions, host.SNIMode, host.SNITTL, firstHostOverride(host.SNI, firstStringList(inbound["sni"])))
-	hostRaw := selectHostRotationValue(host.ID, "host", host.HostOptions, host.HostMode, host.HostTTL, firstHostOverride(host.Host, firstStringList(inbound["host"])))
+	sniRaw := selectHostRotationValue(host.ID, "sni", hostOverrideList(host.SNI, joinStringList(inbound["sni"])), host.SNIOptions, host.SNIMode, host.SNITTL)
+	hostRaw := selectHostRotationValue(host.ID, "host", hostOverrideList(host.Host, joinStringList(inbound["host"])), host.HostOptions, host.HostMode, host.HostTTL)
 	sni := applyWildcard(applyFormat(sniRaw, variables), username)
 	requestHost := applyWildcard(applyFormat(hostRaw, variables), username)
 	if host.UseSNIAsHost && sni != "" {
@@ -408,6 +408,17 @@ func firstHostOverride(value *string, fallback string) string {
 		return fallback
 	}
 	return first
+}
+
+func hostOverrideList(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	cleaned := strings.TrimSpace(*value)
+	if cleaned == "" {
+		return fallback
+	}
+	return cleaned
 }
 
 func configFormatVariables(item ConfigLinkUser) map[string]string {
@@ -1350,10 +1361,13 @@ func splitHostOptionValue(value string) []string {
 	})
 }
 
-func selectHostRotationValue(hostID int64, field string, options []string, mode string, ttl *int64, fallback string) string {
-	choices := normalizeHostOptionList(options)
+func selectHostRotationValue(hostID int64, field string, value string, options []string, mode string, ttl *int64) string {
+	choices := normalizeHostOptionList(append([]string{value}, options...))
 	if len(choices) == 0 {
-		return strings.TrimSpace(fallback)
+		return ""
+	}
+	if len(choices) == 1 {
+		return choices[0]
 	}
 	if normalizeHostSelectionMode(mode) == "ttl" {
 		ttlSeconds := int64(60)
@@ -1362,8 +1376,9 @@ func selectHostRotationValue(hostID int64, field string, options []string, mode 
 		}
 		bucket := time.Now().UTC().Unix() / ttlSeconds
 		hash := fnv.New64a()
-		_, _ = fmt.Fprintf(hash, "%d:%s:%d", hostID, field, bucket)
-		return choices[int(hash.Sum64()%uint64(len(choices)))]
+		_, _ = fmt.Fprintf(hash, "%d:%s", hostID, field)
+		offset := int64(hash.Sum64() % uint64(len(choices)))
+		return choices[int((bucket+offset)%int64(len(choices)))]
 	}
 	return choices[randomHostOptionIndex(len(choices))]
 }

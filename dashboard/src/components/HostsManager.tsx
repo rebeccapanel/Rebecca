@@ -36,7 +36,6 @@ import {
 	Tabs,
 	Tag,
 	Text,
-	Textarea,
 	Tooltip,
 	useToast,
 	VStack,
@@ -55,6 +54,7 @@ import {
 } from "constants/Proxies";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { type HostsSchema, useHosts } from "contexts/HostsContext";
+import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
 	useCallback,
@@ -280,63 +280,84 @@ const DYNAMIC_TOKENS: Array<{ token: string; labelKey: string }> = [
 	{ token: "{TRANSPORT}", labelKey: "hostsDialog.proxyMethod" },
 ];
 
-type RotationFieldsProps = {
-	label: string;
-	value: string;
+type RotationControlsProps = {
 	mode: string;
 	ttl: number | null;
-	onValueChange: (value: string) => void;
 	onModeChange: (value: string) => void;
 	onTTLChange: (value: number | null) => void;
 };
 
-const RotationFields: FC<RotationFieldsProps> = ({
-	label,
-	value,
+const RotationControls: FC<RotationControlsProps> = ({
 	mode,
 	ttl,
-	onValueChange,
 	onModeChange,
 	onTTLChange,
 }) => {
 	const { t } = useTranslation();
 	return (
-		<FormControl>
-			<FormLabel>{label}</FormLabel>
-			<Textarea
-				value={value}
-				rows={3}
-				resize="vertical"
-				placeholder={t(
-					"hostsDialog.rotationPlaceholder",
-					"One value per line. Leave empty to use the single field above.",
-				)}
-				onChange={(event) => onValueChange(event.target.value)}
-			/>
-			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
-				<FormControl>
-					<FormLabel fontSize="sm">
-						{t("hostsDialog.rotationMode", "Selection mode")}
-					</FormLabel>
-					<Select value={mode} onChange={(event) => onModeChange(event.target.value)}>
-						<option value="random">{t("hostsDialog.rotationRandom", "Random")}</option>
-						<option value="ttl">{t("hostsDialog.rotationTTL", "TTL")}</option>
-					</Select>
-				</FormControl>
-				<FormControl>
-					<FormLabel fontSize="sm">
-						{t("hostsDialog.rotationTTLSeconds", "TTL seconds")}
-					</FormLabel>
-					<NumericInput
-						value={ttl ?? ""}
-						min={1}
-						max={2592000}
-						isDisabled={mode !== "ttl"}
-						onChange={(_, num) => onTTLChange(Number.isNaN(num) ? null : num)}
-					/>
-				</FormControl>
-			</SimpleGrid>
-		</FormControl>
+		<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={2}>
+			<FormControl>
+				<FormLabel fontSize="sm">
+					{t("hostsDialog.rotationMode", "Selection mode")}
+				</FormLabel>
+				<Select value={mode} onChange={(event) => onModeChange(event.target.value)}>
+					<option value="random">{t("hostsDialog.rotationRandom", "Random")}</option>
+					<option value="ttl">{t("hostsDialog.rotationTTL", "TTL")}</option>
+				</Select>
+			</FormControl>
+			<FormControl>
+				<FormLabel fontSize="sm">
+					{t("hostsDialog.rotationTTLSeconds", "TTL seconds")}
+				</FormLabel>
+				<NumericInput
+					value={ttl ?? ""}
+					min={1}
+					max={2592000}
+					isDisabled={mode !== "ttl"}
+					onChange={(_, num) => onTTLChange(Number.isNaN(num) ? null : num)}
+				/>
+			</FormControl>
+		</SimpleGrid>
+	);
+};
+
+const NodeAddressPicker: FC<{
+	nodes?: NodeType[];
+	onSelect: (address: string) => void;
+}> = ({ nodes, onSelect }) => {
+	const { t } = useTranslation();
+	const options = (nodes ?? [])
+		.filter((node) => typeof node.address === "string" && node.address.trim())
+		.slice(0, 24);
+	if (!options.length) {
+		return null;
+	}
+	return (
+		<Box
+			mt={2}
+			p={2}
+			borderWidth="1px"
+			borderRadius="md"
+			borderColor="gray.200"
+			_dark={{ borderColor: "gray.700", bg: "gray.900" }}
+		>
+			<Text fontSize="xs" color="gray.500" mb={2}>
+				{t("hostsDialog.pickNodeAddress", "Pick a node address")}
+			</Text>
+			<HStack spacing={2} flexWrap="wrap">
+				{options.map((node) => (
+					<Button
+						key={node.id ?? node.address}
+						size="xs"
+						variant="outline"
+						onMouseDown={(event) => event.preventDefault()}
+						onClick={() => onSelect(node.address.trim())}
+					>
+						{node.name || node.address}
+					</Button>
+				))}
+			</HStack>
+		</Box>
 	);
 };
 
@@ -399,6 +420,28 @@ const rotationTextToOptions = (value: string) =>
 		.map((item) => item.trim())
 		.filter(Boolean);
 
+const mergeRotationValue = (
+	value: string | null | undefined,
+	options: string[] | null | undefined,
+) => rotationTextToOptions([value ?? "", ...(options ?? [])].join(",")).join(", ");
+
+const hasMultipleRotationValues = (value: string) =>
+	rotationTextToOptions(value).length > 1;
+
+const appendCommaValue = (current: string, next: string) => {
+	const values = rotationTextToOptions(current);
+	if (!next.trim()) {
+		return values.join(", ");
+	}
+	const exists = values.some(
+		(value) => value.toLowerCase() === next.trim().toLowerCase(),
+	);
+	if (!exists) {
+		values.push(next.trim());
+	}
+	return values.join(", ");
+};
+
 const normalizeBoolean = (
 	value: boolean | null | undefined,
 	fallback = false,
@@ -407,18 +450,18 @@ const normalizeBoolean = (
 const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	id: host.id ?? null,
 	remark: host.remark ?? "",
-	address: host.address ?? "",
-	address_options: rotationOptionsToText(host.address_options),
+	address: mergeRotationValue(host.address, host.address_options),
+	address_options: "",
 	address_selection_mode: normalizeRotationMode(host.address_selection_mode),
 	address_ttl_seconds: host.address_ttl_seconds ?? null,
 	port: host.port ?? null,
 	path: normalizeString(host.path),
-	sni: normalizeString(host.sni),
-	sni_options: rotationOptionsToText(host.sni_options),
+	sni: mergeRotationValue(host.sni, host.sni_options),
+	sni_options: "",
 	sni_selection_mode: normalizeRotationMode(host.sni_selection_mode),
 	sni_ttl_seconds: host.sni_ttl_seconds ?? null,
-	host: normalizeString(host.host),
-	host_options: rotationOptionsToText(host.host_options),
+	host: mergeRotationValue(host.host, host.host_options),
+	host_options: "",
 	host_selection_mode: normalizeRotationMode(host.host_selection_mode),
 	host_ttl_seconds: host.host_ttl_seconds ?? null,
 	mux_enable: normalizeBoolean(host.mux_enable),
@@ -531,22 +574,21 @@ const isHostDirty = (host: HostState) => {
 };
 
 const formatHostForApi = (data: HostData): HostsSchema[string][number] => {
-	const addressOptions = rotationTextToOptions(data.address_options);
 	return {
 		id: data.id ?? null,
 		remark: data.remark.trim(),
-		address: data.address.trim() || addressOptions[0] || "",
-		address_options: addressOptions,
+		address: rotationTextToOptions(data.address).join(", "),
+		address_options: [],
 		address_selection_mode: normalizeRotationMode(data.address_selection_mode),
 		address_ttl_seconds: data.address_ttl_seconds ?? null,
 		port: data.port,
 		path: data.path.trim() ? data.path.trim() : null,
-		sni: data.sni.trim() ? data.sni.trim() : null,
-		sni_options: rotationTextToOptions(data.sni_options),
+		sni: rotationTextToOptions(data.sni).join(", ") || null,
+		sni_options: [],
 		sni_selection_mode: normalizeRotationMode(data.sni_selection_mode),
 		sni_ttl_seconds: data.sni_ttl_seconds ?? null,
-		host: data.host.trim() ? data.host.trim() : null,
-		host_options: rotationTextToOptions(data.host_options),
+		host: rotationTextToOptions(data.host).join(", ") || null,
+		host_options: [],
 		host_selection_mode: normalizeRotationMode(data.host_selection_mode),
 		host_ttl_seconds: data.host_ttl_seconds ?? null,
 		mux_enable: data.mux_enable,
@@ -904,6 +946,7 @@ type HostDetailModalProps = {
 	onDelete: (uid: string) => void;
 	saving: boolean;
 	deleting: boolean;
+	nodes?: NodeType[];
 	mode?: "edit" | "clone";
 	onClone?: (uid: string) => void;
 };
@@ -920,12 +963,14 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	onDelete,
 	saving,
 	deleting,
+	nodes,
 	mode = "edit",
 	onClone,
 }) => {
 	const { t } = useTranslation();
 	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
+	const [showAddressNodes, setShowAddressNodes] = useState(false);
 	const updatingFromJsonRef = useRef(false);
 	const _resolvedHost = host ?? {
 		uid: "",
@@ -1093,6 +1138,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<InputGroup>
 															<Input
 																value={host.data.address}
+																onFocus={() => setShowAddressNodes(true)}
 																onChange={(event) =>
 																	onChange(
 																		host.uid,
@@ -1109,6 +1155,19 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 																<DynamicTokensPopover />
 															</InputRightElement>
 														</InputGroup>
+														{showAddressNodes && (
+															<NodeAddressPicker
+																nodes={nodes}
+																onSelect={(address) => {
+																	onChange(
+																		host.uid,
+																		"address",
+																		appendCommaValue(host.data.address, address),
+																	);
+																	setShowAddressNodes(false);
+																}}
+															/>
+														)}
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.port")}</FormLabel>
@@ -1125,24 +1184,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														/>
 													</FormControl>
 												</SimpleGrid>
-												<RotationFields
-													label={t(
-														"hostsDialog.addressRotation",
-														"Address rotation values",
-													)}
-													value={host.data.address_options}
-													mode={host.data.address_selection_mode}
-													ttl={host.data.address_ttl_seconds}
-													onValueChange={(value) =>
-														onChange(host.uid, "address_options", value)
-													}
-													onModeChange={(value) =>
-														onChange(host.uid, "address_selection_mode", value)
-													}
-													onTTLChange={(value) =>
-														onChange(host.uid, "address_ttl_seconds", value)
-													}
-												/>
+												{hasMultipleRotationValues(host.data.address) && (
+													<RotationControls
+														mode={host.data.address_selection_mode}
+														ttl={host.data.address_ttl_seconds}
+														onModeChange={(value) =>
+															onChange(host.uid, "address_selection_mode", value)
+														}
+														onTTLChange={(value) =>
+															onChange(host.uid, "address_ttl_seconds", value)
+														}
+													/>
+												)}
 												<FormControl>
 													<FormLabel>{t("hostsDialog.path")}</FormLabel>
 													<Input
@@ -1194,44 +1247,35 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														</InputGroup>
 													</FormControl>
 												</SimpleGrid>
-												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<RotationFields
-														label={t(
-															"hostsDialog.sniRotation",
-															"SNI rotation values",
+												{(hasMultipleRotationValues(host.data.sni) ||
+													hasMultipleRotationValues(host.data.host)) && (
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+														{hasMultipleRotationValues(host.data.sni) && (
+															<RotationControls
+																mode={host.data.sni_selection_mode}
+																ttl={host.data.sni_ttl_seconds}
+																onModeChange={(value) =>
+																	onChange(host.uid, "sni_selection_mode", value)
+																}
+																onTTLChange={(value) =>
+																	onChange(host.uid, "sni_ttl_seconds", value)
+																}
+															/>
 														)}
-														value={host.data.sni_options}
-														mode={host.data.sni_selection_mode}
-														ttl={host.data.sni_ttl_seconds}
-														onValueChange={(value) =>
-															onChange(host.uid, "sni_options", value)
-														}
-														onModeChange={(value) =>
-															onChange(host.uid, "sni_selection_mode", value)
-														}
-														onTTLChange={(value) =>
-															onChange(host.uid, "sni_ttl_seconds", value)
-														}
-													/>
-													<RotationFields
-														label={t(
-															"hostsDialog.hostRotation",
-															"Request Host rotation values",
+														{hasMultipleRotationValues(host.data.host) && (
+															<RotationControls
+																mode={host.data.host_selection_mode}
+																ttl={host.data.host_ttl_seconds}
+																onModeChange={(value) =>
+																	onChange(host.uid, "host_selection_mode", value)
+																}
+																onTTLChange={(value) =>
+																	onChange(host.uid, "host_ttl_seconds", value)
+																}
+															/>
 														)}
-														value={host.data.host_options}
-														mode={host.data.host_selection_mode}
-														ttl={host.data.host_ttl_seconds}
-														onValueChange={(value) =>
-															onChange(host.uid, "host_options", value)
-														}
-														onModeChange={(value) =>
-															onChange(host.uid, "host_selection_mode", value)
-														}
-														onTTLChange={(value) =>
-															onChange(host.uid, "host_ttl_seconds", value)
-														}
-													/>
-												</SimpleGrid>
+													</SimpleGrid>
+												)}
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.security")}</FormLabel>
@@ -1450,6 +1494,7 @@ type CreateHostModalProps = {
 	inboundOptions: InboundOption[];
 	onSubmit: (values: CreateHostValues) => void;
 	isSubmitting: boolean;
+	nodes?: NodeType[];
 };
 
 const CreateHostModal: FC<CreateHostModalProps> = ({
@@ -1458,9 +1503,11 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 	inboundOptions,
 	onSubmit,
 	isSubmitting,
+	nodes,
 }) => {
 	const { t } = useTranslation();
 	const initialRef = useRef<HTMLInputElement | null>(null);
+	const [showAddressNodes, setShowAddressNodes] = useState(false);
 	const [formState, setFormState] = useState<CreateHostValues>({
 		inboundTag: inboundOptions[0]?.value ?? "",
 		remark: "",
@@ -1576,6 +1623,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							<InputGroup>
 								<Input
 									value={formState.address}
+									onFocus={() => setShowAddressNodes(true)}
 									onChange={(event) =>
 										setFormState((prev) => ({
 											...prev,
@@ -1587,28 +1635,37 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									<DynamicTokensPopover />
 								</InputRightElement>
 							</InputGroup>
+							{showAddressNodes && (
+								<NodeAddressPicker
+									nodes={nodes}
+									onSelect={(address) => {
+										setFormState((prev) => ({
+											...prev,
+											address: appendCommaValue(prev.address, address),
+										}));
+										setShowAddressNodes(false);
+									}}
+								/>
+							)}
 						</FormControl>
-						<RotationFields
-							label={t("hostsDialog.addressRotation", "Address rotation values")}
-							value={formState.address_options}
-							mode={formState.address_selection_mode}
-							ttl={formState.address_ttl_seconds}
-							onValueChange={(value) =>
-								setFormState((prev) => ({ ...prev, address_options: value }))
-							}
-							onModeChange={(value) =>
-								setFormState((prev) => ({
-									...prev,
-									address_selection_mode: value,
-								}))
-							}
-							onTTLChange={(value) =>
-								setFormState((prev) => ({
-									...prev,
-									address_ttl_seconds: value,
-								}))
-							}
-						/>
+						{hasMultipleRotationValues(formState.address) && (
+							<RotationControls
+								mode={formState.address_selection_mode}
+								ttl={formState.address_ttl_seconds}
+								onModeChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										address_selection_mode: value,
+									}))
+								}
+								onTTLChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										address_ttl_seconds: value,
+									}))
+								}
+							/>
+						)}
 						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 							<FormControl>
 								<FormLabel>{t("hostsDialog.port")}</FormLabel>
@@ -1664,47 +1721,47 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								</InputRightElement>
 							</InputGroup>
 						</FormControl>
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-							<RotationFields
-								label={t("hostsDialog.sniRotation", "SNI rotation values")}
-								value={formState.sni_options}
-								mode={formState.sni_selection_mode}
-								ttl={formState.sni_ttl_seconds}
-								onValueChange={(value) =>
-									setFormState((prev) => ({ ...prev, sni_options: value }))
-								}
-								onModeChange={(value) =>
-									setFormState((prev) => ({
-										...prev,
-										sni_selection_mode: value,
-									}))
-								}
-								onTTLChange={(value) =>
-									setFormState((prev) => ({ ...prev, sni_ttl_seconds: value }))
-								}
-							/>
-							<RotationFields
-								label={t(
-									"hostsDialog.hostRotation",
-									"Request Host rotation values",
+						{(hasMultipleRotationValues(formState.sni) ||
+							hasMultipleRotationValues(formState.host)) && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								{hasMultipleRotationValues(formState.sni) && (
+									<RotationControls
+										mode={formState.sni_selection_mode}
+										ttl={formState.sni_ttl_seconds}
+										onModeChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni_selection_mode: value,
+											}))
+										}
+										onTTLChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni_ttl_seconds: value,
+											}))
+										}
+									/>
 								)}
-								value={formState.host_options}
-								mode={formState.host_selection_mode}
-								ttl={formState.host_ttl_seconds}
-								onValueChange={(value) =>
-									setFormState((prev) => ({ ...prev, host_options: value }))
-								}
-								onModeChange={(value) =>
-									setFormState((prev) => ({
-										...prev,
-										host_selection_mode: value,
-									}))
-								}
-								onTTLChange={(value) =>
-									setFormState((prev) => ({ ...prev, host_ttl_seconds: value }))
-								}
-							/>
-						</SimpleGrid>
+								{hasMultipleRotationValues(formState.host) && (
+									<RotationControls
+										mode={formState.host_selection_mode}
+										ttl={formState.host_ttl_seconds}
+										onModeChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												host_selection_mode: value,
+											}))
+										}
+										onTTLChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												host_ttl_seconds: value,
+											}))
+										}
+									/>
+								)}
+							</SimpleGrid>
+						)}
 					</VStack>
 				</XrayModalBody>
 				<XrayModalFooter justifyContent="flex-end">
@@ -1718,8 +1775,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						isDisabled={
 							!formState.inboundTag ||
 							!formState.remark.trim() ||
-							(!formState.address.trim() &&
-								rotationTextToOptions(formState.address_options).length === 0)
+							!rotationTextToOptions(formState.address).length
 						}
 					>
 						{t("hostsPage.create.submit")}
@@ -1734,6 +1790,7 @@ export const HostsManager: FC = () => {
 	const toast = useToast();
 	const { hosts, fetchHosts, isLoading, isPostLoading, setHosts } = useHosts();
 	const { inbounds } = useDashboard();
+	const { data: nodes = [] } = useNodesQuery();
 	const [_hostItemsState, setHostItemsState] = useState<HostState[]>([]);
 	const hostItemsRef = useRef<HostState[]>([]);
 	const applyHostItems = useCallback(
@@ -2375,6 +2432,7 @@ export const HostsManager: FC = () => {
 				inboundOptions={inboundOptions}
 				onSubmit={handleCreateHost}
 				isSubmitting={savingHostUid === "create" && isPostLoading}
+				nodes={nodes}
 			/>
 
 			<HostDetailModal
@@ -2394,6 +2452,7 @@ export const HostsManager: FC = () => {
 				deleting={
 					!!selectedHost && deletingUid === selectedHost.uid && isPostLoading
 				}
+				nodes={nodes}
 			/>
 
 			<HostDetailModal
@@ -2409,6 +2468,7 @@ export const HostsManager: FC = () => {
 				mode="clone"
 				saving={!!cloneHost && savingHostUid === cloneHost.uid && isPostLoading}
 				deleting={false}
+				nodes={nodes}
 			/>
 		</VStack>
 	);

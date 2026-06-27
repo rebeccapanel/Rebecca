@@ -56,6 +56,8 @@ func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Reque
 			writeSubscriptionError(w, err)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
 		for key, value := range response.Headers {
 			w.Header().Set(key, value)
 		}
