@@ -52,14 +52,17 @@ func (s *Server) reviewUserLifecycle(ctx context.Context) {
 		logging.Warnf(logging.ComponentUser, "lifecycle review failed: %v", err)
 		return
 	}
-	if result.Limited > 0 || result.Expired > 0 || result.AppliedNextPlan > 0 || result.ActivatedOnHold > 0 {
+	if result.Limited > 0 || result.Expired > 0 || result.Reactivated > 0 || result.Corrected > 0 || result.AppliedNextPlan > 0 || result.ActivatedOnHold > 0 {
 		logging.Debugf(
 			logging.ComponentUser,
-			"lifecycle checked_active=%d checked_on_hold=%d limited=%d expired=%d next_plan=%d activated_on_hold=%d",
+			"lifecycle checked_active=%d checked_inactive=%d checked_on_hold=%d limited=%d expired=%d reactivated=%d corrected=%d next_plan=%d activated_on_hold=%d",
 			result.CheckedActive,
+			result.CheckedInactive,
 			result.CheckedOnHold,
 			result.Limited,
 			result.Expired,
+			result.Reactivated,
+			result.Corrected,
 			result.AppliedNextPlan,
 			result.ActivatedOnHold,
 		)

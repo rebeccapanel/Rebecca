@@ -16,8 +16,11 @@ type LifecycleOptions struct {
 type LifecycleResult struct {
 	CheckedActive   int64 `json:"checked_active"`
 	CheckedOnHold   int64 `json:"checked_on_hold"`
+	CheckedInactive int64 `json:"checked_inactive"`
 	Limited         int64 `json:"limited"`
 	Expired         int64 `json:"expired"`
+	Reactivated     int64 `json:"reactivated"`
+	Corrected       int64 `json:"corrected"`
 	AppliedNextPlan int64 `json:"applied_next_plan"`
 	ActivatedOnHold int64 `json:"activated_on_hold"`
 }
@@ -150,6 +153,42 @@ func (r Repository) reviewUserLifecycle(ctx context.Context, opts LifecycleOptio
 		}
 		if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationDisableUser, row.ID, now); err != nil {
 			return result, err
+		}
+	}
+
+	inactiveRows, err := r.lifecycleInactiveRowsTx(ctx, tx, now, batchSize)
+	if err != nil {
+		return result, err
+	}
+	for _, row := range inactiveRows {
+		result.CheckedInactive++
+		limited := row.DataLimit != nil && *row.DataLimit > 0 && row.UsedTraffic >= *row.DataLimit
+		expired := row.Expire != nil && *row.Expire > 0 && *row.Expire <= now.Unix()
+		targetStatus := UserStatusActive
+		if limited {
+			targetStatus = UserStatusLimited
+		} else if expired {
+			targetStatus = UserStatusExpired
+		}
+		if targetStatus == row.Status {
+			continue
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE users SET status = ?, last_status_change = ? WHERE id = ?`,
+			string(targetStatus),
+			dbTime(now),
+			row.ID,
+		); err != nil {
+			return result, err
+		}
+		if targetStatus == UserStatusActive {
+			if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationEnableUser, row.ID, now); err != nil {
+				return result, err
+			}
+			result.Reactivated++
+		} else {
+			result.Corrected++
 		}
 	}
 
@@ -298,6 +337,48 @@ func (r Repository) lifecycleActiveRowsTx(ctx context.Context, tx *sql.Tx, now t
 		  ORDER BY id
 		  LIMIT ?`,
 		string(UserStatusActive),
+		now.Unix(),
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanLifecycleRows(rows)
+}
+
+func (r Repository) lifecycleInactiveRowsTx(ctx context.Context, tx *sql.Tx, now time.Time, limit int) ([]lifecycleUserRow, error) {
+	rows, err := tx.QueryContext(
+		ctx,
+		`SELECT id,
+		        status,
+		        COALESCE(used_traffic, 0),
+		        data_limit,
+		        expire,
+		        online_at,
+		        on_hold_expire_duration,
+		        on_hold_timeout,
+		        edit_at,
+		        created_at,
+		        last_status_change
+		   FROM users
+		  WHERE (
+		      status = ?
+		      AND NOT (data_limit IS NOT NULL AND data_limit > 0 AND COALESCE(used_traffic, 0) >= data_limit)
+		    )
+		     OR (
+		      status = ?
+		      AND (
+		        (data_limit IS NOT NULL AND data_limit > 0 AND COALESCE(used_traffic, 0) >= data_limit)
+		        OR expire IS NULL
+		        OR expire <= 0
+		        OR expire > ?
+		      )
+		    )
+		  ORDER BY id
+		  LIMIT ?`,
+		string(UserStatusLimited),
+		string(UserStatusExpired),
 		now.Unix(),
 		limit,
 	)

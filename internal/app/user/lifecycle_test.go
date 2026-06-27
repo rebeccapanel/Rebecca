@@ -90,6 +90,43 @@ INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES
 	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user' AND user_id = 20`, 1)
 }
 
+func TestReviewLifecycleReactivatesLimitedUserAfterLimitIncrease(t *testing.T) {
+	ctx := context.Background()
+	db := newLifecycleTestDB(t)
+	service := NewService(NewRepository(db, "sqlite"))
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	statusChanged := now.Add(-time.Hour).Format("2006-01-02 15:04:05")
+
+	_, err := db.ExecContext(ctx, `
+INSERT INTO nodes (id, status) VALUES (1, 'connected');
+INSERT INTO users (id, username, status, used_traffic, data_limit, expire, last_status_change)
+VALUES
+  (21, 'reactivate_limited', 'limited', 500, 1500, NULL, ?),
+  (22, 'still_limited', 'limited', 2000, 1500, NULL, ?),
+  (23, 'limited_to_expired', 'limited', 500, 1500, ?, ?);`,
+		statusChanged,
+		statusChanged,
+		now.Add(-time.Hour).Unix(),
+		statusChanged,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.ReviewLifecycle(ctx, LifecycleOptions{Now: now, BatchSize: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Reactivated != 1 || result.Corrected != 1 {
+		t.Fatalf("unexpected lifecycle result: %#v", result)
+	}
+	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 21`, "active")
+	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 22`, "limited")
+	assertLifecycleString(t, db, `SELECT status FROM users WHERE id = 23`, "expired")
+	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'enable_user' AND user_id = 21`, 1)
+	assertLifecycleInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 23`, 0)
+}
+
 func TestAutodeleteExpiredUsersQueuesRemoveOperations(t *testing.T) {
 	ctx := context.Background()
 	db := newLifecycleTestDB(t)
