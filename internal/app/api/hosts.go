@@ -653,21 +653,10 @@ func enqueueAffectedServicesUsersTx(ctx context.Context, tx *sql.Tx, serviceIDs 
 	if len(ids) == 0 {
 		return nil
 	}
-	placeholders, args := sqlInClauseInt64(ids)
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE service_id IN (`+placeholders+`) AND status IN ('active', 'on_hold')`, args...)
-	if err != nil {
-		return err
-	}
-	userIDs, err := scanInt64Rows(rows)
-	if err != nil {
-		return err
-	}
-	for _, userID := range userIDs {
-		if err := enqueueNodeOperationTx(ctx, tx, "update_user", nil, &userID, map[string]any{}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return enqueueNodeOperationTx(ctx, tx, "sync_config", nil, nil, map[string]any{
+		"service_ids": ids,
+		"source":      "hosts",
+	})
 }
 
 func sortedMapKeys[T any](value map[string]T) []string {
