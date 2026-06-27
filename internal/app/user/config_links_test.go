@@ -484,6 +484,12 @@ func TestBuildConfigLinksSupportsTrojanAndShadowsocksTLS(t *testing.T) {
 	if len(links.Links) != 2 {
 		t.Fatalf("expected two links, got %#v", links.Links)
 	}
+	// Links must follow the service-configured host order (Trojan host order 0,
+	// SS host order 1), not alphabetical protocol order which would pull
+	// shadowsocks to the top for virtual-proxy users.
+	if !strings.HasPrefix(links.Links[0], "trojan://") || !strings.HasPrefix(links.Links[1], "ss://") {
+		t.Fatalf("links not in service host order: %#v", links.Links)
+	}
 	trojanLink := ""
 	shadowsocksLink := ""
 	for _, link := range links.Links {
@@ -569,6 +575,56 @@ func TestBuildConfigLinksReplacesSubscriptionRemarkPlaceholders(t *testing.T) {
 	for _, expected := range []string{"alice", "9.00%20GB", "VLESS", "WS"} {
 		if !strings.Contains(link, expected) {
 			t.Fatalf("expected %q in link: %s", expected, link)
+		}
+	}
+}
+
+func TestBuildConfigLinksFollowsServiceHostOrderAcrossProtocols(t *testing.T) {
+	serviceID := int64(1)
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            13,
+			Username:      "grace",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			// Configured order interleaves protocols: SS, VLESS, Trojan.
+			ServiceHostOrders: map[int64]int64{
+				1: 0, // SS TCP
+				2: 1, // VLESS TCP
+				3: 2, // Trojan TCP
+			},
+		},
+		map[string]ResolvedInbound{
+			"SS TCP": {
+				"tag": "SS TCP", "protocol": "shadowsocks", "port": int64(1080), "network": "tcp",
+			},
+			"VLESS TCP": {
+				"tag": "VLESS TCP", "protocol": "vless", "port": int64(443), "network": "tcp", "encryption": "none",
+			},
+			"Trojan TCP": {
+				"tag": "Trojan TCP", "protocol": "trojan", "port": int64(8443), "network": "tcp",
+			},
+		},
+		[]string{"SS TCP", "VLESS TCP", "Trojan TCP"},
+		[]Host{
+			{ID: 1, InboundTag: "SS TCP", Remark: "ss", Address: "ss.example.com", Security: "inbound_default", ServiceIDs: []int64{1}},
+			{ID: 2, InboundTag: "VLESS TCP", Remark: "vless", Address: "vless.example.com", Security: "inbound_default", ServiceIDs: []int64{1}},
+			{ID: 3, InboundTag: "Trojan TCP", Remark: "trojan", Address: "trojan.example.com", Security: "inbound_default", ServiceIDs: []int64{1}},
+		},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 3 {
+		t.Fatalf("expected three links, got %#v", links.Links)
+	}
+	wantPrefixes := []string{"ss://", "vless://", "trojan://"}
+	for i, prefix := range wantPrefixes {
+		if !strings.HasPrefix(links.Links[i], prefix) {
+			t.Fatalf("link %d expected prefix %q, got %q (all=%#v)", i, prefix, links.Links[i], links.Links)
 		}
 	}
 }
