@@ -142,7 +142,7 @@ func TestServiceMutationRoutesGoNative(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 10`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 10`, 0)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 	assertDBInt64(t, db, `SELECT data_limit FROM admins_services WHERE service_id = ? AND admin_id = 2`, 1000, created.ID)
 
@@ -167,7 +167,7 @@ func TestServiceMutationRoutesGoNative(t *testing.T) {
 		t.Fatalf("delete status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertDBString(t, db, `SELECT status FROM users WHERE id = 10`, "deleted")
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'remove_user' AND user_id = 10`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'remove_user' AND user_id = 10`, 0)
 }
 
 func TestServiceAdminLimitUpdatePersistsAllLimitFields(t *testing.T) {
@@ -463,7 +463,7 @@ func TestServiceDeleteTransferUsersEnqueuesOperations(t *testing.T) {
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM services WHERE id = ?`, 0, source.ID)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM users WHERE service_id = ?`, 2, target.ID)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id IN (20, 21)`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id IN (20, 21)`, 0)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }
 
@@ -676,7 +676,7 @@ func TestServiceHostChangeKeepsSubscriptionLinkAndChangesConfigOutput(t *testing
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update hosts status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 30`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 30`, 0)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 
 	rec = userReadRequest(t, server, http.MethodGet, "/api/user/config_user", sellerToken)

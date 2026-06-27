@@ -339,16 +339,6 @@ func (s *Server) handleServiceUpdate(w http.ResponseWriter, r *http.Request, ser
 			}
 		}
 		if hostsChanged {
-			ids, err := serviceUserIDsTx(r.Context(), tx, serviceID)
-			if err != nil {
-				return err
-			}
-			for _, id := range ids {
-				userID := id
-				if err := enqueueNodeOperationTx(r.Context(), tx, "update_user", nil, &userID, map[string]any{}); err != nil {
-					return err
-				}
-			}
 			if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{"service_id": serviceID}); err != nil {
 				return err
 			}
@@ -411,25 +401,9 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request, ser
 			if _, err := tx.ExecContext(r.Context(), `UPDATE users SET service_id = ? WHERE service_id = ?`, nullableInt64(payload.TargetServiceID), serviceID); err != nil {
 				return err
 			}
-			for _, id := range ids {
-				userID := id
-				if err := enqueueNodeOperationTx(r.Context(), tx, "update_user", nil, &userID, map[string]any{}); err != nil {
-					return err
-				}
-			}
 		case "delete_users":
-			ids, err := serviceUserIDsTx(r.Context(), tx, serviceID)
-			if err != nil {
-				return err
-			}
 			if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = 'deleted', service_id = NULL WHERE service_id = ?`, serviceID); err != nil {
 				return err
-			}
-			for _, id := range ids {
-				userID := id
-				if err := enqueueNodeOperationTx(r.Context(), tx, "remove_user", nil, &userID, map[string]any{}); err != nil {
-					return err
-				}
 			}
 		default:
 			return statusError{status: http.StatusBadRequest, detail: "Invalid delete mode"}
