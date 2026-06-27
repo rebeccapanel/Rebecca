@@ -13,26 +13,68 @@ import {
 	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
-import { CheckIcon, ChevronDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+	CheckIcon,
+	ChevronDownIcon,
+	XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { type FC, type MouseEvent, useMemo, useState } from "react";
 
 const Check = chakra(CheckIcon, { baseStyle: { w: 4, h: 4 } });
 const ChevronDown = chakra(ChevronDownIcon, { baseStyle: { w: 4, h: 4 } });
 const X = chakra(XMarkIcon, { baseStyle: { w: 3.5, h: 3.5 } });
 
+export type SearchableTagSelectOption =
+	| string
+	| {
+			disabled?: boolean;
+			label?: string;
+			title?: string;
+			value: string;
+	  };
+
+type NormalizedSearchableTagSelectOption = {
+	disabled: boolean;
+	label: string;
+	title: string;
+	value: string;
+};
+
 type SearchableTagSelectProps = {
 	emptyText?: string;
+	isDisabled?: boolean;
 	mode?: "single" | "multiple";
 	onChange: (value: string | string[]) => void;
-	options: string[];
+	options: SearchableTagSelectOption[];
 	placeholder: string;
 	searchPlaceholder?: string;
 	size?: "sm" | "md";
 	value: string | string[];
+	width?: string;
+};
+
+const normalizeOption = (
+	option: SearchableTagSelectOption,
+): NormalizedSearchableTagSelectOption => {
+	if (typeof option === "string") {
+		return {
+			disabled: false,
+			label: option,
+			title: option,
+			value: option,
+		};
+	}
+	return {
+		disabled: Boolean(option.disabled),
+		label: option.label || option.title || option.value,
+		title: option.title || option.label || option.value,
+		value: option.value,
+	};
 };
 
 export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 	emptyText = "No options found",
+	isDisabled = false,
 	mode = "single",
 	onChange,
 	options,
@@ -40,24 +82,41 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 	searchPlaceholder = "Search",
 	size = "sm",
 	value,
+	width,
 }) => {
 	const [search, setSearch] = useState("");
-	const selectedValues = useMemo(
-		() =>
-			new Set(
-				Array.isArray(value)
-					? value.filter(Boolean)
-					: value
-						? [value]
-						: [],
-			),
-		[value],
+	const normalizedOptions = useMemo(
+		() => options.map(normalizeOption),
+		[options],
 	);
+	const selectedValues = useMemo(() => {
+		if (Array.isArray(value)) {
+			return new Set(value.filter(Boolean));
+		}
+		if (value) {
+			return new Set([value]);
+		}
+		return normalizedOptions.some((option) => option.value === "")
+			? new Set([""])
+			: new Set<string>();
+	}, [normalizedOptions, value]);
 	const filteredOptions = useMemo(() => {
 		const term = search.trim().toLowerCase();
-		if (!term) return options;
-		return options.filter((option) => option.toLowerCase().includes(term));
-	}, [options, search]);
+		if (!term) return normalizedOptions;
+		return normalizedOptions.filter(
+			(option) =>
+				option.label.toLowerCase().includes(term) ||
+				option.value.toLowerCase().includes(term),
+		);
+	}, [normalizedOptions, search]);
+
+	const labelByValue = useMemo(
+		() =>
+			Object.fromEntries(
+				normalizedOptions.map((option) => [option.value, option.label]),
+			),
+		[normalizedOptions],
+	);
 
 	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const selectedBg = useColorModeValue("primary.50", "whiteAlpha.100");
@@ -65,21 +124,23 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 	const mutedColor = useColorModeValue("gray.500", "gray.400");
 
 	const selectedList = Array.from(selectedValues);
+	const selectedLabels = selectedList.map((item) => labelByValue[item] || item);
 	const buttonText =
 		mode === "multiple"
-			? selectedList.length
-				? selectedList.join(", ")
+			? selectedLabels.length
+				? selectedLabels.join(", ")
 				: placeholder
-			: selectedList[0] || placeholder;
+			: selectedLabels[0] || placeholder;
 
-	const updateValue = (option: string) => {
+	const updateValue = (option: NormalizedSearchableTagSelectOption) => {
+		if (option.disabled) return;
 		if (mode === "single") {
-			onChange(selectedValues.has(option) ? "" : option);
+			onChange(option.value);
 			return;
 		}
 		const next = new Set(selectedValues);
-		if (next.has(option)) next.delete(option);
-		else next.add(option);
+		if (next.has(option.value)) next.delete(option.value);
+		else next.add(option.value);
 		onChange(Array.from(next));
 	};
 
@@ -93,7 +154,8 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 
 	return (
 		<Menu
-			closeOnSelect={false}
+			closeOnSelect={mode === "single"}
+			isOpen={isDisabled ? false : undefined}
 			isLazy
 			placement="bottom-start"
 			strategy="fixed"
@@ -103,13 +165,18 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 				as={Button}
 				rightIcon={<ChevronDown />}
 				size={size}
+				isDisabled={isDisabled}
 				variant="outline"
-				w="full"
+				w={width ?? "full"}
 				justifyContent="space-between"
 				textAlign="start"
 				fontWeight={selectedList.length ? "medium" : "normal"}
 			>
-				<Text as="span" noOfLines={1} color={selectedList.length ? undefined : mutedColor}>
+				<Text
+					as="span"
+					noOfLines={1}
+					color={selectedList.length ? undefined : mutedColor}
+				>
 					{buttonText}
 				</Text>
 			</MenuButton>
@@ -149,14 +216,16 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 							</Box>
 						) : (
 							filteredOptions.map((option) => {
-								const selected = selectedValues.has(option);
+								const selected = selectedValues.has(option.value);
 								return (
 									<MenuItem
-										key={option}
+										key={option.value || option.label}
 										borderRadius="md"
 										bg={selected ? selectedBg : "transparent"}
+										isDisabled={option.disabled}
 										fontSize="sm"
 										minH="30px"
+										opacity={option.disabled ? 0.55 : 1}
 										px={2}
 										py={1}
 										_hover={{ bg: selected ? selectedBg : hoverBg }}
@@ -170,20 +239,22 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 												>
 													<Check />
 												</Box>
-												<Text noOfLines={1}>{option}</Text>
+												<Text noOfLines={1} title={option.title}>
+													{option.label}
+												</Text>
 											</HStack>
 											{selected && (
 												<Box
 													as="span"
 													role="button"
-													aria-label={`Remove ${option}`}
+													aria-label={`Remove ${option.label}`}
 													borderRadius="full"
 													color="red.500"
 													p={0.5}
 													onClick={(event: MouseEvent<HTMLSpanElement>) => {
 														event.preventDefault();
 														event.stopPropagation();
-														removeValue(option);
+														removeValue(option.value);
 													}}
 													_hover={{ bg: "red.50" }}
 													_dark={{ _hover: { bg: "whiteAlpha.100" } }}

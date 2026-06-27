@@ -24,7 +24,6 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 	Portal,
-	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -72,6 +71,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NumericInput } from "./common/NumericInput";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { DeleteIcon } from "./DeleteUserModal";
 import { JsonEditor } from "./JsonEditor";
@@ -308,16 +308,19 @@ const RotationControls: FC<RotationControlsProps> = ({
 				<FormLabel fontSize="xs" color="gray.500" mb={1}>
 					{t("hostsDialog.rotationMode", "Selection mode")}
 				</FormLabel>
-				<Select
+				<SearchableTagSelect
 					size="sm"
 					value={mode}
-					onChange={(event) => onModeChange(event.target.value)}
-				>
-					<option value="random">
-						{t("hostsDialog.rotationRandom", "Random")}
-					</option>
-					<option value="ttl">{t("hostsDialog.rotationTTL", "TTL")}</option>
-				</Select>
+					options={[
+						{
+							value: "random",
+							label: t("hostsDialog.rotationRandom", "Random"),
+						},
+						{ value: "ttl", label: t("hostsDialog.rotationTTL", "TTL") },
+					]}
+					placeholder={t("hostsDialog.rotationMode", "Selection mode")}
+					onChange={(value) => onModeChange(String(value))}
+				/>
 			</FormControl>
 			<FormControl>
 				<FormLabel fontSize="xs" color="gray.500" mb={1}>
@@ -774,46 +777,82 @@ const FragmentSettingFields: FC<{
 }> = ({ value, onChange }) => {
 	const { t } = useTranslation();
 	const fields = parseFragmentSetting(value);
+	const isEnabled = value.trim() !== "";
 	const update = (patch: Partial<FragmentFields>) => {
 		onChange(formatFragmentSetting({ ...fields, ...patch }));
 	};
 	return (
 		<Box>
-			<FormLabel fontSize="sm">
-				{t("hostsDialog.fragment", "Fragment")}
-			</FormLabel>
-			<SimpleGrid columns={{ base: 1, md: 4 }} spacing={2}>
-				<Input
-					size="sm"
-					value={fields.length}
-					placeholder={t("hostsDialog.fragmentLength", "Length 10-100")}
-					onChange={(event) => update({ length: event.target.value })}
-				/>
-				<Input
-					size="sm"
-					value={fields.interval}
-					placeholder={t("hostsDialog.fragmentInterval", "Interval 100-200")}
-					onChange={(event) => update({ interval: event.target.value })}
-				/>
-				<Input
-					size="sm"
-					value={fields.packet}
-					placeholder={t("hostsDialog.fragmentPacket", "Packet tlshello")}
-					onChange={(event) => update({ packet: event.target.value })}
-				/>
-				<Input
-					size="sm"
-					value={fields.maxSplit}
-					placeholder={t("hostsDialog.fragmentMaxSplit", "Max split 3")}
-					onChange={(event) => update({ maxSplit: event.target.value })}
-				/>
-			</SimpleGrid>
-			<Text mt={1} fontSize="xs" color="gray.500">
-				{t(
-					"hostsDialog.fragmentHint",
-					"Saved as length,interval,packet. Example: 10-100,100-200,tlshello",
-				)}
-			</Text>
+			<Checkbox
+				isChecked={isEnabled}
+				onChange={(event) =>
+					onChange(
+						event.target.checked
+							? formatFragmentSetting(
+									parseFragmentSetting("10-100,100-200,tlshello"),
+								)
+							: "",
+					)
+				}
+			>
+				{t("hostsDialog.fragment", "Fragment pattern")}
+			</Checkbox>
+			{isEnabled && (
+				<Box mt={2} pl={{ base: 0, md: 6 }}>
+					<SimpleGrid columns={{ base: 1, sm: 2, xl: 4 }} spacing={2}>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentLengthLabel", "Length")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.length}
+								placeholder={t("hostsDialog.fragmentLength", "10-100")}
+								onChange={(event) => update({ length: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentIntervalLabel", "Interval")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.interval}
+								placeholder={t("hostsDialog.fragmentInterval", "100-200")}
+								onChange={(event) => update({ interval: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentPacketLabel", "Packet")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.packet}
+								placeholder={t("hostsDialog.fragmentPacket", "tlshello")}
+								onChange={(event) => update({ packet: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentMaxSplitLabel", "Max split")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.maxSplit}
+								placeholder={t("hostsDialog.fragmentMaxSplit", "3")}
+								onChange={(event) => update({ maxSplit: event.target.value })}
+							/>
+						</FormControl>
+					</SimpleGrid>
+					<Text mt={1.5} fontSize="xs" color="gray.500">
+						{t(
+							"hostsDialog.fragmentHint",
+							"Saved as length,interval,packet. Example: 10-100,100-200,tlshello",
+						)}
+					</Text>
+				</Box>
+			)}
 		</Box>
 	);
 };
@@ -824,6 +863,7 @@ const NoisePatternFields: FC<{
 }> = ({ value, onChange }) => {
 	const { t } = useTranslation();
 	const patterns = parseNoiseSetting(value);
+	const isEnabled = value.trim() !== "";
 	const updatePatterns = (next: NoisePattern[]) =>
 		onChange(formatNoiseSetting(next));
 	const updatePattern = (index: number, patch: Partial<NoisePattern>) => {
@@ -835,84 +875,116 @@ const NoisePatternFields: FC<{
 	};
 	return (
 		<Box>
-			<HStack justify="space-between" mb={2}>
-				<FormLabel fontSize="sm" mb={0}>
-					{t("hostsDialog.noise", "Noise")}
-				</FormLabel>
-				<Button
-					size="xs"
-					variant="outline"
-					onClick={() => updatePatterns([...patterns, defaultNoisePattern()])}
+			<Stack
+				direction={{ base: "column", sm: "row" }}
+				spacing={2}
+				align={{ base: "stretch", sm: "center" }}
+				justify="space-between"
+			>
+				<Checkbox
+					isChecked={isEnabled}
+					onChange={(event) =>
+						onChange(
+							event.target.checked
+								? formatNoiseSetting([defaultNoisePattern()])
+								: "",
+						)
+					}
 				>
-					{t("hostsDialog.addNoisePattern", "Add pattern")}
-				</Button>
-			</HStack>
-			<VStack align="stretch" spacing={2}>
-				{patterns.map((pattern, index) => (
-					<SimpleGrid
-						key={`${index}-${pattern.type}`}
-						columns={{ base: 1, md: 12 }}
-						spacing={2}
-						alignItems="center"
+					{t("hostsDialog.noise", "Noise pattern")}
+				</Checkbox>
+				{isEnabled && (
+					<Button
+						size="xs"
+						variant="outline"
+						alignSelf={{ base: "flex-start", sm: "center" }}
+						onClick={() => updatePatterns([...patterns, defaultNoisePattern()])}
 					>
-						<Select
-							size="sm"
-							value={pattern.type}
-							onChange={(event) =>
-								updatePattern(index, { type: event.target.value })
-							}
-							gridColumn={{ md: "span 3" }}
-						>
-							<option value="rand">rand</option>
-							<option value="str">str</option>
-							<option value="hex">hex</option>
-							<option value="base64">base64</option>
-						</Select>
-						<Input
-							size="sm"
-							value={pattern.packet}
-							placeholder={
-								pattern.type === "rand"
-									? "10-20"
-									: t("hostsDialog.noisePacket", "Packet/value")
-							}
-							onChange={(event) =>
-								updatePattern(index, { packet: event.target.value })
-							}
-							gridColumn={{ md: "span 4" }}
-						/>
-						<Input
-							size="sm"
-							value={pattern.delay}
-							placeholder="100-200"
-							onChange={(event) =>
-								updatePattern(index, { delay: event.target.value })
-							}
-							gridColumn={{ md: "span 4" }}
-						/>
-						<Button
-							size="sm"
-							variant="ghost"
-							colorScheme="red"
-							isDisabled={patterns.length === 1}
-							onClick={() =>
-								updatePatterns(
-									patterns.filter((_, patternIndex) => patternIndex !== index),
-								)
-							}
-							gridColumn={{ md: "span 1" }}
-						>
-							×
-						</Button>
-					</SimpleGrid>
-				))}
-			</VStack>
-			<Text mt={1} fontSize="xs" color="gray.500">
-				{t(
-					"hostsDialog.noiseHint",
-					"Saved as noise patterns. Example: rand:10-20,100-200&str:hello,50",
+						{t("hostsDialog.addNoisePattern", "Add pattern")}
+					</Button>
 				)}
-			</Text>
+			</Stack>
+			{isEnabled && (
+				<Box mt={2} pl={{ base: 0, md: 6 }}>
+					<VStack align="stretch" spacing={2}>
+						{patterns.map((pattern, index) => (
+							<SimpleGrid
+								key={`${index}-${pattern.type}`}
+								columns={{ base: 1, md: 12 }}
+								spacing={2}
+								alignItems="end"
+							>
+								<FormControl gridColumn={{ md: "span 3" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("hostsDialog.noiseType", "Type")}
+									</FormLabel>
+									<SearchableTagSelect
+										size="sm"
+										value={pattern.type}
+										options={["rand", "str", "hex", "base64"]}
+										placeholder={t("hostsDialog.noiseType", "Type")}
+										onChange={(value) =>
+											updatePattern(index, { type: String(value) })
+										}
+									/>
+								</FormControl>
+								<FormControl gridColumn={{ md: "span 4" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("hostsDialog.noisePacketLabel", "Packet/value")}
+									</FormLabel>
+									<Input
+										size="sm"
+										value={pattern.packet}
+										placeholder={
+											pattern.type === "rand"
+												? "10-20"
+												: t("hostsDialog.noisePacket", "Packet/value")
+										}
+										onChange={(event) =>
+											updatePattern(index, { packet: event.target.value })
+										}
+									/>
+								</FormControl>
+								<FormControl gridColumn={{ md: "span 4" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("hostsDialog.noiseDelay", "Delay")}
+									</FormLabel>
+									<Input
+										size="sm"
+										value={pattern.delay}
+										placeholder="100-200"
+										onChange={(event) =>
+											updatePattern(index, { delay: event.target.value })
+										}
+									/>
+								</FormControl>
+								<Button
+									size="sm"
+									variant="ghost"
+									colorScheme="red"
+									isDisabled={patterns.length === 1}
+									onClick={() =>
+										updatePatterns(
+											patterns.filter(
+												(_, patternIndex) => patternIndex !== index,
+											),
+										)
+									}
+									gridColumn={{ md: "span 1" }}
+								>
+									×
+								</Button>
+							</SimpleGrid>
+						))}
+					</VStack>
+					<Text mt={1.5} fontSize="xs" color="gray.500">
+						{t(
+							"hostsDialog.noiseHint",
+							"Saved as noise patterns. Example: rand:10-20,100-200&str:hello,50",
+						)}
+					</Text>
+				</Box>
+			)}
 		</Box>
 	);
 };
@@ -1667,18 +1739,14 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl isRequired>
 														<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.inboundTag}
-															onChange={(event) =>
-																onChangeInbound(host.uid, event.target.value)
+															options={inboundOptions}
+															placeholder={t("hostsPage.inboundLabel")}
+															onChange={(value) =>
+																onChangeInbound(host.uid, String(value))
 															}
-														>
-															{inboundOptions.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.label}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -1823,22 +1891,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.security")}</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.data.security}
-															onChange={(event) =>
-																onChange(
-																	host.uid,
-																	"security",
-																	event.target.value,
-																)
+															options={proxyHostSecurity.map((option) => ({
+																value: option.value,
+																label: option.title,
+															}))}
+															placeholder={t("hostsDialog.security")}
+															onChange={(value) =>
+																onChange(host.uid, "security", String(value))
 															}
-														>
-															{proxyHostSecurity.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
@@ -1858,22 +1921,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<FormLabel>
 															{t("hostsDialog.fingerprint")}
 														</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.data.fingerprint}
-															onChange={(event) =>
-																onChange(
-																	host.uid,
-																	"fingerprint",
-																	event.target.value,
-																)
+															options={proxyFingerprint.map((option) => ({
+																value: option.value,
+																label: option.title,
+															}))}
+															placeholder={t("hostsDialog.fingerprint")}
+															onChange={(value) =>
+																onChange(host.uid, "fingerprint", String(value))
 															}
-														>
-															{proxyFingerprint.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 												</SimpleGrid>
 											</VStack>
@@ -2134,21 +2192,17 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</Text>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-							<Select
+							<SearchableTagSelect
 								value={formState.inboundTag}
-								onChange={(event) =>
+								options={inboundOptions}
+								placeholder={t("hostsPage.inboundLabel")}
+								onChange={(value) =>
 									setFormState((prev) => ({
 										...prev,
-										inboundTag: event.target.value,
+										inboundTag: String(value),
 									}))
 								}
-							>
-								{inboundOptions.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</Select>
+							/>
 						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.remark")}</FormLabel>

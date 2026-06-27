@@ -7,7 +7,6 @@ import {
 	HStack,
 	IconButton,
 	Input,
-	Select,
 	Spinner,
 	Stack,
 	Table,
@@ -35,6 +34,7 @@ import {
 	type RawInbound,
 } from "utils/inbounds";
 import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
+import { SearchableTagSelect } from "../common/SearchableTagSelect";
 import { InboundFormModal } from "./FormDrawer";
 
 type FilterState = {
@@ -345,22 +345,25 @@ export const InboundsManager: FC = () => {
 					}
 				/>
 				<HStack spacing={3}>
-					<Select
+					<SearchableTagSelect
+						size="md"
 						width="180px"
 						value={filter.protocol}
-						onChange={(event) =>
-							setFilter((prev) => ({ ...prev, protocol: event.target.value }))
+						options={[
+							{
+								value: "all",
+								label: t("inbounds.filterProtocol", "All protocols"),
+							},
+							...protocolOptions.map((option) => ({
+								value: option,
+								label: option.toUpperCase(),
+							})),
+						]}
+						placeholder={t("inbounds.filterProtocol", "All protocols")}
+						onChange={(value) =>
+							setFilter((prev) => ({ ...prev, protocol: String(value) }))
 						}
-					>
-						<option value="all">
-							{t("inbounds.filterProtocol", "All protocols")}
-						</option>
-						{protocolOptions.map((option) => (
-							<option key={option} value={option}>
-								{option.toUpperCase()}
-							</option>
-						))}
-					</Select>
+					/>
 					<Button
 						leftIcon={<PlusIcon width={18} height={18} />}
 						onClick={openCreate}

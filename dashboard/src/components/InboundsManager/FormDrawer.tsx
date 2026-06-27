@@ -1,4 +1,4 @@
-import type { InputProps, SelectProps, TextareaProps } from "@chakra-ui/react";
+import type { InputProps, TextareaProps } from "@chakra-ui/react";
 import {
 	Alert,
 	AlertDescription,
@@ -7,7 +7,6 @@ import {
 	Box,
 	Button,
 	Input as ChakraInput,
-	Select as ChakraSelect,
 	Textarea as ChakraTextarea,
 	Checkbox,
 	CheckboxGroup,
@@ -115,11 +114,6 @@ const Input = forwardRef<HTMLInputElement, InputProps>((props, ref) => (
 	<ChakraInput size="sm" ref={ref} {...props} />
 ));
 Input.displayName = "InboundFormInput";
-
-const Select = forwardRef<HTMLSelectElement, SelectProps>((props, ref) => (
-	<ChakraSelect size="sm" ref={ref} {...props} />
-));
-Select.displayName = "InboundFormSelect";
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 	(props, ref) => (
@@ -956,25 +950,25 @@ export const InboundFormModal: FC<Props> = ({
 							<FormLabel>
 								{t("inbounds.vless.authentication", "Authentication")}
 							</FormLabel>
-							<ChakraSelect
+							<SearchableTagSelect
+								value={field.value || ""}
+								options={[
+									{ value: "", label: t("common.none", "None") },
+									...computedVlessAuthOptions.map((option) => ({
+										value: option.value,
+										label: option.label,
+									})),
+								]}
 								placeholder={t(
 									"inbounds.vless.authPlaceholder",
 									"Select authentication",
 								)}
-								value={field.value || ""}
-								onChange={async (event) => {
-									const value = event.target.value;
+								onChange={async (selected) => {
+									const value = String(selected);
 									field.onChange(value);
 									await handleAuthSelection(value);
 								}}
-							>
-								<option value="">{t("common.none", "None")}</option>
-								{computedVlessAuthOptions.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</ChakraSelect>
+							/>
 						</FormControl>
 					)}
 				/>
@@ -1119,16 +1113,22 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel>
 													{t("inbounds.protocol", "Protocol")}
 												</FormLabel>
-												<Select
-													{...register("protocol", { required: true })}
+												<SearchableTagSelect
+													value={currentProtocol}
 													isDisabled={mode === "edit"}
-												>
-													{visibleProtocolOptions.map((option) => (
-														<option key={option} value={option}>
-															{option.toUpperCase()}
-														</option>
-													))}
-												</Select>
+													options={visibleProtocolOptions.map((option) => ({
+														value: option,
+														label: option.toUpperCase(),
+													}))}
+													placeholder={t("inbounds.protocol", "Protocol")}
+													onChange={(value) =>
+														form.setValue(
+															"protocol",
+															String(value) as InboundFormValues["protocol"],
+															{ shouldDirty: true, shouldValidate: true },
+														)
+													}
+												/>
 											</FormControl>
 										</SimpleGrid>
 										{currentProtocol === "vmess" && (
@@ -1162,13 +1162,24 @@ export const InboundFormModal: FC<Props> = ({
 																"Encryption method",
 															)}
 														</FormLabel>
-														<Select {...register("shadowsocksMethod")}>
-															{shadowsocksMethods.map((method) => (
-																<option key={method} value={method}>
-																	{method}
-																</option>
-															))}
-														</Select>
+														<SearchableTagSelect
+															value={formValues.shadowsocksMethod || ""}
+															options={shadowsocksMethods}
+															placeholder={t(
+																"inbounds.shadowsocks.method",
+																"Encryption method",
+															)}
+															onChange={(value) =>
+																form.setValue(
+																	"shadowsocksMethod",
+																	String(value),
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -1177,13 +1188,26 @@ export const InboundFormModal: FC<Props> = ({
 																"Allowed networks",
 															)}
 														</FormLabel>
-														<Select {...register("shadowsocksNetwork")}>
-															{shadowsocksNetworkOptions.map((option) => (
-																<option key={option} value={option}>
-																	{option}
-																</option>
-															))}
-														</Select>
+														<SearchableTagSelect
+															value={formValues.shadowsocksNetwork || ""}
+															options={shadowsocksNetworkOptions}
+															placeholder={t(
+																"inbounds.shadowsocks.network",
+																"Allowed networks",
+															)}
+															onChange={(value) =>
+																form.setValue(
+																	"shadowsocksNetwork",
+																	String(
+																		value,
+																	) as InboundFormValues["shadowsocksNetwork"],
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
 													</FormControl>
 												</SimpleGrid>
 												<FormControl display="flex" alignItems="center">
@@ -1415,13 +1439,23 @@ export const InboundFormModal: FC<Props> = ({
 													<FormLabel>
 														{t("inbounds.network", "Network")}
 													</FormLabel>
-													<Select {...register("streamNetwork")}>
-														{ALL_NETWORK_OPTIONS.map((network) => (
-															<option key={network} value={network}>
-																{network}
-															</option>
-														))}
-													</Select>
+													<SearchableTagSelect
+														value={streamNetwork}
+														options={ALL_NETWORK_OPTIONS}
+														placeholder={t("inbounds.network", "Network")}
+														onChange={(value) =>
+															form.setValue(
+																"streamNetwork",
+																String(
+																	value,
+																) as InboundFormValues["streamNetwork"],
+																{
+																	shouldDirty: true,
+																	shouldValidate: true,
+																},
+															)
+														}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>
@@ -1431,13 +1465,13 @@ export const InboundFormModal: FC<Props> = ({
 														control={control}
 														name="streamSecurity"
 														render={({ field }) => (
-															<RadioGroup
+															<SearchableTagSelect
 																value={field.value}
-																onChange={field.onChange}
-															>
-																<HStack spacing={4}>
-																	{streamSecurityOptions.map((security) => {
-																		const disabled =
+																options={streamSecurityOptions.map(
+																	(security) => ({
+																		value: security,
+																		label: security,
+																		disabled:
 																			security === "tls"
 																				? !TLS_COMPATIBLE_PROTOCOLS.includes(
 																						currentProtocol,
@@ -1446,19 +1480,14 @@ export const InboundFormModal: FC<Props> = ({
 																					? !REALITY_COMPATIBLE_PROTOCOLS.includes(
 																							currentProtocol,
 																						)
-																					: false;
-																		return (
-																			<Radio
-																				key={security}
-																				value={security}
-																				isDisabled={disabled}
-																			>
-																				{security}
-																			</Radio>
-																		);
-																	})}
-																</HStack>
-															</RadioGroup>
+																					: false,
+																	}),
+																)}
+																placeholder={t("inbounds.security", "Security")}
+																onChange={(value) =>
+																	field.onChange(String(value))
+																}
+															/>
 														)}
 													/>
 												</FormControl>
@@ -1583,10 +1612,26 @@ export const InboundFormModal: FC<Props> = ({
 														<FormLabel>
 															{t("inbounds.tcp.headerType", "TCP header type")}
 														</FormLabel>
-														<Select {...register("tcpHeaderType")}>
-															<option value="none">none</option>
-															<option value="http">http</option>
-														</Select>
+														<SearchableTagSelect
+															value={tcpHeaderType}
+															options={["none", "http"]}
+															placeholder={t(
+																"inbounds.tcp.headerType",
+																"TCP header type",
+															)}
+															onChange={(value) =>
+																form.setValue(
+																	"tcpHeaderType",
+																	String(
+																		value,
+																	) as InboundFormValues["tcpHeaderType"],
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
 													</FormControl>
 													{tcpHeaderType === "http" && (
 														<SimpleGrid
@@ -1814,16 +1859,29 @@ export const InboundFormModal: FC<Props> = ({
 															<FormLabel>
 																{t("inbounds.xhttp.mode", "Mode")}
 															</FormLabel>
-															<Select {...register("xhttpMode")}>
-																<option value="">
-																	{t("common.default", "Default")}
-																</option>
-																{XHTTP_MODE_OPTIONS.map((mode) => (
-																	<option key={mode} value={mode}>
-																		{mode}
-																	</option>
-																))}
-															</Select>
+															<SearchableTagSelect
+																value={formValues.xhttpMode || ""}
+																options={[
+																	{
+																		value: "",
+																		label: t("common.default", "Default"),
+																	},
+																	...XHTTP_MODE_OPTIONS,
+																]}
+																placeholder={t("inbounds.xhttp.mode", "Mode")}
+																onChange={(value) =>
+																	form.setValue(
+																		"xhttpMode",
+																		String(
+																			value,
+																		) as InboundFormValues["xhttpMode"],
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	)
+																}
+															/>
 														</FormControl>
 														<FormControl
 															isInvalid={
@@ -1993,16 +2051,23 @@ export const InboundFormModal: FC<Props> = ({
 																control={control}
 																name="sockopt.domainStrategy"
 																render={({ field }) => (
-																	<ChakraSelect {...field}>
-																		<option value="">
-																			{t("common.none", "None")}
-																		</option>
-																		{DOMAIN_STRATEGY_OPTIONS.map((option) => (
-																			<option key={option} value={option}>
-																				{option}
-																			</option>
-																		))}
-																	</ChakraSelect>
+																	<SearchableTagSelect
+																		value={field.value || ""}
+																		options={[
+																			{
+																				value: "",
+																				label: t("common.none", "None"),
+																			},
+																			...DOMAIN_STRATEGY_OPTIONS,
+																		]}
+																		placeholder={t(
+																			"inbounds.sockopt.domainStrategy",
+																			"Domain strategy",
+																		)}
+																		onChange={(value) =>
+																			field.onChange(String(value))
+																		}
+																	/>
 																)}
 															/>
 														</FormControl>
@@ -2017,16 +2082,23 @@ export const InboundFormModal: FC<Props> = ({
 																control={control}
 																name="sockopt.tcpcongestion"
 																render={({ field }) => (
-																	<ChakraSelect {...field}>
-																		<option value="">
-																			{t("common.none", "None")}
-																		</option>
-																		{TCP_CONGESTION_OPTIONS.map((option) => (
-																			<option key={option} value={option}>
-																				{option}
-																			</option>
-																		))}
-																	</ChakraSelect>
+																	<SearchableTagSelect
+																		value={field.value || ""}
+																		options={[
+																			{
+																				value: "",
+																				label: t("common.none", "None"),
+																			},
+																			...TCP_CONGESTION_OPTIONS,
+																		]}
+																		placeholder={t(
+																			"inbounds.sockopt.tcpCongestion",
+																			"TCP congestion",
+																		)}
+																		onChange={(value) =>
+																			field.onChange(String(value))
+																		}
+																	/>
 																)}
 															/>
 														</FormControl>
@@ -2038,13 +2110,20 @@ export const InboundFormModal: FC<Props> = ({
 																control={control}
 																name="sockopt.tproxy"
 																render={({ field }) => (
-																	<ChakraSelect {...field}>
-																		{TPROXY_OPTIONS.map((option) => (
-																			<option key={option} value={option}>
-																				{option}
-																			</option>
-																		))}
-																	</ChakraSelect>
+																	<SearchableTagSelect
+																		value={field.value || ""}
+																		options={TPROXY_OPTIONS.map((option) => ({
+																			value: option,
+																			label: option || t("common.none", "None"),
+																		}))}
+																		placeholder={t(
+																			"inbounds.sockopt.tproxy",
+																			"TProxy",
+																		)}
+																		onChange={(value) =>
+																			field.onChange(String(value))
+																		}
+																	/>
 																)}
 															/>
 														</FormControl>
@@ -2105,14 +2184,23 @@ export const InboundFormModal: FC<Props> = ({
 													<FormLabel>
 														{t("inbounds.tls.cipherSuites", "Cipher suites")}
 													</FormLabel>
-													<Select {...register("tlsCipherSuites")}>
-														<option value="">{t("common.auto", "Auto")}</option>
-														{tlsCipherOptions.map((option) => (
-															<option key={option} value={option}>
-																{option}
-															</option>
-														))}
-													</Select>
+													<SearchableTagSelect
+														value={formValues.tlsCipherSuites || ""}
+														options={[
+															{ value: "", label: t("common.auto", "Auto") },
+															...tlsCipherOptions,
+														]}
+														placeholder={t(
+															"inbounds.tls.cipherSuites",
+															"Cipher suites",
+														)}
+														onChange={(value) =>
+															form.setValue("tlsCipherSuites", String(value), {
+																shouldDirty: true,
+																shouldValidate: true,
+															})
+														}
+													/>
 												</FormControl>
 											</SimpleGrid>
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -2120,39 +2208,62 @@ export const InboundFormModal: FC<Props> = ({
 													<FormLabel>
 														{t("inbounds.tls.minVersion", "Min version")}
 													</FormLabel>
-													<Select {...register("tlsMinVersion")}>
-														{tlsVersionOptions.map((option) => (
-															<option key={option} value={option}>
-																{option}
-															</option>
-														))}
-													</Select>
+													<SearchableTagSelect
+														value={formValues.tlsMinVersion || ""}
+														options={tlsVersionOptions}
+														placeholder={t(
+															"inbounds.tls.minVersion",
+															"Min version",
+														)}
+														onChange={(value) =>
+															form.setValue("tlsMinVersion", String(value), {
+																shouldDirty: true,
+																shouldValidate: true,
+															})
+														}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>
 														{t("inbounds.tls.maxVersion", "Max version")}
 													</FormLabel>
-													<Select {...register("tlsMaxVersion")}>
-														{tlsVersionOptions.map((option) => (
-															<option key={option} value={option}>
-																{option}
-															</option>
-														))}
-													</Select>
+													<SearchableTagSelect
+														value={formValues.tlsMaxVersion || ""}
+														options={tlsVersionOptions}
+														placeholder={t(
+															"inbounds.tls.maxVersion",
+															"Max version",
+														)}
+														onChange={(value) =>
+															form.setValue("tlsMaxVersion", String(value), {
+																shouldDirty: true,
+																shouldValidate: true,
+															})
+														}
+													/>
 												</FormControl>
 											</SimpleGrid>
 											<FormControl>
 												<FormLabel>
 													{t("inbounds.tls.fingerprint", "uTLS fingerprint")}
 												</FormLabel>
-												<Select {...register("tlsFingerprint")}>
-													<option value="">{t("common.none", "None")}</option>
-													{tlsFingerprintOptions.map((option) => (
-														<option key={option} value={option}>
-															{option}
-														</option>
-													))}
-												</Select>
+												<SearchableTagSelect
+													value={formValues.tlsFingerprint || ""}
+													options={[
+														{ value: "", label: t("common.none", "None") },
+														...tlsFingerprintOptions,
+													]}
+													placeholder={t(
+														"inbounds.tls.fingerprint",
+														"uTLS fingerprint",
+													)}
+													onChange={(value) =>
+														form.setValue("tlsFingerprint", String(value), {
+															shouldDirty: true,
+															shouldValidate: true,
+														})
+													}
+												/>
 											</FormControl>
 											<FormControl>
 												<FormLabel>{t("inbounds.tls.alpn", "ALPN")}</FormLabel>
@@ -2392,17 +2503,24 @@ export const InboundFormModal: FC<Props> = ({
 																	<FormLabel>
 																		{t("inbounds.tls.usage", "Usage option")}
 																	</FormLabel>
-																	<Select
-																		{...register(
-																			`tlsCertificates.${index}.usage` as const,
+																	<SearchableTagSelect
+																		value={usage}
+																		options={tlsUsageOptions}
+																		placeholder={t(
+																			"inbounds.tls.usage",
+																			"Usage option",
 																		)}
-																	>
-																		{tlsUsageOptions.map((option) => (
-																			<option key={option} value={option}>
-																				{option}
-																			</option>
-																		))}
-																	</Select>
+																		onChange={(value) =>
+																			form.setValue(
+																				`tlsCertificates.${index}.usage` as const,
+																				String(value),
+																				{
+																					shouldDirty: true,
+																					shouldValidate: true,
+																				},
+																			)
+																		}
+																	/>
 																</FormControl>
 															</SimpleGrid>
 															{usage === "issue" && (
@@ -2442,13 +2560,20 @@ export const InboundFormModal: FC<Props> = ({
 													<FormLabel>
 														{t("inbounds.tls.echForceQuery", "ECH force query")}
 													</FormLabel>
-													<Select {...register("tlsEchForceQuery")}>
-														{tlsEchForceOptions.map((option) => (
-															<option key={option} value={option}>
-																{option}
-															</option>
-														))}
-													</Select>
+													<SearchableTagSelect
+														value={formValues.tlsEchForceQuery || ""}
+														options={tlsEchForceOptions}
+														placeholder={t(
+															"inbounds.tls.echForceQuery",
+															"ECH force query",
+														)}
+														onChange={(value) =>
+															form.setValue("tlsEchForceQuery", String(value), {
+																shouldDirty: true,
+																shouldValidate: true,
+															})
+														}
+													/>
 												</FormControl>
 												<HStack spacing={3}>
 													<Button size="xs" onClick={handleGenerateEchCert}>
@@ -2502,13 +2627,20 @@ export const InboundFormModal: FC<Props> = ({
 														"uTLS fingerprint",
 													)}
 												</FormLabel>
-												<Select {...register("realityFingerprint")}>
-													{tlsFingerprintOptions.map((option) => (
-														<option key={option} value={option}>
-															{option}
-														</option>
-													))}
-												</Select>
+												<SearchableTagSelect
+													value={formValues.realityFingerprint || ""}
+													options={tlsFingerprintOptions}
+													placeholder={t(
+														"inbounds.reality.fingerprint",
+														"uTLS fingerprint",
+													)}
+													onChange={(value) =>
+														form.setValue("realityFingerprint", String(value), {
+															shouldDirty: true,
+															shouldValidate: true,
+														})
+													}
+												/>
 											</FormControl>
 											<FormControl
 												isRequired
