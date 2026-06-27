@@ -534,6 +534,9 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 		default:
 			return fmt.Errorf("unsupported node operation: %s", operation.OperationType)
 		}
+		if isRuntimeSyncOperation(operation.OperationType) {
+			return c.fanOutGlobalRuntimeSyncOperation(ctx, operation)
+		}
 		nodes, err := c.repo.UsageNodes(ctx, 0, 0)
 		if err != nil {
 			return err
@@ -627,6 +630,34 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 	default:
 		return fmt.Errorf("unsupported node operation: %s", operation.OperationType)
 	}
+}
+
+func isRuntimeSyncOperation(operationType string) bool {
+	switch operationType {
+	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c Controller) fanOutGlobalRuntimeSyncOperation(ctx context.Context, operation OperationRow) error {
+	nodes, err := c.repo.UsageNodes(ctx, 0, 0)
+	if err != nil {
+		return err
+	}
+	if len(nodes) == 0 {
+		if operation.OperationType == "sync_config" {
+			return nil
+		}
+		return fmt.Errorf("no active nodes available")
+	}
+	for _, node := range nodes {
+		if err := c.queueNodeSpecificSyncRetry(ctx, node.ID, operation.Payload); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c Controller) queueNodeSpecificSyncRetry(ctx context.Context, nodeID int64, payload []byte) error {
