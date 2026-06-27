@@ -44,6 +44,7 @@ import {
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { JsonEditor } from "components/JsonEditor";
+import { SearchableTagSelect } from "components/common/SearchableTagSelect";
 import { shadowsocksMethods } from "constants/Proxies";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import {
@@ -1825,7 +1826,9 @@ export const InboundFormModal: FC<Props> = ({
 															</Select>
 														</FormControl>
 														<FormControl
-															isInvalid={!!fieldValidationErrors.xhttpPaddingBytes}
+															isInvalid={
+																!!fieldValidationErrors.xhttpPaddingBytes
+															}
 														>
 															<FormLabel>
 																{t(
@@ -2157,18 +2160,28 @@ export const InboundFormModal: FC<Props> = ({
 													control={control}
 													name="tlsAlpn"
 													render={({ field }) => (
-														<CheckboxGroup
+														<SearchableTagSelect
+															mode="multiple"
 															value={field.value ?? []}
-															onChange={field.onChange}
-														>
-															<HStack spacing={4} flexWrap="wrap">
-																{tlsAlpnOptions.map((option) => (
-																	<Checkbox key={option} value={option}>
-																		{option}
-																	</Checkbox>
-																))}
-															</HStack>
-														</CheckboxGroup>
+															options={tlsAlpnOptions}
+															placeholder={t(
+																"inbounds.tls.selectAlpn",
+																"Select ALPN values",
+															)}
+															searchPlaceholder={t(
+																"inbounds.tls.searchAlpn",
+																"Search ALPN",
+															)}
+															onChange={(value) =>
+																field.onChange(
+																	Array.isArray(value)
+																		? value
+																		: value
+																			? [value]
+																			: [],
+																)
+															}
+														/>
 													)}
 												/>
 											</FormControl>
@@ -2528,7 +2541,10 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityTarget) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityTarget ||
-															t("validation.required", "This field is required")}
+															t(
+																"validation.required",
+																"This field is required",
+															)}
 													</Text>
 												)}
 											</FormControl>
@@ -2574,7 +2590,10 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityServerNames) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityServerNames ||
-															t("validation.required", "This field is required")}
+															t(
+																"validation.required",
+																"This field is required",
+															)}
 													</Text>
 												)}
 											</FormControl>
@@ -2669,7 +2688,10 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityShortIds) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityShortIds ||
-															t("validation.required", "This field is required")}
+															t(
+																"validation.required",
+																"This field is required",
+															)}
 													</Text>
 												)}
 											</FormControl>
@@ -2708,7 +2730,10 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityPrivateKey) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityPrivateKey ||
-															t("validation.required", "This field is required")}
+															t(
+																"validation.required",
+																"This field is required",
+															)}
 													</Text>
 												)}
 											</FormControl>

@@ -212,6 +212,7 @@ type InboundOption = {
 	value: string;
 	protocol: string;
 	network: string;
+	port?: number;
 };
 
 type CreateHostValues = {
@@ -302,12 +303,13 @@ const RotationControls: FC<RotationControlsProps> = ({
 }) => {
 	const { t } = useTranslation();
 	return (
-		<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={2}>
+		<SimpleGrid columns={2} spacing={2} mt={2}>
 			<FormControl>
-				<FormLabel fontSize="sm">
+				<FormLabel fontSize="xs" color="gray.500" mb={1}>
 					{t("hostsDialog.rotationMode", "Selection mode")}
 				</FormLabel>
 				<Select
+					size="sm"
 					value={mode}
 					onChange={(event) => onModeChange(event.target.value)}
 				>
@@ -318,13 +320,15 @@ const RotationControls: FC<RotationControlsProps> = ({
 				</Select>
 			</FormControl>
 			<FormControl>
-				<FormLabel fontSize="sm">
+				<FormLabel fontSize="xs" color="gray.500" mb={1}>
 					{t("hostsDialog.rotationTTLSeconds", "TTL seconds")}
 				</FormLabel>
 				<NumericInput
+					size="sm"
 					value={ttl ?? ""}
 					min={1}
 					max={2592000}
+					fieldProps={{ placeholder: "120" }}
 					isDisabled={mode !== "ttl"}
 					onChange={(_, num) => onTTLChange(Number.isNaN(num) ? null : num)}
 				/>
@@ -476,9 +480,9 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 				borderRadius="md"
 				borderColor={borderColor}
 				bg={bg}
-				minH="40px"
-				px={2}
-				py={1.5}
+				minH="36px"
+				px={1.5}
+				py={1}
 				pr={rightElement ? 10 : 2}
 				cursor="text"
 				onMouseDown={(event) => {
@@ -495,11 +499,12 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 						<WrapItem key={item}>
 							<Tag
 								size="sm"
+								minH="22px"
 								borderRadius="full"
 								colorScheme="primary"
 								variant="subtle"
 							>
-								<TagLabel maxW="180px" noOfLines={1}>
+								<TagLabel maxW="150px" noOfLines={1} fontSize="xs">
 									{item}
 								</TagLabel>
 								<TagCloseButton
@@ -513,6 +518,8 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 						<Input
 							variant="unstyled"
 							size="sm"
+							h="24px"
+							fontSize="sm"
 							value={inputValue}
 							placeholder={
 								selectedValues.length
@@ -526,7 +533,7 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 					</WrapItem>
 				</Wrap>
 				{rightElement && (
-					<Box position="absolute" top="8px" right="8px" zIndex={1}>
+					<Box position="absolute" top="7px" right="8px" zIndex={1}>
 						{rightElement}
 					</Box>
 				)}
@@ -552,6 +559,7 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 						<Button
 							w="full"
 							size="sm"
+							minH="28px"
 							justifyContent="flex-start"
 							variant="ghost"
 							onClick={() => commitInput(searchTerm)}
@@ -567,6 +575,7 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 									key={option}
 									w="full"
 									size="sm"
+									minH="28px"
 									justifyContent="space-between"
 									variant="ghost"
 									bg={selected ? selectedBg : "transparent"}
@@ -604,6 +613,239 @@ const HOST_MODAL_SX = {
 		whiteSpace: "nowrap",
 		mb: 1.5,
 	},
+};
+
+const alpnAutocompleteOptions = proxyALPN
+	.map((option) => option.value)
+	.filter(Boolean);
+
+const inboundPortPlaceholder = (inbound?: InboundOption) =>
+	inbound?.port ? `Inbound default: ${inbound.port}` : "Inherited from inbound";
+
+type FragmentFields = {
+	length: string;
+	interval: string;
+	packet: string;
+	maxSplit: string;
+};
+
+const parseFragmentSetting = (value: string): FragmentFields => {
+	const [length = "", interval = "", packet = "", maxSplit = ""] = value
+		.split(",")
+		.map((item) => item.trim());
+	return { length, interval, packet, maxSplit };
+};
+
+const formatFragmentSetting = (fields: FragmentFields) => {
+	const length = fields.length.trim();
+	const interval = fields.interval.trim();
+	const packet = fields.packet.trim();
+	const maxSplit = fields.maxSplit.trim();
+	if (!length && !interval && !packet && !maxSplit) return "";
+	const parts = [
+		length || "10-100",
+		interval || "100-200",
+		packet || "tlshello",
+	];
+	if (maxSplit) parts.push(maxSplit);
+	return parts.join(",");
+};
+
+type NoisePattern = {
+	type: string;
+	packet: string;
+	delay: string;
+};
+
+const defaultNoisePattern = (): NoisePattern => ({
+	type: "rand",
+	packet: "10-20",
+	delay: "100-200",
+});
+
+const parseNoiseSetting = (value: string): NoisePattern[] => {
+	const patterns = value
+		.split("&")
+		.map((raw) => raw.trim())
+		.filter(Boolean)
+		.map((raw) => {
+			const colonIndex = raw.indexOf(":");
+			const type = colonIndex > 0 ? raw.slice(0, colonIndex).trim() : "rand";
+			const rest = colonIndex > 0 ? raw.slice(colonIndex + 1) : raw;
+			const [packet = "", delay = ""] = rest
+				.split(",")
+				.map((item) => item.trim());
+			return {
+				type: ["rand", "str", "hex", "base64"].includes(type) ? type : "rand",
+				packet: packet || "10-20",
+				delay: delay || "100-200",
+			};
+		});
+	return patterns.length ? patterns : [defaultNoisePattern()];
+};
+
+const formatNoiseSetting = (patterns: NoisePattern[]) =>
+	patterns
+		.map((pattern) => ({
+			type: pattern.type || "rand",
+			packet: pattern.packet.trim(),
+			delay: pattern.delay.trim(),
+		}))
+		.filter((pattern) => pattern.packet)
+		.map((pattern) =>
+			pattern.delay
+				? `${pattern.type}:${pattern.packet},${pattern.delay}`
+				: `${pattern.type}:${pattern.packet}`,
+		)
+		.join("&");
+
+const FragmentSettingFields: FC<{
+	value: string;
+	onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+	const { t } = useTranslation();
+	const fields = parseFragmentSetting(value);
+	const update = (patch: Partial<FragmentFields>) => {
+		onChange(formatFragmentSetting({ ...fields, ...patch }));
+	};
+	return (
+		<Box>
+			<FormLabel fontSize="sm">
+				{t("hostsDialog.fragment", "Fragment")}
+			</FormLabel>
+			<SimpleGrid columns={{ base: 1, md: 4 }} spacing={2}>
+				<Input
+					size="sm"
+					value={fields.length}
+					placeholder={t("hostsDialog.fragmentLength", "Length 10-100")}
+					onChange={(event) => update({ length: event.target.value })}
+				/>
+				<Input
+					size="sm"
+					value={fields.interval}
+					placeholder={t("hostsDialog.fragmentInterval", "Interval 100-200")}
+					onChange={(event) => update({ interval: event.target.value })}
+				/>
+				<Input
+					size="sm"
+					value={fields.packet}
+					placeholder={t("hostsDialog.fragmentPacket", "Packet tlshello")}
+					onChange={(event) => update({ packet: event.target.value })}
+				/>
+				<Input
+					size="sm"
+					value={fields.maxSplit}
+					placeholder={t("hostsDialog.fragmentMaxSplit", "Max split 3")}
+					onChange={(event) => update({ maxSplit: event.target.value })}
+				/>
+			</SimpleGrid>
+			<Text mt={1} fontSize="xs" color="gray.500">
+				{t(
+					"hostsDialog.fragmentHint",
+					"Saved as length,interval,packet. Example: 10-100,100-200,tlshello",
+				)}
+			</Text>
+		</Box>
+	);
+};
+
+const NoisePatternFields: FC<{
+	value: string;
+	onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+	const { t } = useTranslation();
+	const patterns = parseNoiseSetting(value);
+	const updatePatterns = (next: NoisePattern[]) =>
+		onChange(formatNoiseSetting(next));
+	const updatePattern = (index: number, patch: Partial<NoisePattern>) => {
+		updatePatterns(
+			patterns.map((pattern, patternIndex) =>
+				patternIndex === index ? { ...pattern, ...patch } : pattern,
+			),
+		);
+	};
+	return (
+		<Box>
+			<HStack justify="space-between" mb={2}>
+				<FormLabel fontSize="sm" mb={0}>
+					{t("hostsDialog.noise", "Noise")}
+				</FormLabel>
+				<Button
+					size="xs"
+					variant="outline"
+					onClick={() => updatePatterns([...patterns, defaultNoisePattern()])}
+				>
+					{t("hostsDialog.addNoisePattern", "Add pattern")}
+				</Button>
+			</HStack>
+			<VStack align="stretch" spacing={2}>
+				{patterns.map((pattern, index) => (
+					<SimpleGrid
+						key={`${index}-${pattern.type}`}
+						columns={{ base: 1, md: 12 }}
+						spacing={2}
+						alignItems="center"
+					>
+						<Select
+							size="sm"
+							value={pattern.type}
+							onChange={(event) =>
+								updatePattern(index, { type: event.target.value })
+							}
+							gridColumn={{ md: "span 3" }}
+						>
+							<option value="rand">rand</option>
+							<option value="str">str</option>
+							<option value="hex">hex</option>
+							<option value="base64">base64</option>
+						</Select>
+						<Input
+							size="sm"
+							value={pattern.packet}
+							placeholder={
+								pattern.type === "rand"
+									? "10-20"
+									: t("hostsDialog.noisePacket", "Packet/value")
+							}
+							onChange={(event) =>
+								updatePattern(index, { packet: event.target.value })
+							}
+							gridColumn={{ md: "span 4" }}
+						/>
+						<Input
+							size="sm"
+							value={pattern.delay}
+							placeholder="100-200"
+							onChange={(event) =>
+								updatePattern(index, { delay: event.target.value })
+							}
+							gridColumn={{ md: "span 4" }}
+						/>
+						<Button
+							size="sm"
+							variant="ghost"
+							colorScheme="red"
+							isDisabled={patterns.length === 1}
+							onClick={() =>
+								updatePatterns(
+									patterns.filter((_, patternIndex) => patternIndex !== index),
+								)
+							}
+							gridColumn={{ md: "span 1" }}
+						>
+							×
+						</Button>
+					</SimpleGrid>
+				))}
+			</VStack>
+			<Text mt={1} fontSize="xs" color="gray.500">
+				{t(
+					"hostsDialog.noiseHint",
+					"Saved as noise patterns. Example: rand:10-20,100-200&str:hello,50",
+				)}
+			</Text>
+		</Box>
+	);
 };
 
 const DynamicTokensPopover: FC = () => {
@@ -1233,6 +1475,13 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 		() => getNodeAddressOptions(nodes),
 		[nodes],
 	);
+	const selectedInbound = useMemo(
+		() =>
+			host
+				? inboundOptions.find((option) => option.value === host.inboundTag)
+				: undefined,
+		[inboundOptions, host],
+	);
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1328,7 +1577,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardHeader>
 										<CardBody pt={0}>
 											<VStack align="stretch" spacing={4}>
-												<FormControl>
+												<FormControl isRequired>
 													<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 													<InputGroup>
 														<Input
@@ -1347,7 +1596,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</InputGroup>
 												</FormControl>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
+													<FormControl isRequired>
 														<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
 														<Select
 															value={host.inboundTag}
@@ -1364,7 +1613,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
+													<FormControl isRequired>
 														<FormLabel>{t("hostsDialog.address")}</FormLabel>
 														<HostMultiValueAutocomplete
 															value={host.data.address}
@@ -1384,6 +1633,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<NumericInput
 															value={host.data.port ?? ""}
 															allowMouseWheel
+															fieldProps={{
+																placeholder:
+																	inboundPortPlaceholder(selectedInbound),
+															}}
 															onChange={(_, num) =>
 																onChange(
 																	host.uid,
@@ -1520,18 +1773,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
-														<Select
+														<HostMultiValueAutocomplete
 															value={host.data.alpn}
-															onChange={(event) =>
-																onChange(host.uid, "alpn", event.target.value)
+															options={alpnAutocompleteOptions}
+															placeholder={t(
+																"hostsDialog.alpnPlaceholder",
+																"Select or type ALPN values",
+															)}
+															onChange={(value) =>
+																onChange(host.uid, "alpn", value)
 															}
-														>
-															{proxyALPN.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -1567,19 +1819,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardHeader>
 										<CardBody pt={0}>
 											<VStack align="stretch" spacing={4}>
-												<FormControl>
-													<FormLabel>{t("hostsDialog.noise")}</FormLabel>
-													<Input
-														value={host.data.noise_setting}
-														onChange={(event) =>
-															onChange(
-																host.uid,
-																"noise_setting",
-																event.target.value,
-															)
-														}
-													/>
-												</FormControl>
+												<FragmentSettingFields
+													value={host.data.fragment_setting}
+													onChange={(value) =>
+														onChange(host.uid, "fragment_setting", value)
+													}
+												/>
+												<NoisePatternFields
+													value={host.data.noise_setting}
+													onChange={(value) =>
+														onChange(host.uid, "noise_setting", value)
+													}
+												/>
 												<Stack
 													direction={{ base: "column", md: "row" }}
 													spacing={4}
@@ -1751,6 +2002,11 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		() => getNodeAddressOptions(nodes),
 		[nodes],
 	);
+	const selectedInbound = useMemo(
+		() =>
+			inboundOptions.find((option) => option.value === formState.inboundTag),
+		[inboundOptions, formState.inboundTag],
+	);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1807,7 +2063,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						<Text fontSize="sm" fontWeight="semibold">
 							{t("hostsPage.section.general")}
 						</Text>
-						<FormControl>
+						<FormControl isRequired>
 							<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
 							<Select
 								value={formState.inboundTag}
@@ -1884,6 +2140,9 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								<FormLabel>{t("hostsDialog.port")}</FormLabel>
 								<NumericInput
 									value={formState.port ?? ""}
+									fieldProps={{
+										placeholder: inboundPortPlaceholder(selectedInbound),
+									}}
 									onChange={(_, num) =>
 										setFormState((prev) => ({
 											...prev,
@@ -2110,6 +2369,7 @@ export const HostsManager: FC = () => {
 					value: inbound.tag,
 					protocol: inbound.protocol,
 					network: inbound.network,
+					port: inbound.port,
 				});
 			});
 		});

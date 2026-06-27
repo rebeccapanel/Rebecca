@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	hostFragmentPattern = regexp.MustCompile(`^((\d{1,4}-\d{1,4})|(\d{1,4})),((\d{1,3}-\d{1,3})|(\d{1,3})),(tlshello|\d|\d-\d)$`)
+	hostFragmentPattern = regexp.MustCompile(`^((\d{1,4}-\d{1,4})|(\d{1,4})),((\d{1,3}-\d{1,3})|(\d{1,3})),(tlshello|\d|\d-\d)(,(\d{1,4}-\d{1,4}|\d{1,4}))?$`)
 	hostNoisePattern    = regexp.MustCompile(`^(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?(&(rand:(\d{1,4}-\d{1,4}|\d{1,4})|str:.+|hex:.+|base64:.+)(,(\d{1,4}-\d{1,4}|\d{1,4}))?)*$`)
 	autoServiceHostTag  = regexp.MustCompile(`^setservice-\d+$`)
 )
@@ -546,7 +546,7 @@ func validateHostPayload(host hostPayload) error {
 		}
 	}
 	if host.FragmentSetting != nil && strings.TrimSpace(*host.FragmentSetting) != "" && !hostFragmentPattern.MatchString(strings.TrimSpace(*host.FragmentSetting)) {
-		return statusError{status: http.StatusBadRequest, detail: "Fragment setting must be like this: length,interval,packet (10-100,100-200,tlshello)."}
+		return statusError{status: http.StatusBadRequest, detail: "Fragment setting must be like this: length,interval,packet[,maxSplit] (10-100,100-200,tlshello or 10-100,100-200,tlshello,3)."}
 	}
 	if host.NoiseSetting != nil && strings.TrimSpace(*host.NoiseSetting) != "" {
 		if len(*host.NoiseSetting) > 2000 {
