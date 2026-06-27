@@ -14,6 +14,8 @@ type Config struct {
 	NodeOperationsPollInterval   string
 	NodeUsageCollectionInterval  string
 	NodeUsageCollectionLimit     int
+	DisableNodeUsageHistory      bool
+	DisableNodeUserUsageHistory  bool
 	AdminLifecycleInterval       string
 	UserLifecycleInterval        string
 	UserLifecycleBatchSize       int
@@ -59,6 +61,8 @@ func LoadConfig() (Config, error) {
 		NodeOperationsPollInterval:   lookup("REBECCA_NODE_OPERATIONS_POLL_INTERVAL"),
 		NodeUsageCollectionInterval:  lookup("REBECCA_NODE_USAGE_COLLECTION_INTERVAL"),
 		NodeUsageCollectionLimit:     parseIntDefault(lookup("REBECCA_NODE_USAGE_COLLECTION_LIMIT"), 0),
+		DisableNodeUsageHistory:      parseBoolDefault(lookup("REBECCA_DISABLE_NODE_USAGE", "REBECCA_DISABLE_NODE_USAGE_HISTORY", "REBECCA_DISABLE_NODE_USAGES"), false),
+		DisableNodeUserUsageHistory:  parseBoolDefault(lookup("REBECCA_DISABLE_NODE_USER_USAGES", "REBECCA_DISABLE_NODE_USER_USAGE", "REBECCA_DISABLE_NODE_USER_USAGE_HISTORY"), false),
 		AdminLifecycleInterval:       lookup("REBECCA_ADMIN_LIFECYCLE_INTERVAL"),
 		UserLifecycleInterval:        firstNonEmpty(lookup("REBECCA_USER_LIFECYCLE_INTERVAL"), secondsEnv(lookup("JOB_REVIEW_USERS_INTERVAL"))),
 		UserLifecycleBatchSize:       parseIntDefault(lookup("REBECCA_USER_LIFECYCLE_BATCH_SIZE", "JOB_REVIEW_USERS_BATCH_SIZE"), 500),

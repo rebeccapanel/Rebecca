@@ -97,6 +97,54 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE id = 10 AND online_at IS NOT NULL`, 1)
 }
 
+func TestRepositorySkipsUsageHistoryTables(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-skip-history.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (10, 'active', 0, 100000, 1, 2);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 2);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	err = repo.PersistCollectedUsage(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 2},
+		[]UserUsageDelta{{UserID: 10, Value: 100, Online: true}},
+		[]OutboundUsageDelta{{Tag: "direct", Up: 11, Down: 22}},
+		UsagePersistOptions{
+			SkipNodeUsageHistory:     true,
+			SkipNodeUserUsageHistory: true,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 200)
+	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 200)
+	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE id = 10 AND online_at IS NOT NULL`, 1)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE node_id = 7`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usages WHERE node_id = 7`, 0)
+	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 11)
+	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 22)
+	assertInt64(t, db, `SELECT uplink FROM system WHERE id = 1`, 11)
+	assertInt64(t, db, `SELECT downlink FROM system WHERE id = 1`, 22)
+	assertInt64(t, db, `SELECT uplink FROM outbound_traffic WHERE target_id = 'node:7' AND outbound_id = 'tag_direct'`, 11)
+	assertInt64(t, db, `SELECT downlink FROM outbound_traffic WHERE target_id = 'node:7' AND outbound_id = 'tag_direct'`, 22)
+}
+
 func TestRepositoryPersistsCollectedUsageInChunks(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-chunks.db")+"?_pragma=busy_timeout(30000)")

@@ -20,6 +20,10 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		collectOutbound = true
 	}
 	reset := usageCollectionShouldReset(req)
+	persistOptions := UsagePersistOptions{
+		SkipNodeUsageHistory:     req.SkipNodeUsageHistory,
+		SkipNodeUserUsageHistory: req.SkipNodeUserUsageHistory,
+	}
 
 	nodes, err := c.repo.UsageNodes(ctx, req.NodeID, req.Limit)
 	if err != nil {
@@ -34,7 +38,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		client, _, err := c.dial(nodeCtx, node.ID)
 		if err != nil {
 			cancel()
-			if c.collectLegacyUsageForNode(ctx, node, collectUsers, collectOutbound, &result) {
+			if c.collectLegacyUsageForNode(ctx, node, collectUsers, collectOutbound, persistOptions, &result) {
 				continue
 			}
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %s", node.ID, err.Error()))
@@ -105,7 +109,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 			}
 		}
 
-		if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas); err != nil {
+		if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas, persistOptions); err != nil {
 			client.Close()
 			cancel()
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d DB write: %s", node.ID, err.Error()))
@@ -132,7 +136,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 	return result, nil
 }
 
-func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow, collectUsers bool, collectOutbound bool, result *CollectUsageResult) bool {
+func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow, collectUsers bool, collectOutbound bool, persistOptions UsagePersistOptions, result *CollectUsageResult) bool {
 	nodeCtx, cancel := WithDefaultTimeout(ctx)
 	defer cancel()
 	client, err := c.newLegacyRESTClient(nodeCtx, node)
@@ -174,7 +178,7 @@ func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow,
 			result.OutboundBatches++
 		}
 	}
-	if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas); err != nil {
+	if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas, persistOptions); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy DB write: %s", node.ID, err.Error()))
 		return true
 	}
@@ -227,10 +231,10 @@ func parseUserUsageSampleUID(raw string) (int64, bool, bool) {
 	return userID, onlineOnly, true
 }
 
-func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta) error {
+func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta, options UsagePersistOptions) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas)
+		err = c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas, options)
 		if err == nil || !isTransientUsagePersistError(err) {
 			return err
 		}

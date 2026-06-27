@@ -37,10 +37,12 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 	defer cancel()
 
 	result, err := s.nodeController.CollectUsage(workerCtx, nodecontroller.CollectUsageRequest{
-		Limit:    s.cfg.NodeUsageCollectionLimit,
-		Users:    true,
-		Outbound: true,
-		Reset:    true,
+		Limit:                    s.cfg.NodeUsageCollectionLimit,
+		Users:                    true,
+		Outbound:                 true,
+		Reset:                    true,
+		SkipNodeUsageHistory:     s.cfg.DisableNodeUsageHistory,
+		SkipNodeUserUsageHistory: s.cfg.DisableNodeUserUsageHistory,
 	})
 	if err != nil {
 		if ctx.Err() != nil {

@@ -28,6 +28,11 @@ type OutboundUsageDelta struct {
 	Down int64
 }
 
+type UsagePersistOptions struct {
+	SkipNodeUsageHistory     bool
+	SkipNodeUserUsageHistory bool
+}
+
 type usageUserMapping struct {
 	UserID    int64
 	AdminID   sql.NullInt64
@@ -149,10 +154,11 @@ func scanNodeRow(scanner nodeRowScanner) (NodeRow, error) {
 	return row, nil
 }
 
-func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta) error {
+func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta, optionValues ...UsagePersistOptions) error {
 	if len(userDeltas) == 0 && len(outboundDeltas) == 0 {
 		return nil
 	}
+	options := mergeUsagePersistOptions(optionValues)
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -163,11 +169,11 @@ func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, use
 	now := time.Now().UTC()
 	bucket := now.Truncate(time.Hour)
 
-	filteredUsers, operations, err := r.persistUserUsage(ctx, tx, node, userDeltas, bucket, now)
+	filteredUsers, operations, err := r.persistUserUsage(ctx, tx, node, userDeltas, bucket, now, options)
 	if err != nil {
 		return fmt.Errorf("persist user usage: %w", err)
 	}
-	if err := r.persistOutboundUsage(ctx, tx, node, outboundDeltas, bucket, now); err != nil {
+	if err := r.persistOutboundUsage(ctx, tx, node, outboundDeltas, bucket, now, options); err != nil {
 		return fmt.Errorf("persist outbound usage: %w", err)
 	}
 	if len(operations) > 0 {
@@ -180,7 +186,16 @@ func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, use
 	return tx.Commit()
 }
 
-func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []UserUsageDelta, bucket time.Time, now time.Time) (map[int64]int64, []usageQueuedOperation, error) {
+func mergeUsagePersistOptions(optionValues []UsagePersistOptions) UsagePersistOptions {
+	var merged UsagePersistOptions
+	for _, options := range optionValues {
+		merged.SkipNodeUsageHistory = merged.SkipNodeUsageHistory || options.SkipNodeUsageHistory
+		merged.SkipNodeUserUsageHistory = merged.SkipNodeUserUsageHistory || options.SkipNodeUserUsageHistory
+	}
+	return merged
+}
+
+func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []UserUsageDelta, bucket time.Time, now time.Time, options UsagePersistOptions) (map[int64]int64, []usageQueuedOperation, error) {
 	aggregated := map[int64]int64{}
 	onlineUsers := map[int64]struct{}{}
 	for _, delta := range deltas {
@@ -251,8 +266,10 @@ func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeR
 		if err := r.batchIncrementUsersUsage(ctx, tx, persistedUserUsage); err != nil {
 			return nil, nil, fmt.Errorf("update user usage: %w", err)
 		}
-		if err := r.batchUpsertNodeUserUsage(ctx, tx, bucket, node.ID, persistedUserUsage); err != nil {
-			return nil, nil, fmt.Errorf("upsert node user usage node=%d: %w", node.ID, err)
+		if !options.SkipNodeUserUsageHistory {
+			if err := r.batchUpsertNodeUserUsage(ctx, tx, bucket, node.ID, persistedUserUsage); err != nil {
+				return nil, nil, fmt.Errorf("upsert node user usage node=%d: %w", node.ID, err)
+			}
 		}
 	}
 
@@ -520,7 +537,7 @@ WHERE id = ?`,
 	return operations, nil
 }
 
-func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []OutboundUsageDelta, bucket time.Time, now time.Time) error {
+func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []OutboundUsageDelta, bucket time.Time, now time.Time, options UsagePersistOptions) error {
 	byTag := map[string]OutboundUsageDelta{}
 	for _, delta := range deltas {
 		tag := strings.TrimSpace(delta.Tag)
@@ -546,8 +563,10 @@ func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node N
 		}
 	}
 	if totalUp != 0 || totalDown != 0 {
-		if err := r.upsertNodeUsage(ctx, tx, bucket, node.ID, totalUp, totalDown); err != nil {
-			return fmt.Errorf("upsert node usage node=%d: %w", node.ID, err)
+		if !options.SkipNodeUsageHistory {
+			if err := r.upsertNodeUsage(ctx, tx, bucket, node.ID, totalUp, totalDown); err != nil {
+				return fmt.Errorf("upsert node usage node=%d: %w", node.ID, err)
+			}
 		}
 		if err := r.incrementSystemUsage(ctx, tx, totalUp, totalDown); err != nil {
 			return fmt.Errorf("increment system usage: %w", err)

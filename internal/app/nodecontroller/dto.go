@@ -33,12 +33,14 @@ type ProcessOperationsResult struct {
 }
 
 type CollectUsageRequest struct {
-	NodeID   int64 `json:"node_id,omitempty"`
-	Limit    int   `json:"limit,omitempty"`
-	Users    bool  `json:"users,omitempty"`
-	Outbound bool  `json:"outbound,omitempty"`
-	Reset    bool  `json:"reset,omitempty"`
-	NoReset  bool  `json:"no_reset,omitempty"`
+	NodeID                   int64 `json:"node_id,omitempty"`
+	Limit                    int   `json:"limit,omitempty"`
+	Users                    bool  `json:"users,omitempty"`
+	Outbound                 bool  `json:"outbound,omitempty"`
+	Reset                    bool  `json:"reset,omitempty"`
+	NoReset                  bool  `json:"no_reset,omitempty"`
+	SkipNodeUsageHistory     bool  `json:"skip_node_usage_history,omitempty"`
+	SkipNodeUserUsageHistory bool  `json:"skip_node_user_usage_history,omitempty"`
 }
 
 type CollectUsageResult struct {
