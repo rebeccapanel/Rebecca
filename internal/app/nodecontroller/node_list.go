@@ -28,6 +28,12 @@ func (c Controller) List(ctx context.Context, req Request) (NodeListResult, erro
 
 	for idx := range rows {
 		enrichCertificateFields(&rows[idx], defaultCert, defaultKey)
+	}
+	if !req.IncludeMetrics {
+		return NodeListResult{Nodes: rows}, nil
+	}
+
+	for idx := range rows {
 		if rows[idx].Status == "disabled" || rows[idx].Status == "limited" {
 			continue
 		}

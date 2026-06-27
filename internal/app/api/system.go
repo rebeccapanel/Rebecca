@@ -19,20 +19,9 @@ func (s *Server) handleSystemStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-	adminID := principal.ID
-	adminContext := dashboardapp.AdminContext{
-		ID:       &adminID,
-		Username: principal.Username,
-		Role:     principal.Role,
-	}
-	if adminID <= 0 {
-		adminContext.ID = nil
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	stats, err := s.systemStatsService().Stats(ctx, adminContext)
+	stats, err := s.systemStatsService().Stats(ctx, dashboardAdminContext(r))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -45,4 +34,18 @@ func (s *Server) systemStatsService() *systemapp.Service {
 		s.systemService = systemapp.NewService(s.db, s.dialect, systemapp.DefaultVersion)
 	}
 	return s.systemService
+}
+
+func dashboardAdminContext(r *http.Request) dashboardapp.AdminContext {
+	principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
+	adminID := principal.ID
+	adminContext := dashboardapp.AdminContext{
+		ID:       &adminID,
+		Username: principal.Username,
+		Role:     principal.Role,
+	}
+	if adminID <= 0 {
+		adminContext.ID = nil
+	}
+	return adminContext
 }

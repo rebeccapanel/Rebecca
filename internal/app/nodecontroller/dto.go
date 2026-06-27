@@ -4,6 +4,7 @@ type Request struct {
 	NodeID           int64  `json:"node_id"`
 	ConfigJSON       string `json:"config_json,omitempty"`
 	Force            bool   `json:"force,omitempty"`
+	IncludeMetrics   bool   `json:"include_metrics,omitempty"`
 	MaxLines         int    `json:"max_lines,omitempty"`
 	Version          string `json:"version,omitempty"`
 	Channel          string `json:"channel,omitempty"`

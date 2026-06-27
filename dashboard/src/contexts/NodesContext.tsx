@@ -1,8 +1,10 @@
-import { useQuery } from "react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "react-query";
 import { fetch } from "service/http";
+import { getAPIWebSocketURL } from "utils/websocket";
 import { z } from "zod";
 import { create } from "zustand";
-import { type FilterUsageType, useDashboard } from "./DashboardContext";
+import { type FilterUsageType } from "./DashboardContext";
 
 const configSchema = z
 	.union([
@@ -217,14 +219,82 @@ export type NodeStore = {
 };
 
 export const useNodesQuery = (options?: { enabled?: boolean }) => {
-	const { isEditingNodes } = useDashboard();
 	return useQuery({
 		queryKey: FetchNodesQueryKey,
 		queryFn: useNodes.getState().fetchNodes,
-		refetchInterval: isEditingNodes ? 3000 : undefined,
 		refetchOnWindowFocus: false,
 		enabled: options?.enabled ?? true,
 	});
+};
+
+const mergeLiveNodes = (
+	current: NodeType[] | undefined,
+	liveNodes: NodeType[],
+) => {
+	if (!current?.length) {
+		return liveNodes;
+	}
+	const liveByID = new Map(
+		liveNodes
+			.filter((node) => node.id !== null && node.id !== undefined)
+			.map((node) => [node.id, node]),
+	);
+	return current.map((node) => {
+		const live =
+			node.id !== null && node.id !== undefined ? liveByID.get(node.id) : null;
+		return live ? { ...node, ...live } : node;
+	});
+};
+
+export const useNodeMetricsStream = (enabled = true) => {
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		if (!enabled || typeof window === "undefined") {
+			return;
+		}
+		const url = getAPIWebSocketURL("/nodes/metrics", { interval: 3 });
+		if (!url) {
+			return;
+		}
+		let closed = false;
+		let ws: WebSocket | null = null;
+		let reconnectTimer: number | undefined;
+
+		const connect = () => {
+			ws = new WebSocket(url);
+			ws.onmessage = (event) => {
+				try {
+					const payload = JSON.parse(event.data);
+					const liveNodes = Array.isArray(payload) ? payload : payload?.nodes;
+					if (!Array.isArray(liveNodes)) {
+						return;
+					}
+					queryClient.setQueryData<NodeType[]>(FetchNodesQueryKey, (current) =>
+						mergeLiveNodes(current, liveNodes),
+					);
+				} catch (error) {
+					console.error("Unable to parse node metrics stream payload", error);
+				}
+			};
+			ws.onerror = () => {
+				ws?.close();
+			};
+			ws.onclose = () => {
+				if (!closed) {
+					reconnectTimer = window.setTimeout(connect, 3000);
+				}
+			};
+		};
+
+		connect();
+		return () => {
+			closed = true;
+			if (reconnectTimer) {
+				window.clearTimeout(reconnectTimer);
+			}
+			ws?.close();
+		};
+	}, [enabled, queryClient]);
 };
 
 export const useNodes = create<NodeStore>((set, get) => ({

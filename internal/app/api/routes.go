@@ -103,6 +103,7 @@ func (s *Server) registerInboundHostRoutes(r chi.Router) {
 }
 
 func (s *Server) registerSystemRoutes(r chi.Router) {
+	r.HandleFunc("/system/metrics", s.requireAdmin(s.handleSystemMetricsWebSocket))
 	r.HandleFunc("/system", s.requireAdmin(s.handleSystemStats))
 	r.HandleFunc("/maintenance/info", s.requireSudo(s.handleMaintenanceInfo))
 	r.HandleFunc("/maintenance/update", s.requireSudo(s.handleMaintenanceUpdate))
@@ -153,6 +154,7 @@ func (s *Server) registerSubscriptionRoutes(r chi.Router) {
 
 func (s *Server) registerNodeRoutes(r chi.Router) {
 	r.HandleFunc("/nodes/usage", s.requireSudo(s.handleNodesUsage))
+	r.HandleFunc("/nodes/metrics", s.requireSudo(s.handleNodesMetricsWebSocket))
 	r.HandleFunc("/nodes", s.requireSudo(s.handleNodes))
 	r.HandleFunc("/node/*", s.requireSudo(s.handleNodePath))
 	r.HandleFunc("/node", s.requireSudo(s.handleNodeRoot))

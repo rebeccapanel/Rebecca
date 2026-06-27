@@ -26,14 +26,15 @@ import {
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import type { TFunction } from "i18next";
-import { type FC, type ReactNode, useMemo, useState } from "react";
+import { type FC, type ReactNode, useEffect, useMemo, useState } from "react";
 import Chart from "react-apexcharts";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
+import { useQuery, useQueryClient } from "react-query";
 import { fetch } from "service/http";
 import type { SystemStats } from "types/System";
 import { formatBytes, numberWithCommas } from "utils/formatByte";
 import { formatDuration } from "utils/formatDuration";
+import { getAPIWebSocketURL } from "utils/websocket";
 import { ChartBox } from "./common/ChartBox";
 import {
 	XrayModalBody,
@@ -57,6 +58,55 @@ const iconProps = {
 
 const DownloadIcon = chakra(ArrowDownTrayIcon, iconProps);
 const UploadIcon = chakra(ArrowUpTrayIcon, iconProps);
+
+const useSystemMetricsStream = (enabled = true) => {
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		if (!enabled || typeof window === "undefined") {
+			return;
+		}
+		const url = getAPIWebSocketURL("/system/metrics", { interval: 3 });
+		if (!url) {
+			return;
+		}
+		let closed = false;
+		let ws: WebSocket | null = null;
+		let reconnectTimer: number | undefined;
+
+		const connect = () => {
+			ws = new WebSocket(url);
+			ws.onmessage = (event) => {
+				try {
+					const payload = JSON.parse(event.data);
+					const stats = payload?.stats ?? payload;
+					if (!stats || typeof stats !== "object" || !("version" in stats)) {
+						return;
+					}
+					queryClient.setQueryData<SystemStats>(StatisticsQueryKey, stats);
+				} catch (error) {
+					console.error("Unable to parse system metrics stream payload", error);
+				}
+			};
+			ws.onerror = () => {
+				ws?.close();
+			};
+			ws.onclose = () => {
+				if (!closed) {
+					reconnectTimer = window.setTimeout(connect, 3000);
+				}
+			};
+		};
+
+		connect();
+		return () => {
+			closed = true;
+			if (reconnectTimer) {
+				window.clearTimeout(reconnectTimer);
+			}
+			ws?.close();
+		};
+	}, [enabled, queryClient]);
+};
 
 const formatNumberValue = (value: number) =>
 	numberWithCommas(value) ?? value.toString();
@@ -981,14 +1031,19 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const { userData } = useGetUser();
 	const { t } = useTranslation();
 	const { data: systemData } = useQuery<SystemStats>({
-		queryKey: "statistics-query-key",
+		queryKey: StatisticsQueryKey,
 		queryFn: () => fetch("/system"),
-		refetchInterval: 3_000,
 		onSuccess: ({ version: currentVersion }) => {
 			if (version !== currentVersion)
 				useDashboard.setState({ version: currentVersion });
 		},
 	});
+	useSystemMetricsStream(true);
+	useEffect(() => {
+		if (systemData?.version && version !== systemData.version) {
+			useDashboard.setState({ version: systemData.version });
+		}
+	}, [systemData?.version, version]);
 	const [historyPayload, setHistoryPayload] =
 		useState<HistoryModalPayload | null>(null);
 	const [historyInterval, setHistoryInterval] = useState(

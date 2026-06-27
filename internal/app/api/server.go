@@ -156,7 +156,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	result, err := s.nodeController.List(ctx, nodecontroller.Request{})
 	if err != nil {

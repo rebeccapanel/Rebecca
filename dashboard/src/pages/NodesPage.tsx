@@ -80,6 +80,7 @@ import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import {
 	FetchNodesQueryKey,
 	type NodeType,
+	useNodeMetricsStream,
 	useNodes,
 	useNodesQuery,
 } from "contexts/NodesContext";
@@ -349,6 +350,7 @@ export const NodesPage: FC = () => {
 		refetch: refetchNodes,
 		isFetching,
 	} = useNodesQuery({ enabled: canManageNodes });
+	useNodeMetricsStream(canManageNodes);
 	const {
 		addNode,
 		updateNode,
