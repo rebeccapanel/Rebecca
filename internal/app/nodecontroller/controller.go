@@ -42,7 +42,7 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 				} else {
 					err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
 				}
-			} else if result, legacyErr := c.legacyMetrics(ctx, node); legacyErr == nil {
+			} else if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
 				_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
 				return result, nil
 			} else {
@@ -159,13 +159,12 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
 		if node.ID != 0 {
-			if result, legacyErr := c.legacyMetrics(ctx, node); legacyErr == nil {
+			if result, legacyErr := c.legacyMetrics(ctx, node, false); legacyErr == nil {
 				return result, nil
 			} else {
 				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
 			}
 		}
-		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("metrics", req.NodeID, err)
 	}
 	defer client.Close()
@@ -175,15 +174,9 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 		result := runtimeResult(node, nil, nil)
 		result.Status = "connected"
 		result.Message = friendlyNodeError("metrics", req.NodeID, err).Error()
-		if setErr := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); setErr != nil {
-			return RuntimeResult{}, setErr
-		}
 		return result, nil
 	}
 	result := runtimeResult(node, res.GetRuntime(), res)
-	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
-		return RuntimeResult{}, err
-	}
 	result.Status = "connected"
 	return result, nil
 }

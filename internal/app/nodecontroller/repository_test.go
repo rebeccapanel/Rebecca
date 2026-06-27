@@ -262,6 +262,51 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 	assertRepositoryString(t, db, `SELECT last_status_change FROM nodes WHERE id = 1`, "2026-06-26T00:00:00Z")
 }
 
+func TestControllerMetricsDoesNotPersistDialError(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "metrics-live.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE tls (
+	id INTEGER PRIMARY KEY,
+	certificate TEXT,
+	"key" TEXT
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, message, usage_coefficient)
+VALUES (1, 'node', '127.0.0.1', 62050, 62051, 'connected', 'stable', 1);
+INSERT INTO tls (id, certificate, "key") VALUES (1, 'bad cert', 'bad key');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	if _, err := controller.Metrics(ctx, Request{NodeID: 1}); err == nil {
+		t.Fatal("expected metrics dial error")
+	}
+	assertRepositoryString(t, db, `SELECT status FROM nodes WHERE id = 1`, "connected")
+	assertRepositoryString(t, db, `SELECT message FROM nodes WHERE id = 1`, "stable")
+}
+
 func assertRepositoryString(t *testing.T, db *sql.DB, query string, expected string) {
 	t.Helper()
 	var actual string

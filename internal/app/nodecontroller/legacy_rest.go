@@ -20,7 +20,7 @@ type legacyRESTClient struct {
 	sessionID  string
 }
 
-func (c Controller) legacyMetrics(ctx context.Context, node NodeRow) (RuntimeResult, error) {
+func (c Controller) legacyMetrics(ctx context.Context, node NodeRow, persist bool) (RuntimeResult, error) {
 	client, err := c.newLegacyRESTClient(ctx, node)
 	if err != nil {
 		return RuntimeResult{}, err
@@ -30,8 +30,10 @@ func (c Controller) legacyMetrics(ctx context.Context, node NodeRow) (RuntimeRes
 		return RuntimeResult{}, err
 	}
 	result := legacyRuntimeResult(node, payload, "metrics")
-	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
-		return RuntimeResult{}, err
+	if persist {
+		if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
+			return RuntimeResult{}, err
+		}
 	}
 	result.Status = "connected"
 	return result, nil
