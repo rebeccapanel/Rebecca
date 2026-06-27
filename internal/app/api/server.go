@@ -124,6 +124,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	s.backgroundOnce.Do(func() {
 		go s.runNodeOperationsWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
+		go s.runNodeUsageFlushWorker(ctx)
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)

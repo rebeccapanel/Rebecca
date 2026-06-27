@@ -109,7 +109,15 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 			}
 		}
 
-		if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas, persistOptions); err != nil {
+		userBatchID := ""
+		if userBatch != nil {
+			userBatchID = userBatch.GetBatchId()
+		}
+		outboundBatchID := ""
+		if outboundBatch != nil {
+			outboundBatchID = outboundBatch.GetBatchId()
+		}
+		if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, persistOptions); err != nil {
 			client.Close()
 			cancel()
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d DB write: %s", node.ID, err.Error()))
@@ -178,7 +186,7 @@ func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow,
 			result.OutboundBatches++
 		}
 	}
-	if err := c.persistCollectedUsageWithRetry(ctx, node, userDeltas, outboundDeltas, persistOptions); err != nil {
+	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, persistOptions); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy DB write: %s", node.ID, err.Error()))
 		return true
 	}
@@ -245,6 +253,39 @@ func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node Nod
 		}
 	}
 	return err
+}
+
+func (c Controller) storeCollectedUsageWithRetry(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, options UsagePersistOptions) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = c.repo.StoreCollectedUsage(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, options)
+		if err == nil || !isTransientUsagePersistError(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
+		}
+	}
+	return err
+}
+
+func (c Controller) FlushStagedUsage(ctx context.Context, limit int, options UsagePersistOptions) (UsageFlushResult, error) {
+	var result UsageFlushResult
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err = c.repo.FlushStagedUsage(ctx, limit, options)
+		if err == nil || !isTransientUsagePersistError(err) {
+			return result, err
+		}
+		select {
+		case <-ctx.Done():
+			return UsageFlushResult{}, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
+		}
+	}
+	return result, err
 }
 
 func isTransientUsagePersistError(err error) bool {
