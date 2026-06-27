@@ -35,10 +35,15 @@ import {
 	TabPanels,
 	Tabs,
 	Tag,
+	TagCloseButton,
+	TagLabel,
 	Text,
 	Tooltip,
+	useColorModeValue,
 	useToast,
 	VStack,
+	Wrap,
+	WrapItem,
 } from "@chakra-ui/react";
 import {
 	InformationCircleIcon,
@@ -57,6 +62,8 @@ import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
+	type KeyboardEvent,
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -300,8 +307,13 @@ const RotationControls: FC<RotationControlsProps> = ({
 				<FormLabel fontSize="sm">
 					{t("hostsDialog.rotationMode", "Selection mode")}
 				</FormLabel>
-				<Select value={mode} onChange={(event) => onModeChange(event.target.value)}>
-					<option value="random">{t("hostsDialog.rotationRandom", "Random")}</option>
+				<Select
+					value={mode}
+					onChange={(event) => onModeChange(event.target.value)}
+				>
+					<option value="random">
+						{t("hostsDialog.rotationRandom", "Random")}
+					</option>
 					<option value="ttl">{t("hostsDialog.rotationTTL", "TTL")}</option>
 				</Select>
 			</FormControl>
@@ -321,42 +333,265 @@ const RotationControls: FC<RotationControlsProps> = ({
 	);
 };
 
-const NodeAddressPicker: FC<{
-	nodes?: NodeType[];
-	onSelect: (address: string) => void;
-}> = ({ nodes, onSelect }) => {
-	const { t } = useTranslation();
-	const options = (nodes ?? [])
-		.filter((node) => typeof node.address === "string" && node.address.trim())
-		.slice(0, 24);
-	if (!options.length) {
-		return null;
+type HostMultiValueAutocompleteProps = {
+	emptyText?: string;
+	options?: string[];
+	placeholder?: string;
+	rightElement?: ReactNode;
+	value: string;
+	onChange: (value: string) => void;
+};
+
+const dedupeValues = (values: string[]) => {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const raw of values) {
+		const value = raw.trim();
+		if (!value) continue;
+		const key = value.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		result.push(value);
 	}
+	return result;
+};
+
+const textValuesToString = (values: string[]) =>
+	dedupeValues(values).join(", ");
+
+const getNodeAddressOptions = (nodes?: NodeType[]) =>
+	dedupeValues(
+		(nodes ?? [])
+			.map((node) => (typeof node.address === "string" ? node.address : ""))
+			.filter(Boolean),
+	);
+
+const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
+	emptyText,
+	options = [],
+	placeholder,
+	rightElement,
+	value,
+	onChange,
+}) => {
+	const { t } = useTranslation();
+	const [inputValue, setInputValue] = useState("");
+	const [isOpen, setIsOpen] = useState(false);
+	const selectedValues = useMemo(() => rotationTextToOptions(value), [value]);
+	const selectedSet = useMemo(
+		() => new Set(selectedValues.map((item) => item.toLowerCase())),
+		[selectedValues],
+	);
+	const mergedOptions = useMemo(
+		() => dedupeValues([...options, ...selectedValues]),
+		[options, selectedValues],
+	);
+	const searchTerm = inputValue.trim();
+	const filteredOptions = useMemo(() => {
+		const term = searchTerm.toLowerCase();
+		if (!term) return mergedOptions;
+		return mergedOptions.filter((option) =>
+			option.toLowerCase().includes(term),
+		);
+	}, [mergedOptions, searchTerm]);
+	const canCreate =
+		Boolean(searchTerm) &&
+		!mergedOptions.some(
+			(option) => option.toLowerCase() === searchTerm.toLowerCase(),
+		);
+	const borderColor = useColorModeValue("gray.200", "gray.700");
+	const bg = useColorModeValue("white", "gray.900");
+	const menuBg = useColorModeValue("white", "gray.800");
+	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
+	const selectedBg = useColorModeValue("primary.50", "whiteAlpha.100");
+	const mutedColor = useColorModeValue("gray.500", "gray.400");
+
+	const updateValues = (nextValues: string[]) =>
+		onChange(textValuesToString(nextValues));
+
+	const commitInput = (rawValue = inputValue) => {
+		const tokens = rotationTextToOptions(rawValue);
+		if (!tokens.length) {
+			setInputValue("");
+			return;
+		}
+		updateValues([...selectedValues, ...tokens]);
+		setInputValue("");
+		setIsOpen(true);
+	};
+
+	const toggleValue = (option: string) => {
+		if (selectedSet.has(option.toLowerCase())) {
+			updateValues(
+				selectedValues.filter(
+					(item) => item.toLowerCase() !== option.toLowerCase(),
+				),
+			);
+			return;
+		}
+		updateValues([...selectedValues, option]);
+	};
+
+	const removeValue = (option: string) => {
+		updateValues(
+			selectedValues.filter(
+				(item) => item.toLowerCase() !== option.toLowerCase(),
+			),
+		);
+	};
+
+	const handleInputChange = (nextValue: string) => {
+		if (/[,;\n]/.test(nextValue)) {
+			commitInput(nextValue);
+			return;
+		}
+		setInputValue(nextValue);
+		setIsOpen(true);
+	};
+
+	const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+		if (event.key === "Enter") {
+			event.preventDefault();
+			commitInput();
+			return;
+		}
+		if (event.key === "Backspace" && !inputValue && selectedValues.length) {
+			event.preventDefault();
+			removeValue(selectedValues[selectedValues.length - 1]);
+		}
+	};
+
 	return (
 		<Box
-			mt={2}
-			p={2}
-			borderWidth="1px"
-			borderRadius="md"
-			borderColor="gray.200"
-			_dark={{ borderColor: "gray.700", bg: "gray.900" }}
+			position="relative"
+			onBlur={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					commitInput();
+					setIsOpen(false);
+				}
+			}}
 		>
-			<Text fontSize="xs" color="gray.500" mb={2}>
-				{t("hostsDialog.pickNodeAddress", "Pick a node address")}
-			</Text>
-			<HStack spacing={2} flexWrap="wrap">
-				{options.map((node) => (
-					<Button
-						key={node.id ?? node.address}
-						size="xs"
-						variant="outline"
-						onMouseDown={(event) => event.preventDefault()}
-						onClick={() => onSelect(node.address.trim())}
-					>
-						{node.name || node.address}
-					</Button>
-				))}
-			</HStack>
+			<Box
+				borderWidth="1px"
+				borderRadius="md"
+				borderColor={borderColor}
+				bg={bg}
+				minH="40px"
+				px={2}
+				py={1.5}
+				pr={rightElement ? 10 : 2}
+				cursor="text"
+				onMouseDown={(event) => {
+					const target = event.target as HTMLElement | null;
+					if (target?.closest("button")) return;
+					event.preventDefault();
+					const input = event.currentTarget.querySelector("input");
+					input?.focus();
+					setIsOpen(true);
+				}}
+			>
+				<Wrap spacing={1.5} align="center">
+					{selectedValues.map((item) => (
+						<WrapItem key={item}>
+							<Tag
+								size="sm"
+								borderRadius="full"
+								colorScheme="primary"
+								variant="subtle"
+							>
+								<TagLabel maxW="180px" noOfLines={1}>
+									{item}
+								</TagLabel>
+								<TagCloseButton
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => removeValue(item)}
+								/>
+							</Tag>
+						</WrapItem>
+					))}
+					<WrapItem flex="1" minW="140px">
+						<Input
+							variant="unstyled"
+							size="sm"
+							value={inputValue}
+							placeholder={
+								selectedValues.length
+									? t("hostsDialog.addAnotherValue", "Add another value")
+									: placeholder
+							}
+							onFocus={() => setIsOpen(true)}
+							onChange={(event) => handleInputChange(event.target.value)}
+							onKeyDown={handleKeyDown}
+						/>
+					</WrapItem>
+				</Wrap>
+				{rightElement && (
+					<Box position="absolute" top="8px" right="8px" zIndex={1}>
+						{rightElement}
+					</Box>
+				)}
+			</Box>
+			{isOpen && (
+				<Box
+					position="absolute"
+					top="calc(100% + 6px)"
+					left={0}
+					right={0}
+					zIndex={16060}
+					borderWidth="1px"
+					borderColor={borderColor}
+					borderRadius="md"
+					bg={menuBg}
+					boxShadow="lg"
+					maxH="240px"
+					overflowY="auto"
+					p={1}
+					onMouseDown={(event) => event.preventDefault()}
+				>
+					{canCreate && (
+						<Button
+							w="full"
+							size="sm"
+							justifyContent="flex-start"
+							variant="ghost"
+							onClick={() => commitInput(searchTerm)}
+						>
+							{t("hostsDialog.addCustomValue", "Add")} "{searchTerm}"
+						</Button>
+					)}
+					{filteredOptions.length ? (
+						filteredOptions.map((option) => {
+							const selected = selectedSet.has(option.toLowerCase());
+							return (
+								<Button
+									key={option}
+									w="full"
+									size="sm"
+									justifyContent="space-between"
+									variant="ghost"
+									bg={selected ? selectedBg : "transparent"}
+									_hover={{ bg: selected ? selectedBg : hoverBg }}
+									onClick={() => toggleValue(option)}
+								>
+									<Text as="span" noOfLines={1} textAlign="start">
+										{option}
+									</Text>
+									{selected && (
+										<Text as="span" fontSize="xs" color="primary.400" ml={2}>
+											{t("selected", "Selected")}
+										</Text>
+									)}
+								</Button>
+							);
+						})
+					) : !canCreate ? (
+						<Text px={2} py={2} fontSize="sm" color={mutedColor}>
+							{emptyText ??
+								t("hostsDialog.noAutocompleteOptions", "No options")}
+						</Text>
+					) : null}
+				</Box>
+			)}
 		</Box>
 	);
 };
@@ -412,7 +647,10 @@ const normalizeRotationMode = (value: string | null | undefined) =>
 	value === "ttl" ? "ttl" : "random";
 
 const rotationOptionsToText = (values: string[] | null | undefined) =>
-	(values ?? []).map((value) => value.trim()).filter(Boolean).join("\n");
+	(values ?? [])
+		.map((value) => value.trim())
+		.filter(Boolean)
+		.join("\n");
 
 const rotationTextToOptions = (value: string) =>
 	value
@@ -423,24 +661,11 @@ const rotationTextToOptions = (value: string) =>
 const mergeRotationValue = (
 	value: string | null | undefined,
 	options: string[] | null | undefined,
-) => rotationTextToOptions([value ?? "", ...(options ?? [])].join(",")).join(", ");
+) =>
+	rotationTextToOptions([value ?? "", ...(options ?? [])].join(",")).join(", ");
 
 const hasMultipleRotationValues = (value: string) =>
 	rotationTextToOptions(value).length > 1;
-
-const appendCommaValue = (current: string, next: string) => {
-	const values = rotationTextToOptions(current);
-	if (!next.trim()) {
-		return values.join(", ");
-	}
-	const exists = values.some(
-		(value) => value.toLowerCase() === next.trim().toLowerCase(),
-	);
-	if (!exists) {
-		values.push(next.trim());
-	}
-	return values.join(", ");
-};
 
 const normalizeBoolean = (
 	value: boolean | null | undefined,
@@ -536,7 +761,10 @@ const validateHostState = (
 	if (!data.remark.trim()) {
 		errors.push("Remark is required.");
 	}
-	if (!data.address.trim() && rotationTextToOptions(data.address_options).length === 0) {
+	if (
+		!data.address.trim() &&
+		rotationTextToOptions(data.address_options).length === 0
+	) {
 		errors.push("Address is required.");
 	}
 	if (data.port !== null) {
@@ -970,7 +1198,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	const { t } = useTranslation();
 	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
-	const [showAddressNodes, setShowAddressNodes] = useState(false);
 	const updatingFromJsonRef = useRef(false);
 	const _resolvedHost = host ?? {
 		uid: "",
@@ -1002,6 +1229,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 			...formatHostForApi(host.data),
 		};
 	}, [host]);
+	const nodeAddressOptions = useMemo(
+		() => getNodeAddressOptions(nodes),
+		[nodes],
+	);
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1135,39 +1366,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.address")}</FormLabel>
-														<InputGroup>
-															<Input
-																value={host.data.address}
-																onFocus={() => setShowAddressNodes(true)}
-																onChange={(event) =>
-																	onChange(
-																		host.uid,
-																		"address",
-																		event.target.value,
-																	)
-																}
-															/>
-															<InputRightElement
-																width="auto"
-																pr={2}
-																pointerEvents="auto"
-															>
-																<DynamicTokensPopover />
-															</InputRightElement>
-														</InputGroup>
-														{showAddressNodes && (
-															<NodeAddressPicker
-																nodes={nodes}
-																onSelect={(address) => {
-																	onChange(
-																		host.uid,
-																		"address",
-																		appendCommaValue(host.data.address, address),
-																	);
-																	setShowAddressNodes(false);
-																}}
-															/>
-														)}
+														<HostMultiValueAutocomplete
+															value={host.data.address}
+															options={nodeAddressOptions}
+															placeholder={t(
+																"hostsDialog.addressPlaceholder",
+																"Type an address or select node IPs",
+															)}
+															onChange={(value) =>
+																onChange(host.uid, "address", value)
+															}
+															rightElement={<DynamicTokensPopover />}
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.port")}</FormLabel>
@@ -1189,7 +1399,11 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														mode={host.data.address_selection_mode}
 														ttl={host.data.address_ttl_seconds}
 														onModeChange={(value) =>
-															onChange(host.uid, "address_selection_mode", value)
+															onChange(
+																host.uid,
+																"address_selection_mode",
+																value,
+															)
 														}
 														onTTLChange={(value) =>
 															onChange(host.uid, "address_ttl_seconds", value)
@@ -1221,30 +1435,30 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-														<Input
+														<HostMultiValueAutocomplete
 															value={host.data.sni}
-															onChange={(event) =>
-																onChange(host.uid, "sni", event.target.value)
+															placeholder={t(
+																"hostsDialog.sniPlaceholder",
+																"Type SNI values",
+															)}
+															onChange={(value) =>
+																onChange(host.uid, "sni", value)
 															}
 														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.host")}</FormLabel>
-														<InputGroup>
-															<Input
-																value={host.data.host}
-																onChange={(event) =>
-																	onChange(host.uid, "host", event.target.value)
-																}
-															/>
-															<InputRightElement
-																width="auto"
-																pr={2}
-																pointerEvents="auto"
-															>
-																<DynamicTokensPopover />
-															</InputRightElement>
-														</InputGroup>
+														<HostMultiValueAutocomplete
+															value={host.data.host}
+															placeholder={t(
+																"hostsDialog.hostPlaceholder",
+																"Type request host values",
+															)}
+															onChange={(value) =>
+																onChange(host.uid, "host", value)
+															}
+															rightElement={<DynamicTokensPopover />}
+														/>
 													</FormControl>
 												</SimpleGrid>
 												{(hasMultipleRotationValues(host.data.sni) ||
@@ -1255,7 +1469,11 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 																mode={host.data.sni_selection_mode}
 																ttl={host.data.sni_ttl_seconds}
 																onModeChange={(value) =>
-																	onChange(host.uid, "sni_selection_mode", value)
+																	onChange(
+																		host.uid,
+																		"sni_selection_mode",
+																		value,
+																	)
 																}
 																onTTLChange={(value) =>
 																	onChange(host.uid, "sni_ttl_seconds", value)
@@ -1267,7 +1485,11 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 																mode={host.data.host_selection_mode}
 																ttl={host.data.host_ttl_seconds}
 																onModeChange={(value) =>
-																	onChange(host.uid, "host_selection_mode", value)
+																	onChange(
+																		host.uid,
+																		"host_selection_mode",
+																		value,
+																	)
 																}
 																onTTLChange={(value) =>
 																	onChange(host.uid, "host_ttl_seconds", value)
@@ -1507,7 +1729,6 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 }) => {
 	const { t } = useTranslation();
 	const initialRef = useRef<HTMLInputElement | null>(null);
-	const [showAddressNodes, setShowAddressNodes] = useState(false);
 	const [formState, setFormState] = useState<CreateHostValues>({
 		inboundTag: inboundOptions[0]?.value ?? "",
 		remark: "",
@@ -1526,6 +1747,10 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		host_selection_mode: "random",
 		host_ttl_seconds: null,
 	});
+	const nodeAddressOptions = useMemo(
+		() => getNodeAddressOptions(nodes),
+		[nodes],
+	);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1620,33 +1845,21 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.address")}</FormLabel>
-							<InputGroup>
-								<Input
-									value={formState.address}
-									onFocus={() => setShowAddressNodes(true)}
-									onChange={(event) =>
-										setFormState((prev) => ({
-											...prev,
-											address: event.target.value,
-										}))
-									}
-								/>
-								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
-								</InputRightElement>
-							</InputGroup>
-							{showAddressNodes && (
-								<NodeAddressPicker
-									nodes={nodes}
-									onSelect={(address) => {
-										setFormState((prev) => ({
-											...prev,
-											address: appendCommaValue(prev.address, address),
-										}));
-										setShowAddressNodes(false);
-									}}
-								/>
-							)}
+							<HostMultiValueAutocomplete
+								value={formState.address}
+								options={nodeAddressOptions}
+								placeholder={t(
+									"hostsDialog.addressPlaceholder",
+									"Type an address or select node IPs",
+								)}
+								onChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										address: value,
+									}))
+								}
+								rightElement={<DynamicTokensPopover />}
+							/>
 						</FormControl>
 						{hasMultipleRotationValues(formState.address) && (
 							<RotationControls
@@ -1681,12 +1894,16 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							</FormControl>
 							<FormControl>
 								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-								<Input
+								<HostMultiValueAutocomplete
 									value={formState.sni}
-									onChange={(event) =>
+									placeholder={t(
+										"hostsDialog.sniPlaceholder",
+										"Type SNI values",
+									)}
+									onChange={(value) =>
 										setFormState((prev) => ({
 											...prev,
-											sni: event.target.value,
+											sni: value,
 										}))
 									}
 								/>
@@ -1706,20 +1923,20 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</FormControl>
 						<FormControl>
 							<FormLabel>{t("hostsDialog.host")}</FormLabel>
-							<InputGroup>
-								<Input
-									value={formState.host}
-									onChange={(event) =>
-										setFormState((prev) => ({
-											...prev,
-											host: event.target.value,
-										}))
-									}
-								/>
-								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
-								</InputRightElement>
-							</InputGroup>
+							<HostMultiValueAutocomplete
+								value={formState.host}
+								placeholder={t(
+									"hostsDialog.hostPlaceholder",
+									"Type request host values",
+								)}
+								onChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										host: value,
+									}))
+								}
+								rightElement={<DynamicTokensPopover />}
+							/>
 						</FormControl>
 						{(hasMultipleRotationValues(formState.sni) ||
 							hasMultipleRotationValues(formState.host)) && (
@@ -1904,10 +2121,7 @@ export const HostsManager: FC = () => {
 		[_hostItemsState],
 	);
 
-	const allHosts = useMemo(
-		() => sortHosts(_hostItemsState),
-		[_hostItemsState],
-	);
+	const allHosts = useMemo(() => sortHosts(_hostItemsState), [_hostItemsState]);
 
 	const baseFilteredHosts = useMemo(
 		() => (includeDisabled ? allHosts : activeHosts),
@@ -1987,7 +2201,9 @@ export const HostsManager: FC = () => {
 	const saveHost = async (uid: string) => {
 		const host = hostItemsRef.current.find((item) => item.uid === uid);
 		if (!host) return;
-		if (showHostValidationError(validateHostState(host.inboundTag, host.data))) {
+		if (
+			showHostValidationError(validateHostState(host.inboundTag, host.data))
+		) {
 			return;
 		}
 		setSavingHostUid(uid);
