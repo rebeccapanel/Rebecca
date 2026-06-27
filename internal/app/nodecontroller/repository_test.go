@@ -170,6 +170,100 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	}
 }
 
+func TestControllerTurnsFailedGlobalSyncIntoNodeSpecificRetry(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-global-retry.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username TEXT,
+	credential_key TEXT,
+	flow TEXT,
+	service_id INTEGER,
+	status TEXT
+);
+CREATE TABLE proxies (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER,
+	type TEXT,
+	settings TEXT
+);
+CREATE TABLE service_hosts (
+	service_id INTEGER,
+	host_id INTEGER
+);
+CREATE TABLE hosts (
+	id INTEGER PRIMARY KEY,
+	inbound_tag TEXT,
+	is_disabled BOOLEAN DEFAULT 0
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, xray_config_mode, usage_coefficient)
+VALUES (7, 'down-node', '127.0.0.1', 62050, 62051, 'connected', 'default', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Done != 1 || result.Retrying != 0 || result.Failed != 0 {
+		t.Fatalf("expected global sync to complete after queueing node retry, got %#v", result)
+	}
+
+	var globalStatus string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE id = 1`).Scan(&globalStatus); err != nil {
+		t.Fatal(err)
+	}
+	if globalStatus != "done" {
+		t.Fatalf("expected global sync to be done, got %q", globalStatus)
+	}
+	var retryCount int64
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type = 'sync_config' AND status = 'pending'`).Scan(&retryCount); err != nil {
+		t.Fatal(err)
+	}
+	if retryCount != 1 {
+		t.Fatalf("expected one node-specific sync retry, got %d", retryCount)
+	}
+}
+
 func TestRepositoryListNodeItemsNormalizesLegacyStatus(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "nodes.db")+"?_pragma=busy_timeout(30000)")
