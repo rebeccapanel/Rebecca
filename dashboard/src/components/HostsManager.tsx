@@ -339,11 +339,25 @@ const RotationControls: FC<RotationControlsProps> = ({
 
 type HostMultiValueAutocompleteProps = {
 	emptyText?: string;
-	options?: string[];
+	options?: AutocompleteOption[];
 	placeholder?: string;
 	rightElement?: ReactNode;
 	value: string;
 	onChange: (value: string) => void;
+};
+
+type AutocompleteOption =
+	| string
+	| {
+			label: string;
+			title?: string;
+			value: string;
+	  };
+
+type NormalizedAutocompleteOption = {
+	label: string;
+	title: string;
+	value: string;
 };
 
 const dedupeValues = (values: string[]) => {
@@ -363,11 +377,61 @@ const dedupeValues = (values: string[]) => {
 const textValuesToString = (values: string[]) =>
 	dedupeValues(values).join(", ");
 
-const getNodeAddressOptions = (nodes?: NodeType[]) =>
-	dedupeValues(
+const normalizeAutocompleteOption = (
+	option: AutocompleteOption,
+): NormalizedAutocompleteOption => {
+	if (typeof option === "string") {
+		return { label: option, title: option, value: option };
+	}
+	return {
+		label: option.label,
+		title: option.title ?? option.label,
+		value: option.value,
+	};
+};
+
+const dedupeAutocompleteOptions = (options: NormalizedAutocompleteOption[]) => {
+	const seen = new Set<string>();
+	const result: NormalizedAutocompleteOption[] = [];
+	for (const option of options) {
+		const value = option.value.trim();
+		if (!value) continue;
+		const key = value.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		result.push({
+			...option,
+			value,
+		});
+	}
+	return result;
+};
+
+const shortNodeName = (name?: string | null) => {
+	const trimmed = (name ?? "").trim();
+	if (!trimmed) return "Node";
+	return trimmed.length > 5 ? `${trimmed.slice(0, 5)}...` : trimmed;
+};
+
+const getNodeAddressOptions = (nodes?: NodeType[]): AutocompleteOption[] =>
+	dedupeAutocompleteOptions(
 		(nodes ?? [])
-			.map((node) => (typeof node.address === "string" ? node.address : ""))
-			.filter(Boolean),
+			.filter((node) => node.status !== "disabled")
+			.map((node) => {
+				const address =
+					typeof node.address === "string" ? node.address.trim() : "";
+				if (!address) return null;
+				const fullName = String(node.name ?? "").trim();
+				const labelName = shortNodeName(fullName);
+				return {
+					label: `${labelName} - ${address}`,
+					title: fullName ? `${fullName} - ${address}` : address,
+					value: address,
+				};
+			})
+			.filter(
+				(option): option is NormalizedAutocompleteOption => option !== null,
+			),
 	);
 
 const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
@@ -387,7 +451,11 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 		[selectedValues],
 	);
 	const mergedOptions = useMemo(
-		() => dedupeValues([...options, ...selectedValues]),
+		() =>
+			dedupeAutocompleteOptions([
+				...options.map(normalizeAutocompleteOption),
+				...selectedValues.map((item) => normalizeAutocompleteOption(item)),
+			]),
 		[options, selectedValues],
 	);
 	const searchTerm = inputValue.trim();
@@ -395,13 +463,13 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 		const term = searchTerm.toLowerCase();
 		if (!term) return mergedOptions;
 		return mergedOptions.filter((option) =>
-			option.toLowerCase().includes(term),
+			`${option.label} ${option.value}`.toLowerCase().includes(term),
 		);
 	}, [mergedOptions, searchTerm]);
 	const canCreate =
 		Boolean(searchTerm) &&
 		!mergedOptions.some(
-			(option) => option.toLowerCase() === searchTerm.toLowerCase(),
+			(option) => option.value.toLowerCase() === searchTerm.toLowerCase(),
 		);
 	const borderColor = useColorModeValue("gray.200", "gray.700");
 	const bg = useColorModeValue("white", "gray.900");
@@ -424,16 +492,16 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 		setIsOpen(true);
 	};
 
-	const toggleValue = (option: string) => {
-		if (selectedSet.has(option.toLowerCase())) {
+	const toggleValue = (option: NormalizedAutocompleteOption) => {
+		if (selectedSet.has(option.value.toLowerCase())) {
 			updateValues(
 				selectedValues.filter(
-					(item) => item.toLowerCase() !== option.toLowerCase(),
+					(item) => item.toLowerCase() !== option.value.toLowerCase(),
 				),
 			);
 			return;
 		}
-		updateValues([...selectedValues, option]);
+		updateValues([...selectedValues, option.value]);
 	};
 
 	const removeValue = (option: string) => {
@@ -569,10 +637,10 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 					)}
 					{filteredOptions.length ? (
 						filteredOptions.map((option) => {
-							const selected = selectedSet.has(option.toLowerCase());
+							const selected = selectedSet.has(option.value.toLowerCase());
 							return (
 								<Button
-									key={option}
+									key={option.value}
 									w="full"
 									size="sm"
 									minH="28px"
@@ -581,9 +649,10 @@ const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
 									bg={selected ? selectedBg : "transparent"}
 									_hover={{ bg: selected ? selectedBg : hoverBg }}
 									onClick={() => toggleValue(option)}
+									title={option.title}
 								>
 									<Text as="span" noOfLines={1} textAlign="start">
-										{option}
+										{option.label}
 									</Text>
 									{selected && (
 										<Text as="span" fontSize="xs" color="primary.400" ml={2}>
