@@ -367,7 +367,7 @@ func (r Repository) enqueueSyncConfigTx(ctx context.Context, tx *sql.Tx, nodeID 
 func enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, operationType string, nodeID *int64, userID *int64, payload any) error {
 	nowTime := time.Now().UTC()
 	if nodeID == nil && userID != nil && operationType != NodeOperationSyncConfig {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE COALESCE(status, '') NOT IN ('disabled', 'limited') ORDER BY id`)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
 		if err != nil {
 			return err
 		}

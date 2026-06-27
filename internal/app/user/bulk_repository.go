@@ -2,10 +2,7 @@ package user
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -70,6 +67,10 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 	}
 
 	if err := r.ensureBulkActionAllowedTx(ctx, tx, requester, targetAdmin, payload); err != nil {
+		return BulkUsersActionResult{}, err
+	}
+	affectedUserIDs, err := r.bulkAffectedUserIDsTx(ctx, tx, targetAdmin, payload)
+	if err != nil {
 		return BulkUsersActionResult{}, err
 	}
 
@@ -138,13 +139,63 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 		return BulkUsersActionResult{}, clientError(400, "Unsupported action")
 	}
 
-	if err := r.enqueueSyncConfigOperationTx(ctx, tx, time.Now().UTC()); err != nil {
-		return BulkUsersActionResult{}, err
+	now := time.Now().UTC()
+	for _, userID := range affectedUserIDs {
+		if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationUpdateUser, userID, now); err != nil {
+			return BulkUsersActionResult{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return BulkUsersActionResult{}, err
 	}
 	return result, nil
+}
+
+func (r Repository) bulkAffectedUserIDsTx(ctx context.Context, tx *sql.Tx, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) ([]int64, error) {
+	filter := r.bulkFilter(targetAdmin, payload)
+	switch payload.Action {
+	case AdvancedUserActionExtendExpire, AdvancedUserActionReduceExpire:
+		scope := bulkStatusScope(payload.Scope, []UserStatus{UserStatusActive})
+		filter.addStatuses("status", scope)
+	case AdvancedUserActionIncreaseTraffic, AdvancedUserActionDecreaseTraffic:
+		scope := bulkStatusScope(payload.Scope, []UserStatus{UserStatusActive})
+		filter.addStatuses("status", scope)
+		filter.where = append(filter.where, "data_limit IS NOT NULL", "data_limit > 0")
+	case AdvancedUserActionCleanupStatus:
+		filter.addStatuses("status", payload.Statuses)
+		cutoff := time.Now().UTC().Add(-time.Duration(*payload.Days) * 24 * time.Hour)
+		filter.where = append(filter.where, "last_status_change IS NOT NULL", "last_status_change <= ?")
+		filter.args = append(filter.args, dbTime(cutoff))
+	case AdvancedUserActionActivateUsers:
+		filter.where = append(filter.where, "status != ?")
+		filter.args = append(filter.args, string(UserStatusActive))
+	case AdvancedUserActionDisableUsers:
+		filter.where = append(filter.where, "status != ?")
+		filter.args = append(filter.args, string(UserStatusDisabled))
+	case AdvancedUserActionChangeService:
+		if payload.TargetServiceID == nil {
+			return nil, nil
+		}
+		filter.where = append(filter.where, "(service_id IS NULL OR service_id != ?)")
+		filter.args = append(filter.args, *payload.TargetServiceID)
+	default:
+		return nil, nil
+	}
+	whereSQL, args := filter.sql()
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM users WHERE "+whereSQL, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (r Repository) ensureBulkActionAllowedTx(ctx context.Context, tx *sql.Tx, requester adminapp.Admin, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) error {
@@ -610,34 +661,6 @@ func (r Repository) recordBulkCreatedTrafficTx(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-func (r Repository) enqueueSyncConfigOperationTx(ctx context.Context, tx *sql.Tx, now time.Time) error {
-	payload := map[string]any{"queued_at": now.Format(time.RFC3339Nano)}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	keySource := fmt.Sprintf("%s:*:*:%s", NodeOperationSyncConfig, string(payloadJSON))
-	sum := sha256Sum(keySource)
-	var existing int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM node_operations WHERE idempotency_key = ? LIMIT 1`, sum).Scan(&existing)
-	if err == nil {
-		return nil
-	}
-	if err != sql.ErrNoRows {
-		return err
-	}
-	_, err = tx.ExecContext(
-		ctx,
-		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at) VALUES (?, NULL, NULL, ?, 'pending', 0, ?, ?, ?)`,
-		NodeOperationSyncConfig,
-		string(payloadJSON),
-		sum,
-		dbTime(now),
-		dbTime(now),
-	)
-	return err
-}
-
 func rowsAffected(res sql.Result) int64 {
 	if res == nil {
 		return 0
@@ -647,10 +670,4 @@ func rowsAffected(res sql.Result) int64 {
 		return 0
 	}
 	return count
-}
-
-func sha256Sum(value string) string {
-	// Kept separate to avoid duplicating idempotency hash formatting in callers.
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
 }

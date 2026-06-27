@@ -337,7 +337,7 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 1 || result.Done != 3 || result.Failed != 0 || result.Retrying != 0 {
+	if result.Processed != 1 || result.Done != 2 || result.Failed != 0 || result.Retrying != 0 {
 		t.Fatalf("unexpected process result: %#v", result)
 	}
 
@@ -352,8 +352,8 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_operations WHERE status = 'done'`).Scan(&done); err != nil {
 		t.Fatal(err)
 	}
-	if done != 3 {
-		t.Fatalf("expected three coalescible operations to be done, got %d", done)
+	if done != 2 {
+		t.Fatalf("expected two coalescible sync operations to be done, got %d", done)
 	}
 	var customStatus string
 	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE id = 4`).Scan(&customStatus); err != nil {
@@ -456,6 +456,77 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 	if retryCount != 1 {
 		t.Fatalf("expected one node-specific sync retry, got %d", retryCount)
 	}
+}
+
+func TestControllerCompletesLegacyServiceRefreshSyncWithoutRuntimeRestart(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-service-refresh.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username TEXT,
+	credential_key TEXT,
+	flow TEXT,
+	service_id INTEGER,
+	status TEXT
+);
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO users (id, username, service_id, status) VALUES
+	(10, 'active-user', 3, 'active'),
+	(11, 'hold-user', 3, 'on_hold'),
+	(12, 'deleted-user', 3, 'deleted'),
+	(13, 'other-service', 4, 'active');
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES (7, 'node', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', 7, NULL, '{"source":"hosts","service_id":3}', 'pending', 'service-refresh', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Processed != 1 || result.Done != 1 || result.Retrying != 0 || result.Failed != 0 {
+		t.Fatalf("expected legacy service refresh sync to finish without runtime fanout, got %#v", result)
+	}
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
 }
 
 func TestControllerFansOutGlobalSyncOnlyToConnectedNodes(t *testing.T) {

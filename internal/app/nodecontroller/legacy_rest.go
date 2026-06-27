@@ -29,6 +29,7 @@ func (c Controller) legacyMetrics(ctx context.Context, node NodeRow, persist boo
 	if err != nil {
 		return RuntimeResult{}, err
 	}
+	c.rememberNodeProtocol(node.ID, "legacy")
 	result := legacyRuntimeResult(node, payload, "metrics")
 	if persist {
 		if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
@@ -48,6 +49,7 @@ func (c Controller) legacySyncConfig(ctx context.Context, node NodeRow, configJS
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}
+	c.rememberNodeProtocol(node.ID, "legacy")
 	var payload map[string]any
 	if err := client.post(ctx, "/restart", map[string]any{
 		"session_id": client.sessionID,
@@ -72,6 +74,7 @@ func (c Controller) legacyUpdateGeo(ctx context.Context, node NodeRow, files []F
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}
+	c.rememberNodeProtocol(node.ID, "legacy")
 	payloadFiles := make([]map[string]string, 0, len(files))
 	for _, file := range files {
 		payloadFiles = append(payloadFiles, map[string]string{"name": file.Name, "url": file.URL})
@@ -100,6 +103,7 @@ func (c Controller) legacyUpdateRuntime(ctx context.Context, node NodeRow, versi
 	if _, err := client.connect(ctx); err != nil {
 		return RuntimeResult{}, err
 	}
+	c.rememberNodeProtocol(node.ID, "legacy")
 	var payload map[string]any
 	if err := client.post(ctx, "/update_core", map[string]any{
 		"session_id": client.sessionID,
@@ -161,6 +165,24 @@ func (c *legacyRESTClient) connect(ctx context.Context) (map[string]any, error) 
 
 func (c *legacyRESTClient) post(ctx context.Context, path string, body map[string]any, target any) error {
 	return c.do(ctx, http.MethodPost, path, body, target)
+}
+
+func (c *legacyRESTClient) addInboundUser(ctx context.Context, inboundTag string, user map[string]any) error {
+	var payload map[string]any
+	return c.post(ctx, "/inbounds/users/add", map[string]any{
+		"session_id":  c.sessionID,
+		"inbound_tag": inboundTag,
+		"user":        user,
+	}, &payload)
+}
+
+func (c *legacyRESTClient) removeInboundUser(ctx context.Context, inboundTag string, email string) error {
+	var payload map[string]any
+	return c.post(ctx, "/inbounds/users/remove", map[string]any{
+		"session_id":  c.sessionID,
+		"inbound_tag": inboundTag,
+		"email":       email,
+	}, &payload)
 }
 
 func (c *legacyRESTClient) collectUserUsage(ctx context.Context) (string, []UserUsageDelta, int, error) {

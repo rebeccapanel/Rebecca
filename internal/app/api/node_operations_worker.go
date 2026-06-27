@@ -10,13 +10,15 @@ import (
 )
 
 const defaultNodeOperationsPollInterval = 15 * time.Second
-const defaultNodeOperationsBatchSize = 200
+const defaultNodeOperationsBatchSize = 500
 
 func (s *Server) runNodeOperationsWorker(ctx context.Context) {
 	interval := parseNodeOperationsPollInterval(s.cfg.NodeOperationsPollInterval)
 	if interval <= 0 {
+		logging.Infof(logging.ComponentNode, "operation queue worker disabled")
 		return
 	}
+	logging.Infof(logging.ComponentNode, "operation queue worker started interval=%s batch=%d", interval, defaultNodeOperationsBatchSize)
 
 	for {
 		s.processNodeOperations(ctx)

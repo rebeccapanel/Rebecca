@@ -133,7 +133,57 @@ func (r Repository) UUIDMasks(ctx context.Context) (map[string][]byte, error) {
 }
 
 func (r Repository) RuntimeUsers(ctx context.Context) ([]runtimeUserRow, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	return r.runtimeUsers(ctx, 0)
+}
+
+func (r Repository) RuntimeUsersByID(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	return r.runtimeUsers(ctx, userID)
+}
+
+func (r Repository) RuntimeUserIdentity(ctx context.Context, userID int64) (runtimeUserIdentity, error) {
+	var row runtimeUserIdentity
+	err := r.db.QueryRowContext(ctx, `SELECT id, username FROM users WHERE id = ? LIMIT 1`, userID).Scan(&row.ID, &row.Username)
+	if err == sql.ErrNoRows {
+		return runtimeUserIdentity{}, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return runtimeUserIdentity{}, err
+	}
+	return row, nil
+}
+
+func (r Repository) RuntimeUserIDsForServices(ctx context.Context, serviceIDs []int64) ([]int64, error) {
+	ids := uniquePositiveInt64(serviceIDs)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := make([]any, 0, len(ids))
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+		parts = append(parts, "?")
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM users WHERE service_id IN (`+strings.Join(parts, ",")+`) AND status != 'deleted' ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	return result, rows.Err()
+}
+
+func (r Repository) runtimeUsers(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
+	query := `
 SELECT
 	u.id,
 	u.username,
@@ -151,8 +201,14 @@ JOIN (
 ) protocols
 LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type
 WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0
-  AND (p.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM proxies existing WHERE existing.user_id = u.id))
-ORDER BY u.id, COALESCE(p.id, 0), protocols.type`)
+  AND (p.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM proxies existing WHERE existing.user_id = u.id))`
+	args := []any{}
+	if userID > 0 {
+		query += ` AND u.id = ?`
+		args = append(args, userID)
+	}
+	query += ` ORDER BY u.id, COALESCE(p.id, 0), protocols.type`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +241,25 @@ ORDER BY u.id, COALESCE(p.id, 0), protocols.type`)
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func uniquePositiveInt64(values []int64) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[int64]struct{}{}
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (r Repository) ServiceAllowedTags(ctx context.Context) (map[int64]map[string]bool, error) {

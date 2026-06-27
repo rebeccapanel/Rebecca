@@ -615,11 +615,6 @@ func (s *Server) handleEnableAdmin(w http.ResponseWriter, r *http.Request, usern
 				return err
 			}
 		}
-		if len(userIDs) > 0 {
-			if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{}); err != nil {
-				return err
-			}
-		}
 		updated, err = adminByUsernameTx(r.Context(), tx, target.Username)
 		if err != nil {
 			return err
@@ -714,7 +709,7 @@ func (s *Server) bulkUpdateAdminUsers(ctx context.Context, actor adminapp.Admin,
 				}
 			}
 		}
-		return enqueueNodeOperationTx(ctx, tx, "sync_config", nil, nil, map[string]any{})
+		return nil
 	})
 }
 

@@ -28,6 +28,11 @@ type runtimeUserRow struct {
 	Settings      map[string]any
 }
 
+type runtimeUserIdentity struct {
+	ID       int64
+	Username string
+}
+
 type runtimeConfigData struct {
 	users       []runtimeUserRow
 	serviceTags map[int64]map[string]bool

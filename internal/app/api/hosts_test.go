@@ -76,8 +76,8 @@ func TestHostStatusDisablesAndDetachesServiceUsers(t *testing.T) {
 		t.Fatalf("unexpected host response: %#v", host)
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE host_id = 44`, 0)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 77`, 0)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 }
 
 func TestHostsBulkModifyMoveDisableAndEnqueue(t *testing.T) {
@@ -142,8 +142,8 @@ func TestHostsBulkModifyMoveDisableAndEnqueue(t *testing.T) {
 		t.Fatalf("disabled host did not stay disabled: %#v", updated["info"][1])
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE host_id = `+itoa(infoID), 0)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 88`, 0)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'cdn'`, 1)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'info'`, 2)
 }

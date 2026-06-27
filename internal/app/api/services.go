@@ -340,7 +340,7 @@ func (s *Server) handleServiceUpdate(w http.ResponseWriter, r *http.Request, ser
 				return err
 			}
 			if !stringBoolMapsEqual(beforeRuntimeTags, afterRuntimeTags) {
-				if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{"service_id": serviceID}); err != nil {
+				if err := enqueueAffectedServicesUsersTx(r.Context(), tx, map[int64]bool{serviceID: true}); err != nil {
 					return err
 				}
 			}
@@ -385,6 +385,7 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request, ser
 		if adminLinks > 0 && !payload.UnlinkAdmins {
 			return statusError{status: http.StatusBadRequest, detail: "Service has admins assigned. Unlink them before deleting."}
 		}
+		refreshUserIDs := []int64{}
 		switch payload.Mode {
 		case "transfer_users":
 			ids, err := serviceUserIDsTx(r.Context(), tx, serviceID)
@@ -408,10 +409,16 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request, ser
 			if _, err := tx.ExecContext(r.Context(), `UPDATE users SET service_id = ? WHERE service_id = ?`, nullableInt64(payload.TargetServiceID), serviceID); err != nil {
 				return err
 			}
+			refreshUserIDs = ids
 		case "delete_users":
+			ids, err := serviceUserIDsTx(r.Context(), tx, serviceID)
+			if err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = 'deleted', service_id = NULL WHERE service_id = ?`, serviceID); err != nil {
 				return err
 			}
+			refreshUserIDs = ids
 		default:
 			return statusError{status: http.StatusBadRequest, detail: "Invalid delete mode"}
 		}
@@ -424,7 +431,13 @@ func (s *Server) handleServiceDelete(w http.ResponseWriter, r *http.Request, ser
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM services WHERE id = ?`, serviceID); err != nil {
 			return err
 		}
-		return enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{"service_id": serviceID, "deleted": true})
+		for _, userID := range refreshUserIDs {
+			id := userID
+			if err := enqueueNodeOperationTx(r.Context(), tx, "update_user", nil, &id, map[string]any{"service_id": serviceID, "deleted": true}); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		writeServiceError(w, err)

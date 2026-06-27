@@ -127,11 +127,6 @@ func reconcileAdminLimitStateTx(ctx context.Context, tx *sql.Tx, target adminapp
 				return adminLimitTransition{}, err
 			}
 		}
-		if len(userIDs) > 0 {
-			if err := enqueueNodeOperationTx(ctx, tx, "sync_config", nil, nil, map[string]any{}); err != nil {
-				return adminLimitTransition{}, err
-			}
-		}
 		return adminLimitTransition{Disabled: true, Reason: reason}, nil
 	}
 
@@ -161,11 +156,6 @@ func reconcileAdminLimitStateTx(ctx context.Context, tx *sql.Tx, target adminapp
 		}
 		for _, userID := range userIDs {
 			if err := enqueueNodeOperationTx(ctx, tx, "enable_user", nil, &userID, map[string]any{}); err != nil {
-				return adminLimitTransition{}, err
-			}
-		}
-		if len(userIDs) > 0 {
-			if err := enqueueNodeOperationTx(ctx, tx, "sync_config", nil, nil, map[string]any{}); err != nil {
 				return adminLimitTransition{}, err
 			}
 		}

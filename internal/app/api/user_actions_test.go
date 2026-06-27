@@ -189,7 +189,8 @@ VALUES
 		t.Fatalf("increase bulk status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertDBInt64(t, db, `SELECT data_limit FROM users WHERE username = 'bulk_a'`, 1024+1073741824)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id IN (20, 21)`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/v2/services/1/users/actions", token, `{"action":"disable_users"}`)
 	if rec.Code != http.StatusOK {
@@ -279,7 +280,8 @@ VALUES
 	}
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM users WHERE service_id = 2 AND username IN ('svc_bulk_active', 'svc_bulk_disabled')`, 2)
 	assertDBInt64(t, db, `SELECT service_id FROM users WHERE username = 'svc_bulk_other'`, 2)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 8)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 10)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 }
 
 func TestServiceScopedBulkActionsRespectStandardAdminScope(t *testing.T) {

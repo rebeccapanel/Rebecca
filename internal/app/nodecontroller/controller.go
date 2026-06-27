@@ -19,13 +19,17 @@ import (
 )
 
 type Controller struct {
-	repo Repository
+	repo          Repository
+	protocolCache *sync.Map
 }
 
-const maxConcurrentCoalescedNodeOperations = 3
+const (
+	maxConcurrentCoalescedNodeOperations = 3
+	maxConcurrentSingleNodeOperations    = 8
+)
 
 func NewController(repo Repository) Controller {
-	return Controller{repo: repo}
+	return Controller{repo: repo, protocolCache: &sync.Map{}}
 }
 
 func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, error) {
@@ -287,6 +291,8 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	}
 	result := ProcessOperationsResult{}
 	blockedNodes := map[int64]bool{}
+	singles := map[string][]OperationRow{}
+	singleOrder := make([]string, 0)
 	coalesced := map[string][]OperationRow{}
 	coalescedOrder := make([]string, 0)
 	for _, operation := range operations {
@@ -298,9 +304,14 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 			coalesced[key] = append(coalesced[key], operation)
 			continue
 		}
-		if err := c.processSingleOperation(ctx, operation, blockedNodes, &result); err != nil {
-			return result, err
+		key := operationSingleKey(operation)
+		if _, ok := singles[key]; !ok {
+			singleOrder = append(singleOrder, key)
 		}
+		singles[key] = append(singles[key], operation)
+	}
+	if err := c.processSingleOperationGroups(ctx, singleOrder, singles, blockedNodes, &result); err != nil {
+		return result, err
 	}
 	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
 		return result, err
@@ -313,6 +324,75 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 		}
 	}
 	return result, nil
+}
+
+func operationSingleKey(operation OperationRow) string {
+	if operation.NodeID.Valid {
+		return fmt.Sprintf("node:%d", operation.NodeID.Int64)
+	}
+	return fmt.Sprintf("operation:%d", operation.ID)
+}
+
+func (c Controller) processSingleOperationGroups(ctx context.Context, singleOrder []string, singles map[string][]OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
+	type groupResult struct {
+		result ProcessOperationsResult
+		err    error
+	}
+	groups := make([][]OperationRow, 0, len(singleOrder))
+	for _, key := range singleOrder {
+		groups = append(groups, singles[key])
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	workers := maxConcurrentSingleNodeOperations
+	if workers > len(groups) {
+		workers = len(groups)
+	}
+	jobs := make(chan []OperationRow)
+	results := make(chan groupResult, len(groups))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for operations := range jobs {
+				localResult := ProcessOperationsResult{}
+				localBlocked := cloneBlockedNodes(blockedNodes)
+				var err error
+				for _, operation := range operations {
+					err = c.processSingleOperation(ctx, operation, localBlocked, &localResult)
+					if err != nil {
+						break
+					}
+				}
+				results <- groupResult{result: localResult, err: err}
+			}
+		}()
+	}
+	for _, operations := range groups {
+		select {
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			close(results)
+			return ctx.Err()
+		case jobs <- operations:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+	for item := range results {
+		if item.err != nil {
+			return item.err
+		}
+		result.Processed += item.result.Processed
+		result.Done += item.result.Done
+		result.Retrying += item.result.Retrying
+		result.Failed += item.result.Failed
+	}
+	return nil
 }
 
 func (c Controller) processCoalescedNodeOperationGroups(ctx context.Context, coalescedOrder []string, coalesced map[string][]OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
@@ -496,7 +576,7 @@ type operationPayload struct {
 
 func canCoalesceRuntimeSyncOperation(operation OperationRow) bool {
 	switch operation.OperationType {
-	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user":
+	case "sync_config":
 	default:
 		return false
 	}
@@ -528,6 +608,7 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			return err
 		}
 	}
+	serviceRefreshIDs := serviceRefreshIDsFromPayload(operation.Payload)
 	if !operation.NodeID.Valid {
 		switch operation.OperationType {
 		case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user", "restart_node":
@@ -571,9 +652,36 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 	}
 	switch operation.OperationType {
 	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user":
+		if operation.OperationType == "sync_config" && len(serviceRefreshIDs) > 0 {
+			return nil
+		}
+		if c.cachedNodeProtocol(operation.NodeID.Int64) == "legacy" {
+			node, nodeErr := c.repo.Node(ctx, operation.NodeID.Int64)
+			if nodeErr == nil {
+				if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
+					if err := c.legacyApplyUserOperation(ctx, node, operation); err == nil {
+						return nil
+					}
+				}
+			}
+		}
 		client, node, err := c.dial(ctx, operation.NodeID.Int64)
 		if err != nil {
 			if node.ID != 0 {
+				if operation.OperationType == "sync_config" && len(serviceRefreshIDs) > 0 {
+					if legacyErr := c.legacyRefreshServiceUsersOnNode(ctx, node, operation, serviceRefreshIDs); legacyErr == nil {
+						return nil
+					} else {
+						return fmt.Errorf("%w; legacy REST service user refresh failed: %v", err, legacyErr)
+					}
+				}
+				if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
+					if legacyErr := c.legacyApplyUserOperation(ctx, node, operation); legacyErr == nil {
+						return nil
+					} else {
+						return fmt.Errorf("%w; legacy REST user operation failed: %v", err, legacyErr)
+					}
+				}
 				configJSON := strings.TrimSpace(payload.ConfigJSON)
 				if configJSON == "" {
 					configJSON, err = c.buildRuntimeConfig(ctx, node)
@@ -591,6 +699,9 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			return err
 		}
 		defer client.Close()
+		if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
+			return c.grpcApplyUserOperation(ctx, client, node, operation)
+		}
 		configJSON := strings.TrimSpace(payload.ConfigJSON)
 		if configJSON == "" {
 			configJSON, err = c.buildRuntimeConfigWithData(ctx, node, configData)
@@ -634,7 +745,16 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 
 func isRuntimeSyncOperation(operationType string) bool {
 	switch operationType {
-	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user":
+	case "sync_config":
+		return true
+	default:
+		return false
+	}
+}
+
+func isRuntimeUserOperation(operationType string) bool {
+	switch operationType {
+	case "add_user", "update_user", "remove_user", "disable_user", "enable_user":
 		return true
 	default:
 		return false
@@ -723,11 +843,31 @@ func (c Controller) dial(ctx context.Context, nodeID int64) (*nodeclient.Client,
 		client, err := nodeclient.Dial(attemptCtx, address, tlsConfig, grpc.WithBlock())
 		cancel()
 		if err == nil {
+			c.rememberNodeProtocol(node.ID, "grpc")
 			return client, node, nil
 		}
 		errors = append(errors, address+": "+err.Error())
 	}
 	return nil, node, fmt.Errorf("node gRPC dial failed: %s", strings.Join(errors, "; "))
+}
+
+func (c Controller) rememberNodeProtocol(nodeID int64, protocol string) {
+	if c.protocolCache == nil || nodeID <= 0 || strings.TrimSpace(protocol) == "" {
+		return
+	}
+	c.protocolCache.Store(nodeID, protocol)
+}
+
+func (c Controller) cachedNodeProtocol(nodeID int64) string {
+	if c.protocolCache == nil || nodeID <= 0 {
+		return ""
+	}
+	value, ok := c.protocolCache.Load(nodeID)
+	if !ok {
+		return ""
+	}
+	protocol, _ := value.(string)
+	return protocol
 }
 
 func (c Controller) finishRuntime(ctx context.Context, node NodeRow, state *nodev1.RuntimeState, message string) (RuntimeResult, error) {
