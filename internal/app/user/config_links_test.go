@@ -8,6 +8,26 @@ import (
 	"time"
 )
 
+func TestHostRotationSelectionModes(t *testing.T) {
+	options := []string{"one.example.com", "two.example.com", "one.example.com"}
+	selected := selectHostRotationValue(10, "address", options, "random", nil, "fallback.example.com")
+	if selected != "one.example.com" && selected != "two.example.com" {
+		t.Fatalf("random selection returned unexpected value: %q", selected)
+	}
+
+	ttl := int64(31536000)
+	first := selectHostRotationValue(10, "sni", options, "ttl", &ttl, "fallback.example.com")
+	second := selectHostRotationValue(10, "sni", options, "ttl", &ttl, "fallback.example.com")
+	if first == "" || first != second {
+		t.Fatalf("ttl selection should be stable inside the current bucket: %q vs %q", first, second)
+	}
+
+	fallback := selectHostRotationValue(10, "host", nil, "ttl", &ttl, "fallback.example.com")
+	if fallback != "fallback.example.com" {
+		t.Fatalf("empty options should keep fallback, got %q", fallback)
+	}
+}
+
 func TestBuildConfigLinksReplacesServerIPPlaceholder(t *testing.T) {
 	serviceID := int64(1)
 	links, err := BuildConfigLinks(

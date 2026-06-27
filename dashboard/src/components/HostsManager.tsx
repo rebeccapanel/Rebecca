@@ -36,6 +36,7 @@ import {
 	Tabs,
 	Tag,
 	Text,
+	Textarea,
 	Tooltip,
 	useToast,
 	VStack,
@@ -78,10 +79,19 @@ type HostData = {
 	id: number | null;
 	remark: string;
 	address: string;
+	address_options: string;
+	address_selection_mode: string;
+	address_ttl_seconds: number | null;
 	port: number | null;
 	path: string;
 	sni: string;
+	sni_options: string;
+	sni_selection_mode: string;
+	sni_ttl_seconds: number | null;
 	host: string;
+	host_options: string;
+	host_selection_mode: string;
+	host_ttl_seconds: number | null;
 	mux_enable: boolean;
 	allowinsecure: boolean;
 	is_disabled: boolean;
@@ -99,14 +109,19 @@ const coerceHostValue = <Key extends keyof HostData>(
 	value: unknown,
 	currentData: HostData,
 ): HostData[Key] => {
-	if (key === "port") {
+	if (
+		key === "port" ||
+		key === "address_ttl_seconds" ||
+		key === "sni_ttl_seconds" ||
+		key === "host_ttl_seconds"
+	) {
 		if (value === null || value === "") {
 			return null as HostData[Key];
 		}
 		const numeric = Number(value);
 		return Number.isFinite(numeric)
 			? (numeric as HostData[Key])
-			: (currentData.port as HostData[Key]);
+			: (currentData[key] as HostData[Key]);
 	}
 	if (key === "id") {
 		if (value === null || value === "") {
@@ -126,6 +141,25 @@ const coerceHostValue = <Key extends keyof HostData>(
 	) {
 		return Boolean(value) as HostData[Key];
 	}
+	if (
+		key === "address_options" ||
+		key === "sni_options" ||
+		key === "host_options"
+	) {
+		if (Array.isArray(value)) {
+			return rotationOptionsToText(
+				value.filter((item): item is string => typeof item === "string"),
+			) as HostData[Key];
+		}
+		return String(value ?? "") as HostData[Key];
+	}
+	if (
+		key === "address_selection_mode" ||
+		key === "sni_selection_mode" ||
+		key === "host_selection_mode"
+	) {
+		return normalizeRotationMode(String(value ?? "")) as HostData[Key];
+	}
 	return (value ?? "") as HostData[Key];
 };
 
@@ -133,10 +167,19 @@ const EMPTY_HOST_DATA: HostData = {
 	id: null,
 	remark: "",
 	address: "",
+	address_options: "",
+	address_selection_mode: "random",
+	address_ttl_seconds: null,
 	port: null,
 	path: "",
 	sni: "",
+	sni_options: "",
+	sni_selection_mode: "random",
+	sni_ttl_seconds: null,
 	host: "",
+	host_options: "",
+	host_selection_mode: "random",
+	host_ttl_seconds: null,
 	mux_enable: false,
 	allowinsecure: false,
 	is_disabled: false,
@@ -168,10 +211,19 @@ type CreateHostValues = {
 	inboundTag: string;
 	remark: string;
 	address: string;
+	address_options: string;
+	address_selection_mode: string;
+	address_ttl_seconds: number | null;
 	port: number | null;
 	path: string;
 	sni: string;
+	sni_options: string;
+	sni_selection_mode: string;
+	sni_ttl_seconds: number | null;
 	host: string;
+	host_options: string;
+	host_selection_mode: string;
+	host_ttl_seconds: number | null;
 };
 
 const EditIcon = chakra(PencilIcon, {
@@ -228,6 +280,66 @@ const DYNAMIC_TOKENS: Array<{ token: string; labelKey: string }> = [
 	{ token: "{TRANSPORT}", labelKey: "hostsDialog.proxyMethod" },
 ];
 
+type RotationFieldsProps = {
+	label: string;
+	value: string;
+	mode: string;
+	ttl: number | null;
+	onValueChange: (value: string) => void;
+	onModeChange: (value: string) => void;
+	onTTLChange: (value: number | null) => void;
+};
+
+const RotationFields: FC<RotationFieldsProps> = ({
+	label,
+	value,
+	mode,
+	ttl,
+	onValueChange,
+	onModeChange,
+	onTTLChange,
+}) => {
+	const { t } = useTranslation();
+	return (
+		<FormControl>
+			<FormLabel>{label}</FormLabel>
+			<Textarea
+				value={value}
+				rows={3}
+				resize="vertical"
+				placeholder={t(
+					"hostsDialog.rotationPlaceholder",
+					"One value per line. Leave empty to use the single field above.",
+				)}
+				onChange={(event) => onValueChange(event.target.value)}
+			/>
+			<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mt={3}>
+				<FormControl>
+					<FormLabel fontSize="sm">
+						{t("hostsDialog.rotationMode", "Selection mode")}
+					</FormLabel>
+					<Select value={mode} onChange={(event) => onModeChange(event.target.value)}>
+						<option value="random">{t("hostsDialog.rotationRandom", "Random")}</option>
+						<option value="ttl">{t("hostsDialog.rotationTTL", "TTL")}</option>
+					</Select>
+				</FormControl>
+				<FormControl>
+					<FormLabel fontSize="sm">
+						{t("hostsDialog.rotationTTLSeconds", "TTL seconds")}
+					</FormLabel>
+					<NumericInput
+						value={ttl ?? ""}
+						min={1}
+						max={2592000}
+						isDisabled={mode !== "ttl"}
+						onChange={(_, num) => onTTLChange(Number.isNaN(num) ? null : num)}
+					/>
+				</FormControl>
+			</SimpleGrid>
+		</FormControl>
+	);
+};
+
 const HOST_MODAL_SX = {
 	".xray-dialog-section .chakra-form-control": {
 		display: "block",
@@ -275,6 +387,18 @@ const createUid = () =>
 const normalizeString = (value: string | null | undefined) =>
 	(value ?? "").trim();
 
+const normalizeRotationMode = (value: string | null | undefined) =>
+	value === "ttl" ? "ttl" : "random";
+
+const rotationOptionsToText = (values: string[] | null | undefined) =>
+	(values ?? []).map((value) => value.trim()).filter(Boolean).join("\n");
+
+const rotationTextToOptions = (value: string) =>
+	value
+		.split(/\r?\n|,/)
+		.map((item) => item.trim())
+		.filter(Boolean);
+
 const normalizeBoolean = (
 	value: boolean | null | undefined,
 	fallback = false,
@@ -284,10 +408,19 @@ const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	id: host.id ?? null,
 	remark: host.remark ?? "",
 	address: host.address ?? "",
+	address_options: rotationOptionsToText(host.address_options),
+	address_selection_mode: normalizeRotationMode(host.address_selection_mode),
+	address_ttl_seconds: host.address_ttl_seconds ?? null,
 	port: host.port ?? null,
 	path: normalizeString(host.path),
 	sni: normalizeString(host.sni),
+	sni_options: rotationOptionsToText(host.sni_options),
+	sni_selection_mode: normalizeRotationMode(host.sni_selection_mode),
+	sni_ttl_seconds: host.sni_ttl_seconds ?? null,
 	host: normalizeString(host.host),
+	host_options: rotationOptionsToText(host.host_options),
+	host_selection_mode: normalizeRotationMode(host.host_selection_mode),
+	host_ttl_seconds: host.host_ttl_seconds ?? null,
 	mux_enable: normalizeBoolean(host.mux_enable),
 	allowinsecure: normalizeBoolean(host.allowinsecure),
 	is_disabled: normalizeBoolean(host.is_disabled, false),
@@ -304,10 +437,19 @@ const cloneHostData = (data: HostData): HostData => ({
 	id: data.id ?? null,
 	remark: data.remark,
 	address: data.address,
+	address_options: data.address_options,
+	address_selection_mode: data.address_selection_mode,
+	address_ttl_seconds: data.address_ttl_seconds ?? null,
 	port: data.port ?? null,
 	path: data.path,
 	sni: data.sni,
+	sni_options: data.sni_options,
+	sni_selection_mode: data.sni_selection_mode,
+	sni_ttl_seconds: data.sni_ttl_seconds ?? null,
 	host: data.host,
+	host_options: data.host_options,
+	host_selection_mode: data.host_selection_mode,
+	host_ttl_seconds: data.host_ttl_seconds ?? null,
 	mux_enable: data.mux_enable,
 	allowinsecure: data.allowinsecure,
 	is_disabled: data.is_disabled,
@@ -327,6 +469,15 @@ const serializeHostData = (data: HostData) => ({
 	path: normalizeString(data.path),
 	sni: normalizeString(data.sni),
 	host: normalizeString(data.host),
+	address_options: rotationTextToOptions(data.address_options),
+	address_selection_mode: normalizeRotationMode(data.address_selection_mode),
+	address_ttl_seconds: data.address_ttl_seconds ?? null,
+	sni_options: rotationTextToOptions(data.sni_options),
+	sni_selection_mode: normalizeRotationMode(data.sni_selection_mode),
+	sni_ttl_seconds: data.sni_ttl_seconds ?? null,
+	host_options: rotationTextToOptions(data.host_options),
+	host_selection_mode: normalizeRotationMode(data.host_selection_mode),
+	host_ttl_seconds: data.host_ttl_seconds ?? null,
 	fragment_setting: normalizeString(data.fragment_setting),
 	noise_setting: normalizeString(data.noise_setting),
 });
@@ -342,7 +493,7 @@ const validateHostState = (
 	if (!data.remark.trim()) {
 		errors.push("Remark is required.");
 	}
-	if (!data.address.trim()) {
+	if (!data.address.trim() && rotationTextToOptions(data.address_options).length === 0) {
 		errors.push("Address is required.");
 	}
 	if (data.port !== null) {
@@ -354,6 +505,18 @@ const validateHostState = (
 	const path = data.path.trim();
 	if (path && !path.startsWith("/")) {
 		errors.push("Path must start with /.");
+	}
+	for (const [label, mode, ttl] of [
+		["Address", data.address_selection_mode, data.address_ttl_seconds],
+		["SNI", data.sni_selection_mode, data.sni_ttl_seconds],
+		["Request Host", data.host_selection_mode, data.host_ttl_seconds],
+	] as const) {
+		if (mode === "ttl" && ttl !== null) {
+			const numeric = Number(ttl);
+			if (!Number.isInteger(numeric) || numeric < 1 || numeric > 2592000) {
+				errors.push(`${label} TTL must be between 1 and 2592000 seconds.`);
+			}
+		}
 	}
 	return errors;
 };
@@ -367,27 +530,39 @@ const isHostDirty = (host: HostState) => {
 	return JSON.stringify(current) !== JSON.stringify(original);
 };
 
-const formatHostForApi = (data: HostData): HostsSchema[string][number] => ({
-	id: data.id ?? null,
-	remark: data.remark.trim(),
-	address: data.address.trim(),
-	port: data.port,
-	path: data.path.trim() ? data.path.trim() : null,
-	sni: data.sni.trim() ? data.sni.trim() : null,
-	host: data.host.trim() ? data.host.trim() : null,
-	mux_enable: data.mux_enable,
-	allowinsecure: data.allowinsecure,
-	is_disabled: data.is_disabled,
-	fragment_setting: data.fragment_setting.trim()
-		? data.fragment_setting.trim()
-		: null,
-	noise_setting: data.noise_setting.trim() ? data.noise_setting.trim() : null,
-	random_user_agent: data.random_user_agent,
-	security: data.security || "inbound_default",
-	alpn: data.alpn || "",
-	fingerprint: data.fingerprint || "",
-	use_sni_as_host: data.use_sni_as_host,
-});
+const formatHostForApi = (data: HostData): HostsSchema[string][number] => {
+	const addressOptions = rotationTextToOptions(data.address_options);
+	return {
+		id: data.id ?? null,
+		remark: data.remark.trim(),
+		address: data.address.trim() || addressOptions[0] || "",
+		address_options: addressOptions,
+		address_selection_mode: normalizeRotationMode(data.address_selection_mode),
+		address_ttl_seconds: data.address_ttl_seconds ?? null,
+		port: data.port,
+		path: data.path.trim() ? data.path.trim() : null,
+		sni: data.sni.trim() ? data.sni.trim() : null,
+		sni_options: rotationTextToOptions(data.sni_options),
+		sni_selection_mode: normalizeRotationMode(data.sni_selection_mode),
+		sni_ttl_seconds: data.sni_ttl_seconds ?? null,
+		host: data.host.trim() ? data.host.trim() : null,
+		host_options: rotationTextToOptions(data.host_options),
+		host_selection_mode: normalizeRotationMode(data.host_selection_mode),
+		host_ttl_seconds: data.host_ttl_seconds ?? null,
+		mux_enable: data.mux_enable,
+		allowinsecure: data.allowinsecure,
+		is_disabled: data.is_disabled,
+		fragment_setting: data.fragment_setting.trim()
+			? data.fragment_setting.trim()
+			: null,
+		noise_setting: data.noise_setting.trim() ? data.noise_setting.trim() : null,
+		random_user_agent: data.random_user_agent,
+		security: data.security || "inbound_default",
+		alpn: data.alpn || "",
+		fingerprint: data.fingerprint || "",
+		use_sni_as_host: data.use_sni_as_host,
+	};
+};
 
 const sortHosts = (hosts: HostState[]) =>
 	[...hosts].sort((a, b) => {
@@ -763,7 +938,10 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	const dirty = host ? isHostDirty(host) : false;
 	const canSubmit = host
 		? Boolean(
-				host.inboundTag && host.data.remark.trim() && host.data.address.trim(),
+				host.inboundTag &&
+					host.data.remark.trim() &&
+					(host.data.address.trim() ||
+						rotationTextToOptions(host.data.address_options).length > 0),
 			)
 		: false;
 	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
@@ -776,7 +954,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 		}
 		return {
 			inboundTag: host.inboundTag,
-			...host.data,
+			...formatHostForApi(host.data),
 		};
 	}, [host]);
 	useEffect(() => {
@@ -947,6 +1125,24 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														/>
 													</FormControl>
 												</SimpleGrid>
+												<RotationFields
+													label={t(
+														"hostsDialog.addressRotation",
+														"Address rotation values",
+													)}
+													value={host.data.address_options}
+													mode={host.data.address_selection_mode}
+													ttl={host.data.address_ttl_seconds}
+													onValueChange={(value) =>
+														onChange(host.uid, "address_options", value)
+													}
+													onModeChange={(value) =>
+														onChange(host.uid, "address_selection_mode", value)
+													}
+													onTTLChange={(value) =>
+														onChange(host.uid, "address_ttl_seconds", value)
+													}
+												/>
 												<FormControl>
 													<FormLabel>{t("hostsDialog.path")}</FormLabel>
 													<Input
@@ -997,6 +1193,44 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															</InputRightElement>
 														</InputGroup>
 													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<RotationFields
+														label={t(
+															"hostsDialog.sniRotation",
+															"SNI rotation values",
+														)}
+														value={host.data.sni_options}
+														mode={host.data.sni_selection_mode}
+														ttl={host.data.sni_ttl_seconds}
+														onValueChange={(value) =>
+															onChange(host.uid, "sni_options", value)
+														}
+														onModeChange={(value) =>
+															onChange(host.uid, "sni_selection_mode", value)
+														}
+														onTTLChange={(value) =>
+															onChange(host.uid, "sni_ttl_seconds", value)
+														}
+													/>
+													<RotationFields
+														label={t(
+															"hostsDialog.hostRotation",
+															"Request Host rotation values",
+														)}
+														value={host.data.host_options}
+														mode={host.data.host_selection_mode}
+														ttl={host.data.host_ttl_seconds}
+														onValueChange={(value) =>
+															onChange(host.uid, "host_options", value)
+														}
+														onModeChange={(value) =>
+															onChange(host.uid, "host_selection_mode", value)
+														}
+														onTTLChange={(value) =>
+															onChange(host.uid, "host_ttl_seconds", value)
+														}
+													/>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 													<FormControl>
@@ -1231,10 +1465,19 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		inboundTag: inboundOptions[0]?.value ?? "",
 		remark: "",
 		address: "",
+		address_options: "",
+		address_selection_mode: "random",
+		address_ttl_seconds: null,
 		port: null,
 		path: "",
 		sni: "",
+		sni_options: "",
+		sni_selection_mode: "random",
+		sni_ttl_seconds: null,
 		host: "",
+		host_options: "",
+		host_selection_mode: "random",
+		host_ttl_seconds: null,
 	});
 
 	useEffect(() => {
@@ -1243,10 +1486,19 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 				inboundTag: inboundOptions[0]?.value ?? "",
 				remark: "",
 				address: "",
+				address_options: "",
+				address_selection_mode: "random",
+				address_ttl_seconds: null,
 				port: null,
 				path: "",
 				sni: "",
+				sni_options: "",
+				sni_selection_mode: "random",
+				sni_ttl_seconds: null,
 				host: "",
+				host_options: "",
+				host_selection_mode: "random",
+				host_ttl_seconds: null,
 			});
 			setTimeout(() => initialRef.current?.focus(), 150);
 		}
@@ -1256,7 +1508,8 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		if (
 			!formState.inboundTag ||
 			!formState.remark.trim() ||
-			!formState.address.trim()
+			(!formState.address.trim() &&
+				rotationTextToOptions(formState.address_options).length === 0)
 		) {
 			return;
 		}
@@ -1335,6 +1588,27 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								</InputRightElement>
 							</InputGroup>
 						</FormControl>
+						<RotationFields
+							label={t("hostsDialog.addressRotation", "Address rotation values")}
+							value={formState.address_options}
+							mode={formState.address_selection_mode}
+							ttl={formState.address_ttl_seconds}
+							onValueChange={(value) =>
+								setFormState((prev) => ({ ...prev, address_options: value }))
+							}
+							onModeChange={(value) =>
+								setFormState((prev) => ({
+									...prev,
+									address_selection_mode: value,
+								}))
+							}
+							onTTLChange={(value) =>
+								setFormState((prev) => ({
+									...prev,
+									address_ttl_seconds: value,
+								}))
+							}
+						/>
 						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 							<FormControl>
 								<FormLabel>{t("hostsDialog.port")}</FormLabel>
@@ -1390,6 +1664,47 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								</InputRightElement>
 							</InputGroup>
 						</FormControl>
+						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+							<RotationFields
+								label={t("hostsDialog.sniRotation", "SNI rotation values")}
+								value={formState.sni_options}
+								mode={formState.sni_selection_mode}
+								ttl={formState.sni_ttl_seconds}
+								onValueChange={(value) =>
+									setFormState((prev) => ({ ...prev, sni_options: value }))
+								}
+								onModeChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										sni_selection_mode: value,
+									}))
+								}
+								onTTLChange={(value) =>
+									setFormState((prev) => ({ ...prev, sni_ttl_seconds: value }))
+								}
+							/>
+							<RotationFields
+								label={t(
+									"hostsDialog.hostRotation",
+									"Request Host rotation values",
+								)}
+								value={formState.host_options}
+								mode={formState.host_selection_mode}
+								ttl={formState.host_ttl_seconds}
+								onValueChange={(value) =>
+									setFormState((prev) => ({ ...prev, host_options: value }))
+								}
+								onModeChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										host_selection_mode: value,
+									}))
+								}
+								onTTLChange={(value) =>
+									setFormState((prev) => ({ ...prev, host_ttl_seconds: value }))
+								}
+							/>
+						</SimpleGrid>
 					</VStack>
 				</XrayModalBody>
 				<XrayModalFooter justifyContent="flex-end">
@@ -1400,6 +1715,12 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						colorScheme="primary"
 						onClick={handleSubmit}
 						isLoading={isSubmitting}
+						isDisabled={
+							!formState.inboundTag ||
+							!formState.remark.trim() ||
+							(!formState.address.trim() &&
+								rotationTextToOptions(formState.address_options).length === 0)
+						}
 					>
 						{t("hostsPage.create.submit")}
 					</Button>
@@ -1710,7 +2031,10 @@ export const HostsManager: FC = () => {
 			return;
 		}
 		const remark = cloneHost.data.remark.trim();
-		const address = cloneHost.data.address.trim();
+		const address =
+			cloneHost.data.address.trim() ||
+			rotationTextToOptions(cloneHost.data.address_options)[0] ||
+			"";
 		if (!cloneHost.inboundTag || !remark || !address) {
 			toast({
 				title: t("hostsPage.clone.error"),
@@ -1849,10 +2173,19 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
+					address_options: values.address_options,
+					address_selection_mode: values.address_selection_mode,
+					address_ttl_seconds: values.address_ttl_seconds,
 					port: values.port,
 					path: values.path,
 					sni: values.sni,
+					sni_options: values.sni_options,
+					sni_selection_mode: values.sni_selection_mode,
+					sni_ttl_seconds: values.sni_ttl_seconds,
 					host: values.host,
+					host_options: values.host_options,
+					host_selection_mode: values.host_selection_mode,
+					host_ttl_seconds: values.host_ttl_seconds,
 					mux_enable: false,
 					allowinsecure: false,
 					is_disabled: false,
@@ -1868,10 +2201,19 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
+					address_options: values.address_options,
+					address_selection_mode: values.address_selection_mode,
+					address_ttl_seconds: values.address_ttl_seconds,
 					port: values.port,
 					path: values.path,
 					sni: values.sni,
+					sni_options: values.sni_options,
+					sni_selection_mode: values.sni_selection_mode,
+					sni_ttl_seconds: values.sni_ttl_seconds,
 					host: values.host,
+					host_options: values.host_options,
+					host_selection_mode: values.host_selection_mode,
+					host_ttl_seconds: values.host_ttl_seconds,
 					mux_enable: false,
 					allowinsecure: false,
 					is_disabled: false,

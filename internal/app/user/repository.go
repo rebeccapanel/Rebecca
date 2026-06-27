@@ -377,7 +377,13 @@ func (r Repository) inbounds(ctx context.Context) ([]Inbound, error) {
 }
 
 func (r Repository) hosts(ctx context.Context) ([]Host, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, inbound_tag, remark, address, port, path, sni, host, security, alpn, fingerprint, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting, random_user_agent, use_sni_as_host FROM hosts ORDER BY inbound_tag, id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, inbound_tag, remark, address,
+		address_options, COALESCE(address_selection_mode, ''), address_ttl_seconds,
+		port, path, sni, sni_options, COALESCE(sni_selection_mode, ''), sni_ttl_seconds,
+		host, host_options, COALESCE(host_selection_mode, ''), host_ttl_seconds,
+		security, alpn, fingerprint, allowinsecure, is_disabled, mux_enable,
+		fragment_setting, noise_setting, random_user_agent, use_sni_as_host
+		FROM hosts ORDER BY inbound_tag, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -386,8 +392,9 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 	result := make([]Host, 0)
 	for rows.Next() {
 		var item Host
-		var port sql.NullInt64
+		var port, addressTTL, sniTTL, hostTTL sql.NullInt64
 		var path, sni, hostName sql.NullString
+		var addressOptions, sniOptions, hostOptions sql.NullString
 		var allowInsecure sql.NullBool
 		var disabled, mux, randomUA, useSNI sql.NullBool
 		var fragment, noise sql.NullString
@@ -396,10 +403,19 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 			&item.InboundTag,
 			&item.Remark,
 			&item.Address,
+			&addressOptions,
+			&item.AddressMode,
+			&addressTTL,
 			&port,
 			&path,
 			&sni,
+			&sniOptions,
+			&item.SNIMode,
+			&sniTTL,
 			&hostName,
+			&hostOptions,
+			&item.HostMode,
+			&hostTTL,
 			&item.Security,
 			&item.ALPN,
 			&item.Fingerprint,
@@ -414,9 +430,18 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 			return nil, err
 		}
 		item.Port = int64Ptr(port)
+		item.AddressOptions = parseHostOptionJSON(addressOptions)
+		item.AddressMode = normalizeHostSelectionMode(item.AddressMode)
+		item.AddressTTL = int64Ptr(addressTTL)
 		item.Path = stringPtr(path)
 		item.SNI = stringPtr(sni)
+		item.SNIOptions = parseHostOptionJSON(sniOptions)
+		item.SNIMode = normalizeHostSelectionMode(item.SNIMode)
+		item.SNITTL = int64Ptr(sniTTL)
 		item.Host = stringPtr(hostName)
+		item.HostOptions = parseHostOptionJSON(hostOptions)
+		item.HostMode = normalizeHostSelectionMode(item.HostMode)
+		item.HostTTL = int64Ptr(hostTTL)
 		item.AllowInsecure = boolPtr(allowInsecure)
 		item.IsDisabled = nullBool(disabled)
 		item.MuxEnable = nullBool(mux)
@@ -433,6 +458,17 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func parseHostOptionJSON(value sql.NullString) []string {
+	if !value.Valid || strings.TrimSpace(value.String) == "" {
+		return nil
+	}
+	var raw []string
+	if err := json.Unmarshal([]byte(value.String), &raw); err != nil {
+		return nil
+	}
+	return normalizeHostOptionList(raw)
 }
 
 func (r Repository) attachHostServices(ctx context.Context, hosts []Host) error {

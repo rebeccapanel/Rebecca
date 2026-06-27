@@ -22,43 +22,61 @@ var (
 )
 
 type hostPayload struct {
-	ID              *int64  `json:"id"`
-	Remark          string  `json:"remark"`
-	Address         string  `json:"address"`
-	Port            *int64  `json:"port"`
-	SNI             *string `json:"sni"`
-	Host            *string `json:"host"`
-	Path            *string `json:"path"`
-	Security        string  `json:"security"`
-	ALPN            string  `json:"alpn"`
-	Fingerprint     string  `json:"fingerprint"`
-	AllowInsecure   *bool   `json:"allowinsecure"`
-	IsDisabled      *bool   `json:"is_disabled"`
-	MuxEnable       *bool   `json:"mux_enable"`
-	FragmentSetting *string `json:"fragment_setting"`
-	NoiseSetting    *string `json:"noise_setting"`
-	RandomUserAgent *bool   `json:"random_user_agent"`
-	UseSNIAsHost    *bool   `json:"use_sni_as_host"`
+	ID              *int64   `json:"id"`
+	Remark          string   `json:"remark"`
+	Address         string   `json:"address"`
+	AddressOptions  []string `json:"address_options"`
+	AddressMode     string   `json:"address_selection_mode"`
+	AddressTTL      *int64   `json:"address_ttl_seconds"`
+	Port            *int64   `json:"port"`
+	SNI             *string  `json:"sni"`
+	SNIOptions      []string `json:"sni_options"`
+	SNIMode         string   `json:"sni_selection_mode"`
+	SNITTL          *int64   `json:"sni_ttl_seconds"`
+	Host            *string  `json:"host"`
+	HostOptions     []string `json:"host_options"`
+	HostMode        string   `json:"host_selection_mode"`
+	HostTTL         *int64   `json:"host_ttl_seconds"`
+	Path            *string  `json:"path"`
+	Security        string   `json:"security"`
+	ALPN            string   `json:"alpn"`
+	Fingerprint     string   `json:"fingerprint"`
+	AllowInsecure   *bool    `json:"allowinsecure"`
+	IsDisabled      *bool    `json:"is_disabled"`
+	MuxEnable       *bool    `json:"mux_enable"`
+	FragmentSetting *string  `json:"fragment_setting"`
+	NoiseSetting    *string  `json:"noise_setting"`
+	RandomUserAgent *bool    `json:"random_user_agent"`
+	UseSNIAsHost    *bool    `json:"use_sni_as_host"`
 }
 
 type hostResponse struct {
-	ID              int64   `json:"id"`
-	Remark          string  `json:"remark"`
-	Address         string  `json:"address"`
-	Port            *int64  `json:"port"`
-	SNI             *string `json:"sni"`
-	Host            *string `json:"host"`
-	Path            *string `json:"path"`
-	Security        string  `json:"security"`
-	ALPN            string  `json:"alpn"`
-	Fingerprint     string  `json:"fingerprint"`
-	AllowInsecure   *bool   `json:"allowinsecure"`
-	IsDisabled      bool    `json:"is_disabled"`
-	MuxEnable       *bool   `json:"mux_enable"`
-	FragmentSetting *string `json:"fragment_setting"`
-	NoiseSetting    *string `json:"noise_setting"`
-	RandomUserAgent *bool   `json:"random_user_agent"`
-	UseSNIAsHost    *bool   `json:"use_sni_as_host"`
+	ID              int64    `json:"id"`
+	Remark          string   `json:"remark"`
+	Address         string   `json:"address"`
+	AddressOptions  []string `json:"address_options"`
+	AddressMode     string   `json:"address_selection_mode"`
+	AddressTTL      *int64   `json:"address_ttl_seconds"`
+	Port            *int64   `json:"port"`
+	SNI             *string  `json:"sni"`
+	SNIOptions      []string `json:"sni_options"`
+	SNIMode         string   `json:"sni_selection_mode"`
+	SNITTL          *int64   `json:"sni_ttl_seconds"`
+	Host            *string  `json:"host"`
+	HostOptions     []string `json:"host_options"`
+	HostMode        string   `json:"host_selection_mode"`
+	HostTTL         *int64   `json:"host_ttl_seconds"`
+	Path            *string  `json:"path"`
+	Security        string   `json:"security"`
+	ALPN            string   `json:"alpn"`
+	Fingerprint     string   `json:"fingerprint"`
+	AllowInsecure   *bool    `json:"allowinsecure"`
+	IsDisabled      bool     `json:"is_disabled"`
+	MuxEnable       *bool    `json:"mux_enable"`
+	FragmentSetting *string  `json:"fragment_setting"`
+	NoiseSetting    *string  `json:"noise_setting"`
+	RandomUserAgent *bool    `json:"random_user_agent"`
+	UseSNIAsHost    *bool    `json:"use_sni_as_host"`
 }
 
 func (s *Server) handleHostsRoot(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +305,7 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 	}
 
 	for _, host := range payload {
+		host = normalizeHostPayload(host)
 		if err := validateHostPayload(host); err != nil {
 			return err
 		}
@@ -412,7 +431,10 @@ type queryer interface {
 }
 
 func hostSelectSQL() string {
-	return `SELECT id, COALESCE(remark, ''), COALESCE(address, ''), port, path, sni, host,
+	return `SELECT id, COALESCE(remark, ''), COALESCE(address, ''),
+		address_options, COALESCE(address_selection_mode, 'random'), address_ttl_seconds,
+		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
+		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
 		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
 		CASE WHEN allowinsecure IS NULL THEN NULL WHEN allowinsecure THEN 1 ELSE 0 END,
 		COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting,
@@ -424,18 +446,28 @@ func scanHostResponses(rows *sql.Rows) ([]hostResponse, error) {
 	hosts := []hostResponse{}
 	for rows.Next() {
 		var item hostResponse
-		var port sql.NullInt64
+		var port, addressTTL, sniTTL, hostTTL sql.NullInt64
 		var path, sni, hostValue, fragment, noise sql.NullString
+		var addressOptions, sniOptions, hostOptions sql.NullString
 		var allowInsecure sql.NullInt64
 		var disabled, muxEnable, randomUA, useSNI int64
 		if err := rows.Scan(
 			&item.ID,
 			&item.Remark,
 			&item.Address,
+			&addressOptions,
+			&item.AddressMode,
+			&addressTTL,
 			&port,
 			&path,
 			&sni,
+			&sniOptions,
+			&item.SNIMode,
+			&sniTTL,
 			&hostValue,
+			&hostOptions,
+			&item.HostMode,
+			&hostTTL,
 			&item.Security,
 			&item.ALPN,
 			&item.Fingerprint,
@@ -452,10 +484,19 @@ func scanHostResponses(rows *sql.Rows) ([]hostResponse, error) {
 		item.Security = normalizeHostSecurity(item.Security)
 		item.ALPN = hostEnumResponseValue(item.ALPN)
 		item.Fingerprint = hostEnumResponseValue(item.Fingerprint)
+		item.AddressOptions = decodeHostOptions(addressOptions)
+		item.AddressMode = normalizeHostRotationMode(item.AddressMode)
+		item.AddressTTL = nullableInt64Response(addressTTL)
 		item.Port = nullableInt64Response(port)
 		item.Path = nullableStringResponse(path)
 		item.SNI = nullableStringResponse(sni)
+		item.SNIOptions = decodeHostOptions(sniOptions)
+		item.SNIMode = normalizeHostRotationMode(item.SNIMode)
+		item.SNITTL = nullableInt64Response(sniTTL)
 		item.Host = nullableStringResponse(hostValue)
+		item.HostOptions = decodeHostOptions(hostOptions)
+		item.HostMode = normalizeHostRotationMode(item.HostMode)
+		item.HostTTL = nullableInt64Response(hostTTL)
 		item.FragmentSetting = nullableStringResponse(fragment)
 		item.NoiseSetting = nullableStringResponse(noise)
 		item.AllowInsecure = nullableBoolResponse(allowInsecure)
@@ -490,6 +531,20 @@ func validateHostPayload(host hostPayload) error {
 	if err := validateFormatString(host.Address); err != nil {
 		return statusError{status: http.StatusBadRequest, detail: "Invalid formatting variables"}
 	}
+	for _, item := range []struct {
+		name    string
+		options []string
+		mode    string
+		ttl     *int64
+	}{
+		{name: "address", options: host.AddressOptions, mode: host.AddressMode, ttl: host.AddressTTL},
+		{name: "sni", options: host.SNIOptions, mode: host.SNIMode, ttl: host.SNITTL},
+		{name: "host", options: host.HostOptions, mode: host.HostMode, ttl: host.HostTTL},
+	} {
+		if err := validateHostRotation(item.name, item.options, item.mode, item.ttl); err != nil {
+			return err
+		}
+	}
 	if host.FragmentSetting != nil && strings.TrimSpace(*host.FragmentSetting) != "" && !hostFragmentPattern.MatchString(strings.TrimSpace(*host.FragmentSetting)) {
 		return statusError{status: http.StatusBadRequest, detail: "Fragment setting must be like this: length,interval,packet (10-100,100-200,tlshello)."}
 	}
@@ -502,6 +557,88 @@ func validateHostPayload(host hostPayload) error {
 		}
 	}
 	return nil
+}
+
+func normalizeHostPayload(payload hostPayload) hostPayload {
+	payload.Remark = strings.TrimSpace(payload.Remark)
+	payload.AddressOptions = normalizeHostRotationOptions(payload.AddressOptions)
+	payload.SNIOptions = normalizeHostRotationOptions(payload.SNIOptions)
+	payload.HostOptions = normalizeHostRotationOptions(payload.HostOptions)
+	payload.AddressMode = normalizeHostRotationMode(payload.AddressMode)
+	payload.SNIMode = normalizeHostRotationMode(payload.SNIMode)
+	payload.HostMode = normalizeHostRotationMode(payload.HostMode)
+	if strings.TrimSpace(payload.Address) == "" && len(payload.AddressOptions) > 0 {
+		payload.Address = payload.AddressOptions[0]
+	}
+	payload.Address = strings.TrimSpace(payload.Address)
+	return payload
+}
+
+func validateHostRotation(name string, options []string, mode string, ttl *int64) error {
+	mode = normalizeHostRotationMode(mode)
+	if mode == "ttl" && ttl != nil && (*ttl < 1 || *ttl > 2592000) {
+		return statusError{status: http.StatusBadRequest, detail: fmt.Sprintf("%s TTL must be between 1 and 2592000 seconds", name)}
+	}
+	for _, option := range normalizeHostRotationOptions(options) {
+		if err := validateFormatString(option); err != nil {
+			return statusError{status: http.StatusBadRequest, detail: fmt.Sprintf("Invalid %s rotation formatting variables", name)}
+		}
+	}
+	return nil
+}
+
+func normalizeHostRotationMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "ttl":
+		return "ttl"
+	default:
+		return "random"
+	}
+}
+
+func normalizeHostRotationOptions(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		for _, part := range strings.FieldsFunc(value, func(r rune) bool {
+			return r == '\n' || r == '\r' || r == ','
+		}) {
+			cleaned := strings.TrimSpace(part)
+			if cleaned == "" {
+				continue
+			}
+			key := strings.ToLower(cleaned)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, cleaned)
+		}
+	}
+	return result
+}
+
+func hostOptionsValue(values []string) any {
+	normalized := normalizeHostRotationOptions(values)
+	if len(normalized) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil
+	}
+	return string(raw)
+}
+
+func decodeHostOptions(value sql.NullString) []string {
+	if !value.Valid || strings.TrimSpace(value.String) == "" {
+		return []string{}
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(value.String), &values); err != nil {
+		return []string{}
+	}
+	return normalizeHostRotationOptions(values)
 }
 
 func validateFormatString(value string) error {
@@ -543,16 +680,27 @@ func insertHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 	res, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO hosts (
-			remark, address, port, path, sni, host, security, alpn, fingerprint,
+			remark, address, address_options, address_selection_mode, address_ttl_seconds,
+			port, path, sni, sni_options, sni_selection_mode, sni_ttl_seconds,
+			host, host_options, host_selection_mode, host_ttl_seconds, security, alpn, fingerprint,
 			inbound_tag, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting,
 			random_user_agent, use_sni_as_host
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Remark,
 		payload.Address,
+		hostOptionsValue(payload.AddressOptions),
+		normalizeHostRotationMode(payload.AddressMode),
+		nullableInt64Value(payload.AddressTTL),
 		nullableInt64Value(payload.Port),
 		nullableStringValue(payload.Path),
 		nullableStringValue(payload.SNI),
+		hostOptionsValue(payload.SNIOptions),
+		normalizeHostRotationMode(payload.SNIMode),
+		nullableInt64Value(payload.SNITTL),
 		nullableStringValue(payload.Host),
+		hostOptionsValue(payload.HostOptions),
+		normalizeHostRotationMode(payload.HostMode),
+		nullableInt64Value(payload.HostTTL),
 		normalizeHostSecurity(payload.Security),
 		normalizeHostALPN(payload.ALPN),
 		normalizeHostFingerprint(payload.Fingerprint),
@@ -575,17 +723,28 @@ func updateHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 	_, err := tx.ExecContext(
 		ctx,
 		`UPDATE hosts SET
-			remark = ?, address = ?, port = ?, path = ?, sni = ?, host = ?,
+			remark = ?, address = ?, address_options = ?, address_selection_mode = ?, address_ttl_seconds = ?,
+			port = ?, path = ?, sni = ?, sni_options = ?, sni_selection_mode = ?, sni_ttl_seconds = ?,
+			host = ?, host_options = ?, host_selection_mode = ?, host_ttl_seconds = ?,
 			security = ?, alpn = ?, fingerprint = ?, inbound_tag = ?, allowinsecure = ?,
 			is_disabled = ?, mux_enable = ?, fragment_setting = ?, noise_setting = ?,
 			random_user_agent = ?, use_sni_as_host = ?
 		WHERE id = ?`,
 		payload.Remark,
 		payload.Address,
+		hostOptionsValue(payload.AddressOptions),
+		normalizeHostRotationMode(payload.AddressMode),
+		nullableInt64Value(payload.AddressTTL),
 		nullableInt64Value(payload.Port),
 		nullableStringValue(payload.Path),
 		nullableStringValue(payload.SNI),
+		hostOptionsValue(payload.SNIOptions),
+		normalizeHostRotationMode(payload.SNIMode),
+		nullableInt64Value(payload.SNITTL),
 		nullableStringValue(payload.Host),
+		hostOptionsValue(payload.HostOptions),
+		normalizeHostRotationMode(payload.HostMode),
+		nullableInt64Value(payload.HostTTL),
 		normalizeHostSecurity(payload.Security),
 		normalizeHostALPN(payload.ALPN),
 		normalizeHostFingerprint(payload.Fingerprint),

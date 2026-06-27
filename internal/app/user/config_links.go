@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net"
 	"sort"
 	"strconv"
@@ -268,7 +270,8 @@ func selectProxyInboundTags(
 }
 
 func effectiveInboundForHost(username string, variables map[string]string, inbound ResolvedInbound, host Host) (string, string, ResolvedInbound, bool) {
-	address := applyWildcard(applyFormat(firstCSV(host.Address), variables), username)
+	addressRaw := selectHostRotationValue(host.ID, "address", host.AddressOptions, host.AddressMode, host.AddressTTL, firstCSV(host.Address))
+	address := applyWildcard(applyFormat(addressRaw, variables), username)
 	if address == "" {
 		return "", "", nil, false
 	}
@@ -278,8 +281,10 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 		remark = address
 	}
 
-	sni := applyWildcard(applyFormat(firstHostOverride(host.SNI, firstStringList(inbound["sni"])), variables), username)
-	requestHost := applyWildcard(applyFormat(firstHostOverride(host.Host, firstStringList(inbound["host"])), variables), username)
+	sniRaw := selectHostRotationValue(host.ID, "sni", host.SNIOptions, host.SNIMode, host.SNITTL, firstHostOverride(host.SNI, firstStringList(inbound["sni"])))
+	hostRaw := selectHostRotationValue(host.ID, "host", host.HostOptions, host.HostMode, host.HostTTL, firstHostOverride(host.Host, firstStringList(inbound["host"])))
+	sni := applyWildcard(applyFormat(sniRaw, variables), username)
+	requestHost := applyWildcard(applyFormat(hostRaw, variables), username)
 	if host.UseSNIAsHost && sni != "" {
 		requestHost = sni
 	}
@@ -1308,6 +1313,70 @@ func firstCSV(value string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeHostSelectionMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "ttl":
+		return "ttl"
+	default:
+		return "random"
+	}
+}
+
+func normalizeHostOptionList(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		for _, part := range splitHostOptionValue(value) {
+			cleaned := strings.TrimSpace(part)
+			if cleaned == "" {
+				continue
+			}
+			key := strings.ToLower(cleaned)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			result = append(result, cleaned)
+		}
+	}
+	return result
+}
+
+func splitHostOptionValue(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ','
+	})
+}
+
+func selectHostRotationValue(hostID int64, field string, options []string, mode string, ttl *int64, fallback string) string {
+	choices := normalizeHostOptionList(options)
+	if len(choices) == 0 {
+		return strings.TrimSpace(fallback)
+	}
+	if normalizeHostSelectionMode(mode) == "ttl" {
+		ttlSeconds := int64(60)
+		if ttl != nil && *ttl > 0 {
+			ttlSeconds = *ttl
+		}
+		bucket := time.Now().UTC().Unix() / ttlSeconds
+		hash := fnv.New64a()
+		_, _ = fmt.Fprintf(hash, "%d:%s:%d", hostID, field, bucket)
+		return choices[int(hash.Sum64()%uint64(len(choices)))]
+	}
+	return choices[randomHostOptionIndex(len(choices))]
+}
+
+func randomHostOptionIndex(length int) int {
+	if length <= 1 {
+		return 0
+	}
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err == nil {
+		return int(binary.BigEndian.Uint64(buf[:]) % uint64(length))
+	}
+	return int(time.Now().UnixNano() % int64(length))
 }
 
 func firstNonEmptyString(values ...any) string {
