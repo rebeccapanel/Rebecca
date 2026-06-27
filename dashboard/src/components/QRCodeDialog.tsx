@@ -1,6 +1,8 @@
 import {
 	Box,
+	Button,
 	chakra,
+	Collapse,
 	HStack,
 	IconButton,
 	Modal,
@@ -10,6 +12,7 @@ import {
 	ModalHeader,
 	ModalOverlay,
 	Text,
+	useBreakpointValue,
 	VStack,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
@@ -76,7 +79,9 @@ export const QRCodeDialog: FC = () => {
 	const [configAnimIndex, setConfigAnimIndex] = useState<number | null>(null);
 	const [subAnimSeed, setSubAnimSeed] = useState(0);
 	const [configAnimSeed, setConfigAnimSeed] = useState(0);
+	const [showConfigQrs, setShowConfigQrs] = useState(false);
 	const { t } = useTranslation();
+	const qrSize = useBreakpointValue({ base: 220, sm: 260, md: 300 }) ?? 220;
 	const onClose = () => {
 		setQRCode(null);
 		setSubLink(null);
@@ -105,6 +110,7 @@ export const QRCodeDialog: FC = () => {
 	useEffect(() => {
 		if (isOpen) {
 			setIndex(0);
+			setShowConfigQrs(false);
 		}
 	}, [isOpen]);
 
@@ -137,7 +143,13 @@ export const QRCodeDialog: FC = () => {
 	return (
 		<Modal isOpen={isOpen} onClose={onClose}>
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3" w="fit-content" maxW="3xl">
+			<ModalContent
+				mx={{ base: 3, md: 4 }}
+				w="full"
+				maxW="3xl"
+				maxH="92vh"
+				overflow="hidden"
+			>
 				<ModalHeader pt={6}>
 					<HStack spacing={3} align="center">
 						<Icon color="primary">
@@ -163,22 +175,16 @@ export const QRCodeDialog: FC = () => {
 				<ModalCloseButton mt={3} />
 				{QRcodeLinks && (
 					<ModalBody
-						gap={{
-							base: "20px",
-							lg: "50px",
-						}}
-						pr={{
-							lg: "60px",
-						}}
-						px={{
-							base: "50px",
-						}}
+						gap={{ base: 4, lg: 10 }}
+						px={{ base: 4, sm: 6, lg: 10 }}
+						pb={{ base: 5, md: 6 }}
 						display="flex"
 						justifyContent="center"
 						flexDirection={{
 							base: "column",
 							lg: "row",
 						}}
+						overflowY="auto"
 					>
 						{subscribeUrl && (
 							<VStack spacing={2}>
@@ -217,7 +223,8 @@ export const QRCodeDialog: FC = () => {
 									>
 										<QRCode
 											mx="auto"
-											size={300}
+											maxW="100%"
+											size={qrSize}
 											p="2"
 											level={"L"}
 											includeMargin={false}
@@ -232,105 +239,125 @@ export const QRCodeDialog: FC = () => {
 							</VStack>
 						)}
 						{configItems.length > 0 && (
-							<Box w="300px">
-								<Text
-									display="block"
-									textAlign="center"
-									fontWeight="semibold"
-									mb={2}
+							<Box w={{ base: "full", lg: `${qrSize}px` }}>
+								<Button
+									w="full"
+									size="sm"
+									variant="outline"
+									leftIcon={<QRIcon />}
+									onClick={() => setShowConfigQrs((prev) => !prev)}
 								>
-									{activeConfigLabel}
-								</Text>
-								{copiedConfigIndex === activeIndex && (
-									<Box
-										bg="green.500"
-										color="white"
-										fontSize="xs"
-										px={2}
-										py={0.5}
-										borderRadius="full"
-										mx="auto"
-										mb={2}
-										w="fit-content"
-									>
-										{t("usersTable.copied")}
-									</Box>
-								)}
-								<SlickSlider
-									centerPadding="0px"
-									centerMode={true}
-									slidesToShow={1}
-									slidesToScroll={1}
-									dots={false}
-									afterChange={setIndex}
-									onInit={() => setIndex(0)}
-									nextArrow={
-										<IconButton
-											size="sm"
-											position="absolute"
-											display="flex !important"
-											_before={{ content: '""' }}
-											aria-label="next"
-											mr="-4"
+									{showConfigQrs
+										? t("qrcodeDialog.hideConfigs", "Hide config QR codes")
+										: t("qrcodeDialog.showConfigs", "Show config QR codes")}
+								</Button>
+								<Collapse in={showConfigQrs} animateOpacity>
+									<Box pt={4}>
+										<Text
+											display="block"
+											textAlign="center"
+											fontWeight="semibold"
+											mb={2}
 										>
-											<NextIcon />
-										</IconButton>
-									}
-									prevArrow={
-										<IconButton
-											size="sm"
-											position="absolute"
-											display="flex !important"
-											_before={{ content: '""' }}
-											aria-label="prev"
-											ml="-4"
-										>
-											<PrevIcon />
-										</IconButton>
-									}
-								>
-									{configItems.map((item, itemIndex) => (
-										<HStack key={`${item.link}-${itemIndex}`}>
-											<CopyToClipboard
-												text={item.link}
-												onCopy={() => {
-													setCopiedConfigIndex(itemIndex);
-													setConfigAnimIndex(itemIndex);
-													setConfigAnimSeed((prev) => prev + 1);
-												}}
+											{activeConfigLabel}
+										</Text>
+										{copiedConfigIndex === activeIndex && (
+											<Box
+												bg="green.500"
+												color="white"
+												fontSize="xs"
+												px={2}
+												py={0.5}
+												borderRadius="full"
+												mx="auto"
+												mb={2}
+												w="fit-content"
 											>
-												<Box
-													key={
-														configAnimIndex === itemIndex
-															? `qr-${itemIndex}-${configAnimSeed}`
-															: `qr-${itemIndex}`
-													}
-													cursor="pointer"
-													role="button"
-													aria-label={t("userDialog.links.copy", "Copy")}
-													animation={
-														configAnimIndex === itemIndex && configAnimSeed > 0
-															? `${clickPulse} 260ms ease-in-out`
-															: "none"
-													}
+												{t("usersTable.copied")}
+											</Box>
+										)}
+										<SlickSlider
+											centerPadding="0px"
+											centerMode={true}
+											slidesToShow={1}
+											slidesToScroll={1}
+											dots={false}
+											afterChange={setIndex}
+											onInit={() => setIndex(0)}
+											nextArrow={
+												<IconButton
+													size="sm"
+													position="absolute"
+													display="flex !important"
+													_before={{ content: '""' }}
+													aria-label="next"
+													mr="-2"
 												>
-													<QRCode
-														mx="auto"
-														size={300}
-														p="2"
-														level={"L"}
-														includeMargin={false}
-														value={item.link}
-														bg="white"
-													/>
-												</Box>
-											</CopyToClipboard>
-										</HStack>
-									))}
-								</SlickSlider>
-								<Text display="block" textAlign="center" pb={3} mt={1}>
-									{activeIndex + 1} / {configItems.length}
-								</Text>
+													<NextIcon />
+												</IconButton>
+											}
+											prevArrow={
+												<IconButton
+													size="sm"
+													position="absolute"
+													display="flex !important"
+													_before={{ content: '""' }}
+													aria-label="prev"
+													ml="-2"
+												>
+													<PrevIcon />
+												</IconButton>
+											}
+										>
+											{configItems.map((item, itemIndex) => (
+												<HStack
+													key={`${item.link}-${itemIndex}`}
+													justify="center"
+												>
+													<CopyToClipboard
+														text={item.link}
+														onCopy={() => {
+															setCopiedConfigIndex(itemIndex);
+															setConfigAnimIndex(itemIndex);
+															setConfigAnimSeed((prev) => prev + 1);
+														}}
+													>
+														<Box
+															key={
+																configAnimIndex === itemIndex
+																	? `qr-${itemIndex}-${configAnimSeed}`
+																	: `qr-${itemIndex}`
+															}
+															cursor="pointer"
+															role="button"
+															aria-label={t("userDialog.links.copy", "Copy")}
+															animation={
+																configAnimIndex === itemIndex &&
+																configAnimSeed > 0
+																	? `${clickPulse} 260ms ease-in-out`
+																	: "none"
+															}
+														>
+															<QRCode
+																mx="auto"
+																maxW="100%"
+																size={qrSize}
+																p="2"
+																level={"L"}
+																includeMargin={false}
+																value={item.link}
+																bg="white"
+															/>
+														</Box>
+													</CopyToClipboard>
+												</HStack>
+											))}
+										</SlickSlider>
+										<Text display="block" textAlign="center" pb={3} mt={1}>
+											{activeIndex + 1} / {configItems.length}
+										</Text>
+									</Box>
+								</Collapse>
 							</Box>
 						)}
 					</ModalBody>
