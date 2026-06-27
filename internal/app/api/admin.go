@@ -1317,7 +1317,7 @@ func scanInt64Rows(rows *sql.Rows) ([]int64, error) {
 func enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, operationType string, nodeID *int64, userID *int64, payload any) error {
 	now := time.Now().UTC()
 	if nodeID == nil && userID != nil && operationType != "sync_config" {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE COALESCE(status, '') NOT IN ('disabled', 'limited') ORDER BY id`)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
 		if err != nil {
 			return err
 		}

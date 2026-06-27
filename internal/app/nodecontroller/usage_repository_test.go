@@ -59,6 +59,58 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user' AND user_id = 10`, 1)
 }
 
+func TestRepositoryUsageNodesOnlyReturnsConnectedNodes(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-nodes.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES
+	(1, 'connected-node', '127.0.0.1', 62051, 62052, 'connected', 1),
+	(2, 'error-node', '127.0.0.1', 62053, 62054, 'error', 1),
+	(3, 'connecting-node', '127.0.0.1', 62055, 62056, 'connecting', 1),
+	(4, 'disabled-node', '127.0.0.1', 62057, 62058, 'disabled', 1);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	nodes, err := repo.UsageNodes(ctx, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || nodes[0].ID != 1 {
+		t.Fatalf("expected only connected node, got %#v", nodes)
+	}
+	nodes, err = repo.UsageNodes(ctx, 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("expected explicit error node to be skipped for usage collection, got %#v", nodes)
+	}
+}
+
 func TestRepositoryPersistsOnlineOnlyUserUsage(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-online.db")+"?_pragma=busy_timeout(30000)")

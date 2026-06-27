@@ -88,6 +88,200 @@ VALUES ('sync_config', 7, 42, '{"config_json":"{}"}', 'pending', 'op-1', CURRENT
 	}
 }
 
+func TestRepositoryPendingOperationsPreferConnectedNodesFairly(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-fair.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES
+	(24, 'bad-a', '127.0.0.1', 62024, 62025, 'error', 1),
+	(35, 'bad-b', '127.0.0.1', 62035, 62036, 'connecting', 1),
+	(50, 'good', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 24, 100, '{}', 'pending', 'bad-a-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 24, 101, '{}', 'pending', 'bad-a-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 35, 102, '{}', 'pending', 'bad-b-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 200, '{}', 'pending', 'good-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingOperations(ctx, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one operation, got %d", len(rows))
+	}
+	if !rows[0].NodeID.Valid || rows[0].NodeID.Int64 != 50 {
+		t.Fatalf("expected connected node operation first, got %#v", rows[0])
+	}
+}
+
+func TestControllerProcessQueueDoesNotStarveConnectedNodeBehindBrokenNodes(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE tls (
+	id INTEGER PRIMARY KEY,
+	certificate TEXT,
+	"key" TEXT
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO tls (id, certificate, "key") VALUES (1, 'bad cert', 'bad key');
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES
+	(24, 'bad-node', '127.0.0.1', 62024, 62025, 'error', 1),
+	(50, 'good-node', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 24, 100, '{}', 'pending', 'bad-node-op', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 200, '{}', 'pending', 'good-node-op', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Processed != 1 || result.Retrying != 1 {
+		t.Fatalf("expected connected operation to be attempted once, got %#v", result)
+	}
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 50`, "retrying")
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 24`, 0)
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 50`, 1)
+}
+
+func TestControllerProcessQueueMarksDisabledNodeOperationPermanent(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-disabled.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES (7, 'disabled-node', '127.0.0.1', 62050, 62051, 'disabled', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('add_user', 7, 200, '{}', 'pending', 'disabled-op', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Processed != 1 || result.Failed != 1 || result.Retrying != 0 {
+		t.Fatalf("expected disabled operation to fail permanently, got %#v", result)
+	}
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "failed")
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 1)
+}
+
 func TestControllerCompletesGlobalSyncConfigWhenNoNodesExist(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-global.db")+"?_pragma=busy_timeout(30000)")
@@ -336,6 +530,19 @@ CREATE TABLE nodes (
 	xray_version TEXT,
 	last_status_change DATETIME
 );
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
 INSERT INTO nodes (id, status, message, xray_version, last_status_change)
 VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 `)
@@ -354,6 +561,15 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 	}
 	assertRepositoryString(t, db, `SELECT xray_version FROM nodes WHERE id = 1`, "1.0.1")
 	assertRepositoryString(t, db, `SELECT last_status_change FROM nodes WHERE id = 1`, "2026-06-26T00:00:00Z")
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations`, 0)
+
+	if err := repo.SetError(ctx, 1, "dial failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetConnected(ctx, 1, "1.0.1", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1`, 1)
 }
 
 func TestControllerMetricsDoesNotPersistDialError(t *testing.T) {
@@ -409,5 +625,16 @@ func assertRepositoryString(t *testing.T, db *sql.DB, query string, expected str
 	}
 	if actual != expected {
 		t.Fatalf("%s: expected %q, got %q", query, expected, actual)
+	}
+}
+
+func assertRepositoryInt64(t *testing.T, db *sql.DB, query string, expected int64) {
+	t.Helper()
+	var actual int64
+	if err := db.QueryRow(query).Scan(&actual); err != nil {
+		t.Fatal(err)
+	}
+	if actual != expected {
+		t.Fatalf("%s: expected %d, got %d", query, expected, actual)
 	}
 }

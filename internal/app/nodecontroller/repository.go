@@ -46,6 +46,8 @@ type OperationRow struct {
 	Attempts      int
 }
 
+const pendingOperationsPerNodeCap = 3
+
 func NewRepository(db *sql.DB, dialect string) Repository {
 	return Repository{db: db, dialect: dialect}
 }
@@ -215,7 +217,22 @@ func (r Repository) SetConnecting(ctx context.Context, nodeID int64) error {
 }
 
 func (r Repository) SetConnected(ctx context.Context, nodeID int64, version string, message string) error {
-	return r.updateStatus(ctx, nodeID, "connected", message, version)
+	previousStatus := ""
+	_ = r.db.QueryRowContext(ctx, `SELECT LOWER(COALESCE(status, '')) FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&previousStatus)
+	if err := r.updateStatus(ctx, nodeID, "connected", message, version); err != nil {
+		return err
+	}
+	if previousStatus != "" && previousStatus != "connected" {
+		payload := map[string]any{
+			"reason":         "node_reconnected",
+			"reconnected":    true,
+			"reconnected_at": time.Now().UTC().Format(time.RFC3339Nano),
+		}
+		if err := r.QueueSyncConfig(ctx, &nodeID, payload); err != nil && !isMissingTableError(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r Repository) SetError(ctx context.Context, nodeID int64, message string) error {
@@ -232,18 +249,70 @@ func (r Repository) PendingOperations(ctx context.Context, nodeID int64, limit i
 	if limit > 500 {
 		limit = 500
 	}
+	if nodeID <= 0 {
+		return r.pendingOperationsFair(ctx, limit)
+	}
 	query := `SELECT id, operation_type, node_id, user_id, payload, attempts
 FROM node_operations
 WHERE status IN ('pending', 'retrying')`
 	args := []any{}
-	if nodeID > 0 {
-		query += ` AND node_id = ?`
-		args = append(args, nodeID)
-	}
+	query += ` AND node_id = ?`
+	args = append(args, nodeID)
 	query += ` ORDER BY id LIMIT ?`
 	args = append(args, limit)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]OperationRow, 0, limit)
+	for rows.Next() {
+		var row OperationRow
+		var payload []byte
+		if err := rows.Scan(&row.ID, &row.OperationType, &row.NodeID, &row.UserID, &payload, &row.Attempts); err != nil {
+			return nil, err
+		}
+		row.Payload = append(row.Payload[:0], payload...)
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]OperationRow, error) {
+	perNodeCap := pendingOperationsPerNodeCap
+	if limit < perNodeCap {
+		perNodeCap = limit
+	}
+	query := `WITH ranked_operations AS (
+	SELECT
+		no.id,
+		no.operation_type,
+		no.node_id,
+		no.user_id,
+		no.payload,
+		no.attempts,
+		ROW_NUMBER() OVER (PARTITION BY COALESCE(no.node_id, -1) ORDER BY no.id) AS node_rank,
+		CASE
+			WHEN no.node_id IS NOT NULL AND LOWER(COALESCE(n.status, '')) = 'connected' THEN 0
+			WHEN no.node_id IS NULL THEN 1
+			WHEN LOWER(COALESCE(n.status, '')) IN ('disabled', 'limited') THEN 3
+			ELSE 2
+		END AS priority
+	FROM node_operations no
+	LEFT JOIN nodes n ON n.id = no.node_id
+	WHERE no.status IN ('pending', 'retrying')
+)
+SELECT id, operation_type, node_id, user_id, payload, attempts
+FROM ranked_operations
+WHERE node_rank <= ?
+ORDER BY priority, node_rank, COALESCE(node_id, -1), id
+LIMIT ?`
+	rows, err := r.db.QueryContext(ctx, query, perNodeCap, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -446,6 +515,16 @@ VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
 		r.timeArg(now),
 	)
 	return err
+}
+
+func isMissingTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such table") ||
+		strings.Contains(message, "doesn't exist") ||
+		strings.Contains(message, "unknown table")
 }
 
 func (r Repository) updateStatus(ctx context.Context, nodeID int64, status string, message string, version string) error {

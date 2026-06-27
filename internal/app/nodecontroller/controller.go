@@ -657,7 +657,10 @@ func isPermanentOperationError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "unsupported node operation") ||
 		strings.Contains(message, "config_json is required") ||
-		strings.Contains(message, "invalid character")
+		strings.Contains(message, "invalid character") ||
+		strings.Contains(message, "node is disabled") ||
+		strings.Contains(message, "node is limited") ||
+		strings.Contains(message, "node not found")
 }
 
 func (c Controller) dial(ctx context.Context, nodeID int64) (*nodeclient.Client, NodeRow, error) {

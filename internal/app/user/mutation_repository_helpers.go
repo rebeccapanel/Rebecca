@@ -772,7 +772,7 @@ func (r Repository) activeNodeIDsTx(ctx context.Context, tx *sql.Tx) ([]int64, e
 	if cached, ok := r.cachedActiveNodeIDs(); ok {
 		return cached, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE COALESCE(status, '') NOT IN ('disabled', 'limited') ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

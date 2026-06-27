@@ -111,7 +111,7 @@ func (r Repository) UsageNodes(ctx context.Context, nodeID int64, limit int) ([]
 	xray_config,
 	usage_coefficient
 FROM nodes
-WHERE status NOT IN ('disabled', 'limited')`
+WHERE LOWER(COALESCE(status, '')) = 'connected'`
 	args := []any{}
 	if nodeID > 0 {
 		query += ` AND id = ?`
@@ -1166,7 +1166,7 @@ func (r Repository) enqueueUsageOperations(ctx context.Context, tx *sql.Tx, oper
 	if len(operations) == 0 {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE status NOT IN ('disabled', 'limited') ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
 	if err != nil {
 		return err
 	}
