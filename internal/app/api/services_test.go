@@ -363,6 +363,7 @@ func TestServiceHostOrderingAndDetailResponse(t *testing.T) {
 	if len(reordered.Hosts) != 2 || reordered.Hosts[0].ID != 1 || reordered.Hosts[1].ID != 2 {
 		t.Fatalf("unexpected reordered hosts: %#v", reordered.Hosts)
 	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 }
 
 func TestServiceDuplicateHostDenied(t *testing.T) {

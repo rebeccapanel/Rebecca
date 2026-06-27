@@ -297,7 +297,6 @@ func (s *Server) handleServiceUpdate(w http.ResponseWriter, r *http.Request, ser
 		writeServiceError(w, err)
 		return
 	}
-	_, hostsChanged := fields["hosts"]
 
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		if err := ensureServiceExistsTx(r.Context(), tx, serviceID); err != nil {
@@ -329,17 +328,25 @@ func (s *Server) handleServiceUpdate(w http.ResponseWriter, r *http.Request, ser
 			}
 		}
 		if _, ok := fields["hosts"]; ok {
+			beforeRuntimeTags, err := serviceRuntimeInboundTagsTx(r.Context(), tx, serviceID)
+			if err != nil {
+				return err
+			}
 			if err := syncServiceHostsTx(r.Context(), tx, serviceID, payload.Hosts); err != nil {
 				return err
+			}
+			afterRuntimeTags, err := serviceRuntimeInboundTagsTx(r.Context(), tx, serviceID)
+			if err != nil {
+				return err
+			}
+			if !stringBoolMapsEqual(beforeRuntimeTags, afterRuntimeTags) {
+				if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{"service_id": serviceID}); err != nil {
+					return err
+				}
 			}
 		}
 		if _, ok := fields["admin_ids"]; ok {
 			if err := syncServiceAdminsTx(r.Context(), tx, serviceID, payload.AdminIDs); err != nil {
-				return err
-			}
-		}
-		if hostsChanged {
-			if err := enqueueNodeOperationTx(r.Context(), tx, "sync_config", nil, nil, map[string]any{"service_id": serviceID}); err != nil {
 				return err
 			}
 		}
@@ -1256,6 +1263,44 @@ func serviceUserIDsTx(ctx context.Context, tx *sql.Tx, serviceID int64) ([]int64
 		return nil, err
 	}
 	return scanInt64Rows(rows)
+}
+
+func serviceRuntimeInboundTagsTx(ctx context.Context, tx *sql.Tx, serviceID int64) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT DISTINCT h.inbound_tag
+FROM service_hosts sh
+JOIN hosts h ON h.id = sh.host_id
+WHERE sh.service_id = ?
+  AND COALESCE(h.is_disabled, 0) = 0
+  AND COALESCE(h.inbound_tag, '') <> ''`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			result[tag] = true
+		}
+	}
+	return result, rows.Err()
+}
+
+func stringBoolMapsEqual(left map[string]bool, right map[string]bool) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func sqlInClauseInt64(ids []int64) (string, []any) {

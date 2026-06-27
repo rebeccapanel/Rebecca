@@ -188,15 +188,7 @@ func (s *Server) listHostsGrouped(r *http.Request) (map[string][]hostResponse, e
 		return nil, err
 	}
 
-	result := make(map[string][]hostResponse, len(tags))
-	for _, tag := range tags {
-		hosts, err := queryHostsByInbound(r, s.db, tag)
-		if err != nil {
-			return nil, err
-		}
-		result[tag] = hosts
-	}
-	return result, nil
+	return queryHostsGroupedByInbound(r.Context(), s.db, tags)
 }
 
 func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) (map[string][]hostResponse, error) {
@@ -235,19 +227,9 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 		if err := ensureHostInboundRecordTx(r.Context(), tx, inboundTag); err != nil {
 			return nil, err
 		}
-		before, err := serviceIDsForInboundHostsTx(r.Context(), tx, inboundTag)
-		if err != nil {
-			return nil, err
-		}
-		addServiceIDs(affectedServices, before)
 		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, payload[inboundTag], allKeptIDs, affectedServices); err != nil {
 			return nil, err
 		}
-		after, err := serviceIDsForInboundHostsTx(r.Context(), tx, inboundTag)
-		if err != nil {
-			return nil, err
-		}
-		addServiceIDs(affectedServices, after)
 	}
 	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, affectedServices); err != nil {
 		return nil, err
@@ -310,19 +292,26 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 			return err
 		}
 		if host.ID != nil && *host.ID > 0 {
-			oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
+			oldTag, oldDisabled, err := hostRuntimeLinkStateTx(r.Context(), tx, *host.ID)
 			if err != nil {
 				return err
 			}
-			addServiceIDs(affectedServices, oldServices)
 			if exists, err := hostExistsTx(r.Context(), tx, *host.ID); err != nil {
 				return err
 			} else if exists {
+				newDisabled := boolPtrValue(host.IsDisabled)
+				if oldTag != inboundTag || oldDisabled != newDisabled {
+					oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
+					if err != nil {
+						return err
+					}
+					addServiceIDs(affectedServices, oldServices)
+				}
 				if err := updateHostTx(r.Context(), tx, inboundTag, host); err != nil {
 					return err
 				}
 				delete(remaining, *host.ID)
-				if boolPtrValue(host.IsDisabled) {
+				if newDisabled {
 					if _, err := tx.ExecContext(r.Context(), `DELETE FROM service_hosts WHERE host_id = ?`, *host.ID); err != nil {
 						return err
 					}
@@ -361,11 +350,18 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 }
 
 func (s *Server) manageableInboundTags(r *http.Request) ([]string, error) {
+	tags, err := queryRegisteredInboundTags(r.Context(), s.db)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) > 0 {
+		return tags, nil
+	}
 	inbounds, err := s.configRepo.FullInbounds(r.Context())
 	if err != nil {
 		return nil, err
 	}
-	tags := make([]string, 0, len(inbounds))
+	tags = make([]string, 0, len(inbounds))
 	for _, inbound := range inbounds {
 		if tag, ok := inbound["tag"].(string); ok && tag != "" {
 			tags = append(tags, tag)
@@ -373,6 +369,39 @@ func (s *Server) manageableInboundTags(r *http.Request) ([]string, error) {
 	}
 	sort.Strings(tags)
 	return tags, nil
+}
+
+func queryRegisteredInboundTags(ctx context.Context, db queryer) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT tag FROM inbounds WHERE tag IS NOT NULL AND tag <> '' ORDER BY tag ASC`)
+	if err != nil {
+		if isHostsMissingTableError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	tags := []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags, rows.Err()
+}
+
+func isHostsMissingTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table") ||
+		strings.Contains(msg, "doesn't exist") ||
+		strings.Contains(msg, "unknown table")
 }
 
 func ensureHostInboundRecordTx(ctx context.Context, tx *sql.Tx, tag string) error {
@@ -410,6 +439,34 @@ func queryHostsByInbound(r *http.Request, db queryer, inboundTag string) ([]host
 	return scanHostResponses(rows)
 }
 
+func queryHostsGroupedByInbound(ctx context.Context, db queryer, inboundTags []string) (map[string][]hostResponse, error) {
+	result := make(map[string][]hostResponse, len(inboundTags))
+	tagSet := make(map[string]bool, len(inboundTags))
+	for _, tag := range inboundTags {
+		result[tag] = []hostResponse{}
+		tagSet[tag] = true
+	}
+	rows, err := db.QueryContext(ctx, hostSelectSQLWithInbound()+` ORDER BY inbound_tag ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var inboundTag string
+		host, err := scanHostResponseWithInbound(rows, &inboundTag)
+		if err != nil {
+			return nil, err
+		}
+		if tagSet[inboundTag] {
+			result[inboundTag] = append(result[inboundTag], host)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func queryHostByID(r *http.Request, db queryer, hostID int64) (hostResponse, error) {
 	rows, err := db.QueryContext(r.Context(), hostSelectSQL()+` WHERE id = ? LIMIT 1`, hostID)
 	if err != nil {
@@ -442,71 +499,162 @@ func hostSelectSQL() string {
 		FROM hosts`
 }
 
+func hostSelectSQLWithInbound() string {
+	return `SELECT inbound_tag, id, COALESCE(remark, ''), COALESCE(address, ''),
+		address_options, COALESCE(address_selection_mode, 'random'), address_ttl_seconds,
+		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
+		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
+		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
+		CASE WHEN allowinsecure IS NULL THEN NULL WHEN allowinsecure THEN 1 ELSE 0 END,
+		COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting,
+		COALESCE(random_user_agent, 0), COALESCE(use_sni_as_host, 0)
+		FROM hosts`
+}
+
 func scanHostResponses(rows *sql.Rows) ([]hostResponse, error) {
 	hosts := []hostResponse{}
 	for rows.Next() {
-		var item hostResponse
-		var port, addressTTL, sniTTL, hostTTL sql.NullInt64
-		var path, sni, hostValue, fragment, noise sql.NullString
-		var addressOptions, sniOptions, hostOptions sql.NullString
-		var allowInsecure sql.NullInt64
-		var disabled, muxEnable, randomUA, useSNI int64
-		if err := rows.Scan(
-			&item.ID,
-			&item.Remark,
-			&item.Address,
-			&addressOptions,
-			&item.AddressMode,
-			&addressTTL,
-			&port,
-			&path,
-			&sni,
-			&sniOptions,
-			&item.SNIMode,
-			&sniTTL,
-			&hostValue,
-			&hostOptions,
-			&item.HostMode,
-			&hostTTL,
-			&item.Security,
-			&item.ALPN,
-			&item.Fingerprint,
-			&allowInsecure,
-			&disabled,
-			&muxEnable,
-			&fragment,
-			&noise,
-			&randomUA,
-			&useSNI,
-		); err != nil {
+		item, err := scanHostResponse(rows)
+		if err != nil {
 			return nil, err
 		}
-		item.Security = normalizeHostSecurity(item.Security)
-		item.ALPN = hostEnumResponseValue(item.ALPN)
-		item.Fingerprint = hostEnumResponseValue(item.Fingerprint)
-		item.AddressOptions = decodeHostOptions(addressOptions)
-		item.AddressMode = normalizeHostRotationMode(item.AddressMode)
-		item.AddressTTL = nullableInt64Response(addressTTL)
-		item.Port = nullableInt64Response(port)
-		item.Path = nullableStringResponse(path)
-		item.SNI = nullableStringResponse(sni)
-		item.SNIOptions = decodeHostOptions(sniOptions)
-		item.SNIMode = normalizeHostRotationMode(item.SNIMode)
-		item.SNITTL = nullableInt64Response(sniTTL)
-		item.Host = nullableStringResponse(hostValue)
-		item.HostOptions = decodeHostOptions(hostOptions)
-		item.HostMode = normalizeHostRotationMode(item.HostMode)
-		item.HostTTL = nullableInt64Response(hostTTL)
-		item.FragmentSetting = nullableStringResponse(fragment)
-		item.NoiseSetting = nullableStringResponse(noise)
-		item.AllowInsecure = nullableBoolResponse(allowInsecure)
-		item.IsDisabled = disabled != 0
-		item.MuxEnable = boolPtr(muxEnable != 0)
-		item.RandomUserAgent = boolPtr(randomUA != 0)
-		item.UseSNIAsHost = boolPtr(useSNI != 0)
 		hosts = append(hosts, item)
 	}
 	return hosts, rows.Err()
+}
+
+type hostScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanHostResponseWithInbound(scanner hostScanner, inboundTag *string) (hostResponse, error) {
+	if inboundTag == nil {
+		return hostResponse{}, errors.New("inbound tag destination is required")
+	}
+	var item hostResponse
+	var port, addressTTL, sniTTL, hostTTL sql.NullInt64
+	var path, sni, hostValue, fragment, noise sql.NullString
+	var addressOptions, sniOptions, hostOptions sql.NullString
+	var allowInsecure sql.NullInt64
+	var disabled, muxEnable, randomUA, useSNI int64
+	if err := scanner.Scan(
+		inboundTag,
+		&item.ID,
+		&item.Remark,
+		&item.Address,
+		&addressOptions,
+		&item.AddressMode,
+		&addressTTL,
+		&port,
+		&path,
+		&sni,
+		&sniOptions,
+		&item.SNIMode,
+		&sniTTL,
+		&hostValue,
+		&hostOptions,
+		&item.HostMode,
+		&hostTTL,
+		&item.Security,
+		&item.ALPN,
+		&item.Fingerprint,
+		&allowInsecure,
+		&disabled,
+		&muxEnable,
+		&fragment,
+		&noise,
+		&randomUA,
+		&useSNI,
+	); err != nil {
+		return hostResponse{}, err
+	}
+	return normalizeScannedHostResponse(item, addressOptions, addressTTL, port, path, sni, sniOptions, sniTTL, hostValue, hostOptions, hostTTL, fragment, noise, allowInsecure, disabled, muxEnable, randomUA, useSNI), nil
+}
+
+func scanHostResponse(scanner hostScanner) (hostResponse, error) {
+	var item hostResponse
+	var port, addressTTL, sniTTL, hostTTL sql.NullInt64
+	var path, sni, hostValue, fragment, noise sql.NullString
+	var addressOptions, sniOptions, hostOptions sql.NullString
+	var allowInsecure sql.NullInt64
+	var disabled, muxEnable, randomUA, useSNI int64
+	if err := scanner.Scan(
+		&item.ID,
+		&item.Remark,
+		&item.Address,
+		&addressOptions,
+		&item.AddressMode,
+		&addressTTL,
+		&port,
+		&path,
+		&sni,
+		&sniOptions,
+		&item.SNIMode,
+		&sniTTL,
+		&hostValue,
+		&hostOptions,
+		&item.HostMode,
+		&hostTTL,
+		&item.Security,
+		&item.ALPN,
+		&item.Fingerprint,
+		&allowInsecure,
+		&disabled,
+		&muxEnable,
+		&fragment,
+		&noise,
+		&randomUA,
+		&useSNI,
+	); err != nil {
+		return hostResponse{}, err
+	}
+	return normalizeScannedHostResponse(item, addressOptions, addressTTL, port, path, sni, sniOptions, sniTTL, hostValue, hostOptions, hostTTL, fragment, noise, allowInsecure, disabled, muxEnable, randomUA, useSNI), nil
+}
+
+func normalizeScannedHostResponse(
+	item hostResponse,
+	addressOptions sql.NullString,
+	addressTTL sql.NullInt64,
+	port sql.NullInt64,
+	path sql.NullString,
+	sni sql.NullString,
+	sniOptions sql.NullString,
+	sniTTL sql.NullInt64,
+	hostValue sql.NullString,
+	hostOptions sql.NullString,
+	hostTTL sql.NullInt64,
+	fragment sql.NullString,
+	noise sql.NullString,
+	allowInsecure sql.NullInt64,
+	disabled int64,
+	muxEnable int64,
+	randomUA int64,
+	useSNI int64,
+) hostResponse {
+	item.Security = normalizeHostSecurity(item.Security)
+	item.ALPN = hostEnumResponseValue(item.ALPN)
+	item.Fingerprint = hostEnumResponseValue(item.Fingerprint)
+	item.AddressOptions = decodeHostOptions(addressOptions)
+	item.AddressMode = normalizeHostRotationMode(item.AddressMode)
+	item.AddressTTL = nullableInt64Response(addressTTL)
+	item.Port = nullableInt64Response(port)
+	item.Path = nullableStringResponse(path)
+	item.SNI = nullableStringResponse(sni)
+	item.SNIOptions = decodeHostOptions(sniOptions)
+	item.SNIMode = normalizeHostRotationMode(item.SNIMode)
+	item.SNITTL = nullableInt64Response(sniTTL)
+	item.Host = nullableStringResponse(hostValue)
+	item.HostOptions = decodeHostOptions(hostOptions)
+	item.HostMode = normalizeHostRotationMode(item.HostMode)
+	item.HostTTL = nullableInt64Response(hostTTL)
+	item.FragmentSetting = nullableStringResponse(fragment)
+	item.NoiseSetting = nullableStringResponse(noise)
+	item.AllowInsecure = nullableBoolResponse(allowInsecure)
+	item.IsDisabled = disabled != 0
+	item.MuxEnable = boolPtr(muxEnable != 0)
+	item.RandomUserAgent = boolPtr(randomUA != 0)
+	item.UseSNIAsHost = boolPtr(useSNI != 0)
+	return item
 }
 
 func validateHostPayload(host hostPayload) error {
@@ -777,6 +925,19 @@ func hostExistsTx(ctx context.Context, tx *sql.Tx, hostID int64) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func hostRuntimeLinkStateTx(ctx context.Context, tx *sql.Tx, hostID int64) (string, bool, error) {
+	var inboundTag string
+	var disabled int
+	err := tx.QueryRowContext(ctx, `SELECT inbound_tag, COALESCE(is_disabled, 0) FROM hosts WHERE id = ? LIMIT 1`, hostID).Scan(&inboundTag, &disabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return inboundTag, disabled != 0, nil
 }
 
 func serviceIDsForHostTx(ctx context.Context, tx *sql.Tx, hostID int64) ([]int64, error) {
