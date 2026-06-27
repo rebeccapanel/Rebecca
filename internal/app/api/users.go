@@ -256,7 +256,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 	createdReport := userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw)
 	s.telegramReports.UserCreated(r.Context(), createdReport)
 	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserCreated, createdReport))
-	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusCreated)
+	s.writeUserMutationDetail(w, r, principal, result, http.StatusCreated)
 }
 
 func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request, username string) {
@@ -282,7 +282,7 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request, userna
 		s.telegramReports.UserStatusChanged(r.Context(), report)
 		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookUserStatusAction(result.Status), report))
 	}
-	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusOK)
+	s.writeUserMutationDetail(w, r, principal, result, http.StatusOK)
 }
 
 func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request, username string) {
@@ -356,7 +356,7 @@ func (s *Server) handleUserMutationAction(w http.ResponseWriter, r *http.Request
 		s.telegramReports.UserNextPlanApplied(r.Context(), report)
 		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionAutoRenewApplied, report))
 	}
-	s.writeUserMutationDetail(w, r, principal, result.Username, http.StatusOK)
+	s.writeUserMutationDetail(w, r, principal, result, http.StatusOK)
 }
 
 func (s *Server) handleUsersBulkAction(w http.ResponseWriter, r *http.Request) {
@@ -444,16 +444,21 @@ func (s *Server) bulkTargetAdmin(ctx context.Context, requester adminapp.Admin, 
 	return &target, nil
 }
 
-func (s *Server) writeUserMutationDetail(w http.ResponseWriter, r *http.Request, principal adminPrincipal, username string, statusCode int) {
+func (s *Server) writeUserMutationDetail(w http.ResponseWriter, r *http.Request, principal adminPrincipal, mutation userapp.MutationResult, statusCode int) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	result, err := s.userService.UserGet(ctx, userapp.UserGetRequest{
-		Username:      username,
+		Username:      mutation.Username,
 		RequestOrigin: requestOrigin(r),
 		Admin:         s.userAdminContext(principal, nil),
 	})
 	if err != nil {
-		writeUserReadError(w, err)
+		writeJSON(w, statusCode, map[string]any{
+			"id":       mutation.UserID,
+			"username": mutation.Username,
+			"status":   mutation.Status,
+			"detail":   "User mutation completed, but the full user detail response could not be generated.",
+		})
 		return
 	}
 	if !canViewUserTraffic(principal.Context.Admin, result.ServiceID) {
