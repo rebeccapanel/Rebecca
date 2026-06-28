@@ -1,7 +1,11 @@
 import { Box } from "@chakra-ui/react";
 import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { FC } from "react";
-import { parseServerTimeToUnix } from "utils/dateFormatter";
+import {
+	buildRelativeTimeParts,
+	formatRelativeTimeParts,
+	parseServerTimeToUnix,
+} from "utils/dateFormatter";
 
 type UserStatusProps = {
 	lastOnline?: string | null;
@@ -23,8 +27,14 @@ export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
 	}
 
 	const timeDifferenceInSeconds = currentTimeInSeconds - unixTime;
+	const formattedParts = formatRelativeTimeParts(
+		buildRelativeTimeParts(unixTime, currentTimeInSeconds),
+	);
 
-	if (timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS) {
+	if (
+		timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS ||
+		formattedParts.trim() === ""
+	) {
 		return (
 			<Box
 				bg="green.300"
