@@ -119,6 +119,45 @@ type EventToggleGroup = {
 	events: EventToggleItem[];
 };
 
+type TelegramSwitchRowProps = {
+	title: ReactNode;
+	description?: ReactNode;
+	control: ReactNode;
+};
+
+const TelegramSwitchRow = ({
+	title,
+	description,
+	control,
+}: TelegramSwitchRowProps) => (
+	<FormControl>
+		<Flex
+			align={{ base: "flex-start", sm: "center" }}
+			justify="space-between"
+			gap={3}
+			borderWidth="1px"
+			borderColor="gray.200"
+			borderRadius="md"
+			bg="gray.50"
+			px={3}
+			py={3}
+			_dark={{ borderColor: "whiteAlpha.200", bg: "whiteAlpha.50" }}
+		>
+			<Box minW={0} flex="1">
+				<Text fontWeight="semibold">{title}</Text>
+				{description ? (
+					<Text fontSize="xs" color="gray.500" mt={1}>
+						{description}
+					</Text>
+				) : null}
+			</Box>
+			<Box flexShrink={0} pt={{ base: 1, sm: 0 }}>
+				{control}
+			</Box>
+		</Flex>
+	</FormControl>
+);
+
 const TOGGLE_KEY_PLACEHOLDER = "__dot__";
 type TemplateKey =
 	| "clash_subscription_template"
@@ -2129,33 +2168,24 @@ export const IntegrationSettingsPage = () => {
 									<Text fontSize="sm" color="gray.500">
 										{t("settings.telegram.description")}
 									</Text>
-									<Flex
-										justify="space-between"
-										align={{ base: "flex-start", md: "center" }}
-										gap={4}
-										flexDirection={{ base: "column", md: "row" }}
-									>
-										<Box>
-											<Heading size="sm" mb={1}>
-												{t("settings.telegram.enableBot")}
-											</Heading>
-											<Text fontSize="sm" color="gray.500">
-												{t("settings.telegram.enableBotDescription")}
-											</Text>
-										</Box>
-										<Controller
-											control={control}
-											name="use_telegram"
-											render={({ field }) => (
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											)}
-										/>
-									</Flex>
+									<TelegramSwitchRow
+										title={t("settings.telegram.enableBot")}
+										description={t("settings.telegram.enableBotDescription")}
+										control={
+											<Controller
+												control={control}
+												name="use_telegram"
+												render={({ field }) => (
+													<Switch
+														isChecked={field.value}
+														onChange={(event) =>
+															field.onChange(event.target.checked)
+														}
+													/>
+												)}
+											/>
+										}
+									/>
 									<DisabledCard
 										disabled={!isTelegramEnabled}
 										message={telegramDisabledMessage}
@@ -2204,22 +2234,27 @@ export const IntegrationSettingsPage = () => {
 														{t("settings.telegram.logsChatIdHint")}
 													</FormHelperText>
 												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel htmlFor="logs_chat_is_forum" mb="0">
-														{t("settings.telegram.logsChatIsForum")}
-													</FormLabel>
-													<Controller
-														control={control}
-														name="logs_chat_is_forum"
-														render={({ field }) => (
-															<Switch
-																id="logs_chat_is_forum"
-																isChecked={field.value}
-																onChange={field.onChange}
-															/>
-														)}
-													/>
-												</FormControl>
+												<TelegramSwitchRow
+													title={t("settings.telegram.logsChatIsForum")}
+													description={t(
+														"settings.telegram.logsChatIsForumHint",
+														"Send report messages into a Telegram forum topic.",
+													)}
+													control={
+														<Controller
+															control={control}
+															name="logs_chat_is_forum"
+															render={({ field }) => (
+																<Switch
+																	isChecked={field.value}
+																	onChange={(event) =>
+																		field.onChange(event.target.checked)
+																	}
+																/>
+															)}
+														/>
+													}
+												/>
 												<FormControl>
 													<FormLabel>
 														{t("settings.telegram.defaultVlessFlow")}
@@ -2260,40 +2295,32 @@ export const IntegrationSettingsPage = () => {
 											className="master-settings-card"
 											scrollMarginTop="120px"
 										>
-											<Flex
-												justify="space-between"
-												align={{ base: "flex-start", md: "center" }}
-												gap={3}
-												mb={3}
-												flexDirection={{ base: "column", md: "row" }}
-											>
-												<Box>
-													<Heading size="sm">
-														{t(
-															"settings.telegram.backupTitle",
-															"Periodic backup",
-														)}
-													</Heading>
-													<Text fontSize="xs" color="gray.500" mt={1}>
-														{t(
-															"settings.telegram.backupDescription",
-															"Send Rebecca backups to Telegram on a schedule.",
-														)}
-													</Text>
-												</Box>
-												<Controller
-													control={control}
-													name="backup_enabled"
-													render={({ field }) => (
-														<Switch
-															isChecked={field.value}
-															onChange={(event) =>
-																field.onChange(event.target.checked)
-															}
-														/>
+											<Box mb={3}>
+												<TelegramSwitchRow
+													title={t(
+														"settings.telegram.backupTitle",
+														"Periodic backup",
 													)}
+													description={t(
+														"settings.telegram.backupDescription",
+														"Send Rebecca backups to Telegram on a schedule.",
+													)}
+													control={
+														<Controller
+															control={control}
+															name="backup_enabled"
+															render={({ field }) => (
+																<Switch
+																	isChecked={field.value}
+																	onChange={(event) =>
+																		field.onChange(event.target.checked)
+																	}
+																/>
+															)}
+														/>
+													}
 												/>
-											</Flex>
+											</Box>
 											<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
@@ -2313,25 +2340,30 @@ export const IntegrationSettingsPage = () => {
 														)}
 													</FormHelperText>
 												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel htmlFor="backup_chat_is_forum" mb="0">
-														{t(
-															"settings.telegram.backupChatIsForum",
-															"Backup chat is a forum",
-														)}
-													</FormLabel>
-													<Controller
-														control={control}
-														name="backup_chat_is_forum"
-														render={({ field }) => (
-															<Switch
-																id="backup_chat_is_forum"
-																isChecked={field.value}
-																onChange={field.onChange}
-															/>
-														)}
-													/>
-												</FormControl>
+												<TelegramSwitchRow
+													title={t(
+														"settings.telegram.backupChatIsForum",
+														"Backup chat is a forum",
+													)}
+													description={t(
+														"settings.telegram.backupChatIsForumHint",
+														"Send backup files into the configured Telegram topic.",
+													)}
+													control={
+														<Controller
+															control={control}
+															name="backup_chat_is_forum"
+															render={({ field }) => (
+																<Switch
+																	isChecked={field.value}
+																	onChange={(event) =>
+																		field.onChange(event.target.checked)
+																	}
+																/>
+															)}
+														/>
+													}
+												/>
 												<FormControl>
 													<FormLabel>
 														{t("settings.telegram.backupScope", "Backup scope")}
@@ -2567,36 +2599,27 @@ export const IntegrationSettingsPage = () => {
 															spacing={4}
 														>
 															{group.events.map((event) => (
-																<FormControl
+																<TelegramSwitchRow
 																	key={event.key}
-																	display="flex"
-																	alignItems="center"
-																	justifyContent="space-between"
-																	gap={4}
-																>
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(event.labelKey)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(event.hintKey)}
-																		</Text>
-																	</Box>
-																	<Controller
-																		control={control}
-																		name={
-																			`event_toggles.${encodeToggleKey(event.key)}` as const
-																		}
-																		render={({ field }) => (
-																			<Switch
-																				isChecked={Boolean(field.value)}
-																				onChange={(e) =>
-																					field.onChange(e.target.checked)
-																				}
-																			/>
-																		)}
-																	/>
-																</FormControl>
+																	title={t(event.labelKey)}
+																	description={t(event.hintKey)}
+																	control={
+																		<Controller
+																			control={control}
+																			name={
+																				`event_toggles.${encodeToggleKey(event.key)}` as const
+																			}
+																			render={({ field }) => (
+																				<Switch
+																					isChecked={Boolean(field.value)}
+																					onChange={(e) =>
+																						field.onChange(e.target.checked)
+																					}
+																				/>
+																			)}
+																		/>
+																	}
+																/>
 															))}
 														</SimpleGrid>
 													</Box>
