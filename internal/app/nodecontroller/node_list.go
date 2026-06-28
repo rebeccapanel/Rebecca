@@ -3,6 +3,7 @@ package nodecontroller
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -105,6 +106,12 @@ func (c Controller) Sync(ctx context.Context, req Request) (RuntimeResult, error
 	}
 	client, _, err := c.dial(ctx, node.ID)
 	if err != nil {
+		if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+			_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
+			return result, nil
+		} else {
+			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		}
 		_ = c.repo.SetError(ctx, node.ID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("sync", node.ID, err)
 	}
@@ -114,6 +121,12 @@ func (c Controller) Sync(ctx context.Context, req Request) (RuntimeResult, error
 		ConfigJson:  configJSON,
 	})
 	if err != nil {
+		if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+			_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
+			return result, nil
+		} else {
+			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		}
 		_ = c.repo.SetError(ctx, node.ID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("sync", node.ID, err)
 	}

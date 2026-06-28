@@ -147,6 +147,13 @@ func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, er
 func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, error) {
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
+		if node.ID != 0 {
+			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
+				return result, nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("health", req.NodeID, err)
 	}
@@ -154,6 +161,11 @@ func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, err
 
 	res, err := client.Control().Health(ctx, &nodev1.HealthRequest{IncludeMetrics: true})
 	if err != nil {
+		if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
+			return result, nil
+		} else {
+			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("health", req.NodeID, err)
 	}
@@ -181,6 +193,9 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 
 	res, err := client.Runtime().Metrics(ctx, &nodev1.MetricsRequest{IncludeRuntime: true})
 	if err != nil {
+		if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
+			return result, nil
+		}
 		result := runtimeResult(node, nil, nil)
 		result.Status = "connected"
 		result.Message = friendlyNodeError("metrics", req.NodeID, err).Error()
