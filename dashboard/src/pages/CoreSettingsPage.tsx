@@ -94,6 +94,7 @@ import { DnsModal } from "../components/DnsModal";
 import { DnsPresetsModal } from "../components/DnsPresetsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { JsonEditor } from "../components/JsonEditor";
+import { NordVPNModal } from "../components/NordVPNModal";
 import { OutboundModal } from "../components/OutboundModal";
 import { OutboundSubscriptionsModal } from "../components/OutboundSubscriptionsModal";
 import {
@@ -591,6 +592,11 @@ export const CoreSettingsPage: FC = () => {
 		isOpen: isWarpOpen,
 		onOpen: onWarpOpen,
 		onClose: onWarpClose,
+	} = useDisclosure();
+	const {
+		isOpen: isNordOpen,
+		onOpen: onNordOpen,
+		onClose: onNordClose,
 	} = useDisclosure();
 	const {
 		isOpen: isOutboundSubsOpen,
@@ -2444,6 +2450,43 @@ export const CoreSettingsPage: FC = () => {
 		setWarpCustomDomain("");
 	};
 
+	const handleNordSave = (
+		outbound: OutboundJson,
+		replaceIndex: number | null,
+	) => {
+		const outbounds = getOutbounds();
+		if (
+			replaceIndex !== null &&
+			replaceIndex >= 0 &&
+			replaceIndex < outbounds.length
+		) {
+			outbounds[replaceIndex] = outbound;
+		} else {
+			outbounds.push(outbound);
+		}
+		commitOutbounds(outbounds);
+	};
+
+	const handleNordDelete = (index: number) => {
+		const outbounds = getOutbounds();
+		if (index < 0 || index >= outbounds.length) {
+			return;
+		}
+		const tag = String(outbounds[index]?.tag ?? "");
+		outbounds.splice(index, 1);
+		commitOutbounds(outbounds);
+		if (tag) {
+			const rules = form.getValues("config.routing.rules");
+			if (Array.isArray(rules)) {
+				form.setValue(
+					"config.routing.rules",
+					rules.filter((rule: any) => rule?.outboundTag !== tag),
+					{ shouldDirty: true },
+				);
+			}
+		}
+	};
+
 	const handleOutboundSave = (outboundJson: unknown) => {
 		const outbound = outboundJson as OutboundJson;
 		const outbounds = getOutbounds();
@@ -2462,6 +2505,10 @@ export const CoreSettingsPage: FC = () => {
 
 	const handleWarpModalClose = () => {
 		onWarpClose();
+	};
+
+	const handleNordModalClose = () => {
+		onNordClose();
 	};
 
 	const toggleFullScreen = () => {
@@ -3632,6 +3679,14 @@ export const CoreSettingsPage: FC = () => {
 									)}
 								</Button>
 								<Button
+									leftIcon={<GlobeAltIcon width={14} />}
+									size="xs"
+									variant="ghost"
+									onClick={onNordOpen}
+								>
+									NordVPN
+								</Button>
+								<Button
 									leftIcon={<ReloadIconStyled />}
 									size="xs"
 									variant="ghost"
@@ -4695,6 +4750,13 @@ export const CoreSettingsPage: FC = () => {
 				initialOutbound={warpOutbound}
 				onSave={handleWarpSave}
 				onDelete={handleWarpDelete}
+			/>
+			<NordVPNModal
+				isOpen={isNordOpen}
+				onClose={handleNordModalClose}
+				initialOutbounds={getOutbounds()}
+				onSave={handleNordSave}
+				onDelete={handleNordDelete}
 			/>
 			<OutboundSubscriptionsModal
 				isOpen={isOutboundSubsOpen}

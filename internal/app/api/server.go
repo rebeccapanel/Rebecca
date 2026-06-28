@@ -18,6 +18,7 @@ import (
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	nordvpnapp "github.com/rebeccapanel/rebecca/internal/app/nordvpn"
 	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
 	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
@@ -43,6 +44,7 @@ type Server struct {
 	usageService    usage.Service
 	userService     userapp.Service
 	warpService     warpapp.Service
+	nordService     nordvpnapp.Service
 	outboundSubs    outboundsubapp.Service
 	configRepo      xrayconfig.Repository
 	settingsRepo    settingsapp.Repository
@@ -75,6 +77,7 @@ func New(cfg Config) (*Server, error) {
 	usageRepo := usage.NewRepository(pool.DB, pool.Dialect)
 	userRepo := userapp.NewRepository(pool.DB, pool.Dialect)
 	warpRepo := warpapp.NewRepository(pool.DB, pool.Dialect)
+	nordRepo := nordvpnapp.NewRepository(pool.DB, pool.Dialect)
 	settingsRepo := settingsapp.NewRepository(pool.DB, pool.Dialect)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
@@ -108,6 +111,7 @@ func New(cfg Config) (*Server, error) {
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient(cfg.WarpAPIBase)),
+		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
 		outboundSubs:   outboundSubs,
 		configRepo:     configRepo,
 		settingsRepo:   settingsRepo,
