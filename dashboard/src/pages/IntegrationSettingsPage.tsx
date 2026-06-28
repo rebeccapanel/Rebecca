@@ -776,16 +776,12 @@ export const IntegrationSettingsPage = () => {
 		return () => window.clearTimeout(timer);
 	}, [activeMaintenanceAction]);
 
-	const [panelUseNobetci, setPanelUseNobetci] = useState<boolean>(
-		panelData?.use_nobetci ?? false,
-	);
 	const [panelDefaultSubType, setPanelDefaultSubType] = useState<
 		"username-key" | "key" | "token"
 	>(panelData?.default_subscription_type ?? "key");
 
 	useEffect(() => {
 		if (panelData) {
-			setPanelUseNobetci(panelData.use_nobetci);
 			setPanelDefaultSubType(panelData.default_subscription_type ?? "key");
 		}
 	}, [panelData]);
@@ -1237,7 +1233,6 @@ export const IntegrationSettingsPage = () => {
 
 	const panelMutation = useMutation(updatePanelSettings, {
 		onSuccess: (updated) => {
-			setPanelUseNobetci(updated.use_nobetci);
 			setPanelDefaultSubType(updated.default_subscription_type ?? "key");
 			queryClient.setQueryData("panel-settings", updated);
 			toast({
@@ -1834,30 +1829,6 @@ export const IntegrationSettingsPage = () => {
 									>
 										<Box>
 											<Heading size="sm" mb={1}>
-												{t("settings.panel.useNobetciTitle")}
-											</Heading>
-											<Text fontSize="sm" color="gray.500">
-												{t("settings.panel.useNobetciDescription")}
-											</Text>
-										</Box>
-										<Switch
-											isChecked={panelUseNobetci}
-											onChange={(event) =>
-												setPanelUseNobetci(event.target.checked)
-											}
-											isDisabled={panelMutation.isLoading || isPanelLoading}
-										/>
-									</Flex>
-								</Box>
-								<Box className="master-settings-card">
-									<Flex
-										justify="space-between"
-										align={{ base: "flex-start", md: "center" }}
-										gap={4}
-										flexDirection={{ base: "column", md: "row" }}
-									>
-										<Box>
-											<Heading size="sm" mb={1}>
 												{t("settings.panel.defaultSubscriptionType")}
 											</Heading>
 											<Text fontSize="sm" color="gray.500">
@@ -2130,7 +2101,6 @@ export const IntegrationSettingsPage = () => {
 										leftIcon={<SaveIcon />}
 										onClick={() =>
 											panelMutation.mutate({
-												use_nobetci: panelUseNobetci,
 												default_subscription_type: panelDefaultSubType,
 											})
 										}
@@ -2138,9 +2108,8 @@ export const IntegrationSettingsPage = () => {
 										isDisabled={
 											panelMutation.isLoading ||
 											panelData === undefined ||
-											(panelUseNobetci === panelData.use_nobetci &&
-												panelDefaultSubType ===
-													(panelData.default_subscription_type ?? "key"))
+											panelDefaultSubType ===
+												(panelData.default_subscription_type ?? "key")
 										}
 									>
 										{t("settings.save")}
