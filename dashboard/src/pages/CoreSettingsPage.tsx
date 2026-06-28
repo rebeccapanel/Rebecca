@@ -625,6 +625,7 @@ export const CoreSettingsPage: FC = () => {
 	const [outboundSearch, setOutboundSearch] = useState("");
 	const [outboundTestType, setOutboundTestType] =
 		useState<OutboundTestType>("latency");
+	const [testingAllOutbounds, setTestingAllOutbounds] = useState(false);
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
 	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
 	const [balancersData, setBalancersData] = useState<BalancerRow[]>([]);
@@ -1946,6 +1947,165 @@ export const CoreSettingsPage: FC = () => {
 					},
 				},
 			}));
+		}
+	};
+
+	const testAllOutbounds = async () => {
+		if (testingAllOutbounds) return;
+		if (isMasterTarget) {
+			toast({
+				title: outboundNodeTargetRequiredMessage,
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+		type TestItem =
+			| { kind: "template"; index: number; outbound: OutboundJson }
+			| { kind: "subscription"; index: number; stateKey: string; outbound: OutboundJson };
+		const templateItems = getOutbounds().map((outbound, index) => ({
+			kind: "template" as const,
+			index,
+			outbound,
+		}));
+		const subscriptionItems = subscriptionOutbounds.map((outbound, index) => ({
+			kind: "subscription" as const,
+			index,
+			stateKey: String(outbound.tag ?? `subscription-${index}`),
+			outbound,
+		}));
+		const items: TestItem[] = [...templateItems, ...subscriptionItems].filter(
+			(item) => {
+				const tag = String(item.outbound.tag ?? "").trim().toLowerCase();
+				const protocol = String(item.outbound.protocol ?? "").trim().toLowerCase();
+				if (protocol === "blackhole" || tag === "blocked") return false;
+				if (
+					(outboundTestType === "tcp" || outboundTestType === "icmp") &&
+					findOutboundAddress(item.outbound).length === 0
+				) {
+					return false;
+				}
+				return true;
+			},
+		);
+		if (items.length === 0) {
+			toast({
+				title:
+					outboundTestType === "tcp" || outboundTestType === "icmp"
+						? outboundAddressRequiredMessage
+						: t("pages.xray.outbound.testNothing", "No outbound can be tested"),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+		setTestingAllOutbounds(true);
+		setOutboundTestStates((prev) => {
+			const next = { ...prev };
+			for (const item of items) {
+				if (item.kind === "template") {
+					next[item.index] = { testing: true, result: null };
+				}
+			}
+			return next;
+		});
+		setSubscriptionOutboundTestStates((prev) => {
+			const next = { ...prev };
+			for (const item of items) {
+				if (item.kind === "subscription") {
+					next[item.stateKey] = { testing: true, result: null };
+				}
+			}
+			return next;
+		});
+		try {
+			const allOutbounds = [...getOutbounds(), ...subscriptionOutbounds];
+			const response = await apiFetch<{
+				success: boolean;
+				obj?: OutboundTestResult[];
+				msg?: string;
+			}>("/panel/xray/testOutbounds", {
+				method: "POST",
+				body: {
+					outbounds: JSON.stringify(items.map((item) => item.outbound)),
+					allOutbounds: JSON.stringify(allOutbounds),
+					target_id: selectedTarget,
+					test_type: outboundTestType,
+				},
+			});
+			const results = Array.isArray(response?.obj) ? response.obj : [];
+			setOutboundTestStates((prev) => {
+				const next = { ...prev };
+				items.forEach((item, index) => {
+					if (item.kind === "template") {
+						next[item.index] = {
+							testing: false,
+							result: results[index] ?? {
+								success: false,
+								error: response?.msg || t("pages.xray.outbound.testError", "Unable to test outbound"),
+							},
+						};
+					}
+				});
+				return next;
+			});
+			setSubscriptionOutboundTestStates((prev) => {
+				const next = { ...prev };
+				items.forEach((item, index) => {
+					if (item.kind === "subscription") {
+						next[item.stateKey] = {
+							testing: false,
+							result: results[index] ?? {
+								success: false,
+								error: response?.msg || t("pages.xray.outbound.testError", "Unable to test outbound"),
+							},
+						};
+					}
+				});
+				return next;
+			});
+		} catch (error: any) {
+			const detail =
+				error?.response?._data?.detail ??
+				error?.data?.detail ??
+				error?.message ??
+				t("pages.xray.outbound.testError", "Unable to test outbound");
+			const detailText =
+				typeof detail === "string"
+					? detail
+					: JSON.stringify(detail ?? "Unknown error");
+			const failure: OutboundTestResult = { success: false, error: detailText };
+			setOutboundTestStates((prev) => {
+				const next = { ...prev };
+				for (const item of items) {
+					if (item.kind === "template") {
+						next[item.index] = { testing: false, result: failure };
+					}
+				}
+				return next;
+			});
+			setSubscriptionOutboundTestStates((prev) => {
+				const next = { ...prev };
+				for (const item of items) {
+					if (item.kind === "subscription") {
+						next[item.stateKey] = { testing: false, result: failure };
+					}
+				}
+				return next;
+			});
+			toast({
+				title: `${t("pages.xray.outbound.testError", "Unable to test outbound")}: ${detailText}`,
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+		} finally {
+			setTestingAllOutbounds(false);
 		}
 	};
 
@@ -3517,6 +3677,16 @@ export const CoreSettingsPage: FC = () => {
 										)}
 									</HStack>
 								</RadioGroup>
+								<Button
+									size="xs"
+									variant="ghost"
+									leftIcon={<BoltIconStyled />}
+									isLoading={testingAllOutbounds}
+									isDisabled={isMasterTarget}
+									onClick={testAllOutbounds}
+								>
+									{t("pages.xray.outbound.testAll", "Test all")}
+								</Button>
 								<Input
 									size="xs"
 									maxW="240px"

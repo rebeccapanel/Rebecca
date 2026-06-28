@@ -416,31 +416,6 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 									<Text fontSize="sm">{t("pages.xray.outboundSub.allowPrivate", "Allow private hosts")}</Text>
 								</HStack>
 							</HStack>
-							<HStack mt={4} spacing={2} wrap="wrap">
-								<Button
-									size="sm"
-									colorScheme="primary"
-									leftIcon={<PlusIcon width={16} />}
-									isLoading={saving}
-									onClick={save}
-								>
-									{editingID === null ? t("add") : t("save")}
-								</Button>
-								<Button
-									size="sm"
-									variant="ghost"
-									leftIcon={<EyeIcon width={16} />}
-									isLoading={previewing}
-									onClick={previewURL}
-								>
-									{t("pages.xray.outboundSub.preview", "Preview")}
-								</Button>
-								{editingID !== null && (
-									<Button size="sm" variant="ghost" onClick={resetForm}>
-										{t("cancel")}
-									</Button>
-								)}
-							</HStack>
 							{preview.length > 0 && (
 								<Wrap mt={3} spacing={2}>
 									{preview.map((item, index) => (
@@ -583,9 +558,38 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 					</VStack>
 				</XrayModalBody>
 				<XrayModalFooter>
-					<Button variant="ghost" onClick={onClose}>
-						{t("close")}
-					</Button>
+					<HStack w="full" justify="space-between" spacing={2} wrap="wrap">
+						<Box>
+							{editingID !== null && (
+								<Button size="sm" variant="ghost" onClick={resetForm}>
+									{t("cancel")}
+								</Button>
+							)}
+						</Box>
+						<HStack spacing={2} wrap="wrap">
+							<Button
+								size="sm"
+								variant="ghost"
+								leftIcon={<EyeIcon width={16} />}
+								isLoading={previewing}
+								onClick={previewURL}
+							>
+								{t("pages.xray.outboundSub.preview", "Preview")}
+							</Button>
+							<Button
+								size="sm"
+								colorScheme="primary"
+								leftIcon={<PlusIcon width={16} />}
+								isLoading={saving}
+								onClick={save}
+							>
+								{editingID === null ? t("add") : t("save")}
+							</Button>
+							<Button size="sm" variant="ghost" onClick={onClose}>
+								{t("close")}
+							</Button>
+						</HStack>
+					</HStack>
 				</XrayModalFooter>
 			</XrayModalContent>
 		</Modal>

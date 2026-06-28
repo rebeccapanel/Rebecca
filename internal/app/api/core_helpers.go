@@ -76,27 +76,9 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Outbound tests run on nodes only. Change the target to a node before testing this outbound.")
 		return
 	}
-	outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
-	outboundProtocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
-	if outboundTag == "" {
-		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success:  false,
-			Error:    "Outbound has no tag",
-			TestType: outboundTestType(payload),
-		}))
-		return
-	}
-	if outboundProtocol == "blackhole" || strings.EqualFold(outboundTag, "blocked") {
-		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success:  false,
-			Error:    "Blocked/blackhole outbound cannot be tested",
-			TestType: outboundTestType(payload),
-		}))
-		return
-	}
 	testType := outboundTestType(payload)
-	if (testType == "tcp" || testType == "icmp") && !outboundHasAddress(outbound) {
-		writeError(w, http.StatusBadRequest, "TCP and ICMP outbound tests require an outbound address. Use latency test or configure an address for this outbound.")
+	if err := validateOutboundTestRequest(outbound, testType); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !outboundTestLock.TryLock() {
@@ -109,14 +91,95 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer outboundTestLock.Unlock()
 
-	allOutboundsJSON, err := json.Marshal(allOutbounds)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid allOutbounds payload")
-		return
-	}
 	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+	result := s.runOutboundTest(ctx, nodeID, outbound, allOutbounds, testType, testURL)
+	writeJSON(w, http.StatusOK, outboundTestEnvelope(result))
+}
+
+func (s *Server) handleOutboundTests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var payload map[string]any
+	if err := decodeOptionalJSON(r, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	outbounds, allOutbounds, err := outboundTestsPayload(payload)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	target := stringFromAny(payload["target_id"])
+	if target == "" {
+		target = stringFromAny(payload["target"])
+	}
+	nodeID, isNode, err := nodeIDFromTarget(target, stringFromAny(payload["node_id"]))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !isNode || nodeID <= 0 {
+		writeError(w, http.StatusBadRequest, "Outbound tests run on nodes only. Change the target to a node before testing this outbound.")
+		return
+	}
+	testType := outboundTestType(payload)
+	if !outboundTestLock.TryLock() {
+		results := make([]map[string]any, 0, len(outbounds))
+		for range outbounds {
+			results = append(results, outboundTestObject(nodecontroller.OutboundTestResult{
+				Success:  false,
+				Error:    "Another outbound test is already running, please wait",
+				TestType: testType,
+			}))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": results})
+		return
+	}
+	defer outboundTestLock.Unlock()
+
+	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(max(30, len(outbounds)*15))*time.Second)
+	defer cancel()
+	results := make([]map[string]any, 0, len(outbounds))
+	for _, outbound := range outbounds {
+		if err := validateOutboundTestRequest(outbound, testType); err != nil {
+			results = append(results, outboundTestObject(nodecontroller.OutboundTestResult{
+				Success:  false,
+				Error:    err.Error(),
+				TestType: testType,
+			}))
+			continue
+		}
+		results = append(results, outboundTestObject(s.runOutboundTest(ctx, nodeID, outbound, allOutbounds, testType, testURL)))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": results})
+}
+
+func (s *Server) runOutboundTest(ctx context.Context, nodeID int64, outbound map[string]any, allOutbounds []map[string]any, testType string, testURL string) nodecontroller.OutboundTestResult {
+	outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
+	outboundProtocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
+	if outboundTag == "" {
+		return nodecontroller.OutboundTestResult{
+			Success:  false,
+			Error:    "Outbound has no tag",
+			TestType: testType,
+		}
+	}
+	if outboundProtocol == "blackhole" || strings.EqualFold(outboundTag, "blocked") {
+		return nodecontroller.OutboundTestResult{
+			Success:  false,
+			Error:    "Blocked/blackhole outbound cannot be tested",
+			TestType: testType,
+		}
+	}
+	allOutboundsJSON, err := json.Marshal(allOutbounds)
+	if err != nil {
+		return nodecontroller.OutboundTestResult{Success: false, Error: "invalid allOutbounds payload", TestType: testType}
+	}
 	result, err := s.nodeController.TestOutbound(ctx, nodecontroller.Request{
 		NodeID:           nodeID,
 		OutboundTag:      outboundTag,
@@ -126,17 +189,27 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		OutboundTestType: testType,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
+		return nodecontroller.OutboundTestResult{
 			Success:  false,
 			Error:    "Selected node is not available for outbound test",
 			TestType: testType,
-		}))
-		return
+		}
 	}
-	writeJSON(w, http.StatusOK, outboundTestEnvelope(result))
+	return result
+}
+
+func validateOutboundTestRequest(outbound map[string]any, testType string) error {
+	if (testType == "tcp" || testType == "icmp") && !outboundHasAddress(outbound) {
+		return fmt.Errorf("TCP and ICMP outbound tests require an outbound address. Use latency test or configure an address for this outbound")
+	}
+	return nil
 }
 
 func outboundTestEnvelope(result nodecontroller.OutboundTestResult) map[string]any {
+	return map[string]any{"success": true, "obj": outboundTestObject(result)}
+}
+
+func outboundTestObject(result nodecontroller.OutboundTestResult) map[string]any {
 	obj := map[string]any{"success": result.Success}
 	if strings.TrimSpace(result.TestType) != "" {
 		obj["test_type"] = result.TestType
@@ -158,7 +231,7 @@ func outboundTestEnvelope(result nodecontroller.OutboundTestResult) map[string]a
 	} else {
 		obj["error"] = "Outbound test failed"
 	}
-	return map[string]any{"success": true, "obj": obj}
+	return obj
 }
 
 func outboundTestType(payload map[string]any) string {
@@ -168,7 +241,7 @@ func outboundTestType(payload map[string]any) string {
 		stringFromAny(payload["type"]),
 	)))
 	switch value {
-	case "", "latency":
+	case "", "latency", "http":
 		return "latency"
 	case "tcp":
 		return "tcp"
@@ -177,6 +250,48 @@ func outboundTestType(payload map[string]any) string {
 	default:
 		return "latency"
 	}
+}
+
+func outboundTestsPayload(payload map[string]any) ([]map[string]any, []map[string]any, error) {
+	outboundsValue, ok := payload["outbounds"]
+	if !ok || outboundsValue == nil {
+		return nil, nil, fmt.Errorf("outbounds parameter is required")
+	}
+	decodedOutbounds, err := decodeDynamicJSON(outboundsValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid outbounds JSON: %w", err)
+	}
+	outbounds, err := mapListFromAny(decodedOutbounds)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(outbounds) == 0 {
+		return nil, nil, fmt.Errorf("outbounds must not be empty")
+	}
+	if len(outbounds) > 50 {
+		return nil, nil, fmt.Errorf("too many outbounds in one request (max 50)")
+	}
+	allOutboundsValue, exists := payload["allOutbounds"]
+	var allOutbounds []map[string]any
+	if !exists || allOutboundsValue == nil || strings.TrimSpace(stringFromAny(allOutboundsValue)) == "" {
+		allOutbounds = append([]map[string]any(nil), outbounds...)
+	} else {
+		decodedAllOutbounds, err := decodeDynamicJSON(allOutboundsValue)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid allOutbounds JSON: %w", err)
+		}
+		allOutbounds, err = mapListFromAny(decodedAllOutbounds)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	for _, outbound := range outbounds {
+		outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
+		if outboundTag != "" && !outboundListHasTag(allOutbounds, outboundTag) {
+			allOutbounds = append(allOutbounds, outbound)
+		}
+	}
+	return outbounds, allOutbounds, nil
 }
 
 func outboundHasAddress(outbound map[string]any) bool {

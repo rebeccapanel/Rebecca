@@ -117,6 +117,39 @@ func TestOutboundTestRejectsAddresslessTCPAndICMP(t *testing.T) {
 	}
 }
 
+func TestOutboundTestsBatchKeepsPerItemFailures(t *testing.T) {
+	server := &Server{}
+	payload := []byte(`{
+		"target_id": "node:7",
+		"test_type": "tcp",
+		"outbounds": "[{\"tag\":\"direct\",\"protocol\":\"freedom\"}]",
+		"allOutbounds": "[{\"tag\":\"direct\",\"protocol\":\"freedom\"}]"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/testOutbounds", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleOutboundTests(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Obj     []struct {
+			Success  bool   `json:"success"`
+			Error    string `json:"error"`
+			TestType string `json:"test_type"`
+		} `json:"obj"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Success || len(body.Obj) != 1 || body.Obj[0].Success || body.Obj[0].TestType != "tcp" || !strings.Contains(body.Obj[0].Error, "require an outbound address") {
+		t.Fatalf("unexpected batch response: %#v", body)
+	}
+}
+
 func TestOutboundAddressDetection(t *testing.T) {
 	tests := map[string]struct {
 		outbound map[string]any
@@ -160,6 +193,8 @@ func TestOutboundTestTypeNormalization(t *testing.T) {
 		want    string
 	}{
 		"default": {payload: map[string]any{}, want: "latency"},
+		"http":    {payload: map[string]any{"test_type": "http"}, want: "latency"},
+		"latency": {payload: map[string]any{"test_type": "latency"}, want: "latency"},
 		"tcp":     {payload: map[string]any{"test_type": "tcp"}, want: "tcp"},
 		"icmp":    {payload: map[string]any{"testType": "ping"}, want: "icmp"},
 		"unknown": {payload: map[string]any{"type": "weird"}, want: "latency"},
