@@ -115,6 +115,22 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 	return nil
 }
 
+func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node NodeRow, operation OperationRow) (bool, error) {
+	if !isRuntimeUserOperation(operation.OperationType) || !operation.UserID.Valid {
+		return false, nil
+	}
+	raw, err := c.repo.NodeRawConfig(ctx, node)
+	if err != nil {
+		return false, err
+	}
+	for _, inbound := range listOfMaps(raw["inbounds"]) {
+		if strings.EqualFold(stringValue(inbound["protocol"]), "hysteria") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {
 	users, err := c.repo.RuntimeUsers(ctx)
 	if err != nil {
@@ -426,6 +442,8 @@ func jsonMap(value any) map[string]any {
 	switch typed := value.(type) {
 	case map[string]any:
 		return typed
+	case json.RawMessage:
+		return jsonMap([]byte(typed))
 	case []byte:
 		return jsonMap(string(typed))
 	case string:

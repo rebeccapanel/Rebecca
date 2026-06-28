@@ -754,18 +754,106 @@ func (r Repository) compactNextPlansTx(ctx context.Context, tx *sql.Tx, userID i
 	return nil
 }
 
-func (r Repository) enqueueUserOperationForNodesTx(ctx context.Context, tx *sql.Tx, operationType string, userID int64, queuedAt time.Time) error {
+func (r Repository) enqueueUserOperationForNodesTx(ctx context.Context, tx *sql.Tx, operationType string, userID int64, queuedAt time.Time, serviceHints ...*int64) error {
 	nodeIDs, err := r.activeNodeIDsTx(ctx, tx)
 	if err != nil {
 		return err
 	}
+	queueOperationType := operationType
+	payload := map[string]any{"queued_at": queuedAt.Format(time.RFC3339Nano)}
+	if isRuntimeUserNodeOperation(operationType) {
+		usesHysteria, err := r.userServiceUsesProtocolTx(ctx, tx, userID, "hysteria", serviceHints...)
+		if err != nil {
+			return err
+		}
+		if usesHysteria {
+			queueOperationType = NodeOperationSyncConfig
+			payload["source"] = "user_operation"
+			payload["user_operation_type"] = operationType
+		}
+	}
 	for _, nodeID := range nodeIDs {
-		payload := map[string]any{"queued_at": queuedAt.Format(time.RFC3339Nano)}
-		if err := r.insertNodeOperationTx(ctx, tx, operationType, nodeID, userID, payload, queuedAt); err != nil {
+		if err := r.insertNodeOperationTx(ctx, tx, queueOperationType, nodeID, userID, payload, queuedAt); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func isRuntimeUserNodeOperation(operationType string) bool {
+	switch operationType {
+	case NodeOperationAddUser, NodeOperationUpdateUser, NodeOperationRemoveUser, NodeOperationDisableUser, NodeOperationEnableUser:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r Repository) userServiceUsesProtocolTx(ctx context.Context, tx *sql.Tx, userID int64, protocol string, serviceHints ...*int64) (bool, error) {
+	targetProtocol := normalizeProtocol(protocol)
+	if targetProtocol == "" {
+		return false, nil
+	}
+	serviceIDs := make([]int64, 0, len(serviceHints)+1)
+	seen := map[int64]struct{}{}
+	addServiceID := func(value *int64) {
+		if value == nil || *value <= 0 {
+			return
+		}
+		if _, ok := seen[*value]; ok {
+			return
+		}
+		seen[*value] = struct{}{}
+		serviceIDs = append(serviceIDs, *value)
+	}
+	for _, hint := range serviceHints {
+		addServiceID(hint)
+	}
+	var serviceID sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT service_id FROM users WHERE id = ? LIMIT 1`, userID).Scan(&serviceID)
+	if err != nil && err != sql.ErrNoRows {
+		return false, err
+	}
+	if serviceID.Valid {
+		addServiceID(&serviceID.Int64)
+	}
+	if len(serviceIDs) == 0 {
+		return false, nil
+	}
+
+	resolved, _, err := r.resolvedInboundsByTagTx(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	query := fmt.Sprintf(`
+SELECT DISTINCT h.inbound_tag
+FROM hosts h
+JOIN service_hosts sh ON sh.host_id = h.id
+WHERE sh.service_id IN (%s)
+  AND COALESCE(h.is_disabled, 0) = 0`, placeholders(len(serviceIDs)))
+	rows, err := tx.QueryContext(ctx, query, int64Args(serviceIDs)...)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "no such table") || strings.Contains(lower, "doesn't exist") {
+			return false, nil
+		}
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return false, err
+		}
+		inbound, ok := resolved[tag]
+		if !ok {
+			continue
+		}
+		if normalizeProtocol(stringValueAny(inbound["protocol"])) == targetProtocol {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (r Repository) activeNodeIDsTx(ctx context.Context, tx *sql.Tx) ([]int64, error) {

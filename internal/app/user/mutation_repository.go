@@ -375,7 +375,7 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 
 	operationType := operationForStatusChange(existing.Status, UserStatus(newStatus))
 	if operationType != "" {
-		if err := r.enqueueUserOperationForNodesTx(ctx, tx, operationType, existing.ID, time.Now().UTC()); err != nil {
+		if err := r.enqueueUserOperationForNodesTx(ctx, tx, operationType, existing.ID, time.Now().UTC(), existing.ServiceID, targetServiceID); err != nil {
 			return MutationResult{}, err
 		}
 	}

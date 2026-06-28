@@ -341,10 +341,10 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 		}
 		singles[key] = append(singles[key], operation)
 	}
-	if err := c.processSingleOperationGroups(ctx, singleOrder, singles, blockedNodes, &result); err != nil {
+	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
 		return result, err
 	}
-	if err := c.processCoalescedNodeOperationGroups(ctx, coalescedOrder, coalesced, blockedNodes, &result); err != nil {
+	if err := c.processSingleOperationGroups(ctx, singleOrder, singles, blockedNodes, &result); err != nil {
 		return result, err
 	}
 	for _, key := range coalescedOrder {
@@ -714,7 +714,20 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			node, nodeErr := c.repo.Node(ctx, operation.NodeID.Int64)
 			if nodeErr == nil {
 				if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
-					if err := c.legacyApplyUserOperation(ctx, node, operation); err == nil {
+					if syncConfig, err := c.userOperationRequiresConfigSync(ctx, node, operation); err != nil {
+						return err
+					} else if syncConfig {
+						configJSON := strings.TrimSpace(payload.ConfigJSON)
+						if configJSON == "" {
+							configJSON, err = c.buildRuntimeConfigWithData(ctx, node, configData)
+							if err != nil {
+								return err
+							}
+						}
+						if _, err := c.legacySyncConfig(ctx, node, configJSON); err == nil {
+							return nil
+						}
+					} else if err := c.legacyApplyUserOperation(ctx, node, operation); err == nil {
 						return nil
 					}
 				}
@@ -731,7 +744,22 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 					}
 				}
 				if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
-					if legacyErr := c.legacyApplyUserOperation(ctx, node, operation); legacyErr == nil {
+					if syncConfig, syncErr := c.userOperationRequiresConfigSync(ctx, node, operation); syncErr != nil {
+						return syncErr
+					} else if syncConfig {
+						configJSON := strings.TrimSpace(payload.ConfigJSON)
+						if configJSON == "" {
+							configJSON, syncErr = c.buildRuntimeConfigWithData(ctx, node, configData)
+							if syncErr != nil {
+								return syncErr
+							}
+						}
+						if _, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+							return nil
+						} else {
+							return fmt.Errorf("%w; legacy REST config sync failed: %v", err, legacyErr)
+						}
+					} else if legacyErr := c.legacyApplyUserOperation(ctx, node, operation); legacyErr == nil {
 						return nil
 					} else {
 						return fmt.Errorf("%w; legacy REST user operation failed: %v", err, legacyErr)
@@ -755,7 +783,13 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 		}
 		defer client.Close()
 		if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
-			return c.grpcApplyUserOperation(ctx, client, node, operation)
+			syncConfig, err := c.userOperationRequiresConfigSync(ctx, node, operation)
+			if err != nil {
+				return err
+			}
+			if !syncConfig {
+				return c.grpcApplyUserOperation(ctx, client, node, operation)
+			}
 		}
 		configJSON := strings.TrimSpace(payload.ConfigJSON)
 		if configJSON == "" {
