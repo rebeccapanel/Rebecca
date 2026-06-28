@@ -690,8 +690,6 @@ CREATE TABLE nodes (
 	api_port INTEGER,
 	usage_coefficient REAL,
 	data_limit INTEGER,
-	use_nobetci BOOLEAN DEFAULT 0,
-	nobetci_port INTEGER,
 	proxy_enabled BOOLEAN DEFAULT 0,
 	proxy_type TEXT,
 	proxy_host TEXT,

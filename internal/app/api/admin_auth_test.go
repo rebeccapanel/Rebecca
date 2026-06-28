@@ -176,8 +176,6 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			usage_coefficient REAL NOT NULL DEFAULT 1,
 			geo_mode TEXT NOT NULL DEFAULT 'default',
 			data_limit INTEGER NULL,
-			use_nobetci INTEGER NOT NULL DEFAULT 0,
-			nobetci_port INTEGER NULL,
 			proxy_enabled INTEGER NOT NULL DEFAULT 0,
 			proxy_type TEXT NULL,
 			proxy_host TEXT NULL,

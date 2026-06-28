@@ -34,8 +34,6 @@ type NodeCreate struct {
 	APIPort          int             `json:"api_port"`
 	UsageCoefficient float64         `json:"usage_coefficient"`
 	DataLimit        *int64          `json:"data_limit"`
-	UseNobetci       bool            `json:"use_nobetci"`
-	NobetciPort      *int64          `json:"nobetci_port"`
 	ProxyEnabled     bool            `json:"proxy_enabled"`
 	ProxyType        *NodeProxyType  `json:"proxy_type"`
 	ProxyHost        *string         `json:"proxy_host"`
@@ -65,8 +63,6 @@ type NodeModify struct {
 	XrayConfigMode   *string         `json:"xray_config_mode"`
 	XrayConfig       json.RawMessage `json:"xray_config"`
 	DataLimit        *int64          `json:"data_limit"`
-	UseNobetci       *bool           `json:"use_nobetci"`
-	NobetciPort      *int64          `json:"nobetci_port"`
 	ProxyEnabled     *bool           `json:"proxy_enabled"`
 	ProxyType        *NodeProxyType  `json:"proxy_type"`
 	ProxyHost        *string         `json:"proxy_host"`
@@ -84,8 +80,6 @@ type NodeResponse struct {
 	APIPort                int64    `json:"api_port"`
 	UsageCoefficient       float64  `json:"usage_coefficient"`
 	DataLimit              *int64   `json:"data_limit"`
-	UseNobetci             bool     `json:"use_nobetci"`
-	NobetciPort            *int64   `json:"nobetci_port"`
 	ProxyEnabled           bool     `json:"proxy_enabled"`
 	ProxyType              *string  `json:"proxy_type"`
 	ProxyHost              *string  `json:"proxy_host"`

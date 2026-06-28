@@ -76,9 +76,7 @@ import ReactApexChart from "react-apexcharts";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
 
-import { getPanelSettings } from "service/settings";
 import { fetch as apiFetch } from "service/http";
 import {
 	AdminRole,
@@ -992,13 +990,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 	const useTwoColumns = showServiceSelector && services.length > 0;
 	const shouldCenterForm = !useTwoColumns;
 	const shouldCompactModal = !hasPrivilegedRole && services.length === 0;
-	const { data: panelSettings } = useQuery("panel-settings", getPanelSettings, {
-		enabled: isOpen,
-		staleTime: 5 * 60 * 1000,
-		refetchOnWindowFocus: false,
-	});
-	const allowIpLimit = Boolean(panelSettings?.use_nobetci);
-
 	const [activeTab, setActiveTab] = useState(0);
 	const [usageFetched, setUsageFetched] = useState(false);
 
@@ -2471,8 +2462,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																		}}
 																	/>
 																</FormControl>
-																{allowIpLimit && (
-																	<FormControl flex="1">
+																<FormControl flex="1">
 																		<FormLabel
 																			display="flex"
 																			alignItems="center"
@@ -2577,8 +2567,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				/>
 																			)}
 																		/>
-																	</FormControl>
-																)}
+																</FormControl>
 															</Stack>
 
 															<Collapse

@@ -12,8 +12,6 @@ func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 		"api_port":                 node.APIPort,
 		"usage_coefficient":        node.UsageCoefficient,
 		"data_limit":               node.DataLimit,
-		"use_nobetci":              node.UseNobetci,
-		"nobetci_port":             node.NobetciPort,
 		"proxy_enabled":            node.ProxyEnabled,
 		"proxy_type":               node.ProxyType,
 		"proxy_host":               node.ProxyHost,

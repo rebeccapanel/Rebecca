@@ -217,7 +217,19 @@ func schemaLooksGoLatest(ctx context.Context, db *sql.DB, dialect string) (bool,
 	if err != nil {
 		return false, err
 	}
-	return !hasJWTMasks && !hasExcludedInbounds && !hasHostSort, nil
+	hasPanelNobetci, err := HasColumn(ctx, db, dialect, "panel_settings", "use_nobetci")
+	if err != nil {
+		return false, err
+	}
+	hasNodeNobetci, err := HasColumn(ctx, db, dialect, "nodes", "use_nobetci")
+	if err != nil {
+		return false, err
+	}
+	hasNodeNobetciPort, err := HasColumn(ctx, db, dialect, "nodes", "nobetci_port")
+	if err != nil {
+		return false, err
+	}
+	return !hasJWTMasks && !hasExcludedInbounds && !hasHostSort && !hasPanelNobetci && !hasNodeNobetci && !hasNodeNobetciPort, nil
 }
 
 func schemaLooksLegacyAlembicFinal(ctx context.Context, db *sql.DB, dialect string) (bool, error) {

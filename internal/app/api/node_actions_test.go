@@ -91,8 +91,6 @@ func TestNodeMutationHandlersCreateUpdateResetRegenerateDelete(t *testing.T) {
 		"status":"disabled",
 		"usage_coefficient":1.5,
 		"data_limit":4096,
-		"use_nobetci":true,
-		"nobetci_port":9443,
 		"proxy_enabled":true,
 		"proxy_type":"http",
 		"proxy_host":"127.0.0.1",

@@ -75,10 +75,6 @@ func (r Repository) UpdatePanelSettings(ctx context.Context, raw map[string]json
 	}
 	sets := []string{}
 	args := []any{}
-	if value, ok := raw["use_nobetci"]; ok {
-		sets = append(sets, "use_nobetci = ?")
-		args = append(args, rawBoolDefault(value, false))
-	}
 	if value, ok := raw["default_subscription_type"]; ok {
 		incoming := strings.TrimSpace(rawStringDefault(value, ""))
 		if allowedSubscriptionTypes[incoming] {
@@ -227,13 +223,12 @@ var ErrAdminNotFound = errors.New("admin not found")
 var ErrUnsupportedTemplateKey = errors.New("unsupported template key")
 
 func (r Repository) panelSettings(ctx context.Context) (PanelSettings, error) {
-	var useNobetci sql.NullBool
 	var defaultType sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(use_nobetci, 0), COALESCE(default_subscription_type, 'key') FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&useNobetci, &defaultType)
+	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(default_subscription_type, 'key') FROM panel_settings ORDER BY id DESC LIMIT 1`).Scan(&defaultType)
 	if err != nil {
 		return PanelSettings{}, err
 	}
-	result := PanelSettings{UseNobetci: useNobetci.Valid && useNobetci.Bool, DefaultSubscriptionType: defaultType.String}
+	result := PanelSettings{DefaultSubscriptionType: defaultType.String}
 	if !allowedSubscriptionTypes[result.DefaultSubscriptionType] {
 		result.DefaultSubscriptionType = defaultSubscriptionType
 	}
@@ -248,7 +243,7 @@ func (r Repository) ensurePanelRecord(ctx context.Context) error {
 	if count > 0 {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO panel_settings (use_nobetci, default_subscription_type, created_at, updated_at) VALUES (?, ?, ?, ?)`, false, defaultSubscriptionType, dbTime(time.Now().UTC()), dbTime(time.Now().UTC()))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO panel_settings (default_subscription_type, created_at, updated_at) VALUES (?, ?, ?)`, defaultSubscriptionType, dbTime(time.Now().UTC()), dbTime(time.Now().UTC()))
 	return err
 }
 

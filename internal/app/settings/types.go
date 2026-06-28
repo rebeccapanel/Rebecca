@@ -1,12 +1,10 @@
 package settings
 
 type PanelSettings struct {
-	UseNobetci              bool   `json:"use_nobetci"`
 	DefaultSubscriptionType string `json:"default_subscription_type"`
 }
 
 type PanelSettingsUpdate struct {
-	UseNobetci              *bool   `json:"use_nobetci,omitempty"`
 	DefaultSubscriptionType *string `json:"default_subscription_type,omitempty"`
 }
 

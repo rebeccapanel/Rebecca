@@ -21,7 +21,6 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 	statements := []string{
 		`CREATE TABLE panel_settings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			use_nobetci INTEGER NOT NULL DEFAULT 0,
 			default_subscription_type TEXT NOT NULL DEFAULT 'key',
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL
@@ -218,23 +217,29 @@ func TestSettingsPanelRoutes(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &panel); err != nil {
 		t.Fatal(err)
 	}
-	if panel["use_nobetci"] != false || panel["default_subscription_type"] != "key" {
+	if _, ok := panel["use_nobetci"]; ok {
+		t.Fatalf("panel settings should not expose use_nobetci: %#v", panel)
+	}
+	if panel["default_subscription_type"] != "key" {
 		t.Fatalf("unexpected default panel settings: %#v", panel)
 	}
 
-	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/panel", fullToken, `{"use_nobetci":true,"default_subscription_type":"token"}`)
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/panel", fullToken, `{"default_subscription_type":"token"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update panel status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &panel); err != nil {
 		t.Fatal(err)
 	}
-	if panel["use_nobetci"] != true || panel["default_subscription_type"] != "token" {
+	if _, ok := panel["use_nobetci"]; ok {
+		t.Fatalf("panel settings should not expose use_nobetci: %#v", panel)
+	}
+	if panel["default_subscription_type"] != "token" {
 		t.Fatalf("unexpected updated panel settings: %#v", panel)
 	}
 
 	standardToken := adminBearerToken(t, server, "seller", "pass123")
-	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/panel", standardToken, `{"use_nobetci":false}`)
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/panel", standardToken, `{"default_subscription_type":"key"}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("standard update status = %d body=%s", rec.Code, rec.Body.String())
 	}

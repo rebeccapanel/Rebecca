@@ -51,8 +51,6 @@ import {
 } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
-import { getPanelSettings } from "service/settings";
 import { SizeFormatter } from "../utils/outbound";
 import {
 	AnimatedSubmitButton,
@@ -77,8 +75,6 @@ const DownloadIconStyled = chakra(ArrowDownTrayIcon, {
 });
 
 const BYTES_IN_GB = 1024 * 1024 * 1024;
-const DEFAULT_NOBETCI_PORT = 51031;
-
 const getInputError = (error: unknown): string | undefined => {
 	if (error && typeof error === "object" && "message" in error) {
 		const message = (error as { message?: unknown }).message;
@@ -205,14 +201,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 	const submitResetTimerRef = useRef<number | null>(null);
 	const successCloseTimerRef = useRef<number | null>(null);
 
-	const { data: panelSettings } = useQuery({
-		queryKey: "panel-settings",
-		queryFn: getPanelSettings,
-		staleTime: 5 * 60 * 1000,
-	});
-
-	const allowNobetci = panelSettings?.use_nobetci ?? true;
-
 	const formatDataLimitForInput = useCallback((value?: number | null) => {
 		if (value === null || value === undefined) {
 			return null;
@@ -250,7 +238,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		: "";
 	const { onCopy: copyNodeCertificate, hasCopied: nodeCertificateCopied } =
 		useClipboard(nodeCertificateValue);
-	const useNobetci = form.watch("use_nobetci");
 	const proxyEnabled = form.watch("proxy_enabled");
 	const overviewInboundTags = useMemo(() => {
 		const customInbounds = uniqueValues(getConfigInbounds(node?.xray_config));
@@ -305,30 +292,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			submitResetTimerRef.current = null;
 		}, 900);
 	}, []);
-
-	useEffect(() => {
-		if (!allowNobetci || !useNobetci) {
-			if (form.getValues("nobetci_port") !== null) {
-				form.setValue("nobetci_port", null);
-			}
-			return;
-		}
-		const currentPort = form.getValues("nobetci_port");
-		if (currentPort === null || currentPort === undefined) {
-			form.setValue("nobetci_port", DEFAULT_NOBETCI_PORT);
-		}
-	}, [useNobetci, form, allowNobetci]);
-
-	useEffect(() => {
-		if (panelSettings && !panelSettings.use_nobetci) {
-			if (form.getValues("use_nobetci")) {
-				form.setValue("use_nobetci", false);
-			}
-			if (form.getValues("nobetci_port") !== null) {
-				form.setValue("nobetci_port", null);
-			}
-		}
-	}, [panelSettings, form]);
 
 	useEffect(() => {
 		if (!proxyEnabled) {
@@ -860,83 +823,6 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</Text>
 								</FormControl>
 							</SimpleGrid>
-							{allowNobetci && (
-								<>
-									<FormControl className="node-switch-control">
-										<FormLabel mb={0}>
-											{t("nodes.useNobetci", "Enable Nobetci integration")}
-										</FormLabel>
-										<Controller
-											control={form.control}
-											name="use_nobetci"
-											render={({ field }) => (
-												<Switch
-													isChecked={Boolean(field.value)}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											)}
-										/>
-									</FormControl>
-									<Collapse in={Boolean(useNobetci)} animateOpacity>
-										<FormControl mt={useNobetci ? 2 : 0}>
-											<Input
-												label={t("nodes.nobetciPort", "Nobetci port")}
-												size="sm"
-												placeholder="443"
-												{...form.register("nobetci_port", {
-													setValueAs: (value) => {
-														if (
-															value === "" ||
-															value === null ||
-															value === undefined
-														) {
-															return null;
-														}
-														const parsed = Number(value);
-														return Number.isFinite(parsed)
-															? parsed
-															: Number.NaN;
-													},
-													validate: (value) => {
-														if (!useNobetci) {
-															return true;
-														}
-														if (value === null || value === undefined) {
-															return t(
-																"nodes.nobetciPortRequired",
-																"Port is required when Nobetci is enabled",
-															);
-														}
-														if (Number.isNaN(value)) {
-															return t(
-																"nodes.nobetciPortInvalid",
-																"Enter a valid port number",
-															);
-														}
-														return value >= 1 && value <= 65535
-															? true
-															: t(
-																	"nodes.nobetciPortRange",
-																	"Port must be between 1 and 65535",
-																);
-													},
-												})}
-												error={getInputError(
-													form.formState?.errors?.nobetci_port,
-												)}
-											/>
-											<Text fontSize="xs" color="gray.500" mt={1}>
-												{t(
-													"nodes.nobetciHint",
-													"Provide the Nobetci listener port. Leave blank to disable.",
-												)}
-											</Text>
-										</FormControl>
-									</Collapse>
-								</>
-							)}
 							<FormControl className="node-switch-control">
 								<FormLabel mb={0}>
 									{t("nodes.useProxy", "Enable proxy for node connection")}

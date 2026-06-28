@@ -236,7 +236,7 @@ func seedPanelSettings(ctx context.Context, tx *sql.Tx) error {
 	if exists > 0 {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO panel_settings (id, use_nobetci, default_subscription_type) VALUES (1, 0, 'key')`)
+	_, err := tx.ExecContext(ctx, `INSERT INTO panel_settings (id, default_subscription_type) VALUES (1, 'key')`)
 	return err
 }
 

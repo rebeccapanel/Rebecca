@@ -28,8 +28,6 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	api_port,
 	usage_coefficient,
 	data_limit,
-	use_nobetci,
-	nobetci_port,
 	proxy_enabled,
 	proxy_type,
 	proxy_host,
@@ -62,9 +60,9 @@ FROM nodes`
 	result := []NodeListItem{}
 	for rows.Next() {
 		var item NodeListItem
-		var dataLimit, nobetciPort, proxyPort sql.NullInt64
+		var dataLimit, proxyPort sql.NullInt64
 		var note, proxyType, proxyHost, proxyUsername, proxyPassword, message, xrayVersion, certificate, certificateKey sql.NullString
-		var useNobetci, proxyEnabled bool
+		var proxyEnabled bool
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
@@ -74,8 +72,6 @@ FROM nodes`
 			&item.APIPort,
 			&item.UsageCoefficient,
 			&dataLimit,
-			&useNobetci,
-			&nobetciPort,
 			&proxyEnabled,
 			&proxyType,
 			&proxyHost,
@@ -96,8 +92,6 @@ FROM nodes`
 		}
 		item.DataLimit = int64PtrFromNull(dataLimit)
 		item.Note = stringPtrFromNull(note)
-		item.UseNobetci = useNobetci
-		item.NobetciPort = int64PtrFromNull(nobetciPort)
 		item.ProxyEnabled = proxyEnabled
 		item.ProxyType = stringPtrFromNull(proxyType)
 		item.ProxyHost = stringPtrFromNull(proxyHost)

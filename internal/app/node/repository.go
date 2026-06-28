@@ -90,9 +90,9 @@ func (r Repository) CreateNode(ctx context.Context, payload NodeCreate) (NodeRes
 INSERT INTO nodes (
 	name, note, address, port, api_port, status, last_status_change, created_at,
 	uplink, downlink, usage_coefficient, geo_mode, data_limit,
-	use_nobetci, nobetci_port, proxy_enabled, proxy_type, proxy_host, proxy_port,
+	proxy_enabled, proxy_type, proxy_host, proxy_port,
 	proxy_username, proxy_password, xray_config_mode, xray_config
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(payload.Name),
 		nullableStringPtr(payload.Note, true),
 		strings.TrimSpace(payload.Address),
@@ -104,8 +104,6 @@ INSERT INTO nodes (
 		defaultFloat(payload.UsageCoefficient, 1),
 		geoMode,
 		nullableInt64Ptr(payload.DataLimit),
-		boolInt(payload.UseNobetci),
-		nullableInt64Ptr(payload.NobetciPort),
 		boolInt(payload.ProxyEnabled),
 		nullableProxyType(payload.ProxyType, payload.ProxyEnabled),
 		nullableStringPtr(payload.ProxyHost, payload.ProxyEnabled),
@@ -270,18 +268,6 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 		if current.Status == StatusLimited && (*payload.DataLimit == 0 || usageTotal < *payload.DataLimit) && payload.Status == nil {
 			add("status", StatusConnecting)
 			add("message", nil)
-		}
-	}
-	if payload.UseNobetci != nil {
-		add("use_nobetci", boolInt(*payload.UseNobetci))
-		if !*payload.UseNobetci {
-			add("nobetci_port", nil)
-		}
-	}
-	if payload.NobetciPort != nil {
-		add("nobetci_port", nullableInt64Ptr(payload.NobetciPort))
-		if *payload.NobetciPort > 0 {
-			add("use_nobetci", 1)
 		}
 	}
 	if payload.ProxyEnabled != nil {
@@ -539,18 +525,18 @@ func (r Repository) consumePendingCertificateTx(ctx context.Context, tx *sql.Tx,
 
 func (r Repository) getNode(ctx context.Context, q queryer, nodeID int64, defaultCert string) (NodeResponse, error) {
 	var row NodeResponse
-	var dataLimit, nobetciPort, proxyPort sql.NullInt64
+	var dataLimit, proxyPort sql.NullInt64
 	var note, proxyType, proxyHost, proxyUsername, proxyPassword, message, xrayVersion, cert sql.NullString
-	var useNobetci, proxyEnabled bool
+	var proxyEnabled bool
 	err := q.QueryRowContext(ctx, `SELECT
 	id, COALESCE(name, ''), note, address, port, api_port, usage_coefficient, data_limit,
-	use_nobetci, nobetci_port, proxy_enabled, proxy_type, proxy_host, proxy_port,
+	proxy_enabled, proxy_type, proxy_host, proxy_port,
 	proxy_username, proxy_password, status, message, xray_version,
 	COALESCE(geo_mode, 'default'), COALESCE(xray_config_mode, 'default'),
 	COALESCE(uplink, 0), COALESCE(downlink, 0), certificate
 FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(
 		&row.ID, &row.Name, &note, &row.Address, &row.Port, &row.APIPort, &row.UsageCoefficient, &dataLimit,
-		&useNobetci, &nobetciPort, &proxyEnabled, &proxyType, &proxyHost, &proxyPort,
+		&proxyEnabled, &proxyType, &proxyHost, &proxyPort,
 		&proxyUsername, &proxyPassword, &row.Status, &message, &xrayVersion,
 		&row.GeoMode, &row.XrayConfigMode, &row.Uplink, &row.Downlink, &cert,
 	)
@@ -565,8 +551,6 @@ FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(
 	}
 	row.Note = stringPtrFromNull(note)
 	row.DataLimit = int64PtrFromNull(dataLimit)
-	row.UseNobetci = useNobetci
-	row.NobetciPort = int64PtrFromNull(nobetciPort)
 	row.ProxyEnabled = proxyEnabled
 	row.ProxyType = stringPtrFromNull(proxyType)
 	row.ProxyHost = stringPtrFromNull(proxyHost)

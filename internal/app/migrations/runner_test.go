@@ -68,6 +68,9 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "hosts", []string{"id", "remark", "inbound_tag", "noise_setting", "random_user_agent"})
 	assertNoColumn(t, ctx, db, "sqlite", "hosts", "sort")
 	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"id", "name", "note", "certificate", "certificate_key", "xray_config_mode"})
+	assertNoColumn(t, ctx, db, "sqlite", "nodes", "use_nobetci")
+	assertNoColumn(t, ctx, db, "sqlite", "nodes", "nobetci_port")
+	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "use_nobetci")
 	assertTableColumns(t, ctx, db, "sqlite", "node_operations", []string{"operation_type", "status", "idempotency_key"})
 	assertTableColumns(t, ctx, db, "sqlite", "pending_node_certificates", []string{"token", "certificate", "certificate_key", "expires_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "xray_config", []string{"id", "data", "created_at", "updated_at"})
@@ -1069,7 +1072,7 @@ CREATE TABLE outbound_traffic (
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"note", "certificate", "certificate_key", "xray_config_mode", "xray_config", "data_limit", "proxy_enabled", "use_nobetci"})
+	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"note", "certificate", "certificate_key", "xray_config_mode", "xray_config", "data_limit", "proxy_enabled"})
 	assertDBStringMigration(t, db, `SELECT geo_mode FROM nodes WHERE id = 2`, "default")
 	assertDBStringMigration(t, db, `SELECT xray_config_mode FROM nodes WHERE id = 2`, "default")
 	assertDBInt64Migration(t, db, `SELECT uplink FROM node_usages WHERE id = 1`, 1000)
@@ -1185,6 +1188,7 @@ VALUES (1, 'device-legacy', 'access-legacy', 'private-legacy')`); err != nil {
 	assertDBStringMigration(t, db, `SELECT subscription_domain FROM admins WHERE id = 1`, "sub.example.com")
 	assertDBStringMigration(t, db, `SELECT subscription_settings FROM admins WHERE id = 1`, `{"subscription_path":"seller"}`)
 	assertDBStringMigration(t, db, `SELECT default_subscription_type FROM panel_settings WHERE id = 1`, "token")
+	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "use_nobetci")
 	assertDBInt64Migration(t, db, `SELECT backup_enabled FROM panel_settings WHERE id = 1`, 0)
 	assertDBStringMigration(t, db, `SELECT subscription_url_prefix FROM subscription_settings WHERE id = 1`, "https://subs.example")
 	assertDBStringMigration(t, db, `SELECT clash_subscription_template FROM subscription_settings WHERE id = 1`, "legacy/clash.yml")
@@ -1262,6 +1266,7 @@ CREATE TABLE template_inbounds_association (
 	assertNoTable(t, ctx, db, "sqlite", "user_templates")
 	assertNoTable(t, ctx, db, "sqlite", "access_insights")
 	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "access_insights_enabled")
+	assertNoColumn(t, ctx, db, "sqlite", "panel_settings", "use_nobetci")
 	assertTableColumns(t, ctx, db, "sqlite", "panel_settings", []string{"default_subscription_type", "backup_enabled"})
 }
 
