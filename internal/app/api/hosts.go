@@ -963,12 +963,20 @@ WHERE h.inbound_tag = ?`, inboundTag)
 }
 
 func enqueueAffectedServicesUsersTx(ctx context.Context, tx *sql.Tx, serviceIDs map[int64]bool) error {
-	// Host changes alter subscription output immediately because subscription
-	// links are generated from the database. Enqueuing every user of a large
-	// service here can create tens of thousands of runtime operations and make
-	// legacy REST nodes restart or lag. User create/update/delete paths still
-	// enqueue direct runtime user operations.
-	return nil
+	ids := make([]int64, 0, len(serviceIDs))
+	for serviceID := range serviceIDs {
+		if serviceID > 0 {
+			ids = append(ids, serviceID)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	if len(ids) == 0 {
+		return nil
+	}
+	return enqueueNodeOperationTx(ctx, tx, "sync_config", nil, nil, map[string]any{
+		"source":      "hosts",
+		"service_ids": ids,
+	})
 }
 
 func sortedMapKeys[T any](value map[string]T) []string {

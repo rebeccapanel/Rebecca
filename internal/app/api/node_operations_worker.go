@@ -10,7 +10,7 @@ import (
 )
 
 const defaultNodeOperationsPollInterval = 15 * time.Second
-const defaultNodeOperationsBatchSize = 500
+const defaultNodeOperationsBatchSize = 100
 
 func (s *Server) runNodeOperationsWorker(ctx context.Context) {
 	interval := parseNodeOperationsPollInterval(s.cfg.NodeOperationsPollInterval)

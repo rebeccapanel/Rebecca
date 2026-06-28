@@ -154,6 +154,72 @@ VALUES
 	}
 }
 
+func TestRepositoryPendingOperationsPrioritizeFreshRuntimeUserAddsOverDisableBacklog(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-runtime-priority.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES (50, 'good', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('update_user', 50, 90, '{}', 'pending', 'update-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 50, 91, '{}', 'pending', 'update-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 50, 100, '{}', 'pending', 'disable-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 50, 101, '{}', 'pending', 'disable-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 50, 102, '{}', 'pending', 'disable-3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 50, 103, '{}', 'pending', 'disable-4', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 200, '{}', 'pending', 'add-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingOperations(ctx, 0, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected three operations, got %d", len(rows))
+	}
+	if rows[0].OperationType != "add_user" || !rows[0].UserID.Valid || rows[0].UserID.Int64 != 200 {
+		t.Fatalf("expected add_user to be selected before old disable backlog, got %#v", rows[0])
+	}
+}
+
 func TestControllerProcessQueueDoesNotStarveConnectedNodeBehindBrokenNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")
@@ -458,7 +524,7 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 	}
 }
 
-func TestControllerCompletesLegacyServiceRefreshSyncWithoutRuntimeRestart(t *testing.T) {
+func TestControllerRetriesServiceRefreshWhenNodeUnavailable(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-service-refresh.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -522,11 +588,26 @@ VALUES ('sync_config', 7, NULL, '{"source":"hosts","service_id":3}', 'pending', 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 1 || result.Done != 1 || result.Retrying != 0 || result.Failed != 0 {
-		t.Fatalf("expected legacy service refresh sync to finish without runtime fanout, got %#v", result)
+	if result.Processed != 1 || result.Done != 0 || result.Retrying != 1 || result.Failed != 0 {
+		t.Fatalf("expected service refresh sync to retry when node is unavailable, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "retrying")
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
+}
+
+func TestServiceRefreshSyncIsNotCoalesced(t *testing.T) {
+	if canCoalesceRuntimeSyncOperation(OperationRow{
+		OperationType: "sync_config",
+		Payload:       []byte(`{"source":"hosts","service_id":3}`),
+	}) {
+		t.Fatal("service refresh sync operations must keep their payload and must not be coalesced")
+	}
+	if !canCoalesceRuntimeSyncOperation(OperationRow{
+		OperationType: "sync_config",
+		Payload:       []byte(`{}`),
+	}) {
+		t.Fatal("plain sync_config operations should still be coalesced")
+	}
 }
 
 func TestControllerFansOutGlobalSyncOnlyToConnectedNodes(t *testing.T) {

@@ -371,7 +371,25 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 		no.user_id,
 		no.payload,
 		no.attempts,
-		ROW_NUMBER() OVER (PARTITION BY COALESCE(no.node_id, -1) ORDER BY no.id) AS node_rank,
+		CASE
+			WHEN no.operation_type = 'sync_config' THEN 0
+			WHEN no.operation_type = 'add_user' THEN 1
+			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+			ELSE 4
+		END AS operation_priority,
+		ROW_NUMBER() OVER (
+			PARTITION BY COALESCE(no.node_id, -1)
+			ORDER BY
+				CASE
+					WHEN no.operation_type = 'sync_config' THEN 0
+					WHEN no.operation_type = 'add_user' THEN 1
+					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+					ELSE 4
+				END,
+				no.id
+		) AS node_rank,
 		CASE
 			WHEN no.node_id IS NOT NULL AND LOWER(COALESCE(n.status, '')) = 'connected' THEN 0
 			WHEN no.node_id IS NULL THEN 1
@@ -385,7 +403,7 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 SELECT id, operation_type, node_id, user_id, payload, attempts
 FROM ranked_operations
 WHERE node_rank <= ?
-ORDER BY priority, node_rank, COALESCE(node_id, -1), id
+ORDER BY priority, node_rank, operation_priority, COALESCE(node_id, -1), id
 LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, query, perNodeCap, limit)
 	if err != nil {

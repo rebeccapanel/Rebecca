@@ -580,6 +580,9 @@ func canCoalesceRuntimeSyncOperation(operation OperationRow) bool {
 	default:
 		return false
 	}
+	if len(serviceRefreshIDsFromPayload(operation.Payload)) > 0 {
+		return false
+	}
 	if len(operation.Payload) == 0 {
 		return true
 	}
@@ -653,7 +656,28 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 	switch operation.OperationType {
 	case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user":
 		if operation.OperationType == "sync_config" && len(serviceRefreshIDs) > 0 {
-			return nil
+			if c.cachedNodeProtocol(operation.NodeID.Int64) == "legacy" {
+				node, nodeErr := c.repo.Node(ctx, operation.NodeID.Int64)
+				if nodeErr == nil {
+					if err := c.legacyRefreshServiceUsersOnNode(ctx, node, operation, serviceRefreshIDs); err == nil {
+						return nil
+					}
+				}
+			}
+			client, node, err := c.dial(ctx, operation.NodeID.Int64)
+			if err != nil {
+				if node.ID != 0 {
+					if legacyErr := c.legacyRefreshServiceUsersOnNode(ctx, node, operation, serviceRefreshIDs); legacyErr == nil {
+						return nil
+					} else {
+						err = fmt.Errorf("%w; legacy REST service user refresh failed: %v", err, legacyErr)
+					}
+				}
+				_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
+				return err
+			}
+			defer client.Close()
+			return c.grpcRefreshServiceUsersOnNode(ctx, client, node, operation, serviceRefreshIDs)
 		}
 		if c.cachedNodeProtocol(operation.NodeID.Int64) == "legacy" {
 			node, nodeErr := c.repo.Node(ctx, operation.NodeID.Int64)
