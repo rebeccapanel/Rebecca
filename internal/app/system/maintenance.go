@@ -1,6 +1,7 @@
 package system
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,10 +84,15 @@ type CommandScheduler interface {
 	Schedule(args []string) error
 }
 
+type ProgressCommandScheduler interface {
+	ScheduleWithProgress(args []string, onOutput func(string), onDone func(error)) error
+}
+
 type MaintenanceService struct {
 	Runtime  RuntimeDetector
 	Updates  UpdateChecker
 	Commands CommandScheduler
+	ops      *MaintenanceOperationStore
 }
 
 func NewMaintenanceService() *MaintenanceService {
@@ -107,6 +113,7 @@ func NewMaintenanceServiceWithDeps(runtimeDetector RuntimeDetector, updateChecke
 		Runtime:  runtimeDetector,
 		Updates:  updateChecker,
 		Commands: scheduler,
+		ops:      NewMaintenanceOperationStore(),
 	}
 }
 
@@ -120,29 +127,62 @@ func (s *MaintenanceService) Info(ctx context.Context) (MaintenanceInfo, error) 
 	}, nil
 }
 
-func (s *MaintenanceService) Update(_ context.Context, req MaintenanceUpdateRequest) error {
+func (s *MaintenanceService) Update(_ context.Context, req MaintenanceUpdateRequest) (MaintenanceOperationSnapshot, error) {
 	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
-		return err
+		return MaintenanceOperationSnapshot{}, err
 	}
 	args, err := BuildRebeccaUpdateArgs(req.Channel, req.Version)
 	if err != nil {
-		return err
+		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.Commands.Schedule(args)
+	return s.startOperation("update", args, "Preparing panel update")
 }
 
-func (s *MaintenanceService) Restart(context.Context) error {
+func (s *MaintenanceService) Restart(context.Context) (MaintenanceOperationSnapshot, error) {
 	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
-		return err
+		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.Commands.Schedule([]string{"restart", "-n"})
+	return s.startOperation("restart", []string{"restart", "-n"}, "Preparing panel restart")
 }
 
-func (s *MaintenanceService) SoftReload(context.Context) error {
+func (s *MaintenanceService) SoftReload(context.Context) (MaintenanceOperationSnapshot, error) {
 	if err := requireBinaryRuntime(s.Runtime.Info()); err != nil {
-		return err
+		return MaintenanceOperationSnapshot{}, err
 	}
-	return s.Commands.Schedule([]string{"restart", "-n"})
+	return s.startOperation("soft-reload", []string{"restart", "-n"}, "Preparing panel reload")
+}
+
+func (s *MaintenanceService) Status() MaintenanceOperationSnapshot {
+	if s.ops == nil {
+		s.ops = NewMaintenanceOperationStore()
+	}
+	return s.ops.Latest()
+}
+
+func (s *MaintenanceService) startOperation(action string, args []string, message string) (MaintenanceOperationSnapshot, error) {
+	if s.ops == nil {
+		s.ops = NewMaintenanceOperationStore()
+	}
+	op := s.ops.Start(action, args, message)
+	onOutput := func(line string) {
+		s.ops.AppendOutput(op.ID, line)
+	}
+	onDone := func(err error) {
+		s.ops.Finish(op.ID, err)
+	}
+	if scheduler, ok := s.Commands.(ProgressCommandScheduler); ok {
+		if err := scheduler.ScheduleWithProgress(args, onOutput, onDone); err != nil {
+			s.ops.Finish(op.ID, err)
+			return s.ops.Get(op.ID), err
+		}
+		return s.ops.Get(op.ID), nil
+	}
+	if err := s.Commands.Schedule(args); err != nil {
+		s.ops.Finish(op.ID, err)
+		return s.ops.Get(op.ID), err
+	}
+	s.ops.MarkRestarting(op.ID, "Command accepted. Waiting for Rebecca to restart.")
+	return s.ops.Get(op.ID), nil
 }
 
 func requireBinaryRuntime(info RuntimeInfo) error {
@@ -300,6 +340,44 @@ func (DefaultCommandScheduler) Schedule(args []string) error {
 	if cmd.Process != nil {
 		_ = cmd.Process.Release()
 	}
+	return nil
+}
+
+func (DefaultCommandScheduler) ScheduleWithProgress(args []string, onOutput func(string), onDone func(error)) error {
+	cli, err := resolveRebeccaCLI()
+	if err != nil {
+		return err
+	}
+	command := append([]string{cli}, args...)
+	cmd := exec.Command(command[0], command[1:]...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return MaintenanceError{Status: http.StatusInternalServerError, Detail: "Failed to capture Rebecca command output: " + err.Error()}
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return MaintenanceError{Status: http.StatusInternalServerError, Detail: "Failed to capture Rebecca command output: " + err.Error()}
+	}
+	if err := cmd.Start(); err != nil {
+		return MaintenanceError{Status: http.StatusInternalServerError, Detail: "Failed to schedule Rebecca command: " + err.Error()}
+	}
+	readPipe := func(reader io.Reader) {
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			if onOutput != nil {
+				onOutput(scanner.Text())
+			}
+		}
+	}
+	go readPipe(stdout)
+	go readPipe(stderr)
+	go func() {
+		err := cmd.Wait()
+		if onDone != nil {
+			onDone(err)
+		}
+	}()
 	return nil
 }
 

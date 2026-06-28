@@ -106,6 +106,7 @@ func (s *Server) registerSystemRoutes(r chi.Router) {
 	r.HandleFunc("/system/metrics", s.requireAdmin(s.handleSystemMetricsWebSocket))
 	r.HandleFunc("/system", s.requireAdmin(s.handleSystemStats))
 	r.HandleFunc("/maintenance/info", s.requireSudo(s.handleMaintenanceInfo))
+	r.HandleFunc("/maintenance/status", s.requireSudo(s.handleMaintenanceStatus))
 	r.HandleFunc("/maintenance/update", s.requireSudo(s.handleMaintenanceUpdate))
 	r.HandleFunc("/maintenance/restart", s.requireSudo(s.handleMaintenanceRestart))
 	r.HandleFunc("/maintenance/soft-reload", s.requireSudo(s.handleMaintenanceSoftReload))

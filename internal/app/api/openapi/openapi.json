@@ -2561,8 +2561,8 @@
         "tags": [
           "System"
         ],
-        "summary": "Update panel",
-        "description": "Schedule panel update on binary installations.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nRequest body: send JSON unless this operation explicitly declares multipart/form-data. Unknown fields are generally ignored only when the underlying handler is compatibility-oriented; business-rule violations return 400/403/409.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.",
+        "summary": "Schedule panel update",
+        "description": "Schedule panel update on binary installations.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nRequest body: send JSON unless this operation explicitly declares multipart/form-data. Unknown fields are generally ignored only when the underlying handler is compatibility-oriented; business-rule violations return 400/403/409.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nThe response includes an operation snapshot. Poll /api/maintenance/status until the operation enters restarting, then wait for /api/maintenance/info to respond again and refresh the dashboard.",
         "requestBody": {
           "$ref": "#/components/requestBodies/JSON"
         },
@@ -2572,6 +2572,75 @@
           },
           "409": {
             "$ref": "#/components/responses/Error"
+          },
+          "200": {
+            "description": "Operation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "progress": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "restarting": {
+                          "type": "boolean"
+                        },
+                        "needs_reload": {
+                          "type": "boolean"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "logs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "started_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        },
+                        "finished_at": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "operationId": "postMaintenanceUpdate"
@@ -2582,14 +2651,83 @@
         "tags": [
           "System"
         ],
-        "summary": "Restart panel",
-        "description": "Schedule panel restart on binary installations.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.",
+        "summary": "Schedule panel restart",
+        "description": "Schedule panel restart on binary installations.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nThe response includes an operation snapshot. Poll /api/maintenance/status until the operation enters restarting, then wait for /api/maintenance/info to respond again and refresh the dashboard.",
         "responses": {
           "202": {
             "$ref": "#/components/responses/JSON"
           },
           "409": {
             "$ref": "#/components/responses/Error"
+          },
+          "200": {
+            "description": "Operation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "progress": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "restarting": {
+                          "type": "boolean"
+                        },
+                        "needs_reload": {
+                          "type": "boolean"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "logs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "started_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        },
+                        "finished_at": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "operationId": "postMaintenanceRestart"
@@ -2600,14 +2738,83 @@
         "tags": [
           "System"
         ],
-        "summary": "Soft reload panel",
-        "description": "Schedule a panel-only reload/restart without touching node Xray runtimes.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.",
+        "summary": "Schedule panel soft reload",
+        "description": "Schedule a panel-only reload/restart without touching node Xray runtimes.\n\nAuthentication: send `Authorization: Bearer <token>` using a JWT from `POST /api/admin/token` or a valid admin API key.\n\nPermissions: System stats require an authenticated admin. Maintenance actions require sudo/full_access and binary runtime.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nThe response includes an operation snapshot. Poll /api/maintenance/status until the operation enters restarting, then wait for /api/maintenance/info to respond again and refresh the dashboard.",
         "responses": {
           "202": {
             "$ref": "#/components/responses/JSON"
           },
           "409": {
             "$ref": "#/components/responses/Error"
+          },
+          "200": {
+            "description": "Operation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "operation": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "action": {
+                          "type": "string"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "progress": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "restarting": {
+                          "type": "boolean"
+                        },
+                        "needs_reload": {
+                          "type": "boolean"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "logs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "started_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        },
+                        "finished_at": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "operationId": "postMaintenanceSoftReload"
@@ -3256,6 +3463,81 @@
           }
         },
         "operationId": "getV1ClientSubscribeIdentifier"
+      }
+    },
+    "/api/maintenance/status": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Get latest panel maintenance operation status",
+        "description": "Returns the latest host-level update, restart, or soft-reload operation tracked by the Go API. Dashboard clients poll this endpoint while the maintenance dialog is open to show command output, parsed download percentage, current phase, and whether the panel is entering restart. The state is intentionally in-memory and resets after the Rebecca process comes back.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest maintenance operation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "type": "integer",
+                      "nullable": true,
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "running": {
+                      "type": "boolean"
+                    },
+                    "restarting": {
+                      "type": "boolean"
+                    },
+                    "needs_reload": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "logs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "started_at": {
+                      "type": "integer"
+                    },
+                    "updated_at": {
+                      "type": "integer"
+                    },
+                    "finished_at": {
+                      "type": "integer",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getMaintenanceStatus"
       }
     }
   },

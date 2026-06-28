@@ -41,11 +41,12 @@ func (s *Server) handleMaintenanceUpdate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.maintenanceService().Update(r.Context(), payload); err != nil {
+	status, err := s.maintenanceService().Update(r.Context(), payload)
+	if err != nil {
 		writeMaintenanceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": status})
 }
 
 func (s *Server) handleMaintenanceRestart(w http.ResponseWriter, r *http.Request) {
@@ -57,11 +58,12 @@ func (s *Server) handleMaintenanceRestart(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if err := s.maintenanceService().Restart(r.Context()); err != nil {
+	status, err := s.maintenanceService().Restart(r.Context())
+	if err != nil {
 		writeMaintenanceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "operation": status})
 }
 
 func (s *Server) handleMaintenanceSoftReload(w http.ResponseWriter, r *http.Request) {
@@ -73,14 +75,28 @@ func (s *Server) handleMaintenanceSoftReload(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if err := s.maintenanceService().SoftReload(r.Context()); err != nil {
+	status, err := s.maintenanceService().SoftReload(r.Context())
+	if err != nil {
 		writeMaintenanceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":  "ok",
-		"message": "Panel soft reload scheduled successfully",
+		"status":    "ok",
+		"message":   "Panel soft reload scheduled successfully",
+		"operation": status,
 	})
+}
+
+func (s *Server) handleMaintenanceStatus(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/maintenance/status" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.maintenanceService().Status())
 }
 
 func (s *Server) maintenanceService() *systemapp.MaintenanceService {

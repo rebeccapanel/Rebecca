@@ -19,8 +19,13 @@ import {
 	MenuItem,
 	MenuList,
 	Modal,
+	ModalBody,
+	ModalContent,
+	ModalFooter,
+	ModalHeader,
 	ModalCloseButton,
 	ModalOverlay,
+	Progress,
 	Select,
 	SimpleGrid,
 	Spinner,
@@ -53,6 +58,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -168,6 +174,28 @@ type MaintenanceInfo = {
 
 type MaintenanceAction = "update" | "restart" | "soft-reload";
 type UpdateChannel = "current" | "latest" | "dev";
+
+type MaintenanceOperation = {
+	id?: string;
+	action?: MaintenanceAction | string;
+	phase?: string;
+	message?: string;
+	progress?: number | null;
+	running?: boolean;
+	restarting?: boolean;
+	needs_reload?: boolean;
+	error?: string;
+	logs?: string[];
+	started_at?: number;
+	updated_at?: number;
+	finished_at?: number | null;
+};
+
+type MaintenanceActionResponse = {
+	status?: string;
+	message?: string;
+	operation?: MaintenanceOperation;
+};
 
 const flattenEventToggleValues = (
 	source: Record<string, unknown>,
@@ -659,6 +687,11 @@ export const IntegrationSettingsPage = () => {
 	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
 	const fieldBg = useColorModeValue("white", "blackAlpha.200");
+	const maintenanceOutputBg = useColorModeValue("gray.50", "blackAlpha.400");
+	const maintenanceOutputBorder = useColorModeValue(
+		"gray.200",
+		"whiteAlpha.200",
+	);
 	const comingSoonOverlayBg = useColorModeValue(
 		"rgba(255, 255, 255, 0.78)",
 		"rgba(8, 11, 18, 0.76)",
@@ -782,6 +815,14 @@ export const IntegrationSettingsPage = () => {
 		domains: "",
 	});
 	const [renewingDomain, setRenewingDomain] = useState<string | null>(null);
+	const [maintenanceOperation, setMaintenanceOperation] =
+		useState<MaintenanceOperation | null>(null);
+	const [isMaintenanceProgressOpen, setMaintenanceProgressOpen] =
+		useState(false);
+	const [maintenanceIsWaitingForAPI, setMaintenanceIsWaitingForAPI] =
+		useState(false);
+	const panelReturnPollRef = useRef<number | null>(null);
+	const panelReturnSawOfflineRef = useRef(false);
 
 	useEffect(() => {
 		if (subscriptionBundle?.admins) {
@@ -807,16 +848,57 @@ export const IntegrationSettingsPage = () => {
 		}
 	}, [adminOverrides, selectedAdminId]);
 
+	const clearPanelReturnPolling = useCallback(() => {
+		if (panelReturnPollRef.current !== null) {
+			window.clearInterval(panelReturnPollRef.current);
+			panelReturnPollRef.current = null;
+		}
+	}, []);
+
+	const startPanelReturnPolling = useCallback(() => {
+		if (panelReturnPollRef.current !== null) {
+			return;
+		}
+		const startedAt = Date.now();
+		panelReturnSawOfflineRef.current = false;
+		setMaintenanceIsWaitingForAPI(true);
+		panelReturnPollRef.current = window.setInterval(async () => {
+			try {
+				await apiFetch<MaintenanceInfo>("/maintenance/info", {
+					timeout: 2500,
+				});
+				const waitedLongEnough = Date.now() - startedAt > 7000;
+				if (panelReturnSawOfflineRef.current || waitedLongEnough) {
+					clearPanelReturnPolling();
+					window.location.reload();
+				}
+			} catch {
+				panelReturnSawOfflineRef.current = true;
+			}
+		}, 2000);
+	}, [clearPanelReturnPolling]);
+
+	useEffect(() => {
+		return () => clearPanelReturnPolling();
+	}, [clearPanelReturnPolling]);
+
+	const shouldWaitForPanelReturn = (operation?: MaintenanceOperation | null) =>
+		Boolean(operation?.restarting || operation?.needs_reload || operation?.phase === "restarting");
+
 	const triggerMaintenanceAction = async (
 		path:
 			| "/maintenance/update"
 			| "/maintenance/restart"
 			| "/maintenance/soft-reload",
 		body?: Record<string, unknown>,
-	): Promise<{ wentOffline: boolean }> => {
+	): Promise<{ wentOffline: boolean; operation?: MaintenanceOperation }> => {
 		try {
-			await apiFetch(path, { method: "POST", body, timeout: 3000 });
-			return { wentOffline: false };
+			const result = await apiFetch<MaintenanceActionResponse>(path, {
+				method: "POST",
+				body,
+				timeout: 3000,
+			});
+			return { wentOffline: false, operation: result.operation };
 		} catch (error: any) {
 			const isLikelyPanelOffline = !error?.response;
 			if (isLikelyPanelOffline) {
@@ -828,9 +910,23 @@ export const IntegrationSettingsPage = () => {
 
 	const handleMaintenanceSuccess = (
 		action: MaintenanceAction,
-		result: { wentOffline: boolean },
+		result: { wentOffline: boolean; operation?: MaintenanceOperation },
 	) => {
 		setActiveMaintenanceAction(action);
+		const operation = result.operation || {
+			action,
+			phase: result.wentOffline ? "restarting" : "queued",
+			message: result.wentOffline
+				? t(
+						"settings.panel.maintenanceWaitingForAPI",
+						"Rebecca is restarting. Waiting for the API to come back.",
+					)
+				: t("settings.panel.maintenanceQueued", "Command accepted."),
+			restarting: result.wentOffline,
+			needs_reload: result.wentOffline,
+		};
+		setMaintenanceOperation(operation);
+		setMaintenanceProgressOpen(true);
 		let messageKey = "settings.panel.restartTriggered";
 		if (action === "update") {
 			messageKey = "settings.panel.updateTriggered";
@@ -847,8 +943,59 @@ export const IntegrationSettingsPage = () => {
 				position: "top",
 			});
 		}
+		if (result.wentOffline || shouldWaitForPanelReturn(operation)) {
+			startPanelReturnPolling();
+		}
 		window.setTimeout(() => maintenanceInfoQuery.refetch(), 6000);
 	};
+
+	const maintenanceStatusQuery = useQuery<MaintenanceOperation>(
+		["maintenance-status", maintenanceOperation?.id],
+		() =>
+			apiFetch<MaintenanceOperation>("/maintenance/status", {
+				timeout: 2500,
+			}),
+		{
+			enabled:
+				isMaintenanceProgressOpen &&
+				Boolean(maintenanceOperation?.id) &&
+				!maintenanceIsWaitingForAPI,
+			refetchInterval: (data) => {
+				if (!data?.id || data.error || data.phase === "failed") {
+					return false;
+				}
+				if (shouldWaitForPanelReturn(data)) {
+					return false;
+				}
+				return 1000;
+			},
+			retry: false,
+			onSuccess: (data) => {
+				if (!data?.id) {
+					return;
+				}
+				setMaintenanceOperation(data);
+				if (shouldWaitForPanelReturn(data)) {
+					startPanelReturnPolling();
+				}
+			},
+			onError: () => {
+				if (maintenanceOperation?.action) {
+					setMaintenanceOperation((current) => ({
+						...(current || {}),
+						phase: "restarting",
+						message: t(
+							"settings.panel.maintenanceWaitingForAPI",
+							"Rebecca is restarting. Waiting for the API to come back.",
+						),
+						restarting: true,
+						needs_reload: true,
+					}));
+					startPanelReturnPolling();
+				}
+			},
+		},
+	);
 
 	const updateMutation = useMutation(
 		() =>
@@ -4156,6 +4303,133 @@ export const IntegrationSettingsPage = () => {
 				colorScheme="yellow"
 				isLoading={updateMutation.isLoading}
 			/>
+			<Modal
+				isOpen={isMaintenanceProgressOpen}
+				onClose={() => setMaintenanceProgressOpen(false)}
+				size="xl"
+				closeOnOverlayClick={!maintenanceIsWaitingForAPI}
+			>
+				<ModalOverlay bg="blackAlpha.500" backdropFilter="blur(8px)" />
+				<ModalContent mx={3}>
+					<ModalHeader>
+						{maintenanceOperation?.action === "update"
+							? t("settings.panel.updateProgressTitle", "Updating Rebecca")
+							: maintenanceOperation?.action === "restart"
+								? t("settings.panel.restartProgressTitle", "Restarting Rebecca")
+								: t("settings.panel.reloadProgressTitle", "Reloading Rebecca")}
+					</ModalHeader>
+					<ModalCloseButton isDisabled={maintenanceIsWaitingForAPI} />
+					<ModalBody>
+						<VStack align="stretch" spacing={4}>
+							<Alert
+								status={
+									maintenanceOperation?.error
+										? "error"
+										: maintenanceIsWaitingForAPI ||
+											  shouldWaitForPanelReturn(maintenanceOperation)
+											? "info"
+											: "success"
+								}
+								variant="subtle"
+								borderRadius="md"
+							>
+								<AlertIcon />
+								<Box>
+									<Text fontWeight="semibold">
+										{maintenanceOperation?.phase ||
+											t("settings.panel.maintenanceQueued", "queued")}
+									</Text>
+									<Text fontSize="sm">
+										{maintenanceOperation?.error ||
+											maintenanceOperation?.message ||
+											t(
+												"settings.panel.maintenanceQueued",
+												"Command accepted.",
+											)}
+									</Text>
+								</Box>
+							</Alert>
+							<Box>
+								<Flex justify="space-between" mb={2}>
+									<Text fontSize="sm" fontWeight="medium">
+										{t("settings.panel.downloadProgress", "Progress")}
+									</Text>
+									<Text fontSize="sm" color="gray.500">
+										{typeof maintenanceOperation?.progress === "number"
+											? `${maintenanceOperation.progress}%`
+											: maintenanceStatusQuery.isFetching
+												? t("settings.panel.checkingStatus", "checking...")
+												: t("settings.panel.waitingForOutput", "waiting")}
+									</Text>
+								</Flex>
+								<Progress
+									value={
+										typeof maintenanceOperation?.progress === "number"
+											? maintenanceOperation.progress
+											: undefined
+									}
+									isIndeterminate={
+										typeof maintenanceOperation?.progress !== "number" &&
+										!maintenanceOperation?.error
+									}
+									colorScheme={
+										maintenanceOperation?.error
+											? "red"
+											: shouldWaitForPanelReturn(maintenanceOperation)
+												? "blue"
+												: "yellow"
+									}
+									borderRadius="full"
+									size="sm"
+								/>
+							</Box>
+							{maintenanceIsWaitingForAPI && (
+								<Alert status="info" variant="left-accent" borderRadius="md">
+									<AlertIcon />
+									<Text fontSize="sm">
+										{t(
+											"settings.panel.autoRefreshAfterRestart",
+											"Rebecca is restarting. This page will refresh automatically as soon as the API responds again.",
+										)}
+									</Text>
+								</Alert>
+							)}
+							<Box>
+								<Text fontSize="sm" fontWeight="medium" mb={2}>
+									{t("settings.panel.maintenanceOutput", "Output")}
+								</Text>
+								<Box
+									as="pre"
+									maxH="260px"
+									overflowY="auto"
+									bg={maintenanceOutputBg}
+									border="1px solid"
+									borderColor={maintenanceOutputBorder}
+									borderRadius="md"
+									p={3}
+									fontSize="xs"
+									whiteSpace="pre-wrap"
+								>
+									{(maintenanceOperation?.logs || []).join("\n") ||
+										t(
+											"settings.panel.waitingForOutput",
+											"Waiting for command output...",
+										)}
+								</Box>
+							</Box>
+						</VStack>
+					</ModalBody>
+					<ModalFooter>
+						<Button
+							variant="outline"
+							onClick={() => setMaintenanceProgressOpen(false)}
+							isDisabled={maintenanceIsWaitingForAPI}
+						>
+							{t("close", "Close")}
+						</Button>
+					</ModalFooter>
+				</ModalContent>
+			</Modal>
 			<Modal
 				isOpen={Boolean(templateDialog)}
 				onClose={closeTemplateEditor}

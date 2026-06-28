@@ -56,6 +56,17 @@ func (s *recordingScheduler) Schedule(args []string) error {
 	return nil
 }
 
+func (s *recordingScheduler) ScheduleWithProgress(args []string, onOutput func(string), onDone func(error)) error {
+	if err := s.Schedule(args); err != nil {
+		return err
+	}
+	if onOutput != nil {
+		onOutput("Downloading Rebecca binary 42%")
+		onOutput("Restarting Rebecca service")
+	}
+	return nil
+}
+
 func (s *recordingScheduler) snapshot() [][]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,6 +174,27 @@ func TestMaintenanceActionsAcceptedAndValidated(t *testing.T) {
 	rec := adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/update", token, `{"channel":"dev"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var updateResponse struct {
+		Status    string                                  `json:"status"`
+		Operation systemapp.MaintenanceOperationSnapshot `json:"operation"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &updateResponse); err != nil {
+		t.Fatal(err)
+	}
+	if updateResponse.Status != "accepted" || updateResponse.Operation.Action != "update" || updateResponse.Operation.Progress == nil || *updateResponse.Operation.Progress != 42 {
+		t.Fatalf("unexpected update operation response: %#v", updateResponse)
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/maintenance/status", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("maintenance status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var status systemapp.MaintenanceOperationSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Action != "update" || status.Progress == nil || *status.Progress != 42 {
+		t.Fatalf("unexpected maintenance status: %#v", status)
 	}
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/maintenance/restart", token, `{}`)
 	if rec.Code != http.StatusOK {
