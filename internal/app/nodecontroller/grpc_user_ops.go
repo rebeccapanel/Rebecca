@@ -142,7 +142,7 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 
 func grpcInboundUserPayload(settings map[string]any) *nodev1.InboundUser {
 	fields := map[string]string{}
-	for _, key := range []string{"id", "password", "flow", "method"} {
+	for _, key := range []string{"id", "password", "auth", "flow", "method"} {
 		if value := stringValue(settings[key]); value != "" {
 			fields[key] = value
 		}

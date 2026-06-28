@@ -27,7 +27,12 @@ export type FilterType = {
 	owner?: string;
 	serviceId?: number;
 };
-export type ProtocolType = "vmess" | "vless" | "trojan" | "shadowsocks";
+export type ProtocolType =
+	| "vmess"
+	| "vless"
+	| "trojan"
+	| "shadowsocks"
+	| "hysteria";
 
 export type FilterUsageType = {
 	start?: string;

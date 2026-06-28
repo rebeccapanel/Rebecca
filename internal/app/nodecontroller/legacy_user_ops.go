@@ -149,7 +149,7 @@ func legacyInboundUserPayload(settings map[string]any) map[string]any {
 		"email":    stringValue(settings["email"]),
 		"level":    intValue(settings["level"]),
 	}
-	for _, key := range []string{"id", "password", "flow", "method"} {
+	for _, key := range []string{"id", "password", "auth", "flow", "method"} {
 		if value := stringValue(settings[key]); value != "" {
 			payload[key] = value
 		}

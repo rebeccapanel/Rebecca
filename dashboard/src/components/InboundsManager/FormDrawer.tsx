@@ -150,6 +150,7 @@ const TLS_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
 	"vless",
 	"trojan",
 	"shadowsocks",
+	"hysteria",
 ];
 const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
 	"tcp",
@@ -158,6 +159,7 @@ const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
 	"grpc",
 	"httpupgrade",
 	"xhttp",
+	"hysteria",
 ];
 const REALITY_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
 	"vless",
@@ -309,6 +311,14 @@ export const InboundFormModal: FC<Props> = ({
 		name: "xhttpHeaders",
 	});
 	const {
+		fields: hysteriaMasqueradeHeaderFields,
+		append: appendHysteriaMasqueradeHeader,
+		remove: removeHysteriaMasqueradeHeader,
+	} = useFieldArray({
+		control,
+		name: "hysteriaMasqueradeHeaders",
+	});
+	const {
 		fields: tlsCertificateFields,
 		append: appendTlsCertificate,
 		remove: removeTlsCertificate,
@@ -360,6 +370,14 @@ export const InboundFormModal: FC<Props> = ({
 		false;
 	const xhttpMode =
 		useWatch({ control, name: "xhttpMode" }) || watch("xhttpMode") || "auto";
+	const hysteriaMasqueradeEnabled =
+		useWatch({ control, name: "hysteriaMasqueradeEnabled" }) ??
+		watch("hysteriaMasqueradeEnabled") ??
+		false;
+	const hysteriaMasqueradeType =
+		useWatch({ control, name: "hysteriaMasqueradeType" }) ||
+		watch("hysteriaMasqueradeType") ||
+		"";
 	const tagValue = useWatch({ control, name: "tag" }) || watch("tag") || "";
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
 	const supportsStreamSettings =
@@ -370,7 +388,8 @@ export const InboundFormModal: FC<Props> = ({
 		() => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
 		[],
 	);
-	const ALL_NETWORK_OPTIONS = streamNetworks;
+	const ALL_NETWORK_OPTIONS =
+		currentProtocol === "hysteria" ? ["hysteria"] : streamNetworks;
 	const canEnableTls = useMemo(
 		() =>
 			TLS_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
@@ -473,6 +492,24 @@ export const InboundFormModal: FC<Props> = ({
 		setPortWarning(null);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [initialValue, isOpen, reset]);
+
+	useEffect(() => {
+		if (currentProtocol !== "hysteria") {
+			return;
+		}
+		if (streamNetwork !== "hysteria") {
+			form.setValue("streamNetwork", "hysteria", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "tls") {
+			form.setValue("streamSecurity", "tls", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [currentProtocol, form, streamNetwork, streamSecurity]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -1121,13 +1158,36 @@ export const InboundFormModal: FC<Props> = ({
 														label: option.toUpperCase(),
 													}))}
 													placeholder={t("inbounds.protocol", "Protocol")}
-													onChange={(value) =>
-														form.setValue(
-															"protocol",
-															String(value) as InboundFormValues["protocol"],
-															{ shouldDirty: true, shouldValidate: true },
-														)
-													}
+													onChange={(value) => {
+														const nextProtocol =
+															String(value) as InboundFormValues["protocol"];
+														form.setValue("protocol", nextProtocol, {
+															shouldDirty: true,
+															shouldValidate: true,
+														});
+														if (nextProtocol === "hysteria") {
+															form.setValue("streamNetwork", "hysteria", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("streamSecurity", "tls", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("hysteriaVersion", "2", {
+																shouldDirty: true,
+															});
+															form.setValue("hysteriaUdpIdleTimeout", "60", {
+																shouldDirty: true,
+															});
+															form.setValue("tlsAlpn", ["h3"], {
+																shouldDirty: true,
+															});
+															form.setValue("tlsFingerprint", "", {
+																shouldDirty: true,
+															});
+														}
+													}}
 												/>
 											</FormControl>
 										</SimpleGrid>
@@ -1472,7 +1532,9 @@ export const InboundFormModal: FC<Props> = ({
 																		value: security,
 																		label: security,
 																		disabled:
-																			security === "tls"
+																			currentProtocol === "hysteria"
+																				? security !== "tls"
+																				: security === "tls"
 																				? !TLS_COMPATIBLE_PROTOCOLS.includes(
 																						currentProtocol,
 																					)
@@ -1956,6 +2018,291 @@ export const InboundFormModal: FC<Props> = ({
 														</FormLabel>
 														<Switch {...register("xhttpNoSSEHeader")} />
 													</FormControl>
+												</Stack>
+											)}
+
+											{streamNetwork === "hysteria" && (
+												<Stack spacing={3}>
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.hysteria.version", "Hysteria version")}
+															</FormLabel>
+															<Input
+																{...register("hysteriaVersion")}
+																placeholder="2"
+															/>
+														</FormControl>
+														<FormControl
+															isInvalid={
+																!!fieldValidationErrors.hysteriaUdpIdleTimeout
+															}
+														>
+															<FormLabel>
+																{t(
+																	"inbounds.hysteria.udpIdleTimeout",
+																	"UDP idle timeout",
+																)}
+															</FormLabel>
+															<Input
+																{...register("hysteriaUdpIdleTimeout")}
+																placeholder="60"
+															/>
+															{fieldValidationErrors.hysteriaUdpIdleTimeout && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{
+																		fieldValidationErrors.hysteriaUdpIdleTimeout
+																	}
+																</Text>
+															)}
+														</FormControl>
+													</SimpleGrid>
+
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t(
+																"inbounds.hysteria.enableMasquerade",
+																"Enable masquerade",
+															)}
+														</FormLabel>
+														<Switch {...register("hysteriaMasqueradeEnabled")} />
+													</FormControl>
+													<Collapse
+														in={Boolean(hysteriaMasqueradeEnabled)}
+														animateOpacity
+													>
+														<Stack spacing={3} mt={2}>
+															<SimpleGrid
+																columns={{ base: 1, md: 2 }}
+																spacing={3}
+															>
+																<FormControl
+																	isInvalid={
+																		!!fieldValidationErrors.hysteriaMasqueradeType
+																	}
+																>
+																	<FormLabel>
+																		{t(
+																			"inbounds.hysteria.masqueradeType",
+																			"Masquerade type",
+																		)}
+																	</FormLabel>
+																	<SearchableTagSelect
+																		value={hysteriaMasqueradeType}
+																		options={["proxy", "file", "string"]}
+																		placeholder={t(
+																			"inbounds.hysteria.masqueradeType",
+																			"Masquerade type",
+																		)}
+																		onChange={(value) =>
+																			form.setValue(
+																				"hysteriaMasqueradeType",
+																				String(
+																					value,
+																				) as InboundFormValues["hysteriaMasqueradeType"],
+																				{
+																					shouldDirty: true,
+																					shouldValidate: true,
+																				},
+																			)
+																		}
+																	/>
+																	{fieldValidationErrors.hysteriaMasqueradeType && (
+																		<Text fontSize="xs" color="red.500" mt={1}>
+																			{
+																				fieldValidationErrors.hysteriaMasqueradeType
+																			}
+																		</Text>
+																	)}
+																</FormControl>
+																{hysteriaMasqueradeType === "string" && (
+																	<FormControl>
+																		<FormLabel>
+																			{t(
+																				"inbounds.hysteria.statusCode",
+																				"Status code",
+																			)}
+																		</FormLabel>
+																		<Input
+																			{...register(
+																				"hysteriaMasqueradeStatusCode",
+																			)}
+																			placeholder="200"
+																		/>
+																	</FormControl>
+																)}
+															</SimpleGrid>
+
+															{hysteriaMasqueradeType === "proxy" && (
+																<Stack spacing={3}>
+																	<FormControl
+																		isInvalid={
+																			!!fieldValidationErrors.hysteriaMasqueradeUrl
+																		}
+																	>
+																		<FormLabel>
+																			{t(
+																				"inbounds.hysteria.proxyUrl",
+																				"Proxy URL",
+																			)}
+																		</FormLabel>
+																		<Input
+																			{...register("hysteriaMasqueradeUrl")}
+																			placeholder="https://example.com"
+																		/>
+																		{fieldValidationErrors.hysteriaMasqueradeUrl && (
+																			<Text fontSize="xs" color="red.500" mt={1}>
+																				{
+																					fieldValidationErrors.hysteriaMasqueradeUrl
+																				}
+																			</Text>
+																		)}
+																	</FormControl>
+																	<HStack spacing={6} flexWrap="wrap">
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																			w="auto"
+																		>
+																			<FormLabel mb={0}>
+																				{t(
+																					"inbounds.hysteria.rewriteHost",
+																					"Rewrite host",
+																				)}
+																			</FormLabel>
+																			<Switch
+																				{...register(
+																					"hysteriaMasqueradeRewriteHost",
+																				)}
+																			/>
+																		</FormControl>
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																			w="auto"
+																		>
+																			<FormLabel mb={0}>
+																				{t(
+																					"inbounds.hysteria.insecure",
+																					"Insecure upstream",
+																				)}
+																			</FormLabel>
+																			<Switch
+																				{...register(
+																					"hysteriaMasqueradeInsecure",
+																				)}
+																			/>
+																		</FormControl>
+																	</HStack>
+																</Stack>
+															)}
+
+															{hysteriaMasqueradeType === "file" && (
+																<FormControl
+																	isInvalid={
+																		!!fieldValidationErrors.hysteriaMasqueradeDir
+																	}
+																>
+																	<FormLabel>
+																		{t(
+																			"inbounds.hysteria.fileDir",
+																			"File directory",
+																		)}
+																	</FormLabel>
+																	<Input
+																		{...register("hysteriaMasqueradeDir")}
+																		placeholder="/var/www/html"
+																	/>
+																	{fieldValidationErrors.hysteriaMasqueradeDir && (
+																		<Text fontSize="xs" color="red.500" mt={1}>
+																			{
+																				fieldValidationErrors.hysteriaMasqueradeDir
+																			}
+																		</Text>
+																	)}
+																</FormControl>
+															)}
+
+															{hysteriaMasqueradeType === "string" && (
+																<FormControl>
+																	<FormLabel>
+																		{t(
+																			"inbounds.hysteria.content",
+																			"Response content",
+																		)}
+																	</FormLabel>
+																	<Textarea
+																		{...register("hysteriaMasqueradeContent")}
+																		placeholder="ok"
+																	/>
+																</FormControl>
+															)}
+
+															<Stack spacing={2}>
+																<Flex justify="space-between" align="center">
+																	<Text fontWeight="medium">
+																		{t(
+																			"inbounds.hysteria.headers",
+																			"Masquerade headers",
+																		)}
+																	</Text>
+																	<Button
+																		size="xs"
+																		onClick={() =>
+																			appendHysteriaMasqueradeHeader({
+																				name: "",
+																				value: "",
+																			})
+																		}
+																	>
+																		{t("inbounds.accounts.add", "Add")}
+																	</Button>
+																</Flex>
+																{hysteriaMasqueradeHeaderFields.map(
+																	(field, index) => (
+																		<HStack
+																			key={field.id}
+																			spacing={2}
+																			align="flex-start"
+																		>
+																			<FormControl>
+																				<Input
+																					{...register(
+																						`hysteriaMasqueradeHeaders.${index}.name` as const,
+																					)}
+																					placeholder={t(
+																						"inbounds.hysteria.headerName",
+																						"Header name",
+																					)}
+																				/>
+																			</FormControl>
+																			<FormControl>
+																				<Input
+																					{...register(
+																						`hysteriaMasqueradeHeaders.${index}.value` as const,
+																					)}
+																					placeholder={t(
+																						"inbounds.hysteria.headerValue",
+																						"Header value",
+																					)}
+																				/>
+																			</FormControl>
+																			<Button
+																				size="xs"
+																				variant="ghost"
+																				colorScheme="red"
+																				onClick={() =>
+																					removeHysteriaMasqueradeHeader(index)
+																				}
+																			>
+																				{t("hostsPage.delete", "Delete")}
+																			</Button>
+																		</HStack>
+																	),
+																)}
+															</Stack>
+														</Stack>
+													</Collapse>
 												</Stack>
 											)}
 											<FormControl display="flex" alignItems="center">

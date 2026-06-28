@@ -434,6 +434,8 @@ func outboundAddressPort(protocol string, outbound map[string]any) (string, *int
 		}
 		item, _ := items[0].(map[string]any)
 		return stringFromAny(item["address"]), int64PtrFromAny(item["port"])
+	case "hysteria":
+		return stringFromAny(settings["address"]), int64PtrFromAny(settings["port"])
 	default:
 		return "", nil
 	}

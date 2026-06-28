@@ -16,6 +16,7 @@ var proxyProtocols = map[string]struct{}{
 	"vless":       {},
 	"trojan":      {},
 	"shadowsocks": {},
+	"hysteria":    {},
 }
 
 type runtimeUserRow struct {

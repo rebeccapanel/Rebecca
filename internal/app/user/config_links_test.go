@@ -628,3 +628,60 @@ func TestBuildConfigLinksFollowsServiceHostOrderAcrossProtocols(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
+	serviceID := int64(1)
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            21,
+			Username:      "hyuser",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{
+			"HY2": {
+				"tag":              "HY2",
+				"protocol":         "hysteria",
+				"port":             int64(443),
+				"network":          "hysteria",
+				"tls":              "tls",
+				"sni":              "hy.example.com",
+				"fp":               "chrome",
+				"alpn":             "h3",
+				"hysteria_version": int64(2),
+			},
+		},
+		[]string{"HY2"},
+		[]Host{
+			{
+				ID:         1,
+				InboundTag: "HY2",
+				Remark:     "hy",
+				Address:    "hy.example.com",
+				Security:   "inbound_default",
+				ServiceIDs: []int64{serviceID},
+			},
+		},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one link, got %#v", links.Links)
+	}
+	link := links.Links[0]
+	if !strings.HasPrefix(link, "hysteria2://") {
+		t.Fatalf("expected hysteria2 link, got %q", link)
+	}
+	for _, expected := range []string{"security=tls", "sni=hy.example.com", "fp=chrome", "alpn=h3"} {
+		if !strings.Contains(link, expected) {
+			t.Fatalf("expected %q in link: %s", expected, link)
+		}
+	}
+}

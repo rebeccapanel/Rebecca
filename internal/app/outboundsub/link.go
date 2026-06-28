@@ -103,7 +103,7 @@ func splitLines(s string) []string {
 //   - vless://
 //   - trojan://
 //   - ss:// (modern and legacy)
-//   - hysteria2:// (also hy2://)
+//   - hysteria:// / hysteria2:// (also hy2://)
 //   - wireguard:// (also wg://)
 func ParseLink(link string) (*ParseResult, error) {
 	link = strings.TrimSpace(link)
@@ -116,7 +116,7 @@ func ParseLink(link string) (*ParseResult, error) {
 		return parseTrojan(link)
 	case strings.HasPrefix(link, "ss://"):
 		return parseShadowsocks(link)
-	case strings.HasPrefix(link, "hysteria2://"), strings.HasPrefix(link, "hy2://"):
+	case strings.HasPrefix(link, "hysteria://"), strings.HasPrefix(link, "hysteria2://"), strings.HasPrefix(link, "hy2://"):
 		return parseHysteria2(link)
 	case strings.HasPrefix(link, "wireguard://"), strings.HasPrefix(link, "wg://"):
 		return parseWireguard(link)
@@ -424,19 +424,23 @@ func parseHysteria2(link string) (*ParseResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if u.Scheme != "hysteria2" && u.Scheme != "hy2" {
-		return nil, fmt.Errorf("not hysteria2")
+	if u.Scheme != "hysteria" && u.Scheme != "hysteria2" && u.Scheme != "hy2" {
+		return nil, fmt.Errorf("not hysteria")
 	}
 	auth := u.User.Username()
 	host := u.Hostname()
 	port := defaultPort(u.Port(), 443)
 	params := u.Query()
 
+	version := 2
+	if u.Scheme == "hysteria" {
+		version = 1
+	}
 	stream := map[string]any{
 		"network":  "hysteria",
 		"security": "tls",
 		"hysteriaSettings": map[string]any{
-			"version":        2,
+			"version":        version,
 			"auth":           auth,
 			"udpIdleTimeout": 60,
 		},
@@ -451,12 +455,12 @@ func parseHysteria2(link string) (*ParseResult, error) {
 	}
 	applyFinalMask(stream, params)
 
-	identity := "hysteria2:" + auth + "@" + host + ":" + strconv.Itoa(port) + "?" + canonicalQuery(params)
+	identity := "hysteria:" + strconv.Itoa(version) + ":" + auth + "@" + host + ":" + strconv.Itoa(port) + "?" + canonicalQuery(params)
 
 	ob := Outbound{
 		"protocol":       "hysteria",
 		"tag":            decodeHash(u.Fragment),
-		"settings":       map[string]any{"address": host, "port": port, "version": 2},
+		"settings":       map[string]any{"address": host, "port": port, "version": version},
 		"streamSettings": stream,
 	}
 	return &ParseResult{Outbound: ob, Identity: identity}, nil

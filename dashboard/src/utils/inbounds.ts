@@ -5,6 +5,7 @@ export type Protocol =
 	| "vless"
 	| "trojan"
 	| "shadowsocks"
+	| "hysteria"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -16,7 +17,8 @@ export type StreamNetwork =
 	| "http"
 	| "httpupgrade"
 	| "splithttp"
-	| "xhttp";
+	| "xhttp"
+	| "hysteria";
 export type StreamSecurity = "none" | "tls" | "reality";
 
 export type RawInbound = {
@@ -105,6 +107,19 @@ export type InboundFormValues = {
 	shadowsocksMethod: string;
 	shadowsocksPassword: string;
 	shadowsocksIvCheck: boolean;
+
+	// Hysteria
+	hysteriaVersion: string;
+	hysteriaUdpIdleTimeout: string;
+	hysteriaMasqueradeEnabled: boolean;
+	hysteriaMasqueradeType: "" | "proxy" | "file" | "string";
+	hysteriaMasqueradeDir: string;
+	hysteriaMasqueradeUrl: string;
+	hysteriaMasqueradeRewriteHost: boolean;
+	hysteriaMasqueradeInsecure: boolean;
+	hysteriaMasqueradeContent: string;
+	hysteriaMasqueradeStatusCode: string;
+	hysteriaMasqueradeHeaders: HeaderForm[];
 
 	// sniffing
 	sniffingEnabled: boolean;
@@ -267,6 +282,7 @@ export const protocolOptions: Protocol[] = [
 	"vless",
 	"trojan",
 	"shadowsocks",
+	"hysteria",
 	"http",
 	"socks",
 ];
@@ -282,6 +298,7 @@ export const streamNetworks: StreamNetwork[] = [
 	"httpupgrade",
 	"splithttp",
 	"xhttp",
+	"hysteria",
 ];
 export const streamSecurityOptions: StreamSecurity[] = [
 	"none",
@@ -445,6 +462,38 @@ export const validateInboundFormFields = (
 			"XHTTP xPaddingBytes",
 		);
 		if (paddingError) errors.xhttpPaddingBytes = paddingError;
+	}
+	if (values.protocol === "hysteria") {
+		if (values.streamNetwork !== "hysteria") {
+			errors.streamNetwork = "Hysteria requires the hysteria transport.";
+		}
+		if (values.streamSecurity !== "tls") {
+			errors.streamSecurity = "Hysteria requires TLS security.";
+		}
+		const idle = Number(values.hysteriaUdpIdleTimeout || "60");
+		if (!Number.isInteger(idle) || idle < 2 || idle > 600) {
+			errors.hysteriaUdpIdleTimeout =
+				"UDP idle timeout must be between 2 and 600 seconds.";
+		}
+		if (values.hysteriaMasqueradeEnabled) {
+			if (!values.hysteriaMasqueradeType) {
+				errors.hysteriaMasqueradeType = "Masquerade type is required.";
+			}
+			if (
+				values.hysteriaMasqueradeType === "proxy" &&
+				!/^https?:\/\//i.test(values.hysteriaMasqueradeUrl.trim())
+			) {
+				errors.hysteriaMasqueradeUrl =
+					"Proxy masquerade URL must start with http:// or https://.";
+			}
+			if (
+				values.hysteriaMasqueradeType === "file" &&
+				!values.hysteriaMasqueradeDir.trim()
+			) {
+				errors.hysteriaMasqueradeDir =
+					"File masquerade directory is required.";
+			}
+		}
 	}
 	if (values.streamSecurity === "reality") {
 		if (!isHostPortTarget(values.realityTarget ?? "")) {
@@ -690,12 +739,23 @@ export const createDefaultInboundForm = (
 	shadowsocksMethod: "chacha20-ietf-poly1305",
 	shadowsocksPassword: "",
 	shadowsocksIvCheck: false,
+	hysteriaVersion: "2",
+	hysteriaUdpIdleTimeout: "60",
+	hysteriaMasqueradeEnabled: false,
+	hysteriaMasqueradeType: "",
+	hysteriaMasqueradeDir: "",
+	hysteriaMasqueradeUrl: "",
+	hysteriaMasqueradeRewriteHost: false,
+	hysteriaMasqueradeInsecure: false,
+	hysteriaMasqueradeContent: "",
+	hysteriaMasqueradeStatusCode: "",
+	hysteriaMasqueradeHeaders: [],
 	sniffingEnabled: true,
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
-	streamNetwork: "tcp",
-	streamSecurity: "none",
+	streamNetwork: protocol === "hysteria" ? "hysteria" : "tcp",
+	streamSecurity: protocol === "hysteria" ? "tls" : "none",
 	tlsServerName: "",
 	tlsMinVersion: "1.2",
 	tlsMaxVersion: "1.3",
@@ -705,11 +765,15 @@ export const createDefaultInboundForm = (
 	tlsDisableSystemRoot: false,
 	tlsEnableSessionResumption: false,
 	tlsCertificates: [createDefaultTlsCertificate()],
-	tlsAlpn: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
+	tlsAlpn:
+		protocol === "hysteria"
+			? [ALPN_OPTION.H3]
+			: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
 	tlsEchServerKeys: "",
 	tlsEchForceQuery: "none",
 	tlsAllowInsecure: false,
-	tlsFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	tlsFingerprint:
+		protocol === "hysteria" ? "" : UTLS_FINGERPRINT.UTLS_CHROME,
 	tlsEchConfigList: "",
 	tlsRawSettings: {},
 	realityShow: false,
@@ -828,6 +892,11 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			? JSON.parse(JSON.stringify(stream.tlsSettings))
 			: {};
 	const realitySettings = stream.realitySettings ?? {};
+	const hysteriaSettings = stream.hysteriaSettings ?? {};
+	const hysteriaMasquerade =
+		hysteriaSettings && typeof hysteriaSettings.masquerade === "object"
+			? hysteriaSettings.masquerade
+			: {};
 	const realitySettingsMeta =
 		realitySettings && typeof realitySettings.settings === "object"
 			? realitySettings.settings
@@ -885,6 +954,36 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		shadowsocksMethod: settings.method ?? base.shadowsocksMethod,
 		shadowsocksPassword: settings.password ?? base.shadowsocksPassword,
 		shadowsocksIvCheck: Boolean(settings.ivCheck ?? base.shadowsocksIvCheck),
+		hysteriaVersion: toInputValue(
+			settings.version ?? hysteriaSettings.version ?? base.hysteriaVersion,
+		),
+		hysteriaUdpIdleTimeout: toInputValue(
+			hysteriaSettings.udpIdleTimeout ?? base.hysteriaUdpIdleTimeout,
+		),
+		hysteriaMasqueradeEnabled: Boolean(hysteriaMasquerade.type),
+		hysteriaMasqueradeType:
+			(hysteriaMasquerade.type as InboundFormValues["hysteriaMasqueradeType"]) ??
+			base.hysteriaMasqueradeType,
+		hysteriaMasqueradeDir:
+			hysteriaMasquerade.dir ?? base.hysteriaMasqueradeDir,
+		hysteriaMasqueradeUrl:
+			hysteriaMasquerade.url ?? base.hysteriaMasqueradeUrl,
+		hysteriaMasqueradeRewriteHost: Boolean(
+			hysteriaMasquerade.rewriteHost ??
+				base.hysteriaMasqueradeRewriteHost,
+		),
+		hysteriaMasqueradeInsecure: Boolean(
+			hysteriaMasquerade.insecure ?? base.hysteriaMasqueradeInsecure,
+		),
+		hysteriaMasqueradeContent:
+			hysteriaMasquerade.content ?? base.hysteriaMasqueradeContent,
+		hysteriaMasqueradeStatusCode: toInputValue(
+			hysteriaMasquerade.statusCode ??
+				base.hysteriaMasqueradeStatusCode,
+		),
+		hysteriaMasqueradeHeaders: hysteriaMasquerade.headers
+			? headersToForm(hysteriaMasquerade.headers)
+			: base.hysteriaMasqueradeHeaders,
 		sniffingEnabled: Boolean(sniffing.enabled ?? base.sniffingEnabled),
 		sniffingDestinations:
 			Array.isArray(sniffing.destOverride) && sniffing.destOverride.length
@@ -1550,6 +1649,45 @@ const buildStreamSettings = (
 		}
 	}
 
+	if (values.streamNetwork === "hysteria") {
+		const masquerade = values.hysteriaMasqueradeEnabled
+			? cleanObject({
+					type: values.hysteriaMasqueradeType || undefined,
+					dir:
+						values.hysteriaMasqueradeType === "file"
+							? values.hysteriaMasqueradeDir.trim() || undefined
+							: undefined,
+					url:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeUrl.trim() || undefined
+							: undefined,
+					rewriteHost:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeRewriteHost || undefined
+							: undefined,
+					insecure:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeInsecure || undefined
+							: undefined,
+					content:
+						values.hysteriaMasqueradeType === "string"
+							? values.hysteriaMasqueradeContent || undefined
+							: undefined,
+					statusCode:
+						values.hysteriaMasqueradeType === "string"
+							? parseOptionalNumber(values.hysteriaMasqueradeStatusCode)
+							: undefined,
+					headers: headersFromForm(values.hysteriaMasqueradeHeaders),
+				})
+			: undefined;
+		stream.hysteriaSettings = cleanObject({
+			version: parseOptionalNumber(values.hysteriaVersion) || 2,
+			udpIdleTimeout:
+				parseOptionalNumber(values.hysteriaUdpIdleTimeout) || 60,
+			masquerade,
+		});
+	}
+
 	if (values.streamSecurity === "tls") {
 		const tlsPayload =
 			values.tlsRawSettings && typeof values.tlsRawSettings === "object"
@@ -1628,7 +1766,11 @@ const buildStreamSettings = (
 const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	const base: Record<string, any> = {};
 
-	if (["vmess", "vless", "trojan", "shadowsocks"].includes(values.protocol)) {
+	if (
+		["vmess", "vless", "trojan", "shadowsocks", "hysteria"].includes(
+			values.protocol,
+		)
+	) {
 		base.clients = [];
 	}
 
@@ -1662,6 +1804,9 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.method = values.shadowsocksMethod || undefined;
 			base.password = values.shadowsocksPassword || undefined;
 			base.ivCheck = values.shadowsocksIvCheck || undefined;
+			break;
+		case "hysteria":
+			base.version = parseOptionalNumber(values.hysteriaVersion) || 2;
 			break;
 		case "http": {
 			const accounts = values.httpAccounts

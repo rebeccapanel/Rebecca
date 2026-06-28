@@ -198,6 +198,7 @@ JOIN (
 	UNION ALL SELECT 'vless'
 	UNION ALL SELECT 'trojan'
 	UNION ALL SELECT 'shadowsocks'
+	UNION ALL SELECT 'hysteria'
 ) protocols
 LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type
 WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0

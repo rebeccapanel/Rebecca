@@ -427,6 +427,29 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		settings = make(map[string]any)
 	}
 	settings["clients"] = []any{}
+	if protocol == "hysteria" {
+		if _, ok := settings["version"]; !ok {
+			settings["version"] = 2
+		}
+		stream := mapValue(inbound["streamSettings"])
+		if len(stream) == 0 {
+			stream = make(map[string]any)
+		}
+		stream["network"] = "hysteria"
+		stream["security"] = "tls"
+		hysteriaSettings := mapValue(stream["hysteriaSettings"])
+		if len(hysteriaSettings) == 0 {
+			hysteriaSettings = make(map[string]any)
+		}
+		if _, ok := hysteriaSettings["version"]; !ok {
+			hysteriaSettings["version"] = 2
+		}
+		if _, ok := hysteriaSettings["udpIdleTimeout"]; !ok {
+			hysteriaSettings["udpIdleTimeout"] = 60
+		}
+		stream["hysteriaSettings"] = hysteriaSettings
+		inbound["streamSettings"] = stream
+	}
 	inbound["settings"] = settings
 	inbound["tag"] = tag
 	inbound["protocol"] = protocol

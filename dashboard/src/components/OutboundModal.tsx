@@ -74,7 +74,8 @@ type StreamNetworkValue =
 	| "ws"
 	| "grpc"
 	| "httpupgrade"
-	| "xhttp";
+	| "xhttp"
+	| "hysteria";
 type OutboundSecurityValue = "none" | "tls" | "reality";
 type XhttpModeValue = (typeof MODE_OPTION)[keyof typeof MODE_OPTION];
 
@@ -100,6 +101,9 @@ interface OutboundFormValues {
 	pass: string;
 	method: string;
 	ssIvCheck: boolean;
+	hysteriaVersion: number;
+	hysteriaAuth: string;
+	hysteriaUdpIdleTimeout: number;
 	tlsEnabled: boolean;
 	tlsServerName: string;
 	tlsFingerprint: string;
@@ -179,6 +183,9 @@ const defaultValues: OutboundFormValues = {
 	pass: "",
 	method: SSMethods.AES_128_GCM,
 	ssIvCheck: false,
+	hysteriaVersion: 2,
+	hysteriaAuth: "",
+	hysteriaUdpIdleTimeout: 60,
 	tlsEnabled: false,
 	tlsServerName: "",
 	tlsFingerprint: "",
@@ -252,6 +259,7 @@ const STREAM_NETWORK_OPTIONS_BY_PROTOCOL: Record<
 	[Protocols.VLESS]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
 	[Protocols.Trojan]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
 	[Protocols.Shadowsocks]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.Hysteria]: ["hysteria"],
 	[Protocols.Freedom]: [],
 	[Protocols.Blackhole]: [],
 	[Protocols.DNS]: [],
@@ -335,6 +343,11 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 				},
 			];
 			break;
+		case Protocols.Hysteria:
+			settings.address = baseAddress;
+			settings.port = basePort || 443;
+			settings.version = Number(values.hysteriaVersion) || 2;
+			break;
 		case Protocols.Socks:
 		case Protocols.HTTP:
 			settings.servers = [
@@ -396,12 +409,18 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			break;
 	}
 
-	const security: OutboundSecurityValue = values.realityEnabled
-		? "reality"
-		: values.tlsEnabled
+	const security: OutboundSecurityValue =
+		values.protocol === Protocols.Hysteria
 			? "tls"
-			: "none";
-	const streamSettings = new StreamSettings(values.network, security);
+			: values.realityEnabled
+				? "reality"
+				: values.tlsEnabled
+					? "tls"
+					: "none";
+	const streamSettings = new StreamSettings(
+		values.protocol === Protocols.Hysteria ? "hysteria" : values.network,
+		security,
+	);
 
 	if (values.network === "tcp") {
 		streamSettings.tcp = new TcpStreamSettings(
@@ -442,6 +461,12 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 				hKeepAlivePeriod: Number(values.xhttpXmuxHKeepAlivePeriod) || 0,
 			},
 		);
+	}
+	if (values.protocol === Protocols.Hysteria) {
+		streamSettings.hysteria.auth = values.hysteriaAuth || "";
+		streamSettings.hysteria.version = Number(values.hysteriaVersion) || 2;
+		streamSettings.hysteria.udpIdleTimeout =
+			Number(values.hysteriaUdpIdleTimeout) || 60;
 	}
 
 	if (values.tlsEnabled) {
@@ -566,14 +591,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	);
 
 	const capabilityProbe = useMemo(() => {
-		const stream = new StreamSettings(network ?? "tcp");
-		const security: OutboundSecurityValue = realityEnabled
-			? "reality"
-			: tlsEnabled
+		const stream = new StreamSettings(
+			typedProtocol === Protocols.Hysteria ? "hysteria" : (network ?? "tcp"),
+		);
+		const security: OutboundSecurityValue =
+			typedProtocol === Protocols.Hysteria
 				? "tls"
-				: "none";
+				: realityEnabled
+					? "reality"
+					: tlsEnabled
+						? "tls"
+						: "none";
 		stream.security = security;
-		stream.network = network ?? "tcp";
+		stream.network =
+			typedProtocol === Protocols.Hysteria ? "hysteria" : (network ?? "tcp");
 		const settings = Outbound.Settings.getSettings(typedProtocol) ?? {};
 		if (
 			typedProtocol === Protocols.VLESS &&
@@ -696,6 +727,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 					defaultValues.xhttpXmuxHKeepAlivePeriod,
 			);
 		}
+		if (mapped.network === "hysteria") {
+			const hysteriaSettings =
+				streamRaw?.hysteria ?? streamRaw?.hysteriaSettings ?? {};
+			mapped.hysteriaVersion = Number(
+				hysteriaSettings?.version ?? defaultValues.hysteriaVersion,
+			);
+			mapped.hysteriaAuth = hysteriaSettings?.auth ?? "";
+			mapped.hysteriaUdpIdleTimeout = Number(
+				hysteriaSettings?.udpIdleTimeout ??
+					defaultValues.hysteriaUdpIdleTimeout,
+			);
+			mapped.tlsEnabled = true;
+			mapped.realityEnabled = false;
+		}
 
 		if (outbound?.hasAddressPort()) {
 			mapped.address =
@@ -738,6 +783,18 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				mapped.address = settings?.address ?? mapped.address;
 				mapped.port = Number(settings?.port ?? mapped.port);
 				mapped.ssIvCheck = (settings as any)?.ivCheck ?? false;
+				break;
+			}
+			case Protocols.Hysteria: {
+				const settings = outbound.settings as Outbound.HysteriaSettings;
+				mapped.address = settings?.address ?? mapped.address;
+				mapped.port = Number(settings?.port ?? mapped.port);
+				mapped.hysteriaVersion = Number(
+					settings?.version ?? mapped.hysteriaVersion,
+				);
+				mapped.network = "hysteria";
+				mapped.tlsEnabled = true;
+				mapped.realityEnabled = false;
 				break;
 			}
 			case Protocols.Socks:
@@ -947,6 +1004,21 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	}, [canTls, setValue, tlsEnabled]);
 
 	useEffect(() => {
+		if (typedProtocol !== Protocols.Hysteria) {
+			return;
+		}
+		if (network !== "hysteria") {
+			setValue("network", "hysteria");
+		}
+		if (!tlsEnabled) {
+			setValue("tlsEnabled", true);
+		}
+		if (realityEnabled) {
+			setValue("realityEnabled", false);
+		}
+	}, [network, realityEnabled, setValue, tlsEnabled, typedProtocol]);
+
+	useEffect(() => {
 		if (!canReality && realityEnabled) {
 			setValue("realityEnabled", false);
 			setValue("realityServerName", "");
@@ -990,6 +1062,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			Protocols.VMess,
 			Protocols.Trojan,
 			Protocols.Shadowsocks,
+			Protocols.Hysteria,
 			Protocols.Socks,
 			Protocols.HTTP,
 			Protocols.Freedom,
@@ -1318,6 +1391,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																})}
 															/>
 														</FormControl>
+													) : typedProtocol === Protocols.Hysteria ? (
+														<FormControl>
+															<FormLabel>
+																{t("pages.outbound.hysteriaAuth", "Auth")}
+															</FormLabel>
+															<Input
+																size="sm"
+																placeholder="auth"
+																{...register("hysteriaAuth")}
+															/>
+														</FormControl>
 													) : supportsUserPass ? (
 														<HStack flex="1" spacing={3} flexWrap="wrap">
 															<FormControl minW="180px">
@@ -1380,6 +1464,44 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															</FormLabel>
 														</FormControl>
 													</>
+												)}
+												{typedProtocol === Protocols.Hysteria && (
+													<HStack spacing={3} flexWrap="wrap">
+														<FormControl minW="180px">
+															<FormLabel>
+																{t(
+																	"pages.outbound.hysteriaVersion",
+																	"Version",
+																)}
+															</FormLabel>
+															<Input
+																size="sm"
+																type="number"
+																min={1}
+																max={2}
+																{...register("hysteriaVersion", {
+																	valueAsNumber: true,
+																})}
+															/>
+														</FormControl>
+														<FormControl minW="180px">
+															<FormLabel>
+																{t(
+																	"pages.outbound.hysteriaUdpIdleTimeout",
+																	"UDP idle timeout",
+																)}
+															</FormLabel>
+															<Input
+																size="sm"
+																type="number"
+																min={2}
+																max={600}
+																{...register("hysteriaUdpIdleTimeout", {
+																	valueAsNumber: true,
+																})}
+															/>
+														</FormControl>
+													</HStack>
 												)}
 												{typedProtocol === Protocols.VLESS && (
 													<>

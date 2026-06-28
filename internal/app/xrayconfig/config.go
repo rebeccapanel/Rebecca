@@ -20,6 +20,7 @@ var proxyProtocols = map[string]struct{}{
 	"vless":       {},
 	"trojan":      {},
 	"shadowsocks": {},
+	"hysteria":    {},
 }
 
 var (
@@ -37,6 +38,7 @@ var (
 		"httpupgrade": {},
 		"splithttp":   {},
 		"xhttp":       {},
+		"hysteria":    {},
 	}
 	realityShortIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{2,16}$`)
 	xPaddingBytesPattern  = regexp.MustCompile(`^\d+(-\d+)?$`)
@@ -228,6 +230,9 @@ func validateExecutableInbound(inbound map[string]any) error {
 	if _, ok := validInboundNetworks[network]; !ok {
 		return fmt.Errorf("invalid inbound %q: unsupported stream network %q", tag, network)
 	}
+	if protocol == "hysteria" && network != "hysteria" {
+		return fmt.Errorf("invalid inbound %q: hysteria protocol requires hysteria stream network", tag)
+	}
 	networkSettings := mapValue(stream[networkSettingsKey(network)])
 	if err := validateNetworkSettings(tag, network, networkSettings); err != nil {
 		return err
@@ -236,6 +241,9 @@ func validateExecutableInbound(inbound map[string]any) error {
 	security := strings.ToLower(strings.TrimSpace(stringValue(stream["security"])))
 	switch security {
 	case "", "none":
+		if protocol == "hysteria" {
+			return fmt.Errorf("invalid inbound %q: hysteria protocol requires TLS security", tag)
+		}
 		return nil
 	case "tls":
 		return nil

@@ -25,6 +25,7 @@ var proxyProtocols = map[string]struct{}{
 	"vless":       {},
 	"trojan":      {},
 	"shadowsocks": {},
+	"hysteria":    {},
 }
 
 type configHost struct {
@@ -358,10 +359,12 @@ func mergeResolvedInboundMetadata(target ResolvedInbound, source ResolvedInbound
 	}
 	for _, key := range []string{
 		"tls", "sni", "host", "path", "header_type", "fp", "alpn", "ais", "allowinsecure",
+		"ech", "echConfigList", "vcn", "verifyPeerCertByName", "pinSHA256", "pinnedPeerCertSha256",
 		"pbk", "publicKey", "public_key", "sids", "sid", "shortIds", "shortId", "spx",
 		"fragment_setting", "noise_setting",
 		"scMaxBufferedPosts", "scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs",
 		"scStreamUpServerSecs", "xPaddingBytes", "noSSEHeader", "noGRPCHeader", "keepAlivePeriod", "xmux", "mode",
+		"hysteria_version", "hysteria_auth", "hysteria_udp_idle_timeout", "obfs", "obfs-password", "obfsPassword", "mport",
 	} {
 		if !inboundValueEmpty(target[key]) {
 			continue
@@ -682,7 +685,7 @@ func runtimeProxySettings(settings map[string]any, protocol string, credentialKe
 		} else {
 			return nil, fmt.Errorf("UUID is required for proxy type %s", protocol)
 		}
-	case "trojan", "shadowsocks":
+	case "trojan", "shadowsocks", "hysteria":
 		if stringValue(data["password"]) == "" {
 			if normalizedKey != "" {
 				data["password"] = keyToPassword(normalizedKey, protocol)
@@ -693,6 +696,15 @@ func runtimeProxySettings(settings map[string]any, protocol string, credentialKe
 				}
 				data["password"] = password
 			}
+		}
+		if protocol == "hysteria" {
+			if stringValue(data["auth"]) == "" {
+				data["auth"] = stringValue(data["password"])
+			}
+			delete(data, "password")
+			delete(data, "method")
+			delete(data, "iv_check")
+			break
 		}
 		if protocol == "shadowsocks" {
 			if stringValue(data["method"]) == "" {
@@ -820,6 +832,8 @@ func buildShareLink(remark string, address string, inbound ResolvedInbound, sett
 		return trojanShareLink(remark, formatIPForURL(address), path, inbound, settings), nil
 	case "shadowsocks":
 		return shadowsocksShareLink(remark, formatIPForURL(address), inbound, settings), nil
+	case "hysteria":
+		return hysteriaShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	default:
 		return "", nil
 	}
@@ -959,6 +973,52 @@ func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound
 	return "ss://" + base64.StdEncoding.EncodeToString([]byte(userInfo)) + "@" + address + ":" + portString(inbound["port"]) + query + "#" + percentEncode(remark, "/", false)
 }
 
+func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
+	auth := firstNonEmptyString(settings["auth"], settings["password"])
+	if auth == "" {
+		return ""
+	}
+	scheme := "hysteria2"
+	if intValue(inbound["hysteria_version"]) == 1 || intValue(settings["version"]) == 1 {
+		scheme = "hysteria"
+	}
+	params := []queryParam{{"security", "tls"}}
+	if fp := stringValue(inbound["fp"]); fp != "" {
+		params = append(params, queryParam{"fp", fp})
+	}
+	if alpn := stringValue(inbound["alpn"]); alpn != "" {
+		params = append(params, queryParam{"alpn", alpn})
+	}
+	if ech := firstNonEmptyString(inbound["ech"], inbound["echConfigList"]); ech != "" {
+		params = append(params, queryParam{"ech", ech})
+	}
+	if sni := firstNonEmptyString(inbound["sni"], inbound["serverName"]); sni != "" {
+		params = append(params, queryParam{"sni", sni})
+	}
+	if vcn := firstNonEmptyString(inbound["vcn"], inbound["verifyPeerCertByName"]); vcn != "" {
+		params = append(params, queryParam{"vcn", vcn})
+	}
+	if pin := firstNonEmptyString(inbound["pinSHA256"], inbound["pinnedPeerCertSha256"]); pin != "" {
+		pins := splitCommaLines(pin)
+		for i, value := range pins {
+			pins[i] = hysteriaPinHex(value)
+		}
+		if len(pins) > 0 {
+			params = append(params, queryParam{"pinSHA256", strings.Join(pins, ",")})
+		}
+	}
+	if obfs := firstNonEmptyString(inbound["obfs"], inbound["hysteria_obfs"]); obfs != "" {
+		params = append(params, queryParam{"obfs", obfs})
+	}
+	if obfsPassword := firstNonEmptyString(inbound["obfs-password"], inbound["obfsPassword"], inbound["hysteria_obfs_password"]); obfsPassword != "" {
+		params = append(params, queryParam{"obfs-password", obfsPassword})
+	}
+	if mport := firstNonEmptyString(inbound["mport"], inbound["hysteria_mport"]); mport != "" {
+		params = append(params, queryParam{"mport", mport})
+	}
+	return scheme + "://" + percentEncode(auth, "", false) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
+}
+
 func appendNetworkParams(params []queryParam, netValue string, path string, inbound ResolvedInbound) []queryParam {
 	host := stringValue(inbound["host"])
 	switch netValue {
@@ -1073,6 +1133,18 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		if alpn := firstNonEmptyString(joinStringList(tlsSettings["alpn"]), joinStringList(tlsMeta["alpn"])); alpn != "" {
 			resolved["alpn"] = alpn
 		}
+		if ech := firstNonEmptyString(tlsMeta["echConfigList"], tlsSettings["echConfigList"]); ech != "" {
+			resolved["ech"] = ech
+			resolved["echConfigList"] = ech
+		}
+		if vcn := firstNonEmptyString(tlsMeta["verifyPeerCertByName"], tlsSettings["verifyPeerCertByName"]); vcn != "" {
+			resolved["vcn"] = vcn
+			resolved["verifyPeerCertByName"] = vcn
+		}
+		if pin := firstNonEmptyString(joinStringList(tlsMeta["pinnedPeerCertSha256"]), joinStringList(tlsSettings["pinnedPeerCertSha256"]), tlsMeta["pinnedPeerCertSha256"], tlsSettings["pinnedPeerCertSha256"]); pin != "" {
+			resolved["pinSHA256"] = pin
+			resolved["pinnedPeerCertSha256"] = pin
+		}
 		if value, ok := firstPresent(tlsMeta, tlsSettings, "allowInsecure"); ok {
 			resolved["ais"] = value
 			resolved["allowinsecure"] = boolValue(value)
@@ -1114,6 +1186,17 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	network := stringValue(resolved["network"])
 	networkSettings := mapValue(stream[networkSettingsKey(network)])
 	switch network {
+	case "hysteria":
+		hysteriaSettings := mapValue(stream["hysteriaSettings"])
+		if version := intValue(firstNonEmptyValue(settings["version"], hysteriaSettings["version"])); version > 0 {
+			resolved["hysteria_version"] = version
+		}
+		if auth := stringValue(hysteriaSettings["auth"]); auth != "" {
+			resolved["hysteria_auth"] = auth
+		}
+		if timeout := intValue(hysteriaSettings["udpIdleTimeout"]); timeout > 0 {
+			resolved["hysteria_udp_idle_timeout"] = timeout
+		}
 	case "tcp", "raw":
 		header := mapValue(networkSettings["header"])
 		resolved["header_type"] = stringValue(header["type"])
@@ -1331,12 +1414,51 @@ func firstStringList(value any) string {
 	return values[0]
 }
 
+func splitCommaLines(value string) []string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r'
+	})
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if cleaned := strings.TrimSpace(part); cleaned != "" {
+			result = append(result, cleaned)
+		}
+	}
+	return result
+}
+
 func joinStringList(value any) string {
 	values := stringList(value)
 	if len(values) == 0 {
 		return ""
 	}
 	return strings.Join(values, ",")
+}
+
+func firstNonEmptyValue(values ...any) any {
+	for _, value := range values {
+		if !inboundValueEmpty(value) {
+			return value
+		}
+	}
+	return nil
+}
+
+func hysteriaPinHex(pin string) string {
+	stripped := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(pin), ":", ""))
+	if len(stripped) == 64 {
+		if _, err := hex.DecodeString(stripped); err == nil {
+			return stripped
+		}
+	}
+	decoded, err := base64.RawStdEncoding.DecodeString(strings.TrimSpace(pin))
+	if err != nil {
+		decoded, err = base64.StdEncoding.DecodeString(strings.TrimSpace(pin))
+	}
+	if err != nil || len(decoded) != 32 {
+		return pin
+	}
+	return hex.EncodeToString(decoded)
 }
 
 func firstCSV(value string) string {
