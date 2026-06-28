@@ -18,7 +18,7 @@ import {
 	ChevronDownIcon,
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { type FC, type MouseEvent, useMemo, useState } from "react";
+import { type FC, type MouseEvent, useId, useMemo, useState } from "react";
 
 const Check = chakra(CheckIcon, { baseStyle: { w: 4, h: 4 } });
 const ChevronDown = chakra(ChevronDownIcon, { baseStyle: { w: 4, h: 4 } });
@@ -84,6 +84,7 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 	value,
 	width,
 }) => {
+	const inputId = useId();
 	const [search, setSearch] = useState("");
 	const normalizedOptions = useMemo(
 		() => options.map(normalizeOption),
@@ -198,6 +199,8 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 					}}
 				>
 					<Input
+						id={`${inputId}-search`}
+						name={`${inputId}-search-${mode}`}
 						size="sm"
 						h="30px"
 						mb={1}
@@ -205,8 +208,20 @@ export const SearchableTagSelect: FC<SearchableTagSelectProps> = ({
 						value={search}
 						onChange={(event) => setSearch(event.target.value)}
 						placeholder={searchPlaceholder}
+						autoComplete="off"
+						autoCorrect="off"
+						autoCapitalize="none"
+						spellCheck={false}
+						role="combobox"
+						aria-autocomplete="list"
+						data-lpignore="true"
+						data-1p-ignore="true"
+						data-form-type="other"
+						inputMode="text"
+						list={`${inputId}-empty-list`}
 						autoFocus
 					/>
+					<datalist id={`${inputId}-empty-list`} />
 					<VStack align="stretch" spacing={0.5}>
 						{filteredOptions.length === 0 ? (
 							<Box px={2} py={2}>
