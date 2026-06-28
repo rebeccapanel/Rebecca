@@ -95,6 +95,7 @@ import { DnsPresetsModal } from "../components/DnsPresetsModal";
 import { FakeDnsModal } from "../components/FakeDnsModal";
 import { JsonEditor } from "../components/JsonEditor";
 import { OutboundModal } from "../components/OutboundModal";
+import { OutboundSubscriptionsModal } from "../components/OutboundSubscriptionsModal";
 import {
 	type ReverseFormValues,
 	ReverseModal,
@@ -591,6 +592,11 @@ export const CoreSettingsPage: FC = () => {
 		onOpen: onWarpOpen,
 		onClose: onWarpClose,
 	} = useDisclosure();
+	const {
+		isOpen: isOutboundSubsOpen,
+		onOpen: onOutboundSubsOpen,
+		onClose: onOutboundSubsClose,
+	} = useDisclosure();
 
 	const form = useForm({
 		defaultValues: {
@@ -629,6 +635,11 @@ export const CoreSettingsPage: FC = () => {
 	const [outboundTestStates, setOutboundTestStates] = useState<
 		Record<number, OutboundTestState>
 	>({});
+	const [subscriptionOutbounds, setSubscriptionOutbounds] = useState<
+		OutboundJson[]
+	>([]);
+	const [subscriptionOutboundTestStates, setSubscriptionOutboundTestStates] =
+		useState<Record<string, OutboundTestState>>({});
 	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
 	const [editingOutboundIndex, setEditingOutboundIndex] = useState<
 		number | null
@@ -1138,6 +1149,15 @@ export const CoreSettingsPage: FC = () => {
 		);
 		if (response?.success) {
 			setOutboundsTraffic(response.obj);
+		}
+	}, []);
+
+	const fetchActiveSubscriptionOutbounds = useCallback(async () => {
+		const response = await apiFetch<{ success: boolean; obj: OutboundJson[] }>(
+			"/panel/xray/outbound-subs/active",
+		);
+		if (response?.success) {
+			setSubscriptionOutbounds(Array.isArray(response.obj) ? response.obj : []);
 		}
 	}, []);
 
@@ -1825,6 +1845,110 @@ export const CoreSettingsPage: FC = () => {
 		}
 	};
 
+	const testSubscriptionOutbound = async (outbound: OutboundJson, index: number) => {
+		const stateKey = String(outbound.tag ?? `subscription-${index}`);
+		if (!outbound) return;
+		if (isMasterTarget) {
+			toast({
+				title: outboundNodeTargetRequiredMessage,
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+		const outboundTag = String(outbound.tag ?? "").trim();
+		const protocol = String(outbound.protocol ?? "")
+			.trim()
+			.toLowerCase();
+		if (protocol === "blackhole" || outboundTag.toLowerCase() === "blocked") {
+			toast({
+				title: t(
+					"pages.xray.outbound.testBlocked",
+					"Blocked/blackhole outbound cannot be tested",
+				),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			return;
+		}
+		if (
+			(outboundTestType === "tcp" || outboundTestType === "icmp") &&
+			findOutboundAddress(outbound).length === 0
+		) {
+			toast({
+				title: outboundAddressRequiredMessage,
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+		setSubscriptionOutboundTestStates((prev) => ({
+			...prev,
+			[stateKey]: { testing: true, result: null },
+		}));
+		try {
+			const allOutbounds = [...getOutbounds(), ...subscriptionOutbounds];
+			const response = await apiFetch<{
+				success: boolean;
+				obj?: OutboundTestResult;
+				msg?: string;
+			}>("/panel/xray/testOutbound", {
+				method: "POST",
+				body: {
+					outbound: JSON.stringify(outbound),
+					allOutbounds: JSON.stringify(allOutbounds),
+					target_id: selectedTarget,
+					test_type: outboundTestType,
+				},
+			});
+			const result = response?.obj;
+			if (response?.success && result) {
+				setSubscriptionOutboundTestStates((prev) => ({
+					...prev,
+					[stateKey]: { testing: false, result },
+				}));
+				return;
+			}
+			setSubscriptionOutboundTestStates((prev) => ({
+				...prev,
+				[stateKey]: {
+					testing: false,
+					result: {
+						success: false,
+						error:
+							response?.msg ||
+							t("pages.xray.outbound.testError", "Unable to test outbound"),
+					},
+				},
+			}));
+		} catch (error: any) {
+			const detail =
+				error?.response?._data?.detail ??
+				error?.data?.detail ??
+				error?.message ??
+				t("pages.xray.outbound.testError", "Unable to test outbound");
+			setSubscriptionOutboundTestStates((prev) => ({
+				...prev,
+				[stateKey]: {
+					testing: false,
+					result: {
+						success: false,
+						error:
+							typeof detail === "string"
+								? detail
+								: JSON.stringify(detail ?? "Unknown error"),
+					},
+				},
+			}));
+		}
+	};
+
 	const findOutboundTraffic = (outbound: any, index: number) => {
 		const outboundId = outboundIds[index];
 		const targetTraffic = outboundsTraffic.filter(
@@ -1879,10 +2003,17 @@ export const CoreSettingsPage: FC = () => {
 		fetchOutboundsTraffic().catch(() => {
 			if (active) setOutboundsTraffic([]);
 		});
+		fetchActiveSubscriptionOutbounds().catch(() => {
+			if (active) setSubscriptionOutbounds([]);
+		});
 		return () => {
 			active = false;
 		};
-	}, [canManageXraySettings, fetchOutboundsTraffic]);
+	}, [
+		canManageXraySettings,
+		fetchActiveSubscriptionOutbounds,
+		fetchOutboundsTraffic,
+	]);
 
 	const canonicalRoutingRules = useMemo<RoutingRule[]>(
 		() =>
@@ -1909,11 +2040,12 @@ export const CoreSettingsPage: FC = () => {
 			Array.from(
 				new Set(
 					canonicalOutbounds
+						.concat(subscriptionOutbounds)
 						.map((outbound: any) => outbound?.tag)
 						.filter((tag: string | undefined): tag is string => Boolean(tag)),
 				),
 			),
-		[canonicalOutbounds],
+		[canonicalOutbounds, subscriptionOutbounds],
 	);
 
 	const excludedBalancerOutboundTags = useMemo<string[]>(
@@ -3141,6 +3273,171 @@ export const CoreSettingsPage: FC = () => {
 									</Tbody>
 								</TableGrid>
 							</TableCard>
+							{subscriptionOutbounds.length > 0 && (
+								<TableCard>
+									<VStack align="stretch" spacing={3}>
+										<Box>
+											<Text fontWeight="semibold">
+												{t(
+													"pages.xray.outboundSub.fromSubsTitle",
+													"Subscription outbounds",
+												)}
+											</Text>
+											<Text color="gray.500" fontSize="xs">
+												{t(
+													"pages.xray.outboundSub.fromSubsDesc",
+													"These outbounds are fetched from outbound subscriptions and merged into node runtime config.",
+												)}
+											</Text>
+										</Box>
+										<TableGrid minW="780px">
+											<Thead>
+												<Tr>
+													<Th>#</Th>
+													<Th>{t("pages.xray.outbound.tag")}</Th>
+													<Th>{t("protocol")}</Th>
+													<Th>{t("pages.xray.outbound.address")}</Th>
+													<Th>{t("pages.inbounds.traffic")}</Th>
+													<Th>{t("pages.xray.outbound.test", "Test")}</Th>
+												</Tr>
+											</Thead>
+											<Tbody>
+												{subscriptionOutbounds.map((outbound, index) => {
+													const stateKey = String(
+														outbound.tag ?? `subscription-${index}`,
+													);
+													const state = subscriptionOutboundTestStates[stateKey];
+													const addresses = findOutboundAddress(outbound);
+													const traffic = outboundsTraffic
+														.filter(
+															(item) =>
+																(item.target_id || "master") === selectedTarget,
+														)
+														.find((item) => item.tag === outbound.tag);
+													const requiresOutboundAddress =
+														outboundTestType === "tcp" ||
+														outboundTestType === "icmp";
+													const disabledReason = isMasterTarget
+														? outboundNodeTargetRequiredMessage
+														: requiresOutboundAddress && addresses.length === 0
+															? outboundAddressRequiredMessage
+															: "";
+													return (
+														<Tr key={`${stateKey}-${index}`}>
+															<Td>{index + 1}</Td>
+															<Td>
+																<Text fontWeight="semibold">
+																	{String(outbound.tag ?? "-")}
+																</Text>
+																<Tag size="sm" colorScheme="green">
+																	{t(
+																		"pages.xray.outboundSub.sourceBadge",
+																		"subscription",
+																	)}
+																</Tag>
+															</Td>
+															<Td>
+																<Tag colorScheme="purple">
+																	{String(outbound.protocol ?? "-")}
+																</Tag>
+																{outbound.streamSettings?.network && (
+																	<Tag colorScheme="blue">
+																		{String(outbound.streamSettings.network)}
+																	</Tag>
+																)}
+																{outbound.streamSettings?.security &&
+																	outbound.streamSettings.security !== "none" && (
+																		<Tag colorScheme="green">
+																			{String(outbound.streamSettings.security)}
+																		</Tag>
+																	)}
+															</Td>
+															<Td>
+																{addresses.length === 0 ? (
+																	<Text color="gray.500">-</Text>
+																) : (
+																	addresses.map((addr: string) => (
+																		<Text key={addr}>{addr}</Text>
+																	))
+																)}
+															</Td>
+															<Td>
+																<Tag colorScheme="green">
+																	{traffic
+																		? `${SizeFormatter.sizeFormat(traffic.up)} / ${SizeFormatter.sizeFormat(traffic.down)}`
+																		: `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`}
+																</Tag>
+															</Td>
+															<Td>
+																<VStack align="start" spacing={1}>
+																	<Tooltip
+																		hasArrow
+																		isDisabled={!disabledReason}
+																		label={disabledReason}
+																		shouldWrapChildren
+																	>
+																		<IconButton
+																			aria-label={t(
+																				"pages.xray.outbound.test",
+																				"Test",
+																			)}
+																			icon={<BoltIconStyled />}
+																			size="xs"
+																			variant="ghost"
+																			colorScheme="yellow"
+																			isLoading={Boolean(state?.testing)}
+																			isDisabled={
+																				Boolean(disabledReason) ||
+																				String(outbound.protocol ?? "")
+																					.toLowerCase()
+																					.trim() === "blackhole" ||
+																				String(outbound.tag ?? "")
+																					.toLowerCase()
+																					.trim() === "blocked"
+																			}
+																			onClick={() =>
+																				testSubscriptionOutbound(outbound, index)
+																			}
+																		/>
+																	</Tooltip>
+																	{state?.result ? (
+																		state.result.success ? (
+																			<Tooltip
+																				label={
+																					state.result.output ||
+																					outboundTestResultLabel(state.result)
+																				}
+																				whiteSpace="pre-wrap"
+																			>
+																				<Tag colorScheme="green">
+																					{outboundTestResultLabel(state.result)}
+																				</Tag>
+																			</Tooltip>
+																		) : (
+																			<Tooltip label={state.result.error || "-"}>
+																				<Tag colorScheme="red">
+																					{t(
+																						"pages.xray.outbound.testFailedBadge",
+																						"Failed",
+																					)}
+																				</Tag>
+																			</Tooltip>
+																		)
+																	) : (
+																		<Text fontSize="xs" color="gray.500">
+																			-
+																		</Text>
+																	)}
+																</VStack>
+															</Td>
+														</Tr>
+													);
+												})}
+											</Tbody>
+										</TableGrid>
+									</VStack>
+								</TableCard>
+							)}
 						</VStack>
 					</TabPanel>
 					<TabPanel p={0}>
@@ -3162,6 +3459,17 @@ export const CoreSettingsPage: FC = () => {
 									{warpExists
 										? t("pages.xray.warp.manage", "Manage WARP")
 										: t("pages.xray.warp.create", "Create WARP")}
+								</Button>
+								<Button
+									leftIcon={<CloudArrowUpIcon width={14} />}
+									size="xs"
+									variant="ghost"
+									onClick={onOutboundSubsOpen}
+								>
+									{t(
+										"pages.xray.outboundSub.manage",
+										"Outbound subscriptions",
+									)}
 								</Button>
 								<Button
 									leftIcon={<ReloadIconStyled />}
@@ -4217,6 +4525,14 @@ export const CoreSettingsPage: FC = () => {
 				initialOutbound={warpOutbound}
 				onSave={handleWarpSave}
 				onDelete={handleWarpDelete}
+			/>
+			<OutboundSubscriptionsModal
+				isOpen={isOutboundSubsOpen}
+				onClose={onOutboundSubsClose}
+				onChanged={async () => {
+					await fetchActiveSubscriptionOutbounds();
+					await fetchOutboundsTraffic();
+				}}
 			/>
 			<BalancerModal
 				isOpen={isBalancerOpen}

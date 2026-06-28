@@ -18,6 +18,7 @@ import (
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
+	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
 	systemapp "github.com/rebeccapanel/rebecca/internal/app/system"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
@@ -42,6 +43,7 @@ type Server struct {
 	usageService    usage.Service
 	userService     userapp.Service
 	warpService     warpapp.Service
+	outboundSubs    outboundsubapp.Service
 	configRepo      xrayconfig.Repository
 	settingsRepo    settingsapp.Repository
 	telegramRepo    telegramapp.Repository
@@ -84,6 +86,7 @@ func New(cfg Config) (*Server, error) {
 		RetryInterval: parseWorkerInterval(cfg.WebhookRetryInterval, 30*time.Second),
 	})
 	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
+	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		FallbackInboundTag:  cfg.XrayFallbackInboundTag,
 		ExcludedInboundTags: cfg.XrayExcludeInboundTags,
@@ -105,6 +108,7 @@ func New(cfg Config) (*Server, error) {
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient(cfg.WarpAPIBase)),
+		outboundSubs:   outboundSubs,
 		configRepo:     configRepo,
 		settingsRepo:   settingsRepo,
 		telegramRepo:   telegramRepo,
@@ -130,6 +134,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runTelegramBackupScheduler(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)
+		go s.runOutboundSubscriptionRefresher(ctx)
 	})
 }
 

@@ -284,9 +284,13 @@ func syncOutboundTrafficMetadataTx(
 }
 
 func (s *Server) outboundConfigTargets(ctx context.Context) ([]outboundTrafficTarget, error) {
-	master, err := s.configRepo.MasterRawConfig(ctx)
+	masterRaw, err := s.configRepo.MasterRawConfig(ctx)
 	if err != nil {
 		return nil, err
+	}
+	master := masterRaw
+	if merged, mergeErr := s.outboundSubs.MergeActiveIntoConfig(ctx, master); mergeErr == nil {
+		master = merged
 	}
 	targets := []outboundTrafficTarget{{
 		ID:     xrayconfig.MasterTargetID,
@@ -306,11 +310,14 @@ func (s *Server) outboundConfigTargets(ctx context.Context) ([]outboundTrafficTa
 		if err := rows.Scan(&nodeID, &name, &mode, &raw); err != nil {
 			return nil, err
 		}
-		effective := master
+		effective := masterRaw
 		if strings.EqualFold(strings.TrimSpace(mode), xrayconfig.ConfigModeCustom) && strings.TrimSpace(raw.String) != "" {
 			if parsed := outboundJSONMap(raw.String); len(parsed) > 0 {
 				effective = parsed
 			}
+		}
+		if merged, mergeErr := s.outboundSubs.MergeActiveIntoConfig(ctx, effective); mergeErr == nil {
+			effective = merged
 		}
 		id := nodeID
 		targetID := xrayconfig.NodeTargetID(nodeID)

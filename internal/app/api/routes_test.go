@@ -24,6 +24,8 @@ func TestRoutesMatchProtectedGroups(t *testing.T) {
 		"/api/settings/telegram/test",
 		"/api/settings/subscriptions/templates/home_page_template",
 		"/api/settings/database/3xui/jobs/abc",
+		"/api/panel/xray/outbound-subs",
+		"/api/panel/xray/outbound-subs/1/refresh",
 		"/api/v2/services/1/users/actions",
 		"/api/v2/users/example",
 		"/api/user/example/reset",

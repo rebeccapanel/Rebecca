@@ -48,6 +48,9 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	if err != nil {
 		return "", err
 	}
+	if merged, err := c.outboundSubs.MergeActiveIntoConfig(ctx, raw); err == nil {
+		raw = merged
+	}
 	applyRuntimeAPI(raw, node.APIPort)
 	if err := inlineTLSCertificateFiles(raw); err != nil {
 		return "", err

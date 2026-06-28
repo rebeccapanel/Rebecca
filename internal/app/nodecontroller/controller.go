@@ -14,12 +14,14 @@ import (
 
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/nodeclient"
+	outboundsubapp "github.com/rebeccapanel/rebecca/internal/app/outboundsub"
 	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 	"google.golang.org/grpc"
 )
 
 type Controller struct {
 	repo          Repository
+	outboundSubs  outboundsubapp.Service
 	protocolCache *sync.Map
 }
 
@@ -29,7 +31,11 @@ const (
 )
 
 func NewController(repo Repository) Controller {
-	return Controller{repo: repo, protocolCache: &sync.Map{}}
+	return Controller{
+		repo:          repo,
+		outboundSubs:  outboundsubapp.NewService(repo.db, repo.dialect),
+		protocolCache: &sync.Map{},
+	}
 }
 
 func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, error) {

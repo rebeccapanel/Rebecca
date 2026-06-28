@@ -143,6 +143,8 @@ func (s *Server) registerUserRoutes(r chi.Router) {
 }
 
 func (s *Server) registerPanelXrayRoutes(r chi.Router) {
+	r.HandleFunc("/panel/xray/outbound-subs/*", s.requireSudo(s.handleOutboundSubscriptionPath))
+	r.HandleFunc("/panel/xray/outbound-subs", s.requireSudo(s.handleOutboundSubscriptions))
 	r.HandleFunc("/panel/xray/testOutbound", s.requireSudo(s.handleOutboundTest))
 	r.HandleFunc("/panel/xray/getOutboundsTraffic", s.requireSudo(s.handleOutboundsTraffic))
 	r.HandleFunc("/panel/xray/resetOutboundsTraffic", s.requireSudo(s.handleResetOutboundsTraffic))
