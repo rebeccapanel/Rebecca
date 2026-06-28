@@ -169,7 +169,7 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
 		if node.ID != 0 {
-			if result, legacyErr := c.legacyMetrics(ctx, node, false); legacyErr == nil {
+			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
 				return result, nil
 			} else {
 				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
@@ -184,10 +184,35 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 		result := runtimeResult(node, nil, nil)
 		result.Status = "connected"
 		result.Message = friendlyNodeError("metrics", req.NodeID, err).Error()
+		if setErr := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); setErr != nil {
+			return RuntimeResult{}, setErr
+		}
 		return result, nil
 	}
 	result := runtimeResult(node, res.GetRuntime(), res)
+	if err := c.repo.SetConnected(ctx, node.ID, result.XrayVersion, result.Message); err != nil {
+		return RuntimeResult{}, err
+	}
 	result.Status = "connected"
+	return result, nil
+}
+
+func (c Controller) RecoverNodes(ctx context.Context, req RecoverNodesRequest) (RecoverNodesResult, error) {
+	nodeIDs, err := c.repo.RecoverableNodeIDs(ctx, req.Limit)
+	if err != nil {
+		return RecoverNodesResult{}, err
+	}
+	result := RecoverNodesResult{Checked: len(nodeIDs)}
+	for _, nodeID := range nodeIDs {
+		metricsCtx, cancel := WithDefaultTimeout(ctx)
+		_, err := c.Metrics(metricsCtx, Request{NodeID: nodeID})
+		cancel()
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %v", nodeID, err))
+			continue
+		}
+		result.Recovered++
+	}
 	return result, nil
 }
 

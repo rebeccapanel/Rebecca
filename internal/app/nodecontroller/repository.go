@@ -317,6 +317,41 @@ func (r Repository) SetError(ctx context.Context, nodeID int64, message string) 
 	return r.updateStatus(ctx, nodeID, "error", message, "")
 }
 
+func (r Repository) RecoverableNodeIDs(ctx context.Context, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id
+FROM nodes
+WHERE LOWER(COALESCE(status, '')) IN ('error', 'connecting')
+ORDER BY
+	CASE WHEN last_status_change IS NULL THEN 1 ELSE 0 END,
+	last_status_change,
+	id
+LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]int64, 0, limit)
+	for rows.Next() {
+		var nodeID int64
+		if err := rows.Scan(&nodeID); err != nil {
+			return nil, err
+		}
+		result = append(result, nodeID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (r Repository) PendingOperations(ctx context.Context, nodeID int64, limit int) ([]OperationRow, error) {
 	if limit <= 0 {
 		limit = 50
@@ -624,10 +659,10 @@ func (r Repository) updateStatus(ctx context.Context, nodeID int64, status strin
 	_, err := r.db.ExecContext(
 		ctx,
 		`UPDATE nodes
-SET status = ?,
+SET last_status_change = CASE WHEN COALESCE(status, '') <> ? THEN ? ELSE last_status_change END,
+    status = ?,
     message = ?,
-    xray_version = COALESCE(NULLIF(?, ''), xray_version),
-    last_status_change = CASE WHEN COALESCE(status, '') <> ? THEN ? ELSE last_status_change END
+    xray_version = COALESCE(NULLIF(?, ''), xray_version)
 WHERE id = ?
   AND (
     COALESCE(status, '') <> ?
@@ -635,10 +670,10 @@ WHERE id = ?
     OR (? <> '' AND COALESCE(xray_version, '') <> ?)
   )`,
 		status,
+		r.timeArg(time.Now().UTC()),
+		status,
 		nullableString(message),
 		version,
-		status,
-		r.timeArg(time.Now().UTC()),
 		nodeID,
 		status,
 		strings.TrimSpace(message),

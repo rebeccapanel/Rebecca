@@ -33,6 +33,16 @@ type ProcessOperationsResult struct {
 	Failed    int `json:"failed"`
 }
 
+type RecoverNodesRequest struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+type RecoverNodesResult struct {
+	Checked   int      `json:"checked"`
+	Recovered int      `json:"recovered"`
+	Errors    []string `json:"errors,omitempty"`
+}
+
 type CollectUsageRequest struct {
 	NodeID                   int64 `json:"node_id,omitempty"`
 	Limit                    int   `json:"limit,omitempty"`

@@ -784,6 +784,42 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1`, 1)
 }
 
+func TestRepositoryRecoverableNodeIDsOnlyReturnsStaleConnectingAndErrorNodes(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "node-recovery.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	status TEXT,
+	last_status_change DATETIME
+);
+INSERT INTO nodes (id, status, last_status_change)
+VALUES
+	(1, 'connected', '2026-06-26 00:00:01'),
+	(2, 'error', '2026-06-26 00:00:03'),
+	(3, 'connecting', '2026-06-26 00:00:02'),
+	(4, 'disabled', '2026-06-26 00:00:00'),
+	(5, 'limited', '2026-06-26 00:00:04');
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	nodeIDs, err := repo.RecoverableNodeIDs(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodeIDs) != 2 || nodeIDs[0] != 3 || nodeIDs[1] != 2 {
+		t.Fatalf("expected connecting/error nodes ordered by last status change, got %#v", nodeIDs)
+	}
+}
+
 func TestControllerMetricsDoesNotPersistDialError(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "metrics-live.db")+"?_pragma=busy_timeout(30000)")

@@ -74,10 +74,14 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 	}
 	inbounds := listOfMaps(raw["inbounds"])
 	var lastErr error
+	matched := 0
+	applied := 0
+	eligibleServiceUser := false
 	for _, runtimeUser := range users {
 		if !runtimeUser.ServiceID.Valid || runtimeUser.ServiceID.Int64 <= 0 {
 			continue
 		}
+		eligibleServiceUser = true
 		for _, inbound := range inbounds {
 			tag := stringValue(inbound["tag"])
 			protocol := strings.ToLower(stringValue(inbound["protocol"]))
@@ -87,6 +91,7 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 			if !serviceTags[runtimeUser.ServiceID.Int64][tag] {
 				continue
 			}
+			matched++
 			settings, err := userread.RuntimeProxySettings(runtimeUser.Settings, runtimeUser.Protocol, runtimeUser.CredentialKey, runtimeUser.Flow, masks)
 			if err != nil {
 				lastErr = err
@@ -111,11 +116,26 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 			})
 			if err != nil {
 				if isIgnorableLegacyAddError(err) {
+					applied++
 					continue
 				}
 				lastErr = err
+				continue
 			}
+			applied++
 		}
+	}
+	if applied == 0 {
+		if !eligibleServiceUser {
+			return nil
+		}
+		if lastErr != nil {
+			return lastErr
+		}
+		if matched == 0 {
+			return fmt.Errorf("no matching service inbounds found for user %d on node %d", operation.UserID.Int64, node.ID)
+		}
+		return fmt.Errorf("no service inbound user was applied for user %d on node %d", operation.UserID.Int64, node.ID)
 	}
 	return lastErr
 }
