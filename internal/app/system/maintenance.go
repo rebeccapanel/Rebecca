@@ -170,6 +170,14 @@ func (s *MaintenanceService) startOperation(action string, args []string, messag
 	onDone := func(err error) {
 		s.ops.Finish(op.ID, err)
 	}
+	if action == "restart" || action == "soft-reload" {
+		if err := s.Commands.Schedule(args); err != nil {
+			s.ops.Finish(op.ID, err)
+			return s.ops.Get(op.ID), err
+		}
+		s.ops.MarkRestarting(op.ID, "Command accepted. Waiting for Rebecca to restart.")
+		return s.ops.Get(op.ID), nil
+	}
 	if scheduler, ok := s.Commands.(ProgressCommandScheduler); ok {
 		if err := scheduler.ScheduleWithProgress(args, onOutput, onDone); err != nil {
 			s.ops.Finish(op.ID, err)
