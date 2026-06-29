@@ -631,6 +631,45 @@ func TestBuildConfigLinksFollowsServiceHostOrderAcrossProtocols(t *testing.T) {
 
 func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 	serviceID := int64(1)
+	inbound, err := resolveInbound(map[string]any{
+		"tag":      "HY2",
+		"protocol": "hysteria",
+		"port":     int64(443),
+		"settings": map[string]any{
+			"version": int64(2),
+		},
+		"streamSettings": map[string]any{
+			"network":  "hysteria",
+			"security": "tls",
+			"tlsSettings": map[string]any{
+				"serverName":  "hy.example.com",
+				"fingerprint": "chrome",
+				"alpn":        []any{"h3"},
+			},
+			"hysteriaSettings": map[string]any{
+				"version":        int64(2),
+				"udpIdleTimeout": int64(60),
+			},
+			"finalmask": map[string]any{
+				"udp": []any{
+					map[string]any{
+						"type": "salamander",
+						"settings": map[string]any{
+							"password": "mask-secret",
+						},
+					},
+				},
+				"quicParams": map[string]any{
+					"udpHop": map[string]any{
+						"ports": "20000-50000",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolveInbound error: %v", err)
+	}
 	links, err := BuildConfigLinks(
 		ConfigLinkUser{
 			ID:            21,
@@ -643,17 +682,7 @@ func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 			},
 		},
 		map[string]ResolvedInbound{
-			"HY2": {
-				"tag":              "HY2",
-				"protocol":         "hysteria",
-				"port":             int64(443),
-				"network":          "hysteria",
-				"tls":              "tls",
-				"sni":              "hy.example.com",
-				"fp":               "chrome",
-				"alpn":             "h3",
-				"hysteria_version": int64(2),
-			},
+			"HY2": inbound,
 		},
 		[]string{"HY2"},
 		[]Host{
@@ -679,7 +708,7 @@ func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 	if !strings.HasPrefix(link, "hysteria2://") {
 		t.Fatalf("expected hysteria2 link, got %q", link)
 	}
-	for _, expected := range []string{"security=tls", "sni=hy.example.com", "fp=chrome", "alpn=h3"} {
+	for _, expected := range []string{"security=tls", "sni=hy.example.com", "fp=chrome", "alpn=h3", "obfs=salamander", "obfs-password=mask-secret", "mport=20000-50000"} {
 		if !strings.Contains(link, expected) {
 			t.Fatalf("expected %q in link: %s", expected, link)
 		}

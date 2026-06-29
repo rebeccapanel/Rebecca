@@ -1197,6 +1197,26 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		if timeout := intValue(hysteriaSettings["udpIdleTimeout"]); timeout > 0 {
 			resolved["hysteria_udp_idle_timeout"] = timeout
 		}
+		finalmask := mapValue(stream["finalmask"])
+		if udpMasks, ok := finalmask["udp"].([]any); ok {
+			for _, item := range udpMasks {
+				mask := mapValue(item)
+				if stringValue(mask["type"]) != "salamander" {
+					continue
+				}
+				maskSettings := mapValue(mask["settings"])
+				if password := stringValue(maskSettings["password"]); password != "" {
+					resolved["obfs"] = "salamander"
+					resolved["obfs-password"] = password
+				}
+				break
+			}
+		}
+		quicParams := mapValue(finalmask["quicParams"])
+		udpHop := mapValue(quicParams["udpHop"])
+		if ports := stringValue(udpHop["ports"]); ports != "" {
+			resolved["mport"] = ports
+		}
 	case "tcp", "raw":
 		header := mapValue(networkSettings["header"])
 		resolved["header_type"] = stringValue(header["type"])
