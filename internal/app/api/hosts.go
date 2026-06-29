@@ -222,16 +222,21 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 	defer tx.Rollback()
 
 	affectedServices := make(map[int64]bool)
+	beforeServiceTags := map[int64]map[string]bool{}
 	inboundTags := sortedMapKeys(payload)
 	for _, inboundTag := range inboundTags {
 		if err := ensureHostInboundRecordTx(r.Context(), tx, inboundTag); err != nil {
 			return nil, err
 		}
-		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, payload[inboundTag], allKeptIDs, affectedServices); err != nil {
+		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, payload[inboundTag], allKeptIDs, affectedServices, beforeServiceTags); err != nil {
 			return nil, err
 		}
 	}
-	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, affectedServices); err != nil {
+	changedServices, err := changedServiceRuntimeInboundSetsTx(r.Context(), tx, beforeServiceTags, affectedServices)
+	if err != nil {
+		return nil, err
+	}
+	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -257,17 +262,24 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	if err != nil {
 		return hostResponse{}, err
 	}
+	serviceSet := make(map[int64]bool)
+	beforeServiceTags := map[int64]map[string]bool{}
+	if err := addAffectedServiceIDsTx(r.Context(), tx, serviceSet, beforeServiceTags, affectedServices); err != nil {
+		return hostResponse{}, err
+	}
 	if _, err := tx.ExecContext(r.Context(), `UPDATE hosts SET is_disabled = ? WHERE id = ?`, boolToInt(disabled), hostID); err != nil {
 		return hostResponse{}, err
 	}
-	serviceSet := make(map[int64]bool)
-	addServiceIDs(serviceSet, affectedServices)
 	if disabled {
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM service_hosts WHERE host_id = ?`, hostID); err != nil {
 			return hostResponse{}, err
 		}
 	}
-	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, serviceSet); err != nil {
+	changedServices, err := changedServiceRuntimeInboundSetsTx(r.Context(), tx, beforeServiceTags, serviceSet)
+	if err != nil {
+		return hostResponse{}, err
+	}
+	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return hostResponse{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -276,7 +288,7 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	return queryHostByID(r, s.db, hostID)
 }
 
-func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool) error {
+func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool, beforeServiceTags map[int64]map[string]bool) error {
 	existing, err := existingHostIDsForInboundTx(r.Context(), tx, inboundTag)
 	if err != nil {
 		return err
@@ -305,7 +317,9 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 					if err != nil {
 						return err
 					}
-					addServiceIDs(affectedServices, oldServices)
+					if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
+						return err
+					}
 				}
 				if err := updateHostTx(r.Context(), tx, inboundTag, host); err != nil {
 					return err
@@ -338,7 +352,9 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 		if err != nil {
 			return err
 		}
-		addServiceIDs(affectedServices, oldServices)
+		if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM service_hosts WHERE host_id = ?`, id); err != nil {
 			return err
 		}
@@ -962,6 +978,40 @@ WHERE h.inbound_tag = ?`, inboundTag)
 	return scanInt64Rows(rows)
 }
 
+func addAffectedServiceIDsTx(ctx context.Context, tx *sql.Tx, target map[int64]bool, before map[int64]map[string]bool, serviceIDs []int64) error {
+	for _, serviceID := range serviceIDs {
+		if serviceID <= 0 {
+			continue
+		}
+		if _, exists := before[serviceID]; !exists {
+			tags, err := serviceRuntimeInboundTagsTx(ctx, tx, serviceID)
+			if err != nil {
+				return err
+			}
+			before[serviceID] = tags
+		}
+		target[serviceID] = true
+	}
+	return nil
+}
+
+func changedServiceRuntimeInboundSetsTx(ctx context.Context, tx *sql.Tx, before map[int64]map[string]bool, candidates map[int64]bool) (map[int64]bool, error) {
+	changed := map[int64]bool{}
+	for serviceID := range candidates {
+		if serviceID <= 0 {
+			continue
+		}
+		after, err := serviceRuntimeInboundTagsTx(ctx, tx, serviceID)
+		if err != nil {
+			return nil, err
+		}
+		if !stringBoolMapsEqual(before[serviceID], after) {
+			changed[serviceID] = true
+		}
+	}
+	return changed, nil
+}
+
 func enqueueAffectedServicesUsersTx(ctx context.Context, tx *sql.Tx, serviceIDs map[int64]bool) error {
 	ids := make([]int64, 0, len(serviceIDs))
 	for serviceID := range serviceIDs {
@@ -986,14 +1036,6 @@ func sortedMapKeys[T any](value map[string]T) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func addServiceIDs(target map[int64]bool, ids []int64) {
-	for _, id := range ids {
-		if id > 0 {
-			target[id] = true
-		}
-	}
 }
 
 func normalizeHostSecurity(value string) string {
