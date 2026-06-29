@@ -443,8 +443,8 @@ VALUES
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(calls) < 2 || calls[0] != "restart" || calls[1] != "remove" {
-		t.Fatalf("expected restart before runtime user calls, got %#v", calls)
+	if len(calls) != 1 || calls[0] != "restart" {
+		t.Fatalf("expected full config sync to cover the runtime user operation, got %#v", calls)
 	}
 }
 

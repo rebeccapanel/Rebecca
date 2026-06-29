@@ -220,6 +220,123 @@ VALUES
 	}
 }
 
+func TestRepositoryPendingOperationsPrioritizeNewestAddOverOldAddBacklog(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-fresh-add.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES (50, 'good', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 50, 100, '{}', 'pending', 'old-add-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 101, '{}', 'pending', 'old-add-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 300, '{}', 'pending', 'fresh-add', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingOperations(ctx, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].OperationType != "add_user" || !rows[0].UserID.Valid || rows[0].UserID.Int64 != 300 {
+		t.Fatalf("expected newest add_user to be selected first, got %#v", rows)
+	}
+}
+
+func TestRepositoryPendingOperationsDoesNotLetFailingSyncStarveFreshAdd(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-failing-sync.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES (50, 'good', '127.0.0.1', 62050, 62051, 'connected', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES
+	('sync_config', 50, NULL, '{"source":"hosts","service_ids":[1]}', 'retrying', 9, 'old-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 50, 300, '{}', 'pending', 0, 'fresh-add', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingOperations(ctx, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].OperationType != "add_user" || !rows[0].UserID.Valid || rows[0].UserID.Int64 != 300 {
+		t.Fatalf("expected fresh add_user before high-attempt sync_config, got %#v", rows)
+	}
+}
+
 func TestControllerProcessQueueDoesNotStarveConnectedNodeBehindBrokenNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")
@@ -403,7 +520,7 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 1 || result.Done != 2 || result.Failed != 0 || result.Retrying != 0 {
+	if result.Processed != 1 || result.Done != 3 || result.Failed != 0 || result.Retrying != 0 {
 		t.Fatalf("unexpected process result: %#v", result)
 	}
 
@@ -418,8 +535,8 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_operations WHERE status = 'done'`).Scan(&done); err != nil {
 		t.Fatal(err)
 	}
-	if done != 2 {
-		t.Fatalf("expected two coalescible sync operations to be done, got %d", done)
+	if done != 3 {
+		t.Fatalf("expected coalescible sync and global runtime operations to be done, got %d", done)
 	}
 	var customStatus string
 	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE id = 4`).Scan(&customStatus); err != nil {
@@ -595,18 +712,24 @@ VALUES ('sync_config', 7, NULL, '{"source":"hosts","service_id":3}', 'pending', 
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
 }
 
-func TestServiceRefreshSyncIsNotCoalesced(t *testing.T) {
-	if canCoalesceRuntimeSyncOperation(OperationRow{
+func TestServiceRefreshSyncIsCoalescedAsFullConfigSync(t *testing.T) {
+	if !canCoalesceRuntimeSyncOperation(OperationRow{
 		OperationType: "sync_config",
 		Payload:       []byte(`{"source":"hosts","service_id":3}`),
 	}) {
-		t.Fatal("service refresh sync operations must keep their payload and must not be coalesced")
+		t.Fatal("service refresh sync operations should be coalesced as full config syncs")
 	}
 	if !canCoalesceRuntimeSyncOperation(OperationRow{
 		OperationType: "sync_config",
 		Payload:       []byte(`{}`),
 	}) {
 		t.Fatal("plain sync_config operations should still be coalesced")
+	}
+	if canCoalesceRuntimeSyncOperation(OperationRow{
+		OperationType: "sync_config",
+		Payload:       []byte(`{"config_json":"{\"inbounds\":[]}"}`),
+	}) {
+		t.Fatal("custom config sync operations must not be coalesced")
 	}
 }
 
@@ -782,6 +905,127 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 		t.Fatal(err)
 	}
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1`, 1)
+}
+
+func TestRepositoryQueueRuntimeBacklogSyncsOnlyForConnectedBacklog(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-backlog-sync.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	status TEXT
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, status) VALUES
+	(1, 'connected'),
+	(2, 'error'),
+	(3, 'connected');
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 1, 10, '{}', 'pending', 'node1-add-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 1, 11, '{}', 'pending', 'node1-update-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 1, 12, '{}', 'retrying', 'node1-disable-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 2, 20, '{}', 'pending', 'node2-add-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 2, 21, '{}', 'pending', 'node2-add-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 2, 22, '{}', 'pending', 'node2-add-3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 3, 30, '{}', 'pending', 'node3-add-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 3, 31, '{}', 'pending', 'node3-add-2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 3, 32, '{}', 'pending', 'node3-add-3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 3, NULL, '{}', 'pending', 'node3-existing-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	queued, err := repo.QueueRuntimeBacklogSyncs(ctx, 0, 3, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued != 1 {
+		t.Fatalf("expected one backlog sync to be queued, got %d", queued)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1 AND status = 'pending'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 2`, 0)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 1)
+}
+
+func TestRepositoryCoalescedSyncClearsRuntimeUserBacklogForNode(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "coalesced-sync-clears-runtime.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('sync_config', 7, NULL, '{"source":"hosts","service_ids":[1]}', 'running', 'service-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 7, 100, '{}', 'pending', 'add-100', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 7, 101, '{}', 'retrying', 'update-101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('remove_user', 8, 102, '{}', 'pending', 'other-node-remove', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'custom-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{}', 'pending', 'plain-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	ids, err := repo.CoalescibleOperationIDsForTarget(ctx, OperationRow{
+		ID:            1,
+		OperationType: "sync_config",
+		NodeID:        sql.NullInt64{Int64: 7, Valid: true},
+		Payload:       []byte(`{"source":"hosts","service_ids":[1]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]bool{}
+	for _, id := range ids {
+		got[id] = true
+	}
+	for _, id := range []int64{1, 2, 3, 6} {
+		if !got[id] {
+			t.Fatalf("expected operation %d to be cleared by full sync, got ids=%v", id, ids)
+		}
+	}
+	for _, id := range []int64{4, 5} {
+		if got[id] {
+			t.Fatalf("operation %d should not be cleared by node 7 full sync, got ids=%v", id, ids)
+		}
+	}
 }
 
 func TestRepositoryRecoverableNodeIDsOnlyReturnsStaleConnectingAndErrorNodes(t *testing.T) {

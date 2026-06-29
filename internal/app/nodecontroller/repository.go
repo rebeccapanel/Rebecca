@@ -46,7 +46,12 @@ type OperationRow struct {
 	Attempts      int
 }
 
-const pendingOperationsPerNodeCap = 3
+const (
+	pendingOperationsPerNodeCap  = 3
+	runtimeBacklogSyncThreshold  = 25
+	runtimeBacklogSyncNodeLimit  = 50
+	runtimeBacklogSyncPayloadTag = "runtime_backlog"
+)
 
 func NewRepository(db *sql.DB, dialect string) Repository {
 	return Repository{db: db, dialect: dialect}
@@ -394,6 +399,70 @@ WHERE status IN ('pending', 'retrying')`
 	return result, nil
 }
 
+func (r Repository) QueueRuntimeBacklogSyncs(ctx context.Context, nodeID int64, threshold int, limit int) (int, error) {
+	if threshold <= 0 {
+		threshold = runtimeBacklogSyncThreshold
+	}
+	if limit <= 0 {
+		limit = runtimeBacklogSyncNodeLimit
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	query := `SELECT no.node_id, COUNT(*) AS backlog_count
+FROM node_operations no
+JOIN nodes n ON n.id = no.node_id
+WHERE no.status IN ('pending', 'retrying')
+  AND no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND LOWER(COALESCE(n.status, '')) = 'connected'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM node_operations sync_ops
+    WHERE sync_ops.node_id = no.node_id
+      AND sync_ops.operation_type = 'sync_config'
+      AND sync_ops.status IN ('pending', 'retrying', 'running')
+  )`
+	args := []any{}
+	if nodeID > 0 {
+		query += ` AND no.node_id = ?`
+		args = append(args, nodeID)
+	}
+	query += ` GROUP BY no.node_id HAVING COUNT(*) >= ? ORDER BY backlog_count DESC, no.node_id LIMIT ?`
+	args = append(args, threshold, limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	nodeIDs := []int64{}
+	for rows.Next() {
+		var backlogCount int64
+		var queuedNodeID int64
+		if err := rows.Scan(&queuedNodeID, &backlogCount); err != nil {
+			return 0, err
+		}
+		nodeIDs = append(nodeIDs, queuedNodeID)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	queued := 0
+	for _, queuedNodeID := range nodeIDs {
+		payload := map[string]any{
+			"source":    runtimeBacklogSyncPayloadTag,
+			"queued_at": time.Now().UTC().Format(time.RFC3339Nano),
+		}
+		id := queuedNodeID
+		if err := r.QueueSyncConfig(ctx, &id, payload); err != nil {
+			return queued, err
+		}
+		queued++
+	}
+	return queued, nil
+}
+
 func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]OperationRow, error) {
 	perNodeCap := pendingOperationsPerNodeCap
 	if limit < perNodeCap {
@@ -408,9 +477,10 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 		no.payload,
 		no.attempts,
 		CASE
-			WHEN no.operation_type = 'sync_config' THEN 0
+			WHEN no.operation_type = 'sync_config' AND no.attempts < 3 THEN 0
 			WHEN no.operation_type = 'add_user' THEN 1
 			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+			WHEN no.operation_type = 'sync_config' THEN 3
 			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
 			ELSE 4
 		END AS operation_priority,
@@ -418,13 +488,14 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 			PARTITION BY COALESCE(no.node_id, -1)
 			ORDER BY
 				CASE
-					WHEN no.operation_type = 'sync_config' THEN 0
+					WHEN no.operation_type = 'sync_config' AND no.attempts < 3 THEN 0
 					WHEN no.operation_type = 'add_user' THEN 1
 					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+					WHEN no.operation_type = 'sync_config' THEN 3
 					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
 					ELSE 4
 				END,
-				no.id
+				CASE WHEN no.operation_type = 'add_user' THEN -no.id ELSE no.id END
 		) AS node_rank,
 		CASE
 			WHEN no.node_id IS NOT NULL AND LOWER(COALESCE(n.status, '')) = 'connected' THEN 0
@@ -533,7 +604,7 @@ WHERE status IN ('pending', 'retrying', 'running')
 			return nil, err
 		}
 		row.Payload = append(row.Payload[:0], payload...)
-		if canCoalesceRuntimeSyncOperation(row) {
+		if canCoalesceRuntimeSyncOperation(row) || (canCoalesceRuntimeSyncOperation(representative) && isRuntimeUserOperation(row.OperationType)) {
 			ids = append(ids, row.ID)
 		}
 	}
