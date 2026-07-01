@@ -70,6 +70,7 @@ func TestEnqueueHysteriaUserOperationUsesSyncConfig(t *testing.T) {
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 11`, 1)
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'add_user' AND user_id = 11`, 0)
 	assertMutationHelperString(t, tx, `SELECT json_extract(payload, '$.user_operation_type') FROM node_operations WHERE user_id = 11`, NodeOperationAddUser)
+	assertMutationHelperString(t, tx, `SELECT json_extract(payload, '$.runtime_email') FROM node_operations WHERE user_id = 11`, "11.alice")
 }
 
 func TestEnqueueHysteriaOldServiceHintUsesSyncConfig(t *testing.T) {
@@ -116,6 +117,7 @@ CREATE TABLE xray_config (
 );
 CREATE TABLE users (
 	id INTEGER PRIMARY KEY,
+	username TEXT,
 	service_id INTEGER
 );
 CREATE TABLE services (
@@ -148,7 +150,7 @@ INSERT INTO xray_config (id, data) VALUES (1, '{"inbounds":[{"tag":"hy-service",
 INSERT INTO services (id, name) VALUES (1, 'hysteria'), (2, 'vless');
 INSERT INTO hosts (id, inbound_tag, is_disabled) VALUES (1, 'hy-service', 0), (2, 'vl-service', 0);
 INSERT INTO service_hosts (service_id, host_id) VALUES (1, 1), (2, 2);
-INSERT INTO users (id, service_id) VALUES (11, 1);
+INSERT INTO users (id, username, service_id) VALUES (11, 'alice', 1);
 `)
 	if err != nil {
 		t.Fatal(err)

@@ -761,6 +761,13 @@ func (r Repository) enqueueUserOperationForNodesTx(ctx context.Context, tx *sql.
 	}
 	queueOperationType := operationType
 	payload := map[string]any{"queued_at": queuedAt.Format(time.RFC3339Nano)}
+	if isRuntimeUserNodeOperation(operationType) && userID > 0 {
+		if email, err := r.runtimeUserEmailTx(ctx, tx, userID); err != nil {
+			return err
+		} else if email != "" {
+			payload["runtime_email"] = email
+		}
+	}
 	if isRuntimeUserNodeOperation(operationType) {
 		usesHysteria, err := r.userServiceUsesProtocolTx(ctx, tx, userID, "hysteria", serviceHints...)
 		if err != nil {
@@ -778,6 +785,25 @@ func (r Repository) enqueueUserOperationForNodesTx(ctx context.Context, tx *sql.
 		}
 	}
 	return nil
+}
+
+func (r Repository) runtimeUserEmailTx(ctx context.Context, tx *sql.Tx, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", nil
+	}
+	var username string
+	err := tx.QueryRowContext(ctx, `SELECT username FROM users WHERE id = ? LIMIT 1`, userID).Scan(&username)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return "", nil
+	}
+	return fmt.Sprintf("%d.%s", userID, username), nil
 }
 
 func isRuntimeUserNodeOperation(operationType string) bool {

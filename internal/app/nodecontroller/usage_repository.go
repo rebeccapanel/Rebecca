@@ -238,6 +238,9 @@ func (r Repository) StoreCollectedUsage(ctx context.Context, node NodeRow, userB
 			return fmt.Errorf("stage online users: %w", err)
 		}
 	}
+	if _, err := r.queueRuntimeSyncForStaleUsersTx(ctx, tx, node.ID, unionInt64Keys(normalizedUsers, onlineUsers), now); err != nil {
+		return fmt.Errorf("stage stale runtime user cleanup: %w", err)
+	}
 
 	var operations []usageQueuedOperation
 	if len(normalizedUsers) > 0 {
@@ -454,6 +457,9 @@ func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeR
 	if err != nil {
 		return nil, nil, fmt.Errorf("load user mapping: %w", err)
 	}
+	if _, err := r.queueRuntimeSyncForStaleUsersTx(ctx, tx, node.ID, unionInt64Keys(aggregated, onlineUsers), now, mapping); err != nil {
+		return nil, nil, fmt.Errorf("queue stale runtime user cleanup: %w", err)
+	}
 	if len(mapping) == 0 {
 		return map[int64]int64{}, nil, nil
 	}
@@ -585,6 +591,74 @@ func (r Repository) loadUsageUserMapping(ctx context.Context, tx *sql.Tx, userID
 		result[row.UserID] = row
 	}
 	return result, rows.Err()
+}
+
+func (r Repository) queueRuntimeSyncForStaleUsersTx(ctx context.Context, tx *sql.Tx, nodeID int64, reportedUserIDs []int64, now time.Time, loaded ...map[int64]usageUserMapping) (int, error) {
+	if nodeID <= 0 || len(reportedUserIDs) == 0 {
+		return 0, nil
+	}
+	mapping := map[int64]usageUserMapping{}
+	var err error
+	if len(loaded) > 0 && loaded[0] != nil {
+		mapping = loaded[0]
+	} else {
+		mapping, err = r.loadUsageUserMapping(ctx, tx, reportedUserIDs)
+		if err != nil {
+			return 0, err
+		}
+	}
+	staleCount := 0
+	for _, userID := range reportedUserIDs {
+		if userID <= 0 {
+			continue
+		}
+		if _, ok := mapping[userID]; !ok {
+			staleCount++
+		}
+	}
+	if staleCount == 0 {
+		return 0, nil
+	}
+	var existing int64
+	err = tx.QueryRowContext(ctx, `
+SELECT id
+FROM node_operations
+WHERE node_id = ?
+  AND operation_type = 'sync_config'
+  AND status IN ('pending', 'retrying', 'running')
+LIMIT 1`, nodeID).Scan(&existing)
+	if err == nil {
+		return staleCount, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	payload := map[string]any{
+		"source":             "stale_runtime_users",
+		"stale_users":        staleCount,
+		"reported_users":     len(reportedUserIDs),
+		"queued_at":          now.Format(time.RFC3339Nano),
+		"requires_full_sync": true,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return 0, err
+	}
+	key := operationKey("sync_config", nodeID, 0, now)
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
+		nodeID,
+		string(payloadJSON),
+		key,
+		r.timeArg(now),
+		r.timeArg(now),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return staleCount, nil
 }
 
 func (r Repository) batchTouchUsersOnline(ctx context.Context, tx *sql.Tx, userIDs []int64, now time.Time) error {

@@ -21,6 +21,21 @@ import (
 	"time"
 )
 
+func TestLegacyOperationEmailUsesRuntimePayload(t *testing.T) {
+	controller := Controller{}
+	email, err := controller.legacyOperationEmail(context.Background(), OperationRow{
+		OperationType: "remove_user",
+		UserID:        sql.NullInt64{Int64: 999, Valid: true},
+		Payload:       json.RawMessage(`{"runtime_email":"999.deleted-user"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if email != "999.deleted-user" {
+		t.Fatalf("email = %q", email)
+	}
+}
+
 func TestLegacyRESTUserOperationUsesInboundUserEndpointWithoutRestart(t *testing.T) {
 	ctx := context.Background()
 	certPEM, keyPEM, tlsCert := testNodeControllerCertificate(t)

@@ -149,6 +149,68 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE id = 10 AND online_at IS NOT NULL`, 1)
 }
 
+func TestRepositoryQueuesSyncWhenNodeReportsDeletedRuntimeUser(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-stale-user.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (10, 'deleted', 0, 100000, 1, 2);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.PersistCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, []UserUsageDelta{{UserID: 10, Value: 128, Online: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE user_id = 10`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
+	assertString(t, db, `SELECT json_extract(payload, '$.source') FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, "stale_runtime_users")
+
+	if err := repo.PersistCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, []UserUsageDelta{{UserID: 999, Online: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, 1)
+}
+
+func TestRepositoryStagesSyncWhenNodeReportsHardDeletedRuntimeUser(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-stale-stage.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.StoreCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, "users-batch-stale", []UserUsageDelta{{UserID: 404, Online: true}}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
+	assertString(t, db, `SELECT json_extract(payload, '$.source') FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, "stale_runtime_users")
+}
+
 func TestRepositorySkipsUsageHistoryTables(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-skip-history.db")+"?_pragma=busy_timeout(30000)")

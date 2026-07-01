@@ -20,6 +20,9 @@ func (c Controller) legacyApplyUserOperation(ctx context.Context, node NodeRow, 
 	c.rememberNodeProtocol(node.ID, "legacy")
 	email, err := c.legacyOperationEmail(ctx, operation)
 	if err != nil {
+		if operation.OperationType == "remove_user" || operation.OperationType == "disable_user" {
+			return c.legacySyncRuntimeConfig(ctx, node)
+		}
 		return err
 	}
 	switch operation.OperationType {
@@ -38,6 +41,14 @@ func (c Controller) legacyApplyUserOperation(ctx context.Context, node NodeRow, 
 }
 
 func (c Controller) legacyOperationEmail(ctx context.Context, operation OperationRow) (string, error) {
+	if len(operation.Payload) > 0 {
+		var payload operationPayload
+		if err := json.Unmarshal(operation.Payload, &payload); err == nil {
+			if email := strings.TrimSpace(payload.RuntimeEmail); email != "" {
+				return email, nil
+			}
+		}
+	}
 	if !operation.UserID.Valid || operation.UserID.Int64 <= 0 {
 		return "", fmt.Errorf("legacy user operation requires user_id")
 	}
@@ -46,6 +57,15 @@ func (c Controller) legacyOperationEmail(ctx context.Context, operation Operatio
 		return "", err
 	}
 	return fmt.Sprintf("%d.%s", identity.ID, identity.Username), nil
+}
+
+func (c Controller) legacySyncRuntimeConfig(ctx context.Context, node NodeRow) error {
+	configJSON, err := c.buildRuntimeConfig(ctx, node)
+	if err != nil {
+		return err
+	}
+	_, err = c.legacySyncConfig(ctx, node, configJSON)
+	return err
 }
 
 func (c Controller) legacyRemoveUserFromNode(ctx context.Context, client *legacyRESTClient, node NodeRow, email string) error {

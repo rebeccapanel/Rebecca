@@ -566,7 +566,8 @@ func (c Controller) processCoalescedOperations(ctx context.Context, operations [
 }
 
 type operationPayload struct {
-	ConfigJSON string `json:"config_json"`
+	ConfigJSON   string `json:"config_json"`
+	RuntimeEmail string `json:"runtime_email,omitempty"`
 }
 
 func canCoalesceRuntimeSyncOperation(operation OperationRow) bool {

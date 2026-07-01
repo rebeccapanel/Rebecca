@@ -13,6 +13,21 @@ import (
 func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow) error {
 	email, err := c.legacyOperationEmail(ctx, operation)
 	if err != nil {
+		if operation.OperationType == "remove_user" || operation.OperationType == "disable_user" {
+			configJSON, syncErr := c.buildRuntimeConfig(ctx, node)
+			if syncErr != nil {
+				return syncErr
+			}
+			res, syncErr := client.Runtime().SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
+				OperationId: fmt.Sprintf("%s-missing-user-%d", operation.OperationType, operation.ID),
+				ConfigJson:  configJSON,
+			})
+			if syncErr != nil {
+				return syncErr
+			}
+			_, syncErr = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+			return syncErr
+		}
 		return err
 	}
 	switch operation.OperationType {
