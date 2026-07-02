@@ -14,8 +14,10 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 	if err == nil {
 		return nil
 	}
+	message := strings.TrimSpace(err.Error())
+	title := classifyNodeError(err, message)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("node %d %s timed out", nodeID, action)
+		return fmt.Errorf("%s during %s for node %d", title, action, nodeID)
 	}
 	if st, ok := status.FromError(err); ok {
 		detail := strings.TrimSpace(st.Message())
@@ -24,7 +26,7 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 		}
 		switch st.Code() {
 		case codes.Unavailable:
-			return fmt.Errorf("node %d is unavailable during %s: %s", nodeID, action, detail)
+			return fmt.Errorf("%s during %s for node %d: %s", classifyNodeError(err, detail), action, nodeID, detail)
 		case codes.Unauthenticated, codes.PermissionDenied:
 			return fmt.Errorf("node %d rejected %s authentication: %s", nodeID, action, detail)
 		case codes.FailedPrecondition:
@@ -32,15 +34,50 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 		case codes.InvalidArgument:
 			return fmt.Errorf("node %d received invalid %s request: %s", nodeID, action, detail)
 		default:
-			return fmt.Errorf("node %d %s failed: %s", nodeID, action, detail)
+			return fmt.Errorf("%s during %s for node %d: %s", title, action, nodeID, detail)
 		}
 	}
-	message := strings.TrimSpace(err.Error())
-	if strings.Contains(strings.ToLower(message), "certificate") || strings.Contains(strings.ToLower(message), "tls") {
-		return fmt.Errorf("node %d TLS/certificate error during %s: %s", nodeID, action, message)
+	if message == "" {
+		return fmt.Errorf("%s during %s for node %d", title, action, nodeID)
 	}
-	if strings.Contains(strings.ToLower(message), "connection refused") || strings.Contains(strings.ToLower(message), "no such host") {
-		return fmt.Errorf("node %d connection error during %s: %s", nodeID, action, message)
+	return fmt.Errorf("%s during %s for node %d: %s", title, action, nodeID, message)
+}
+
+func classifyNodeError(err error, message string) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Connection timeout"
 	}
-	return fmt.Errorf("node %d %s failed: %s", nodeID, action, message)
+	lower := strings.ToLower(strings.TrimSpace(message))
+	switch {
+	case lower == "":
+		return "Node error"
+	case strings.Contains(lower, "context deadline exceeded"),
+		strings.Contains(lower, "deadline exceeded"),
+		strings.Contains(lower, "i/o timeout"),
+		strings.Contains(lower, "operation timed out"),
+		strings.Contains(lower, "timed out"),
+		strings.Contains(lower, "timeout"):
+		return "Connection timeout"
+	case strings.Contains(lower, "connection refused"),
+		strings.Contains(lower, "actively refused"):
+		return "Connection refused"
+	case strings.Contains(lower, "no such host"),
+		strings.Contains(lower, "server misbehaving"),
+		strings.Contains(lower, "dns"):
+		return "DNS lookup failed"
+	case strings.Contains(lower, "no route to host"),
+		strings.Contains(lower, "network is unreachable"),
+		strings.Contains(lower, "host is unreachable"):
+		return "Network unreachable"
+	case strings.Contains(lower, "certificate"),
+		strings.Contains(lower, "tls"),
+		strings.Contains(lower, "handshake"):
+		return "TLS/certificate error"
+	case strings.Contains(lower, "permission denied"),
+		strings.Contains(lower, "unauthenticated"),
+		strings.Contains(lower, "authentication"):
+		return "Authentication failed"
+	default:
+		return "Node error"
+	}
 }
