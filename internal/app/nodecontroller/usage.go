@@ -38,7 +38,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 		client, _, err := c.dial(nodeCtx, node.ID)
 		if err != nil {
 			cancel()
-			if c.collectLegacyUsageForNode(ctx, node, collectUsers, collectOutbound, persistOptions, &result) {
+			if c.shouldAttemptLegacyFallback(node.ID) && c.collectLegacyUsageForNode(ctx, node, collectUsers, collectOutbound, persistOptions, &result) {
 				continue
 			}
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %s", node.ID, err.Error()))

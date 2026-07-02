@@ -43,7 +43,7 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 	}
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
-		if node.ID != 0 {
+		if node.ID != 0 && c.shouldAttemptLegacyFallback(node.ID) {
 			if strings.TrimSpace(req.ConfigJSON) != "" {
 				if result, legacyErr := c.legacySyncConfig(ctx, node, req.ConfigJSON); legacyErr == nil {
 					_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
@@ -75,11 +75,13 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 			ConfigJson:  req.ConfigJSON,
 		})
 		if err != nil {
-			if result, legacyErr := c.legacySyncConfig(ctx, node, req.ConfigJSON); legacyErr == nil {
-				_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
-				return result, nil
-			} else {
-				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			if c.shouldAttemptLegacyFallback(node.ID) {
+				if result, legacyErr := c.legacySyncConfig(ctx, node, req.ConfigJSON); legacyErr == nil {
+					_, _ = c.ProcessQueue(ctx, ProcessOperationsRequest{NodeID: node.ID, Limit: 50})
+					return result, nil
+				} else {
+					err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+				}
 			}
 			_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 			return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
@@ -101,7 +103,7 @@ func (c Controller) Reconnect(ctx context.Context, req Request) (RuntimeResult, 
 func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, error) {
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
-		if node.ID != 0 {
+		if node.ID != 0 && c.shouldAttemptLegacyFallback(node.ID) {
 			configJSON := strings.TrimSpace(req.ConfigJSON)
 			if configJSON == "" {
 				configJSON, err = c.buildRuntimeConfig(ctx, node)
@@ -132,10 +134,12 @@ func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, er
 		ConfigJson:  configJSON,
 	})
 	if err != nil {
-		if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
-			return result, nil
-		} else {
-			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		if c.shouldAttemptLegacyFallback(node.ID) {
+			if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+				return result, nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
 		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
@@ -146,7 +150,7 @@ func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, er
 func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, error) {
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
-		if node.ID != 0 {
+		if node.ID != 0 && c.shouldAttemptLegacyFallback(node.ID) {
 			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
 				return result, nil
 			} else {
@@ -160,10 +164,12 @@ func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, err
 
 	res, err := client.Control().Health(ctx, &nodev1.HealthRequest{IncludeMetrics: true})
 	if err != nil {
-		if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
-			return result, nil
-		} else {
-			err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+		if c.shouldAttemptLegacyFallback(node.ID) {
+			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
+				return result, nil
+			} else {
+				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			}
 		}
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("health", req.NodeID, err)
@@ -179,7 +185,7 @@ func (c Controller) Health(ctx context.Context, req Request) (RuntimeResult, err
 func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, error) {
 	client, node, err := c.dial(ctx, req.NodeID)
 	if err != nil {
-		if node.ID != 0 {
+		if node.ID != 0 && c.shouldAttemptLegacyFallback(node.ID) {
 			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
 				return result, nil
 			} else {
@@ -192,8 +198,10 @@ func (c Controller) Metrics(ctx context.Context, req Request) (RuntimeResult, er
 
 	res, err := client.Runtime().Metrics(ctx, &nodev1.MetricsRequest{IncludeRuntime: true})
 	if err != nil {
-		if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
-			return result, nil
+		if c.shouldAttemptLegacyFallback(node.ID) {
+			if result, legacyErr := c.legacyMetrics(ctx, node, true); legacyErr == nil {
+				return result, nil
+			}
 		}
 		result := runtimeResult(node, nil, nil)
 		result.Status = "connected"
@@ -676,7 +684,7 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 		}
 		client, node, err := c.dial(ctx, operation.NodeID.Int64)
 		if err != nil {
-			if node.ID != 0 {
+			if node.ID != 0 && c.shouldAttemptLegacyFallback(node.ID) {
 				if isRuntimeUserOperation(operation.OperationType) && operation.UserID.Valid {
 					if syncConfig, syncErr := c.userOperationRequiresConfigSync(ctx, node, operation); syncErr != nil {
 						return syncErr
@@ -737,10 +745,12 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			ConfigJson:  configJSON,
 		})
 		if err != nil {
-			if _, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
-				return nil
-			} else {
-				err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+			if c.shouldAttemptLegacyFallback(node.ID) {
+				if _, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
+					return nil
+				} else {
+					err = fmt.Errorf("%w; legacy REST failed: %v", err, legacyErr)
+				}
 			}
 			_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
 			return err
@@ -872,6 +882,10 @@ func (c Controller) dial(ctx context.Context, nodeID int64) (*nodeclient.Client,
 		errors = append(errors, address+": "+err.Error())
 	}
 	return nil, node, fmt.Errorf("node gRPC dial failed: %s", strings.Join(errors, "; "))
+}
+
+func (c Controller) shouldAttemptLegacyFallback(nodeID int64) bool {
+	return c.cachedNodeProtocol(nodeID) != "grpc"
 }
 
 func (c Controller) rememberNodeProtocol(nodeID int64, protocol string) {
