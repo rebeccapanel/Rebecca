@@ -42,7 +42,6 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 				continue
 			}
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %s", node.ID, err.Error()))
-			_ = c.repo.SetError(ctx, node.ID, err.Error())
 			continue
 		}
 
@@ -153,7 +152,6 @@ func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow,
 	}
 	if _, err := client.connect(nodeCtx); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy connect: %s", node.ID, err.Error()))
-		_ = c.repo.SetError(ctx, node.ID, err.Error())
 		return true
 	}
 	var userBatchID string
