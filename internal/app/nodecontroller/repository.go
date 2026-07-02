@@ -477,22 +477,20 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 		no.payload,
 		no.attempts,
 		CASE
-			WHEN no.operation_type = 'sync_config' AND no.attempts < 3 THEN 0
-			WHEN no.operation_type = 'add_user' THEN 1
-			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+			WHEN no.operation_type = 'add_user' THEN 0
+			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
+			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
 			WHEN no.operation_type = 'sync_config' THEN 3
-			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
 			ELSE 4
 		END AS operation_priority,
 		ROW_NUMBER() OVER (
 			PARTITION BY COALESCE(no.node_id, -1)
 			ORDER BY
 				CASE
-					WHEN no.operation_type = 'sync_config' AND no.attempts < 3 THEN 0
-					WHEN no.operation_type = 'add_user' THEN 1
-					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+					WHEN no.operation_type = 'add_user' THEN 0
+					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
+					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
 					WHEN no.operation_type = 'sync_config' THEN 3
-					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
 					ELSE 4
 				END,
 				CASE WHEN no.operation_type = 'add_user' THEN -no.id ELSE no.id END

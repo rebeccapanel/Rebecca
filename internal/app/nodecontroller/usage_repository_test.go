@@ -149,7 +149,7 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM users WHERE id = 10 AND online_at IS NOT NULL`, 1)
 }
 
-func TestRepositoryQueuesSyncWhenNodeReportsDeletedRuntimeUser(t *testing.T) {
+func TestRepositoryDoesNotFullSyncWhenNodeReportsDeletedRuntimeUser(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-stale-user.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -176,16 +176,15 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 0)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE user_id = 10`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
-	assertString(t, db, `SELECT json_extract(payload, '$.source') FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, "stale_runtime_users")
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7`, 0)
 
 	if err := repo.PersistCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, []UserUsageDelta{{UserID: 999, Online: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, 1)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7`, 0)
 }
 
-func TestRepositoryStagesSyncWhenNodeReportsHardDeletedRuntimeUser(t *testing.T) {
+func TestRepositoryDoesNotStageFullSyncWhenNodeReportsHardDeletedRuntimeUser(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-stale-stage.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -207,8 +206,7 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	}
 
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue`, 0)
-	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
-	assertString(t, db, `SELECT json_extract(payload, '$.source') FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, "stale_runtime_users")
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7`, 0)
 }
 
 func TestRepositorySkipsUsageHistoryTables(t *testing.T) {

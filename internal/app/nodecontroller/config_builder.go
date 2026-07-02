@@ -119,15 +119,6 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 	if !isRuntimeUserOperation(operation.OperationType) || !operation.UserID.Valid {
 		return false, nil
 	}
-	raw, err := c.repo.NodeRawConfig(ctx, node)
-	if err != nil {
-		return false, err
-	}
-	for _, inbound := range listOfMaps(raw["inbounds"]) {
-		if strings.EqualFold(stringValue(inbound["protocol"]), "hysteria") {
-			return true, nil
-		}
-	}
 	return false, nil
 }
 

@@ -52,7 +52,7 @@ VALUES
 	}
 }
 
-func TestEnqueueHysteriaUserOperationUsesSyncConfig(t *testing.T) {
+func TestEnqueueHysteriaUserOperationUsesRuntimeUserOperation(t *testing.T) {
 	ctx := context.Background()
 	db := newMutationHelpersTestDB(t, "hysteria-enqueue.db")
 	repo := NewRepository(db, "sqlite")
@@ -67,13 +67,12 @@ func TestEnqueueHysteriaUserOperationUsesSyncConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 11`, 1)
-	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'add_user' AND user_id = 11`, 0)
-	assertMutationHelperString(t, tx, `SELECT json_extract(payload, '$.user_operation_type') FROM node_operations WHERE user_id = 11`, NodeOperationAddUser)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 11`, 0)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'add_user' AND user_id = 11`, 1)
 	assertMutationHelperString(t, tx, `SELECT json_extract(payload, '$.runtime_email') FROM node_operations WHERE user_id = 11`, "11.alice")
 }
 
-func TestEnqueueHysteriaOldServiceHintUsesSyncConfig(t *testing.T) {
+func TestEnqueueHysteriaOldServiceHintUsesRuntimeUserOperation(t *testing.T) {
 	ctx := context.Background()
 	db := newMutationHelpersTestDB(t, "hysteria-old-service-enqueue.db")
 	repo := NewRepository(db, "sqlite")
@@ -93,8 +92,8 @@ func TestEnqueueHysteriaOldServiceHintUsesSyncConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 11`, 1)
-	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 11`, 0)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND user_id = 11`, 0)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 11`, 1)
 }
 
 func newMutationHelpersTestDB(t *testing.T, name string) *sql.DB {

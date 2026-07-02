@@ -768,17 +768,6 @@ func (r Repository) enqueueUserOperationForNodesTx(ctx context.Context, tx *sql.
 			payload["runtime_email"] = email
 		}
 	}
-	if isRuntimeUserNodeOperation(operationType) {
-		usesHysteria, err := r.userServiceUsesProtocolTx(ctx, tx, userID, "hysteria", serviceHints...)
-		if err != nil {
-			return err
-		}
-		if usesHysteria {
-			queueOperationType = NodeOperationSyncConfig
-			payload["source"] = "user_operation"
-			payload["user_operation_type"] = operationType
-		}
-	}
 	for _, nodeID := range nodeIDs {
 		if err := r.insertNodeOperationTx(ctx, tx, queueOperationType, nodeID, userID, payload, queuedAt); err != nil {
 			return err

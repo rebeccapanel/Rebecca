@@ -330,11 +330,6 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
 		return ProcessOperationsResult{}, err
 	}
-	if queued, err := c.repo.QueueRuntimeBacklogSyncs(ctx, req.NodeID, runtimeBacklogSyncThreshold, runtimeBacklogSyncNodeLimit); err != nil {
-		return ProcessOperationsResult{}, err
-	} else if queued > 0 {
-		logging.Debugf(logging.ComponentNode, "operation queue scheduled config sync for runtime backlog nodes=%d", queued)
-	}
 	operations, err := c.repo.PendingOperations(ctx, req.NodeID, req.Limit)
 	if err != nil {
 		return ProcessOperationsResult{}, err
@@ -627,7 +622,7 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			return err
 		}
 		if len(nodes) == 0 && operation.OperationType != "sync_config" {
-			return fmt.Errorf("no active nodes available")
+			return nil
 		}
 		if len(nodes) > 0 && strings.TrimSpace(payload.ConfigJSON) == "" && operationNeedsRuntimeConfig(operation.OperationType) {
 			loaded, err := c.loadRuntimeConfigData(ctx)

@@ -315,15 +315,15 @@ VALUES (10, 'alice', '05bfddf81eb418fa1edbce7cd286eee1', '', 1, 'active')`); err
 	if err != nil {
 		t.Fatal(err)
 	}
-	if addCalls.Load() != 0 {
-		t.Fatalf("hysteria user operation must not use runtime add endpoint, add calls = %d", addCalls.Load())
+	if addCalls.Load() != 1 {
+		t.Fatalf("hysteria user operation must use runtime add endpoint, add calls = %d", addCalls.Load())
 	}
-	if restartCalls.Load() != 1 {
-		t.Fatalf("hysteria user operation must sync full config once, restart calls = %d", restartCalls.Load())
+	if restartCalls.Load() != 0 {
+		t.Fatalf("hysteria user operation must not sync full config, restart calls = %d", restartCalls.Load())
 	}
 }
 
-func TestProcessQueueAppliesConfigSyncBeforeRuntimeUserOperations(t *testing.T) {
+func TestProcessQueueAppliesRuntimeUserOperationsBeforeConfigSync(t *testing.T) {
 	ctx := context.Background()
 	certPEM, keyPEM, tlsCert := testNodeControllerCertificate(t)
 	var mu sync.Mutex
@@ -458,8 +458,14 @@ VALUES
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(calls) != 1 || calls[0] != "restart" {
-		t.Fatalf("expected full config sync to cover the runtime user operation, got %#v", calls)
+	want := []string{"remove", "add", "restart"}
+	if len(calls) != len(want) {
+		t.Fatalf("expected runtime user operation before config sync, got %#v", calls)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Fatalf("expected runtime user operation before config sync, got %#v", calls)
+		}
 	}
 }
 

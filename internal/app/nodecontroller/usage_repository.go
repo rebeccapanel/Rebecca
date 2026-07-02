@@ -619,45 +619,6 @@ func (r Repository) queueRuntimeSyncForStaleUsersTx(ctx context.Context, tx *sql
 	if staleCount == 0 {
 		return 0, nil
 	}
-	var existing int64
-	err = tx.QueryRowContext(ctx, `
-SELECT id
-FROM node_operations
-WHERE node_id = ?
-  AND operation_type = 'sync_config'
-  AND status IN ('pending', 'retrying', 'running')
-LIMIT 1`, nodeID).Scan(&existing)
-	if err == nil {
-		return staleCount, nil
-	}
-	if err != sql.ErrNoRows {
-		return 0, err
-	}
-	payload := map[string]any{
-		"source":             "stale_runtime_users",
-		"stale_users":        staleCount,
-		"reported_users":     len(reportedUserIDs),
-		"queued_at":          now.Format(time.RFC3339Nano),
-		"requires_full_sync": true,
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return 0, err
-	}
-	key := operationKey("sync_config", nodeID, 0, now)
-	_, err = tx.ExecContext(
-		ctx,
-		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
-VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
-		nodeID,
-		string(payloadJSON),
-		key,
-		r.timeArg(now),
-		r.timeArg(now),
-	)
-	if err != nil {
-		return 0, err
-	}
 	return staleCount, nil
 }
 
