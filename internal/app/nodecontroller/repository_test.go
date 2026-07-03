@@ -641,6 +641,72 @@ VALUES ('sync_config', NULL, NULL, '{}', 'pending', 'global-sync', CURRENT_TIMES
 	}
 }
 
+func TestControllerGlobalUserOperationFanoutDoesNotAbortOnNodeFailure(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-global-user-retry.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	xray_version TEXT,
+	message TEXT,
+	certificate TEXT,
+	certificate_key TEXT,
+	xray_config_mode TEXT,
+	xray_config TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE tls (
+	id INTEGER PRIMARY KEY,
+	certificate TEXT,
+	"key" TEXT
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO tls (id, certificate, "key") VALUES (1, 'bad cert', 'bad key');
+INSERT INTO nodes (id, name, address, port, api_port, status, xray_config_mode, usage_coefficient)
+VALUES
+	(1, 'unreachable-a', '127.0.0.1', 62050, 62051, 'connected', 'default', 1),
+	(2, 'unreachable-b', '127.0.0.1', 62052, 62053, 'connected', 'default', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('add_user', NULL, 10, '{"config_json":"{}"}', 'pending', 'global-add-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	controller := NewController(NewRepository(db, "sqlite"))
+	result, err := controller.ProcessQueue(ctx, ProcessOperationsRequest{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Done != 1 || result.Retrying != 0 || result.Failed != 0 {
+		t.Fatalf("expected global add_user to complete after queueing node retries, got %#v", result)
+	}
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'add_user' AND node_id IN (1, 2) AND user_id = 10 AND status = 'pending'`, 2)
+}
+
 func TestControllerRetriesServiceRefreshWhenNodeUnavailable(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-service-refresh.db")+"?_pragma=busy_timeout(30000)")

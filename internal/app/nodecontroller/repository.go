@@ -715,6 +715,55 @@ VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
 	return err
 }
 
+func (r Repository) QueueNodeSpecificRetry(ctx context.Context, nodeID int64, operation OperationRow) error {
+	if nodeID <= 0 {
+		return fmt.Errorf("node_id is required")
+	}
+	operationType := strings.TrimSpace(operation.OperationType)
+	if operationType == "" {
+		return fmt.Errorf("operation_type is required")
+	}
+	payloadJSON := []byte("{}")
+	if len(operation.Payload) > 0 {
+		payloadJSON = append(payloadJSON[:0], operation.Payload...)
+	}
+	userID := any(nil)
+	userIDForKey := int64(0)
+	if operation.UserID.Valid {
+		userID = operation.UserID.Int64
+		userIDForKey = operation.UserID.Int64
+	}
+	keySource := fmt.Sprintf("node_retry:%d:%s:%d:%d:%s", operation.ID, operationType, nodeID, userIDForKey, string(payloadJSON))
+	sum := sha256.Sum256([]byte(keySource))
+	key := hex.EncodeToString(sum[:])
+
+	var existing int64
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM node_operations WHERE idempotency_key = ? LIMIT 1`, key).Scan(&existing)
+	if err == nil {
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
+	now := time.Now().UTC()
+	_, err = r.db.ExecContext(
+		ctx,
+		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)`,
+		operationType,
+		nodeID,
+		userID,
+		string(payloadJSON),
+		key,
+		r.timeArg(now),
+		r.timeArg(now),
+	)
+	if isNodeOperationUniqueConstraint(err) {
+		return nil
+	}
+	return err
+}
+
 func isMissingTableError(err error) bool {
 	if err == nil {
 		return false
@@ -723,6 +772,16 @@ func isMissingTableError(err error) bool {
 	return strings.Contains(message, "no such table") ||
 		strings.Contains(message, "doesn't exist") ||
 		strings.Contains(message, "unknown table")
+}
+
+func isNodeOperationUniqueConstraint(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint failed") ||
+		strings.Contains(message, "duplicate entry") ||
+		strings.Contains(message, "constraint failed")
 }
 
 func (r Repository) updateStatus(ctx context.Context, nodeID int64, status string, message string, version string) error {

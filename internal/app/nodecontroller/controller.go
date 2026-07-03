@@ -646,13 +646,10 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			err := c.applyOperationWithConfigData(nodeCtx, nodeOperation, configData)
 			cancel()
 			if err != nil {
-				if operation.OperationType != "sync_config" {
-					return err
-				}
-				if queueErr := c.queueNodeSpecificSyncRetry(ctx, node.ID, operation.Payload); queueErr != nil {
+				if queueErr := c.queueNodeSpecificRetry(ctx, node.ID, operation); queueErr != nil {
 					return queueErr
 				}
-				logging.Warnf(logging.ComponentNode, "global sync_config failed for node=%d and was queued for node-specific retry: %v", node.ID, err)
+				logging.Warnf(logging.ComponentNode, "global %s failed for node=%d and was queued for node-specific retry: %v", operation.OperationType, node.ID, err)
 			}
 		}
 		return nil
@@ -819,6 +816,13 @@ func (c Controller) queueNodeSpecificSyncRetry(ctx context.Context, nodeID int64
 		retryPayload = json.RawMessage(payload)
 	}
 	return c.repo.QueueSyncConfig(ctx, &nodeID, retryPayload)
+}
+
+func (c Controller) queueNodeSpecificRetry(ctx context.Context, nodeID int64, operation OperationRow) error {
+	if operation.OperationType == "sync_config" {
+		return c.queueNodeSpecificSyncRetry(ctx, nodeID, operation.Payload)
+	}
+	return c.repo.QueueNodeSpecificRetry(ctx, nodeID, operation)
 }
 
 func operationContext(parent context.Context, operation OperationRow) (context.Context, context.CancelFunc) {
