@@ -159,6 +159,27 @@ type HistoryModalPayload =
 	| NetworkHistoryPayload
 	| PanelHistoryPayload;
 
+type DashboardMaintenanceInfo = {
+	panel?: {
+		tag?: string | null;
+		channel?: string | null;
+		update?: {
+			available?: boolean;
+			target?: string | null;
+			error?: string;
+		} | null;
+	};
+};
+
+const isDevPanelVersion = (version?: string | null, channel?: string | null) => {
+	const normalizedVersion = (version || "").trim().toLowerCase();
+	const normalizedChannel = (channel || "").trim().toLowerCase();
+	return normalizedChannel === "dev" || normalizedVersion.startsWith("dev-");
+};
+
+const dashboardVersionLabel = (version?: string | null, channel?: string | null) =>
+	isDevPanelVersion(version, channel) ? "dev" : version || "-";
+
 const HistoryModal: FC<{
 	isOpen: boolean;
 	onClose: () => void;
@@ -619,6 +640,19 @@ const SystemOverviewCard: FC<{
 	const cpuHistoryValues = data.cpu_history.map((entry) => entry.value);
 	const memoryHistoryValues = data.memory_history.map((entry) => entry.value);
 	const hasSwap = data.swap.current > 0 || data.swap.total > 0;
+	const maintenanceInfo = useQuery<DashboardMaintenanceInfo>({
+		queryKey: ["dashboard-maintenance-info"],
+		queryFn: () =>
+			fetch<DashboardMaintenanceInfo>("/maintenance/info", {
+				timeout: 8000,
+			}),
+		refetchOnWindowFocus: false,
+		staleTime: 5 * 60 * 1000,
+		retry: false,
+	});
+	const panelTag = maintenanceInfo.data?.panel?.tag || data.version;
+	const panelChannel = maintenanceInfo.data?.panel?.channel || "";
+	const isDevPanel = isDevPanelVersion(panelTag, panelChannel);
 	const latestPanelRelease = useQuery({
 		queryKey: ["panel-latest-release"],
 		queryFn: async () => {
@@ -629,23 +663,32 @@ const SystemOverviewCard: FC<{
 			if (!response.ok) throw new Error("Failed to load latest panel release");
 			return response.json();
 		},
+		enabled: maintenanceInfo.isFetched && !isDevPanel,
 		refetchOnWindowFocus: false,
 		staleTime: 5 * 60 * 1000,
 		retry: 1,
 	});
-	const latestPanelVersion =
-		latestPanelRelease.data?.tag_name || latestPanelRelease.data?.name || "";
-	const isPanelUpdateAvailable =
-		normalizeVersion(latestPanelVersion) &&
-		normalizeVersion(data.version) &&
-		normalizeVersion(latestPanelVersion) !== normalizeVersion(data.version);
+	const maintenanceUpdate = maintenanceInfo.data?.panel?.update;
+	const latestPanelVersion = isDevPanel
+		? dashboardVersionLabel(maintenanceUpdate?.target, "dev")
+		: latestPanelRelease.data?.tag_name || latestPanelRelease.data?.name || "";
+	const isPanelUpdateAvailable = isDevPanel
+		? Boolean(maintenanceUpdate?.available)
+		: Boolean(
+				normalizeVersion(latestPanelVersion) &&
+					normalizeVersion(data.version) &&
+					normalizeVersion(latestPanelVersion) !== normalizeVersion(data.version),
+			);
+	const currentPanelVersion = dashboardVersionLabel(panelTag, panelChannel);
 	return (
 		<ChartBox
 			title={t("systemOverview")}
 			headerActions={
 				<Wrap spacing={2} justify={{ base: "flex-start", md: "flex-end" }}>
 					<WrapItem>
-						<Tag colorScheme="gray">v{data.version}</Tag>
+						<Tag colorScheme="gray">
+							{isDevPanel ? currentPanelVersion : `v${currentPanelVersion}`}
+						</Tag>
 					</WrapItem>
 					{latestPanelVersion && (
 						<WrapItem>

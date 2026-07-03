@@ -3363,6 +3363,27 @@ up_rebecca() {
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" up -d --remove-orphans
 }
 
+schedule_binary_service_restart() {
+    local delay_seconds="${1:-1}"
+    local unit_name="${APP_NAME}-delayed-restart-$(date +%s%N)"
+    local restart_script="sleep ${delay_seconds}; systemctl restart ${APP_NAME}.service"
+
+    if command -v systemd-run >/dev/null 2>&1; then
+        systemd-run \
+            --unit "$unit_name" \
+            --collect \
+            --description "Rebecca delayed service restart" \
+            -- /bin/sh -c "$restart_script" >/dev/null
+        return
+    fi
+
+    nohup /bin/sh -c "$restart_script" >/dev/null 2>&1 &
+}
+
+restart_binary_service_now() {
+    systemctl restart "$APP_NAME.service"
+}
+
 repair_docker_compose_startup_gates() {
     if [ ! -f "$COMPOSE_FILE" ]; then
         return
@@ -4054,6 +4075,17 @@ restart_command() {
         detect_compose
     fi
     
+    if is_binary_install; then
+        if [ "$no_logs" = true ]; then
+            schedule_binary_service_restart 1
+            colorized_echo green "Rebecca restart scheduled."
+            return
+        fi
+        restart_binary_service_now
+        follow_rebecca_logs
+        return
+    fi
+
     down_rebecca
     up_rebecca
     if [ "$no_logs" = false ]; then
@@ -4266,10 +4298,14 @@ update_command() {
     write_rebecca_channel "$rebecca_version"
     
     colorized_echo blue "Restarting Rebecca's services"
-    down_rebecca
-    if ! is_binary_install; then
-        prune_unused_docker_images
+    if is_binary_install; then
+        schedule_binary_service_restart 1
+        colorized_echo blue "Rebecca updated successfully; restart scheduled."
+        return
     fi
+
+    down_rebecca
+    prune_unused_docker_images
     up_rebecca
     
     colorized_echo blue "Rebecca updated successfully"
