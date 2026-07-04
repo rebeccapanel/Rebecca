@@ -520,7 +520,7 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 3 || result.Done != 3 || result.Failed != 0 || result.Retrying != 0 {
+	if result.Processed != 4 || result.Done != 4 || result.Failed != 0 || result.Retrying != 0 {
 		t.Fatalf("unexpected process result: %#v", result)
 	}
 
@@ -535,15 +535,15 @@ VALUES ('sync_config', NULL, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pendi
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM node_operations WHERE status = 'done'`).Scan(&done); err != nil {
 		t.Fatal(err)
 	}
-	if done != 3 {
-		t.Fatalf("expected first capped batch of global operations to be done when no nodes exist, got %d", done)
+	if done != 4 {
+		t.Fatalf("expected global operations to be done when no nodes exist, got %d", done)
 	}
 	var customStatus string
 	if err := db.QueryRowContext(ctx, `SELECT status FROM node_operations WHERE id = 4`).Scan(&customStatus); err != nil {
 		t.Fatal(err)
 	}
-	if customStatus != "pending" {
-		t.Fatalf("expected custom config operation to remain pending for the next capped pass, got %q", customStatus)
+	if customStatus != "done" {
+		t.Fatalf("expected custom config operation to be done with the expanded fair cap, got %q", customStatus)
 	}
 }
 

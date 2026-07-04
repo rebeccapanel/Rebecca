@@ -47,7 +47,8 @@ type OperationRow struct {
 }
 
 const (
-	pendingOperationsPerNodeCap  = 3
+	pendingOperationsPerNodeCap  = 200
+	maxPendingOperationsLimit    = 10000
 	runtimeBacklogSyncThreshold  = 25
 	runtimeBacklogSyncNodeLimit  = 50
 	runtimeBacklogSyncPayloadTag = "runtime_backlog"
@@ -362,8 +363,8 @@ func (r Repository) PendingOperations(ctx context.Context, nodeID int64, limit i
 	if limit <= 0 {
 		limit = 50
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > maxPendingOperationsLimit {
+		limit = maxPendingOperationsLimit
 	}
 	if nodeID <= 0 {
 		return r.pendingOperationsFair(ctx, limit)

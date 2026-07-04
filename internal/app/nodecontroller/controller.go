@@ -26,7 +26,7 @@ type Controller struct {
 }
 
 const (
-	maxConcurrentSingleNodeOperations = 8
+	maxConcurrentSingleNodeOperations = 24
 )
 
 func NewController(repo Repository) Controller {
