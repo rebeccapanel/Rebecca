@@ -650,6 +650,11 @@ func (r Repository) insertNodeOperationTx(ctx context.Context, tx *sql.Tx, opera
 	if err != nil {
 		return err
 	}
+	if isRuntimeUserNodeOperation(operationType) && nodeID > 0 && userID > 0 {
+		if err := compactPendingRuntimeUserOperationsTx(ctx, tx, nodeID, userID); err != nil {
+			return err
+		}
+	}
 	keySource := fmt.Sprintf("%s:%d:%d:%s", operationType, nodeID, userID, string(payloadJSON))
 	sum := sha256.Sum256([]byte(keySource))
 	key := hex.EncodeToString(sum[:])
@@ -663,6 +668,29 @@ func (r Repository) insertNodeOperationTx(ctx context.Context, tx *sql.Tx, opera
 		key,
 		dbTime(now),
 		dbTime(now),
+	)
+	return err
+}
+
+func compactPendingRuntimeUserOperationsTx(ctx context.Context, tx *sql.Tx, nodeID int64, userID int64) error {
+	if nodeID <= 0 || userID <= 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', updated_at = ?
+WHERE node_id = ?
+  AND user_id = ?
+  AND status IN ('pending', 'retrying')
+  AND operation_type IN (?, ?, ?, ?, ?)`,
+		dbTime(time.Now().UTC()),
+		nodeID,
+		userID,
+		NodeOperationAddUser,
+		NodeOperationUpdateUser,
+		NodeOperationRemoveUser,
+		NodeOperationDisableUser,
+		NodeOperationEnableUser,
 	)
 	return err
 }

@@ -96,6 +96,34 @@ func TestEnqueueHysteriaOldServiceHintUsesRuntimeUserOperation(t *testing.T) {
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user' AND user_id = 11`, 1)
 }
 
+func TestEnqueueUserOperationCompactsOlderPendingRuntimeOperations(t *testing.T) {
+	ctx := context.Background()
+	db := newMutationHelpersTestDB(t, "compact-user-operation-enqueue.db")
+	repo := NewRepository(db, "sqlite")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 1, 11, '{}', 'pending', 0, 'old-add', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 1, 11, '{}', 'retrying', 1, 'old-update', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 6, 28, 12, 10, 0, 0, time.UTC)
+	if err := repo.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationRemoveUser, 11, now); err != nil {
+		t.Fatal(err)
+	}
+
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND status = 'done'`, 2)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND operation_type = 'remove_user' AND status = 'pending'`, 1)
+}
+
 func newMutationHelpersTestDB(t *testing.T, name string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), name)+"?_pragma=busy_timeout(30000)")

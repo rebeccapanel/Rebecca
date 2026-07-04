@@ -1346,6 +1346,11 @@ func enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, operationType strin
 	if err != sql.ErrNoRows {
 		return err
 	}
+	if nodeID != nil && userID != nil && isRuntimeUserNodeOperationType(operationType) {
+		if err := compactPendingRuntimeUserOperationsTx(ctx, tx, *nodeID, *userID, now); err != nil {
+			return err
+		}
+	}
 	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)`,
@@ -1356,6 +1361,33 @@ func enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, operationType strin
 		key,
 		dbTimestamp(now),
 		dbTimestamp(now),
+	)
+	return err
+}
+
+func isRuntimeUserNodeOperationType(operationType string) bool {
+	switch operationType {
+	case "add_user", "update_user", "remove_user", "disable_user", "enable_user":
+		return true
+	default:
+		return false
+	}
+}
+
+func compactPendingRuntimeUserOperationsTx(ctx context.Context, tx *sql.Tx, nodeID int64, userID int64, now time.Time) error {
+	if nodeID <= 0 || userID <= 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', updated_at = ?
+WHERE node_id = ?
+  AND user_id = ?
+  AND status IN ('pending', 'retrying')
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`,
+		dbTimestamp(now),
+		nodeID,
+		userID,
 	)
 	return err
 }

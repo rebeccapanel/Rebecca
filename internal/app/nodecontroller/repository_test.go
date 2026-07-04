@@ -337,6 +337,53 @@ VALUES
 	}
 }
 
+func TestRepositoryPendingOperationsPrioritizesRuntimeBacklogSync(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-backlog-priority.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	status TEXT
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, status) VALUES (7, 'connected');
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES
+	('update_user', 7, 100, '{}', 'pending', 0, 'old-update', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 7, 101, '{}', 'pending', 0, 'new-add', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"source":"runtime_backlog"}', 'pending', 0, 'runtime-backlog-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingOperations(ctx, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].OperationType != "sync_config" {
+		t.Fatalf("expected runtime backlog sync before user deltas, got %#v", rows)
+	}
+}
+
 func TestControllerProcessQueueDoesNotStarveConnectedNodeBehindBrokenNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-starvation.db")+"?_pragma=busy_timeout(30000)")
@@ -1025,12 +1072,62 @@ VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queued != 1 {
-		t.Fatalf("expected one backlog sync to be queued, got %d", queued)
+	if queued != 2 {
+		t.Fatalf("expected two backlog syncs to be queued, got %d", queued)
 	}
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1 AND status = 'pending'`, 1)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 2`, 0)
-	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 2)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3 AND payload LIKE '%runtime_backlog%'`, 1)
+}
+
+func TestRepositoryCompactRuntimeUserOperationBacklogKeepsLatestDesiredState(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "compact-runtime-user-backlog.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('update_user', 7, 101, '{}', 'pending', 'old-update', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('disable_user', 7, 101, '{}', 'retrying', 'old-disable', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('remove_user', 7, 101, '{}', 'pending', 'latest-remove', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 8, 101, '{}', 'pending', 'other-node-add', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{}', 'pending', 'sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	compacted, err := repo.CompactRuntimeUserOperationBacklog(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compacted != 2 {
+		t.Fatalf("expected two stale operations to be compacted, got %d", compacted)
+	}
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 2`, "done")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 3`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 4`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 5`, "pending")
 }
 
 func TestRepositoryCoalescedSyncClearsRuntimeUserBacklogForNode(t *testing.T) {

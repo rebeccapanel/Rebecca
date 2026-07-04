@@ -338,6 +338,20 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
 		return ProcessOperationsResult{}, err
 	}
+	compacted, err := c.repo.CompactRuntimeUserOperationBacklog(ctx, 0)
+	if err != nil {
+		return ProcessOperationsResult{}, err
+	}
+	if compacted > 0 {
+		logging.Debugf(logging.ComponentNode, "operation queue compacted stale user deltas count=%d", compacted)
+	}
+	queuedSyncs, err := c.repo.QueueRuntimeBacklogSyncs(ctx, req.NodeID, 0, 0)
+	if err != nil {
+		return ProcessOperationsResult{}, err
+	}
+	if queuedSyncs > 0 {
+		logging.Infof(logging.ComponentNode, "operation queue scheduled full sync for runtime backlogs nodes=%d", queuedSyncs)
+	}
 	operations, err := c.repo.PendingOperations(ctx, req.NodeID, req.Limit)
 	if err != nil {
 		return ProcessOperationsResult{}, err

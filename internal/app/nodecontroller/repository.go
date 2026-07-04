@@ -49,7 +49,7 @@ type OperationRow struct {
 const (
 	pendingOperationsPerNodeCap  = 200
 	maxPendingOperationsLimit    = 10000
-	runtimeBacklogSyncThreshold  = 25
+	runtimeBacklogSyncThreshold  = 500
 	runtimeBacklogSyncNodeLimit  = 50
 	runtimeBacklogSyncPayloadTag = "runtime_backlog"
 )
@@ -422,6 +422,7 @@ WHERE no.status IN ('pending', 'retrying')
     WHERE sync_ops.node_id = no.node_id
       AND sync_ops.operation_type = 'sync_config'
       AND sync_ops.status IN ('pending', 'retrying', 'running')
+      AND LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_backlog"%'
   )`
 	args := []any{}
 	if nodeID > 0 {
@@ -478,20 +479,22 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 		no.payload,
 		no.attempts,
 		CASE
-			WHEN no.operation_type = 'add_user' THEN 0
-			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
-			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
-			WHEN no.operation_type = 'sync_config' THEN 3
+			WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 0
+			WHEN no.operation_type = 'add_user' THEN 1
+			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+			WHEN no.operation_type = 'sync_config' THEN 4
 			ELSE 4
 		END AS operation_priority,
 		ROW_NUMBER() OVER (
 			PARTITION BY COALESCE(no.node_id, -1)
 			ORDER BY
 				CASE
-					WHEN no.operation_type = 'add_user' THEN 0
-					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
-					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
-					WHEN no.operation_type = 'sync_config' THEN 3
+					WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 0
+					WHEN no.operation_type = 'add_user' THEN 1
+					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
+					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+					WHEN no.operation_type = 'sync_config' THEN 4
 					ELSE 4
 				END,
 				CASE WHEN no.operation_type = 'add_user' THEN -no.id ELSE no.id END
@@ -531,6 +534,77 @@ LIMIT ?`
 		return nil, err
 	}
 	return result, nil
+}
+
+func (r Repository) CompactRuntimeUserOperationBacklog(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 5000
+	}
+	if limit > 50000 {
+		limit = 50000
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT node_id, user_id, MAX(id) AS keep_id
+FROM node_operations
+WHERE status IN ('pending', 'retrying')
+  AND node_id IS NOT NULL
+  AND user_id IS NOT NULL
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+GROUP BY node_id, user_id
+HAVING COUNT(*) > 1
+ORDER BY keep_id DESC
+LIMIT ?`, limit)
+	if err != nil {
+		return 0, err
+	}
+	type duplicateGroup struct {
+		nodeID int64
+		userID int64
+		keepID int64
+	}
+	groups := []duplicateGroup{}
+	for rows.Next() {
+		var group duplicateGroup
+		if err := rows.Scan(&group.nodeID, &group.userID, &group.keepID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		groups = append(groups, group)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	compacted := 0
+	now := r.timeArg(time.Now().UTC())
+	for _, group := range groups {
+		res, err := r.db.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE status IN ('pending', 'retrying')
+  AND node_id = ?
+  AND user_id = ?
+  AND id <> ?
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`,
+			now,
+			group.nodeID,
+			group.userID,
+			group.keepID,
+		)
+		if err != nil {
+			return compacted, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			compacted++
+			continue
+		}
+		compacted += int(affected)
+	}
+	return compacted, nil
 }
 
 func (r Repository) RecoverStaleOperations(ctx context.Context, olderThan time.Duration) error {
