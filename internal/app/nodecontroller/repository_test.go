@@ -110,6 +110,7 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
+	last_status_change DATETIME,
 	usage_coefficient REAL DEFAULT 1
 );
 CREATE TABLE node_operations (
@@ -176,6 +177,7 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
+	last_status_change DATETIME,
 	usage_coefficient REAL DEFAULT 1
 );
 CREATE TABLE node_operations (
@@ -406,6 +408,7 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
+	last_status_change DATETIME,
 	usage_coefficient REAL DEFAULT 1
 );
 CREATE TABLE tls (
@@ -445,13 +448,14 @@ VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 1 || result.Retrying != 1 {
-		t.Fatalf("expected connected operation to be attempted once, got %#v", result)
+	if result.Processed != 1 || result.Done != 1 || result.Retrying != 0 {
+		t.Fatalf("expected connected operation to be deferred to full-sync recovery, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "pending")
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 50`, "retrying")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "done")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 50`, "done")
 	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 24`, 0)
-	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 50`, 1)
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 50`, 0)
+	assertRepositoryString(t, db, `SELECT status FROM nodes WHERE id = 50`, "error")
 }
 
 func TestControllerProcessQueueMarksDisabledNodeOperationPermanent(t *testing.T) {
@@ -505,11 +509,11 @@ VALUES ('add_user', 7, 200, '{}', 'pending', 'disabled-op', CURRENT_TIMESTAMP, C
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Processed != 1 || result.Failed != 1 || result.Retrying != 0 {
-		t.Fatalf("expected disabled operation to fail permanently, got %#v", result)
+	if result.Processed != 0 || result.Failed != 0 || result.Retrying != 0 {
+		t.Fatalf("expected disabled operation to be skipped before processing, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "failed")
-	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 1)
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 0)
 }
 
 func TestControllerCompletesGlobalSyncConfigWhenNoNodesExist(t *testing.T) {
@@ -1020,6 +1024,58 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1`, 1)
 }
 
+func TestRepositoryDefersRuntimeDeltasUntilReconnectFullSync(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "node-reconnect-sync.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	status TEXT,
+	message TEXT,
+	xray_version TEXT,
+	last_status_change DATETIME
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, status, message, xray_version, last_status_change)
+VALUES (7, 'connected', 'ok', '1.0.0', CURRENT_TIMESTAMP);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('add_user', 7, 100, '{}', 'pending', 'add-100', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 7, 101, '{}', 'retrying', 'update-101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	if err := repo.SetError(ctx, 7, "dial failed"); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type IN ('add_user', 'update_user') AND status IN ('pending', 'retrying')`, 0)
+
+	if err := repo.SetConnected(ctx, 7, "1.0.1", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
+}
+
 func TestRepositoryQueueRuntimeBacklogSyncsOnlyForConnectedBacklog(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-backlog-sync.db")+"?_pragma=busy_timeout(30000)")
@@ -1079,6 +1135,8 @@ VALUES
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 2`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 2)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3 AND payload LIKE '%runtime_backlog%'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id IN (1, 3) AND operation_type IN ('add_user', 'update_user', 'disable_user') AND status IN ('pending', 'retrying')`, 0)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 2 AND operation_type = 'add_user' AND status = 'pending'`, 3)
 }
 
 func TestRepositoryCompactRuntimeUserOperationBacklogKeepsLatestDesiredState(t *testing.T) {
@@ -1189,6 +1247,54 @@ VALUES
 			t.Fatalf("operation %d should not be cleared by node 7 full sync, got ids=%v", id, ids)
 		}
 	}
+}
+
+func TestRepositoryDefersRuntimeDeltasCoveredByPendingFullSync(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "covered-by-sync.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('sync_config', 7, NULL, '{"source":"runtime_backlog"}', 'pending', 'sync-7', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 7, 100, '{}', 'pending', 'add-100', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 7, 101, '{}', 'retrying', 'update-101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 8, 102, '{}', 'pending', 'add-102', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 9, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'custom-sync-9', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 9, 103, '{}', 'pending', 'add-103', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	deferred, err := repo.DeferRuntimeUserOperationsCoveredByFullSyncs(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deferred != 2 {
+		t.Fatalf("expected two operations covered by full sync, got %d", deferred)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type IN ('add_user', 'update_user') AND status = 'done'`, 2)
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 4`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 6`, "pending")
 }
 
 func TestRepositoryRecoverableNodeIDsOnlyReturnsStaleConnectingAndErrorNodes(t *testing.T) {

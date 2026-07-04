@@ -1226,6 +1226,19 @@ func (r Repository) enqueueUsageOperations(ctx context.Context, tx *sql.Tx, oper
 	}
 	for _, nodeID := range nodeIDs {
 		for _, operation := range operations {
+			if _, err := tx.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', updated_at = ?
+WHERE node_id = ?
+  AND user_id = ?
+  AND status IN ('pending', 'retrying')
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`,
+				r.timeArg(now),
+				nodeID,
+				operation.UserID,
+			); err != nil {
+				return err
+			}
 			key := operationKey(operation.OperationType, nodeID, operation.UserID, now)
 			_, err := tx.ExecContext(
 				ctx,

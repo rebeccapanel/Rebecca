@@ -306,6 +306,7 @@ func (r Repository) SetConnected(ctx context.Context, nodeID int64, version stri
 	}
 	if previousStatus != "" && previousStatus != "connected" {
 		payload := map[string]any{
+			"source":         "node_reconnected",
 			"reason":         "node_reconnected",
 			"reconnected":    true,
 			"reconnected_at": time.Now().UTC().Format(time.RFC3339Nano),
@@ -321,7 +322,13 @@ func (r Repository) SetError(ctx context.Context, nodeID int64, message string) 
 	if len(message) > 1024 {
 		message = message[:1024]
 	}
-	return r.updateStatus(ctx, nodeID, "error", message, "")
+	if err := r.updateStatus(ctx, nodeID, "error", message, ""); err != nil {
+		return err
+	}
+	if _, err := r.DeferRuntimeUserOperationsForNode(ctx, nodeID); err != nil && !isMissingTableError(err) {
+		return err
+	}
+	return nil
 }
 
 func (r Repository) RecoverableNodeIDs(ctx context.Context, limit int) ([]int64, error) {
@@ -458,6 +465,9 @@ WHERE no.status IN ('pending', 'retrying')
 		}
 		id := queuedNodeID
 		if err := r.QueueSyncConfig(ctx, &id, payload); err != nil {
+			return queued, err
+		}
+		if _, err := r.DeferRuntimeUserOperationsForNode(ctx, queuedNodeID); err != nil {
 			return queued, err
 		}
 		queued++
@@ -607,6 +617,109 @@ WHERE status IN ('pending', 'retrying')
 	return compacted, nil
 }
 
+func (r Repository) DeferRuntimeUserOperationsForInactiveNodes(ctx context.Context, nodeID int64) (int, error) {
+	query := `
+UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE status IN ('pending', 'retrying', 'running')
+  AND node_id IS NOT NULL
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND EXISTS (
+    SELECT 1
+    FROM nodes n
+    WHERE n.id = node_operations.node_id
+      AND LOWER(COALESCE(n.status, '')) <> 'connected'
+  )`
+	args := []any{r.timeArg(time.Now().UTC())}
+	if nodeID > 0 {
+		query += ` AND node_id = ?`
+		args = append(args, nodeID)
+	}
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffectedOrDefault(res, 0), nil
+}
+
+func (r Repository) DeferRuntimeUserOperationsForNode(ctx context.Context, nodeID int64) (int, error) {
+	if nodeID <= 0 {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE node_id = ?
+  AND status IN ('pending', 'retrying', 'running')
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`,
+		r.timeArg(time.Now().UTC()),
+		nodeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffectedOrDefault(res, 0), nil
+}
+
+func (r Repository) DeferRuntimeUserOperationsCoveredByFullSyncs(ctx context.Context, nodeID int64) (int, error) {
+	if r.dialect == "mysql" || r.dialect == "mariadb" {
+		query := `
+UPDATE node_operations no
+JOIN node_operations sync_ops ON sync_ops.node_id = no.node_id
+SET no.status = 'done', no.last_error = NULL, no.updated_at = ?
+WHERE no.status IN ('pending', 'retrying', 'running')
+  AND no.node_id IS NOT NULL
+  AND no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND sync_ops.operation_type = 'sync_config'
+  AND sync_ops.status IN ('pending', 'retrying', 'running')
+  AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
+  AND (
+    LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_backlog"%'
+    OR LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"node_reconnected"%'
+    OR LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_hot_apply_failed"%'
+  )`
+		args := []any{r.timeArg(time.Now().UTC())}
+		if nodeID > 0 {
+			query += ` AND no.node_id = ?`
+			args = append(args, nodeID)
+		}
+		res, err := r.db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, err
+		}
+		return rowsAffectedOrDefault(res, 0), nil
+	}
+	query := `
+UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE status IN ('pending', 'retrying', 'running')
+  AND node_id IS NOT NULL
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND EXISTS (
+    SELECT 1
+    FROM node_operations sync_ops
+    WHERE sync_ops.node_id = node_operations.node_id
+      AND sync_ops.operation_type = 'sync_config'
+      AND sync_ops.status IN ('pending', 'retrying', 'running')
+      AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
+      AND (
+        LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_backlog"%'
+        OR LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"node_reconnected"%'
+        OR LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_hot_apply_failed"%'
+      )
+  )`
+	args := []any{r.timeArg(time.Now().UTC())}
+	if nodeID > 0 {
+		query += ` AND node_id = ?`
+		args = append(args, nodeID)
+	}
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffectedOrDefault(res, 0), nil
+}
+
 func (r Repository) RecoverStaleOperations(ctx context.Context, olderThan time.Duration) error {
 	if olderThan <= 0 {
 		olderThan = 2 * time.Minute
@@ -721,6 +834,17 @@ WHERE status IN ('pending', 'retrying', 'running') AND id IN (`+placeholders(len
 	return affectedTotal, nil
 }
 
+func rowsAffectedOrDefault(res sql.Result, fallback int) int {
+	if res == nil {
+		return fallback
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fallback
+	}
+	return int(affected)
+}
+
 func (r Repository) MarkOperationRetrying(ctx context.Context, id int64, message string) error {
 	if len(message) > 4096 {
 		message = message[:4096]
@@ -793,6 +917,19 @@ VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
 func (r Repository) QueueNodeSpecificRetry(ctx context.Context, nodeID int64, operation OperationRow) error {
 	if nodeID <= 0 {
 		return fmt.Errorf("node_id is required")
+	}
+	if isRuntimeUserOperation(operation.OperationType) {
+		var status string
+		err := r.db.QueryRowContext(ctx, `SELECT LOWER(COALESCE(status, '')) FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if status != "connected" {
+			return nil
+		}
 	}
 	operationType := strings.TrimSpace(operation.OperationType)
 	if operationType == "" {
