@@ -148,6 +148,7 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 	if err := tx.Commit(); err != nil {
 		return BulkUsersActionResult{}, err
 	}
+	result.UserIDs = affectedUserIDs
 	return result, nil
 }
 

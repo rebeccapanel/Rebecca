@@ -400,6 +400,37 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 	return result, nil
 }
 
+func (c Controller) ProcessRuntimeUserOperations(ctx context.Context, req ProcessUserOperationsRequest) (ProcessOperationsResult, error) {
+	if req.UserID <= 0 {
+		return ProcessOperationsResult{}, nil
+	}
+	operations, err := c.repo.PendingRuntimeUserOperations(ctx, req.UserID, req.Limit)
+	if err != nil {
+		return ProcessOperationsResult{}, err
+	}
+	result := ProcessOperationsResult{}
+	if len(operations) == 0 {
+		return result, nil
+	}
+	blockedNodes := map[int64]bool{}
+	groups := []operationGroup{}
+	groupIndexes := map[string]int{}
+	for _, operation := range operations {
+		key := operationSingleKey(operation)
+		idx, ok := groupIndexes[key]
+		if !ok {
+			idx = len(groups)
+			groupIndexes[key] = idx
+			groups = append(groups, operationGroup{key: key})
+		}
+		groups[idx].operations = append(groups[idx].operations, operation)
+	}
+	if err := c.processOrderedOperationGroups(ctx, groups, blockedNodes, &result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 type operationGroup struct {
 	key        string
 	operations []OperationRow

@@ -64,32 +64,93 @@ func (s *Server) processNodeOperationsWithContext(ctx context.Context, limit int
 	}
 }
 
-func (s *Server) kickNodeOperationsSoon() {
-	s.nodeOpsKickMu.Lock()
-	if s.nodeOpsKicking {
-		s.nodeOpsKickNext = true
-		s.nodeOpsKickMu.Unlock()
+func (s *Server) kickUserNodeOperationsSoon(userIDs ...int64) {
+	queued := false
+	s.userOpsKickMu.Lock()
+	if s.userOpsKickUserIDs == nil {
+		s.userOpsKickUserIDs = map[int64]struct{}{}
+	}
+	for _, userID := range userIDs {
+		if userID <= 0 {
+			continue
+		}
+		s.userOpsKickUserIDs[userID] = struct{}{}
+		queued = true
+	}
+	if !queued {
+		s.userOpsKickMu.Unlock()
 		return
 	}
-	s.nodeOpsKicking = true
-	s.nodeOpsKickMu.Unlock()
+	if s.userOpsKicking {
+		s.userOpsKickMu.Unlock()
+		return
+	}
+	s.userOpsKicking = true
+	s.userOpsKickMu.Unlock()
 
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			s.processNodeOperationsWithContext(ctx, defaultNodeOperationsBatchSize)
-			cancel()
-
-			s.nodeOpsKickMu.Lock()
-			if !s.nodeOpsKickNext {
-				s.nodeOpsKicking = false
-				s.nodeOpsKickMu.Unlock()
-				return
+			userIDs := s.drainUserNodeOperationKickIDs()
+			if len(userIDs) == 0 {
+				s.userOpsKickMu.Lock()
+				if len(s.userOpsKickUserIDs) == 0 {
+					s.userOpsKicking = false
+					s.userOpsKickMu.Unlock()
+					return
+				}
+				s.userOpsKickMu.Unlock()
+				continue
 			}
-			s.nodeOpsKickNext = false
-			s.nodeOpsKickMu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			for _, userID := range userIDs {
+				if ctx.Err() != nil {
+					break
+				}
+				s.processUserNodeOperationsWithContext(ctx, userID, defaultNodeOperationsBatchSize)
+			}
+			cancel()
 		}
 	}()
+}
+
+func (s *Server) drainUserNodeOperationKickIDs() []int64 {
+	s.userOpsKickMu.Lock()
+	defer s.userOpsKickMu.Unlock()
+	if len(s.userOpsKickUserIDs) == 0 {
+		return nil
+	}
+	userIDs := make([]int64, 0, len(s.userOpsKickUserIDs))
+	for userID := range s.userOpsKickUserIDs {
+		userIDs = append(userIDs, userID)
+	}
+	s.userOpsKickUserIDs = map[int64]struct{}{}
+	return userIDs
+}
+
+func (s *Server) processUserNodeOperationsWithContext(ctx context.Context, userID int64, limit int) {
+	result, err := s.nodeController.ProcessRuntimeUserOperations(ctx, nodecontroller.ProcessUserOperationsRequest{
+		UserID: userID,
+		Limit:  limit,
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			logging.Debugf(logging.ComponentNode, "user operation hot apply stopped user_id=%d: %v", userID, err)
+			return
+		}
+		logging.Warnf(logging.ComponentNode, "user operation hot apply failed user_id=%d: %v", userID, err)
+		return
+	}
+	if result.Processed > 0 {
+		logging.Debugf(
+			logging.ComponentNode,
+			"user operation hot applied user_id=%d processed=%d done=%d retrying=%d failed=%d",
+			userID,
+			result.Processed,
+			result.Done,
+			result.Retrying,
+			result.Failed,
+		)
+	}
 }
 
 func parseNodeOperationsPollInterval(value string) time.Duration {

@@ -124,8 +124,9 @@ type BulkUsersActionRequest struct {
 }
 
 type BulkUsersActionResult struct {
-	Detail string `json:"detail"`
-	Count  int64  `json:"count"`
+	Detail  string  `json:"detail"`
+	Count   int64   `json:"count"`
+	UserIDs []int64 `json:"-"`
 }
 
 type BulkUsersActionOptions struct {

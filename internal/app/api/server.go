@@ -32,33 +32,33 @@ import (
 )
 
 type Server struct {
-	cfg             Config
-	db              *sql.DB
-	dialect         string
-	adminRepo       adminapp.Repository
-	adminAuth       adminapp.Authenticator
-	nodeController  nodecontroller.Controller
-	nodeMutations   nodeapp.Repository
-	systemService   *systemapp.Service
-	maintenance     *systemapp.MaintenanceService
-	usageService    usage.Service
-	userService     userapp.Service
-	warpService     warpapp.Service
-	nordService     nordvpnapp.Service
-	outboundSubs    outboundsubapp.Service
-	configRepo      xrayconfig.Repository
-	settingsRepo    settingsapp.Repository
-	telegramRepo    telegramapp.Repository
-	telegramSender  telegramapp.Sender
-	telegramReports telegramapp.Reporter
-	telegramBackup  telegramapp.BackupDelivery
-	webhookRepo     webhookapp.Repository
-	webhookDispatch webhookapp.Dispatcher
-	backupService   *backupapp.Service
-	backgroundOnce  sync.Once
-	nodeOpsKickMu   sync.Mutex
-	nodeOpsKicking  bool
-	nodeOpsKickNext bool
+	cfg                Config
+	db                 *sql.DB
+	dialect            string
+	adminRepo          adminapp.Repository
+	adminAuth          adminapp.Authenticator
+	nodeController     nodecontroller.Controller
+	nodeMutations      nodeapp.Repository
+	systemService      *systemapp.Service
+	maintenance        *systemapp.MaintenanceService
+	usageService       usage.Service
+	userService        userapp.Service
+	warpService        warpapp.Service
+	nordService        nordvpnapp.Service
+	outboundSubs       outboundsubapp.Service
+	configRepo         xrayconfig.Repository
+	settingsRepo       settingsapp.Repository
+	telegramRepo       telegramapp.Repository
+	telegramSender     telegramapp.Sender
+	telegramReports    telegramapp.Reporter
+	telegramBackup     telegramapp.BackupDelivery
+	webhookRepo        webhookapp.Repository
+	webhookDispatch    webhookapp.Dispatcher
+	backupService      *backupapp.Service
+	backgroundOnce     sync.Once
+	userOpsKickMu      sync.Mutex
+	userOpsKicking     bool
+	userOpsKickUserIDs map[int64]struct{}
 }
 
 func New(cfg Config) (*Server, error) {

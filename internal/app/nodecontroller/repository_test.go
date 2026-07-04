@@ -155,6 +155,72 @@ VALUES
 	}
 }
 
+func TestRepositoryPendingRuntimeUserOperationsOnlyConnectedUserDeltas(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-user-hot-apply.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE nodes (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	address TEXT,
+	port INTEGER,
+	api_port INTEGER,
+	status TEXT,
+	usage_coefficient REAL DEFAULT 1
+);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
+VALUES
+	(1, 'connected-a', '127.0.0.1', 62001, 62002, 'connected', 1),
+	(2, 'error-node', '127.0.0.1', 62003, 62004, 'error', 1),
+	(3, 'connected-b', '127.0.0.1', 62005, 62006, 'connected', 1),
+	(4, 'connecting-node', '127.0.0.1', 62007, 62008, 'connecting', 1);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('sync_config', 1, NULL, '{}', 'pending', 'sync-connected', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 1, 10, '{}', 'pending', 'add-connected', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 2, 10, '{}', 'pending', 'add-error', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('update_user', 3, 11, '{}', 'pending', 'update-other-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('remove_user', 3, 10, '{}', 'retrying', 'remove-connected', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('enable_user', 4, 10, '{}', 'pending', 'enable-connecting', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.PendingRuntimeUserOperations(ctx, 10, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected two connected user operations, got %#v", rows)
+	}
+	if rows[0].OperationType != "add_user" || !rows[0].NodeID.Valid || rows[0].NodeID.Int64 != 1 {
+		t.Fatalf("expected connected add_user first, got %#v", rows[0])
+	}
+	if rows[1].OperationType != "remove_user" || !rows[1].NodeID.Valid || rows[1].NodeID.Int64 != 3 {
+		t.Fatalf("expected connected remove_user second, got %#v", rows[1])
+	}
+}
+
 func TestRepositoryPendingOperationsPrioritizeFreshRuntimeUserAddsOverDisableBacklog(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-runtime-priority.db")+"?_pragma=busy_timeout(30000)")
