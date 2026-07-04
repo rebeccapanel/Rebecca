@@ -20,7 +20,7 @@ var gooseMu sync.Mutex
 var migrationDialect string
 
 const (
-	latestGooseVersion         int64 = 30
+	latestGooseVersion         int64 = 31
 	legacyAlembicFinalRevision       = "23_drop_access_insights"
 	legacyAlembicFinalBaseline int64 = 16
 )
@@ -228,6 +228,21 @@ func schemaLooksGoLatest(ctx context.Context, db *sql.DB, dialect string) (bool,
 	hasNodeNobetciPort, err := HasColumn(ctx, db, dialect, "nodes", "nobetci_port")
 	if err != nil {
 		return false, err
+	}
+	if NormalizeDialect(dialect) == "mysql" {
+		for _, item := range []struct {
+			table  string
+			column string
+		}{
+			{"admins", "expire"},
+			{"users", "expire"},
+			{"next_plans", "expire"},
+		} {
+			ok, err := mysqlColumnIsBigInt(ctx, db, item.table, item.column)
+			if err != nil || !ok {
+				return false, err
+			}
+		}
 	}
 	return !hasJWTMasks && !hasExcludedInbounds && !hasHostSort && !hasPanelNobetci && !hasNodeNobetci && !hasNodeNobetciPort, nil
 }

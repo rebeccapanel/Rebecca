@@ -367,6 +367,49 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 200)
 }
 
+func TestRepositoryFlushesOnHoldUsageWithLongExpireDuration(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-on-hold-long-expire.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	_, err = db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO users (id, status, used_traffic, data_limit, expire, on_hold_expire_duration, admin_id, service_id)
+VALUES (10, 'on_hold', 0, 100000, NULL, 864000000, 1, 2);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO node_usage_user_queue (node_id, batch_id, user_id, used_traffic, online, created_at) VALUES (7, 'users-batch-long-hold', 10, 1, 1, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db, "sqlite")
+	result, err := repo.FlushStagedUsage(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.UserRows != 1 {
+		t.Fatalf("unexpected flush result: %#v", result)
+	}
+	assertString(t, db, `SELECT status FROM users WHERE id = 10`, "active")
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue WHERE processed_at IS NULL`, 0)
+	var expire int64
+	if err := db.QueryRowContext(ctx, `SELECT expire FROM users WHERE id = 10`).Scan(&expire); err != nil {
+		t.Fatal(err)
+	}
+	if expire <= 2147483647 {
+		t.Fatalf("expected long expire to survive as bigint-range timestamp, got %d", expire)
+	}
+}
+
 func TestParseUserUsageSampleUID(t *testing.T) {
 	userID, onlineOnly, ok := parseUserUsageSampleUID("online:42")
 	if !ok || userID != 42 || !onlineOnly {
