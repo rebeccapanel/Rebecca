@@ -489,10 +489,10 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 		no.payload,
 		no.attempts,
 		CASE
-			WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 0
-			WHEN no.operation_type = 'add_user' THEN 1
-			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
-			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+			WHEN no.operation_type = 'add_user' THEN 0
+			WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
+			WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
+			WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 3
 			WHEN no.operation_type = 'sync_config' THEN 4
 			ELSE 4
 		END AS operation_priority,
@@ -500,10 +500,10 @@ func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]Ope
 			PARTITION BY COALESCE(no.node_id, -1)
 			ORDER BY
 				CASE
-					WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 0
-					WHEN no.operation_type = 'add_user' THEN 1
-					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 2
-					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 3
+					WHEN no.operation_type = 'add_user' THEN 0
+					WHEN no.operation_type IN ('update_user', 'enable_user') THEN 1
+					WHEN no.operation_type IN ('remove_user', 'disable_user') THEN 2
+					WHEN no.operation_type = 'sync_config' AND LOWER(COALESCE(no.payload, '')) LIKE '%"source":"runtime_backlog"%' THEN 3
 					WHEN no.operation_type = 'sync_config' THEN 4
 					ELSE 4
 				END,
@@ -671,6 +671,7 @@ WHERE no.status IN ('pending', 'retrying', 'running')
   AND no.node_id IS NOT NULL
   AND no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
   AND sync_ops.operation_type = 'sync_config'
+  AND no.id <= sync_ops.id
   AND sync_ops.status IN ('pending', 'retrying')
   AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
   AND (
@@ -700,6 +701,7 @@ WHERE status IN ('pending', 'retrying', 'running')
     FROM node_operations sync_ops
     WHERE sync_ops.node_id = node_operations.node_id
       AND sync_ops.operation_type = 'sync_config'
+      AND node_operations.id <= sync_ops.id
       AND sync_ops.status IN ('pending', 'retrying')
       AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
       AND (

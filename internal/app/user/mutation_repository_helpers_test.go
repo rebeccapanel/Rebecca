@@ -124,7 +124,7 @@ VALUES
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND operation_type = 'remove_user' AND status = 'pending'`, 1)
 }
 
-func TestEnqueueUserOperationSkipsDeltaCoveredByPendingFullSync(t *testing.T) {
+func TestEnqueueUserOperationKeepsFreshDeltaAfterPendingFullSync(t *testing.T) {
 	ctx := context.Background()
 	db := newMutationHelpersTestDB(t, "covered-by-pending-sync-enqueue.db")
 	repo := NewRepository(db, "sqlite")
@@ -149,7 +149,7 @@ VALUES
 	}
 
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND status = 'done'`, 1)
-	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND status IN ('pending', 'retrying')`, 0)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND operation_type = 'add_user' AND status = 'pending'`, 1)
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
 }
 

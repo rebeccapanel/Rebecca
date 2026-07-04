@@ -253,6 +253,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeUserMutationError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	createdReport := userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw)
 	s.telegramReports.UserCreated(r.Context(), createdReport)
 	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserCreated, createdReport))
@@ -275,6 +276,7 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request, userna
 		writeUserMutationError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	report := userReportForTelegram(result, principal.Context.Admin.Username, principal.Context.Admin.Username, raw)
 	s.telegramReports.UserUpdated(r.Context(), report)
 	s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionUserUpdated, report))
@@ -296,6 +298,7 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request, userna
 		writeUserMutationError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	deletedReport := telegramapp.UserReport{
 		Username: result.Username,
 		Owner:    principal.Context.Admin.Username,
@@ -339,6 +342,7 @@ func (s *Server) handleUserMutationAction(w http.ResponseWriter, r *http.Request
 		writeUserMutationError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	report := telegramapp.UserReport{
 		Username: result.Username,
 		Owner:    principal.Context.Admin.Username,
@@ -418,6 +422,7 @@ func (s *Server) handleBulkUsersAction(w http.ResponseWriter, r *http.Request, s
 		writeUserMutationError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	writeJSON(w, http.StatusOK, result)
 }
 

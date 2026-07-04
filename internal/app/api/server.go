@@ -56,6 +56,9 @@ type Server struct {
 	webhookDispatch webhookapp.Dispatcher
 	backupService   *backupapp.Service
 	backgroundOnce  sync.Once
+	nodeOpsKickMu   sync.Mutex
+	nodeOpsKicking  bool
+	nodeOpsKickNext bool
 }
 
 func New(cfg Config) (*Server, error) {

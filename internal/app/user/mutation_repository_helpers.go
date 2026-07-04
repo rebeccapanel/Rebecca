@@ -654,13 +654,6 @@ func (r Repository) insertNodeOperationTx(ctx context.Context, tx *sql.Tx, opera
 		if err := compactPendingRuntimeUserOperationsTx(ctx, tx, nodeID, userID); err != nil {
 			return err
 		}
-		covered, err := pendingRuntimeFullSyncForNodeTx(ctx, tx, nodeID)
-		if err != nil {
-			return err
-		}
-		if covered {
-			return nil
-		}
 	}
 	keySource := fmt.Sprintf("%s:%d:%d:%s", operationType, nodeID, userID, string(payloadJSON))
 	sum := sha256.Sum256([]byte(keySource))
@@ -700,28 +693,6 @@ WHERE node_id = ?
 		NodeOperationEnableUser,
 	)
 	return err
-}
-
-func pendingRuntimeFullSyncForNodeTx(ctx context.Context, tx *sql.Tx, nodeID int64) (bool, error) {
-	if nodeID <= 0 {
-		return false, nil
-	}
-	var existing int64
-	err := tx.QueryRowContext(ctx, `
-SELECT id
-FROM node_operations
-WHERE node_id = ?
-  AND operation_type = 'sync_config'
-  AND status IN ('pending', 'retrying')
-  AND LOWER(COALESCE(payload, '')) NOT LIKE '%"config_json"%'
-LIMIT 1`, nodeID).Scan(&existing)
-	if err == nil {
-		return true, nil
-	}
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return false, err
 }
 
 func (r Repository) replaceNextPlansTx(ctx context.Context, tx *sql.Tx, userID int64, nextPlans []NextPlanPayload) error {
@@ -987,13 +958,6 @@ func (r Repository) enqueueNodeOperationTx(ctx context.Context, tx *sql.Tx, oper
 	if isRuntimeUserNodeOperation(operationType) && nodeID > 0 && userID > 0 {
 		if err := compactPendingRuntimeUserOperationsTx(ctx, tx, nodeID, userID); err != nil {
 			return err
-		}
-		covered, err := pendingRuntimeFullSyncForNodeTx(ctx, tx, nodeID)
-		if err != nil {
-			return err
-		}
-		if covered {
-			return nil
 		}
 	}
 	keySource := fmt.Sprintf("%s:%d:%d:%s", operationType, nodeID, userID, string(payloadJSON))

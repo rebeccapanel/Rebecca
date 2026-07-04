@@ -39,7 +39,11 @@ func (s *Server) processNodeOperations(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	result, err := s.nodeController.ProcessQueue(workerCtx, nodecontroller.ProcessOperationsRequest{Limit: defaultNodeOperationsBatchSize})
+	s.processNodeOperationsWithContext(workerCtx, defaultNodeOperationsBatchSize)
+}
+
+func (s *Server) processNodeOperationsWithContext(ctx context.Context, limit int) {
+	result, err := s.nodeController.ProcessQueue(ctx, nodecontroller.ProcessOperationsRequest{Limit: limit})
 	if err != nil {
 		if ctx.Err() != nil {
 			logging.Debugf(logging.ComponentNode, "operation queue stopped: %v", err)
@@ -58,6 +62,34 @@ func (s *Server) processNodeOperations(ctx context.Context) {
 			result.Failed,
 		)
 	}
+}
+
+func (s *Server) kickNodeOperationsSoon() {
+	s.nodeOpsKickMu.Lock()
+	if s.nodeOpsKicking {
+		s.nodeOpsKickNext = true
+		s.nodeOpsKickMu.Unlock()
+		return
+	}
+	s.nodeOpsKicking = true
+	s.nodeOpsKickMu.Unlock()
+
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			s.processNodeOperationsWithContext(ctx, defaultNodeOperationsBatchSize)
+			cancel()
+
+			s.nodeOpsKickMu.Lock()
+			if !s.nodeOpsKickNext {
+				s.nodeOpsKicking = false
+				s.nodeOpsKickMu.Unlock()
+				return
+			}
+			s.nodeOpsKickNext = false
+			s.nodeOpsKickMu.Unlock()
+		}
+	}()
 }
 
 func parseNodeOperationsPollInterval(value string) time.Duration {

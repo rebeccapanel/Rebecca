@@ -339,7 +339,7 @@ VALUES
 	}
 }
 
-func TestRepositoryPendingOperationsPrioritizesRuntimeBacklogSync(t *testing.T) {
+func TestRepositoryPendingOperationsPrioritizesFreshAddBeforeRuntimeBacklogSync(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-backlog-priority.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -381,8 +381,8 @@ VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].OperationType != "sync_config" {
-		t.Fatalf("expected runtime backlog sync before user deltas, got %#v", rows)
+	if len(rows) != 1 || rows[0].OperationType != "add_user" || !rows[0].UserID.Valid || rows[0].UserID.Int64 != 101 {
+		t.Fatalf("expected fresh add_user before runtime backlog sync, got %#v", rows)
 	}
 }
 
@@ -1274,12 +1274,13 @@ CREATE TABLE node_operations (
 );
 INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
 VALUES
-	('sync_config', 7, NULL, '{"source":"runtime_backlog"}', 'pending', 'sync-7', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('add_user', 7, 100, '{}', 'pending', 'add-100', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('update_user', 7, 101, '{}', 'retrying', 'update-101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"source":"runtime_backlog"}', 'pending', 'sync-7', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('add_user', 8, 102, '{}', 'pending', 'add-102', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('sync_config', 9, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'custom-sync-9', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-	('add_user', 9, 103, '{}', 'pending', 'add-103', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+	('add_user', 9, 103, '{}', 'pending', 'add-103', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('add_user', 7, 104, '{}', 'pending', 'fresh-add-104', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -1296,6 +1297,7 @@ VALUES
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type IN ('add_user', 'update_user') AND status = 'done'`, 2)
 	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 4`, "pending")
 	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 6`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 7`, "pending")
 }
 
 func TestRepositoryRecoverableNodeIDsOnlyReturnsStaleConnectingAndErrorNodes(t *testing.T) {
