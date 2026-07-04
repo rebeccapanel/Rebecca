@@ -49,7 +49,7 @@ type OperationRow struct {
 const (
 	pendingOperationsPerNodeCap  = 200
 	maxPendingOperationsLimit    = 10000
-	runtimeBacklogSyncThreshold  = 500
+	runtimeBacklogSyncThreshold  = 25
 	runtimeBacklogSyncNodeLimit  = 50
 	runtimeBacklogSyncPayloadTag = "runtime_backlog"
 )
