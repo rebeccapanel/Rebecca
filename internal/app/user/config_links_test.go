@@ -208,6 +208,57 @@ func TestBuildConfigLinksFallsBackToInboundTransportSettingsWhenHostUsesDefaults
 	}
 }
 
+func TestBuildConfigLinksOmitsEmptyNetworkHostParameter(t *testing.T) {
+	serviceID := int64(1)
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            13,
+			Username:      "emptyhost",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{
+			"VLESS WS": {
+				"tag":        "VLESS WS",
+				"protocol":   "vless",
+				"port":       int64(80),
+				"network":    "ws",
+				"tls":        "none",
+				"encryption": "none",
+				"path":       "/",
+			},
+		},
+		[]string{"VLESS WS"},
+		[]Host{{
+			ID:         1,
+			InboundTag: "VLESS WS",
+			Remark:     "empty-host",
+			Address:    "edge.example.com",
+			Security:   "inbound_default",
+			ServiceIDs: []int64{1},
+		}},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one link, got %#v", links.Links)
+	}
+	parsed, err := url.Parse(links.Links[0])
+	if err != nil {
+		t.Fatalf("parse link: %v", err)
+	}
+	if _, ok := parsed.Query()["host"]; ok {
+		t.Fatalf("empty host parameter should be omitted: %s", links.Links[0])
+	}
+}
+
 func TestBuildConfigLinksKeepsRealityPublicKeyForXHTTP(t *testing.T) {
 	serviceID := int64(1)
 	inbound, err := resolveInbound(map[string]any{

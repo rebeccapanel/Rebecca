@@ -1220,6 +1220,22 @@ func (r Repository) enqueueUsageOperations(ctx context.Context, tx *sql.Tx, oper
 	if len(nodeIDs) == 0 {
 		return nil
 	}
+	if len(operations) >= runtimeBacklogSyncThreshold {
+		payload := map[string]any{
+			"source":          "usage_lifecycle_batch",
+			"operation_count": len(operations),
+			"queued_at":       now.Format(time.RFC3339Nano),
+		}
+		for _, nodeID := range nodeIDs {
+			if err := r.deferRuntimeUserOperationsForNodeTx(ctx, tx, nodeID, now); err != nil {
+				return err
+			}
+			if err := r.queueSyncConfigTx(ctx, tx, nodeID, payload, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	payload, err := json.Marshal(map[string]string{"queued_at": now.Format(time.RFC3339Nano)})
 	if err != nil {
 		return err
@@ -1258,6 +1274,61 @@ VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)`,
 		}
 	}
 	return nil
+}
+
+func (r Repository) deferRuntimeUserOperationsForNodeTx(ctx context.Context, tx *sql.Tx, nodeID int64, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `
+UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE node_id = ?
+  AND status IN ('pending', 'retrying', 'running')
+  AND operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')`,
+		r.timeArg(now),
+		nodeID,
+	)
+	return err
+}
+
+func (r Repository) queueSyncConfigTx(ctx context.Context, tx *sql.Tx, nodeID int64, payload any, now time.Time) error {
+	if nodeID <= 0 {
+		return nil
+	}
+	var existing int64
+	err := tx.QueryRowContext(ctx, `
+SELECT id
+FROM node_operations
+WHERE node_id = ?
+  AND operation_type = 'sync_config'
+  AND status IN ('pending', 'retrying')
+  AND LOWER(COALESCE(payload, '')) NOT LIKE '%"config_json"%'
+LIMIT 1`, nodeID).Scan(&existing)
+	if err == nil {
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	keySource := fmt.Sprintf("sync_config:%d:%s:%d", nodeID, string(payloadJSON), now.UnixNano())
+	sum := sha256.Sum256([]byte(keySource))
+	key := hex.EncodeToString(sum[:])
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', ?, NULL, ?, 'pending', 0, ?, ?, ?)`,
+		nodeID,
+		string(payloadJSON),
+		key,
+		r.timeArg(now),
+		r.timeArg(now),
+	)
+	if isNodeOperationUniqueConstraint(err) {
+		return nil
+	}
+	return err
 }
 
 func (r Repository) pendingStagedUserUsage(ctx context.Context, limit int) ([]stagedUserUsageRow, error) {

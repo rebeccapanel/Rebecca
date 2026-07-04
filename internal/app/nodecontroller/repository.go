@@ -671,7 +671,7 @@ WHERE no.status IN ('pending', 'retrying', 'running')
   AND no.node_id IS NOT NULL
   AND no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
   AND sync_ops.operation_type = 'sync_config'
-  AND sync_ops.status IN ('pending', 'retrying', 'running')
+  AND sync_ops.status IN ('pending', 'retrying')
   AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
   AND (
     LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_backlog"%'
@@ -700,7 +700,7 @@ WHERE status IN ('pending', 'retrying', 'running')
     FROM node_operations sync_ops
     WHERE sync_ops.node_id = node_operations.node_id
       AND sync_ops.operation_type = 'sync_config'
-      AND sync_ops.status IN ('pending', 'retrying', 'running')
+      AND sync_ops.status IN ('pending', 'retrying')
       AND LOWER(COALESCE(sync_ops.payload, '')) NOT LIKE '%"config_json"%'
       AND (
         LOWER(COALESCE(sync_ops.payload, '')) LIKE '%"source":"runtime_backlog"%'
@@ -790,7 +790,11 @@ WHERE status IN ('pending', 'retrying', 'running')
 			return nil, err
 		}
 		row.Payload = append(row.Payload[:0], payload...)
-		if canCoalesceRuntimeSyncOperation(row) || (canCoalesceRuntimeSyncOperation(representative) && isRuntimeUserOperation(row.OperationType)) {
+		if canCoalesceRuntimeSyncOperation(row) {
+			ids = append(ids, row.ID)
+			continue
+		}
+		if canCoalesceRuntimeSyncOperation(representative) && isRuntimeUserOperation(row.OperationType) && row.ID <= representative.ID {
 			ids = append(ids, row.ID)
 		}
 	}

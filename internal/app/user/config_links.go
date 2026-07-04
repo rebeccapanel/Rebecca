@@ -1023,16 +1023,19 @@ func appendNetworkParams(params []queryParam, netValue string, path string, inbo
 	host := stringValue(inbound["host"])
 	switch netValue {
 	case "grpc":
-		params = append(params, queryParam{"serviceName", path}, queryParam{"authority", host})
+		params = append(params, queryParam{"serviceName", path})
+		params = appendQueryParamIfNotEmpty(params, "authority", host)
 		if boolValue(inbound["multiMode"]) {
 			params = append(params, queryParam{"mode", "multi"})
 		} else {
 			params = append(params, queryParam{"mode", "gun"})
 		}
 	case "quic":
-		params = append(params, queryParam{"key", path}, queryParam{"quicSecurity", host})
+		params = append(params, queryParam{"key", path})
+		params = appendQueryParamIfNotEmpty(params, "quicSecurity", host)
 	case "splithttp", "xhttp":
-		params = append(params, queryParam{"path", path}, queryParam{"host", host})
+		params = append(params, queryParam{"path", path})
+		params = appendQueryParamIfNotEmpty(params, "host", host)
 		if mode, ok := inbound["mode"]; ok {
 			params = append(params, queryParam{"mode", mode})
 		}
@@ -1053,16 +1056,26 @@ func appendNetworkParams(params []queryParam, netValue string, path string, inbo
 			params = append(params, queryParam{"extra", pythonJSONDumpsOrdered(extra)})
 		}
 	case "kcp":
-		params = append(params, queryParam{"seed", path}, queryParam{"host", host})
+		params = append(params, queryParam{"seed", path})
+		params = appendQueryParamIfNotEmpty(params, "host", host)
 	case "ws":
-		params = append(params, queryParam{"path", path}, queryParam{"host", host})
+		params = append(params, queryParam{"path", path})
+		params = appendQueryParamIfNotEmpty(params, "host", host)
 		if heartbeat, ok := inbound["heartbeatPeriod"]; ok && truthy(heartbeat) {
 			params = append(params, queryParam{"heartbeatPeriod", heartbeat})
 		}
 	default:
-		params = append(params, queryParam{"path", path}, queryParam{"host", host})
+		params = append(params, queryParam{"path", path})
+		params = appendQueryParamIfNotEmpty(params, "host", host)
 	}
 	return params
+}
+
+func appendQueryParamIfNotEmpty(params []queryParam, key string, value any) []queryParam {
+	if stringValue(value) == "" {
+		return params
+	}
+	return append(params, queryParam{key, value})
 }
 
 func appendTLSParams(params []queryParam, tls string, inbound ResolvedInbound) []queryParam {

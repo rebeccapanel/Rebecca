@@ -1212,12 +1212,13 @@ CREATE TABLE node_operations (
 );
 INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
 VALUES
-	('sync_config', 7, NULL, '{"source":"hosts","service_ids":[1]}', 'running', 'service-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('add_user', 7, 100, '{}', 'pending', 'add-100', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('update_user', 7, 101, '{}', 'retrying', 'update-101', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"source":"hosts","service_ids":[1]}', 'running', 'service-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('remove_user', 8, 102, '{}', 'pending', 'other-node-remove', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	('sync_config', 7, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'custom-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-	('sync_config', 7, NULL, '{}', 'pending', 'plain-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+	('sync_config', 7, NULL, '{}', 'pending', 'plain-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('enable_user', 7, 103, '{}', 'pending', 'new-enable', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -1225,7 +1226,7 @@ VALUES
 
 	repo := NewRepository(db, "sqlite")
 	ids, err := repo.CoalescibleOperationIDsForTarget(ctx, OperationRow{
-		ID:            1,
+		ID:            3,
 		OperationType: "sync_config",
 		NodeID:        sql.NullInt64{Int64: 7, Valid: true},
 		Payload:       []byte(`{"source":"hosts","service_ids":[1]}`),
@@ -1242,7 +1243,7 @@ VALUES
 			t.Fatalf("expected operation %d to be cleared by full sync, got ids=%v", id, ids)
 		}
 	}
-	for _, id := range []int64{4, 5} {
+	for _, id := range []int64{4, 5, 7} {
 		if got[id] {
 			t.Fatalf("operation %d should not be cleared by node 7 full sync, got ids=%v", id, ids)
 		}

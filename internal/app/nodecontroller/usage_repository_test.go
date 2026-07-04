@@ -59,6 +59,43 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user' AND user_id = 10`, 1)
 }
 
+func TestRepositoryUsageLifecycleBatchQueuesFullSyncInsteadOfUserDeltas(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-batch-sync.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO admins (id, users_usage, lifetime_usage) VALUES (1, 0, 0);
+INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, updated_at) VALUES (2, 0, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
+INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 1);
+INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`); err != nil {
+		t.Fatal(err)
+	}
+	for i := int64(1); i <= runtimeBacklogSyncThreshold; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (?, 'active', 0, 1, 1, 2)`, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deltas := make([]UserUsageDelta, 0, runtimeBacklogSyncThreshold)
+	for i := int64(1); i <= runtimeBacklogSyncThreshold; i++ {
+		deltas = append(deltas, UserUsageDelta{UserID: i, Value: 1})
+	}
+	repo := NewRepository(db, "sqlite")
+	if err := repo.PersistCollectedUsage(ctx, NodeRow{ID: 7, UsageCoefficient: 1}, deltas, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'disable_user'`, 0)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7 AND status = 'pending'`, 1)
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND payload LIKE '%usage_lifecycle_batch%'`, 1)
+}
+
 func TestRepositoryUsageNodesOnlyReturnsConnectedNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-nodes.db")+"?_pragma=busy_timeout(30000)")

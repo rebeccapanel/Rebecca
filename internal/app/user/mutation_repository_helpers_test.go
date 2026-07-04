@@ -124,6 +124,35 @@ VALUES
 	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND operation_type = 'remove_user' AND status = 'pending'`, 1)
 }
 
+func TestEnqueueUserOperationSkipsDeltaCoveredByPendingFullSync(t *testing.T) {
+	ctx := context.Background()
+	db := newMutationHelpersTestDB(t, "covered-by-pending-sync-enqueue.db")
+	repo := NewRepository(db, "sqlite")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES
+	('update_user', 1, 11, '{}', 'pending', 0, 'old-update', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 1, NULL, '{"source":"runtime_backlog"}', 'pending', 0, 'pending-sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 6, 28, 12, 20, 0, 0, time.UTC)
+	if err := repo.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationAddUser, 11, now); err != nil {
+		t.Fatal(err)
+	}
+
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND status = 'done'`, 1)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND user_id = 11 AND status IN ('pending', 'retrying')`, 0)
+	assertMutationHelperInt64(t, tx, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
+}
+
 func newMutationHelpersTestDB(t *testing.T, name string) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), name)+"?_pragma=busy_timeout(30000)")
