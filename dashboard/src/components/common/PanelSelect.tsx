@@ -417,20 +417,74 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 			}
 		};
 
+		const renderOptionRow = (
+			key: string,
+			content: ReactNode,
+			onSelect: () => void,
+			opts: {
+				disabled?: boolean;
+				selected?: boolean;
+			} = {},
+		) => {
+			const selected = Boolean(opts.selected);
+			const rowProps = {
+				borderRadius: "md",
+				bg: selected ? selectedBg : "transparent",
+				fontSize: "sm",
+				minH: "30px",
+				opacity: opts.disabled ? 0.55 : 1,
+				px: 2,
+				py: 1,
+				_hover: { bg: selected ? selectedBg : hoverBg },
+			};
+
+			if (mode === "single") {
+				return (
+					<MenuItem
+						key={key}
+						{...rowProps}
+						isDisabled={opts.disabled}
+						onClick={() => {
+							if (!opts.disabled) onSelect();
+						}}
+					>
+						{content}
+					</MenuItem>
+				);
+			}
+
+			return (
+				<Box
+					key={key}
+					as="button"
+					type="button"
+					w="full"
+					display="block"
+					textAlign="start"
+					cursor={opts.disabled ? "not-allowed" : "pointer"}
+					disabled={opts.disabled}
+					{...rowProps}
+					onClick={(event: MouseEvent<HTMLElement>) => {
+						event.preventDefault();
+						event.stopPropagation();
+						if (!opts.disabled) onSelect();
+					}}
+				>
+					{content}
+				</Box>
+			);
+		};
+
 		const optionList = (
 			<>
-				{canCreateCustom && (
-					<MenuItem
-						borderRadius="md"
-						fontSize="sm"
-						minH="30px"
-						px={2}
-						py={1}
-						onClick={() => commitCustomInput(customTerm)}
-					>
-						{t("hostsDialog.addCustomValue", "Add")} "{customTerm}"
-					</MenuItem>
-				)}
+				{canCreateCustom &&
+					renderOptionRow(
+						`custom-${customTerm}`,
+						<Text as="span" noOfLines={1}>
+							{t("hostsDialog.addCustomValue", "Add")} "{customTerm}"
+						</Text>,
+						() => commitCustomInput(customTerm),
+					)}
 				{filteredOptions.length === 0 && !canCreateCustom ? (
 					<Box px={2} py={2}>
 						<Text fontSize="sm" color={mutedColor}>
@@ -440,20 +494,9 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 				) : (
 					filteredOptions.map((option) => {
 						const selected = selectedSet.has(option.value.toLowerCase());
-						return (
-							<MenuItem
-								key={option.value || option.searchLabel}
-								borderRadius="md"
-								bg={selected ? selectedBg : "transparent"}
-								isDisabled={option.disabled}
-								fontSize="sm"
-								minH="30px"
-								opacity={option.disabled ? 0.55 : 1}
-								px={2}
-								py={1}
-								_hover={{ bg: selected ? selectedBg : hoverBg }}
-								onClick={() => toggleValue(option)}
-							>
+						return renderOptionRow(
+							option.value || option.searchLabel,
+							<>
 								<HStack w="full" justifyContent="space-between" spacing={2}>
 									<HStack minW={0} spacing={2}>
 										<Box
@@ -486,7 +529,9 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 										</Box>
 									)}
 								</HStack>
-							</MenuItem>
+							</>,
+							() => toggleValue(option),
+							{ disabled: option.disabled, selected },
 						);
 					})
 				)}
