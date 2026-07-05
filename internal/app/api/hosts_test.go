@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -76,6 +77,32 @@ func TestHostStatusDisablesAndDetachesServiceUsers(t *testing.T) {
 		t.Fatalf("unexpected host response: %#v", host)
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE host_id = 44`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+}
+
+func TestAffectedServiceRuntimeChangeQueuesSingleSyncConfig(t *testing.T) {
+	_, db := testAdminServer(t)
+	if _, err := db.Exec(`INSERT INTO services (id, name) VALUES (9, 'vip')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+INSERT INTO users (id, username, admin_id, service_id, status) VALUES
+(77, 'alice', 1, 9, 'active'),
+(78, 'bob', 1, 9, 'on_hold')`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := enqueueAffectedServicesUsersTx(context.Background(), tx, map[int64]bool{9: true}); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'update_user'`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }

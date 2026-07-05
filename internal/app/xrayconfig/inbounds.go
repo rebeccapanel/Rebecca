@@ -952,23 +952,11 @@ func (r Repository) enqueueAffectedServiceUsersTx(ctx context.Context, tx *sql.T
 	if len(serviceIDs) == 0 {
 		return nil
 	}
-	placeholders := sqlPlaceholders(len(serviceIDs))
-	args := int64SliceToAny(serviceIDs)
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE service_id IN (`+placeholders+`) AND status IN ('active', 'on_hold')`, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var userID int64
-		if err := rows.Scan(&userID); err != nil {
-			return err
-		}
-		if err := enqueueNodeOperationTx(ctx, tx, "update_user", nil, &userID, map[string]any{}); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
+	sort.Slice(serviceIDs, func(i, j int) bool { return serviceIDs[i] < serviceIDs[j] })
+	return r.enqueueSyncConfigTx(ctx, tx, nil, map[string]any{
+		"source":      "inbounds",
+		"service_ids": serviceIDs,
+	})
 }
 
 func sqlPlaceholders(count int) string {
