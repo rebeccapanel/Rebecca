@@ -14,6 +14,7 @@ import (
 
 const (
 	defaultSubscriptionType            = "key"
+	defaultDashboardPath               = "/dashboard/"
 	defaultSubscriptionProfileTitle    = "Subscription"
 	defaultSubscriptionSupportURL      = "https://t.me/"
 	defaultSubscriptionUpdateInterval  = "12"
@@ -91,6 +92,42 @@ func (r Repository) UpdatePanelSettings(ctx context.Context, raw map[string]json
 		}
 	}
 	return r.panelSettings(ctx)
+}
+
+func (r Repository) RuntimeSettings(ctx context.Context) (RuntimeSettings, error) {
+	if err := r.ensureRuntimeSettingsRecord(ctx); err != nil {
+		return RuntimeSettings{}, err
+	}
+	return r.runtimeSettings(ctx)
+}
+
+func (r Repository) UpdateRuntimeSettings(ctx context.Context, raw map[string]json.RawMessage) (RuntimeSettings, error) {
+	if err := r.ensureRuntimeSettingsRecord(ctx); err != nil {
+		return RuntimeSettings{}, err
+	}
+	sets := []string{}
+	args := []any{}
+	add := func(column string, value any) {
+		sets = append(sets, column+" = ?")
+		args = append(args, value)
+	}
+	for key, value := range raw {
+		switch key {
+		case "dashboard_path":
+			add(key, normalizeDashboardPath(rawStringDefault(value, defaultDashboardPath)))
+		case "record_node_usage", "record_node_user_usages", "subscription_read_only", "api_docs_enabled":
+			add(key, rawBoolDefault(value, false))
+		}
+	}
+	if len(sets) > 0 {
+		sets = append(sets, "updated_at = ?")
+		args = append(args, dbTime(time.Now().UTC()))
+		args = append(args, 1)
+		if _, err := r.db.ExecContext(ctx, "UPDATE settings SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+			return RuntimeSettings{}, err
+		}
+	}
+	return r.runtimeSettings(ctx)
 }
 
 func (r Repository) SubscriptionBundle(ctx context.Context) (SubscriptionBundle, error) {
@@ -233,6 +270,62 @@ func (r Repository) panelSettings(ctx context.Context) (PanelSettings, error) {
 		result.DefaultSubscriptionType = defaultSubscriptionType
 	}
 	return result, nil
+}
+
+func (r Repository) runtimeSettings(ctx context.Context) (RuntimeSettings, error) {
+	var result RuntimeSettings
+	err := r.db.QueryRowContext(ctx, `
+SELECT
+	COALESCE(dashboard_path, '/dashboard/'),
+	COALESCE(record_node_usage, 1),
+	COALESCE(record_node_user_usages, 1),
+	COALESCE(subscription_read_only, 0),
+	COALESCE(api_docs_enabled, 0)
+FROM settings
+WHERE id = 1
+LIMIT 1`).Scan(
+		&result.DashboardPath,
+		&result.RecordNodeUsage,
+		&result.RecordNodeUserUsages,
+		&result.SubscriptionReadOnly,
+		&result.APIDocsEnabled,
+	)
+	if err != nil {
+		return RuntimeSettings{}, err
+	}
+	result.DashboardPath = normalizeDashboardPath(result.DashboardPath)
+	return result, nil
+}
+
+func (r Repository) ensureRuntimeSettingsRecord(ctx context.Context) error {
+	var count int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE id = 1`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO settings (
+	id,
+	dashboard_path,
+	record_node_usage,
+	record_node_user_usages,
+	subscription_read_only,
+	api_docs_enabled,
+	created_at,
+	updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		1,
+		defaultDashboardPath,
+		true,
+		true,
+		false,
+		false,
+		dbTime(time.Now().UTC()),
+		dbTime(time.Now().UTC()),
+	)
+	return err
 }
 
 func (r Repository) ensurePanelRecord(ctx context.Context) error {

@@ -35,6 +35,9 @@ func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Reque
 	req.Start = r.URL.Query().Get("start")
 	req.End = r.URL.Query().Get("end")
 	req.ReadOnly = s.cfg.SubscriptionReadOnly
+	if runtimeSettings, err := s.settingsRepo.RuntimeSettings(r.Context()); err == nil {
+		req.ReadOnly = runtimeSettings.SubscriptionReadOnly
+	}
 	req.Usage = s.usageService
 
 	switch req.ClientType {

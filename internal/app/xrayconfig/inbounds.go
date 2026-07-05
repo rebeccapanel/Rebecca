@@ -463,41 +463,15 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 }
 
 func (r Repository) isReservedInboundTag(tag string) bool {
-	if tag == "" {
-		return false
-	}
-	if r.options.FallbackInboundTag != "" && tag == r.options.FallbackInboundTag {
-		return true
-	}
-	for _, excluded := range r.options.ExcludedInboundTags {
-		if strings.TrimSpace(excluded) == tag {
-			return true
-		}
-	}
 	return false
 }
 
 func (r Repository) isManageableInbound(inbound map[string]any) bool {
-	return IsManageableInbound(inbound, r.excludedInboundTags())
+	return IsManageableInbound(inbound)
 }
 
 func (r Repository) manageableParseOptions() Options {
-	opts := r.options
-	opts.ExcludedInboundTags = r.excludedInboundTags()
-	return opts
-}
-
-func (r Repository) excludedInboundTags() []string {
-	excluded := make([]string, 0, len(r.options.ExcludedInboundTags)+1)
-	for _, tag := range r.options.ExcludedInboundTags {
-		if cleaned := strings.TrimSpace(tag); cleaned != "" {
-			excluded = append(excluded, cleaned)
-		}
-	}
-	if fallback := strings.TrimSpace(r.options.FallbackInboundTag); fallback != "" {
-		excluded = append(excluded, fallback)
-	}
-	return excluded
+	return r.options
 }
 
 func normalizeRealitySettings(inbound map[string]any) error {

@@ -8,6 +8,22 @@ type PanelSettingsUpdate struct {
 	DefaultSubscriptionType *string `json:"default_subscription_type,omitempty"`
 }
 
+type RuntimeSettings struct {
+	DashboardPath        string `json:"dashboard_path"`
+	RecordNodeUsage      bool   `json:"record_node_usage"`
+	RecordNodeUserUsages bool   `json:"record_node_user_usages"`
+	SubscriptionReadOnly bool   `json:"subscription_read_only"`
+	APIDocsEnabled       bool   `json:"api_docs_enabled"`
+}
+
+type RuntimeSettingsUpdate struct {
+	DashboardPath        *string `json:"dashboard_path,omitempty"`
+	RecordNodeUsage      *bool   `json:"record_node_usage,omitempty"`
+	RecordNodeUserUsages *bool   `json:"record_node_user_usages,omitempty"`
+	SubscriptionReadOnly *bool   `json:"subscription_read_only,omitempty"`
+	APIDocsEnabled       *bool   `json:"api_docs_enabled,omitempty"`
+}
+
 type SubscriptionSettings struct {
 	SubscriptionURLPrefix       string   `json:"subscription_url_prefix"`
 	SubscriptionProfileTitle    string   `json:"subscription_profile_title"`

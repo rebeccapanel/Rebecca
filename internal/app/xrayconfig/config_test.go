@@ -57,14 +57,14 @@ func testConfig() map[string]any {
 }
 
 func TestParseValidConfigResolvesInbounds(t *testing.T) {
-	cfg, err := Parse(testConfig(), Options{ExcludedInboundTags: []string{"blocked"}})
+	cfg, err := Parse(testConfig(), Options{})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
 	byTag := cfg.InboundsByTag()
-	if _, ok := byTag["blocked"]; ok {
-		t.Fatal("excluded inbound was resolved")
+	if _, ok := byTag["blocked"]; !ok {
+		t.Fatal("manageable inbound was not resolved")
 	}
 	vless := byTag["vless-tcp"]
 	if vless["protocol"] != "vless" || vless["network"] != "tcp" || vless["tls"] != "tls" {
@@ -78,7 +78,7 @@ func TestParseValidConfigResolvesInbounds(t *testing.T) {
 	}
 
 	byProtocol := cfg.InboundsByProtocol()
-	if len(byProtocol["vless"]) != 1 || len(byProtocol["vmess"]) != 1 {
+	if len(byProtocol["vless"]) != 1 || len(byProtocol["vmess"]) != 1 || len(byProtocol["trojan"]) != 1 {
 		t.Fatalf("unexpected protocol grouping: %#v", byProtocol)
 	}
 }

@@ -304,15 +304,8 @@ server {
 | USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Включать limited пользователей в auto-delete.                                                                 |
 | JWT_ACCESS_TOKEN_EXPIRE_MINUTES          | Время жизни JWT access token в минутах.                                                                       |
 | USERS_LIST_TIMEOUT_SECONDS               | Таймаут больших user list запросов; `0` отключает таймаут.                                                    |
-| SUBSCRIPTION_READ_ONLY                   | Не обновлять metadata при чтении subscription.                                                                |
-| XRAY_SUBSCRIPTION_URL_PREFIX             | Prefix для CLI subscription-link helpers.                                                                     |
-| XRAY_FALLBACKS_INBOUND_TAG               | Inbound tag, содержащий fallbacks.                                                                            |
-| XRAY_EXCLUDE_INBOUND_TAGS                | Inbound tags, исключённые из генерации ссылок/config.                                                         |
-| REBECCA_APP_TEMPLATE_BASE                | Базовый путь встроенных templates.                                                                            |
 | REBECCA_CERT_BASE                        | Базовый путь управляемых сертификатов.                                                                        |
 | REBECCA_CONFIG_DIR                       | Корень конфигурации, включаемый в full backup.                                                                |
-| GEO_TEMPLATES_INDEX_URL                  | Опциональный URL разрешённого Geo template index.                                                             |
-| REBECCA_WARP_API_BASE                    | Override для Cloudflare WARP API base URL.                                                                    |
 
 # Telegram Bot
 

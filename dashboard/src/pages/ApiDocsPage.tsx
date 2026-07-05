@@ -1,6 +1,5 @@
 import {
 	Button,
-	Code,
 	Box,
 	Flex,
 	Heading,
@@ -70,10 +69,9 @@ export const ApiDocsPage = () => {
 				<Text color={mutedColor}>
 					{t(
 						"apiDocs.disabledDescription",
-						"Enable the embedded Swagger UI by setting REBECCA_API_DOCS_ENABLED=true in the Rebecca environment file, then restart the panel.",
+						"Enable API docs from Settings, then restart or reload the panel.",
 					)}
 				</Text>
-				<Code fontSize="sm">REBECCA_API_DOCS_ENABLED=true</Code>
 				<Button as="a" href="/docs/" variant="outline">
 					{t("apiDocs.openRoute", "Open /docs")}
 				</Button>

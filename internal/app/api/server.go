@@ -82,6 +82,11 @@ func New(cfg Config) (*Server, error) {
 	warpRepo := warpapp.NewRepository(pool.DB, pool.Dialect)
 	nordRepo := nordvpnapp.NewRepository(pool.DB, pool.Dialect)
 	settingsRepo := settingsapp.NewRepository(pool.DB, pool.Dialect)
+	runtimeSettings, err := settingsRepo.RuntimeSettings(migrationCtx)
+	if err != nil {
+		return nil, fmt.Errorf("load runtime settings: %w", err)
+	}
+	applyRuntimeSettingsToConfig(&cfg, runtimeSettings)
 	telegramRepo := telegramapp.NewRepository(pool.DB, pool.Dialect)
 	telegramSender := telegramapp.NewSender(telegramRepo, cfg.TelegramAPIBase)
 	webhookRepo := webhookapp.NewRepository(pool.DB, pool.Dialect)
@@ -93,10 +98,7 @@ func New(cfg Config) (*Server, error) {
 	})
 	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
-	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
-		FallbackInboundTag:  cfg.XrayFallbackInboundTag,
-		ExcludedInboundTags: cfg.XrayExcludeInboundTags,
-	})
+	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{})
 	sudoers := []string{}
 	if strings.TrimSpace(cfg.SudoUsername) != "" && strings.TrimSpace(cfg.SudoPassword) != "" {
 		sudoers = append(sudoers, cfg.SudoUsername)
@@ -113,7 +115,7 @@ func New(cfg Config) (*Server, error) {
 		maintenance:    systemapp.NewMaintenanceService(),
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
-		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient(cfg.WarpAPIBase)),
+		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
 		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
 		outboundSubs:   outboundSubs,
 		configRepo:     configRepo,
@@ -129,6 +131,21 @@ func New(cfg Config) (*Server, error) {
 		webhookDispatch: webhookDispatch,
 		backupService:   backupService,
 	}, nil
+}
+
+func applyRuntimeSettingsToConfig(cfg *Config, settings settingsapp.RuntimeSettings) {
+	cfg.RecordNodeUsage = settings.RecordNodeUsage
+	cfg.RecordNodeUserUsages = settings.RecordNodeUserUsages
+	cfg.SubscriptionReadOnly = settings.SubscriptionReadOnly
+	cfg.APIDocsEnabled = settings.APIDocsEnabled
+}
+
+func (s *Server) applyRuntimeSettings(settings settingsapp.RuntimeSettings) {
+	applyRuntimeSettingsToConfig(&s.cfg, settings)
+}
+
+func (s *Server) RuntimeSettings(ctx context.Context) (settingsapp.RuntimeSettings, error) {
+	return s.settingsRepo.RuntimeSettings(ctx)
 }
 
 func (s *Server) StartBackground(ctx context.Context) {

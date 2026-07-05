@@ -1307,19 +1307,14 @@ select_database_type_interactive() {
 
 prompt_dashboard_bind_settings() {
     local port
-    local path
     if [ ! -t 0 ]; then
         upsert_env_assignment "UVICORN_PORT" "8000"
-        upsert_env_assignment "DASHBOARD_PATH" "/dashboard/"
         return
     fi
     ui_section "Dashboard"
     port=$(prompt_tcp_port "Dashboard port" "8000")
     echo
-    path=$(prompt_url_path "Dashboard path" "dashboard")
-    echo
     upsert_env_assignment "UVICORN_PORT" "$port"
-    upsert_env_assignment "DASHBOARD_PATH" "$path"
 }
 
 mysql_password_is_strong() {

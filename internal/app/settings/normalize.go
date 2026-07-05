@@ -44,6 +44,18 @@ func normalizePath(value string) string {
 	return cleaned
 }
 
+func normalizeDashboardPath(value string) string {
+	cleaned := strings.TrimSpace(value)
+	if cleaned == "" {
+		cleaned = defaultDashboardPath
+	}
+	cleaned = "/" + strings.Trim(cleaned, "/") + "/"
+	if cleaned == "//" {
+		return defaultDashboardPath
+	}
+	return cleaned
+}
+
 func normalizeAlias(alias string) string {
 	cleaned := strings.TrimSpace(alias)
 	if cleaned == "" {
@@ -267,9 +279,6 @@ func certificatePath(domain string) string {
 
 func appTemplateBasePath() string {
 	candidates := []string{}
-	if env := strings.TrimSpace(os.Getenv("REBECCA_APP_TEMPLATE_BASE")); env != "" {
-		candidates = append(candidates, env)
-	}
 	if cwd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, filepath.Join(cwd, "templates"))
 		candidates = append(candidates, filepath.Join(filepath.Dir(cwd), "templates"))

@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -64,21 +63,14 @@ func resolveGeoUpdateFiles(ctx context.Context, payload geoUpdatePayload) ([]nod
 }
 
 func resolveGeoTemplateIndexURL(candidateURL string) (string, error) {
-	configuredURL := strings.TrimSpace(os.Getenv("GEO_TEMPLATES_INDEX_URL"))
 	requestedURL := strings.TrimSpace(candidateURL)
 	if requestedURL == "" {
-		if configuredURL != "" {
-			return validateDownloadURL(configuredURL, "template_index_url")
-		}
 		return geoTemplatesIndexDefault, nil
 	}
 	if requestedURL == geoTemplatesIndexDefault {
 		return requestedURL, nil
 	}
-	if configuredURL != "" && requestedURL == configuredURL {
-		return validateDownloadURL(configuredURL, "template_index_url")
-	}
-	return "", fmt.Errorf("template_index_url must be empty, the default template index, or the configured GEO_TEMPLATES_INDEX_URL")
+	return "", fmt.Errorf("template_index_url must be empty or the default template index")
 }
 
 func fetchGeoTemplateFiles(ctx context.Context, indexURL string, templateName string) ([]nodecontroller.File, int, error) {

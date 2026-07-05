@@ -63,12 +63,14 @@ import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
 	getPanelSettings,
+	getRuntimeSettings,
 	getSubscriptionSettings,
 	getSubscriptionTemplateContent,
 	getTelegramSettings,
 	issueSubscriptionCertificate,
 	type PanelSettingsResponse,
 	renewSubscriptionCertificate,
+	type RuntimeSettingsResponse,
 	sendTelegramBackup,
 	testTelegramSettings,
 	type SubscriptionSettingsBundle,
@@ -79,6 +81,7 @@ import {
 	type TelegramSettingsUpdatePayload,
 	updateAdminSubscriptionSettings,
 	updatePanelSettings,
+	updateRuntimeSettings,
 	updateSubscriptionSettings,
 	updateSubscriptionTemplateContent,
 	updateTelegramSettings,
@@ -91,7 +94,6 @@ import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
-import { ThreeXUiDatabaseImportPanel } from "../components/ThreeXUiDatabaseImportPanel";
 import {
 	XrayModalBody,
 	XrayModalContent,
@@ -224,6 +226,14 @@ type MaintenanceActionResponse = {
 	status?: string;
 	message?: string;
 	operation?: MaintenanceOperation;
+};
+
+const defaultRuntimeSettings: RuntimeSettingsResponse = {
+	dashboard_path: "/dashboard/",
+	record_node_usage: true,
+	record_node_user_usages: true,
+	subscription_read_only: false,
+	api_docs_enabled: false,
 };
 
 const flattenEventToggleValues = (
@@ -750,6 +760,19 @@ export const IntegrationSettingsPage = () => {
 	});
 
 	const {
+		data: runtimeSettings,
+		isLoading: isRuntimeSettingsLoading,
+		refetch: refetchRuntimeSettings,
+	} = useQuery<RuntimeSettingsResponse>(
+		"runtime-settings",
+		getRuntimeSettings,
+		{
+			refetchOnWindowFocus: false,
+			enabled: canManageIntegrations,
+		},
+	);
+
+	const {
 		data: subscriptionBundle,
 		isLoading: isSubscriptionLoading,
 		refetch: refetchSubscriptionSettings,
@@ -806,12 +829,20 @@ export const IntegrationSettingsPage = () => {
 	const [panelDefaultSubType, setPanelDefaultSubType] = useState<
 		"username-key" | "key" | "token"
 	>(panelData?.default_subscription_type ?? "key");
+	const [runtimeSettingsForm, setRuntimeSettingsForm] =
+		useState<RuntimeSettingsResponse>(defaultRuntimeSettings);
 
 	useEffect(() => {
 		if (panelData) {
 			setPanelDefaultSubType(panelData.default_subscription_type ?? "key");
 		}
 	}, [panelData]);
+
+	useEffect(() => {
+		if (runtimeSettings) {
+			setRuntimeSettingsForm(runtimeSettings);
+		}
+	}, [runtimeSettings]);
 
 	const [adminOverrides, setAdminOverrides] = useState<
 		Record<number, AdminSubscriptionSettings>
@@ -1139,9 +1170,9 @@ export const IntegrationSettingsPage = () => {
 	const integrationTabKeys = useMemo(
 		() => [
 			"panel",
+			"backup",
 			"telegram",
 			"subscriptions",
-			"database",
 			"template-creator",
 		],
 		[],
@@ -1188,7 +1219,7 @@ export const IntegrationSettingsPage = () => {
 	useEffect(() => {
 		const { focus, tab } = getFocusFromHash();
 		if (
-			activeIntegrationTab !== 1 ||
+			activeIntegrationTab !== 2 ||
 			tab.toLowerCase() !== "telegram" ||
 			focus !== "periodic-backup" ||
 			(isLoading && !data)
@@ -1273,6 +1304,21 @@ export const IntegrationSettingsPage = () => {
 				title: t("errors.generic"),
 				status: "error",
 			});
+		},
+	});
+
+	const runtimeSettingsMutation = useMutation(updateRuntimeSettings, {
+		onSuccess: (updated) => {
+			setRuntimeSettingsForm(updated);
+			queryClient.setQueryData("runtime-settings", updated);
+			toast({
+				title: t("settings.runtime.saved", "Settings saved."),
+				status: "success",
+				duration: 3000,
+			});
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
 		},
 	});
 
@@ -1787,10 +1833,10 @@ export const IntegrationSettingsPage = () => {
 			<ResourceListCard
 				title={
 					<PageHeader
-						title={t("settings.integrations")}
+						title={t("settings.integrations", "Settings")}
 						description={t(
 							"settings.integrationsDescription",
-							"Configure panel runtime, Telegram, subscriptions, database imports, and templates.",
+							"Configure panel runtime, backups, Telegram, subscriptions, and templates.",
 						)}
 					/>
 				}
@@ -1815,22 +1861,22 @@ export const IntegrationSettingsPage = () => {
 						label: t("settings.panel.tabTitle"),
 					},
 					{
-						value: "telegram",
+						value: "backup",
 						isActive: activeIntegrationTab === 1,
 						onClick: () => handleIntegrationTabChange(1),
+						label: t("settings.backup.tabTitle", "Backup"),
+					},
+					{
+						value: "telegram",
+						isActive: activeIntegrationTab === 2,
+						onClick: () => handleIntegrationTabChange(2),
 						label: t("settings.telegram"),
 					},
 					{
 						value: "subscriptions",
-						isActive: activeIntegrationTab === 2,
-						onClick: () => handleIntegrationTabChange(2),
-						label: t("settings.subscriptions.tabTitle"),
-					},
-					{
-						value: "database",
 						isActive: activeIntegrationTab === 3,
 						onClick: () => handleIntegrationTabChange(3),
-						label: t("settings.database.tabTitle", "DATABASE"),
+						label: t("settings.subscriptions.tabTitle"),
 					},
 					{
 						value: "template-creator",
@@ -1894,6 +1940,169 @@ export const IntegrationSettingsPage = () => {
 												</option>
 											</Select>
 										</FormControl>
+									</Flex>
+								</Box>
+								<Box className="master-settings-card">
+									<Flex
+										justify="space-between"
+										align={{ base: "flex-start", md: "center" }}
+										gap={4}
+										flexDirection={{ base: "column", md: "row" }}
+										mb={4}
+									>
+										<Box>
+											<Heading size="sm" mb={1}>
+												{t("settings.runtime.title", "Runtime settings")}
+											</Heading>
+											<Text fontSize="sm" color="gray.500">
+												{t(
+													"settings.runtime.description",
+													"Control dashboard, API docs, subscription read mode, and usage recording from the database.",
+												)}
+											</Text>
+										</Box>
+										<Button
+											variant="outline"
+											size="sm"
+											leftIcon={<ArrowPathIcon width={16} height={16} />}
+											onClick={() => refetchRuntimeSettings()}
+											isLoading={isRuntimeSettingsLoading}
+										>
+											{t("actions.refresh")}
+										</Button>
+									</Flex>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<FormLabel fontSize="sm">
+												{t("settings.runtime.dashboardPath", "Dashboard path")}
+											</FormLabel>
+											<Input
+												value={runtimeSettingsForm.dashboard_path}
+												placeholder="/dashboard/"
+												onChange={(event) =>
+													setRuntimeSettingsForm((prev) => ({
+														...prev,
+														dashboard_path: event.target.value,
+													}))
+												}
+												isDisabled={runtimeSettingsMutation.isLoading}
+											/>
+											<FormHelperText>
+												{t(
+													"settings.runtime.dashboardPathHint",
+													"Path served by the Rebecca binary, for example /dashboard/.",
+												)}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel fontSize="sm">
+												{t(
+													"settings.runtime.subscriptionReadOnly",
+													"Subscription read-only mode",
+												)}
+											</FormLabel>
+											<TelegramSwitchRow
+												title={t(
+													"settings.runtime.subscriptionReadOnlyTitle",
+													"Do not update subscription last-used metadata",
+												)}
+												description={t(
+													"settings.runtime.subscriptionReadOnlyHint",
+													"Useful when subscriptions are fetched by external caches or probes.",
+												)}
+												control={
+													<Switch
+														isChecked={runtimeSettingsForm.subscription_read_only}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																subscription_read_only: event.target.checked,
+															}))
+														}
+														isDisabled={runtimeSettingsMutation.isLoading}
+													/>
+												}
+											/>
+										</FormControl>
+										<TelegramSwitchRow
+											title={t(
+												"settings.runtime.recordNodeUsage",
+												"Record node usage",
+											)}
+											description={t(
+												"settings.runtime.recordNodeUsageHint",
+												"Save node traffic history for the Usage page.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.record_node_usage}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															record_node_usage: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+										<TelegramSwitchRow
+											title={t(
+												"settings.runtime.recordNodeUserUsages",
+												"Record user usage samples",
+											)}
+											description={t(
+												"settings.runtime.recordNodeUserUsagesHint",
+												"Save per-user, admin, and service usage samples.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.record_node_user_usages}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															record_node_user_usages: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+										<TelegramSwitchRow
+											title={t("settings.runtime.apiDocs", "Enable API docs")}
+											description={t(
+												"settings.runtime.apiDocsHint",
+												"Serve the embedded OpenAPI/Swagger UI from /docs.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.api_docs_enabled}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															api_docs_enabled: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+									</SimpleGrid>
+									<Flex className="master-settings-action-row" mt={4}>
+										<Button
+											colorScheme="primary"
+											leftIcon={<SaveIcon />}
+											onClick={() =>
+												runtimeSettingsMutation.mutate(runtimeSettingsForm)
+											}
+											isLoading={runtimeSettingsMutation.isLoading}
+											isDisabled={
+												runtimeSettingsMutation.isLoading ||
+												isRuntimeSettingsLoading
+											}
+										>
+											{t("settings.save")}
+										</Button>
 									</Flex>
 								</Box>
 								<Box className="master-settings-card">
@@ -2152,7 +2361,7 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 1 ? "block" : "none"}
+				display={activeIntegrationTab === 2 ? "block" : "none"}
 			>
 						{isLoading && !data ? (
 							<Flex align="center" justify="center" py={12}>
@@ -2647,7 +2856,7 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 2 ? "block" : "none"}
+				display={activeIntegrationTab === 3 ? "block" : "none"}
 			>
 						{isSubscriptionLoading && !subscriptionBundle ? (
 							<Flex align="center" justify="center" py={12}>
@@ -4240,15 +4449,13 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 3 ? "block" : "none"}
+				display={activeIntegrationTab === 1 ? "block" : "none"}
 			>
 						<VStack align="stretch" spacing={6}>
 							<RebeccaBackupPanel
 								isBinaryRuntime={hostActionsAvailable}
 								runtimeLoading={maintenanceInfoQuery.isLoading}
 							/>
-							<Divider />
-							<ThreeXUiDatabaseImportPanel />
 						</VStack>
 			</Box>
 			<Box

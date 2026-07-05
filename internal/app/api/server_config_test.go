@@ -28,19 +28,17 @@ func TestLoadConfigFallsBackToDatabaseURL(t *testing.T) {
 	}
 }
 
-func TestLoadConfigReadsUsageHistoryDisableFlags(t *testing.T) {
+func TestLoadConfigUsesRecordingDefaultsFromDatabaseSettings(t *testing.T) {
 	t.Setenv("SQLALCHEMY_DATABASE_URL", "sqlite:///usage-flags.db")
-	t.Setenv("REBECCA_DISABLE_NODE_USAGE", "true")
-	t.Setenv("REBECCA_DISABLE_NODE_USER_USAGES", "1")
 
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.DisableNodeUsageHistory {
-		t.Fatal("DisableNodeUsageHistory=false want true")
+	if !cfg.RecordNodeUsage {
+		t.Fatal("RecordNodeUsage=false want true")
 	}
-	if !cfg.DisableNodeUserUsageHistory {
-		t.Fatal("DisableNodeUserUsageHistory=false want true")
+	if !cfg.RecordNodeUserUsages {
+		t.Fatal("RecordNodeUserUsages=false want true")
 	}
 }

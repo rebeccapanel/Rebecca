@@ -47,19 +47,16 @@ var (
 type Options struct {
 	APIHost                 string
 	APIPort                 int
-	FallbackInboundTag      string
-	ExcludedInboundTags     []string
 	UseVerifyPeerCertByName *bool
 }
 
 type Config struct {
-	raw         map[string]any
-	runtime     map[string]any
-	inbounds    []ResolvedInbound
-	byTag       map[string]ResolvedInbound
-	byProtocol  map[string][]ResolvedInbound
-	options     Options
-	fallbackRaw map[string]any
+	raw        map[string]any
+	runtime    map[string]any
+	inbounds   []ResolvedInbound
+	byTag      map[string]ResolvedInbound
+	byProtocol map[string][]ResolvedInbound
+	options    Options
 }
 
 type ResolvedInbound map[string]any
@@ -82,7 +79,6 @@ func Parse(input any, opts Options) (*Config, error) {
 		return nil, err
 	}
 	cfg.migrateDeprecated()
-	cfg.fallbackRaw = cfg.rawInbound(opts.FallbackInboundTag)
 	if err := cfg.resolveInbounds(); err != nil {
 		return nil, err
 	}
@@ -148,7 +144,7 @@ func (c *Config) GetInbound(tag string) (map[string]any, bool) {
 	return deepCopyMap(inbound), true
 }
 
-func IsManageableInbound(inbound map[string]any, excludedTags []string) bool {
+func IsManageableInbound(inbound map[string]any) bool {
 	tag := stringValue(inbound["tag"])
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
 	if tag == "" || protocol == "" {
@@ -157,7 +153,7 @@ func IsManageableInbound(inbound map[string]any, excludedTags []string) bool {
 	if _, ok := proxyProtocols[protocol]; !ok {
 		return false
 	}
-	return !containsString(excludedTags, tag)
+	return true
 }
 
 func (c *Config) validate() error {
@@ -425,13 +421,6 @@ func (c *Config) migrateDeprecated() {
 }
 
 func (c *Config) resolveInbounds() error {
-	excluded := make(map[string]struct{}, len(c.options.ExcludedInboundTags))
-	for _, tag := range c.options.ExcludedInboundTags {
-		if strings.TrimSpace(tag) != "" {
-			excluded[strings.TrimSpace(tag)] = struct{}{}
-		}
-	}
-
 	for _, inbound := range listOfMaps(c.raw["inbounds"]) {
 		tag := stringValue(inbound["tag"])
 		protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
@@ -439,9 +428,6 @@ func (c *Config) resolveInbounds() error {
 			continue
 		}
 		if _, ok := proxyProtocols[protocol]; !ok {
-			continue
-		}
-		if _, skip := excluded[tag]; skip {
 			continue
 		}
 		resolved, err := c.resolveInbound(inbound)
@@ -480,12 +466,6 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 
 	if _, ok := inbound["port"]; ok {
 		resolved["port"] = inbound["port"]
-	} else if len(c.fallbackRaw) > 0 {
-		if _, ok := c.fallbackRaw["port"]; !ok {
-			return nil, errors.New("fallbacks inbound doesn't have port")
-		}
-		resolved["port"] = c.fallbackRaw["port"]
-		resolved["is_fallback"] = true
 	}
 
 	stream := mapValue(inbound["streamSettings"])
@@ -497,13 +477,6 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 	security := strings.ToLower(stringValue(stream["security"]))
 	securitySettings := mapValue(stream[security+"Settings"])
 	securityMeta := mapValue(securitySettings["settings"])
-
-	if resolved["is_fallback"] == true {
-		fallbackStream := mapValue(c.fallbackRaw["streamSettings"])
-		security = strings.ToLower(stringValue(fallbackStream["security"]))
-		securitySettings = mapValue(fallbackStream[security+"Settings"])
-		securityMeta = mapValue(securitySettings["settings"])
-	}
 
 	resolved["network"] = network
 

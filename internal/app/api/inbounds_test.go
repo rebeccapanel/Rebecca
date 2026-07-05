@@ -87,7 +87,6 @@ func TestInboundRoutesListFullAndDetail(t *testing.T) {
 
 func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	server, db := testAdminServer(t)
-	server.configRepo = xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{FallbackInboundTag: "reserved"})
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertCoreConfigNode(t, db, 7, "de-7", xrayconfig.ConfigModeDefault, nil)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("base", "vless", 443)))
@@ -106,12 +105,6 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	rec = adminJSONRequest(t, server, http.MethodPost, "/api/inbounds", token, duplicatePortPayload)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate port status=%d body=%s", rec.Code, rec.Body.String())
-	}
-
-	reservedPayload := `{"tag":"reserved","protocol":"vless","port":9443,"settings":{"clients":[]},"target_ids":["master"]}`
-	rec = adminJSONRequest(t, server, http.MethodPost, "/api/inbounds", token, reservedPayload)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("reserved tag status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
 	updatePayload := `{"tag":"new-vless","protocol":"vless","port":9443,"settings":{"clients":[]},"target_ids":["node:7"]}`

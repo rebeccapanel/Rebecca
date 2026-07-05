@@ -113,6 +113,7 @@ func (s *Server) registerSystemRoutes(r chi.Router) {
 }
 
 func (s *Server) registerSettingsRoutes(r chi.Router) {
+	r.HandleFunc("/settings", s.requireAdmin(s.handleRuntimeSettings))
 	r.HandleFunc("/settings/backup/export", s.requireSudo(s.handleBackupExport))
 	r.HandleFunc("/settings/backup/import", s.requireSudo(s.handleBackupImport))
 	r.HandleFunc("/settings/panel", s.requireAdmin(s.handlePanelSettings))
@@ -124,7 +125,6 @@ func (s *Server) registerSettingsRoutes(r chi.Router) {
 	r.HandleFunc("/settings/subscriptions/admins/*", s.requireSudo(s.handleAdminSubscriptionSettingsPath))
 	r.HandleFunc("/settings/subscriptions/templates/*", s.requireSudo(s.handleSubscriptionTemplatePath))
 	r.HandleFunc("/settings/subscriptions", s.requireSudo(s.handleSubscriptionSettings))
-	r.HandleFunc("/settings/database/3xui/*", s.requireSudo(s.handleThreeXUISettingsPath))
 }
 
 func (s *Server) registerServiceRoutes(r chi.Router) {

@@ -308,15 +308,8 @@ By default the app will be run on `http://localhost:8000/dashboard`. You can con
 | USERS_AUTODELETE_DAYS                    | Delete expired users after this many days. Negative values disable this feature.                                         |
 | USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Whether auto-delete includes limited accounts.                                                                            |
 | USERS_LIST_TIMEOUT_SECONDS               | Optional timeout for large user list queries. `0` disables the timeout.                                                  |
-| SUBSCRIPTION_READ_ONLY                   | If true, subscription reads do not update last-used metadata.                                                            |
-| XRAY_SUBSCRIPTION_URL_PREFIX             | Prefix used by CLI subscription-link helpers.                                                                             |
-| XRAY_FALLBACKS_INBOUND_TAG               | Inbound tag that includes fallbacks.                                                                                      |
-| XRAY_EXCLUDE_INBOUND_TAGS                | Inbound tags excluded from config/link generation.                                                                        |
-| REBECCA_APP_TEMPLATE_BASE                | Default bundled template base path.                                                                                       |
 | REBECCA_CERT_BASE                        | Base directory for managed certificates.                                                                                  |
 | REBECCA_CONFIG_DIR                       | Configuration root included in full backup export/import.                                                                |
-| GEO_TEMPLATES_INDEX_URL                  | Optional allowed Geo template index URL.                                                                                  |
-| REBECCA_WARP_API_BASE                    | Cloudflare WARP API base URL override.                                                                                    |
 
 # Telegram integration
 

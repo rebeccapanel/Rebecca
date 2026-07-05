@@ -12,7 +12,6 @@ import (
 
 const (
 	subscriptionCertificateDisabledDetail = "Subscription certificate management is temporarily disabled and will be rebuilt with a new Go-native certificate flow."
-	threeXUIImportDisabledDetail          = "3x-ui database import is temporarily disabled and will return as a Go-native importer."
 )
 
 func (s *Server) handlePanelSettings(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +43,42 @@ func (s *Server) handlePanelSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		writeJSON(w, http.StatusOK, settings)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *Server) handleRuntimeSettings(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/settings" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := s.settingsRepo.RuntimeSettings(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	case http.MethodPut:
+		principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
+		if principal.Role != "sudo" && principal.Role != "full_access" {
+			writeError(w, http.StatusForbidden, "You're not allowed")
+			return
+		}
+		raw, err := decodeRawJSONMap(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		settings, err := s.settingsRepo.UpdateRuntimeSettings(r.Context(), raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.applyRuntimeSettings(settings)
 		writeJSON(w, http.StatusOK, settings)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -153,26 +188,6 @@ func (s *Server) handleSettingsDisabledRoute(w http.ResponseWriter, r *http.Requ
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
-}
-
-func (s *Server) handleThreeXUISettingsPath(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/settings/database/3xui/")
-	switch {
-	case path == "preview" || path == "import":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-	case strings.HasPrefix(path, "jobs/") && strings.TrimPrefix(path, "jobs/") != "":
-		if r.Method != http.MethodGet {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-	default:
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-	writeError(w, http.StatusGone, threeXUIImportDisabledDetail)
 }
 
 func writeTemplateContentResponse(w http.ResponseWriter, content settingsapp.TemplateContent, err error) {

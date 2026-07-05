@@ -3137,61 +3137,6 @@
         "operationId": "postSettingsSubscriptionsCertificatesRenew"
       }
     },
-    "/api/settings/database/3xui/preview": {
-      "post": {
-        "tags": [
-          "Settings"
-        ],
-        "summary": "Preview 3x-ui import",
-        "description": "Temporarily disabled while the 3x-ui importer is rebuilt in Go.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nRoute details: Intentionally disabled. The future Go importer will parse 3x-ui database state and map it into Rebecca users/services.",
-        "responses": {
-          "410": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "operationId": "postSettingsDatabase3xuiPreview"
-      }
-    },
-    "/api/settings/database/3xui/import": {
-      "post": {
-        "tags": [
-          "Settings"
-        ],
-        "summary": "Import 3x-ui database",
-        "description": "Temporarily disabled while the 3x-ui importer is rebuilt in Go.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nRoute details: Intentionally disabled. The future Go importer will parse 3x-ui database state and map it into Rebecca users/services.",
-        "responses": {
-          "410": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "operationId": "postSettingsDatabase3xuiImport"
-      }
-    },
-    "/api/settings/database/3xui/jobs/{job_id}": {
-      "get": {
-        "tags": [
-          "Settings"
-        ],
-        "summary": "Get 3x-ui import job",
-        "description": "Temporarily disabled while the 3x-ui importer is rebuilt in Go.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "410": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "operationId": "getSettingsDatabase3xuiJobsJobId"
-      }
-    },
     "/sub/{identifier}": {
       "get": {
         "tags": [
