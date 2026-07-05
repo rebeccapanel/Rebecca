@@ -496,7 +496,6 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 			>
 				<MenuButton
 					as={Button}
-					leftIcon={<SwatchIconChakra />}
 					variant="ghost"
 					w="full"
 					h="40px"
@@ -514,7 +513,12 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 						themeMenu.isOpen ? themeMenu.onClose() : themeMenu.onOpen();
 					}}
 				>
-					{triggerLabel || t("theme.triggerLabel", "Theme")}
+					<HStack justify="flex-start" spacing={3} w="full" minW={0}>
+						<SwatchIconChakra flexShrink={0} />
+						<Text noOfLines={1}>
+							{triggerLabel || t("theme.triggerLabel", "Theme")}
+						</Text>
+					</HStack>
 				</MenuButton>
 				{portalContainer ? (
 					<Portal containerRef={portalContainer}>{menuList}</Portal>
