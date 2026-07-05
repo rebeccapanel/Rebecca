@@ -1006,7 +1006,7 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.ID == 0 || created.APIKey == nil || !strings.HasPrefix(*created.APIKey, "rk_") || created.MaskedKey == nil {
+	if created.ID == 0 || created.APIKey == nil || !strings.HasPrefix(*created.APIKey, "rk_") || created.MaskedKey == nil || created.TokenType != "bearer" {
 		t.Fatalf("unexpected created key: %#v", created)
 	}
 
@@ -1018,6 +1018,18 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 		t.Fatalf("api key validate status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admin", "Bearer "+*created.APIKey, ``)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("api key current admin status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var current map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current["username"] != "pouria" {
+		t.Fatalf("api key should authenticate as owner admin, got %#v", current)
+	}
+
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/myaccount/api-keys", token, ``)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list api keys after create status = %d body=%s", rec.Code, rec.Body.String())
@@ -1025,7 +1037,7 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].APIKey != nil || list[0].MaskedKey == nil {
+	if len(list) != 1 || list[0].APIKey != nil || list[0].MaskedKey == nil || list[0].TokenType != "bearer" {
 		t.Fatalf("unexpected list after create: %#v", list)
 	}
 
@@ -1045,6 +1057,33 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("deleted api key validate status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMyAccountAPIKeyUsesOwnerPermissions(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "seller", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
+	token := adminBearerToken(t, server, "seller", "pass123")
+
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/myaccount/api-keys", token, `{"lifetime":"forever"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create standard api key status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var created apiKeyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.APIKey == nil || created.TokenType != "bearer" {
+		t.Fatalf("unexpected created key: %#v", created)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/admin", "Bearer "+*created.APIKey, `{
+		"username": "blocked",
+		"password": "pass123",
+		"role": "standard"
+	}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("api key should preserve owner admin permissions, status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -33,6 +33,7 @@ type apiKeyResponse struct {
 	ExpiresAt  *string `json:"expires_at"`
 	LastUsedAt *string `json:"last_used_at"`
 	MaskedKey  *string `json:"masked_key"`
+	TokenType  string  `json:"token_type,omitempty"`
 	APIKey     *string `json:"api_key,omitempty"`
 }
 
@@ -280,6 +281,7 @@ func (s *Server) handleCreateMyAccountAPIKey(w http.ResponseWriter, r *http.Requ
 			CreatedAt: createdAt,
 			ExpiresAt: expires,
 			MaskedKey: &masked,
+			TokenType: "bearer",
 			APIKey:    &token,
 		}
 		return nil
@@ -347,6 +349,7 @@ func listAdminAPIKeys(ctx context.Context, db *sql.DB, adminID int64) ([]apiKeyR
 			ExpiresAt:  formatAPIKeyTime(parseDBTime(expiresRaw)),
 			LastUsedAt: formatAPIKeyTime(parseDBTime(lastUsedRaw)),
 			MaskedKey:  &masked,
+			TokenType:  "bearer",
 		})
 	}
 	return keys, rows.Err()
