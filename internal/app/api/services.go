@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -796,12 +797,70 @@ func decodeServiceAdminLimitUpdate(w http.ResponseWriter, r *http.Request) (serv
 	}
 	var payload serviceAdminLimitUpdatePayload
 	if len(raw) > 0 {
+		raw, err = normalizeServiceAdminLimitNumericFields(raw, fields)
+		if err != nil {
+			return serviceAdminLimitUpdatePayload{}, statusError{status: http.StatusBadRequest, detail: err.Error()}
+		}
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			return serviceAdminLimitUpdatePayload{}, statusError{status: http.StatusBadRequest, detail: "invalid request body"}
 		}
 	}
 	payload.fields = fields
 	return payload, nil
+}
+
+func normalizeServiceAdminLimitNumericFields(raw []byte, fields map[string]json.RawMessage) ([]byte, error) {
+	if len(fields) == 0 {
+		return raw, nil
+	}
+	for _, key := range []string{"data_limit", "users_limit", "delete_user_usage_limit"} {
+		value, ok := fields[key]
+		if !ok || rawIsNullAPI(value) {
+			continue
+		}
+		normalized, err := normalizeInt64JSONField(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s", key)
+		}
+		fields[key] = normalized
+	}
+	return json.Marshal(fields)
+}
+
+func normalizeInt64JSONField(raw json.RawMessage) (json.RawMessage, error) {
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	switch typed := value.(type) {
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return json.RawMessage("null"), nil
+		}
+		parsed, err := strconv.ParseFloat(text, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return nil, fmt.Errorf("invalid integer")
+		}
+		return json.RawMessage(strconv.FormatInt(int64(math.Round(parsed)), 10)), nil
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return json.RawMessage(strconv.FormatInt(parsed, 10)), nil
+		}
+		parsed, err := typed.Float64()
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return nil, fmt.Errorf("invalid integer")
+		}
+		return json.RawMessage(strconv.FormatInt(int64(math.Round(parsed)), 10)), nil
+	default:
+		return nil, fmt.Errorf("invalid integer")
+	}
+}
+
+func rawIsNullAPI(raw json.RawMessage) bool {
+	return strings.EqualFold(strings.TrimSpace(string(raw)), "null")
 }
 
 func validateServiceWriteTx(ctx context.Context, tx *sql.Tx, payload serviceWritePayload, create bool) error {
