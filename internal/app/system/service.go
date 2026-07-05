@@ -161,8 +161,8 @@ func (s *Service) lastXrayError(ctx context.Context) *string {
 	query := `
 SELECT name, message
 FROM nodes
-WHERE TRIM(COALESCE(message, '')) <> ''
-ORDER BY CASE WHEN LOWER(COALESCE(status, '')) = 'connected' THEN 0 WHEN LOWER(COALESCE(status, '')) = 'error' THEN 1 ELSE 2 END, id
+WHERE LOWER(COALESCE(status, '')) = 'error' AND TRIM(COALESCE(message, '')) <> ''
+ORDER BY id
 LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query).Scan(&name, &message); err != nil {
 		return nil
