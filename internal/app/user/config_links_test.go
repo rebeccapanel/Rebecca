@@ -505,20 +505,28 @@ func TestBuildConfigLinksSupportsTrojanAndShadowsocksTLS(t *testing.T) {
 		},
 		map[string]ResolvedInbound{
 			"Trojan TLS": {
-				"tag":      "Trojan TLS",
-				"protocol": "trojan",
-				"port":     int64(443),
-				"network":  "tcp",
-				"tls":      "tls",
-				"sni":      "trojan.example.com",
+				"tag":       "Trojan TLS",
+				"protocol":  "trojan",
+				"port":      int64(443),
+				"network":   "tcp",
+				"tls":       "tls",
+				"sni":       "trojan.example.com",
+				"fp":        "chrome",
+				"alpn":      "h2,http/1.1",
+				"ech":       "ECH",
+				"pinSHA256": "PCS",
 			},
 			"SS TLS": {
-				"tag":      "SS TLS",
-				"protocol": "shadowsocks",
-				"port":     int64(8443),
-				"network":  "tcp",
-				"tls":      "tls",
-				"sni":      "ss.example.com",
+				"tag":       "SS TLS",
+				"protocol":  "shadowsocks",
+				"port":      int64(8443),
+				"network":   "tcp",
+				"tls":       "tls",
+				"sni":       "ss.example.com",
+				"fp":        "chrome",
+				"alpn":      "h2,http/1.1",
+				"ech":       "ECH",
+				"pinSHA256": "PCS",
 			},
 		},
 		[]string{"Trojan TLS", "SS TLS"},
@@ -557,7 +565,98 @@ func TestBuildConfigLinksSupportsTrojanAndShadowsocksTLS(t *testing.T) {
 	if shadowsocksLink == "" || !strings.Contains(shadowsocksLink, "security=tls") {
 		t.Fatalf("shadowsocks TLS link missing TLS params: %#v", links.Links)
 	}
-	body, err := renderV2RayJSONSubscription([]string{shadowsocksLink}, false)
+	if !strings.Contains(shadowsocksLink, "type=tcp") {
+		t.Fatalf("shadowsocks TLS link should carry explicit tcp type: %s", shadowsocksLink)
+	}
+	for _, item := range []struct {
+		name string
+		link string
+		sni  string
+	}{
+		{name: "trojan", link: trojanLink, sni: "trojan.example.com"},
+		{name: "shadowsocks", link: shadowsocksLink, sni: "ss.example.com"},
+	} {
+		body, err := renderV2RayJSONSubscription([]string{item.link}, false)
+		if err != nil {
+			t.Fatalf("render %s v2ray-json: %v", item.name, err)
+		}
+		var configs []map[string]any
+		if err := json.Unmarshal([]byte(body), &configs); err != nil {
+			t.Fatalf("invalid %s v2ray-json: %v\n%s", item.name, err, body)
+		}
+		stream := configs[0]["outbounds"].([]any)[0].(map[string]any)["streamSettings"].(map[string]any)
+		if stream["security"] != "tls" {
+			t.Fatalf("%s TLS stream was not preserved: %#v", item.name, stream)
+		}
+		tls := stream["tlsSettings"].(map[string]any)
+		if tls["serverName"] != item.sni || tls["fingerprint"] != "chrome" || tls["echConfigList"] != "ECH" {
+			t.Fatalf("%s TLS settings incomplete: %#v", item.name, tls)
+		}
+		if got := strings.Join(stringList(tls["alpn"]), ","); got != "h2,http/1.1" {
+			t.Fatalf("%s ALPN not preserved: %#v", item.name, tls)
+		}
+		if got := strings.Join(stringList(tls["pinnedPeerCertSha256"]), ","); got != "PCS" {
+			t.Fatalf("%s pinned cert not preserved: %#v", item.name, tls)
+		}
+	}
+}
+
+func TestV2RayJSONSubscriptionAppliesHostFragmentAndNoiseFinalMask(t *testing.T) {
+	serviceID := int64(1)
+	fragment := "10-100,100-200,tlshello,3"
+	noise := "rand:10-20,100-200&str:hello,50"
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            19,
+			Username:      "mask",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1",
+			ServiceHostOrders: map[int64]int64{
+				1: 0,
+			},
+		},
+		map[string]ResolvedInbound{
+			"VLESS TLS": {
+				"tag":        "VLESS TLS",
+				"protocol":   "vless",
+				"port":       int64(443),
+				"network":    "ws",
+				"tls":        "tls",
+				"encryption": "none",
+				"path":       "/ws",
+				"host":       "mask.example.com",
+				"sni":        "mask.example.com",
+			},
+		},
+		[]string{"VLESS TLS"},
+		[]Host{{
+			ID:              1,
+			InboundTag:      "VLESS TLS",
+			Remark:          "mask",
+			Address:         "mask.example.com",
+			Security:        "inbound_default",
+			FragmentSetting: &fragment,
+			NoiseSetting:    &noise,
+			ServiceIDs:      []int64{1},
+		}},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatalf("BuildConfigLinks error: %v", err)
+	}
+	if len(links.Links) != 1 {
+		t.Fatalf("expected one link, got %#v", links.Links)
+	}
+	parsed, err := url.Parse(links.Links[0])
+	if err != nil {
+		t.Fatalf("parse link: %v", err)
+	}
+	if parsed.Query().Get("fragment") != fragment || parsed.Query().Get("noise") != noise {
+		t.Fatalf("mask params were not preserved in link: %s", links.Links[0])
+	}
+	body, err := renderV2RayJSONSubscription(links.Links, false)
 	if err != nil {
 		t.Fatalf("render v2ray-json: %v", err)
 	}
@@ -566,8 +665,30 @@ func TestBuildConfigLinksSupportsTrojanAndShadowsocksTLS(t *testing.T) {
 		t.Fatalf("invalid v2ray-json: %v\n%s", err, body)
 	}
 	stream := configs[0]["outbounds"].([]any)[0].(map[string]any)["streamSettings"].(map[string]any)
-	if stream["security"] != "tls" {
-		t.Fatalf("shadowsocks TLS stream was not preserved: %#v", stream)
+	finalmask := stream["finalmask"].(map[string]any)
+	tcp := finalmask["tcp"].([]any)[0].(map[string]any)
+	if tcp["type"] != "fragment" {
+		t.Fatalf("tcp mask type = %v, want fragment", tcp["type"])
+	}
+	fragmentSettings := tcp["settings"].(map[string]any)
+	if fragmentSettings["length"] != "10-100" || fragmentSettings["delay"] != "100-200" || fragmentSettings["packets"] != "tlshello" || fragmentSettings["maxSplit"] != "3" {
+		t.Fatalf("fragment finalmask mismatch: %#v", fragmentSettings)
+	}
+	udp := finalmask["udp"].([]any)[0].(map[string]any)
+	if udp["type"] != "noise" {
+		t.Fatalf("udp mask type = %v, want noise", udp["type"])
+	}
+	noiseItems := udp["settings"].(map[string]any)["noise"].([]any)
+	if len(noiseItems) != 2 {
+		t.Fatalf("expected two noise items, got %#v", noiseItems)
+	}
+	first := noiseItems[0].(map[string]any)
+	if first["type"] != "rand" || first["rand"] != "10-20" || first["delay"] != "100-200" {
+		t.Fatalf("rand noise mismatch: %#v", first)
+	}
+	second := noiseItems[1].(map[string]any)
+	if second["type"] != "str" || second["packet"] != "hello" || second["delay"] != "50" {
+		t.Fatalf("str noise mismatch: %#v", second)
 	}
 }
 

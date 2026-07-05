@@ -857,6 +857,9 @@ func vmessShareLink(remark string, address string, path string, inbound Resolved
 	if fs := stringValue(inbound["fragment_setting"]); fs != "" {
 		payload["fragment"] = fs
 	}
+	if ns := stringValue(inbound["noise_setting"]); ns != "" {
+		payload["noise"] = ns
+	}
 	tls := stringValue(inbound["tls"])
 	if tls == "tls" {
 		payload["sni"] = stringValue(inbound["sni"])
@@ -933,6 +936,7 @@ func vlessShareLink(remark string, address string, path string, inbound Resolved
 	}
 	params = appendNetworkParams(params, netValue, path, inbound)
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	return "vless://" + stringValue(settings["id"]) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
 }
 
@@ -950,6 +954,7 @@ func trojanShareLink(remark string, address string, path string, inbound Resolve
 	}
 	params = appendNetworkParams(params, netValue, path, inbound)
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	return "trojan://" + percentEncode(stringValue(settings["password"]), ":", false) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
 }
 
@@ -961,11 +966,14 @@ func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound
 	if tls != "" && tls != "none" {
 		params = append(params, queryParam{"security", tls})
 	}
-	if netValue != "" && netValue != "tcp" {
+	if netValue != "" {
 		params = append(params, queryParam{"type", netValue})
+	}
+	if netValue != "" && netValue != "tcp" {
 		params = appendNetworkParams(params, netValue, stringValue(inbound["path"]), inbound)
 	}
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	query := ""
 	if len(params) > 0 {
 		query = "?" + urlencodeOrdered(params)
@@ -1085,8 +1093,14 @@ func appendTLSParams(params []queryParam, tls string, inbound ResolvedInbound) [
 		if alpn := stringValue(inbound["alpn"]); alpn != "" {
 			params = append(params, queryParam{"alpn", alpn})
 		}
-		if fs := stringValue(inbound["fragment_setting"]); fs != "" {
-			params = append(params, queryParam{"fragment", fs})
+		if ech := firstNonEmptyString(inbound["ech"], inbound["echConfigList"]); ech != "" {
+			params = append(params, queryParam{"ech", ech})
+		}
+		if vcn := firstNonEmptyString(inbound["vcn"], inbound["verifyPeerCertByName"]); vcn != "" {
+			params = append(params, queryParam{"vcn", vcn})
+		}
+		if pin := firstNonEmptyString(inbound["pinSHA256"], inbound["pinnedPeerCertSha256"]); pin != "" {
+			params = append(params, queryParam{"pcs", pin})
 		}
 		if truthy(inbound["ais"]) {
 			params = append(params, queryParam{"allowInsecure", 1})
@@ -1101,6 +1115,16 @@ func appendTLSParams(params []queryParam, tls string, inbound ResolvedInbound) [
 		if spx := stringValue(inbound["spx"]); spx != "" {
 			params = append(params, queryParam{"spx", spx})
 		}
+	}
+	return params
+}
+
+func appendMaskParams(params []queryParam, inbound ResolvedInbound) []queryParam {
+	if fs := stringValue(inbound["fragment_setting"]); fs != "" {
+		params = append(params, queryParam{"fragment", fs})
+	}
+	if ns := stringValue(inbound["noise_setting"]); ns != "" {
+		params = append(params, queryParam{"noise", ns})
 	}
 	return params
 }

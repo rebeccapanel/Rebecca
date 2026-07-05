@@ -981,6 +981,8 @@ func v2rayVMessOutbound(link string) (string, map[string]any, bool) {
 	query.Set("sid", stringValue(payload["sid"]))
 	query.Set("spx", stringValue(payload["spx"]))
 	query.Set("mode", stringValue(payload["mode"]))
+	query.Set("fragment", stringValue(payload["fragment"]))
+	query.Set("noise", stringValue(payload["noise"]))
 	if stream := v2rayStreamSettings(query); len(stream) > 0 {
 		outbound["streamSettings"] = stream
 	}
@@ -1097,6 +1099,7 @@ func v2rayStreamSettings(query url.Values) map[string]any {
 			}
 		}
 	}
+	applyV2RayFinalMask(stream, query)
 	return stream
 }
 
@@ -1110,6 +1113,15 @@ func v2rayTLSSettings(query url.Values) map[string]any {
 	}
 	if alpn := query.Get("alpn"); alpn != "" {
 		settings["alpn"] = stringList(alpn)
+	}
+	if ech := query.Get("ech"); ech != "" {
+		settings["echConfigList"] = ech
+	}
+	if vcn := query.Get("vcn"); vcn != "" {
+		settings["verifyPeerCertByName"] = vcn
+	}
+	if pcs := query.Get("pcs"); pcs != "" {
+		settings["pinnedPeerCertSha256"] = stringList(pcs)
 	}
 	if allow := query.Get("allowInsecure"); allow == "1" || strings.EqualFold(allow, "true") {
 		settings["allowInsecure"] = true
@@ -1135,6 +1147,128 @@ func v2rayRealitySettings(query url.Values) map[string]any {
 		settings["spiderX"] = spx
 	}
 	return settings
+}
+
+func applyV2RayFinalMask(stream map[string]any, query url.Values) {
+	merged := mergeV2RayFinalMask(stream["finalmask"], nil)
+	if raw := query.Get("fm"); raw != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			merged = mergeV2RayFinalMask(merged, parsed)
+		}
+	}
+	if generated := finalMaskFromLinkParams(query); len(generated) > 0 {
+		merged = mergeV2RayFinalMask(merged, generated)
+	}
+	if len(merged) > 0 {
+		stream["finalmask"] = merged
+	}
+}
+
+func finalMaskFromLinkParams(query url.Values) map[string]any {
+	result := map[string]any{}
+	if fragment := fragmentFinalMask(query.Get("fragment")); len(fragment) > 0 {
+		result["tcp"] = []any{map[string]any{"type": "fragment", "settings": fragment}}
+	}
+	if noises := noiseFinalMask(query.Get("noise")); len(noises) > 0 {
+		result["udp"] = []any{map[string]any{"type": "noise", "settings": map[string]any{"noise": noises}}}
+	}
+	return result
+}
+
+func fragmentFinalMask(value string) map[string]any {
+	parts := splitCommaLines(value)
+	if len(parts) == 0 {
+		return nil
+	}
+	length := firstSliceValue(parts, 0)
+	if length == "" {
+		return nil
+	}
+	settings := map[string]any{"length": length}
+	if interval := firstSliceValue(parts, 1); interval != "" {
+		settings["delay"] = interval
+	}
+	if packets := firstSliceValue(parts, 2); packets != "" {
+		settings["packets"] = packets
+	}
+	if maxSplit := firstSliceValue(parts, 3); maxSplit != "" {
+		settings["maxSplit"] = maxSplit
+	}
+	return settings
+}
+
+func noiseFinalMask(value string) []any {
+	patterns := strings.Split(value, "&")
+	result := make([]any, 0, len(patterns))
+	for _, raw := range patterns {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		noiseType := "rand"
+		rest := raw
+		if before, after, ok := strings.Cut(raw, ":"); ok {
+			noiseType = strings.ToLower(strings.TrimSpace(before))
+			rest = after
+		}
+		switch noiseType {
+		case "rand", "str", "hex", "base64":
+		default:
+			noiseType = "rand"
+		}
+		parts := splitCommaLines(rest)
+		packet := firstSliceValue(parts, 0)
+		if packet == "" {
+			continue
+		}
+		item := map[string]any{"type": noiseType}
+		if noiseType == "rand" {
+			item["rand"] = packet
+		} else {
+			item["packet"] = packet
+		}
+		if delay := firstSliceValue(parts, 1); delay != "" {
+			item["delay"] = delay
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func mergeV2RayFinalMask(base any, extra map[string]any) map[string]any {
+	merged := map[string]any{}
+	if baseMap, ok := base.(map[string]any); ok {
+		for key, value := range baseMap {
+			switch key {
+			case "tcp", "udp":
+				if items := listAny(value); len(items) > 0 {
+					merged[key] = append([]any(nil), items...)
+				}
+			default:
+				merged[key] = value
+			}
+		}
+	}
+	for key, value := range extra {
+		switch key {
+		case "tcp", "udp":
+			items := append(listAny(merged[key]), listAny(value)...)
+			if len(items) > 0 {
+				merged[key] = items
+			}
+		default:
+			merged[key] = value
+		}
+	}
+	return merged
+}
+
+func firstSliceValue(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return strings.TrimSpace(values[index])
 }
 
 func v2rayLinkRemark(parsed *url.URL) string {
