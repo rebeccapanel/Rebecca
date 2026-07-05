@@ -92,6 +92,19 @@ export const formatUnit = (value: number, unit: RelativeTimeUnit): string => {
 	return enforceNoBreak(label);
 };
 
+const compactUnitMap: Record<RelativeTimeUnit, string> = {
+	years: "Y",
+	months: "M",
+	days: "D",
+	hours: "H",
+	minutes: "m",
+};
+
+export const formatCompactUnit = (
+	value: number,
+	unit: RelativeTimeUnit,
+): string => `${Math.abs(value)}${compactUnitMap[unit]}`;
+
 export const buildRelativeTimeParts = (
 	fromUnixSeconds: number,
 	toUnixSeconds: number,
@@ -141,11 +154,21 @@ export const buildRelativeTimeParts = (
 	];
 };
 
-export const formatRelativeTimeParts = (parts: RelativeTimePart[]): string => {
+export const formatRelativeTimeParts = (
+	parts: RelativeTimePart[],
+	options?: { compact?: boolean },
+): string => {
 	const nonZeroParts = parts.filter((part) => part.value !== 0);
-	const labels = nonZeroParts.map((part) => formatUnit(part.value, part.unit));
+	const labels = nonZeroParts.map((part) =>
+		options?.compact
+			? formatCompactUnit(part.value, part.unit)
+			: formatUnit(part.value, part.unit),
+	);
 	if (labels.length === 0) {
 		return "";
+	}
+	if (options?.compact) {
+		return labels.join(", ");
 	}
 	if (isRtlLanguage()) {
 		return labels.map(isolateBidi).join(" و ");
@@ -162,7 +185,10 @@ export const formatRelativeTimeParts = (parts: RelativeTimePart[]): string => {
 	}
 };
 
-export const relativeExpiryDate = (expiryDate: number | null | undefined) => {
+export const relativeExpiryDate = (
+	expiryDate: number | null | undefined,
+	options?: { compact?: boolean },
+) => {
 	const dateInfo = { status: "", time: "" };
 	if (expiryDate !== null && expiryDate !== undefined) {
 		if (
@@ -177,7 +203,7 @@ export const relativeExpiryDate = (expiryDate: number | null | undefined) => {
 		const now = dayjs().utc();
 		const target = dayjs(expiryDate * 1000).utc();
 		const parts = buildRelativeTimeParts(now.unix(), target.unix());
-		dateInfo.time = formatRelativeTimeParts(parts);
+		dateInfo.time = formatRelativeTimeParts(parts, options);
 	}
 	return dateInfo;
 };

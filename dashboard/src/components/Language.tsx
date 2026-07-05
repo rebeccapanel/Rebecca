@@ -19,6 +19,7 @@ import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag
 type HeaderProps = {
 	actions?: ReactNode;
 	portalContainer?: MutableRefObject<HTMLElement | null>;
+	triggerVariant?: "outline" | "ghost";
 };
 
 const LangIcon = chakra(LanguageIcon, {
@@ -35,7 +36,10 @@ const CheckIconChakra = chakra(CheckIcon, {
 	},
 });
 
-export const Language: FC<HeaderProps> = ({ portalContainer }) => {
+export const Language: FC<HeaderProps> = ({
+	portalContainer,
+	triggerVariant = "outline",
+}) => {
 	const { i18n } = useTranslation();
 	const menuBg = useColorModeValue("surface.light", "surface.dark");
 	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
@@ -129,7 +133,7 @@ export const Language: FC<HeaderProps> = ({ portalContainer }) => {
 			<MenuButton
 				as={IconButton}
 				size="sm"
-				variant="outline"
+				variant={triggerVariant}
 				icon={<LangIcon />}
 				position="relative"
 				type="button"

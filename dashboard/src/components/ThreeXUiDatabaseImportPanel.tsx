@@ -11,12 +11,12 @@ import {
 	FormLabel,
 	HStack,
 	Progress,
-	Select,
 	SimpleGrid,
 	Stack,
 	Text,
 	useToast,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
 import { FileDropzone } from "components/common/FileDropzone";
 import { NumericInput } from "components/common/NumericInput";

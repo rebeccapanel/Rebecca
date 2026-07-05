@@ -19,16 +19,16 @@ export const ChartBox: FC<ChartBoxProps> = ({
 	headerActions,
 	...props
 }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const headerBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const shadow = useColorModeValue("sm", "none");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const bg = useColorModeValue("panel.surface", "panel.surface");
+	const headerBg = useColorModeValue("panel.surface", "panel.surface");
+	const shadow = useColorModeValue("none", "none");
 
 	return (
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="md"
+			borderRadius="6px"
 			bg={bg}
 			boxShadow={shadow}
 			overflow="hidden"
@@ -37,7 +37,7 @@ export const ChartBox: FC<ChartBoxProps> = ({
 			{(title || headerActions) && (
 				<Flex
 					px={{ base: 3, md: 4 }}
-					py={3}
+					py={2.5}
 					borderBottomWidth="1px"
 					borderBottomColor={borderColor}
 					bg={headerBg}
@@ -50,6 +50,7 @@ export const ChartBox: FC<ChartBoxProps> = ({
 						<Text
 							fontWeight="semibold"
 							fontSize={{ base: "sm", md: "md" }}
+							color="panel.text"
 							flex="1"
 							minW={{ base: "full", md: "220px" }}
 						>
@@ -59,7 +60,7 @@ export const ChartBox: FC<ChartBoxProps> = ({
 					{headerActions && <Box maxW="full">{headerActions}</Box>}
 				</Flex>
 			)}
-			<Box p={{ base: 3, md: 4 }}>{children}</Box>
+			<Box p={{ base: 3, md: 3 }}>{children}</Box>
 		</Box>
 	);
 };

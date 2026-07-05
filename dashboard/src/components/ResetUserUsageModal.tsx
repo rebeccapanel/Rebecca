@@ -25,9 +25,9 @@ export const ResetIcon = chakra(ArrowPathIcon, {
 	},
 });
 
-export type DeleteUserModalProps = {};
+export type ResetUserUsageModalProps = {};
 
-export const ResetUserUsageModal: FC<DeleteUserModalProps> = () => {
+export const ResetUserUsageModal: FC<ResetUserUsageModalProps> = () => {
 	const [loading, setLoading] = useState(false);
 	const { resetUsageUser: user, resetDataUsage } = useDashboard();
 	const { t } = useTranslation();

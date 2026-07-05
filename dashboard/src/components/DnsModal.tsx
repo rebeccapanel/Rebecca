@@ -6,7 +6,6 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	Switch,
 	VStack,
 } from "@chakra-ui/react";
@@ -14,9 +13,12 @@ import { type FC, useEffect } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { MultiValueAutocomplete } from "./common/MultiValueAutocomplete";
 import { NumericInput } from "./common/NumericInput";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
 	XrayDialogSection,
+	XrayFieldGrid,
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
@@ -190,7 +192,7 @@ export const DnsModal: FC<DnsModalProps> = ({
 					<XrayModalBody>
 						<VStack spacing={3} align="stretch">
 							<XrayDialogSection title={t("pages.xray.dns.add")}>
-								<VStack spacing={4} align="stretch">
+								<XrayFieldGrid>
 									<FormControl>
 										<FormLabel>{t("pages.xray.dns.address")}</FormLabel>
 										<Input
@@ -218,49 +220,69 @@ export const DnsModal: FC<DnsModalProps> = ({
 									</FormControl>
 									<FormControl>
 										<FormLabel>{t("pages.xray.dns.strategy")}</FormLabel>
-										<Select
-											{...modalForm.register("queryStrategy")}
-											size="sm"
-											maxW="240px"
-										>
-											{["UseSystem", "UseIP", "UseIPv4", "UseIPv6"].map(
-												(strategy) => (
-													<option key={strategy} value={strategy}>
-														{strategy}
-													</option>
-												),
+										<Controller
+											control={modalForm.control}
+											name="queryStrategy"
+											render={({ field }) => (
+												<SearchableTagSelect
+													mode="single"
+													options={["UseSystem", "UseIP", "UseIPv4", "UseIPv6"]}
+													value={field.value ?? ""}
+													onChange={(value) => field.onChange(value as string)}
+													placeholder={t("pages.xray.dns.strategy")}
+													searchPlaceholder={t("search", "Search")}
+													width="240px"
+												/>
 											)}
-										</Select>
+										/>
 									</FormControl>
-								</VStack>
+								</XrayFieldGrid>
 							</XrayDialogSection>
 							<XrayDialogSection title={t("pages.xray.dns.domains")}>
-								<VStack spacing={4} align="stretch">
+								<XrayFieldGrid>
 									<FormControl>
 										<FormLabel>{t("pages.xray.dns.domains")}</FormLabel>
-										<Input
-											{...modalForm.register("domains")}
-											size="sm"
-											placeholder="example.com,*.example.com"
+										<Controller
+											control={modalForm.control}
+											name="domains"
+											render={({ field }) => (
+												<MultiValueAutocomplete
+													value={field.value ?? ""}
+													onChange={field.onChange}
+													placeholder="example.com, *.example.com"
+												/>
+											)}
 										/>
 									</FormControl>
 									<FormControl>
 										<FormLabel>{t("pages.xray.dns.expectIPs")}</FormLabel>
-										<Input
-											{...modalForm.register("expectIPs")}
-											size="sm"
-											placeholder="1.1.1.1,2.2.2.2"
+										<Controller
+											control={modalForm.control}
+											name="expectIPs"
+											render={({ field }) => (
+												<MultiValueAutocomplete
+													value={field.value ?? ""}
+													onChange={field.onChange}
+													placeholder="1.1.1.1, 2.2.2.2"
+												/>
+											)}
 										/>
 									</FormControl>
 									<FormControl>
 										<FormLabel>{t("pages.xray.dns.unexpectIPs")}</FormLabel>
-										<Input
-											{...modalForm.register("unexpectedIPs")}
-											size="sm"
-											placeholder="3.3.3.3,4.4.4.4"
+										<Controller
+											control={modalForm.control}
+											name="unexpectedIPs"
+											render={({ field }) => (
+												<MultiValueAutocomplete
+													value={field.value ?? ""}
+													onChange={field.onChange}
+													placeholder="3.3.3.3, 4.4.4.4"
+												/>
+											)}
 										/>
 									</FormControl>
-								</VStack>
+								</XrayFieldGrid>
 							</XrayDialogSection>
 							<XrayDialogSection title={t("pages.xray.generalConfigs")}>
 								<VStack spacing={3} align="stretch">

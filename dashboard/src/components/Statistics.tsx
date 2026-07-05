@@ -108,8 +108,123 @@ const useSystemMetricsStream = (enabled = true) => {
 	}, [enabled, queryClient]);
 };
 
-const formatNumberValue = (value: number) =>
-	numberWithCommas(value) ?? value.toString();
+const toFiniteNumber = (value: unknown, fallback = 0) => {
+	const next = Number(value);
+	return Number.isFinite(next) ? next : fallback;
+};
+
+const safeHistory = (value: unknown): SystemStats["cpu_history"] =>
+	Array.isArray(value)
+		? value.map((entry) => ({
+				timestamp: toFiniteNumber((entry as any)?.timestamp),
+				value: toFiniteNumber((entry as any)?.value),
+			}))
+		: [];
+
+const safeNetworkHistory = (
+	value: unknown,
+): SystemStats["network_history"] =>
+	Array.isArray(value)
+		? value.map((entry) => ({
+				timestamp: toFiniteNumber((entry as any)?.timestamp),
+				incoming: toFiniteNumber((entry as any)?.incoming),
+				outgoing: toFiniteNumber((entry as any)?.outgoing),
+			}))
+		: [];
+
+const safeUsageStats = (value: unknown): SystemStats["memory"] => {
+	const raw = value && typeof value === "object" ? (value as any) : {};
+	return {
+		current: toFiniteNumber(raw.current),
+		total: toFiniteNumber(raw.total),
+		percent: toFiniteNumber(raw.percent),
+	};
+};
+
+const sanitizeSystemStats = (value: SystemStats | undefined): SystemStats | null => {
+	if (!value || typeof value !== "object") return null;
+	const raw = value as any;
+	return {
+		...value,
+		version: String(raw.version ?? ""),
+		cpu_cores: toFiniteNumber(raw.cpu_cores),
+		cpu_usage: toFiniteNumber(raw.cpu_usage),
+		total_user: toFiniteNumber(raw.total_user),
+		online_users: toFiniteNumber(raw.online_users),
+		users_active: toFiniteNumber(raw.users_active),
+		users_on_hold: toFiniteNumber(raw.users_on_hold),
+		users_disabled: toFiniteNumber(raw.users_disabled),
+		users_expired: toFiniteNumber(raw.users_expired),
+		users_limited: toFiniteNumber(raw.users_limited),
+		incoming_bandwidth: toFiniteNumber(raw.incoming_bandwidth),
+		outgoing_bandwidth: toFiniteNumber(raw.outgoing_bandwidth),
+		panel_total_bandwidth: toFiniteNumber(raw.panel_total_bandwidth),
+		incoming_bandwidth_speed: toFiniteNumber(raw.incoming_bandwidth_speed),
+		outgoing_bandwidth_speed: toFiniteNumber(raw.outgoing_bandwidth_speed),
+		memory: safeUsageStats(raw.memory),
+		swap: safeUsageStats(raw.swap),
+		disk: safeUsageStats(raw.disk),
+		load_avg: Array.isArray(raw.load_avg)
+			? raw.load_avg.map((item: unknown) => toFiniteNumber(item))
+			: [],
+		uptime_seconds: toFiniteNumber(raw.uptime_seconds),
+		panel_uptime_seconds: toFiniteNumber(raw.panel_uptime_seconds),
+		xray_uptime_seconds: toFiniteNumber(raw.xray_uptime_seconds),
+		xray_running: Boolean(raw.xray_running),
+		xray_version: raw.xray_version ?? null,
+		app_memory: toFiniteNumber(raw.app_memory),
+		app_threads: toFiniteNumber(raw.app_threads),
+		panel_cpu_percent: toFiniteNumber(raw.panel_cpu_percent),
+		panel_memory_percent: toFiniteNumber(raw.panel_memory_percent),
+		cpu_history: safeHistory(raw.cpu_history),
+		memory_history: safeHistory(raw.memory_history),
+		network_history: safeNetworkHistory(raw.network_history),
+		panel_cpu_history: safeHistory(raw.panel_cpu_history),
+		panel_memory_history: safeHistory(raw.panel_memory_history),
+		personal_usage:
+			raw.personal_usage && typeof raw.personal_usage === "object"
+				? {
+						total_users: toFiniteNumber(raw.personal_usage.total_users),
+						consumed_bytes: toFiniteNumber(raw.personal_usage.consumed_bytes),
+						built_bytes: toFiniteNumber(raw.personal_usage.built_bytes),
+						reset_bytes: toFiniteNumber(raw.personal_usage.reset_bytes),
+						traffic_basis: raw.personal_usage.traffic_basis,
+					}
+				: {
+						total_users: 0,
+						consumed_bytes: 0,
+						built_bytes: 0,
+						reset_bytes: 0,
+						traffic_basis: "used_traffic",
+					},
+		admin_overview:
+			raw.admin_overview && typeof raw.admin_overview === "object"
+				? {
+						total_admins: toFiniteNumber(raw.admin_overview.total_admins),
+						sudo_admins: toFiniteNumber(raw.admin_overview.sudo_admins),
+						full_access_admins: toFiniteNumber(
+							raw.admin_overview.full_access_admins,
+						),
+						standard_admins: toFiniteNumber(
+							raw.admin_overview.standard_admins,
+						),
+						top_admin_username: raw.admin_overview.top_admin_username ?? null,
+						top_admin_usage: toFiniteNumber(
+							raw.admin_overview.top_admin_usage,
+						),
+					}
+				: {
+						total_admins: 0,
+						sudo_admins: 0,
+						full_access_admins: 0,
+						standard_admins: 0,
+						top_admin_username: null,
+						top_admin_usage: 0,
+					},
+	};
+};
+
+const formatNumberValue = (value?: number | null) => numberWithCommas(value);
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 const getUsageColorScheme = (percent: number) => {
 	if (percent >= 80) return "red";
@@ -422,10 +537,10 @@ const UsageMetricCard: FC<{
 }> = ({ label, percent, detail, history, onOpen, actionLabel }) => {
 	const colorScheme = getUsageColorScheme(percent);
 	const safePercent = clampPercent(percent);
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
-	const mutedColor = useColorModeValue("gray.600", "gray.400");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const bg = useColorModeValue("panel.input", "panel.input");
+	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
+	const mutedColor = useColorModeValue("panel.textSecondary", "panel.textSecondary");
 	const valueColor = useColorModeValue(
 		`${colorScheme}.600`,
 		`${colorScheme}.300`,
@@ -443,7 +558,7 @@ const UsageMetricCard: FC<{
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="md"
+			borderRadius="6px"
 			bg={bg}
 			overflow="hidden"
 			p={3}
@@ -495,7 +610,7 @@ const SpeedItem: FC<{
 	colorScheme: "blue" | "green";
 }> = ({ icon, label, value, colorScheme }) => {
 	const labelColor = useColorModeValue("gray.500", "gray.400");
-	const iconBg = useColorModeValue(`${colorScheme}.50`, "whiteAlpha.100");
+	const iconBg = useColorModeValue("panel.input", "panel.input");
 	const iconColor = useColorModeValue(
 		`${colorScheme}.600`,
 		`${colorScheme}.300`,
@@ -505,8 +620,10 @@ const SpeedItem: FC<{
 		<HStack
 			alignItems="center"
 			spacing={3}
-			borderRadius="md"
+			borderRadius="6px"
 			bg={iconBg}
+			borderWidth="1px"
+			borderColor="panel.border"
 			px={3}
 			py={2.5}
 			minH="76px"
@@ -532,15 +649,15 @@ const NetworkSpeedCard: FC<{
 	t: TFunction;
 	onOpen: () => void;
 }> = ({ incoming, outgoing, t, onOpen }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.600", "gray.400");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const bg = useColorModeValue("panel.input", "panel.input");
+	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
 
 	return (
 		<Box
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="md"
+			borderRadius="6px"
 			bg={bg}
 			p={3}
 		>
@@ -579,10 +696,10 @@ const MetricBadge: FC<{
 	valueClassName?: string;
 	helper?: string;
 }> = ({ label, value, colorScheme = "gray", valueClassName, helper }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
-	const helperColor = useColorModeValue("gray.500", "gray.400");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const bg = useColorModeValue("panel.input", "panel.input");
+	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
+	const helperColor = useColorModeValue("panel.textMuted", "panel.textMuted");
 	const valueColor = useColorModeValue(
 		colorScheme === "gray" ? "gray.800" : `${colorScheme}.600`,
 		colorScheme === "gray" ? "gray.100" : `${colorScheme}.300`,
@@ -596,7 +713,7 @@ const MetricBadge: FC<{
 		<Box
 			px={3}
 			py={2}
-			borderRadius="md"
+			borderRadius="6px"
 			borderWidth="1px"
 			borderColor={borderColor}
 			bg={bg}
@@ -1073,14 +1190,19 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const { version } = useDashboard();
 	const { userData } = useGetUser();
 	const { t } = useTranslation();
-	const { data: systemData } = useQuery<SystemStats>({
+	const { data: rawSystemData } = useQuery<SystemStats>({
 		queryKey: StatisticsQueryKey,
 		queryFn: () => fetch("/system"),
-		onSuccess: ({ version: currentVersion }) => {
-			if (version !== currentVersion)
+		onSuccess: (stats) => {
+			const currentVersion = stats?.version;
+			if (currentVersion && version !== currentVersion)
 				useDashboard.setState({ version: currentVersion });
 		},
 	});
+	const systemData = useMemo(
+		() => sanitizeSystemStats(rawSystemData),
+		[rawSystemData],
+	);
 	useSystemMetricsStream(true);
 	useEffect(() => {
 		if (systemData?.version && version !== systemData.version) {

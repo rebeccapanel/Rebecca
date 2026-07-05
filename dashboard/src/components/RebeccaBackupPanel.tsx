@@ -6,13 +6,13 @@ import {
 	FormControl,
 	FormLabel,
 	HStack,
-	Select,
 	SimpleGrid,
 	Stack,
 	Text,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowDownTrayIcon,
 	ArrowUpTrayIcon,

@@ -12,7 +12,6 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	SimpleGrid,
 	Stack,
 	Switch,
@@ -26,6 +25,7 @@ import {
 	Wrap,
 	WrapItem,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowDownTrayIcon,
 	DocumentDuplicateIcon,
@@ -823,7 +823,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</Text>
 								</FormControl>
 							</SimpleGrid>
-							<FormControl className="node-switch-control">
+							<FormControl className="node-switch-control rb-dialog-switch-row">
 								<FormLabel mb={0}>
 									{t("nodes.useProxy", "Enable proxy for node connection")}
 								</FormLabel>
@@ -933,7 +933,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 					</Stack>
 				</XrayModalBody>
 				<XrayModalFooter justifyContent="flex-end">
-					<Button variant="outline" onClick={handleClose}>
+					<Button variant="outline" size="sm" onClick={handleClose}>
 						{t("cancel")}
 					</Button>
 					<AnimatedSubmitButton

@@ -26,22 +26,17 @@ import {
 	ModalCloseButton,
 	ModalOverlay,
 	Progress,
-	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
 	Switch,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
 	Text,
 	Textarea,
 	useColorModeValue,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	ArrowsRightLeftIcon,
@@ -103,6 +98,7 @@ import {
 	XrayModalFooter,
 	XrayModalHeader,
 } from "../components/xray/XrayDialog";
+import { PageHeader, ResourceListCard, TabSystem } from "../components/ui";
 
 type EventToggleItem = {
 	key: string;
@@ -130,28 +126,22 @@ const TelegramSwitchRow = ({
 	description,
 	control,
 }: TelegramSwitchRowProps) => (
-	<FormControl>
+	<FormControl className="telegram-switch-row">
 		<Flex
-			align={{ base: "flex-start", sm: "center" }}
+			align="center"
 			justify="space-between"
-			gap={3}
-			borderWidth="1px"
-			borderColor="gray.200"
-			borderRadius="md"
-			bg="gray.50"
-			px={3}
-			py={3}
-			_dark={{ borderColor: "whiteAlpha.200", bg: "whiteAlpha.50" }}
+			gap={{ base: 2, md: 3 }}
+			className="telegram-switch-row__inner"
 		>
 			<Box minW={0} flex="1">
-				<Text fontWeight="semibold">{title}</Text>
+				<Text className="telegram-switch-row__title">{title}</Text>
 				{description ? (
-					<Text fontSize="xs" color="gray.500" mt={1}>
+					<Text className="telegram-switch-row__description">
 						{description}
 					</Text>
 				) : null}
 			</Box>
-			<Box flexShrink={0} pt={{ base: 1, sm: 0 }}>
+			<Box flexShrink={0} className="telegram-switch-row__control">
 				{control}
 			</Box>
 		</Flex>
@@ -720,11 +710,9 @@ const parseAdminChatIds = (value: string): number[] =>
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
 	const toast = useToast();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
 	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
 	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
 	const fieldBg = useColorModeValue("white", "blackAlpha.200");
 	const maintenanceOutputBg = useColorModeValue("gray.50", "blackAlpha.400");
 	const maintenanceOutputBorder = useColorModeValue(
@@ -1713,6 +1701,8 @@ export const IntegrationSettingsPage = () => {
 					borderColor,
 					borderRadius: "6px",
 					p: { base: 3, md: 4 },
+					boxShadow: "none",
+					overflow: "hidden",
 				},
 				".master-settings-subcard": {
 					bg: subCardBg,
@@ -1720,6 +1710,45 @@ export const IntegrationSettingsPage = () => {
 					borderColor,
 					borderRadius: "6px",
 					p: { base: 3, md: 3 },
+				},
+				".master-settings-action-row": {
+					display: "flex",
+					justifyContent: "flex-end",
+					gap: 3,
+					flexWrap: "wrap",
+				},
+				".master-settings-action-row > .chakra-button": {
+					minW: { base: "calc(50% - 6px)", sm: "auto" },
+				},
+				".telegram-settings-form": {
+					"--telegram-row-bg": subCardBg,
+				},
+				".telegram-switch-row__inner": {
+					bg: "var(--telegram-row-bg)",
+					border: "1px solid",
+					borderColor,
+					borderRadius: "6px",
+					px: { base: 2.5, md: 3 },
+					py: { base: 2.5, md: 3 },
+					minH: "56px",
+				},
+				".telegram-switch-row__title": {
+					fontSize: "sm",
+					fontWeight: "700",
+					color: "panel.text",
+					lineHeight: "1.2",
+				},
+				".telegram-switch-row__description": {
+					fontSize: "xs",
+					color: "panel.textMuted",
+					mt: 1,
+					lineHeight: "1.35",
+				},
+				".telegram-switch-row__control": {
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "flex-end",
+					minW: "44px",
 				},
 				".master-settings-card input, .master-settings-card select, .master-settings-card textarea, .master-settings-subcard input, .master-settings-subcard select, .master-settings-subcard textarea":
 					{
@@ -1755,110 +1784,73 @@ export const IntegrationSettingsPage = () => {
 				},
 			}}
 		>
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={4}
+			<ResourceListCard
+				title={
+					<PageHeader
+						title={t("settings.integrations")}
+						description={t(
+							"settings.integrationsDescription",
+							"Configure panel runtime, Telegram, subscriptions, database imports, and templates.",
+						)}
+					/>
+				}
 				mb={4}
+			/>
+			<TabSystem
+				className="master-settings-tabs"
+				overflowX="auto"
+				overflowY="hidden"
+				maxW="full"
+				sx={{
+					WebkitOverflowScrolling: "touch",
+					scrollbarWidth: "none",
+					"&::-webkit-scrollbar": { display: "none" },
+					button: { flexShrink: 0 },
+				}}
+				tabs={[
+					{
+						value: "panel",
+						isActive: activeIntegrationTab === 0,
+						onClick: () => handleIntegrationTabChange(0),
+						label: t("settings.panel.tabTitle"),
+					},
+					{
+						value: "telegram",
+						isActive: activeIntegrationTab === 1,
+						onClick: () => handleIntegrationTabChange(1),
+						label: t("settings.telegram"),
+					},
+					{
+						value: "subscriptions",
+						isActive: activeIntegrationTab === 2,
+						onClick: () => handleIntegrationTabChange(2),
+						label: t("settings.subscriptions.tabTitle"),
+					},
+					{
+						value: "database",
+						isActive: activeIntegrationTab === 3,
+						onClick: () => handleIntegrationTabChange(3),
+						label: t("settings.database.tabTitle", "DATABASE"),
+					},
+					{
+						value: "template-creator",
+						isActive: activeIntegrationTab === 4,
+						onClick: () => handleIntegrationTabChange(4),
+						label: t("settings.templates.tabTitle"),
+					},
+				]}
+			/>
+			<Box
+				px={{ base: 0, md: 2 }}
+				mt={3}
+				display={activeIntegrationTab === 0 ? "block" : "none"}
 			>
-				<Heading size="lg">{t("settings.integrations")}</Heading>
-				<Text
-					mt={2}
-					fontSize="sm"
-					color="gray.500"
-					_dark={{ color: "gray.400" }}
-				>
-					{t(
-						"settings.integrationsDescription",
-						"Configure panel runtime, Telegram, subscriptions, database imports, and templates.",
-					)}
-				</Text>
-			</Box>
-			<Tabs
-				variant="unstyled"
-				index={activeIntegrationTab}
-				onChange={handleIntegrationTabChange}
-			>
-				<TabList
-					className="master-settings-tabs"
-					borderWidth="1px"
-					borderColor={borderColor}
-					borderRadius="md"
-					bg={panelBg}
-					p={{ base: 1, md: 2 }}
-					gap={{ base: 1.5, md: 2 }}
-					mb={4}
-					overflowX="auto"
-				>
-					<Tab
-						borderRadius="md"
-						px={4}
-						py={2}
-						fontWeight="semibold"
-						color="gray.500"
-						_selected={{ bg: activeTabBg, color: "white" }}
-						_dark={{ color: "gray.300" }}
-					>
-						{t("settings.panel.tabTitle")}
-					</Tab>
-					<Tab
-						borderRadius="md"
-						px={4}
-						py={2}
-						fontWeight="semibold"
-						color="gray.500"
-						_selected={{ bg: activeTabBg, color: "white" }}
-						_dark={{ color: "gray.300" }}
-					>
-						{t("settings.telegram")}
-					</Tab>
-					<Tab
-						borderRadius="md"
-						px={4}
-						py={2}
-						fontWeight="semibold"
-						color="gray.500"
-						_selected={{ bg: activeTabBg, color: "white" }}
-						_dark={{ color: "gray.300" }}
-					>
-						{t("settings.subscriptions.tabTitle")}
-					</Tab>
-					<Tab
-						borderRadius="md"
-						px={4}
-						py={2}
-						fontWeight="semibold"
-						color="gray.500"
-						_selected={{ bg: activeTabBg, color: "white" }}
-						_dark={{ color: "gray.300" }}
-					>
-						{t("settings.database.tabTitle", "DATABASE")}
-					</Tab>
-					<Tab
-						borderRadius="md"
-						px={4}
-						py={2}
-						fontWeight="semibold"
-						color="gray.500"
-						_selected={{ bg: activeTabBg, color: "white" }}
-						_dark={{ color: "gray.300" }}
-					>
-						{t("settings.templates.tabTitle")}
-					</Tab>
-				</TabList>
-				<TabPanels>
-					<TabPanel px={{ base: 0, md: 2 }}>
 						{isPanelLoading && panelData === undefined ? (
 							<Flex align="center" justify="center" py={12}>
 								<Spinner size="lg" />
 							</Flex>
 						) : (
 							<Stack spacing={6} align="stretch">
-								<Text fontSize="sm" color="gray.500">
-									{t("settings.panel.description")}
-								</Text>
 								<Box className="master-settings-card">
 									<Flex
 										justify="space-between"
@@ -2091,7 +2083,7 @@ export const IntegrationSettingsPage = () => {
 												</Text>
 											</Alert>
 										)}
-										<HStack spacing={3} flexWrap="wrap">
+										<HStack spacing={3} flexWrap="wrap" className="master-settings-action-row">
 											<Button
 												size="sm"
 												colorScheme="yellow"
@@ -2126,7 +2118,7 @@ export const IntegrationSettingsPage = () => {
 										</HStack>
 									</Stack>
 								</Box>
-								<Flex gap={3} justify="flex-end">
+								<Flex className="master-settings-action-row">
 									<Button
 										variant="outline"
 										leftIcon={<RefreshIcon />}
@@ -2156,18 +2148,19 @@ export const IntegrationSettingsPage = () => {
 								</Flex>
 							</Stack>
 						)}
-					</TabPanel>
-					<TabPanel px={{ base: 0, md: 2 }}>
+			</Box>
+			<Box
+				px={{ base: 0, md: 2 }}
+				mt={3}
+				display={activeIntegrationTab === 1 ? "block" : "none"}
+			>
 						{isLoading && !data ? (
 							<Flex align="center" justify="center" py={12}>
 								<Spinner size="lg" />
 							</Flex>
 						) : (
-							<form onSubmit={handleSubmit(onSubmit)}>
+							<form className="telegram-settings-form" onSubmit={handleSubmit(onSubmit)}>
 								<VStack align="stretch" spacing={4}>
-									<Text fontSize="sm" color="gray.500">
-										{t("settings.telegram.description")}
-									</Text>
 									<TelegramSwitchRow
 										title={t("settings.telegram.enableBot")}
 										description={t("settings.telegram.enableBotDescription")}
@@ -2265,7 +2258,7 @@ export const IntegrationSettingsPage = () => {
 													/>
 												</FormControl>
 											</SimpleGrid>
-											<Flex justify="flex-end" mt={4}>
+											<Flex className="master-settings-action-row" mt={4}>
 												<Button
 													size="sm"
 													variant="outline"
@@ -2474,7 +2467,7 @@ export const IntegrationSettingsPage = () => {
 													</Text>
 												)}
 											</SimpleGrid>
-											<Flex justify="flex-end" mt={4}>
+											<Flex className="master-settings-action-row" mt={4}>
 												<Button
 													size="sm"
 													variant="outline"
@@ -2592,7 +2585,7 @@ export const IntegrationSettingsPage = () => {
 														key={group.key}
 													>
 														<Text fontWeight="semibold" mb={3}>
-															{t(group.titleKey)}
+															{t(group.titleKey, group.defaultTitle)}
 														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 2 }}
@@ -2601,8 +2594,8 @@ export const IntegrationSettingsPage = () => {
 															{group.events.map((event) => (
 																<TelegramSwitchRow
 																	key={event.key}
-																	title={t(event.labelKey)}
-																	description={t(event.hintKey)}
+																	title={t(event.labelKey, event.defaultLabel)}
+																	description={t(event.hintKey, event.defaultHint)}
 																	control={
 																		<Controller
 																			control={control}
@@ -2628,7 +2621,7 @@ export const IntegrationSettingsPage = () => {
 										</Box>
 									</DisabledCard>
 
-									<Flex gap={3} justify="flex-end">
+									<Flex className="master-settings-action-row">
 										<Button
 											variant="outline"
 											leftIcon={<RefreshIcon />}
@@ -2650,8 +2643,12 @@ export const IntegrationSettingsPage = () => {
 								</VStack>
 							</form>
 						)}
-					</TabPanel>
-					<TabPanel px={{ base: 0, md: 2 }}>
+			</Box>
+			<Box
+				px={{ base: 0, md: 2 }}
+				mt={3}
+				display={activeIntegrationTab === 2 ? "block" : "none"}
+			>
 						{isSubscriptionLoading && !subscriptionBundle ? (
 							<Flex align="center" justify="center" py={12}>
 								<Spinner size="lg" />
@@ -2663,9 +2660,6 @@ export const IntegrationSettingsPage = () => {
 								)}
 							>
 								<VStack align="stretch" spacing={6}>
-									<Text fontSize="sm" color="gray.500">
-										{t("settings.subscriptions.description")}
-									</Text>
 									<Box className="master-settings-card">
 										<Flex
 											justify="space-between"
@@ -4047,7 +4041,7 @@ export const IntegrationSettingsPage = () => {
 																		</FormControl>
 																	</SimpleGrid>
 
-																	<Flex gap={3} justify="flex-end" mt={4}>
+																	<Flex className="master-settings-action-row" mt={4}>
 																		<Button
 																			variant="outline"
 																			leftIcon={<RefreshIcon />}
@@ -4133,7 +4127,7 @@ export const IntegrationSettingsPage = () => {
 													</FormHelperText>
 												</FormControl>
 											</SimpleGrid>
-											<Flex justify="flex-end" mt={3}>
+											<Flex className="master-settings-action-row" mt={3}>
 												<Button
 													colorScheme="primary"
 													leftIcon={<SaveIcon />}
@@ -4242,8 +4236,12 @@ export const IntegrationSettingsPage = () => {
 								</VStack>
 							</form>
 						)}
-					</TabPanel>
-					<TabPanel px={{ base: 0, md: 2 }}>
+			</Box>
+			<Box
+				px={{ base: 0, md: 2 }}
+				mt={3}
+				display={activeIntegrationTab === 3 ? "block" : "none"}
+			>
 						<VStack align="stretch" spacing={6}>
 							<RebeccaBackupPanel
 								isBinaryRuntime={hostActionsAvailable}
@@ -4252,8 +4250,12 @@ export const IntegrationSettingsPage = () => {
 							<Divider />
 							<ThreeXUiDatabaseImportPanel />
 						</VStack>
-					</TabPanel>
-					<TabPanel px={{ base: 0, md: 2 }}>
+			</Box>
+			<Box
+				px={{ base: 0, md: 2 }}
+				mt={3}
+				display={activeIntegrationTab === 4 ? "block" : "none"}
+			>
 						<VStack align="stretch" spacing={6}>
 							<Alert status="warning" variant="left-accent" borderRadius="md">
 								<AlertIcon />
@@ -4266,18 +4268,13 @@ export const IntegrationSettingsPage = () => {
 									</Text>
 								</Box>
 							</Alert>
-							<Text fontSize="sm" color="gray.500">
-								{t("settings.templates.description")}
-							</Text>
 							<SubscriptionTemplateCreator
 								onSaved={() => {
 									void refetchSubscriptionSettings();
 								}}
 							/>
 						</VStack>
-					</TabPanel>
-				</TabPanels>
-			</Tabs>
+			</Box>
 			<ConfirmActionDialog
 				isOpen={isDevUpdateConfirmOpen}
 				onClose={() => setDevUpdateConfirmOpen(false)}

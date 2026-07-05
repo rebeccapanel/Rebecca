@@ -24,10 +24,10 @@ import {
 import SlickSlider from "components/common/SlickSlider";
 import { QRCodeCanvas } from "qrcode.react";
 import { type FC, useEffect, useMemo, useState } from "react";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import "slick-carousel/slick/slick-theme.css";
 import "slick-carousel/slick/slick.css";
+import { copyTextToClipboard } from "utils/clipboard";
 import { getConfigLabelFromLink } from "utils/configLabel";
 import { useDashboard } from "../contexts/DashboardContext";
 import { Icon } from "./Icon";
@@ -85,6 +85,21 @@ export const QRCodeDialog: FC = () => {
 	const onClose = () => {
 		setQRCode(null);
 		setSubLink(null);
+	};
+
+	const copySubscribeLink = () => {
+		void copyTextToClipboard(subscribeQrLink).then(() => {
+			setCopiedSub(true);
+			setSubAnimSeed((prev) => prev + 1);
+		});
+	};
+
+	const copyConfigLink = (link: string, itemIndex: number) => {
+		void copyTextToClipboard(link).then(() => {
+			setCopiedConfigIndex(itemIndex);
+			setConfigAnimIndex(itemIndex);
+			setConfigAnimSeed((prev) => prev + 1);
+		});
 	};
 
 	const subscribeQrLink = String(subscribeUrl).startsWith("/")
@@ -203,36 +218,36 @@ export const QRCodeDialog: FC = () => {
 										{t("usersTable.copied")}
 									</Box>
 								)}
-								<CopyToClipboard
-									text={subscribeQrLink}
-									onCopy={() => {
-										setCopiedSub(true);
-										setSubAnimSeed((prev) => prev + 1);
+								<Box
+									key={`sub-qr-${subAnimSeed}`}
+									cursor="pointer"
+									role="button"
+									tabIndex={0}
+									aria-label={t("userDialog.links.copy", "Copy")}
+									animation={
+										copiedSub && subAnimSeed > 0
+											? `${clickPulse} 260ms ease-in-out`
+											: "none"
+									}
+									onClick={copySubscribeLink}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											copySubscribeLink();
+										}
 									}}
 								>
-									<Box
-										key={`sub-qr-${subAnimSeed}`}
-										cursor="pointer"
-										role="button"
-										aria-label={t("userDialog.links.copy", "Copy")}
-										animation={
-											copiedSub && subAnimSeed > 0
-												? `${clickPulse} 260ms ease-in-out`
-												: "none"
-										}
-									>
-										<QRCode
-											mx="auto"
-											maxW="100%"
-											size={qrSize}
-											p="2"
-											level={"L"}
-											includeMargin={false}
-											value={subscribeQrLink}
-											bg="white"
-										/>
-									</Box>
-								</CopyToClipboard>
+									<QRCode
+										mx="auto"
+										maxW="100%"
+										size={qrSize}
+										p="2"
+										level={"L"}
+										includeMargin={false}
+										value={subscribeQrLink}
+										bg="white"
+									/>
+								</Box>
 								<Text fontSize="xs" color="gray.500" textAlign="center">
 									{t("qrcodeDialog.clickToCopy", "click to copy")}
 								</Text>
@@ -314,42 +329,41 @@ export const QRCodeDialog: FC = () => {
 													key={`${item.link}-${itemIndex}`}
 													justify="center"
 												>
-													<CopyToClipboard
-														text={item.link}
-														onCopy={() => {
-															setCopiedConfigIndex(itemIndex);
-															setConfigAnimIndex(itemIndex);
-															setConfigAnimSeed((prev) => prev + 1);
+													<Box
+														key={
+															configAnimIndex === itemIndex
+																? `qr-${itemIndex}-${configAnimSeed}`
+																: `qr-${itemIndex}`
+														}
+														cursor="pointer"
+														role="button"
+														tabIndex={0}
+														aria-label={t("userDialog.links.copy", "Copy")}
+														animation={
+															configAnimIndex === itemIndex &&
+															configAnimSeed > 0
+																? `${clickPulse} 260ms ease-in-out`
+																: "none"
+														}
+														onClick={() => copyConfigLink(item.link, itemIndex)}
+														onKeyDown={(event) => {
+															if (event.key === "Enter" || event.key === " ") {
+																event.preventDefault();
+																copyConfigLink(item.link, itemIndex);
+															}
 														}}
 													>
-														<Box
-															key={
-																configAnimIndex === itemIndex
-																	? `qr-${itemIndex}-${configAnimSeed}`
-																	: `qr-${itemIndex}`
-															}
-															cursor="pointer"
-															role="button"
-															aria-label={t("userDialog.links.copy", "Copy")}
-															animation={
-																configAnimIndex === itemIndex &&
-																configAnimSeed > 0
-																	? `${clickPulse} 260ms ease-in-out`
-																	: "none"
-															}
-														>
-															<QRCode
-																mx="auto"
-																maxW="100%"
-																size={qrSize}
-																p="2"
-																level={"L"}
-																includeMargin={false}
-																value={item.link}
-																bg="white"
-															/>
-														</Box>
-													</CopyToClipboard>
+														<QRCode
+															mx="auto"
+															maxW="100%"
+															size={qrSize}
+															p="2"
+															level={"L"}
+															includeMargin={false}
+															value={item.link}
+															bg="white"
+														/>
+													</Box>
 												</HStack>
 											))}
 										</SlickSlider>

@@ -17,7 +17,6 @@ import {
 	FormLabel,
 	HStack,
 	IconButton,
-	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -26,6 +25,7 @@ import {
 	VStack,
 	useToast,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	EyeIcon,

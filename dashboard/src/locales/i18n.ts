@@ -41,20 +41,14 @@ i18n
 					`statics/locales/{{lng}}.json`,
 				]),
 			},
-		},
-		(err, _t) => {
-			if (err) console.error("i18next initialization error:", err);
-			else
-				console.log(
-					"i18next initialized successfully with language:",
-					i18n.language,
-				);
-			dayjs.locale(i18n.language);
-		},
-	);
+	},
+	(err, _t) => {
+		if (err) console.error("i18next initialization error:", err);
+		dayjs.locale(i18n.language);
+	},
+);
 
 i18n.on("languageChanged", (lng) => {
-	console.log("Language changed to:", lng);
 	dayjs.locale(lng);
 
 	// Set HTML lang and dir attributes for RTL support

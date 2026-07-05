@@ -11,6 +11,7 @@ type UserStatusProps = {
 	status: UserStatusType;
 	compact?: boolean;
 	showDetail?: boolean;
+	detailPlacement?: "inline" | "below";
 	extraText?: string | null;
 };
 export const StatusBadge: FC<UserStatusProps> = ({
@@ -18,11 +19,12 @@ export const StatusBadge: FC<UserStatusProps> = ({
 	status: userStatus,
 	compact = false,
 	showDetail = true,
+	detailPlacement = "inline",
 	extraText,
 }) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const dateInfo = relativeExpiryDate(expiryDate);
+	const dateInfo = relativeExpiryDate(expiryDate, { compact });
 	const Icon = statusColors[userStatus].icon;
 	const isExpiry = dateInfo.status === "expires";
 
@@ -78,29 +80,44 @@ export const StatusBadge: FC<UserStatusProps> = ({
 	};
 	return (
 		<Box
+			className="rb-status-badge-shell"
 			display="inline-flex"
-			alignItems="center"
-			gap={2}
-			flexWrap="wrap"
+			alignItems={detailPlacement === "below" ? "flex-start" : "center"}
+			justifyContent="flex-start"
+			flexDirection={detailPlacement === "below" ? "column" : "row"}
+			gap={detailPlacement === "below" ? 0.5 : 1.5}
+			flexWrap="nowrap"
 			dir={isRTL ? "rtl" : "ltr"}
+			whiteSpace="nowrap"
+			textAlign="start"
+			maxW="full"
 		>
 			<Badge
+				className="rb-status-badge"
 				colorScheme={statusColors[userStatus].statusColor}
 				rounded="full"
 				display="inline-flex"
-				px={3}
-				py={1}
-				columnGap={compact ? 1 : 2}
+				px={compact ? 2 : 3}
+				py={compact ? 0.5 : 1}
+				columnGap={compact ? 1 : 1.5}
 				alignItems="center"
+				justifyContent="flex-start"
+				flexWrap="nowrap"
+				lineHeight="1"
+				whiteSpace="nowrap"
+				minW={compact ? "64px" : "72px"}
+				maxW="full"
 			>
-				<Icon w={compact ? 3 : 4} />
+				<Icon w={compact ? 3 : 4} flexShrink={0} />
 				{showDetail && (
 					<Text
+						className="rb-status-badge-text"
 						textTransform="capitalize"
-						fontSize={compact ? ".7rem" : ".875rem"}
+						fontSize={compact ? ".68rem" : ".875rem"}
 						lineHeight={compact ? "1rem" : "1.25rem"}
 						fontWeight="medium"
-						letterSpacing="tighter"
+						letterSpacing="0"
+						whiteSpace="nowrap"
 					>
 						{userStatus && t(`status.${userStatus}`)}
 						{extraText && `: ${extraText}`}
@@ -112,7 +129,7 @@ export const StatusBadge: FC<UserStatusProps> = ({
 				expiryDate !== undefined &&
 				dateInfo.time && (
 					<Text
-						display="inline"
+						display="block"
 						fontSize="xs"
 						fontWeight="medium"
 						color="gray.600"
@@ -120,6 +137,10 @@ export const StatusBadge: FC<UserStatusProps> = ({
 							color: "gray.400",
 						}}
 						as="span"
+						lineHeight="1.2"
+						textAlign="start"
+						whiteSpace="nowrap"
+						pl={detailPlacement === "below" ? 1 : undefined}
 					>
 						{isExpiry
 							? renderRelativeText("expires")

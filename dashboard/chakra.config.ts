@@ -17,6 +17,23 @@ const sharedThemeConfig = {
 	},
 	colors: {
 		"light-border": "#d2d2d4",
+		panel: {
+			app: "var(--rb-panel-bg)",
+			main: "var(--rb-panel-main)",
+			sidebar: "var(--rb-panel-sidebar)",
+			surface: "var(--rb-panel-surface)",
+			elevated: "var(--rb-panel-elevated)",
+			border: "var(--rb-panel-border)",
+			borderStrong: "var(--rb-panel-border-strong)",
+			text: "var(--rb-panel-text)",
+			textSecondary: "var(--rb-panel-text-secondary)",
+			textMuted: "var(--rb-panel-text-muted)",
+			accent: "var(--rb-panel-accent)",
+			accentHover: "var(--rb-panel-accent-hover)",
+			warning: "#f59e0b",
+			success: "#22c55e",
+			danger: "#ef4444",
+		},
 		bg: {
 			light: "var(--bg-light)",
 			dark: "var(--bg-dark)",
@@ -43,117 +60,66 @@ const sharedThemeConfig = {
 			750: "#222C3B",
 		},
 	},
-	// global styles: define CSS variables for the default theme and a few
-	// alternate named themes. The runtime ThemeSelector will toggle classes
-	// like `rb-theme-ultra-dark` on document.documentElement to switch palettes.
+	// global styles: panel tokens and primary colors are CSS variables so
+	// theme/accent can switch at runtime without remounting the app.
 	styles: {
 		global: {
 			":root": {
-				"--primary-50": "#9cb7f2",
-				"--primary-100": "#88a9ef",
-				"--primary-200": "#749aec",
-				"--primary-300": "#618ce9",
-				"--primary-400": "#4d7de7",
-				"--primary-500": "#396fe4",
-				"--primary-600": "#3364cd",
-				"--primary-700": "#2e59b6",
-				"--primary-800": "#284ea0",
-				"--primary-900": "#224389",
-				"--bg-light": "#f6f8ff",
-				"--bg-dark": "#0f172a",
-				"--surface-light": "#edf1ff",
-				"--surface-dark": "#17233d",
+				"--primary-50": "#ffe6ed",
+				"--primary-100": "#ffb8c9",
+				"--primary-200": "#ff88a5",
+				"--primary-300": "#fb5a82",
+				"--primary-400": "#f42d62",
+				"--primary-500": "#e0003c",
+				"--primary-600": "#bf0033",
+				"--primary-700": "#990029",
+				"--primary-800": "#73001f",
+				"--primary-900": "#4c0015",
+				"--bg-light": "#101010",
+				"--bg-dark": "#101010",
+				"--surface-light": "#242424",
+				"--surface-dark": "#242424",
 			},
 
 			".rb-theme-dark": {
-				"--primary-50": "#1a202c",
-				"--primary-100": "#2d3748",
-				"--primary-200": "#4a5568",
-				"--primary-300": "#718096",
-				"--primary-400": "#a0aec0",
-				"--primary-500": "#cbd5e0",
-				"--primary-600": "#e2e8f0",
-				"--primary-700": "#f7fafc",
-				"--primary-800": "#ffffff",
-				"--primary-900": "#ffffff",
-				"--bg-light": "#1a202c",
-				"--bg-dark": "#0b1524",
-				"--surface-light": "#253247",
-				"--surface-dark": "#172338",
+				"--rb-panel-bg": "#101010",
+				"--rb-panel-main": "#111111",
+				"--rb-panel-sidebar": "#2b2b2b",
+				"--rb-panel-surface": "#242424",
+				"--rb-panel-elevated": "#2f2f2f",
+				"--rb-panel-border": "#3a3a3a",
+				"--rb-panel-border-strong": "#4a4a4a",
+				"--rb-panel-text": "#f5f5f5",
+				"--rb-panel-text-secondary": "#b8b8b8",
+				"--rb-panel-text-muted": "#8a8a8a",
+				"--bg-light": "#101010",
+				"--bg-dark": "#101010",
+				"--surface-light": "#242424",
+				"--surface-dark": "#242424",
+			},
+			".rb-theme-light": {
+				"--rb-panel-bg": "#f4f5f7",
+				"--rb-panel-main": "#f7f8fa",
+				"--rb-panel-sidebar": "#ffffff",
+				"--rb-panel-surface": "#ffffff",
+				"--rb-panel-elevated": "#eef0f3",
+				"--rb-panel-border": "#d8dce2",
+				"--rb-panel-border-strong": "#c2c8d0",
+				"--rb-panel-text": "#17191c",
+				"--rb-panel-text-secondary": "#4f5661",
+				"--rb-panel-text-muted": "#7a828e",
+				"--bg-light": "#f4f5f7",
+				"--bg-dark": "#f4f5f7",
+				"--surface-light": "#ffffff",
+				"--surface-dark": "#ffffff",
 			},
 			body: {
-				backgroundColor: "var(--bg-light)",
+				backgroundColor: "panel.main",
+				color: "panel.text",
 			},
 			"[data-theme='dark'] body, .chakra-ui-dark body": {
-				backgroundColor: "var(--bg-dark)",
-			},
-
-			".rb-theme-ultra-dark": {
-				"--primary-50": "#e6fffa",
-				"--primary-100": "#b2f5ea",
-				"--primary-200": "#81e6d9",
-				"--primary-300": "#4fd1c5",
-				"--primary-400": "#38b2ac",
-				"--primary-500": "#319795",
-				"--primary-600": "#2c7a7b",
-				"--primary-700": "#285e61",
-				"--primary-800": "#234e52",
-				"--primary-900": "#1b4046",
-				"--bg-light": "#edfafa",
-				"--bg-dark": "#091212",
-				"--surface-light": "#dff4f2",
-				"--surface-dark": "#132928",
-			},
-
-			".rb-theme-moontone": {
-				"--primary-50": "#ebf8ff",
-				"--primary-100": "#dbeafe",
-				"--primary-200": "#bfdbfe",
-				"--primary-300": "#93c5fd",
-				"--primary-400": "#60a5fa",
-				"--primary-500": "#3b82f6",
-				"--primary-600": "#2563eb",
-				"--primary-700": "#1d4ed8",
-				"--primary-800": "#1e40af",
-				"--primary-900": "#172554",
-				"--bg-light": "#f5f7ff",
-				"--bg-dark": "#0f1930",
-				"--surface-light": "#e9f0ff",
-				"--surface-dark": "#1b2d52",
-			},
-
-			".rb-theme-purple": {
-				"--primary-50": "#f5f3ff",
-				"--primary-100": "#ede9fe",
-				"--primary-200": "#ddd6fe",
-				"--primary-300": "#c4b5fd",
-				"--primary-400": "#a78bfa",
-				"--primary-500": "#7c3aed",
-				"--primary-600": "#6d28d9",
-				"--primary-700": "#5b21b6",
-				"--primary-800": "#4c1d95",
-				"--primary-900": "#3b0f73",
-				"--bg-light": "#f8f2ff",
-				"--bg-dark": "#1a1031",
-				"--surface-light": "#f0e5ff",
-				"--surface-dark": "#2d1b54",
-			},
-
-			".rb-theme-green": {
-				"--primary-50": "#ecfdf5",
-				"--primary-100": "#d1fae5",
-				"--primary-200": "#a7f3d0",
-				"--primary-300": "#6ee7b7",
-				"--primary-400": "#34d399",
-				"--primary-500": "#10b981",
-				"--primary-600": "#059669",
-				"--primary-700": "#047857",
-				"--primary-800": "#065f46",
-				"--primary-900": "#064e3b",
-				"--bg-light": "#eefdf4",
-				"--bg-dark": "#071c10",
-				"--surface-light": "#e2f8e9",
-				"--surface-dark": "#12341e",
+				backgroundColor: "panel.main",
+				color: "panel.text",
 			},
 
 			".rb-seasonal-christmas": {
@@ -172,76 +138,61 @@ const sharedThemeConfig = {
 				"--surface-light": "#f7eee8",
 				"--surface-dark": "#172235",
 			},
-
-			".rb-theme-pure-dark": {
-				"--primary-50": "#e5f2ff",
-				"--primary-100": "#b8deff",
-				"--primary-200": "#8bcaff",
-				"--primary-300": "#5eb6ff",
-				"--primary-400": "#31a2ff",
-				"--primary-500": "#1a8ce0",
-				"--primary-600": "#126fb3",
-				"--primary-700": "#0a5286",
-				"--primary-800": "#03355a",
-				"--primary-900": "#001a2f",
-				"--bg-light": "#0c1018",
-				"--bg-dark": "#05070c",
-				"--surface-light": "#151d2b",
-				"--surface-dark": "#101826",
-			},
 		},
 	},
 	components: {
 		Card: {
 			baseStyle: (props: StyleFunctionProps) => ({
 				container: {
-					bg: mode("surface.light", "surface.dark")(props),
+					bg: mode("panel.surface", "panel.surface")(props),
 					borderWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 					boxShadow: "none",
+					borderRadius: "6px",
 				},
 			}),
 		},
 		Modal: {
 			baseStyle: (props: StyleFunctionProps) => ({
 				dialog: {
-					bg: mode("surface.light", "surface.dark")(props),
+					bg: mode("panel.surface", "panel.surface")(props),
 					borderWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
-					borderRadius: "lg",
-					boxShadow: mode("xl", "dark-lg")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
+					borderRadius: "6px",
+					boxShadow: "0 20px 60px rgba(0, 0, 0, 0.42)",
 				},
 				header: {
 					borderBottomWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 				},
 				footer: {
 					borderTopWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 				},
 			}),
 		},
 		Drawer: {
 			baseStyle: (props: StyleFunctionProps) => ({
 				dialog: {
-					bg: mode("surface.light", "surface.dark")(props),
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					bg: mode("panel.surface", "panel.surface")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 					borderWidth: "0",
 				},
 			}),
 		},
 		Menu: {
 			baseStyle: (props: StyleFunctionProps) => {
-				const hoverBg = mode("blackAlpha.50", "whiteAlpha.100")(props);
+				const hoverBg = mode("panel.elevated", "panel.elevated")(props);
 				return {
 					list: {
-						bg: mode("surface.light", "surface.dark")(props),
+						bg: mode("panel.surface", "panel.surface")(props),
 						borderWidth: "1px",
-						borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
-						boxShadow: mode("lg", "dark-lg")(props),
+						borderColor: mode("panel.border", "panel.border")(props),
+						boxShadow: "0 18px 48px rgba(0, 0, 0, 0.38)",
 					},
 					item: {
 						bg: "transparent !important",
+						color: mode("panel.text", "panel.text")(props),
 						_hover: {
 							bg: `${hoverBg} !important`,
 						},
@@ -258,18 +209,18 @@ const sharedThemeConfig = {
 		Popover: {
 			baseStyle: (props: StyleFunctionProps) => ({
 				content: {
-					bg: mode("surface.light", "surface.dark")(props),
+					bg: mode("panel.surface", "panel.surface")(props),
 					borderWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
-					boxShadow: mode("lg", "dark-lg")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
+					boxShadow: "0 18px 48px rgba(0, 0, 0, 0.38)",
 				},
 				header: {
 					borderBottomWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 				},
 				footer: {
 					borderTopWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 				},
 			}),
 		},
@@ -278,7 +229,7 @@ const sharedThemeConfig = {
 				container: {
 					borderTopWidth: "0",
 					borderBottomWidth: "1px",
-					borderColor: mode("blackAlpha.100", "whiteAlpha.200")(props),
+					borderColor: mode("panel.border", "panel.border")(props),
 					_last: {
 						borderBottomWidth: "1px",
 					},
@@ -286,14 +237,14 @@ const sharedThemeConfig = {
 				button: {
 					bg: "transparent",
 					_hover: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+						bg: mode("panel.elevated", "panel.elevated")(props),
 					},
 					_expanded: {
-						bg: mode("blackAlpha.50", "whiteAlpha.100")(props),
+						bg: mode("panel.elevated", "panel.elevated")(props),
 					},
 				},
 				panel: {
-					bg: mode("surface.light", "surface.dark")(props),
+					bg: mode("panel.surface", "panel.surface")(props),
 				},
 			}),
 		},
@@ -308,8 +259,10 @@ const sharedThemeConfig = {
 		Select: {
 			baseStyle: {
 				field: {
+					bg: "panel.surface",
+					color: "panel.text",
 					_dark: {
-						borderColor: "gray.600",
+						borderColor: "panel.borderStrong",
 						borderRadius: "6px",
 					},
 					_light: {
@@ -328,33 +281,36 @@ const sharedThemeConfig = {
 				fontSize: "sm",
 				fontWeight: "medium",
 				mb: "1",
-				_dark: { color: "gray.300" },
+				_dark: { color: "panel.textSecondary" },
 			},
 		},
 		Input: {
 			baseStyle: {
 				addon: {
+					bg: "panel.elevated",
 					_dark: {
-						borderColor: "gray.600",
+						borderColor: "panel.borderStrong",
 						_placeholder: {
-							color: "gray.500",
+							color: "panel.textMuted",
 						},
 					},
 				},
 				field: {
+					bg: "panel.surface",
+					color: "panel.text",
 					_focusVisible: {
 						boxShadow: "none",
-						borderColor: "primary.200",
-						outlineColor: "primary.200",
+						borderColor: "primary.500",
+						outlineColor: "primary.500",
 					},
 					_dark: {
-						borderColor: "gray.600",
+						borderColor: "panel.borderStrong",
 						_disabled: {
-							color: "gray.400",
-							borderColor: "gray.500",
+							color: "panel.textMuted",
+							borderColor: "panel.border",
 						},
 						_placeholder: {
-							color: "gray.500",
+							color: "panel.textMuted",
 						},
 					},
 				},
@@ -370,45 +326,46 @@ const sharedThemeConfig = {
 					borderBottomColor: "light-border",
 				},
 				th: {
-					background: "#F9FAFB",
-					borderColor: "light-border !important",
-					borderBottomColor: "light-border !important",
+					background: "panel.elevated",
+					color: "panel.text",
+					borderColor: "panel.border !important",
+					borderBottomColor: "panel.border !important",
 					borderTop: "1px solid ",
-					borderTopColor: "light-border !important",
+					borderTopColor: "panel.border !important",
 					_first: {
 						borderLeft: "1px solid",
-						borderColor: "light-border !important",
+						borderColor: "panel.border !important",
 					},
 					_last: {
 						borderRight: "1px solid",
-						borderColor: "light-border !important",
+						borderColor: "panel.border !important",
 					},
 					_dark: {
-						borderColor: "gray.600 !important",
-						background: "gray.750",
+						borderColor: "panel.border !important",
+						background: "panel.elevated",
 					},
 				},
 				td: {
 					transition: "all .1s ease-out",
-					borderColor: "light-border",
-					borderBottomColor: "light-border !important",
+					borderColor: "panel.border",
+					borderBottomColor: "panel.border !important",
 					_first: {
 						borderLeft: "1px solid",
-						borderColor: "light-border",
+						borderColor: "panel.border",
 						_dark: {
-							borderColor: "gray.600",
+							borderColor: "panel.border",
 						},
 					},
 					_last: {
 						borderRight: "1px solid",
-						borderColor: "light-border",
+						borderColor: "panel.border",
 						_dark: {
-							borderColor: "gray.600",
+							borderColor: "panel.border",
 						},
 					},
 					_dark: {
-						borderColor: "gray.600",
-						borderBottomColor: "gray.600 !important",
+						borderColor: "panel.border",
+						borderBottomColor: "panel.border !important",
 					},
 				},
 				tr: {
@@ -416,11 +373,11 @@ const sharedThemeConfig = {
 						cursor: "pointer",
 						_hover: {
 							"& > td": {
-								bg: "gray.200",
+								bg: "panel.elevated",
 							},
 							_dark: {
 								"& > td": {
-									bg: "gray.750",
+									bg: "panel.elevated",
 								},
 							},
 						},

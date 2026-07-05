@@ -3,25 +3,22 @@ import {
 	AlertIcon,
 	Box,
 	Button,
-	Flex,
 	HStack,
-	IconButton,
 	Input,
-	Spinner,
+	MenuItem,
 	Stack,
-	Table,
 	Tag,
-	Tbody,
-	Td,
 	Text,
-	Th,
-	Thead,
-	Tr,
-	useBreakpointValue,
+	Tooltip,
 	useDisclosure,
 	useToast,
 } from "@chakra-ui/react";
-import { PencilIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import {
+	ArrowPathIcon,
+	PencilIcon,
+	PlusIcon,
+	TrashIcon,
+} from "@heroicons/react/24/outline";
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
@@ -35,6 +32,14 @@ import {
 } from "utils/inbounds";
 import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
 import { SearchableTagSelect } from "../common/SearchableTagSelect";
+import {
+	DataTable,
+	ResourceListCard,
+	ResourceRefreshButton,
+	type DataTableColumn,
+	type DataTableRowAction,
+	type ResourceSummaryItem,
+} from "../ui";
 import { InboundFormModal } from "./FormDrawer";
 
 type FilterState = {
@@ -64,6 +69,13 @@ const normalizeInboundTargets = (inbound: RawInbound): RawInbound => ({
 	),
 });
 
+const getInboundTargetIds = (inbound: RawInbound) =>
+	inbound.effective_targets?.length
+		? inbound.effective_targets
+		: inbound.targets?.length
+			? inbound.targets
+			: ["master"];
+
 export const InboundsManager: FC = () => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -76,12 +88,12 @@ export const InboundsManager: FC = () => {
 		protocol: "all",
 		search: "",
 	});
+	const [selectedInboundTags, setSelectedInboundTags] = useState<string[]>([]);
 	const [selected, setSelected] = useState<RawInbound | null>(null);
 	const [cloneTarget, setCloneTarget] = useState<RawInbound | null>(null);
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const cloneDrawer = useDisclosure();
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
-	const isDesktop = useBreakpointValue({ base: false, md: true });
 
 	const loadInbounds = useCallback(() => {
 		setIsLoading(true);
@@ -267,6 +279,9 @@ export const InboundsManager: FC = () => {
 			});
 			refreshInboundsStore();
 			await loadInbounds();
+			setSelectedInboundTags((current) =>
+				current.filter((tag) => tag !== inbound.tag),
+			);
 			if (selected?.tag === inbound.tag) {
 				setSelected(null);
 				onClose();
@@ -296,6 +311,66 @@ export const InboundsManager: FC = () => {
 			toast({
 				status: "error",
 				title: t("inbounds.error.submit", "Unable to save inbound"),
+				description,
+			});
+		} finally {
+			setIsMutating(false);
+		}
+	};
+
+	const handleBulkDelete = async (items: RawInbound[]) => {
+		if (items.length === 0) {
+			return;
+		}
+		const tags = new Set(items.map((item) => item.tag));
+		setIsMutating(true);
+		try {
+			for (const inbound of items) {
+				await fetch(`/inbounds/${encodeURIComponent(inbound.tag)}`, {
+					method: "DELETE",
+				});
+			}
+			toast({
+				status: "success",
+				title: t("inbounds.success.bulkDeleted", "Inbounds deleted"),
+				description: t(
+					"inbounds.success.bulkDeletedDescription",
+					"Deleted {{count}} inbound(s).",
+					{ count: items.length },
+				),
+			});
+			refreshInboundsStore();
+			await loadInbounds();
+			setSelectedInboundTags([]);
+			if (selected && tags.has(selected.tag)) {
+				setSelected(null);
+				onClose();
+			}
+			if (cloneTarget && tags.has(cloneTarget.tag)) {
+				setCloneTarget(null);
+				cloneDrawer.onClose();
+			}
+		} catch (err: unknown) {
+			let description: string | undefined;
+			if (
+				err &&
+				typeof err === "object" &&
+				"data" in err &&
+				typeof (err as { data?: { detail?: unknown } }).data?.detail ===
+					"string"
+			) {
+				description = (err as { data?: { detail?: string } }).data?.detail;
+			} else if (
+				err &&
+				typeof err === "object" &&
+				"message" in err &&
+				typeof (err as { message?: unknown }).message === "string"
+			) {
+				description = (err as { message?: string }).message;
+			}
+			toast({
+				status: "error",
+				title: t("inbounds.error.bulkDelete", "Unable to delete inbounds"),
 				description,
 			});
 		} finally {
@@ -333,21 +408,294 @@ export const InboundsManager: FC = () => {
 		[cloneDrawer, onClose],
 	);
 
+	const inboundSummaryItems = useMemo<ResourceSummaryItem[]>(() => {
+		const protocolCounts = inbounds.reduce<Record<string, number>>(
+			(acc, inbound) => {
+				const key = inbound.protocol || "unknown";
+				acc[key] = (acc[key] || 0) + 1;
+				return acc;
+			},
+			{},
+		);
+		const multiTargetCount = inbounds.filter(
+			(inbound) => getInboundTargetIds(inbound).length > 1,
+		).length;
+		const sniffingCount = inbounds.filter(
+			(inbound) => inbound.sniffing?.enabled,
+		).length;
+		const mostUsedProtocol = Object.entries(protocolCounts).sort(
+			(a, b) => b[1] - a[1],
+		)[0];
+
+		return [
+			{
+				label: t("inbounds.summary.total", "Total"),
+				value: inbounds.length,
+				colorScheme: "gray",
+			},
+			{
+				label: t("inbounds.summary.protocols", "Protocols"),
+				value: Object.keys(protocolCounts).length,
+				colorScheme: "purple",
+				helper: mostUsedProtocol
+					? `${mostUsedProtocol[0].toUpperCase()}: ${mostUsedProtocol[1]}`
+					: undefined,
+			},
+			{
+				label: t("inbounds.summary.multiTarget", "Multi-target"),
+				value: multiTargetCount,
+				colorScheme: "blue",
+			},
+			{
+				label: t("inbounds.summary.sniffing", "Sniffing"),
+				value: sniffingCount,
+				colorScheme: "green",
+			},
+			{
+				label: t("inbounds.summary.filtered", "Filtered"),
+				value: filtered.length,
+				colorScheme: "teal",
+			},
+		];
+	}, [filtered.length, inbounds, t]);
+
+	const inboundColumns = useMemo<DataTableColumn<RawInbound>[]>(
+		() => [
+			{
+				id: "tag",
+				header: t("inbounds.tag", "Tag"),
+				accessor: "tag",
+				isPrimary: true,
+				priority: "primary",
+				width: "220px",
+				minWidth: "180px",
+				maxWidth: "260px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 0,
+				mobileMetaLabel: t("inbounds.tag", "Tag"),
+				cell: (inbound) => (
+					<Stack spacing={0.5} minW={0}>
+						<Text fontWeight="semibold" noOfLines={1}>
+							{inbound.tag}
+						</Text>
+						{inbound.listen && (
+							<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
+								{inbound.listen}
+							</Text>
+						)}
+					</Stack>
+				),
+			},
+			{
+				id: "protocol",
+				header: t("inbounds.protocol", "Protocol"),
+				accessor: "protocol",
+				priority: "high",
+				width: "120px",
+				maxWidth: "140px",
+				mobilePriority: 1,
+				mobileMetaLabel: t("inbounds.protocol", "Protocol"),
+				cell: (inbound) => (
+					<Tag size="sm" colorScheme="purple" textTransform="uppercase">
+						{inbound.protocol}
+					</Tag>
+				),
+			},
+			{
+				id: "port",
+				header: t("inbounds.portLabel", "Port"),
+				accessor: "port",
+				priority: "high",
+				width: "92px",
+				maxWidth: "110px",
+				mobilePriority: 2,
+				mobileMetaLabel: t("inbounds.portLabel", "Port"),
+				cell: (inbound) => (
+					<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+						{inbound.port}
+					</Text>
+				),
+			},
+			{
+				id: "network",
+				header: t("inbounds.network", "Network"),
+				priority: "medium",
+				width: "110px",
+				maxWidth: "130px",
+				mobilePriority: 3,
+				mobileMetaLabel: t("inbounds.network", "Network"),
+				cell: (inbound) => inbound.streamSettings?.network || "-",
+			},
+			{
+				id: "security",
+				header: t("inbounds.security", "Security"),
+				priority: "medium",
+				width: "120px",
+				maxWidth: "140px",
+				mobilePriority: 4,
+				mobileMetaLabel: t("inbounds.security", "Security"),
+				cell: (inbound) => {
+					const security = inbound.streamSettings?.security;
+					return security && security !== "none" ? (
+						<Tag size="sm" colorScheme="blue">
+							{security}
+						</Tag>
+					) : (
+						<Text color="panel.textMuted">-</Text>
+					);
+				},
+			},
+			{
+				id: "sniffing",
+				header: t("inbounds.sniffing", "Sniffing"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "150px",
+				maxWidth: "170px",
+				mobilePriority: 5,
+				mobileMetaLabel: t("inbounds.sniffing", "Sniffing"),
+				cell: (inbound) =>
+					inbound.sniffing?.enabled ? (
+						<Tag size="sm" colorScheme="green">
+							{t("inbounds.sniffingEnabled", "Sniffing enabled")}
+						</Tag>
+					) : (
+						<Tag size="sm" colorScheme="gray">
+							{t("inbounds.sniffingDisabled", "Sniffing disabled")}
+						</Tag>
+					),
+			},
+			{
+				id: "targets",
+				header: t("inbounds.targets", "Targets"),
+				priority: "low",
+				hideBelow: "lg",
+				width: "210px",
+				maxWidth: "260px",
+				mobilePriority: 6,
+				mobileMetaLabel: t("inbounds.targets", "Targets"),
+				cell: (inbound) => {
+					const targetIds = getInboundTargetIds(inbound);
+					const targetLabels = targetIds.map(
+						(targetId) => targetNameById[targetId] || targetId,
+					);
+					const visibleTargets = targetIds.slice(0, 3);
+					const hiddenCount = Math.max(0, targetIds.length - visibleTargets.length);
+
+					return (
+						<Tooltip
+							label={targetLabels.join(", ")}
+							isDisabled={targetLabels.length <= 3}
+							hasArrow
+							placement="top"
+						>
+							<HStack spacing={1} flexWrap="wrap" maxW="full">
+								{visibleTargets.map((targetId) => (
+									<Tag key={targetId} size="sm" maxW="80px">
+										<Text as="span" noOfLines={1}>
+											{targetNameById[targetId] || targetId}
+										</Text>
+									</Tag>
+								))}
+								{hiddenCount > 0 && (
+									<Tag size="sm" colorScheme="blue">
+										+{hiddenCount}
+									</Tag>
+								)}
+							</HStack>
+						</Tooltip>
+					);
+				},
+			},
+		],
+		[t, targetNameById],
+	);
+
+	const inboundRowActions = (
+		inbound: RawInbound,
+	): DataTableRowAction<RawInbound>[] => [
+		{
+			id: "edit",
+			label: t("common.edit", "Edit"),
+			icon: <PencilIcon width={16} />,
+			onClick: () => openEdit(inbound),
+		},
+		{
+			id: "delete",
+			label: t("common.delete", "Delete"),
+			icon: <TrashIcon width={16} />,
+			isDanger: true,
+			render: (_row, onMenuClose) => (
+				<DeleteConfirmPopover
+					message={t("inbounds.confirmDelete", {
+						tag: inbound.tag,
+					})}
+					isLoading={isMutating}
+					onConfirm={async () => {
+						await handleDelete(inbound);
+						onMenuClose();
+					}}
+				>
+					<MenuItem
+						icon={<TrashIcon width={16} />}
+						color="red.400"
+						isDisabled={isMutating}
+						onClick={(event) => event.stopPropagation()}
+					>
+						{t("common.delete", "Delete")}
+					</MenuItem>
+				</DeleteConfirmPopover>
+			),
+		},
+	];
+
 	return (
 		<Stack spacing={4}>
-			<Flex justify="space-between" flexWrap="wrap" gap={4}>
-				<Input
-					maxW="300px"
-					placeholder={t("inbounds.searchPlaceholder", "Search by tag or port")}
-					value={filter.search}
-					onChange={(event) =>
-						setFilter((prev) => ({ ...prev, search: event.target.value }))
-					}
-				/>
-				<HStack spacing={3}>
+			<ResourceListCard
+				title={t("inbounds.listHeader", "Inbound list")}
+				summaryItems={inboundSummaryItems}
+				actions={
+					<Button
+						leftIcon={<PlusIcon width={18} height={18} />}
+						onClick={openCreate}
+						colorScheme="primary"
+						size="sm"
+						h="36px"
+						px={3}
+						borderRadius="4px"
+					>
+						{t("inbounds.add", "Add inbound")}
+					</Button>
+				}
+				footerActions={
+					<ResourceRefreshButton
+						aria-label={t("inbounds.refresh", "Refresh inbounds")}
+						label={t("inbounds.refresh", "Refresh inbounds")}
+						icon={<ArrowPathIcon width={16} />}
+						isLoading={isLoading}
+						onClick={loadInbounds}
+					/>
+				}
+			>
+				<Stack
+					direction={{ base: "column", md: "row" }}
+					spacing={2}
+					align={{ base: "stretch", md: "center" }}
+					flexWrap="wrap"
+				>
+					<Input
+						size="sm"
+						w={{ base: "full", md: "280px" }}
+						placeholder={t("inbounds.searchPlaceholder", "Search by tag or port")}
+						value={filter.search}
+						onChange={(event) =>
+							setFilter((prev) => ({ ...prev, search: event.target.value }))
+						}
+					/>
 					<SearchableTagSelect
-						size="md"
-						width="180px"
+						size="sm"
+						width="190px"
 						value={filter.protocol}
 						options={[
 							{
@@ -364,15 +712,8 @@ export const InboundsManager: FC = () => {
 							setFilter((prev) => ({ ...prev, protocol: String(value) }))
 						}
 					/>
-					<Button
-						leftIcon={<PlusIcon width={18} height={18} />}
-						onClick={openCreate}
-						colorScheme="primary"
-					>
-						{t("inbounds.add", "Add inbound")}
-					</Button>
-				</HStack>
-			</Flex>
+				</Stack>
+			</ResourceListCard>
 
 			{error && (
 				<Alert status="error">
@@ -381,191 +722,67 @@ export const InboundsManager: FC = () => {
 				</Alert>
 			)}
 
-			{isLoading ? (
-				<Flex justify="center" py={10}>
-					<Spinner />
-				</Flex>
-			) : filtered.length === 0 ? (
-				<Box
-					border="1px dashed"
-					borderRadius="md"
-					p={8}
-					textAlign="center"
-					color="gray.500"
-				>
-					{t("inbounds.emptyState", "No inbounds configured yet.")}
-				</Box>
-			) : isDesktop ? (
-				<Box borderWidth="1px" borderRadius="lg" overflow="hidden">
-					<Table variant="simple" size="sm">
-						<Thead bg="gray.50" _dark={{ bg: "gray.900" }}>
-							<Tr>
-								<Th>{t("inbounds.tag", "Tag")}</Th>
-								<Th>{t("inbounds.protocol", "Protocol")}</Th>
-								<Th>{t("inbounds.portLabel", "Port")}</Th>
-								<Th>{t("inbounds.network", "Network")}</Th>
-								<Th>{t("inbounds.security", "Security")}</Th>
-								<Th>{t("inbounds.sniffing", "Sniffing")}</Th>
-								<Th>{t("inbounds.targets", "Targets")}</Th>
-								<Th width="120px">{t("actions", "Actions")}</Th>
-							</Tr>
-						</Thead>
-						<Tbody>
-							{filtered.map((inbound) => {
-								const stream = inbound.streamSettings || {};
-								return (
-									<Tr key={inbound.tag}>
-										<Td>
-											<Text fontWeight="semibold">{inbound.tag}</Text>
-											{inbound.listen && (
-												<Text fontSize="sm" color="gray.500">
-													{inbound.listen}
-												</Text>
-											)}
-										</Td>
-										<Td>
-											<Tag colorScheme="purple">{inbound.protocol}</Tag>
-										</Td>
-										<Td>{inbound.port}</Td>
-										<Td>{stream.network || "—"}</Td>
-										<Td>
-											{stream.security && stream.security !== "none" ? (
-												<Tag colorScheme="blue">{stream.security}</Tag>
-											) : (
-												"—"
-											)}
-										</Td>
-										<Td>
-											{inbound.sniffing?.enabled ? (
-												<Tag size="sm" colorScheme="green">
-													{t("inbounds.sniffingEnabled", "Sniffing enabled")}
-												</Tag>
-											) : (
-												<Tag size="sm" colorScheme="gray">
-													{t("inbounds.sniffingDisabled", "Sniffing disabled")}
-												</Tag>
-											)}
-										</Td>
-										<Td>
-											<HStack spacing={1} wrap="wrap">
-												{(inbound.targets?.length
-													? inbound.targets
-													: ["master"]
-												).map((targetId) => (
-													<Tag key={targetId} size="sm">
-														{targetNameById[targetId] || targetId}
-													</Tag>
-												))}
-											</HStack>
-										</Td>
-										<Td>
-											<HStack spacing={2}>
-												<IconButton
-													aria-label={t("common.edit", "Edit")}
-													icon={<PencilIcon width={16} height={16} />}
-													variant="ghost"
-													size="sm"
-													onClick={() => openEdit(inbound)}
-												/>
-												<DeleteConfirmPopover
-													message={t("inbounds.confirmDelete", {
-														tag: inbound.tag,
-													})}
-													isLoading={isMutating}
-													onConfirm={() => handleDelete(inbound)}
-												>
-													<IconButton
-														aria-label={t("common.delete", "Delete")}
-														icon={<TrashIcon width={16} height={16} />}
-														variant="ghost"
-														size="sm"
-													/>
-												</DeleteConfirmPopover>
-											</HStack>
-										</Td>
-									</Tr>
-								);
-							})}
-						</Tbody>
-					</Table>
-				</Box>
-			) : (
-				<Stack spacing={3}>
-					{filtered.map((inbound) => {
-						const stream = inbound.streamSettings || {};
-						return (
-							<Box key={inbound.tag} borderWidth="1px" borderRadius="lg" p={4}>
-								<Flex justify="space-between" align="center" mb={2}>
-									<Box>
-										<Text fontWeight="semibold">{inbound.tag}</Text>
-										<Text fontSize="sm" color="gray.500">
-											{t("inbounds.portLabel", "Port")}: {inbound.port}
-										</Text>
-									</Box>
-									<HStack spacing={2}>
-										<IconButton
-											aria-label={t("common.edit", "Edit")}
-											icon={<PencilIcon width={16} height={16} />}
-											variant="ghost"
-											size="sm"
-											onClick={() => openEdit(inbound)}
-										/>
-										<DeleteConfirmPopover
-											message={t("inbounds.confirmDelete", {
-												tag: inbound.tag,
-											})}
-											isLoading={isMutating}
-											onConfirm={() => handleDelete(inbound)}
-										>
-											<IconButton
-												aria-label={t("common.delete", "Delete")}
-												icon={<TrashIcon width={16} height={16} />}
-												variant="ghost"
-												size="sm"
-											/>
-										</DeleteConfirmPopover>
-									</HStack>
-								</Flex>
-								<Stack spacing={2}>
-									<HStack spacing={2} wrap="wrap">
-										<Tag colorScheme="purple">{inbound.protocol}</Tag>
-										{stream.network && <Tag>{stream.network}</Tag>}
-										{stream.security && stream.security !== "none" && (
-											<Tag colorScheme="blue">{stream.security}</Tag>
-										)}
-									</HStack>
-									<HStack spacing={2} wrap="wrap">
-										{inbound.sniffing?.enabled ? (
-											<Tag size="sm" colorScheme="green">
-												{t("inbounds.sniffingEnabled", "Sniffing enabled")}
-											</Tag>
-										) : (
-											<Tag size="sm" colorScheme="gray">
-												{t("inbounds.sniffingDisabled", "Sniffing disabled")}
-											</Tag>
-										)}
-										{inbound.listen && (
-											<Tag size="sm" colorScheme="gray">
-												{inbound.listen}
-											</Tag>
-										)}
-									</HStack>
-									<HStack spacing={2} wrap="wrap">
-										{(inbound.targets?.length
-											? inbound.targets
-											: ["master"]
-										).map((targetId) => (
-											<Tag key={targetId} size="sm">
-												{targetNameById[targetId] || targetId}
-											</Tag>
-										))}
-									</HStack>
-								</Stack>
-							</Box>
-						);
-					})}
-				</Stack>
-			)}
+			<DataTable
+				ariaLabel={t("hostsPage.tabInbounds", "Inbounds")}
+				data={filtered}
+				columns={inboundColumns}
+				getRowId={(inbound) => inbound.tag}
+				isLoading={isLoading}
+				loadingRows={5}
+				emptyState={
+					<Box textAlign="center" color="panel.textMuted">
+						{t("inbounds.emptyState", "No inbounds configured yet.")}
+					</Box>
+				}
+				rowActions={inboundRowActions}
+				actionsDisplay="menu"
+				actionsPlacement="end"
+				actionsColumnWidth="60px"
+				showActionsOnHover
+				enableSelection
+				selectedRowIds={selectedInboundTags}
+				selectedCount={selectedInboundTags.length}
+				onSelectionChange={(rowIds) => setSelectedInboundTags(rowIds)}
+				selectedLabel={t("inbounds.selectedCount", {
+					defaultValue: "{{count}} inbounds selected",
+					count: selectedInboundTags.length,
+				})}
+				renderBulkActions={(selectedRows) => (
+					<DeleteConfirmPopover
+						message={t(
+							"inbounds.confirmBulkDelete",
+							"Delete {{count}} selected inbound(s)?",
+							{ count: selectedRows.length },
+						)}
+						isLoading={isMutating}
+						isDisabled={selectedRows.length === 0}
+						onConfirm={() => handleBulkDelete(selectedRows)}
+					>
+						<Button
+							size="sm"
+							variant="outline"
+							colorScheme="red"
+							leftIcon={<TrashIcon width={16} />}
+							isLoading={isMutating}
+							isDisabled={selectedRows.length === 0}
+						>
+							{t("common.delete", "Delete")}
+						</Button>
+					</DeleteConfirmPopover>
+				)}
+				mobileBreakpoint="lg"
+				tableProps={{
+					w: "full",
+					sx: {
+						tableLayout: "fixed",
+						"& th, & td": {
+							px: { base: 2, xl: 2.5 },
+							py: 2.5,
+							verticalAlign: "middle",
+						},
+					},
+				}}
+			/>
 
 			<InboundFormModal
 				isOpen={isOpen}

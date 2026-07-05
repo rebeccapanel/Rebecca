@@ -16,19 +16,9 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	Select,
 	SimpleGrid,
 	Spinner,
-	Stat,
-	StatLabel,
-	StatNumber,
-	Table,
-	Tbody,
-	Td,
 	Text,
-	Th,
-	Thead,
-	Tr,
 	useClipboard,
 	useColorMode,
 	useColorModeValue,
@@ -36,11 +26,13 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ClipboardIcon,
 	EyeIcon,
 	EyeSlashIcon,
 	SparklesIcon,
+	TrashIcon,
 } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
 import { ChartBox } from "components/common/ChartBox";
@@ -48,6 +40,13 @@ import {
 	DateRangePicker,
 	type DateRangeValue,
 } from "components/common/DateRangePicker";
+import {
+	DataTable,
+	PageHeader,
+	ResourceListCard,
+	type DataTableColumn,
+	type DataTableRowAction,
+} from "components/ui";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import useGetUser from "hooks/useGetUser";
@@ -77,6 +76,7 @@ import { formatBytes } from "utils/formatByte";
 
 dayjs.extend(utc);
 const CopyIcon = chakra(ClipboardIcon, { baseStyle: { w: 4, h: 4 } });
+const DeleteIcon = chakra(TrashIcon, { baseStyle: { w: 4, h: 4 } });
 
 const formatTimeseriesLabel = (value: string) => {
 	if (!value) return value;
@@ -158,6 +158,26 @@ const buildDonutOptions = (
 	],
 });
 
+const normalizeApiKeys = (value: unknown): AdminApiKey[] => {
+	if (Array.isArray(value)) return value;
+	if (value && typeof value === "object") {
+		const payload = value as {
+			api_keys?: unknown;
+			apiKeys?: unknown;
+			keys?: unknown;
+			obj?: unknown;
+		};
+		if (Array.isArray(payload.api_keys)) return payload.api_keys as AdminApiKey[];
+		if (Array.isArray(payload.apiKeys)) return payload.apiKeys as AdminApiKey[];
+		if (Array.isArray(payload.keys)) return payload.keys as AdminApiKey[];
+		if (Array.isArray(payload.obj)) return payload.obj as AdminApiKey[];
+	}
+	return [];
+};
+
+const normalizeArray = <T,>(value: unknown): T[] =>
+	Array.isArray(value) ? (value as T[]) : [];
+
 type StatsCardProps = {
 	label: string;
 	value: string;
@@ -171,16 +191,16 @@ const StatsCard: React.FC<StatsCardProps> = ({
 	helper,
 	accentColor = "primary.400",
 }) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const bg = useColorModeValue("panel.input", "panel.input");
+	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
 
 	return (
-		<Stat
+		<Box
 			p={4}
 			borderWidth="1px"
 			borderColor={borderColor}
-			borderRadius="md"
+			borderRadius="6px"
 			bg={bg}
 			position="relative"
 			overflow="hidden"
@@ -193,18 +213,18 @@ const StatsCard: React.FC<StatsCardProps> = ({
 				w="3px"
 				bg={accentColor}
 			/>
-			<StatLabel color={labelColor} fontSize="xs" fontWeight="semibold">
+			<Text color={labelColor} fontSize="xs" fontWeight="semibold">
 				{label}
-			</StatLabel>
-			<StatNumber mt={1} fontSize="xl" lineHeight="1.2">
+			</Text>
+			<Text mt={1} fontSize="xl" lineHeight="1.2" fontWeight="semibold">
 				{value}
-			</StatNumber>
+			</Text>
 			{helper && (
 				<Text mt={2} fontSize="xs" color={labelColor}>
 					{helper}
 				</Text>
 			)}
-		</Stat>
+		</Box>
 	);
 };
 
@@ -687,6 +707,10 @@ export const MyAccountPage: React.FC = () => {
 		listApiKeys,
 		{ enabled: selfPermissions.self_api_keys && getUserIsSuccess },
 	);
+	const apiKeys = useMemo(
+		() => normalizeApiKeys(apiKeysQuery.data),
+		[apiKeysQuery.data],
+	);
 	const createKeyMutation = useMutation(createApiKey, {
 		onSuccess: (data) => {
 			queryClient.invalidateQueries("myaccount-api-keys");
@@ -724,6 +748,68 @@ export const MyAccountPage: React.FC = () => {
 	const [deletePassword, setDeletePassword] = useState("");
 	const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null);
 	const [showDeletePassword, setShowDeletePassword] = useState(false);
+	const apiKeyColumns = useMemo<DataTableColumn<AdminApiKey>[]>(
+		() => [
+			{
+				id: "masked_key",
+				header: t("myaccount.apiKeyMasked"),
+				accessor: "masked_key",
+				cell: (key) => key.masked_key ?? "****",
+				priority: "primary",
+				isPrimary: true,
+				mobileVisible: true,
+				truncate: true,
+			},
+			{
+				id: "created_at",
+				header: t("createdAt"),
+				cell: (key) =>
+					key.created_at ? dayjs(key.created_at).format("YYYY-MM-DD HH:mm") : "-",
+				sortValue: (key) => key.created_at ?? "",
+				priority: "high",
+				mobileVisible: true,
+			},
+			{
+				id: "expires_at",
+				header: t("expiresAt"),
+				cell: (key) =>
+					key.expires_at
+						? dayjs(key.expires_at).format("YYYY-MM-DD")
+						: t("myaccount.never"),
+				sortValue: (key) => key.expires_at ?? "",
+				priority: "medium",
+			},
+			{
+				id: "last_used_at",
+				header: t("myaccount.lastUsed"),
+				cell: (key) =>
+					key.last_used_at
+						? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
+						: t("myaccount.neverUsed"),
+				sortValue: (key) => key.last_used_at ?? "",
+				priority: "low",
+			},
+		],
+		[t],
+	);
+	const apiKeyRowActions = useCallback(
+		(key: AdminApiKey): DataTableRowAction<AdminApiKey>[] => [
+			{
+				id: "delete",
+				label: t("delete"),
+				icon: <DeleteIcon />,
+				isDanger: true,
+				isDisabled: deleteKeyMutation.isLoading,
+				onClick: () => {
+					setDeleteKeyId(key.id);
+					setDeletePassword("");
+					setShowDeletePassword(false);
+					deleteModal.onOpen();
+				},
+			},
+		],
+		[deleteKeyMutation.isLoading, deleteModal, t],
+	);
 
 	const handlePasswordChange = async (current: string, next: string) => {
 		await mutation.mutateAsync({
@@ -733,7 +819,7 @@ export const MyAccountPage: React.FC = () => {
 	};
 
 	const dailyUsagePoints: MyAccountUsagePoint[] = useMemo(
-		() => data?.daily_usage ?? [],
+		() => normalizeArray<MyAccountUsagePoint>(data?.daily_usage),
 		[data?.daily_usage],
 	);
 	const dailyTotal = useMemo(
@@ -760,7 +846,9 @@ export const MyAccountPage: React.FC = () => {
 
 	// Map backend response (with uplink/downlink) to frontend format (with used_traffic)
 	const perNodeUsage: MyAccountNodeUsage[] = useMemo(() => {
-		const backendUsages = nodesData?.usages ?? data?.node_usages ?? [];
+		const backendUsages = normalizeArray<any>(
+			nodesData?.usages ?? data?.node_usages,
+		);
 		return backendUsages.map((item: any) => ({
 			node_id: item.node_id ?? null,
 			node_name: item.node_name || "Unknown",
@@ -817,7 +905,9 @@ export const MyAccountPage: React.FC = () => {
 	const remainingData = data.remaining_data ?? Math.max(totalData - used, 0);
 	const usersLimit = data.users_limit ?? 0;
 	const remainingUsers = data.remaining_users ?? 0;
-	const serviceLimits = data.service_limits ?? [];
+	const serviceLimits = normalizeArray<MyAccountServiceLimit>(
+		data.service_limits,
+	);
 	const trafficLabels = getTrafficLabels(t, trafficBasis);
 	const usageSectionTitle = isPerServiceLimits
 		? t("myaccount.serviceTrafficOverview", "Service traffic overview")
@@ -842,35 +932,22 @@ export const MyAccountPage: React.FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={{ base: 3, md: 4 }}
-			>
-				<Flex
-					justify="space-between"
-					align={{ base: "flex-start", md: "center" }}
-					gap={3}
-					flexWrap="wrap"
-				>
-					<Box minW={0}>
-						<Text as="h1" fontWeight="semibold" fontSize="2xl">
-							{t("myaccount.title")}
-						</Text>
-						<Text fontSize="sm" color={labelColor}>
-							{t("myaccount.subtitle")}
-						</Text>
-					</Box>
-					{isFetching && (
+			<ResourceListCard
+				title={
+					<PageHeader
+						title={t("myaccount.title")}
+						description={t("myaccount.subtitle")}
+					/>
+				}
+				actions={
+					isFetching ? (
 						<HStack spacing={2} color={labelColor}>
 							<Spinner size="sm" />
 							<Text fontSize="sm">{t("loading")}</Text>
 						</HStack>
-					)}
-				</Flex>
-			</Box>
+					) : undefined
+				}
+			/>
 
 			<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
 				<ChartBox title={usageSectionTitle}>
@@ -1050,65 +1127,19 @@ export const MyAccountPage: React.FC = () => {
 							<Spinner size="sm" />
 							<Text>{t("loading")}</Text>
 						</HStack>
-					) : (apiKeysQuery.data?.length ?? 0) === 0 ? (
+					) : apiKeys.length === 0 ? (
 						<Text color={labelColor}>{t("myaccount.noApiKeys")}</Text>
 					) : (
-						<Box
-							overflowX="auto"
-							borderWidth="1px"
-							borderColor={borderColor}
-							borderRadius="md"
-						>
-							<Table size="sm">
-								<Thead bg={panelBg}>
-									<Tr>
-										<Th>{t("myaccount.apiKeyMasked")}</Th>
-										<Th>{t("createdAt")}</Th>
-										<Th>{t("expiresAt")}</Th>
-										<Th>{t("myaccount.lastUsed")}</Th>
-										<Th></Th>
-									</Tr>
-								</Thead>
-								<Tbody>
-									{apiKeysQuery.data?.map((key) => (
-										<Tr key={key.id}>
-											<Td fontWeight="semibold">{key.masked_key ?? "****"}</Td>
-											<Td>
-												{key.created_at
-													? dayjs(key.created_at).format("YYYY-MM-DD HH:mm")
-													: "-"}
-											</Td>
-											<Td>
-												{key.expires_at
-													? dayjs(key.expires_at).format("YYYY-MM-DD")
-													: t("myaccount.never")}
-											</Td>
-											<Td>
-												{key.last_used_at
-													? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
-													: t("myaccount.neverUsed")}
-											</Td>
-											<Td textAlign="right">
-												<Button
-													size="xs"
-													colorScheme="red"
-													variant="ghost"
-													isLoading={deleteKeyMutation.isLoading}
-													onClick={() => {
-														setDeleteKeyId(key.id);
-														setDeletePassword("");
-														setShowDeletePassword(false);
-														deleteModal.onOpen();
-													}}
-												>
-													{t("delete")}
-												</Button>
-											</Td>
-										</Tr>
-									))}
-								</Tbody>
-							</Table>
-						</Box>
+						<DataTable
+							data={apiKeys}
+							columns={apiKeyColumns}
+							getRowId={(key) => String(key.id)}
+							rowActions={apiKeyRowActions}
+							actionsDisplay="menu"
+							actionsAlwaysVisible
+							emptyState={t("myaccount.noApiKeys")}
+							ariaLabel={t("myaccount.apiKeys")}
+						/>
 					)}
 				</ChartBox>
 			)}

@@ -19,7 +19,6 @@ import {
 	PopoverContent,
 	PopoverHeader,
 	PopoverTrigger,
-	Select,
 	Spinner,
 	Stack,
 	Tag,
@@ -31,6 +30,7 @@ import {
 	VStack,
 	Wrap,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	FunnelIcon,
@@ -135,10 +135,16 @@ const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
 	},
 ];
 
-export type FilterProps = { for?: "users" | "admins" } & BoxProps;
+export type FilterProps = {
+	for?: "users" | "admins";
+	actionsSlot?: React.ReactNode;
+	showRefresh?: boolean;
+} & BoxProps;
 
 export const Filters: FC<FilterProps> = ({
 	for: target = "users",
+	actionsSlot,
+	showRefresh = true,
 	...props
 }) => {
 	const {
@@ -186,7 +192,14 @@ export const Filters: FC<FilterProps> = ({
 	const activeFilters: string[] = userFiltersOnly?.advancedFilters ?? [];
 	const serviceId = userFiltersOnly?.serviceId;
 	const ownerFilter = userFiltersOnly?.owner;
-	const { serviceOptions, fetchServiceOptions } = useServicesStore();
+	const {
+		serviceOptions: rawServiceOptions,
+		fetchServiceOptions,
+	} = useServicesStore();
+	const serviceOptions = Array.isArray(rawServiceOptions)
+		? rawServiceOptions
+		: [];
+	const safeAdminOptions = Array.isArray(adminOptions) ? adminOptions : [];
 	const debouncedSearchChange = useMemo(
 		() =>
 			debounce((nextSearch: string) => {
@@ -466,7 +479,7 @@ export const Filters: FC<FilterProps> = ({
 														<option value={userData.username}>
 															{t("filters.advanced.adminMyUsers", "My users")}
 														</option>
-														{adminOptions.map((record) => (
+														{safeAdminOptions.map((record) => (
 															<option
 																key={record.username}
 																value={record.username}
@@ -492,26 +505,28 @@ export const Filters: FC<FilterProps> = ({
 								</PopoverContent>
 							</Popover>
 						)}
-						<Button
-							aria-label="refresh"
-							isDisabled={loading}
-							onClick={handleRefresh}
-							size={isMobile ? "sm" : "md"}
-							variant="outline"
-							leftIcon={
-								<ReloadIcon
-									className={classNames({
-										"animate-spin": loading,
-									})}
-								/>
-							}
-							minW={isMobile ? "auto" : "8rem"}
-							h={isMobile ? "36px" : undefined}
-							fontSize={isMobile ? "xs" : "sm"}
-							flex={{ base: "1 1 auto", sm: "0 1 auto" }}
-						>
-							{t("refresh", "Refresh")}
-						</Button>
+						{showRefresh && (
+							<Button
+								aria-label="refresh"
+								isDisabled={loading}
+								onClick={handleRefresh}
+								size={isMobile ? "sm" : "md"}
+								variant="outline"
+								leftIcon={
+									<ReloadIcon
+										className={classNames({
+											"animate-spin": loading,
+										})}
+									/>
+								}
+								minW={isMobile ? "auto" : "8rem"}
+								h={isMobile ? "36px" : undefined}
+								fontSize={isMobile ? "xs" : "sm"}
+								flex={{ base: "1 1 auto", sm: "0 1 auto" }}
+							>
+								{t("refresh", "Refresh")}
+							</Button>
+						)}
 					</HStack>
 					{showAdvancedFilters &&
 						(activeFilters.length > 0 ||
@@ -596,15 +611,18 @@ export const Filters: FC<FilterProps> = ({
 					flexWrap="wrap"
 				>
 					{target === "users" && <AdvancedUserActions />}
+					{actionsSlot}
 					{showCreateButton && (
 						<Button
 							colorScheme="primary"
-							size={isMobile ? "sm" : "md"}
+							size="sm"
 							onClick={handleCreate}
 							isDisabled={target === "admins" && !canManageAdmins}
 							leftIcon={isMobile ? undefined : <PlusIconStyled />}
-							h={isMobile ? "36px" : undefined}
-							minW={isMobile ? "auto" : "8.5rem"}
+							h="36px"
+							px={3}
+							borderRadius="4px"
+							minW={isMobile ? "auto" : "8rem"}
 							fontSize={isMobile ? "xs" : "sm"}
 							fontWeight="semibold"
 							whiteSpace="nowrap"

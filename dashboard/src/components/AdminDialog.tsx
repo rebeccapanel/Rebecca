@@ -854,12 +854,14 @@ export const AdminDialog: FC = () => {
 			return;
 		}
 
-		if (mode === "create") {
+		const buildPermissionsPayload = (): AdminPermissions => {
 			const computedPermissions: AdminPermissions = JSON.parse(
 				JSON.stringify(values.permissions ?? clonePermissions(selectedRole)),
 			);
 			const maxLimitInput = values.maxDataLimitPerUserGb?.trim();
-			if (maxLimitInput) {
+			if (computedPermissions.users.allow_unlimited_data) {
+				computedPermissions.users.max_data_limit_per_user = null;
+			} else if (maxLimitInput) {
 				const parsed = Number(maxLimitInput);
 				if (Number.isNaN(parsed) || parsed < 0) {
 					setError("maxDataLimitPerUserGb", {
@@ -870,14 +872,25 @@ export const AdminDialog: FC = () => {
 						),
 					});
 					showSubmitError();
-					return;
+					throw new Error("invalid_max_data_limit");
 				}
 				computedPermissions.users.max_data_limit_per_user =
 					parsed === 0 ? null : Math.round(parsed * GB_IN_BYTES);
 			} else {
 				computedPermissions.users.max_data_limit_per_user = null;
 			}
-			permissionPayload = computedPermissions;
+			return computedPermissions;
+		};
+
+		if (mode === "create" || selectedRole !== AdminRole.FullAccess) {
+			try {
+				permissionPayload = buildPermissionsPayload();
+			} catch (error) {
+				if ((error as Error).message === "invalid_max_data_limit") {
+					return;
+				}
+				throw error;
+			}
 		}
 
 		if (mode === "edit" && admin) {
@@ -1029,7 +1042,7 @@ export const AdminDialog: FC = () => {
 					permissions:
 						selectedRole === AdminRole.FullAccess
 							? undefined
-							: values.permissions,
+							: permissionPayload,
 					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
@@ -1279,20 +1292,6 @@ export const AdminDialog: FC = () => {
 							</VStack>
 						</RadioGroup>
 					</FormControl>
-					{mode === "edit" &&
-						(admin?.role === AdminRole.FullAccess ? (
-							<Text fontSize="sm" color="gray.500">
-								{t("admins.permissions.fullAccessLocked")}
-							</Text>
-						) : (
-							<Button
-								alignSelf="flex-start"
-								onClick={() => setPermissionsModalOpen(true)}
-								variant="outline"
-							>
-								{t("admins.editPermissionsButton", "Edit permissions")}
-							</Button>
-						))}
 				</VStack>
 			</Box>
 			<Box className="xray-dialog-section">
@@ -1836,6 +1835,22 @@ export const AdminDialog: FC = () => {
 		</VStack>
 	);
 
+	const permissionsPanel = (
+		<AdminPermissionsEditor
+			value={permissionsValue ?? clonePermissions(watchRole ?? AdminRole.Standard)}
+			onChange={handlePermissionsChange}
+			showReset
+			onReset={resetPermissionsToRole}
+			maxDataLimitValue={maxDataLimitValue}
+			onMaxDataLimitChange={handleMaxDataLimitChange}
+			maxDataLimitError={
+				errors.maxDataLimitPerUserGb?.message as string | undefined
+			}
+			hideExtendedSections={watchRole === AdminRole.Standard}
+			isReadOnly={watchRole === AdminRole.FullAccess}
+		/>
+	);
+
 	return (
 		<>
 			<Modal
@@ -1881,47 +1896,34 @@ export const AdminDialog: FC = () => {
 					</XrayModalHeader>
 					<ModalCloseButton />
 					<XrayModalBody>
-						{mode === "create" ? (
-							<Tabs
-								className="xray-dialog-auto-sections"
-								isFitted
-								variant="unstyled"
-							>
-								<TabList>
-									<Tab>{t("admins.detailsTabLabel", "Details")}</Tab>
-									<Tab>{t("admins.permissionsTabLabel", "Permissions")}</Tab>
-								</TabList>
-								<TabPanels>
-									<TabPanel px={0}>{detailsForm}</TabPanel>
-									<TabPanel px={0}>
-										<AdminPermissionsEditor
-											value={
-												permissionsValue ??
-												clonePermissions(watchRole ?? AdminRole.Standard)
-											}
-											onChange={handlePermissionsChange}
-											showReset
-											onReset={resetPermissionsToRole}
-											maxDataLimitValue={maxDataLimitValue}
-											onMaxDataLimitChange={handleMaxDataLimitChange}
-											maxDataLimitError={
-												errors.maxDataLimitPerUserGb?.message as
-													| string
-													| undefined
-											}
-											hideExtendedSections={watchRole === AdminRole.Standard}
-											isReadOnly={watchRole === AdminRole.FullAccess}
-										/>
-									</TabPanel>
-								</TabPanels>
-							</Tabs>
-						) : (
-							detailsForm
-						)}
+						<Tabs
+							className="xray-dialog-auto-sections"
+							variant="unstyled"
+							isLazy
+							w="full"
+						>
+							<TabList>
+								<Tab>{t("admins.detailsTabLabel", "Details")}</Tab>
+								<Tab>{t("admins.permissionsTabLabel", "Permissions")}</Tab>
+							</TabList>
+							<TabPanels>
+								<TabPanel px={0}>{detailsForm}</TabPanel>
+								<TabPanel px={0}>{permissionsPanel}</TabPanel>
+							</TabPanels>
+						</Tabs>
 					</XrayModalBody>
 					<XrayModalFooter>
-						<HStack spacing={3}>
-							<Button variant="ghost" onClick={handleCloseAdminDialog}>
+						<HStack
+							spacing={3}
+							w="full"
+							justify="flex-end"
+							flexWrap="wrap"
+						>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={handleCloseAdminDialog}
+							>
 								{t("cancel")}
 							</Button>
 							<AnimatedSubmitButton

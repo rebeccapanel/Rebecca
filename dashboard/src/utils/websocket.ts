@@ -5,7 +5,7 @@ export const getAPIWebSocketURL = (
 	query: Record<string, string | number | boolean | null | undefined> = {},
 ) => {
 	try {
-		const baseAPI = import.meta.env.VITE_BASE_API;
+		const baseAPI = import.meta.env.VITE_BASE_API || "/api";
 		const baseURL = new URL(
 			baseAPI.startsWith("/") ? window.location.origin + baseAPI : baseAPI,
 		);

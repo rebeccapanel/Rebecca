@@ -34,6 +34,36 @@
     <meta name="msapplication-TileColor" content="#2b5797" />
     <meta name="msapplication-config" content="/statics/favicon/browserconfig.xml" />
     <meta name="theme-color" content="#3B81F6" />
+    <script>
+      (function () {
+        try {
+          var stored =
+            localStorage.getItem("rb-theme") ||
+            localStorage.getItem("chakra-ui-color-mode") ||
+            "dark";
+          var mode = stored === "light" ? "light" : "dark";
+          localStorage.setItem("rb-theme", mode);
+          localStorage.setItem("chakra-ui-color-mode", mode);
+          var root = document.documentElement;
+          root.classList.remove(
+            "rb-theme-light",
+            "rb-theme-dark",
+            "chakra-ui-light",
+            "chakra-ui-dark"
+          );
+          root.classList.add("rb-theme-" + mode, "chakra-ui-" + mode);
+          root.dataset.theme = mode;
+          root.style.colorScheme = mode;
+          var themeColor = document.querySelector('meta[name="theme-color"]');
+          if (themeColor) {
+            themeColor.setAttribute(
+              "content",
+              mode === "light" ? "#f4f5f7" : "#101010"
+            );
+          }
+        } catch (error) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

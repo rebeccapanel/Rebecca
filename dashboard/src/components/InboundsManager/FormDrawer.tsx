@@ -67,6 +67,7 @@ import {
 } from "service/xray";
 import {
 	buildInboundPayload,
+	createDefaultHysteriaUdpMask,
 	createDefaultInboundForm,
 	createDefaultTlsCertificate,
 	type InboundFormValues,
@@ -177,6 +178,43 @@ const XHTTP_MODE_OPTIONS: Array<InboundFormValues["xhttpMode"]> = [
 	"stream-up",
 	"stream-one",
 ];
+const HYSTERIA_QUIC_INPUT_FIELDS = [
+	{
+		name: "maxIdleTimeout",
+		label: "Max idle timeout",
+		placeholder: "30",
+	},
+	{
+		name: "keepAlivePeriod",
+		label: "Keep alive period",
+		placeholder: "10",
+	},
+	{
+		name: "maxIncomingStreams",
+		label: "Max incoming streams",
+		placeholder: "1024",
+	},
+	{
+		name: "initStreamReceiveWindow",
+		label: "Initial stream receive window",
+		placeholder: "8388608",
+	},
+	{
+		name: "maxStreamReceiveWindow",
+		label: "Max stream receive window",
+		placeholder: "8388608",
+	},
+	{
+		name: "initConnectionReceiveWindow",
+		label: "Initial connection receive window",
+		placeholder: "20971520",
+	},
+	{
+		name: "maxConnectionReceiveWindow",
+		label: "Max connection receive window",
+		placeholder: "20971520",
+	},
+] as const;
 const REALITY_TARGETS = [
 	{ target: "www.icloud.com:443", sni: "www.icloud.com,icloud.com" },
 	{ target: "www.apple.com:443", sni: "www.apple.com,apple.com" },
@@ -214,6 +252,13 @@ const randomHex = (length: number): string => {
 		value.toString(16).padStart(2, "0"),
 	).join("");
 	return hex.slice(0, length);
+};
+
+const randomLowerAndNum = (length: number): string => {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+	const bytes = new Uint8Array(length);
+	fillRandomValues(bytes);
+	return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 };
 
 const shuffleArray = <T,>(values: T[]): T[] => {
@@ -317,6 +362,14 @@ export const InboundFormModal: FC<Props> = ({
 	} = useFieldArray({
 		control,
 		name: "hysteriaMasqueradeHeaders",
+	});
+	const {
+		fields: hysteriaUdpMaskFields,
+		append: appendHysteriaUdpMask,
+		remove: removeHysteriaUdpMask,
+	} = useFieldArray({
+		control,
+		name: "hysteriaUdpMasks",
 	});
 	const {
 		fields: tlsCertificateFields,
@@ -1180,6 +1233,16 @@ export const InboundFormModal: FC<Props> = ({
 															form.setValue("hysteriaUdpIdleTimeout", "60", {
 																shouldDirty: true,
 															});
+															form.setValue(
+																"hysteriaUdpMasks",
+																[createDefaultHysteriaUdpMask()],
+																{
+																	shouldDirty: true,
+																},
+															);
+															form.setValue("hysteriaQuicParams.enabled", false, {
+																shouldDirty: true,
+															});
 															form.setValue("tlsAlpn", ["h3"], {
 																shouldDirty: true,
 															});
@@ -1494,66 +1557,76 @@ export const InboundFormModal: FC<Props> = ({
 											<Text fontSize="sm" fontWeight="semibold">
 												{t("inbounds.streamSettings", "Stream settings")}
 											</Text>
-											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.network", "Network")}
-													</FormLabel>
-													<SearchableTagSelect
-														value={streamNetwork}
-														options={ALL_NETWORK_OPTIONS}
-														placeholder={t("inbounds.network", "Network")}
-														onChange={(value) =>
-															form.setValue(
-																"streamNetwork",
-																String(
-																	value,
-																) as InboundFormValues["streamNetwork"],
-																{
-																	shouldDirty: true,
-																	shouldValidate: true,
-																},
-															)
-														}
-													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.security", "Security")}
-													</FormLabel>
-													<Controller
-														control={control}
-														name="streamSecurity"
-														render={({ field }) => (
-															<SearchableTagSelect
-																value={field.value}
-																options={streamSecurityOptions.map(
-																	(security) => ({
-																		value: security,
-																		label: security,
-																		disabled:
-																			currentProtocol === "hysteria"
-																				? security !== "tls"
-																				: security === "tls"
-																				? !TLS_COMPATIBLE_PROTOCOLS.includes(
-																						currentProtocol,
-																					)
-																				: security === "reality"
-																					? !REALITY_COMPATIBLE_PROTOCOLS.includes(
+											{currentProtocol === "hysteria" ? (
+												<Alert status="info" borderRadius="md">
+													<AlertIcon />
+													<AlertDescription fontSize="sm">
+														{t(
+															"inbounds.hysteria.fixedTransport",
+															"Hysteria2 always uses the Hysteria transport with TLS.",
+														)}
+													</AlertDescription>
+												</Alert>
+											) : (
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.network", "Network")}
+														</FormLabel>
+														<SearchableTagSelect
+															value={streamNetwork}
+															options={ALL_NETWORK_OPTIONS}
+															placeholder={t("inbounds.network", "Network")}
+															onChange={(value) =>
+																form.setValue(
+																	"streamNetwork",
+																	String(
+																		value,
+																	) as InboundFormValues["streamNetwork"],
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.security", "Security")}
+														</FormLabel>
+														<Controller
+															control={control}
+															name="streamSecurity"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	value={field.value}
+																	options={streamSecurityOptions.map(
+																		(security) => ({
+																			value: security,
+																			label: security,
+																			disabled:
+																				security === "tls"
+																					? !TLS_COMPATIBLE_PROTOCOLS.includes(
 																							currentProtocol,
 																						)
-																					: false,
-																	}),
-																)}
-																placeholder={t("inbounds.security", "Security")}
-																onChange={(value) =>
-																	field.onChange(String(value))
-																}
-															/>
-														)}
-													/>
-												</FormControl>
-											</SimpleGrid>
+																					: security === "reality"
+																						? !REALITY_COMPATIBLE_PROTOCOLS.includes(
+																								currentProtocol,
+																							)
+																						: false,
+																		}),
+																	)}
+																	placeholder={t("inbounds.security", "Security")}
+																	onChange={(value) =>
+																		field.onChange(String(value))
+																	}
+																/>
+															)}
+														/>
+													</FormControl>
+												</SimpleGrid>
+											)}
 											{streamCompatibilityError && (
 												<Alert status="error" borderRadius="md">
 													<AlertIcon />
@@ -2031,6 +2104,7 @@ export const InboundFormModal: FC<Props> = ({
 															<Input
 																{...register("hysteriaVersion")}
 																placeholder="2"
+																isDisabled
 															/>
 														</FormControl>
 														<FormControl
@@ -2089,7 +2163,27 @@ export const InboundFormModal: FC<Props> = ({
 																	</FormLabel>
 																	<SearchableTagSelect
 																		value={hysteriaMasqueradeType}
-																		options={["proxy", "file", "string"]}
+																		options={[
+																			{
+																				value: "",
+																				label: t(
+																					"inbounds.hysteria.defaultMasquerade",
+																					"default (404 page)",
+																				),
+																			},
+																			{
+																				value: "proxy",
+																				label: "proxy (reverse proxy)",
+																			},
+																			{
+																				value: "file",
+																				label: "file (serve directory)",
+																			},
+																			{
+																				value: "string",
+																				label: "string (fixed body)",
+																			},
+																		]}
 																		placeholder={t(
 																			"inbounds.hysteria.masqueradeType",
 																			"Masquerade type",
@@ -2303,6 +2397,418 @@ export const InboundFormModal: FC<Props> = ({
 															</Stack>
 														</Stack>
 													</Collapse>
+
+													<Stack spacing={3} className="xray-dialog-section">
+														<Flex justify="space-between" align="center" gap={3}>
+															<Box>
+																<Text fontSize="sm" fontWeight="semibold">
+																	{t("inbounds.hysteria.udpMasks", "UDP Masks")}
+																</Text>
+																<Text fontSize="xs" color="gray.500">
+																	{t(
+																		"inbounds.hysteria.udpMasksHint",
+																		"Hysteria2 supports Salamander obfuscation. Gecko stores a packet size range on the same Salamander mask.",
+																	)}
+																</Text>
+															</Box>
+															<Button
+																size="xs"
+																leftIcon={<SparklesIcon width={14} height={14} />}
+																onClick={() =>
+																	appendHysteriaUdpMask(
+																		createDefaultHysteriaUdpMask(),
+																	)
+																}
+															>
+																{t("inbounds.hysteria.addUdpMask", "Add mask")}
+															</Button>
+														</Flex>
+														{fieldValidationErrors.hysteriaUdpMasks && (
+															<Text fontSize="xs" color="red.500">
+																{fieldValidationErrors.hysteriaUdpMasks}
+															</Text>
+														)}
+														{hysteriaUdpMaskFields.length === 0 && (
+															<Text fontSize="xs" color="gray.500">
+																{t(
+																	"inbounds.hysteria.noUdpMasks",
+																	"No UDP mask will be emitted.",
+																)}
+															</Text>
+														)}
+														{hysteriaUdpMaskFields.map((field, index) => {
+															const maskMode =
+																formValues.hysteriaUdpMasks?.[index]?.mode ||
+																"salamander";
+															return (
+																<Stack
+																	key={field.id}
+																	spacing={3}
+																	borderWidth="1px"
+																	borderColor="whiteAlpha.200"
+																	borderRadius="md"
+																	p={3}
+																>
+																	<Flex justify="space-between" align="center">
+																		<Text fontSize="sm" fontWeight="semibold">
+																			{t(
+																				"inbounds.hysteria.udpMaskTitle",
+																				"UDP Mask {{index}}",
+																				{ index: index + 1 },
+																			)}
+																		</Text>
+																		<Button
+																			size="xs"
+																			variant="ghost"
+																			colorScheme="red"
+																			onClick={() => removeHysteriaUdpMask(index)}
+																		>
+																			{t("hostsPage.delete", "Delete")}
+																		</Button>
+																	</Flex>
+																	<SimpleGrid
+																		columns={{ base: 1, md: 2 }}
+																		spacing={3}
+																	>
+																		<FormControl>
+																			<FormLabel>
+																				{t("inbounds.hysteria.maskType", "Type")}
+																			</FormLabel>
+																			<SearchableTagSelect
+																				value="salamander"
+																				isDisabled
+																				options={[
+																					{
+																						value: "salamander",
+																						label: "Salamander (Hysteria2)",
+																					},
+																				]}
+																				placeholder="Salamander (Hysteria2)"
+																				onChange={() => undefined}
+																			/>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t("inbounds.hysteria.maskMode", "Mode")}
+																			</FormLabel>
+																			<Controller
+																				control={control}
+																				name={`hysteriaUdpMasks.${index}.mode` as const}
+																				render={({ field: modeField }) => (
+																					<SearchableTagSelect
+																						value={modeField.value || "salamander"}
+																						options={[
+																							{
+																								value: "salamander",
+																								label: "Salamander",
+																							},
+																							{
+																								value: "gecko",
+																								label: "Gecko experimental",
+																							},
+																						]}
+																						placeholder={t(
+																							"inbounds.hysteria.maskMode",
+																							"Mode",
+																						)}
+																						onChange={(value) =>
+																							modeField.onChange(String(value))
+																						}
+																					/>
+																				)}
+																			/>
+																			<Text fontSize="xs" color="gray.500" mt={1}>
+																				{maskMode === "gecko"
+																					? t(
+																							"inbounds.hysteria.geckoHint",
+																							"Gecko splits packets into random-padded fragments.",
+																						)
+																					: t(
+																							"inbounds.hysteria.salamanderHint",
+																							"Scrambles each packet into random-looking bytes.",
+																						)}
+																			</Text>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"inbounds.hysteria.maskPassword",
+																					"Password",
+																				)}
+																			</FormLabel>
+																			<HStack>
+																				<Input
+																					{...register(
+																						`hysteriaUdpMasks.${index}.password` as const,
+																					)}
+																					placeholder="Obfuscation password"
+																				/>
+																				<IconButton
+																					aria-label={t(
+																						"inbounds.hysteria.generatePassword",
+																						"Generate password",
+																					)}
+																					icon={<ArrowPathIcon width={16} height={16} />}
+																					size="sm"
+																					variant="outline"
+																					onClick={() =>
+																						form.setValue(
+																							`hysteriaUdpMasks.${index}.password`,
+																							randomLowerAndNum(16),
+																							{
+																								shouldDirty: true,
+																								shouldValidate: true,
+																							},
+																						)
+																					}
+																				/>
+																			</HStack>
+																		</FormControl>
+																		{maskMode === "gecko" && (
+																			<FormControl>
+																				<FormLabel>
+																					{t(
+																						"inbounds.hysteria.packetSize",
+																						"Packet size",
+																					)}
+																				</FormLabel>
+																				<Input
+																					{...register(
+																						`hysteriaUdpMasks.${index}.packetSize` as const,
+																					)}
+																					placeholder="512-1200"
+																				/>
+																				<Text fontSize="xs" color="gray.500" mt={1}>
+																					{t(
+																						"inbounds.hysteria.packetSizeHint",
+																						"Serialized as a string range, for example 512-1200.",
+																					)}
+																				</Text>
+																			</FormControl>
+																		)}
+																	</SimpleGrid>
+																</Stack>
+															);
+														})}
+													</Stack>
+
+													<Stack spacing={3} className="xray-dialog-section">
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																{t(
+																	"inbounds.hysteria.quicParams",
+																	"QUIC Params",
+																)}
+															</FormLabel>
+															<Switch
+																{...register("hysteriaQuicParams.enabled")}
+															/>
+														</FormControl>
+														<Collapse
+															in={Boolean(formValues.hysteriaQuicParams?.enabled)}
+															animateOpacity
+														>
+															<Stack spacing={3} mt={2}>
+																<SimpleGrid
+																	columns={{ base: 1, md: 2 }}
+																	spacing={3}
+																>
+																	<FormControl>
+																		<FormLabel>
+																			{t(
+																				"inbounds.hysteria.congestion",
+																				"Congestion",
+																			)}
+																		</FormLabel>
+																		<Controller
+																			control={control}
+																			name="hysteriaQuicParams.congestion"
+																			render={({ field }) => (
+																				<SearchableTagSelect
+																					value={field.value || "bbr"}
+																					options={[
+																						"reno",
+																						"bbr",
+																						"brutal",
+																						"force-brutal",
+																					]}
+																					placeholder={t(
+																						"inbounds.hysteria.congestion",
+																						"Congestion",
+																					)}
+																					onChange={(value) =>
+																						field.onChange(String(value))
+																					}
+																				/>
+																			)}
+																		/>
+																	</FormControl>
+																	{formValues.hysteriaQuicParams?.congestion ===
+																		"bbr" && (
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"inbounds.hysteria.bbrProfile",
+																					"BBR Profile",
+																				)}
+																			</FormLabel>
+																			<Controller
+																				control={control}
+																				name="hysteriaQuicParams.bbrProfile"
+																				render={({ field }) => (
+																					<SearchableTagSelect
+																						value={field.value || ""}
+																						options={[
+																							{
+																								value: "",
+																								label: t(
+																									"common.auto",
+																									"Auto",
+																								),
+																							},
+																							"conservative",
+																							"standard",
+																							"aggressive",
+																						]}
+																						placeholder="standard"
+																						onChange={(value) =>
+																							field.onChange(String(value))
+																						}
+																					/>
+																				)}
+																			/>
+																		</FormControl>
+																	)}
+																</SimpleGrid>
+																{["brutal", "force-brutal"].includes(
+																	formValues.hysteriaQuicParams?.congestion || "",
+																) && (
+																	<SimpleGrid
+																		columns={{ base: 1, md: 2 }}
+																		spacing={3}
+																	>
+																		<FormControl>
+																			<FormLabel>Brutal Up</FormLabel>
+																			<Input
+																				{...register(
+																					"hysteriaQuicParams.brutalUp",
+																				)}
+																				placeholder="60 mbps"
+																			/>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>Brutal Down</FormLabel>
+																			<Input
+																				{...register(
+																					"hysteriaQuicParams.brutalDown",
+																				)}
+																				placeholder="100 mbps"
+																			/>
+																		</FormControl>
+																	</SimpleGrid>
+																)}
+																<HStack spacing={6} flexWrap="wrap">
+																	<FormControl
+																		display="flex"
+																		alignItems="center"
+																		w="auto"
+																	>
+																		<FormLabel mb={0}>
+																			{t("common.debug", "Debug")}
+																		</FormLabel>
+																		<Switch
+																			{...register(
+																				"hysteriaQuicParams.debug",
+																			)}
+																		/>
+																	</FormControl>
+																	<FormControl
+																		display="flex"
+																		alignItems="center"
+																		w="auto"
+																	>
+																		<FormLabel mb={0}>
+																			{t(
+																				"inbounds.hysteria.udpHop",
+																				"UDP Hop",
+																			)}
+																		</FormLabel>
+																		<Switch
+																			{...register(
+																				"hysteriaQuicParams.udpHopEnabled",
+																			)}
+																		/>
+																	</FormControl>
+																</HStack>
+																{formValues.hysteriaQuicParams?.udpHopEnabled && (
+																	<SimpleGrid
+																		columns={{ base: 1, md: 2 }}
+																		spacing={3}
+																	>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"inbounds.hysteria.hopPorts",
+																					"Hop ports",
+																				)}
+																			</FormLabel>
+																			<Input
+																				{...register(
+																					"hysteriaQuicParams.udpHopPorts",
+																				)}
+																				placeholder="20000-50000"
+																			/>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"inbounds.hysteria.hopInterval",
+																					"Hop interval",
+																				)}
+																			</FormLabel>
+																			<Input
+																				{...register(
+																					"hysteriaQuicParams.udpHopInterval",
+																				)}
+																				placeholder="5-10"
+																			/>
+																		</FormControl>
+																	</SimpleGrid>
+																)}
+																<SimpleGrid
+																	columns={{ base: 1, md: 2 }}
+																	spacing={3}
+																>
+																	{HYSTERIA_QUIC_INPUT_FIELDS.map(
+																		({ name, label, placeholder }) => (
+																		<FormControl key={name}>
+																			<FormLabel>{label}</FormLabel>
+																			<Input
+																				{...register(
+																					`hysteriaQuicParams.${name}` as const,
+																				)}
+																				placeholder={placeholder}
+																			/>
+																		</FormControl>
+																		),
+																	)}
+																</SimpleGrid>
+																<FormControl display="flex" alignItems="center">
+																	<FormLabel mb={0}>
+																		{t(
+																			"inbounds.hysteria.disablePathMtu",
+																			"Disable path MTU discovery",
+																		)}
+																	</FormLabel>
+																	<Switch
+																		{...register(
+																			"hysteriaQuicParams.disablePathMTUDiscovery",
+																		)}
+																	/>
+																</FormControl>
+															</Stack>
+														</Collapse>
+													</Stack>
 												</Stack>
 											)}
 											<FormControl display="flex" alignItems="center">
@@ -3452,6 +3958,7 @@ export const InboundFormModal: FC<Props> = ({
 									<Box height="420px">
 										<JsonEditor
 											json={jsonText}
+											canonicalContext="inbound"
 											onChange={handleJsonEditorChange}
 										/>
 									</Box>

@@ -2,18 +2,13 @@ import {
 	Box,
 	Flex,
 	Spinner,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
 	Text,
-	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
 import AdminsUsage from "components/AdminsUsage";
 import NodesUsageAnalytics from "components/NodesUsageAnalytics";
 import ServiceUsageAnalytics from "components/ServiceUsageAnalytics";
+import { PageHeader, ResourceListCard, TabSystem } from "components/ui";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
@@ -21,9 +16,6 @@ import { useTranslation } from "react-i18next";
 
 export const UsagePage: FC = () => {
 	const { t } = useTranslation();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewUsage = Boolean(
 		getUserIsSuccess && userData.permissions?.sections.usage,
@@ -98,86 +90,58 @@ export const UsagePage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={4}
-			>
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title", "Usage Analytics")}
-				</Text>
-				<Text
-					mt={2}
-					fontSize="sm"
-					color="gray.500"
-					_dark={{ color: "gray.400" }}
-				>
-					{t(
-						"usage.description",
-						"Track usage trends across services, admins, and nodes from a single place.",
-					)}
-				</Text>
-			</Box>
+			<ResourceListCard
+				title={
+					<PageHeader
+						title={t("usage.title", "Usage Analytics")}
+						description={t(
+							"usage.description",
+							"Track usage trends across services, admins, and nodes from a single place.",
+						)}
+					/>
+				}
+			/>
 
-			<Tabs variant="unstyled" index={activeTab} onChange={handleTabChange}>
-				<TabList
-					borderWidth="1px"
-					borderColor={borderColor}
-					borderRadius="md"
-					bg={panelBg}
-					p={{ base: 1, md: 2 }}
-					gap={{ base: 1.5, md: 2 }}
-					mb={4}
-					overflowX="auto"
-					overflowY="hidden"
-					flexWrap="nowrap"
-					maxW="full"
-					sx={{
-						WebkitOverflowScrolling: "touch",
-						overscrollBehaviorInline: "contain",
-						scrollbarWidth: "none",
-						scrollPaddingInline: "8px",
-						scrollSnapType: "x proximity",
-						"&::-webkit-scrollbar": { display: "none" },
-					}}
-				>
-					{[
-						t("usage.tabs.services", "Services"),
-						t("usage.tabs.admins", "Admins"),
-						t("usage.tabs.nodes", "Nodes"),
-					].map((label) => (
-						<Tab
-							key={label}
-							borderRadius="md"
-							px={{ base: 3, md: 4 }}
-							py={2}
-							minH={{ base: "40px", md: "36px" }}
-							flexShrink={0}
-							fontWeight="semibold"
-							color="gray.500"
-							whiteSpace="nowrap"
-							sx={{ scrollSnapAlign: "start" }}
-							_selected={{ bg: activeTabBg, color: "white" }}
-							_dark={{ color: "gray.300" }}
-						>
-							{label}
-						</Tab>
-					))}
-				</TabList>
-				<TabPanels>
-					<TabPanel px={0}>
-						<ServiceUsageAnalytics services={services} />
-					</TabPanel>
-					<TabPanel px={0}>
-						<AdminsUsage />
-					</TabPanel>
-					<TabPanel px={0}>
-						<NodesUsageAnalytics />
-					</TabPanel>
-				</TabPanels>
-			</Tabs>
+			<TabSystem
+				overflowX="auto"
+				overflowY="hidden"
+				maxW="full"
+				sx={{
+					WebkitOverflowScrolling: "touch",
+					scrollbarWidth: "none",
+					"&::-webkit-scrollbar": { display: "none" },
+					button: { flexShrink: 0 },
+				}}
+				tabs={[
+					{
+						value: "services",
+						isActive: activeTab === 0,
+						onClick: () => handleTabChange(0),
+						label: t("usage.tabs.services", "Services"),
+					},
+					{
+						value: "admins",
+						isActive: activeTab === 1,
+						onClick: () => handleTabChange(1),
+						label: t("usage.tabs.admins", "Admins"),
+					},
+					{
+						value: "nodes",
+						isActive: activeTab === 2,
+						onClick: () => handleTabChange(2),
+						label: t("usage.tabs.nodes", "Nodes"),
+					},
+				]}
+			/>
+			<Box mt={3} display={activeTab === 0 ? "block" : "none"}>
+				<ServiceUsageAnalytics services={services} />
+			</Box>
+			<Box mt={3} display={activeTab === 1 ? "block" : "none"}>
+				<AdminsUsage />
+			</Box>
+			<Box mt={3} display={activeTab === 2 ? "block" : "none"}>
+				<NodesUsageAnalytics />
+			</Box>
 		</VStack>
 	);
 };

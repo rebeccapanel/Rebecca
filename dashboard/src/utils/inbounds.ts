@@ -66,6 +66,33 @@ export type HeaderForm = {
 	value: string;
 };
 
+export type HysteriaUdpMaskForm = {
+	type: "salamander";
+	mode: "salamander" | "gecko";
+	password: string;
+	packetSize: string;
+};
+
+export type HysteriaQuicParamsForm = {
+	enabled: boolean;
+	congestion: "" | "reno" | "bbr" | "brutal" | "force-brutal";
+	bbrProfile: "" | "conservative" | "standard" | "aggressive";
+	debug: boolean;
+	brutalUp: string;
+	brutalDown: string;
+	udpHopEnabled: boolean;
+	udpHopPorts: string;
+	udpHopInterval: string;
+	maxIdleTimeout: string;
+	keepAlivePeriod: string;
+	disablePathMTUDiscovery: boolean;
+	maxIncomingStreams: string;
+	initStreamReceiveWindow: string;
+	maxStreamReceiveWindow: string;
+	initConnectionReceiveWindow: string;
+	maxConnectionReceiveWindow: string;
+};
+
 export type SockoptFormValues = {
 	acceptProxyProtocol: boolean;
 	tcpFastOpen: boolean;
@@ -120,6 +147,8 @@ export type InboundFormValues = {
 	hysteriaMasqueradeContent: string;
 	hysteriaMasqueradeStatusCode: string;
 	hysteriaMasqueradeHeaders: HeaderForm[];
+	hysteriaUdpMasks: HysteriaUdpMaskForm[];
+	hysteriaQuicParams: HysteriaQuicParamsForm;
 
 	// sniffing
 	sniffingEnabled: boolean;
@@ -338,6 +367,46 @@ const toInputValue = (value: unknown): string => {
 	return "";
 };
 
+const randomLowerAndNum = (length: number): string => {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+	const bytes = new Uint8Array(length);
+	if (globalThis.crypto?.getRandomValues) {
+		globalThis.crypto.getRandomValues(bytes);
+	} else {
+		for (let i = 0; i < bytes.length; i += 1) {
+			bytes[i] = Math.floor(Math.random() * 256);
+		}
+	}
+	return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+};
+
+export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
+	type: "salamander",
+	mode: "salamander",
+	password: randomLowerAndNum(16),
+	packetSize: "",
+});
+
+const createDefaultHysteriaQuicParams = (): HysteriaQuicParamsForm => ({
+	enabled: false,
+	congestion: "bbr",
+	bbrProfile: "",
+	debug: false,
+	brutalUp: "",
+	brutalDown: "",
+	udpHopEnabled: false,
+	udpHopPorts: "20000-50000",
+	udpHopInterval: "5-10",
+	maxIdleTimeout: "30",
+	keepAlivePeriod: "10",
+	disablePathMTUDiscovery: false,
+	maxIncomingStreams: "1024",
+	initStreamReceiveWindow: "8388608",
+	maxStreamReceiveWindow: "8388608",
+	initConnectionReceiveWindow: "20971520",
+	maxConnectionReceiveWindow: "20971520",
+});
+
 const createDefaultSockopt = (): SockoptFormValues => ({
 	acceptProxyProtocol: false,
 	tcpFastOpen: false,
@@ -420,6 +489,21 @@ const validateXPadding = (value: string, label: string): string | null => {
 	return null;
 };
 
+const validatePacketSizeRange = (value: string): boolean => {
+	const cleaned = value.trim();
+	const match = cleaned.match(/^(\d+)-(\d+)$/);
+	if (!match) return false;
+	const min = Number(match[1]);
+	const max = Number(match[2]);
+	return (
+		Number.isSafeInteger(min) &&
+		Number.isSafeInteger(max) &&
+		min >= 1 &&
+		max >= min &&
+		max <= 2048
+	);
+};
+
 export type InboundFormValidationErrors = Partial<
 	Record<keyof InboundFormValues, string>
 >;
@@ -476,9 +560,6 @@ export const validateInboundFormFields = (
 				"UDP idle timeout must be between 2 and 600 seconds.";
 		}
 		if (values.hysteriaMasqueradeEnabled) {
-			if (!values.hysteriaMasqueradeType) {
-				errors.hysteriaMasqueradeType = "Masquerade type is required.";
-			}
 			if (
 				values.hysteriaMasqueradeType === "proxy" &&
 				!/^https?:\/\//i.test(values.hysteriaMasqueradeUrl.trim())
@@ -492,6 +573,21 @@ export const validateInboundFormFields = (
 			) {
 				errors.hysteriaMasqueradeDir =
 					"File masquerade directory is required.";
+			}
+		}
+		for (const mask of values.hysteriaUdpMasks ?? []) {
+			if (!mask.password.trim()) {
+				errors.hysteriaUdpMasks =
+					"Salamander UDP mask password is required.";
+				break;
+			}
+			if (
+				mask.mode === "gecko" &&
+				!validatePacketSizeRange(mask.packetSize)
+			) {
+				errors.hysteriaUdpMasks =
+					"Gecko packet size must look like 512-1200 with max <= 2048.";
+				break;
 			}
 		}
 	}
@@ -750,6 +846,9 @@ export const createDefaultInboundForm = (
 	hysteriaMasqueradeContent: "",
 	hysteriaMasqueradeStatusCode: "",
 	hysteriaMasqueradeHeaders: [],
+	hysteriaUdpMasks:
+		protocol === "hysteria" ? [createDefaultHysteriaUdpMask()] : [],
+	hysteriaQuicParams: createDefaultHysteriaQuicParams(),
 	sniffingEnabled: true,
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
@@ -897,6 +996,36 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		hysteriaSettings && typeof hysteriaSettings.masquerade === "object"
 			? hysteriaSettings.masquerade
 			: {};
+	const finalmask =
+		stream.finalmask && typeof stream.finalmask === "object"
+			? stream.finalmask
+			: {};
+	const hysteriaUdpMasks = Array.isArray(finalmask.udp)
+		? finalmask.udp
+				.filter((mask: Record<string, any>) => mask?.type === "salamander")
+				.map((mask: Record<string, any>) => {
+					const settings =
+						mask.settings && typeof mask.settings === "object"
+							? mask.settings
+							: {};
+					const packetSize = toInputValue(settings.packetSize);
+					return {
+						type: "salamander" as const,
+						mode: packetSize ? ("gecko" as const) : ("salamander" as const),
+						password: settings.password?.toString() ?? "",
+						packetSize,
+					};
+				})
+		: [];
+	const hysteriaQuicSettings =
+		finalmask.quicParams && typeof finalmask.quicParams === "object"
+			? finalmask.quicParams
+			: null;
+	const hysteriaUdpHop =
+		hysteriaQuicSettings?.udpHop &&
+		typeof hysteriaQuicSettings.udpHop === "object"
+			? hysteriaQuicSettings.udpHop
+			: null;
 	const realitySettingsMeta =
 		realitySettings && typeof realitySettings.settings === "object"
 			? realitySettings.settings
@@ -984,6 +1113,68 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		hysteriaMasqueradeHeaders: hysteriaMasquerade.headers
 			? headersToForm(hysteriaMasquerade.headers)
 			: base.hysteriaMasqueradeHeaders,
+		hysteriaUdpMasks: hysteriaUdpMasks.length
+			? hysteriaUdpMasks
+			: base.hysteriaUdpMasks,
+		hysteriaQuicParams: hysteriaQuicSettings
+			? {
+					...base.hysteriaQuicParams,
+					enabled: true,
+					congestion:
+						hysteriaQuicSettings.congestion ??
+						base.hysteriaQuicParams.congestion,
+					bbrProfile:
+						hysteriaQuicSettings.bbrProfile ??
+						base.hysteriaQuicParams.bbrProfile,
+					debug: Boolean(
+						hysteriaQuicSettings.debug ?? base.hysteriaQuicParams.debug,
+					),
+					brutalUp:
+						hysteriaQuicSettings.brutalUp ??
+						base.hysteriaQuicParams.brutalUp,
+					brutalDown:
+						hysteriaQuicSettings.brutalDown ??
+						base.hysteriaQuicParams.brutalDown,
+					udpHopEnabled: Boolean(hysteriaUdpHop),
+					udpHopPorts:
+						hysteriaUdpHop?.ports ?? base.hysteriaQuicParams.udpHopPorts,
+					udpHopInterval:
+						hysteriaUdpHop?.interval ??
+						base.hysteriaQuicParams.udpHopInterval,
+					maxIdleTimeout: toInputValue(
+						hysteriaQuicSettings.maxIdleTimeout ??
+							base.hysteriaQuicParams.maxIdleTimeout,
+					),
+					keepAlivePeriod: toInputValue(
+						hysteriaQuicSettings.keepAlivePeriod ??
+							base.hysteriaQuicParams.keepAlivePeriod,
+					),
+					disablePathMTUDiscovery: Boolean(
+						hysteriaQuicSettings.disablePathMTUDiscovery ??
+							base.hysteriaQuicParams.disablePathMTUDiscovery,
+					),
+					maxIncomingStreams: toInputValue(
+						hysteriaQuicSettings.maxIncomingStreams ??
+							base.hysteriaQuicParams.maxIncomingStreams,
+					),
+					initStreamReceiveWindow: toInputValue(
+						hysteriaQuicSettings.initStreamReceiveWindow ??
+							base.hysteriaQuicParams.initStreamReceiveWindow,
+					),
+					maxStreamReceiveWindow: toInputValue(
+						hysteriaQuicSettings.maxStreamReceiveWindow ??
+							base.hysteriaQuicParams.maxStreamReceiveWindow,
+					),
+					initConnectionReceiveWindow: toInputValue(
+						hysteriaQuicSettings.initConnectionReceiveWindow ??
+							base.hysteriaQuicParams.initConnectionReceiveWindow,
+					),
+					maxConnectionReceiveWindow: toInputValue(
+						hysteriaQuicSettings.maxConnectionReceiveWindow ??
+							base.hysteriaQuicParams.maxConnectionReceiveWindow,
+					),
+				}
+			: base.hysteriaQuicParams,
 		sniffingEnabled: Boolean(sniffing.enabled ?? base.sniffingEnabled),
 		sniffingDestinations:
 			Array.isArray(sniffing.destOverride) && sniffing.destOverride.length
@@ -1686,6 +1877,72 @@ const buildStreamSettings = (
 				parseOptionalNumber(values.hysteriaUdpIdleTimeout) || 60,
 			masquerade,
 		});
+		const udpMasks = (values.hysteriaUdpMasks ?? [])
+			.map((mask) => {
+				const settings = cleanObject({
+					password: mask.password.trim() || undefined,
+					packetSize:
+						mask.mode === "gecko"
+							? mask.packetSize.trim() || undefined
+							: undefined,
+				});
+				if (!Object.keys(settings).length) return null;
+				return {
+					type: "salamander",
+					settings,
+				};
+			})
+			.filter(Boolean);
+		const quic = values.hysteriaQuicParams;
+		const quicParams = quic?.enabled
+			? cleanObject({
+					congestion: quic.congestion || undefined,
+					bbrProfile:
+						quic.congestion === "bbr" ? quic.bbrProfile || undefined : undefined,
+					debug: quic.debug || undefined,
+					brutalUp:
+						quic.congestion === "brutal" ||
+						quic.congestion === "force-brutal"
+							? quic.brutalUp.trim() || undefined
+							: undefined,
+					brutalDown:
+						quic.congestion === "brutal" ||
+						quic.congestion === "force-brutal"
+							? quic.brutalDown.trim() || undefined
+							: undefined,
+					udpHop: quic.udpHopEnabled
+						? cleanObject({
+								ports: quic.udpHopPorts.trim() || undefined,
+								interval: quic.udpHopInterval.trim() || undefined,
+							})
+						: undefined,
+					maxIdleTimeout: parseOptionalNumber(quic.maxIdleTimeout),
+					keepAlivePeriod: parseOptionalNumber(quic.keepAlivePeriod),
+					disablePathMTUDiscovery:
+						quic.disablePathMTUDiscovery || undefined,
+					maxIncomingStreams: parseOptionalNumber(quic.maxIncomingStreams),
+					initStreamReceiveWindow: parseOptionalNumber(
+						quic.initStreamReceiveWindow,
+					),
+					maxStreamReceiveWindow: parseOptionalNumber(
+						quic.maxStreamReceiveWindow,
+					),
+					initConnectionReceiveWindow: parseOptionalNumber(
+						quic.initConnectionReceiveWindow,
+					),
+					maxConnectionReceiveWindow: parseOptionalNumber(
+						quic.maxConnectionReceiveWindow,
+					),
+				})
+			: undefined;
+		const finalmask = cleanObject({
+			udp: udpMasks.length ? udpMasks : undefined,
+			quicParams:
+				quicParams && Object.keys(quicParams).length ? quicParams : undefined,
+		});
+		if (Object.keys(finalmask).length) {
+			stream.finalmask = finalmask;
+		}
 	}
 
 	if (values.streamSecurity === "tls") {

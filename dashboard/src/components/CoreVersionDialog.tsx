@@ -14,11 +14,11 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	Select,
 	Spinner,
 	Stack,
 	Text,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";

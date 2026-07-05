@@ -9,7 +9,6 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	Switch,
 	Tab,
 	TabList,
@@ -35,7 +34,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
 	ALPN_OPTION,
@@ -57,7 +56,9 @@ import {
 	XHTTPStreamSettings,
 } from "../utils/outbound";
 import { JsonEditor } from "./JsonEditor";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
+	XrayFieldGrid,
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
@@ -1293,16 +1294,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													{...register("tag", { required: requiredMessage })}
 												/>
 											</FormControl>
-											<HStack>
+											<XrayFieldGrid>
 												<FormControl isRequired>
 													<FormLabel>{t("protocol")}</FormLabel>
-													<Select size="sm" {...register("protocol")}>
-														{protocolOptions.map((item) => (
-															<option key={item} value={item}>
-																{item}
-															</option>
-														))}
-													</Select>
+													<Controller
+														control={control}
+														name="protocol"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={protocolOptions}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("protocol")}
+																searchPlaceholder={t("search", "Search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>
@@ -1314,7 +1324,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														{...register("sendThrough")}
 													/>
 												</FormControl>
-											</HStack>
+											</XrayFieldGrid>
 										</VStack>
 									</Box>
 
@@ -1438,20 +1448,30 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<FormLabel>
 																{t("pages.outbound.method", "Method")}
 															</FormLabel>
-															<Select
-																size="sm"
-																{...register("method", {
+															<Controller
+																control={control}
+																name="method"
+																rules={{
 																	required: requiresMethod
 																		? requiredMessage
 																		: false,
-																})}
-															>
-																{Object.values(SSMethods).map((method) => (
-																	<option key={method} value={method}>
-																		{method}
-																	</option>
-																))}
-															</Select>
+																}}
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={Object.values(SSMethods)}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t(
+																			"pages.outbound.method",
+																			"Method",
+																		)}
+																		searchPlaceholder={t("search", "Search")}
+																	/>
+																)}
+															/>
 														</FormControl>
 														<FormControl
 															display="flex"
@@ -1548,13 +1568,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											<Text fontWeight="semibold" mb={3}>
 												{t("pages.outbound.dnsSettings", "DNS settings")}
 											</Text>
-											<HStack>
+											<XrayFieldGrid>
 												<FormControl>
 													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Select size="sm" {...register("dnsNetwork")}>
-														<option value="udp">udp</option>
-														<option value="tcp">tcp</option>
-													</Select>
+													<Controller
+														control={control}
+														name="dnsNetwork"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={["udp", "tcp"]}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("pages.outbound.network")}
+																searchPlaceholder={t("search", "Search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl isRequired={requiresDnsServer}>
 													<FormLabel>{t("pages.outbound.port")}</FormLabel>
@@ -1576,7 +1608,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														})}
 													/>
 												</FormControl>
-											</HStack>
+											</XrayFieldGrid>
 											<FormControl mt={3} isRequired={requiresDnsServer}>
 												<FormLabel>{t("pages.outbound.address")}</FormLabel>
 												<Input
@@ -1670,17 +1702,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												</HStack>
 												<FormControl>
 													<FormLabel>Domain Strategy</FormLabel>
-													<Select
-														size="sm"
-														{...register("wireguardDomainStrategy")}
-													>
-														<option value="">{t("common.none", "None")}</option>
-														{WireguardDomainStrategy.map((strategy) => (
-															<option key={strategy} value={strategy}>
-																{strategy}
-															</option>
-														))}
-													</Select>
+													<Controller
+														control={control}
+														name="wireguardDomainStrategy"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={[
+																	{ value: "", label: t("common.none", "None") },
+																	...WireguardDomainStrategy,
+																]}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("common.none", "None")}
+																searchPlaceholder={t("search", "Search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>Reserved</FormLabel>
@@ -1817,65 +1857,127 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												{t("pages.outbound.transport", "Transport")}
 											</Text>
 											<VStack spacing={3} align="stretch">
-												<FormControl>
-													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Select size="sm" {...register("network")}>
-														{streamNetworkOptions.map((networkOption) => (
-															<option key={networkOption} value={networkOption}>
-																{networkOption}
-															</option>
-														))}
-													</Select>
-												</FormControl>
-												{network === "tcp" && (
-													<HStack>
+												<XrayFieldGrid>
+													<FormControl>
+														<FormLabel>{t("pages.outbound.network")}</FormLabel>
+														<Controller
+															control={control}
+															name="network"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={streamNetworkOptions}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("pages.outbound.network")}
+																	searchPlaceholder={t("search", "Search")}
+																/>
+															)}
+														/>
+													</FormControl>
+													{network === "tcp" && (
 														<FormControl>
 															<FormLabel>
 																{t("pages.outbound.tcpHeader", "Header")}
 															</FormLabel>
-															<Select size="sm" {...register("tcpType")}>
-																<option value="none">none</option>
-																<option value="http">http</option>
-															</Select>
+															<Controller
+																control={control}
+																name="tcpType"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={["none", "http"]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t(
+																			"pages.outbound.tcpHeader",
+																			"Header",
+																		)}
+																		searchPlaceholder={t("search", "Search")}
+																	/>
+																)}
+															/>
 														</FormControl>
-														{tcpType === "http" && (
-															<>
-																<FormControl>
-																	<FormLabel>{t("host")}</FormLabel>
-																	<Input size="sm" {...register("tcpHost")} />
-																</FormControl>
-																<FormControl>
-																	<FormLabel>{t("path")}</FormLabel>
-																	<Input size="sm" {...register("tcpPath")} />
-																</FormControl>
-															</>
-														)}
-													</HStack>
-												)}
-												{network === "kcp" && (
-													<HStack>
+													)}
+													{network === "kcp" && (
 														<FormControl>
 															<FormLabel>
 																{t("pages.outbound.kcpHeader", "mKCP header")}
 															</FormLabel>
-															<Select size="sm" {...register("kcpType")}>
-																{KCP_HEADER_TYPE_OPTIONS.map((headerType) => (
-																	<option key={headerType} value={headerType}>
-																		{headerType}
-																	</option>
-																))}
-															</Select>
+															<Controller
+																control={control}
+																name="kcpType"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={[...KCP_HEADER_TYPE_OPTIONS]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t(
+																			"pages.outbound.kcpHeader",
+																			"mKCP header",
+																		)}
+																		searchPlaceholder={t("search", "Search")}
+																	/>
+																)}
+															/>
 														</FormControl>
+													)}
+													{network === "xhttp" && (
+														<FormControl>
+															<FormLabel>Mode</FormLabel>
+															<Controller
+																control={control}
+																name="xhttpMode"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={[
+																			{ value: "", label: t("common.none", "None") },
+																			...XHTTP_MODE_OPTIONS,
+																		]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t("common.none", "None")}
+																		searchPlaceholder={t("search", "Search")}
+																	/>
+																)}
+															/>
+														</FormControl>
+													)}
+												</XrayFieldGrid>
+												{network === "tcp" && tcpType === "http" && (
+													<XrayFieldGrid>
+														<FormControl>
+															<FormLabel>{t("host")}</FormLabel>
+															<Input size="sm" {...register("tcpHost")} />
+														</FormControl>
+														<FormControl>
+															<FormLabel>{t("path")}</FormLabel>
+															<Input size="sm" {...register("tcpPath")} />
+														</FormControl>
+													</XrayFieldGrid>
+												)}
+												{network === "kcp" && (
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>
 																{t("pages.outbound.kcpSeed", "mKCP seed")}
 															</FormLabel>
 															<Input size="sm" {...register("kcpSeed")} />
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "ws" && (
-													<HStack>
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>{t("host")}</FormLabel>
 															<Input size="sm" {...register("wsHost")} />
@@ -1884,11 +1986,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<FormLabel>{t("path")}</FormLabel>
 															<Input size="sm" {...register("wsPath")} />
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "grpc" && (
 													<>
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>{t("serviceName")}</FormLabel>
 																<Input
@@ -1903,7 +2005,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	{...register("grpcAuthority")}
 																/>
 															</FormControl>
-														</HStack>
+														</XrayFieldGrid>
 														<FormControl
 															display="flex"
 															alignItems="center"
@@ -1920,7 +2022,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</>
 												)}
 												{network === "httpupgrade" && (
-													<HStack>
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>{t("host")}</FormLabel>
 															<Input
@@ -1935,11 +2037,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																{...register("httpupgradePath")}
 															/>
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "xhttp" && (
 													<VStack spacing={3} align="stretch">
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>{t("host")}</FormLabel>
 																<Input size="sm" {...register("xhttpHost")} />
@@ -1948,20 +2050,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																<FormLabel>{t("path")}</FormLabel>
 																<Input size="sm" {...register("xhttpPath")} />
 															</FormControl>
-														</HStack>
-														<FormControl>
-															<FormLabel>Mode</FormLabel>
-															<Select size="sm" {...register("xhttpMode")}>
-																<option value="">
-																	{t("common.none", "None")}
-																</option>
-																{XHTTP_MODE_OPTIONS.map((modeOption) => (
-																	<option key={modeOption} value={modeOption}>
-																		{modeOption}
-																	</option>
-																))}
-															</Select>
-														</FormControl>
+														</XrayFieldGrid>
 														{(formValues?.xhttpMode === "stream-up" ||
 															formValues?.xhttpMode === "stream-one") && (
 															<FormControl
@@ -1985,7 +2074,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																/>
 															</FormControl>
 														)}
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Concurrency</FormLabel>
 																<Input
@@ -2003,8 +2092,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	})}
 																/>
 															</FormControl>
-														</HStack>
-														<HStack>
+														</XrayFieldGrid>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Reuse Times</FormLabel>
 																<Input
@@ -2022,8 +2111,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	{...register("xhttpXmuxHMaxRequestTimes")}
 																/>
 															</FormControl>
-														</HStack>
-														<HStack>
+														</XrayFieldGrid>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Reusable Secs</FormLabel>
 																<Input
@@ -2041,7 +2130,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	})}
 																/>
 															</FormControl>
-														</HStack>
+														</XrayFieldGrid>
 													</VStack>
 												)}
 											</VStack>
@@ -2057,8 +2146,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<FormLabel mb={1}>
 													{t("pages.outbound.security")}
 												</FormLabel>
-												<Select
-													size="sm"
+												<SearchableTagSelect
+													mode="single"
+													options={[
+														{ value: "none", label: t("common.none", "None") },
+														{ value: "tls", label: "TLS", disabled: !canTls },
+														{
+															value: "reality",
+															label: "Reality",
+															disabled: !canReality,
+														},
+													]}
 													value={
 														realityEnabled && canReality
 															? "reality"
@@ -2066,9 +2164,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																? "tls"
 																: "none"
 													}
-													onChange={(event) => {
-														const next = event.target
-															.value as OutboundSecurityValue;
+													onChange={(value) => {
+														const next = value as OutboundSecurityValue;
 														setValue("tlsEnabled", next === "tls");
 														setValue("realityEnabled", next === "reality");
 														if (next !== "tls") {
@@ -2087,17 +2184,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															setValue("realityMldsa65Verify", "");
 														}
 													}}
-												>
-													<option value="none">
-														{t("common.none", "None")}
-													</option>
-													<option value="tls" disabled={!canTls}>
-														TLS
-													</option>
-													<option value="reality" disabled={!canReality}>
-														Reality
-													</option>
-												</Select>
+													placeholder={t("pages.outbound.security")}
+													searchPlaceholder={t("search", "Search")}
+												/>
 											</FormControl>
 											{tlsEnabled && canTls && (
 												<VStack spacing={3} align="stretch" mt={3}>
@@ -2111,21 +2200,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>uTLS</FormLabel>
-														<Select size="sm" {...register("tlsFingerprint")}>
-															<option value="">
-																{t("common.none", "None")}
-															</option>
-															{TLS_FINGERPRINT_OPTIONS.map(
-																(fingerprintOption) => (
-																	<option
-																		key={fingerprintOption}
-																		value={fingerprintOption}
-																	>
-																		{fingerprintOption}
-																	</option>
-																),
+														<Controller
+															control={control}
+															name="tlsFingerprint"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={[
+																		{ value: "", label: t("common.none", "None") },
+																		...TLS_FINGERPRINT_OPTIONS,
+																	]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("common.none", "None")}
+																	searchPlaceholder={t("search", "Search")}
+																/>
 															)}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>ALPN</FormLabel>
@@ -2166,24 +2259,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>uTLS</FormLabel>
-														<Select
-															size="sm"
-															{...register("realityFingerprint")}
-														>
-															<option value="">
-																{t("common.none", "None")}
-															</option>
-															{TLS_FINGERPRINT_OPTIONS.map(
-																(fingerprintOption) => (
-																	<option
-																		key={fingerprintOption}
-																		value={fingerprintOption}
-																	>
-																		{fingerprintOption}
-																	</option>
-																),
+														<Controller
+															control={control}
+															name="realityFingerprint"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={[
+																		{ value: "", label: t("common.none", "None") },
+																		...TLS_FINGERPRINT_OPTIONS,
+																	]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("common.none", "None")}
+																	searchPlaceholder={t("search", "Search")}
+																/>
 															)}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -2252,14 +2346,22 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>xudp UDP 443</FormLabel>
-														<Select
-															size="sm"
-															{...register("muxXudpProxyUdp443")}
-														>
-															<option value="reject">reject</option>
-															<option value="allow">allow</option>
-															<option value="skip">skip</option>
-														</Select>
+														<Controller
+															control={control}
+															name="muxXudpProxyUdp443"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={["reject", "allow", "skip"]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder="reject"
+																	searchPlaceholder={t("search", "Search")}
+																/>
+															)}
+														/>
 													</FormControl>
 												</VStack>
 											)}
@@ -2299,6 +2401,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									<Box height="420px">
 										<JsonEditor
 											json={jsonData}
+											canonicalContext="outbound"
 											onChange={handleJsonEditorChange}
 										/>
 									</Box>

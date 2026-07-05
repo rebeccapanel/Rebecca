@@ -8,7 +8,6 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	VStack,
 } from "@chakra-ui/react";
 import { type FC, useEffect, useMemo } from "react";
@@ -17,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
 	XrayDialogSection,
+	XrayFieldGrid,
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
@@ -144,19 +144,32 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 							<XrayDialogSection
 								title={t("pages.xray.reverse.title", "Reverse")}
 							>
-								<VStack spacing={4} align="stretch">
+								<XrayFieldGrid>
 									<FormControl>
-										<FormLabel>
-											{t("pages.xray.reverse.type", "Type")}
-										</FormLabel>
-										<Select {...modalForm.register("type")} size="sm">
-											<option value="bridge">
-												{t("pages.xray.reverse.bridge", "Bridge")}
-											</option>
-											<option value="portal">
-												{t("pages.xray.reverse.portal", "Portal")}
-											</option>
-										</Select>
+									<FormLabel>
+										{t("pages.xray.reverse.type", "Type")}
+									</FormLabel>
+										<SearchableTagSelect
+											mode="single"
+											options={[
+												{
+													value: "bridge",
+													label: t("pages.xray.reverse.bridge", "Bridge"),
+												},
+												{
+													value: "portal",
+													label: t("pages.xray.reverse.portal", "Portal"),
+												},
+											]}
+											value={modalForm.watch("type") ?? "bridge"}
+											onChange={(value) =>
+												modalForm.setValue("type", value as ReverseType, {
+													shouldDirty: true,
+												})
+											}
+											placeholder={t("pages.xray.reverse.type", "Type")}
+											searchPlaceholder={t("search", "Search")}
+										/>
 									</FormControl>
 
 									<FormControl isInvalid={tagInvalid}>
@@ -204,14 +217,14 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 											)}
 										</FormErrorMessage>
 									</FormControl>
-								</VStack>
+								</XrayFieldGrid>
 							</XrayDialogSection>
 
 							{type === "bridge" ? (
 								<XrayDialogSection
 									title={t("pages.xray.reverse.bridge", "Bridge")}
 								>
-									<VStack spacing={4} align="stretch">
+									<XrayFieldGrid>
 										<FormControl isInvalid={!interconnectionOutboundTag}>
 											<FormLabel>
 												{t(
@@ -271,17 +284,17 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 											<FormErrorMessage>
 												{t(
 													"pages.xray.reverse.outboundRequired",
-													"Select an outbound tag.",
-												)}
-											</FormErrorMessage>
-										</FormControl>
-									</VStack>
+												"Select an outbound tag.",
+											)}
+										</FormErrorMessage>
+									</FormControl>
+									</XrayFieldGrid>
 								</XrayDialogSection>
 							) : (
 								<XrayDialogSection
 									title={t("pages.xray.reverse.portal", "Portal")}
 								>
-									<VStack spacing={4} align="stretch">
+									<XrayFieldGrid>
 										<FormControl
 											isInvalid={interconnectionInboundTags.length === 0}
 										>
@@ -343,11 +356,11 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 											<FormErrorMessage>
 												{t(
 													"pages.xray.reverse.inboundRequired",
-													"Select at least one inbound tag.",
-												)}
-											</FormErrorMessage>
-										</FormControl>
-									</VStack>
+												"Select at least one inbound tag.",
+											)}
+										</FormErrorMessage>
+									</FormControl>
+									</XrayFieldGrid>
 								</XrayDialogSection>
 							)}
 						</VStack>

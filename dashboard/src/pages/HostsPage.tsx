@@ -2,11 +2,6 @@ import {
 	Box,
 	HStack,
 	Icon,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
 	Text,
 	useColorModeValue,
 	VStack,
@@ -14,6 +9,7 @@ import {
 import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
+import { TabSystem } from "components/ui";
 import { fetchInbounds } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import useGetUser from "hooks/useGetUser";
@@ -127,100 +123,41 @@ export const HostsPage: FC = () => {
 					)}
 				</Text>
 			</Box>
-			<Tabs
-				variant="unstyled"
-				isLazy
-				index={activeTab}
-				onChange={handleTabChange}
-			>
-				<TabList
-					borderWidth="1px"
-					borderColor={panelBorder}
-					borderRadius="md"
-					bg={panelBg}
-					p={{ base: 1, md: 2 }}
-					gap={{ base: 1.5, md: 2 }}
-					overflowX="auto"
-					overflowY="hidden"
-					flexWrap="nowrap"
-					maxW="full"
-					sx={{
-						WebkitOverflowScrolling: "touch",
-						overscrollBehaviorInline: "contain",
-						scrollbarWidth: "none",
-						scrollPaddingInline: "8px",
-						scrollSnapType: "x proximity",
-						"&::-webkit-scrollbar": { display: "none" },
-					}}
-				>
-					<Tab
-						borderRadius="md"
-						px={{ base: 3, md: 4 }}
-						py={2}
-						minH={{ base: "40px", md: "36px" }}
-						flexShrink={0}
-						fontWeight="semibold"
-						color="gray.500"
-						whiteSpace="nowrap"
-						sx={{ scrollSnapAlign: "start" }}
-						_selected={{
-							bg: "primary.500",
-							color: "white",
-						}}
-						_dark={{ color: "gray.300" }}
-					>
-						<HStack spacing={2}>
-							<Icon as={LinkIcon} w={4} h={4} />
-							<span>{t("hostsPage.tabInbounds", "Inbounds")}</span>
-						</HStack>
-					</Tab>
-					<Tab
-						borderRadius="md"
-						px={{ base: 3, md: 4 }}
-						py={2}
-						minH={{ base: "40px", md: "36px" }}
-						flexShrink={0}
-						fontWeight="semibold"
-						color="gray.500"
-						whiteSpace="nowrap"
-						sx={{ scrollSnapAlign: "start" }}
-						_selected={{
-							bg: "primary.500",
-							color: "white",
-						}}
-						_dark={{ color: "gray.300" }}
-					>
-						<HStack spacing={2}>
-							<Icon as={Squares2X2Icon} w={4} h={4} />
-							<span>{t("hostsPage.tabHosts", "Hosts")}</span>
-						</HStack>
-					</Tab>
-				</TabList>
-				<TabPanels>
-					<TabPanel px={0}>
-						<VStack spacing={4} align="stretch">
-							<Text color="gray.500" fontSize="sm">
-								{t(
-									"hostsPage.tabInboundsDescription",
-									"Manage and customize Xray inbounds, transport layers, security, and sniffing options.",
-								)}
-							</Text>
-							<InboundsManager />
-						</VStack>
-					</TabPanel>
-					<TabPanel px={0}>
-						<VStack spacing={4} align="stretch">
-							<Text color="gray.500" fontSize="sm">
-								{t(
-									"hostsPage.tabHostsDescription",
-									"Assign hosts to inbounds, adjust ordering, and fine-tune SNI, paths, and transport overrides.",
-								)}
-							</Text>
-							<HostsManager />
-						</VStack>
-					</TabPanel>
-				</TabPanels>
-			</Tabs>
+			<TabSystem
+				tabs={[
+					{
+						value: "inbounds",
+						isActive: activeTab === 0,
+						onClick: () => handleTabChange(0),
+						label: (
+							<HStack spacing={2}>
+								<Icon as={LinkIcon} w={4} h={4} />
+								<span>{t("hostsPage.tabInbounds", "Inbounds")}</span>
+							</HStack>
+						),
+					},
+					{
+						value: "hosts",
+						isActive: activeTab === 1,
+						onClick: () => handleTabChange(1),
+						label: (
+							<HStack spacing={2}>
+								<Icon as={Squares2X2Icon} w={4} h={4} />
+								<span>{t("hostsPage.tabHosts", "Hosts")}</span>
+							</HStack>
+						),
+					},
+				]}
+			/>
+			{activeTab === 0 ? (
+				<VStack mt={3} spacing={4} align="stretch">
+					<InboundsManager />
+				</VStack>
+			) : (
+				<VStack mt={3} spacing={4} align="stretch">
+					<HostsManager />
+				</VStack>
+			)}
 		</VStack>
 	);
 };

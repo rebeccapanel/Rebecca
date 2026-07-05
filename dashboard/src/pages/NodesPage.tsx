@@ -1,28 +1,17 @@
 import {
 	Alert,
 	AlertDescription,
-	AlertDialog,
-	AlertDialogBody,
-	AlertDialogContent,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogOverlay,
 	AlertIcon,
 	Box,
 	Button,
 	ButtonGroup,
 	chakra,
-	Checkbox,
 	Divider,
 	HStack,
 	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -35,33 +24,24 @@ import {
 	PopoverBody,
 	PopoverContent,
 	PopoverTrigger,
-	Portal,
 	Progress,
-	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
-	Switch,
-	Table,
 	Tag,
-	Tbody,
-	Td,
 	Text,
-	Th,
-	Thead,
 	Tooltip,
-	Tr,
 	useClipboard,
 	useColorModeValue,
 	useDisclosure,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	PlusIcon as AddIcon,
 	ArrowDownTrayIcon,
 	ArrowPathIcon,
-	Bars3Icon,
 	BookOpenIcon,
 	CheckCircleIcon,
 	CpuChipIcon,
@@ -73,9 +53,9 @@ import {
 	MagnifyingGlassIcon,
 	NoSymbolIcon,
 	ShieldCheckIcon,
-	Squares2X2Icon,
 	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
+import type { SortingState } from "@tanstack/react-table";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import {
 	FetchNodesQueryKey,
@@ -84,16 +64,16 @@ import {
 	useNodes,
 	useNodesQuery,
 } from "contexts/NodesContext";
+import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useEffect, useMemo, useRef, useState } from "react";
+import { type FC, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useNavigate } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import { formatBytes } from "utils/formatByte";
-import { formatDuration } from "utils/formatDuration";
 import {
 	getNodesPerPageLimitSize,
 	setNodesPerPageLimitSize,
@@ -102,6 +82,11 @@ import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
+import {
+	DataTable,
+	type DataTableColumn,
+	type DataTableRowAction,
+} from "../components/ui";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
 import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
@@ -125,8 +110,6 @@ const EditIconStyled = chakra(EditIcon, { baseStyle: { w: 4, h: 4 } });
 const ArrowPathIconStyled = chakra(ArrowPathIcon, {
 	baseStyle: { w: 4, h: 4 },
 });
-const GridViewIcon = chakra(Squares2X2Icon, { baseStyle: { w: 4, h: 4 } });
-const ListViewIcon = chakra(Bars3Icon, { baseStyle: { w: 4, h: 4 } });
 const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: 4, h: 4 } });
 const CopyIconStyled = chakra(DocumentDuplicateIcon, {
 	baseStyle: { w: 4, h: 4 },
@@ -233,9 +216,35 @@ const formatNodeSpeed = (value?: number | null) =>
 	value !== null && value !== undefined ? `${formatBytes(value, 2)}/s` : "-";
 
 const formatNodeUptime = (value?: number | null) =>
-	value !== null && value !== undefined && Number.isFinite(value) && value > 0
-		? formatDuration(value)
-		: "-";
+{
+	if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) {
+		return "-";
+	}
+	const units = [
+		{ suffix: "y", seconds: 365 * 24 * 60 * 60 },
+		{ suffix: "d", seconds: 24 * 60 * 60 },
+		{ suffix: "h", seconds: 60 * 60 },
+		{ suffix: "m", seconds: 60 },
+		{ suffix: "s", seconds: 1 },
+	];
+	let remaining = Math.floor(value);
+	const parts: string[] = [];
+	for (const unit of units) {
+		const amount = Math.floor(remaining / unit.seconds);
+		if (amount > 0 || (unit.suffix === "s" && parts.length === 0)) {
+			parts.push(`${amount}${unit.suffix}`);
+			remaining -= amount * unit.seconds;
+		}
+		if (parts.length === 2) break;
+	}
+	return parts.join(" ");
+};
+
+const formatNodeNamePreview = (value?: string | null) => {
+	const text = value?.trim();
+	if (!text) return "";
+	return text.length > 10 ? `${text.slice(0, 10)}...` : text;
+};
 
 const boundedPercent = (value?: number | null) =>
 	value !== null && value !== undefined && Number.isFinite(value)
@@ -255,12 +264,22 @@ const NodeMetricDisplay = ({
 }) => {
 	const progressValue = boundedPercent(percent);
 	return (
-		<VStack align="flex-start" spacing={1} minW={0}>
-			<Text fontWeight="semibold" fontSize="sm" lineHeight="short" wordBreak="break-word">
+		<VStack
+			align="center"
+			justify="center"
+			spacing={0.5}
+			minW={0}
+			maxW="full"
+			minH="34px"
+			overflow="hidden"
+			textAlign="center"
+			mx="auto"
+		>
+			<Text fontWeight="semibold" fontSize="xs" lineHeight="short" noOfLines={1} maxW="full">
 				{value}
 			</Text>
 			{helper && helper !== "-" ? (
-				<Text fontSize="xs" color="gray.500" lineHeight="short">
+				<Text fontSize="xs" color="gray.500" lineHeight="short" noOfLines={1} maxW="full">
 					{helper}
 				</Text>
 			) : null}
@@ -270,7 +289,8 @@ const NodeMetricDisplay = ({
 					size="xs"
 					colorScheme={colorScheme}
 					borderRadius="full"
-					w="56px"
+					w="46px"
+					mx="auto"
 					bg="blackAlpha.100"
 					_dark={{ bg: "whiteAlpha.200" }}
 				/>
@@ -303,6 +323,117 @@ const getNodeUsage = (node: NodeType) => (node.uplink ?? 0) + (node.downlink ?? 
 const getNodeBandwidth = (node: NodeType) =>
 	(node.upload_speed ?? 0) + (node.download_speed ?? 0);
 
+const splitHostAddressValues = (value?: string | null) =>
+	String(value ?? "")
+		.split(/\r?\n|[,;]/)
+		.map((item) => item.trim())
+		.filter(Boolean);
+
+const normalizeNodeAddressToken = (value: string) =>
+	value.trim().replace(/^\[(.*)\]$/, "$1").toLowerCase();
+
+const uniqueHostValues = (values: string[]) => {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	values.forEach((value) => {
+		const normalized = normalizeNodeAddressToken(value);
+		if (!normalized || seen.has(normalized)) return;
+		seen.add(normalized);
+		result.push(value.trim());
+	});
+	return result;
+};
+
+const getHostAddressValues = (host: HostsSchema[string][number]) =>
+	uniqueHostValues([
+		...splitHostAddressValues(host.address),
+		...(Array.isArray(host.address_options) ? host.address_options : []),
+	]);
+
+const getHostLabel = (host: HostsSchema[string][number], inboundTag: string) =>
+	host.remark?.trim() || `${inboundTag} #${host.id ?? "new"}`;
+
+const emptyNodeHostImpact = (): NodeHostImpact => ({
+	cleanupHostNames: [],
+	cleanupPayload: {},
+	cleanupTags: [],
+	cleanupCount: 0,
+	riskyHostNames: [],
+	nodeAddresses: [],
+});
+
+const buildNodeHostImpact = (
+	hosts: HostsSchema,
+	nodesForAction: NodeType[],
+): NodeHostImpact => {
+	const nodeAddresses = uniqueHostValues(
+		nodesForAction
+			.map((node) => node.address ?? "")
+			.map((address) => address.trim())
+			.filter(Boolean),
+	);
+	if (nodeAddresses.length === 0 || !hosts || typeof hosts !== "object") {
+		return emptyNodeHostImpact();
+	}
+
+	const nodeAddressSet = new Set(nodeAddresses.map(normalizeNodeAddressToken));
+	const impact = emptyNodeHostImpact();
+	impact.nodeAddresses = nodeAddresses;
+	const cleanupTags = new Set<string>();
+	const cleanupHostNames = new Set<string>();
+	const riskyHostNames = new Set<string>();
+
+	Object.entries(hosts).forEach(([inboundTag, hostList]) => {
+		if (!Array.isArray(hostList)) return;
+		let changed = false;
+		const nextHostList = hostList.map((host) => {
+			if (host.is_disabled) {
+				return host;
+			}
+			const values = getHostAddressValues(host);
+			const hasNodeAddress = values.some((value) =>
+				nodeAddressSet.has(normalizeNodeAddressToken(value)),
+			);
+			if (!hasNodeAddress) {
+				return host;
+			}
+
+			const remaining = values.filter(
+				(value) => !nodeAddressSet.has(normalizeNodeAddressToken(value)),
+			);
+			const hostName = getHostLabel(host, inboundTag);
+			if (remaining.length === 0) {
+				riskyHostNames.add(hostName);
+				return host;
+			}
+
+			changed = true;
+			cleanupHostNames.add(hostName);
+			return {
+				...host,
+				address: remaining.join(", "),
+				address_options: [],
+			};
+		});
+		if (changed) {
+			impact.cleanupPayload[inboundTag] = nextHostList;
+			cleanupTags.add(inboundTag);
+		}
+	});
+
+	impact.cleanupTags = Array.from(cleanupTags);
+	impact.cleanupHostNames = Array.from(cleanupHostNames);
+	impact.cleanupCount = impact.cleanupHostNames.length;
+	impact.riskyHostNames = Array.from(riskyHostNames);
+	return impact;
+};
+
+const hasNodeHostImpact = (impact?: NodeHostImpact | null) =>
+	Boolean(
+		impact &&
+			(impact.cleanupCount > 0 || impact.riskyHostNames.length > 0),
+	);
+
 type VersionDialogTarget =
 	| { type: "node"; node: NodeType }
 	| { type: "bulk"; nodes?: NodeType[] };
@@ -314,6 +445,12 @@ type GeoDialogTarget =
 type ServiceActionConfirm =
 	| { type: "restart"; node: NodeType; label: string }
 	| { type: "update"; node: NodeType; label: string }
+	| {
+			type: "disable";
+			node: NodeType;
+			label: string;
+			hostImpact?: NodeHostImpact;
+	  }
 	| { type: "update-all"; count: number }
 	| {
 			type:
@@ -324,7 +461,17 @@ type ServiceActionConfirm =
 				| "bulk-update";
 			nodes: NodeType[];
 			count: number;
+			hostImpact?: NodeHostImpact;
 		};
+
+type NodeHostImpact = {
+	cleanupHostNames: string[];
+	cleanupPayload: Partial<HostsSchema>;
+	cleanupTags: string[];
+	cleanupCount: number;
+	riskyHostNames: string[];
+	nodeAddresses: string[];
+};
 
 type MaintenanceInfo = {
 	panel?: { mode?: string; install_mode?: string } | null;
@@ -334,6 +481,19 @@ type MaintenanceInfo = {
 		latest_dev?: { tag?: string | null } | null;
 	} | null;
 };
+
+const nodeSortKeys: NodeSortKey[] = [
+	"name",
+	"status",
+	"usage",
+	"bandwidth",
+	"cpu",
+	"ram",
+	"uptime",
+];
+
+const isNodeSortKey = (value: string): value is NodeSortKey =>
+	nodeSortKeys.includes(value as NodeSortKey);
 
 export const NodesPage: FC = () => {
 	const { t } = useTranslation();
@@ -364,10 +524,9 @@ export const NodesPage: FC = () => {
 	} = useNodes();
 	const queryClient = useQueryClient();
 	const toast = useToast();
-	const nodeCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const nodeCardBorder = useColorModeValue("blackAlpha.300", "whiteAlpha.300");
-	const nodePanelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const nodePanelBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const refreshHosts = useHosts((state) => state.fetchHosts);
+	const nodePanelBg = useColorModeValue("panel.surface", "panel.surface");
+	const nodePanelBorder = useColorModeValue("panel.border", "panel.border");
 	const [editingNode, setEditingNode] = useState<NodeType | null>(null);
 	const [isAddNodeOpen, setAddNodeOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -378,14 +537,6 @@ export const NodesPage: FC = () => {
 		useState<NodeSortDirection>("asc");
 	const [page, setPage] = useState(1);
 	const [pageSize, setPageSize] = useState(() => getNodesPerPageLimitSize());
-	const viewModeStorageKey = "nodesViewMode";
-	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
-		if (typeof window === "undefined") {
-			return "grid";
-		}
-		const saved = window.localStorage.getItem(viewModeStorageKey);
-		return saved === "list" ? "list" : "grid";
-	});
 	const [versionDialogTarget, setVersionDialogTarget] =
 		useState<VersionDialogTarget | null>(null);
 	const [geoDialogTarget, setGeoDialogTarget] =
@@ -415,6 +566,7 @@ export const NodesPage: FC = () => {
 	const [updatingBulkService, setUpdatingBulkService] = useState(false);
 	const [serviceActionConfirm, setServiceActionConfirm] =
 		useState<ServiceActionConfirm | null>(null);
+	const [hostCleanupLoading, setHostCleanupLoading] = useState(false);
 	const [selectedNodeIds, setSelectedNodeIds] = useState<number[]>([]);
 	const [bulkNodeActionLoading, setBulkNodeActionLoading] = useState<
 		string | null
@@ -439,25 +591,14 @@ export const NodesPage: FC = () => {
 		onOpen: openResetConfirm,
 		onClose: closeResetConfirm,
 	} = useDisclosure();
-	const cancelResetRef = useRef<HTMLButtonElement | null>(null);
 	const [deleteCandidate, setDeleteCandidate] = useState<NodeType | null>(null);
+	const [deleteHostImpact, setDeleteHostImpact] =
+		useState<NodeHostImpact | null>(null);
 	const {
 		isOpen: isDeleteConfirmOpen,
 		onOpen: openDeleteConfirm,
 		onClose: closeDeleteConfirm,
 	} = useDisclosure();
-	const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		try {
-			window.localStorage.setItem(viewModeStorageKey, viewMode);
-		} catch (error) {
-			console.warn("Unable to persist nodes view mode", error);
-		}
-	}, [viewMode]);
-
 	useEffect(() => {
 		setNodesPerPageLimitSize(String(pageSize));
 	}, [pageSize]);
@@ -575,6 +716,7 @@ export const NodesPage: FC = () => {
 				refetchNodes();
 				closeDeleteConfirm();
 				setDeleteCandidate(null);
+				setDeleteHostImpact(null);
 			},
 			onError: (err) => {
 				generateErrorMessage(err, toast);
@@ -644,6 +786,72 @@ export const NodesPage: FC = () => {
 		},
 	);
 
+	const loadNodeHostImpact = async (nodesForAction: NodeType[]) => {
+		const currentHosts = await apiFetch<HostsSchema>("/hosts");
+		return buildNodeHostImpact(currentHosts || {}, nodesForAction);
+	};
+
+	const applyNodeHostCleanup = async (impact?: NodeHostImpact | null) => {
+		if (!impact || impact.cleanupCount === 0) {
+			return;
+		}
+		await apiFetch("/hosts", {
+			method: "PUT",
+			body: impact.cleanupPayload,
+		});
+		refreshHosts();
+		toast({
+			title: t(
+				"nodes.hostAddressCleanupApplied",
+				"Removed node address from {{count}} active hosts.",
+				{ count: impact.cleanupCount },
+			),
+			status: "success",
+			isClosable: true,
+			position: "top",
+			duration: 2400,
+		});
+	};
+
+	const renderHostImpactMessage = (
+		baseMessage: string,
+		impact?: NodeHostImpact | null,
+	) => {
+		if (!hasNodeHostImpact(impact)) {
+			return baseMessage;
+		}
+		const cleanupNames = impact?.cleanupHostNames ?? [];
+		const riskyNames = impact?.riskyHostNames ?? [];
+		const formatNames = (items: string[]) => {
+			const visible = items.slice(0, 4).join(", ");
+			const remaining = items.length - 4;
+			return remaining > 0 ? `${visible} +${remaining}` : visible;
+		};
+		return (
+			<VStack align="stretch" spacing={2}>
+				<Text>{baseMessage}</Text>
+				{cleanupNames.length > 0 && (
+					<Text color="blue.300">
+						{t(
+							"nodes.hostAddressCleanupNotice",
+							"Rebecca will remove this node address from active multi-address hosts: {{hosts}}.",
+							{ hosts: formatNames(cleanupNames) },
+						)}
+					</Text>
+				)}
+				{riskyNames.length > 0 && (
+					<Text color="orange.300" fontWeight="700">
+						{t(
+							"nodes.hostAddressRiskNotice",
+							"This node address is the only address in active hosts: {{hosts}}. Continuing may break subscriptions that use those hosts.",
+							{ hosts: formatNames(riskyNames) },
+						)}
+					</Text>
+				)}
+			</VStack>
+		);
+	};
+
 	const { isLoading: isResettingUsage, mutate: resetUsageMutate } = useMutation(
 		resetNodeUsage,
 		{
@@ -705,9 +913,7 @@ export const NodesPage: FC = () => {
 			},
 		});
 
-	const nodeGridColumns = useMemo(() => ({ base: 1, md: 2, xl: 3 }), []);
-
-	const handleToggleNode = (node: NodeType) => {
+	const runToggleNodeStatus = (node: NodeType) => {
 		if (!node?.id) return;
 		const isEnabled = node.status !== "disabled";
 		const nextStatus = isEnabled ? "disabled" : "connecting";
@@ -717,27 +923,71 @@ export const NodesPage: FC = () => {
 		toggleNodeStatus({ ...node, status: nextStatus });
 	};
 
+	const handleToggleNode = async (node: NodeType) => {
+		if (!node?.id) return;
+		const isEnabled = node.status !== "disabled";
+		if (!isEnabled) {
+			runToggleNodeStatus(node);
+			return;
+		}
+		try {
+			const hostImpact = await loadNodeHostImpact([node]);
+			if (hostImpact.riskyHostNames.length > 0) {
+				const label =
+					node.name || node.address || t("nodes.thisNode", "this node");
+				setServiceActionConfirm({
+					type: "disable",
+					node,
+					label,
+					hostImpact,
+				});
+				return;
+			}
+			setHostCleanupLoading(true);
+			await applyNodeHostCleanup(hostImpact);
+			runToggleNodeStatus(node);
+		} catch (err) {
+			generateErrorMessage(err, toast);
+		} finally {
+			setHostCleanupLoading(false);
+		}
+	};
+
 	const handleResetNodeUsage = (node: NodeType) => {
 		if (!node?.id) return;
 		setResetCandidate(node);
 		openResetConfirm();
 	};
 
-	const handleDeleteNodeRequest = (node: NodeType) => {
+	const handleDeleteNodeRequest = async (node: NodeType) => {
 		if (!node?.id) return;
-		setDeleteCandidate(node);
-		openDeleteConfirm();
+		try {
+			setDeleteHostImpact(await loadNodeHostImpact([node]));
+			setDeleteCandidate(node);
+			openDeleteConfirm();
+		} catch (err) {
+			generateErrorMessage(err, toast);
+		}
 	};
 
 	const handleCloseDeleteConfirm = () => {
-		if (isDeletingNode) return;
+		if (isDeletingNode || hostCleanupLoading) return;
 		closeDeleteConfirm();
 		setDeleteCandidate(null);
+		setDeleteHostImpact(null);
 	};
 
-	const confirmDeleteNode = () => {
+	const confirmDeleteNode = async () => {
 		if (!deleteCandidate) return;
-		deleteNodeMutate(deleteCandidate);
+		try {
+			setHostCleanupLoading(true);
+			await applyNodeHostCleanup(deleteHostImpact);
+			deleteNodeMutate(deleteCandidate);
+		} catch (err) {
+			generateErrorMessage(err, toast);
+		} finally {
+			setHostCleanupLoading(false);
+		}
 	};
 
 	const handleRestartNodeService = (node: NodeType) => {
@@ -808,7 +1058,12 @@ export const NodesPage: FC = () => {
 	};
 
 	const closeServiceActionConfirm = () => {
-		if (isRestartingService || isUpdatingService || updatingBulkService) {
+		if (
+			isRestartingService ||
+			isUpdatingService ||
+			updatingBulkService ||
+			hostCleanupLoading
+		) {
 			return;
 		}
 		setServiceActionConfirm(null);
@@ -834,6 +1089,21 @@ export const NodesPage: FC = () => {
 			setServiceActionConfirm(null);
 			return;
 		}
+		if (serviceActionConfirm.type === "disable") {
+			const targetNode = serviceActionConfirm.node;
+			const hostImpact = serviceActionConfirm.hostImpact;
+			setServiceActionConfirm(null);
+			try {
+				setHostCleanupLoading(true);
+				await applyNodeHostCleanup(hostImpact);
+				runToggleNodeStatus(targetNode);
+			} catch (err) {
+				generateErrorMessage(err, toast);
+			} finally {
+				setHostCleanupLoading(false);
+			}
+			return;
+		}
 
 		if (
 			serviceActionConfirm.type === "bulk-enable" ||
@@ -846,11 +1116,19 @@ export const NodesPage: FC = () => {
 			const targetNodes = serviceActionConfirm.nodes.filter(
 				(node: NodeType) => node.id != null,
 			);
+			const hostImpact = serviceActionConfirm.hostImpact;
 			setServiceActionConfirm(null);
 			setBulkNodeActionLoading(actionType);
 			let successCount = 0;
 			let failedCount = 0;
 			const completedIDs: number[] = [];
+			try {
+				await applyNodeHostCleanup(hostImpact);
+			} catch (err) {
+				setBulkNodeActionLoading(null);
+				generateErrorMessage(err, toast);
+				return;
+			}
 			for (const node of targetNodes) {
 				if (node.id == null) {
 					continue;
@@ -1301,22 +1579,9 @@ export const NodesPage: FC = () => {
 				.filter((id): id is number => id != null),
 		[filteredNodes],
 	);
-	const paginatedNodeIds = useMemo(
-		() =>
-			paginatedNodes
-				.map((node) => node.id)
-				.filter((id): id is number => id != null),
-		[paginatedNodes],
-	);
 	const allFilteredSelected =
 		filteredNodeIds.length > 0 &&
 		filteredNodeIds.every((id) => selectedNodeIdSet.has(id));
-	const allPageSelected =
-		paginatedNodeIds.length > 0 &&
-		paginatedNodeIds.every((id) => selectedNodeIdSet.has(id));
-	const somePageSelected =
-		paginatedNodeIds.some((id) => selectedNodeIdSet.has(id)) &&
-		!allPageSelected;
 
 	const handleSort = (key: NodeSortKey) => {
 		if (sortKey === key) {
@@ -1366,22 +1631,6 @@ export const NodesPage: FC = () => {
 		setSelectedNodeIds(filteredNodeIds);
 	};
 
-	const toggleCurrentPageSelection = (checked: boolean) => {
-		setSelectedNodeIds((current) => {
-			if (!checked) {
-				const pageIDs = new Set(paginatedNodeIds);
-				return current.filter((id) => !pageIDs.has(id));
-			}
-			const next = new Set(current);
-			paginatedNodeIds.forEach((id) => next.add(id));
-			return Array.from(next);
-		});
-	};
-
-	const deselectAllNodes = () => {
-		setSelectedNodeIds([]);
-	};
-
 	const selectableSelectedNodes = () =>
 		selectedNodes.filter((node) => node.id != null);
 
@@ -1393,7 +1642,7 @@ export const NodesPage: FC = () => {
 	const selectedConnectedBinaryNodes = () =>
 		selectedBinaryNodes().filter((node) => node.status === "connected");
 
-	const openBulkActionConfirm = (
+	const openBulkActionConfirm = async (
 		type:
 			| "bulk-enable"
 			| "bulk-disable"
@@ -1414,10 +1663,20 @@ export const NodesPage: FC = () => {
 			});
 			return;
 		}
+		let hostImpact: NodeHostImpact | undefined;
+		if (type === "bulk-disable" || type === "bulk-delete") {
+			try {
+				hostImpact = await loadNodeHostImpact(nodesForAction);
+			} catch (err) {
+				generateErrorMessage(err, toast);
+				return;
+			}
+		}
 		setServiceActionConfirm({
 			type,
 			nodes: nodesForAction,
 			count: nodesForAction.length,
+			hostImpact,
 		});
 	};
 
@@ -1479,6 +1738,8 @@ export const NodesPage: FC = () => {
 			? t("nodes.restartServiceAction", "Restart node service")
 			: serviceActionConfirm?.type === "update"
 				? t("nodes.updateServiceAction", "Update node service")
+				: serviceActionConfirm?.type === "disable"
+					? t("nodes.disableNode", "Disable node")
 				: serviceActionConfirm?.type === "update-all"
 					? t("nodes.updateAllNodeServices", "Update all node services")
 					: serviceActionConfirm?.type === "bulk-enable"
@@ -1506,6 +1767,13 @@ export const NodesPage: FC = () => {
 						"Send an update request to {{name}}? The node will download updates and restart.",
 						{ name: serviceActionConfirm.label },
 					)
+				: serviceActionConfirm?.type === "disable"
+					? renderHostImpactMessage(
+							t("nodes.disableConfirm", "Disable {{name}}?", {
+								name: serviceActionConfirm.label,
+							}),
+							serviceActionConfirm.hostImpact,
+						)
 				: serviceActionConfirm?.type === "update-all"
 					? t(
 							"nodes.updateAllNodeServicesConfirm",
@@ -1519,16 +1787,22 @@ export const NodesPage: FC = () => {
 								{ count: serviceActionConfirm.count },
 							)
 						: serviceActionConfirm?.type === "bulk-disable"
-							? t(
-									"nodes.bulkDisableConfirm",
-									"Disable {{count}} selected nodes?",
-									{ count: serviceActionConfirm.count },
+							? renderHostImpactMessage(
+									t(
+										"nodes.bulkDisableConfirm",
+										"Disable {{count}} selected nodes?",
+										{ count: serviceActionConfirm.count },
+									),
+									serviceActionConfirm.hostImpact,
 								)
 							: serviceActionConfirm?.type === "bulk-delete"
-								? t(
-										"nodes.bulkDeleteConfirm",
-										"Delete {{count}} selected nodes? This cannot be undone.",
-										{ count: serviceActionConfirm.count },
+								? renderHostImpactMessage(
+										t(
+											"nodes.bulkDeleteConfirm",
+											"Delete {{count}} selected nodes? This cannot be undone.",
+											{ count: serviceActionConfirm.count },
+										),
+										serviceActionConfirm.hostImpact,
 									)
 								: serviceActionConfirm?.type === "bulk-reset"
 									? t(
@@ -1549,6 +1823,8 @@ export const NodesPage: FC = () => {
 			? t("nodes.restartServiceAction", "Restart node service")
 			: serviceActionConfirm?.type === "update-all"
 				? t("nodes.updateAllNodeServices", "Update all node services")
+				: serviceActionConfirm?.type === "disable"
+					? t("nodes.disableNode", "Disable node")
 				: serviceActionConfirm?.type === "bulk-enable"
 					? t("nodes.enableNode", "Enable node")
 					: serviceActionConfirm?.type === "bulk-disable"
@@ -1564,6 +1840,7 @@ export const NodesPage: FC = () => {
 	const serviceActionConfirmLoading =
 		isRestartingService ||
 		isUpdatingService ||
+		hostCleanupLoading ||
 		updatingBulkService ||
 		Boolean(bulkNodeActionLoading);
 
@@ -1605,6 +1882,623 @@ export const NodesPage: FC = () => {
 					? t("nodes.geoDialog.bulkTitle", "Update selected nodes geo")
 					: "";
 
+	const renderNodeStatus = (node: NodeType) => {
+		const status = node.status || "error";
+		const statusBadge = <NodeModalStatusBadge status={status} compact />;
+		if (status !== "error" || !node.message) {
+			return statusBadge;
+		}
+		return (
+			<Popover
+				trigger="hover"
+				placement="top"
+				openDelay={250}
+				closeDelay={150}
+				isLazy
+				closeOnBlur={false}
+			>
+				<PopoverTrigger>
+					<Box as="span">{statusBadge}</Box>
+				</PopoverTrigger>
+				<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
+					<PopoverArrow />
+					<PopoverBody>{node.message}</PopoverBody>
+				</PopoverContent>
+			</Popover>
+		);
+	};
+
+	const nodeColumns = useMemo<DataTableColumn<NodeType>[]>(
+		() => [
+			{
+				id: "name",
+				header: t("nodes.columns.name", "Name"),
+				accessor: (node) => node.name || t("nodes.unnamedNode", "Unnamed node"),
+				sortable: true,
+				sortValue: (node) => node.name || "",
+				isPrimary: true,
+				priority: "primary",
+				width: { lg: "82px", xl: "92px" },
+				minWidth: "70px",
+				maxWidth: "112px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 0,
+				mobileMetaLabel: t("nodes.columns.name", "Name"),
+				cell: (node) => (
+					<Text
+						fontWeight="semibold"
+						color="panel.text"
+						noOfLines={1}
+						maxW="full"
+						dir="auto"
+					>
+						{formatNodeNamePreview(
+							node.name || t("nodes.unnamedNode", "Unnamed node"),
+						)}
+					</Text>
+				),
+			},
+			{
+				id: "status",
+				header: t("nodes.columns.status", "Status"),
+				sortable: true,
+				sortValue: (node) => node.status || "error",
+				priority: "high",
+				width: { lg: "88px", xl: "96px" },
+				minWidth: "80px",
+				maxWidth: "104px",
+				headerAlign: "center",
+				cellAlign: "center",
+				mobilePriority: 1,
+				mobileMetaLabel: t("nodes.columns.status", "Status"),
+				cell: renderNodeStatus,
+			},
+			{
+				id: "address",
+				header: t("nodes.columns.address", "Address"),
+				accessor: "address",
+				priority: "high",
+				width: { lg: "126px", xl: "138px" },
+				minWidth: "112px",
+				maxWidth: "158px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 2,
+				mobileMetaLabel: t("nodes.columns.address", "Address"),
+				cell: (node) => (
+					<Text
+						as="button"
+						type="button"
+						dir="ltr"
+						sx={{ unicodeBidi: "isolate" }}
+						cursor="pointer"
+						textAlign="start"
+						maxW="full"
+						noOfLines={1}
+						_hover={{ color: "primary.500", textDecoration: "underline" }}
+						onClick={(event) => {
+							event.stopPropagation();
+							copyToClipboard(
+								node.address,
+								t("nodes.nodeAddress", "Address"),
+							);
+						}}
+					>
+						{formatCellValue(node.address)}
+					</Text>
+				),
+			},
+			{
+				id: "xray",
+				header: t("nodes.columns.xrayVersion", "Xray version"),
+				priority: "medium",
+				hideBelow: "lg",
+				mobileVisible: true,
+				width: { xl: "96px" },
+				minWidth: "84px",
+				maxWidth: "110px",
+				truncate: true,
+				hideOnMobile: true,
+				mobilePriority: 3,
+				mobileMetaLabel: t("nodes.columns.xrayVersion", "Xray"),
+				cell: (node) =>
+					node.xray_version ? (
+						<Tag
+							as="button"
+							type="button"
+							colorScheme="blue"
+							size="sm"
+							maxW="full"
+							overflow="hidden"
+							whiteSpace="nowrap"
+							cursor="pointer"
+							_hover={{ opacity: 0.82 }}
+							onClick={(event) => {
+								event.stopPropagation();
+								if (node.id) setVersionDialogTarget({ type: "node", node });
+							}}
+						>
+							{`Xray ${node.xray_version}`}
+						</Tag>
+					) : (
+						<Text as="span" color="panel.textMuted">
+							-
+						</Text>
+					),
+			},
+			{
+				id: "runtime",
+				header: t("nodes.columns.nodeRuntime", "Node / install"),
+				accessor: (node) =>
+					[node.node_install_mode, node.node_update_channel]
+						.filter(Boolean)
+						.join(" / ") || EMPTY_CELL_VALUE,
+				priority: "low",
+				hideBelow: "xl",
+				mobileVisible: true,
+				width: { xl: "118px" },
+				minWidth: "104px",
+				maxWidth: "142px",
+				truncate: true,
+				tooltip: true,
+				mobileLabel: t("nodes.runtime", "Runtime"),
+				mobilePriority: 4,
+				cell: (node) => {
+					const nodeId = node.id as number | undefined;
+					const nodeHostActionsAvailable =
+						hostActionsAvailable && node.node_install_mode === "binary";
+					const nodeRuntimeVersion = getNodeRuntimeVersion(node);
+					const nodeRuntimeDisplayVersion = getNodeRuntimeDisplayVersion(node);
+					const nodeEffectiveUpdateChannel = getNodeUpdateChannel(
+						node,
+						nodeUpdateChannel,
+					);
+					const nodeLatestVersion = getLatestNodeVersionForChannel(
+						maintenanceInfo,
+						nodeEffectiveUpdateChannel,
+					);
+					const nodeServiceUpdateAvailable =
+						getNodeServiceUpdateAvailable(
+							nodeRuntimeVersion,
+							nodeLatestVersion,
+							nodeEffectiveUpdateChannel,
+						);
+					const nodeInstallLabel =
+						[node.node_install_mode, node.node_update_channel]
+							.filter(Boolean)
+							.join(" / ") || EMPTY_CELL_VALUE;
+					return (
+						<VStack
+							align="center"
+							justify="center"
+							spacing={1}
+							minW={0}
+							maxW="full"
+							overflow="hidden"
+						>
+							{nodeRuntimeDisplayVersion ? (
+								<Tag
+									colorScheme="green"
+									size="sm"
+									maxW="full"
+									overflow="hidden"
+									whiteSpace="nowrap"
+									justifyContent="center"
+								>
+									{t("nodes.nodeServiceVersionTag", {
+										version: nodeRuntimeDisplayVersion,
+									})}
+								</Tag>
+							) : (
+								<Text as="span" fontSize="sm" color="panel.textMuted">
+									-
+								</Text>
+							)}
+							<Text
+								fontSize="xs"
+								color="panel.textMuted"
+								noOfLines={1}
+								minW={0}
+								maxW="full"
+								textAlign="center"
+							>
+								{nodeInstallLabel}
+							</Text>
+							{nodeServiceUpdateAvailable && (
+								<Button
+									size="xs"
+									variant="link"
+									colorScheme="orange"
+									flexShrink={0}
+									leftIcon={<DownloadIconStyled />}
+									onClick={(event) => {
+										event.stopPropagation();
+										handleUpdateNodeService(node);
+									}}
+									isLoading={
+										isUpdatingService &&
+										nodeId != null &&
+										updatingServiceNodeId === nodeId
+									}
+									isDisabled={!nodeId || !nodeHostActionsAvailable}
+								>
+									{t("nodes.updateAvailable", "Update available")}
+								</Button>
+							)}
+						</VStack>
+					);
+				},
+			},
+			{
+				id: "uptime",
+				header: t("nodes.columns.uptime", "Uptime"),
+				sortable: true,
+				sortValue: (node) => node.uptime_seconds ?? -1,
+				priority: "medium",
+				hideBelow: "xl",
+				mobileVisible: true,
+				width: { xl: "86px" },
+				minWidth: "78px",
+				maxWidth: "102px",
+				truncate: true,
+				mobilePriority: 5,
+				mobileMetaLabel: t("nodes.uptime", "Uptime"),
+				cell: (node) => (
+					<Text fontWeight="medium" fontSize="sm" lineHeight="short">
+						{formatNodeUptime(node.uptime_seconds)}
+					</Text>
+				),
+			},
+			{
+				id: "usage",
+				header: t("nodes.columns.trafficLimit", "Traffic / Limit"),
+				sortable: true,
+				sortValue: getNodeUsage,
+				priority: "high",
+				width: { lg: "128px", xl: "146px" },
+				minWidth: "116px",
+				maxWidth: "162px",
+				headerAlign: "center",
+				cellAlign: "center",
+				truncate: true,
+				mobilePriority: 6,
+				mobileSummary: true,
+				mobileMetaLabel: t("nodes.trafficLimit", "Traffic"),
+				cell: (node) => {
+					const totalUsage = getNodeUsage(node);
+					const nodeTrafficLimitDisplay = `${formatNodeBytes(totalUsage, 2)} / ${
+						node.data_limit != null && node.data_limit > 0
+							? formatNodeLimit(node.data_limit)
+							: "∞"
+					}`;
+					const nodeRemainingDataDisplay =
+						node.data_limit != null && node.data_limit > 0
+							? formatNodeBytes(Math.max(node.data_limit - totalUsage, 0), 2)
+							: null;
+					return (
+						<NodeMetricDisplay
+							value={nodeTrafficLimitDisplay}
+							helper={
+								nodeRemainingDataDisplay
+									? `${t("nodes.remainingData", "Remaining data")}: ${nodeRemainingDataDisplay}`
+									: null
+							}
+							colorScheme="green"
+						/>
+					);
+				},
+			},
+			{
+				id: "bandwidth",
+				header: t("nodes.columns.bandwidth", "Upload / Download"),
+				sortable: true,
+				sortValue: getNodeBandwidth,
+				priority: "high",
+				hideBelow: "lg",
+				mobileVisible: true,
+				width: { xl: "124px" },
+				minWidth: "112px",
+				maxWidth: "142px",
+				headerAlign: "center",
+				cellAlign: "center",
+				truncate: true,
+				mobilePriority: 7,
+				mobileMetaLabel: t("nodes.columns.bandwidth", "Up / Down"),
+				cell: (node) => (
+					<NodeMetricDisplay
+						value={`${formatNodeSpeed(node.upload_speed)} / ${formatNodeSpeed(
+							node.download_speed,
+						)}`}
+					/>
+				),
+			},
+			{
+				id: "cpu",
+				header: t("nodes.columns.cpu", "CPU"),
+				sortable: true,
+				sortValue: (node) => node.cpu_usage_percent ?? -1,
+				priority: "high",
+				mobileVisible: true,
+				width: { lg: "76px", xl: "84px" },
+				minWidth: "68px",
+				maxWidth: "94px",
+				headerAlign: "center",
+				cellAlign: "center",
+				truncate: true,
+				hideOnMobile: true,
+				mobilePriority: 8,
+				mobileMetaLabel: t("nodes.cpu", "CPU"),
+				mobileDetailCell: (node) => (
+					<Text fontSize="sm" fontWeight="semibold" dir="ltr">
+						{formatNodePercent(node.cpu_usage_percent)}
+					</Text>
+				),
+				cell: (node) => (
+					<NodeMetricDisplay
+						value={formatNodePercent(node.cpu_usage_percent)}
+						helper={formatCPUFrequency(node.cpu_frequency_hz)}
+						percent={node.cpu_usage_percent}
+						colorScheme="orange"
+					/>
+				),
+			},
+			{
+				id: "ram",
+				header: t("nodes.columns.ram", "RAM"),
+				sortable: true,
+				sortValue: (node) => node.memory_usage_percent ?? -1,
+				priority: "high",
+				mobileVisible: true,
+				width: { lg: "110px", xl: "124px" },
+				minWidth: "98px",
+				maxWidth: "138px",
+				headerAlign: "center",
+				cellAlign: "center",
+				truncate: true,
+				hideOnMobile: true,
+				mobilePriority: 9,
+				mobileMetaLabel: t("nodes.ram", "RAM"),
+				mobileDetailCell: (node) => (
+					<Text fontSize="sm" fontWeight="semibold" dir="ltr">
+						{formatNodeBytes(node.memory_used, 2)} /{" "}
+						{formatNodeBytes(node.memory_total, 2)}
+					</Text>
+				),
+				cell: (node) => (
+					<NodeMetricDisplay
+						value={`${formatNodeBytes(node.memory_used, 2)} / ${formatNodeBytes(
+							node.memory_total,
+							2,
+						)}`}
+						helper={formatNodePercent(node.memory_usage_percent)}
+						percent={node.memory_usage_percent}
+						colorScheme="purple"
+					/>
+				),
+			},
+			{
+				id: "certificate",
+				header: t("nodes.columns.certificate", "Certificate"),
+				accessor: getNodeInstallBundle,
+				priority: "low",
+				hideBelow: "xl",
+				mobileVisible: false,
+				width: "42px",
+				minWidth: "38px",
+				maxWidth: "46px",
+				headerAlign: "center",
+				cellAlign: "center",
+				isMeta: true,
+				hideOnMobile: true,
+				cell: (node) => {
+					const certificateBundle = getNodeInstallBundle(node);
+					return (
+						<IconButton
+							aria-label={t("nodes.copyCertificate", "Copy certificate")}
+							icon={<CopyIconStyled />}
+							size="sm"
+							variant="ghost"
+							color="panel.textMuted"
+							isDisabled={!certificateBundle}
+							onClick={(event) => {
+								event.stopPropagation();
+								copyToClipboard(
+									certificateBundle,
+									t("nodes.columns.certificate", "Certificate"),
+								);
+							}}
+						/>
+					);
+				},
+			},
+		],
+		[
+			handleUpdateNodeService,
+			hostActionsAvailable,
+			isUpdatingService,
+			maintenanceInfo,
+			nodeUpdateChannel,
+			t,
+			updatingServiceNodeId,
+		],
+	);
+
+	const nodeRowActions = (node: NodeType): DataTableRowAction<NodeType>[] => {
+		const nodeId = node.id as number | undefined;
+		const status = node.status || "error";
+		const isEnabled = status !== "disabled" && status !== "limited";
+		const pending = nodeId != null ? pendingStatus[nodeId] : undefined;
+		const displayEnabled = pending ?? isEnabled;
+		const isToggleLoading = nodeId != null && togglingNodeId === nodeId && isToggling;
+		const nodeHostActionsAvailable =
+			hostActionsAvailable && node.node_install_mode === "binary";
+		const isCoreUpdating = nodeId != null && updatingCoreNodeId === nodeId;
+		const isGeoUpdating = nodeId != null && updatingGeoNodeId === nodeId;
+		const isRestartingMaintenance =
+			isRestartingService && nodeId != null && restartingServiceNodeId === nodeId;
+		const isUpdatingMaintenance =
+			isUpdatingService && nodeId != null && updatingServiceNodeId === nodeId;
+
+		return [
+			{
+				id: "edit",
+				label: t("edit"),
+				icon: <EditIconStyled />,
+				onClick: () => setEditingNode(node),
+			},
+			{
+				id: "toggle",
+				label: displayEnabled
+					? t("nodes.disableNode", "Disable node")
+					: t("nodes.enableNode", "Enable node"),
+				icon: displayEnabled ? <DisableIconStyled /> : <EnableIconStyled />,
+				onClick: () => handleToggleNode(node),
+				isDisabled: !nodeId || isToggleLoading,
+			},
+			status === "error"
+				? {
+						id: "reconnect",
+						label: t("nodes.reconnect"),
+						icon: <ArrowPathIconStyled />,
+						onClick: () => reconnect(node),
+						isDisabled: isReconnecting,
+					}
+				: null,
+			{
+				id: "core",
+				label: t("nodes.updateCoreAction"),
+				icon: <CoreIconStyled />,
+				onClick: () => nodeId && setVersionDialogTarget({ type: "node", node }),
+				isDisabled: !nodeId || !nodeHostActionsAvailable || isCoreUpdating,
+			},
+			{
+				id: "geo",
+				label: t("nodes.updateGeoAction", "Update geo"),
+				icon: <GeoIconStyled />,
+				onClick: () => nodeId && setGeoDialogTarget({ type: "node", node }),
+				isDisabled: !nodeId || !nodeHostActionsAvailable || isGeoUpdating,
+			},
+			{
+				id: "restart-service",
+				label: t("nodes.restartServiceAction", "Restart node service"),
+				icon: <ServiceIconStyled />,
+				onClick: () => handleRestartNodeService(node),
+				isDisabled:
+					!nodeId || !nodeHostActionsAvailable || isRestartingMaintenance,
+			},
+			{
+				id: "update-service",
+				label: t("nodes.updateServiceAction", "Update node service"),
+				icon: <DownloadIconStyled />,
+				onClick: () => handleUpdateNodeService(node),
+				isDisabled:
+					!nodeId || !nodeHostActionsAvailable || isUpdatingMaintenance,
+			},
+			{
+				id: "reset-usage",
+				label: t("nodes.resetUsage", "Reset usage"),
+				icon: <ArrowPathIconStyled />,
+				onClick: () => handleResetNodeUsage(node),
+				isDisabled: !nodeId,
+				isDanger: true,
+			},
+			node.uses_default_certificate
+				? {
+						id: "certificate",
+						label: t(
+							"nodes.generatePrivateCert",
+							"Generate private certificate",
+						),
+						icon: <CertificateIconStyled />,
+						onClick: () => nodeId && regenerateNodeCertMutate(node),
+						isDisabled:
+							!nodeId ||
+							(isRegenerating &&
+								nodeId != null &&
+								regeneratingNodeId === nodeId),
+					}
+				: null,
+			{
+				id: "delete",
+				label: t("delete"),
+				icon: <DeleteIconStyled />,
+				onClick: () => handleDeleteNodeRequest(node),
+				isDisabled: isDeletingNode,
+				isDanger: true,
+			},
+		].filter(Boolean) as DataTableRowAction<NodeType>[];
+	};
+
+	const nodeSorting = useMemo<SortingState>(
+		() => [{ id: sortKey, desc: sortDirection === "desc" }],
+		[sortDirection, sortKey],
+	);
+
+	const handleNodeTableSorting = (nextSorting: SortingState) => {
+		const next = nextSorting[0];
+		if (!next || !isNodeSortKey(next.id)) return;
+		setSortKey(next.id);
+		setSortDirection(next.desc ? "desc" : "asc");
+	};
+
+	const nodesPagination =
+		filteredNodes.length > 0 ? (
+			<Stack
+				direction={{ base: "column", md: "row" }}
+				align={{ base: "stretch", md: "center" }}
+				justify="space-between"
+				spacing={3}
+				borderWidth="1px"
+				borderColor={nodePanelBorder}
+				borderRadius="md"
+				bg={nodePanelBg}
+				p={3}
+			>
+				<Text fontSize="sm" color="gray.500">
+					{t("nodes.paginationSummary", {
+						defaultValue: "Showing {{start}}-{{end}} of {{total}} nodes",
+						start: paginationStart,
+						end: paginationEnd,
+						total: filteredNodes.length,
+					})}
+				</Text>
+				<HStack spacing={2} justify={{ base: "space-between", md: "flex-end" }}>
+					<Select
+						size="sm"
+						value={pageSize}
+						onChange={(event) => setPageSize(Number(event.target.value))}
+						w="90px"
+					>
+						<option value={12}>12</option>
+						<option value={24}>24</option>
+						<option value={48}>48</option>
+						<option value={96}>96</option>
+						<option value={100}>100</option>
+					</Select>
+					<ButtonGroup size="sm" isAttached variant="outline">
+						<Button
+							onClick={() => setPage((value) => Math.max(1, value - 1))}
+							isDisabled={currentPage <= 1}
+						>
+							{t("previous", "Previous")}
+						</Button>
+						<Button isDisabled>
+							{currentPage} / {totalPages}
+						</Button>
+						<Button
+							onClick={() =>
+								setPage((value) => Math.min(totalPages, value + 1))
+							}
+							isDisabled={currentPage >= totalPages}
+						>
+							{t("next", "Next")}
+						</Button>
+					</ButtonGroup>
+				</HStack>
+			</Stack>
+		) : null;
+
 	if (!getUserIsSuccess) {
 		return (
 			<VStack spacing={4} align="center" py={10}>
@@ -1630,12 +2524,16 @@ export const NodesPage: FC = () => {
 	}
 
 	return (
-		<VStack spacing={6} align="stretch">
+		<VStack
+			spacing={5}
+			align="stretch"
+			pb={selectedNodeIds.length > 0 ? { base: 32, md: 24 } : 0}
+		>
 			<Stack
 				spacing={1}
 				borderWidth="1px"
 				borderColor={nodePanelBorder}
-				borderRadius="md"
+				borderRadius="6px"
 				bg={nodePanelBg}
 				p={4}
 			>
@@ -1656,9 +2554,9 @@ export const NodesPage: FC = () => {
 							})}
 						</Tag>
 					) : (
-						<Tag size="sm" colorScheme="gray">
-							{t("nodes.nodeServiceVersionUnknown", "Node version unknown")}
-						</Tag>
+						<Text as="span" fontSize="sm" color="gray.500">
+							-
+						</Text>
 					)}
 					{latestNodeVersion ? (
 						<Tag size="sm" colorScheme="blue">
@@ -1716,37 +2614,46 @@ export const NodesPage: FC = () => {
 						</HStack>
 					</VStack>
 					<SimpleGrid
-						columns={{ base: 1, sm: 2, lg: 4 }}
+						columns={{ base: 2, md: 4 }}
 						spacing={2}
 						w={{ base: "full", xl: "auto" }}
-						minW={{ xl: "590px" }}
-						maxW={{ xl: "720px" }}
+						minW={0}
+						maxW="full"
 					>
 						<Button
 							leftIcon={<TutorialIconStyled />}
 							variant="outline"
 							size="sm"
+							h="36px"
+							px={3}
+							minW={0}
 							w="full"
 							onClick={() =>
 								navigate("/tutorials?focus=section-nodes-admin-guide")
 							}
 						>
-							{t("nodes.nodeTutorial", "Node tutorial")}
+							{t("nodes.toolbarTutorial", "Tutorial")}
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
 							leftIcon={<CoreIconStyled />}
+							h="36px"
+							px={3}
+							minW={0}
 							w="full"
 							onClick={() => setVersionDialogTarget({ type: "bulk" })}
 							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
 						>
-							{t("nodes.updateAllNodesCore")}
+							{t("nodes.toolbarUpdateCore", "Update Core")}
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
 							leftIcon={<DownloadIconStyled />}
+							h="36px"
+							px={3}
+							minW={0}
 							w="full"
 							onClick={handleUpdateAllNodeServices}
 							isLoading={updatingBulkService}
@@ -1754,16 +2661,19 @@ export const NodesPage: FC = () => {
 								!hostActionsAvailable || !hasBinaryNodes || updatingBulkService
 							}
 						>
-							{t("nodes.updateAllNodeServices", "Update all node services")}
+							{t("nodes.toolbarUpdateServices", "Update Services")}
 						</Button>
 						<Button
 							leftIcon={<AddIconStyled />}
 							colorScheme="primary"
 							size="sm"
+							h="36px"
+							px={3}
+							minW={0}
 							w="full"
 							onClick={() => setAddNodeOpen(true)}
 						>
-							{t("nodes.addNode")}
+							{t("nodes.toolbarAddNode", "Add Node")}
 						</Button>
 					</SimpleGrid>
 				</Stack>
@@ -1777,13 +2687,17 @@ export const NodesPage: FC = () => {
 					justify="space-between"
 				>
 					<Stack
-						direction={{ base: "column", md: "row" }}
+						direction="row"
 						spacing={2}
-						align={{ base: "stretch", md: "center" }}
+						align="center"
 						flex="1"
 						flexWrap="wrap"
 					>
-						<InputGroup size="sm" w={{ base: "full", md: "260px", xl: "280px" }}>
+						<InputGroup
+							size="sm"
+							w={{ base: "full", md: "260px", xl: "280px" }}
+							flex={{ base: "0 0 100%", md: "0 0 auto" }}
+						>
 							<InputLeftElement pointerEvents="none">
 								<SearchIcon color="gray.400" />
 							</InputLeftElement>
@@ -1797,7 +2711,7 @@ export const NodesPage: FC = () => {
 							size="sm"
 							value={statusFilter}
 							onChange={(event) => setStatusFilter(event.target.value)}
-							w={{ base: "full", md: "150px" }}
+							w={{ base: "calc(50% - 4px)", md: "150px" }}
 						>
 							<option value="all">{t("nodes.filters.allStatuses", "All status")}</option>
 							<option value="connected">{t("status.connected", "Connected")}</option>
@@ -1810,7 +2724,7 @@ export const NodesPage: FC = () => {
 							size="sm"
 							value={installModeFilter}
 							onChange={(event) => setInstallModeFilter(event.target.value)}
-							w={{ base: "full", md: "150px" }}
+							w={{ base: "calc(50% - 4px)", md: "150px" }}
 						>
 							<option value="all">{t("nodes.filters.allModes", "All modes")}</option>
 							<option value="binary">{t("nodes.installMode.binary", "Binary")}</option>
@@ -1825,7 +2739,7 @@ export const NodesPage: FC = () => {
 								setSortKey(nextKey as NodeSortKey);
 								setSortDirection(nextDirection as NodeSortDirection);
 							}}
-							w={{ base: "full", md: "170px" }}
+							w={{ base: "calc(50% - 4px)", md: "170px" }}
 						>
 							<option value="name.asc">{t("nodes.sort.nameAsc", "Name A-Z")}</option>
 							<option value="name.desc">{t("nodes.sort.nameDesc", "Name Z-A")}</option>
@@ -1840,69 +2754,23 @@ export const NodesPage: FC = () => {
 							<option value="ram.asc">{t("nodes.sort.ramAsc", "RAM low-high")}</option>
 							<option value="ram.desc">{t("nodes.sort.ramDesc", "RAM high-low")}</option>
 						</Select>
+						<Box
+							w={{ base: "calc(50% - 4px)", md: "auto" }}
+							display="flex"
+							justifyContent={{ base: "flex-end", md: "flex-start" }}
+						>
+							<Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
+								<IconButton
+									aria-label={t("nodes.refreshNodes", "Refresh nodes")}
+									icon={<ArrowPathIconStyled />}
+									variant="ghost"
+									size="sm"
+									onClick={() => refetchNodes()}
+									isLoading={isFetching}
+								/>
+							</Tooltip>
+						</Box>
 					</Stack>
-					<HStack
-						spacing={1.5}
-						flexWrap="wrap"
-						justify={{ base: "flex-start", xl: "flex-end" }}
-					>
-						<Checkbox
-							size="sm"
-							isChecked={allPageSelected}
-							isIndeterminate={somePageSelected}
-							onChange={(event) =>
-								toggleCurrentPageSelection(event.target.checked)
-							}
-						>
-							{t("nodes.selectPage", "Select page")}
-						</Checkbox>
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={selectAllFilteredNodes}
-							isDisabled={filteredNodeIds.length === 0 || allFilteredSelected}
-						>
-							{t("nodes.selectAllFiltered", "Select all")}
-						</Button>
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={deselectAllNodes}
-							isDisabled={selectedNodeIds.length === 0}
-						>
-							{t("nodes.deselectAll", "Deselect all")}
-						</Button>
-						<Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
-							<IconButton
-								aria-label={t("nodes.refreshNodes", "Refresh nodes")}
-								icon={<ArrowPathIconStyled />}
-								variant="ghost"
-								size="sm"
-								onClick={() => refetchNodes()}
-								isLoading={isFetching}
-							/>
-						</Tooltip>
-						<ButtonGroup size="sm" isAttached variant="outline">
-							<Tooltip label={t("nodes.viewList", "List view")}>
-								<IconButton
-									aria-label={t("nodes.viewList", "List view")}
-									icon={<ListViewIcon />}
-									variant={viewMode === "list" ? "solid" : "outline"}
-									colorScheme={viewMode === "list" ? "primary" : undefined}
-									onClick={() => setViewMode("list")}
-								/>
-							</Tooltip>
-							<Tooltip label={t("nodes.viewGrid", "Grid view")}>
-								<IconButton
-									aria-label={t("nodes.viewGrid", "Grid view")}
-									icon={<GridViewIcon />}
-									variant={viewMode === "grid" ? "solid" : "outline"}
-									colorScheme={viewMode === "grid" ? "primary" : undefined}
-									onClick={() => setViewMode("grid")}
-								/>
-							</Tooltip>
-						</ButtonGroup>
-					</HStack>
 				</Stack>
 			</Stack>
 
@@ -1918,40 +2786,56 @@ export const NodesPage: FC = () => {
 				</Alert>
 			)}
 
-			{selectedNodeIds.length > 0 && (
-				<Stack
-					direction={{ base: "column", xl: "row" }}
-					align={{ base: "stretch", xl: "center" }}
-					justify="space-between"
-					spacing={3}
-					borderWidth="1px"
-					borderColor={nodePanelBorder}
-					borderRadius="md"
-					bg={nodePanelBg}
-					p={3}
-				>
-					<VStack align="flex-start" spacing={1}>
-						<Text fontWeight="semibold">
-							{t("nodes.selectedCount", {
-								defaultValue: "{{count}} nodes selected",
-								count: selectedNodeIds.length,
-							})}
-						</Text>
-						<HStack spacing={2} flexWrap="wrap">
-							<Button
-								size="xs"
-								variant="link"
-								onClick={selectAllFilteredNodes}
-								isDisabled={allFilteredSelected}
-							>
-								{t("nodes.selectAllFiltered", "Select all")}
-							</Button>
-							<Button size="xs" variant="link" onClick={deselectAllNodes}>
-								{t("nodes.deselectAll", "Deselect all")}
-							</Button>
-						</HStack>
-					</VStack>
-					<HStack spacing={2} flexWrap="wrap" justify={{ base: "flex-start", xl: "flex-end" }}>
+			<DataTable
+				ariaLabel={t("nodes.manageNodesHeader", "Node list")}
+				data={paginatedNodes}
+				columns={nodeColumns}
+				getRowId={(node, index) => String(node.id ?? node.name ?? index)}
+				isLoading={isLoading}
+				loadingRows={Math.min(pageSize, 8)}
+				emptyState={
+					<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+						{t(
+							"nodes.noNodesFound",
+							"No nodes match the current filters.",
+						)}
+					</Text>
+				}
+				enableSelection
+				selectedRowIds={selectedNodeIds.map(String)}
+				selectedRows={selectedNodes}
+				selectedCount={selectedNodeIds.length}
+				onSelectionChange={(rowIds) => {
+					setSelectedNodeIds(
+						rowIds
+							.map((id) => Number(id))
+							.filter((id) => Number.isFinite(id)),
+					);
+				}}
+				getRowCanSelect={(node) => node.id != null}
+				rowActions={nodeRowActions}
+				actionsDisplay="menu"
+				actionsPlacement="end"
+				actionsColumnWidth="44px"
+				showActionsOnHover
+				sorting={nodeSorting}
+				onSortingChange={handleNodeTableSorting}
+				manualSorting
+				pagination={nodesPagination}
+				selectedLabel={t("nodes.selectedCount", {
+					defaultValue: "{{count}} nodes selected",
+					count: selectedNodeIds.length,
+				})}
+				renderBulkActions={() => (
+					<>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={selectAllFilteredNodes}
+							isDisabled={allFilteredSelected}
+						>
+							{t("nodes.selectAllFiltered", "Select all")}
+						</Button>
 						<Button
 							size="sm"
 							variant="outline"
@@ -2044,1190 +2928,20 @@ export const NodesPage: FC = () => {
 						>
 							{t("delete", "Delete")}
 						</Button>
-					</HStack>
-				</Stack>
-			)}
-
-			{isLoading ? (
-				<SimpleGrid columns={nodeGridColumns} spacing={4}>
-					{Array.from({ length: 3 }, (_, idx) => `nodes-skeleton-${idx}`).map(
-						(skeletonKey) => (
-							<Box
-								key={skeletonKey}
-								bg={nodeCardBg}
-								borderWidth="1px"
-								borderColor={nodeCardBorder}
-								borderRadius="lg"
-								p={6}
-								boxShadow="sm"
-								display="flex"
-								alignItems="center"
-								justifyContent="center"
-							>
-								<VStack spacing={3}>
-									<Spinner />
-									<Text
-										fontSize="sm"
-										color="gray.500"
-										_dark={{ color: "gray.400" }}
-									>
-										{t("loading")}
-									</Text>
-								</VStack>
-							</Box>
-						),
-					)}
-				</SimpleGrid>
-			) : viewMode === "list" ? (
-				<Box
-					w="full"
-					bg={nodeCardBg}
-					borderWidth="1px"
-					borderColor={nodeCardBorder}
-					borderRadius="lg"
-					boxShadow="sm"
-					overflowX={{ base: "auto", xl: "hidden" }}
-				>
-					<Table
-						size="sm"
-						variant="simple"
-						w="full"
-						minW={{ base: "1120px", xl: "100%" }}
-						sx={{
-							tableLayout: { base: "auto", xl: "fixed" },
-							"& th, & td": {
-								px: { base: 3, xl: 2 },
-								py: { base: 3, xl: 2.5 },
-								verticalAlign: "middle",
-							},
-							"& th:first-of-type, & td:first-of-type": {
-								px: { base: 2, xl: 1.5 },
-							},
-						}}
-					>
-						<Thead bg={nodePanelBg}>
-							<Tr>
-								<Th w={{ base: "40px", xl: "34px" }}>
-									<Checkbox
-										isChecked={allPageSelected}
-										isIndeterminate={somePageSelected}
-										onChange={(event) =>
-											toggleCurrentPageSelection(event.target.checked)
-										}
-										aria-label={t(
-											"nodes.selectCurrentPage",
-											"Select current page",
-										)}
-									/>
-								</Th>
-								<Th
-									w={{ base: "190px", xl: "13%" }}
-									cursor="pointer"
-									onClick={() => handleSort("name")}
-								>
-									{sortLabel("name", t("nodes.columns.name", "Name"))}
-								</Th>
-								<Th
-									w={{ base: "110px", xl: "8%" }}
-									cursor="pointer"
-									onClick={() => handleSort("status")}
-								>
-									{sortLabel("status", t("nodes.columns.status", "Status"))}
-								</Th>
-								<Th w={{ base: "130px", xl: "10%" }}>{t("nodes.columns.address", "Address")}</Th>
-								<Th w={{ base: "110px", xl: "7%" }}>
-									{t("nodes.columns.xrayVersion", "Xray version")}
-								</Th>
-								<Th w={{ base: "130px", xl: "10%" }}>
-									{t("nodes.columns.nodeRuntime", "Node / install")}
-								</Th>
-								<Th
-									w={{ base: "110px", xl: "8%" }}
-									cursor="pointer"
-									onClick={() => handleSort("uptime")}
-								>
-									{sortLabel("uptime", t("nodes.columns.uptime", "Uptime"))}
-								</Th>
-								<Th
-									w={{ base: "140px", xl: "10%" }}
-									cursor="pointer"
-									onClick={() => handleSort("usage")}
-								>
-									{sortLabel(
-										"usage",
-										t("nodes.columns.trafficLimit", "Traffic / Limit"),
-									)}
-								</Th>
-								<Th
-									w={{ base: "135px", xl: "10%" }}
-									cursor="pointer"
-									onClick={() => handleSort("bandwidth")}
-								>
-									{sortLabel(
-										"bandwidth",
-										t("nodes.columns.bandwidth", "Upload / Download"),
-									)}
-								</Th>
-								<Th
-									w={{ base: "95px", xl: "7%" }}
-									cursor="pointer"
-									onClick={() => handleSort("cpu")}
-								>
-									{sortLabel("cpu", t("nodes.columns.cpu", "CPU"))}
-								</Th>
-								<Th
-									w={{ base: "120px", xl: "9%" }}
-									cursor="pointer"
-									onClick={() => handleSort("ram")}
-								>
-									{sortLabel("ram", t("nodes.columns.ram", "RAM"))}
-								</Th>
-								<Th w={{ base: "145px", xl: "8%" }}>
-									{t("nodes.columns.certificate", "Certificate")}
-								</Th>
-							</Tr>
-						</Thead>
-						<Tbody>
-							{paginatedNodes.map((node) => {
-								const status = node.status || "error";
-								const nodeId = node?.id as number | undefined;
-								const isEnabled = status !== "disabled" && status !== "limited";
-								const pending =
-									nodeId != null ? pendingStatus[nodeId] : undefined;
-								const displayEnabled = pending ?? isEnabled;
-								const isToggleLoading =
-									nodeId != null && togglingNodeId === nodeId && isToggling;
-								const isCoreUpdating =
-									nodeId != null && updatingCoreNodeId === nodeId;
-								const isGeoUpdating =
-									nodeId != null && updatingGeoNodeId === nodeId;
-								const isRestartingMaintenance =
-									isRestartingService &&
-									nodeId != null &&
-									restartingServiceNodeId === nodeId;
-								const isUpdatingMaintenance =
-									isUpdatingService &&
-									nodeId != null &&
-									updatingServiceNodeId === nodeId;
-								const nodeHostActionsAvailable =
-									hostActionsAvailable && node.node_install_mode === "binary";
-								const nodeRuntimeVersion = getNodeRuntimeVersion(node);
-								const nodeRuntimeDisplayVersion =
-									getNodeRuntimeDisplayVersion(node);
-								const nodeEffectiveUpdateChannel = getNodeUpdateChannel(
-									node,
-									nodeUpdateChannel,
-								);
-								const nodeLatestVersion = getLatestNodeVersionForChannel(
-									maintenanceInfo,
-									nodeEffectiveUpdateChannel,
-								);
-								const nodeServiceUpdateAvailable =
-									getNodeServiceUpdateAvailable(
-										nodeRuntimeVersion,
-										nodeLatestVersion,
-										nodeEffectiveUpdateChannel,
-									);
-								const totalUsage = (node.uplink ?? 0) + (node.downlink ?? 0);
-								const nodeInstallLabel =
-									[node.node_install_mode, node.node_update_channel]
-										.filter(Boolean)
-										.join(" / ") || EMPTY_CELL_VALUE;
-								const nodeTrafficLimitDisplay = `${formatNodeBytes(
-									totalUsage,
-									2,
-								)} / ${
-									node.data_limit != null && node.data_limit > 0
-										? formatNodeLimit(node.data_limit)
-										: "∞"
-								}`;
-								const nodeRemainingDataDisplay =
-									node.data_limit != null && node.data_limit > 0
-										? formatNodeBytes(
-												Math.max(node.data_limit - totalUsage, 0),
-												2,
-											)
-										: null;
-								const nodeCPUDisplay = formatNodePercent(
-									node.cpu_usage_percent,
-								);
-								const nodeCPUHelper = formatCPUFrequency(
-									node.cpu_frequency_hz,
-								);
-								const nodeRAMDisplay = `${formatNodeBytes(
-									node.memory_used,
-									2,
-								)} / ${formatNodeBytes(node.memory_total, 2)}`;
-								const nodeRAMHelper = formatNodePercent(
-									node.memory_usage_percent,
-								);
-								const nodeBandwidthDisplay = `${formatNodeSpeed(
-									node.upload_speed,
-								)} / ${formatNodeSpeed(node.download_speed)}`;
-								const nodeUptimeDisplay = formatNodeUptime(
-									node.uptime_seconds,
-								);
-								const certificateCopyValue = getNodeInstallBundle(node);
-								const statusBadge = (
-									<NodeModalStatusBadge status={status} compact />
-								);
-								const statusDisplay =
-									status === "error" && node.message ? (
-										<Popover
-											trigger="hover"
-											placement="top"
-											openDelay={250}
-											closeDelay={150}
-											isLazy
-											closeOnBlur={false}
-										>
-											<PopoverTrigger>
-												<Box as="span">{statusBadge}</Box>
-											</PopoverTrigger>
-											<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
-												<PopoverArrow />
-												<PopoverBody>{node.message}</PopoverBody>
-											</PopoverContent>
-										</Popover>
-									) : (
-										statusBadge
-									);
-
-								return (
-									<Tr key={node.id ?? node.name}>
-										<Td>
-											{nodeId != null && (
-												<Checkbox
-													isChecked={selectedNodeIdSet.has(nodeId)}
-													onChange={(event) =>
-														toggleNodeSelection(
-															nodeId,
-															event.target.checked,
-														)
-													}
-													aria-label={t("nodes.selectNode", {
-														defaultValue: "Select {{name}}",
-														name:
-															node.name ||
-															node.address ||
-															t("nodes.thisNode", "this node"),
-													})}
-												/>
-											)}
-										</Td>
-										<Td>
-											<HStack align="center" spacing={1.5} minW={0}>
-												<Menu
-													placement="bottom-start"
-													strategy="fixed"
-													autoSelect={false}
-												>
-													<MenuButton
-														as={IconButton}
-														size="xs"
-														variant="ghost"
-														aria-label={t("nodes.actions", "Node actions")}
-														icon={<MoreIconStyled />}
-														flexShrink={0}
-													/>
-													<Portal>
-														<MenuList
-															minW="240px"
-															maxW="calc(100vw - 24px)"
-															maxH="min(70vh, 420px)"
-															overflowY="auto"
-														>
-															<MenuItem
-																icon={<EditIconStyled />}
-																onClick={() => setEditingNode(node)}
-															>
-																{t("edit")}
-															</MenuItem>
-															<MenuItem
-																icon={
-																	displayEnabled ? (
-																		<DisableIconStyled />
-																	) : (
-																		<EnableIconStyled />
-																	)
-																}
-																onClick={() => handleToggleNode(node)}
-																isDisabled={!nodeId || isToggleLoading}
-															>
-																{displayEnabled
-																	? t("nodes.disableNode", "Disable node")
-																	: t("nodes.enableNode", "Enable node")}
-															</MenuItem>
-															{node.status === "error" && (
-																<MenuItem
-																	icon={<ArrowPathIconStyled />}
-																	onClick={() => reconnect(node)}
-																	isDisabled={isReconnecting}
-																>
-																	{t("nodes.reconnect")}
-																</MenuItem>
-															)}
-															<MenuItem
-																icon={<CoreIconStyled />}
-																onClick={() =>
-																	nodeId &&
-																	setVersionDialogTarget({
-																		type: "node",
-																		node,
-																	})
-																}
-																isDisabled={
-																	!nodeId ||
-																	!nodeHostActionsAvailable ||
-																	isCoreUpdating
-																}
-															>
-																{t("nodes.updateCoreAction")}
-															</MenuItem>
-															<MenuItem
-																icon={<GeoIconStyled />}
-																onClick={() =>
-																	nodeId &&
-																	setGeoDialogTarget({ type: "node", node })
-																}
-																isDisabled={
-																	!nodeId ||
-																	!nodeHostActionsAvailable ||
-																	isGeoUpdating
-																}
-															>
-																{t("nodes.updateGeoAction", "Update geo")}
-															</MenuItem>
-															<MenuItem
-																icon={<ServiceIconStyled />}
-																onClick={() => handleRestartNodeService(node)}
-																isDisabled={
-																	!nodeId ||
-																	!nodeHostActionsAvailable ||
-																	isRestartingMaintenance
-																}
-															>
-																{t(
-																	"nodes.restartServiceAction",
-																	"Restart node service",
-																)}
-															</MenuItem>
-															<MenuItem
-																icon={<DownloadIconStyled />}
-																onClick={() => handleUpdateNodeService(node)}
-																isDisabled={
-																	!nodeId ||
-																	!nodeHostActionsAvailable ||
-																	isUpdatingMaintenance
-																}
-															>
-																{t(
-																	"nodes.updateServiceAction",
-																	"Update node service",
-																)}
-															</MenuItem>
-															<MenuItem
-																icon={<ArrowPathIconStyled />}
-																color="red.500"
-																onClick={() => handleResetNodeUsage(node)}
-																isDisabled={!nodeId}
-															>
-																{t("nodes.resetUsage", "Reset usage")}
-															</MenuItem>
-															{node.uses_default_certificate && (
-																<MenuItem
-																	icon={<CertificateIconStyled />}
-																	onClick={() =>
-																		nodeId && regenerateNodeCertMutate(node)
-																	}
-																	isDisabled={
-																		!nodeId ||
-																		(isRegenerating &&
-																			nodeId != null &&
-																			regeneratingNodeId === nodeId)
-																	}
-																>
-																	{t(
-																		"nodes.generatePrivateCert",
-																		"Generate private certificate",
-																	)}
-																</MenuItem>
-															)}
-															<MenuItem
-																icon={<DeleteIconStyled />}
-																color="red.500"
-																onClick={() => handleDeleteNodeRequest(node)}
-																isDisabled={isDeletingNode}
-															>
-																{t("delete")}
-															</MenuItem>
-														</MenuList>
-													</Portal>
-												</Menu>
-												<VStack align="flex-start" spacing={0.5} minW={0} flex="1">
-													<HStack spacing={2} align="center" flexWrap="wrap">
-														<Text
-															fontWeight="semibold"
-															maxW={{ base: "160px", xl: "120px", "2xl": "150px" }}
-															noOfLines={2}
-															wordBreak="break-word"
-														>
-															{node.name ||
-																t("nodes.unnamedNode", "Unnamed node")}
-														</Text>
-													</HStack>
-													<Text fontSize="xs" color="gray.500" lineHeight="short">
-														{t("nodes.id", "ID")}: {node.id ?? EMPTY_CELL_VALUE}
-													</Text>
-													{node.note && (
-														<Text
-															fontSize="xs"
-															color="gray.500"
-															maxW={{ base: "170px", xl: "125px", "2xl": "150px" }}
-															noOfLines={2}
-															wordBreak="break-word"
-														>
-															{node.note}
-														</Text>
-													)}
-												</VStack>
-											</HStack>
-										</Td>
-										<Td>{statusDisplay}</Td>
-										<Td>
-											<Tooltip label={t("copy", "Copy")}>
-												<Text
-													as="button"
-													type="button"
-													dir="ltr"
-													sx={{ unicodeBidi: "isolate" }}
-													cursor="pointer"
-													textAlign="start"
-													maxW="full"
-													noOfLines={1}
-													_hover={{ color: "primary.500" }}
-													onClick={() =>
-														copyToClipboard(
-															node.address,
-															t("nodes.nodeAddress", "Address"),
-														)
-													}
-												>
-													{formatCellValue(node.address)}
-												</Text>
-											</Tooltip>
-										</Td>
-										<Td>
-											<Tag
-												as="button"
-												type="button"
-												colorScheme="blue"
-												size="sm"
-												cursor="pointer"
-												_hover={{ opacity: 0.82 }}
-												onClick={() =>
-													nodeId &&
-													setVersionDialogTarget({ type: "node", node })
-												}
-											>
-												{node.xray_version
-													? `Xray ${node.xray_version}`
-													: t("nodes.versionUnknown", "Version unknown")}
-											</Tag>
-										</Td>
-										<Td>
-											<VStack align="flex-start" spacing={1}>
-												<Tag colorScheme="green" size="sm">
-													{nodeRuntimeDisplayVersion
-														? t("nodes.nodeServiceVersionTag", {
-																version: nodeRuntimeDisplayVersion,
-															})
-														: t(
-																"nodes.nodeServiceVersionUnknown",
-														"Node version unknown",
-															)}
-												</Tag>
-												<Text fontSize="xs" color="gray.500" noOfLines={1}>
-													{nodeInstallLabel}
-												</Text>
-												{nodeServiceUpdateAvailable && (
-													<Button
-														size="xs"
-														variant="link"
-														colorScheme="orange"
-														leftIcon={<DownloadIconStyled />}
-														onClick={() => handleUpdateNodeService(node)}
-														isLoading={isUpdatingMaintenance}
-														isDisabled={!nodeId || !nodeHostActionsAvailable}
-													>
-														{t("nodes.updateAvailable", "Update available")}
-													</Button>
-												)}
-											</VStack>
-										</Td>
-										<Td>
-											<Text fontWeight="medium" fontSize="sm" lineHeight="short">
-												{nodeUptimeDisplay}
-											</Text>
-										</Td>
-										<Td>
-											<NodeMetricDisplay
-												value={nodeTrafficLimitDisplay}
-												helper={
-													nodeRemainingDataDisplay
-														? `${t(
-																"nodes.remainingData",
-																"Remaining data",
-															)}: ${nodeRemainingDataDisplay}`
-														: null
-												}
-												colorScheme="green"
-											/>
-										</Td>
-										<Td>
-											<NodeMetricDisplay value={nodeBandwidthDisplay} />
-										</Td>
-										<Td>
-											<NodeMetricDisplay
-												value={nodeCPUDisplay}
-												helper={nodeCPUHelper}
-												percent={node.cpu_usage_percent}
-												colorScheme="orange"
-											/>
-										</Td>
-										<Td>
-											<NodeMetricDisplay
-												value={nodeRAMDisplay}
-												helper={nodeRAMHelper}
-												percent={node.memory_usage_percent}
-												colorScheme="purple"
-											/>
-										</Td>
-										<Td>
-											<VStack align="flex-start" spacing={1}>
-												<HStack
-													spacing={1}
-													maxW="full"
-													flexWrap="nowrap"
-													role={certificateCopyValue ? "button" : undefined}
-													tabIndex={certificateCopyValue ? 0 : undefined}
-													cursor={certificateCopyValue ? "pointer" : "default"}
-													onClick={() =>
-														copyToClipboard(
-															certificateCopyValue,
-															t("nodes.certificateLabel", "Certificate"),
-														)
-													}
-													onKeyDown={(event) => {
-														if (
-															certificateCopyValue &&
-															(event.key === "Enter" || event.key === " ")
-														) {
-															event.preventDefault();
-															copyToClipboard(
-																certificateCopyValue,
-																t("nodes.certificateLabel", "Certificate"),
-															);
-														}
-													}}
-												>
-													<Tag
-														size="sm"
-														flexShrink={1}
-														minW={0}
-														maxW="88px"
-														colorScheme={
-															node.uses_default_certificate
-																? "orange"
-																: node.has_custom_certificate
-																	? "green"
-																	: "gray"
-														}
-													>
-														{node.uses_default_certificate
-															? t("nodes.legacyCertificate", "Legacy shared")
-															: node.has_custom_certificate
-																? t("nodes.privateCertificate", "Private")
-																: EMPTY_CELL_VALUE}
-													</Tag>
-													<IconButton
-														aria-label={t("copy", "Copy")}
-														icon={<CopyIconStyled />}
-														size="xs"
-														variant="ghost"
-														isDisabled={!certificateCopyValue}
-														pointerEvents="none"
-														flexShrink={0}
-													/>
-												</HStack>
-												{node.certificate_public_key && (
-													<Tooltip label={node.certificate_public_key}>
-														<Text
-															as="button"
-															type="button"
-															fontSize="xs"
-															color="gray.500"
-															noOfLines={1}
-															maxW="full"
-															cursor="pointer"
-															textAlign="start"
-															onClick={() =>
-																copyToClipboard(
-																	certificateCopyValue,
-																	t("nodes.certificateLabel", "Certificate"),
-																)
-															}
-														>
-															{node.certificate_public_key}
-														</Text>
-													</Tooltip>
-												)}
-											</VStack>
-										</Td>
-									</Tr>
-								);
-							})}
-							{filteredNodes.length === 0 && (
-								<Tr>
-									<Td colSpan={12}>
-										<Text
-											fontSize="sm"
-											color="gray.500"
-											_dark={{ color: "gray.400" }}
-											textAlign="center"
-											py={6}
-										>
-											{t(
-												"nodes.noNodesFound",
-												"No nodes match the current filters.",
-											)}
-										</Text>
-									</Td>
-								</Tr>
-							)}
-						</Tbody>
-					</Table>
-				</Box>
-			) : (
-				<SimpleGrid columns={nodeGridColumns} spacing={4}>
-					{filteredNodes.length > 0 ? (
-						paginatedNodes.map((node) => {
-							const status = node.status || "error";
-							const nodeId = node?.id as number | undefined;
-							const isEnabled = status !== "disabled" && status !== "limited";
-							const pending =
-								nodeId != null ? pendingStatus[nodeId] : undefined;
-							const displayEnabled = pending ?? isEnabled;
-							const isToggleLoading =
-								nodeId != null && togglingNodeId === nodeId && isToggling;
-							const isCoreUpdating =
-								nodeId != null && updatingCoreNodeId === nodeId;
-							const isGeoUpdating =
-								nodeId != null && updatingGeoNodeId === nodeId;
-							const isRestartingMaintenance =
-								isRestartingService &&
-								nodeId != null &&
-								restartingServiceNodeId === nodeId;
-							const isUpdatingMaintenance =
-								isUpdatingService &&
-								nodeId != null &&
-								updatingServiceNodeId === nodeId;
-							const nodeHostActionsAvailable =
-								hostActionsAvailable && node.node_install_mode === "binary";
-							const nodeRuntimeDisplayVersion =
-								getNodeRuntimeDisplayVersion(node);
-							const nodeInstallLabel =
-								[node.node_install_mode, node.node_update_channel]
-									.filter(Boolean)
-									.join(" / ") || "-";
-							const nodeTotalUsage = (node.uplink ?? 0) + (node.downlink ?? 0);
-							const nodeTrafficLimitDisplay = `${formatNodeBytes(
-								nodeTotalUsage,
-								2,
-							)} / ${
-								node.data_limit != null && node.data_limit > 0
-									? formatNodeLimit(node.data_limit)
-									: "∞"
-							}`;
-							const nodeCPUDisplay = formatNodePercent(
-								node.cpu_usage_percent,
-							);
-							const nodeCPUHelper = formatCPUFrequency(node.cpu_frequency_hz);
-							const nodeRAMDisplay = `${formatNodeBytes(
-								node.memory_used,
-								2,
-							)} / ${formatNodeBytes(node.memory_total, 2)}`;
-							const nodeRAMHelper = formatNodePercent(
-								node.memory_usage_percent,
-							);
-							const nodeBandwidthDisplay = `${formatNodeSpeed(
-								node.upload_speed,
-							)} / ${formatNodeSpeed(node.download_speed)}`;
-							const nodeUptimeDisplay = formatNodeUptime(node.uptime_seconds);
-							const statusBadge = (
-								<NodeModalStatusBadge status={status} compact />
-							);
-							const statusDisplay =
-								status === "error" && node.message ? (
-									<Popover
-										trigger="hover"
-										placement="top"
-										openDelay={250}
-										closeDelay={150}
-										isLazy
-										closeOnBlur={false}
-									>
-										<PopoverTrigger>
-											<Box as="span">{statusBadge}</Box>
-										</PopoverTrigger>
-										<PopoverContent maxW="360px" px={2} py={1} fontSize="sm">
-											<PopoverArrow />
-											<PopoverBody>{node.message}</PopoverBody>
-										</PopoverContent>
-									</Popover>
-								) : (
-									statusBadge
-								);
-							const nodeContent = (
-								<VStack align="stretch" spacing={4}>
-									<Stack spacing={2}>
-										<HStack spacing={3} align="center" flexWrap="wrap">
-											{nodeId != null && (
-												<Checkbox
-													isChecked={selectedNodeIdSet.has(nodeId)}
-													onChange={(event) =>
-														toggleNodeSelection(
-															nodeId,
-															event.target.checked,
-														)
-													}
-													aria-label={t("nodes.selectNode", {
-														defaultValue: "Select {{name}}",
-														name:
-															node.name ||
-															node.address ||
-															t("nodes.thisNode", "this node"),
-													})}
-												/>
-											)}
-											<Text
-												fontWeight="semibold"
-												fontSize="lg"
-												noOfLines={2}
-												wordBreak="break-word"
-												minW={0}
-											>
-												{node.name || t("nodes.unnamedNode", "Unnamed node")}
-											</Text>
-											{statusDisplay}
-											<Switch
-												size="sm"
-												colorScheme="primary"
-												isChecked={displayEnabled}
-												onChange={() => handleToggleNode(node)}
-												isDisabled={isToggleLoading}
-												aria-label={t(
-													"nodes.toggleAvailability",
-													"Toggle node availability",
-												)}
-											/>
-											{node.status === "error" && (
-												<Button
-													size="sm"
-													variant="outline"
-													leftIcon={<ArrowPathIconStyled />}
-													onClick={() => reconnect(node)}
-													isLoading={isReconnecting}
-												>
-													{t("nodes.reconnect")}
-												</Button>
-											)}
-										</HStack>
-										{node.note && (
-											<Text
-												fontSize="sm"
-												color="gray.500"
-												noOfLines={3}
-												wordBreak="break-word"
-											>
-												{node.note}
-											</Text>
-										)}
-										<HStack spacing={2} flexWrap="wrap">
-											<Tag colorScheme="blue" size="sm">
-												{node.xray_version
-													? `Xray ${node.xray_version}`
-													: t("nodes.versionUnknown", "Version unknown")}
-											</Tag>
-											<Button
-												size="xs"
-												variant="ghost"
-												colorScheme="primary"
-												onClick={() =>
-													nodeId &&
-													setVersionDialogTarget({ type: "node", node })
-												}
-												isLoading={isCoreUpdating}
-												isDisabled={!nodeId || !nodeHostActionsAvailable}
-											>
-												{t("nodes.updateCoreAction")}
-											</Button>
-											<Button
-												size="xs"
-												variant="ghost"
-												onClick={() =>
-													nodeId && setGeoDialogTarget({ type: "node", node })
-												}
-												isLoading={isGeoUpdating}
-												isDisabled={!nodeId || !nodeHostActionsAvailable}
-											>
-												{t("nodes.updateGeoAction", "Update geo")}
-											</Button>
-											<Button
-												size="xs"
-												variant="ghost"
-												colorScheme="orange"
-												onClick={() => handleRestartNodeService(node)}
-												isLoading={isRestartingMaintenance}
-												isDisabled={!nodeId || !nodeHostActionsAvailable}
-											>
-												{t(
-													"nodes.restartServiceAction",
-													"Restart node service",
-												)}
-											</Button>
-											<Button
-												size="xs"
-												variant="ghost"
-												colorScheme="teal"
-												onClick={() => handleUpdateNodeService(node)}
-												isLoading={isUpdatingMaintenance}
-												isDisabled={!nodeId || !nodeHostActionsAvailable}
-											>
-												{t("nodes.updateServiceAction", "Update node service")}
-											</Button>
-											<Button
-												size="xs"
-												variant="ghost"
-												colorScheme="red"
-												onClick={() => handleResetNodeUsage(node)}
-												isLoading={
-													isResettingUsage &&
-													nodeId != null &&
-													resettingNodeId === nodeId
-												}
-												isDisabled={!nodeId}
-											>
-												{t("nodes.resetUsage", "Reset usage")}
-											</Button>
-										</HStack>
-										{status === "limited" && (
-											<Text fontSize="sm" color="red.500">
-												{t(
-													"nodes.limitedStatusDescription",
-													"This node is limited because its data limit is exhausted. Increase the limit or reset usage to reconnect it.",
-												)}
-											</Text>
-										)}
-										{node.uses_default_certificate && (
-											<Alert
-												status="warning"
-												borderRadius="md"
-												alignItems="flex-start"
-												gap={3}
-												textAlign="start"
-											>
-												<AlertIcon mt={0.5} />
-												<Box>
-													<Text
-														fontWeight="semibold"
-														fontSize="sm"
-														lineHeight="short"
-													>
-														{t(
-															"nodes.legacyCertCardTitle",
-															"Legacy shared certificate in use",
-														)}
-													</Text>
-													<Text fontSize="xs" lineHeight="short">
-														{t(
-															"nodes.legacyCertCardDesc",
-															"Generate a private certificate for this node and reinstall it on the node host.",
-														)}
-													</Text>
-													<Button
-														size="xs"
-														mt={2}
-														colorScheme="primary"
-														onClick={() =>
-															nodeId && regenerateNodeCertMutate(node)
-														}
-														isLoading={
-															isRegenerating &&
-															nodeId != null &&
-															regeneratingNodeId === nodeId
-														}
-														isDisabled={!nodeId}
-														alignSelf="flex-start"
-													>
-														{t(
-															"nodes.generatePrivateCert",
-															"Generate private certificate",
-														)}
-													</Button>
-												</Box>
-											</Alert>
-										)}
-									</Stack>
-
-									<Divider />
-									<SimpleGrid
-										columns={{ base: 1, sm: 2, lg: 3 }}
-										spacingY={2}
-										spacingX={3}
-									>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.nodeAddress")}
-											</Text>
-											<Tooltip label={t("copy", "Copy")}>
-												<Text
-													as="button"
-													type="button"
-													fontWeight="medium"
-													textAlign="start"
-													cursor="pointer"
-													_hover={{ color: "primary.500" }}
-													onClick={() =>
-														copyToClipboard(
-															node.address,
-															t("nodes.nodeAddress", "Address"),
-														)
-													}
-												>
-													{node.address}
-												</Text>
-											</Tooltip>
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.runtime", "Runtime")}
-											</Text>
-											<Text fontWeight="medium" lineHeight="short">
-												{nodeRuntimeDisplayVersion
-													? t("nodes.nodeServiceVersionTag", {
-															version: nodeRuntimeDisplayVersion,
-														})
-													: t(
-															"nodes.nodeServiceVersionUnknown",
-															"Node version unknown",
-														)}
-											</Text>
-											<Text fontSize="xs" color="gray.500">
-												{nodeInstallLabel}
-											</Text>
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.uptime", "Uptime")}
-											</Text>
-											<Text fontWeight="medium">{nodeUptimeDisplay}</Text>
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.trafficLimit", "Traffic / Limit")}
-											</Text>
-											<NodeMetricDisplay
-												value={nodeTrafficLimitDisplay}
-												colorScheme="green"
-											/>
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.bandwidthSpeed", "Upload / Download")}
-											</Text>
-											<NodeMetricDisplay value={nodeBandwidthDisplay} />
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.cpu", "CPU")}
-											</Text>
-											<NodeMetricDisplay
-												value={nodeCPUDisplay}
-												helper={nodeCPUHelper}
-												percent={node.cpu_usage_percent}
-												colorScheme="orange"
-											/>
-										</Box>
-										<Box p={3} borderWidth="1px" borderRadius="md">
-											<Text
-												fontSize="xs"
-												textTransform="uppercase"
-												color="gray.500"
-											>
-												{t("nodes.ram", "RAM")}
-											</Text>
-											<NodeMetricDisplay
-												value={nodeRAMDisplay}
-												helper={nodeRAMHelper}
-												percent={node.memory_usage_percent}
-												colorScheme="purple"
-											/>
-										</Box>
-									</SimpleGrid>
-									<Divider />
-									<HStack
-										justify="space-between"
-										align="center"
-										flexWrap="wrap"
-										gap={2}
-									>
-										<Text
-											fontSize="xs"
-											color="gray.500"
-											_dark={{ color: "gray.400" }}
-										>
-											{t("nodes.id", "ID")}: {node.id ?? "-"}
-										</Text>
-										<ButtonGroup size="sm" variant="ghost">
-											<IconButton
-												aria-label={t("edit")}
-												icon={<EditIconStyled />}
-												onClick={() => setEditingNode(node)}
-											/>
-											<IconButton
-												aria-label={t("delete")}
-												icon={<DeleteIconStyled />}
-												colorScheme="red"
-												onClick={() => handleDeleteNodeRequest(node)}
-												isDisabled={isDeletingNode}
-											/>
-										</ButtonGroup>
-									</HStack>
-								</VStack>
-							);
-
-							return (
-								<Box
-									key={node.id ?? node.name}
-									bg={nodeCardBg}
-									borderWidth="1px"
-									borderColor={nodeCardBorder}
-									borderRadius="lg"
-									p={6}
-									boxShadow="sm"
-									_hover={{ boxShadow: "md" }}
-									transition="box-shadow 0.2s ease-in-out"
-								>
-									{nodeContent}
-								</Box>
-							);
-						})
-					) : (
-						<Box
-							bg={nodeCardBg}
-							borderWidth="1px"
-							borderColor={nodeCardBorder}
-							borderRadius="lg"
-							p={6}
-							boxShadow="sm"
-							display="flex"
-							alignItems="center"
-							justifyContent="center"
-						>
-							<Text
-								fontSize="sm"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								textAlign="center"
-							>
-								{t("nodes.noNodesFound", "No nodes match the current filters.")}
-							</Text>
-						</Box>
-					)}
-				</SimpleGrid>
-			)}
-
-			{filteredNodes.length > 0 && (
-				<Stack
-					direction={{ base: "column", md: "row" }}
-					align={{ base: "stretch", md: "center" }}
-					justify="space-between"
-					spacing={3}
-					borderWidth="1px"
-					borderColor={nodePanelBorder}
-					borderRadius="md"
-					bg={nodePanelBg}
-					p={3}
-				>
-					<Text fontSize="sm" color="gray.500">
-						{t("nodes.paginationSummary", {
-							defaultValue: "Showing {{start}}-{{end}} of {{total}} nodes",
-							start: paginationStart,
-							end: paginationEnd,
-							total: filteredNodes.length,
-						})}
-					</Text>
-					<HStack spacing={2} justify={{ base: "space-between", md: "flex-end" }}>
-						<Select
-							size="sm"
-							value={pageSize}
-							onChange={(event) => setPageSize(Number(event.target.value))}
-							w="90px"
-						>
-							<option value={12}>12</option>
-							<option value={24}>24</option>
-							<option value={48}>48</option>
-							<option value={96}>96</option>
-							<option value={100}>100</option>
-						</Select>
-						<ButtonGroup size="sm" isAttached variant="outline">
-							<Button
-								onClick={() => setPage((value) => Math.max(1, value - 1))}
-								isDisabled={currentPage <= 1}
-							>
-								{t("previous", "Previous")}
-							</Button>
-							<Button isDisabled>
-								{currentPage} / {totalPages}
-							</Button>
-							<Button
-								onClick={() =>
-									setPage((value) => Math.min(totalPages, value + 1))
-								}
-								isDisabled={currentPage >= totalPages}
-							>
-								{t("next", "Next")}
-							</Button>
-						</ButtonGroup>
-					</HStack>
-				</Stack>
-			)}
-
+					</>
+				)}
+				tableProps={{
+					w: "full",
+					sx: {
+						tableLayout: "auto",
+						"& th, & td": {
+							px: { base: 1.5, xl: 2 },
+							py: 2,
+							verticalAlign: "middle",
+						},
+					},
+				}}
+			/>
 			<CoreVersionDialog
 				isOpen={Boolean(versionDialogTarget)}
 				onClose={closeVersionDialog}
@@ -3264,104 +2978,48 @@ export const NodesPage: FC = () => {
 				}
 				isLoading={serviceActionConfirmLoading}
 			/>
-			<AlertDialog
+			<ConfirmActionDialog
 				isOpen={isDeleteConfirmOpen}
-				leastDestructiveRef={cancelDeleteRef}
 				onClose={handleCloseDeleteConfirm}
-			>
-				<AlertDialogOverlay>
-					<AlertDialogContent
-						onKeyDown={(event) => {
-							if (event.key !== "Enter" || isDeletingNode || !deleteCandidate) {
-								return;
-							}
-							event.preventDefault();
-							confirmDeleteNode();
-						}}
-					>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("delete")}
-						</AlertDialogHeader>
+				onConfirm={confirmDeleteNode}
+				title={t("delete")}
+				message={renderHostImpactMessage(
+					t("deleteNode.prompt", {
+						name:
+							deleteCandidate?.name ??
+							deleteCandidate?.address ??
+							t("nodes.thisNode", "this node"),
+					}),
+					deleteHostImpact,
+				)}
+				confirmLabel={t("delete")}
+				cancelLabel={t("cancel", "Cancel")}
+				colorScheme="red"
+				isLoading={isDeletingNode || hostCleanupLoading}
+				isConfirmDisabled={!deleteCandidate}
+			/>
 
-						<AlertDialogBody>
-							{t("deleteNode.prompt", {
-								name:
-									deleteCandidate?.name ??
-									deleteCandidate?.address ??
-									t("nodes.thisNode", "this node"),
-							})}
-						</AlertDialogBody>
-
-						<AlertDialogFooter>
-							<Button
-								ref={cancelDeleteRef}
-								onClick={handleCloseDeleteConfirm}
-								isDisabled={isDeletingNode}
-							>
-								{t("cancel", "Cancel")}
-							</Button>
-							<Button
-								colorScheme="red"
-								onClick={confirmDeleteNode}
-								ml={3}
-								isLoading={isDeletingNode}
-								isDisabled={!deleteCandidate}
-							>
-								{t("delete")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
-
-			<AlertDialog
+			<ConfirmActionDialog
 				isOpen={isResetConfirmOpen}
-				leastDestructiveRef={cancelResetRef}
 				onClose={handleCloseResetConfirm}
-			>
-				<AlertDialogOverlay>
-					<AlertDialogContent
-						onKeyDown={(event) => {
-							if (event.key !== "Enter" || isResettingUsage || !resetCandidate) {
-								return;
-							}
-							event.preventDefault();
-							confirmResetUsage();
-						}}
-					>
-						<AlertDialogHeader fontSize="lg" fontWeight="bold">
-							{t("nodes.resetUsage", "Reset usage")}
-						</AlertDialogHeader>
-
-						<AlertDialogBody>
-							{t(
-								"nodes.resetUsageConfirm",
-								"Are you sure you want to reset usage for {{name}}?",
-								{
-									name:
-										resetCandidate?.name ??
-										resetCandidate?.address ??
-										t("nodes.thisNode", "this node"),
-								},
-							)}
-						</AlertDialogBody>
-
-						<AlertDialogFooter>
-							<Button ref={cancelResetRef} onClick={handleCloseResetConfirm}>
-								{t("cancel", "Cancel")}
-							</Button>
-							<Button
-								colorScheme="red"
-								onClick={confirmResetUsage}
-								ml={3}
-								isLoading={isResettingUsage}
-							>
-								{t("nodes.resetUsage", "Reset usage")}
-							</Button>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialogOverlay>
-			</AlertDialog>
+				onConfirm={confirmResetUsage}
+				title={t("nodes.resetUsage", "Reset usage")}
+				message={t(
+					"nodes.resetUsageConfirm",
+					"Are you sure you want to reset usage for {{name}}?",
+					{
+						name:
+							resetCandidate?.name ??
+							resetCandidate?.address ??
+							t("nodes.thisNode", "this node"),
+					},
+				)}
+				confirmLabel={t("nodes.resetUsage", "Reset usage")}
+				cancelLabel={t("cancel", "Cancel")}
+				colorScheme="red"
+				isLoading={isResettingUsage}
+				isConfirmDisabled={!resetCandidate}
+			/>
 
 			<NodeFormModal
 				isOpen={isAddNodeOpen}
@@ -3389,11 +3047,37 @@ export const NodesPage: FC = () => {
 			/>
 			{newNodeCertificate && (
 				<Modal isOpen onClose={() => setNewNodeCertificate(null)} size="md">
-					<ModalOverlay />
-					<ModalContent>
-						<ModalHeader>{t("nodes.newNodePublicKeyTitle")}</ModalHeader>
+					<ModalOverlay bg="blackAlpha.500" backdropFilter="blur(12px)" />
+					<ModalContent
+						bg={nodePanelBg}
+						borderWidth="1px"
+						borderColor={nodePanelBorder}
+						borderRadius="2xl"
+						boxShadow="2xl"
+						overflow="hidden"
+						mx={{ base: 4, sm: 0 }}
+						maxW={{ base: "calc(100vw - 32px)", sm: "520px" }}
+					>
+						<ModalHeader px={6} pt={6} pb={2}>
+							<HStack spacing={3}>
+								<Box
+									display="inline-flex"
+									alignItems="center"
+									justifyContent="center"
+									w={10}
+									h={10}
+									borderRadius="full"
+									bg="primary.50"
+									color="primary.600"
+									_dark={{ bg: "primary.900", color: "primary.200" }}
+								>
+									<CertificateIconStyled />
+								</Box>
+								<Text>{t("nodes.newNodePublicKeyTitle")}</Text>
+							</HStack>
+						</ModalHeader>
 						<ModalCloseButton />
-						<ModalBody>
+						<ModalBody px={6} pb={2}>
 							<VStack align="stretch" spacing={4}>
 								<Text
 									fontSize="sm"
@@ -3493,7 +3177,14 @@ export const NodesPage: FC = () => {
 								</Box>
 							</VStack>
 						</ModalBody>
-						<ModalFooter>
+						<ModalFooter
+							bg="blackAlpha.50"
+							_dark={{ bg: "whiteAlpha.50" }}
+							borderTopWidth="1px"
+							borderColor={nodePanelBorder}
+							px={6}
+							py={4}
+						>
 							<Button
 								onClick={() => setNewNodeCertificate(null)}
 								colorScheme="primary"

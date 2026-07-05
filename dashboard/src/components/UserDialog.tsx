@@ -24,7 +24,6 @@ import {
 	ModalCloseButton,
 	ModalHeader,
 	ModalOverlay,
-	Select,
 	SlideFade,
 	Spinner,
 	Stack,
@@ -43,6 +42,7 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { keyframes } from "@emotion/react";
 import {
 	CheckIcon,
@@ -73,7 +73,6 @@ import {
 	useState,
 } from "react";
 import ReactApexChart from "react-apexcharts";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 
@@ -95,6 +94,7 @@ import {
 	getAdminTrafficScope,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
+import { copyTextToClipboard } from "utils/clipboard";
 import { getConfigLabelFromLink } from "utils/configLabel";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { formatBytes } from "utils/formatByte";
@@ -103,9 +103,9 @@ import { generateUserLinks } from "utils/userLinks";
 import { z } from "zod";
 import { NumericInput } from "./common/NumericInput";
 import { AnimatedSubmitButton } from "./common/AnimatedSubmitButton";
+import { DeleteIcon } from "./common/DeleteIcon";
 import { DateTimePicker } from "./DateTimePicker";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
-import { DeleteIcon } from "./DeleteUserModal";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { createUsageConfig, UsageFilter } from "./UsageFilter";
@@ -909,7 +909,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		},
 	] as const;
 
-	const services = useServicesStore((state) => state.serviceOptions);
+	const rawServices = useServicesStore((state) => state.serviceOptions);
+	const services = Array.isArray(rawServices) ? rawServices : [];
 	const servicesLoading = useServicesStore((state) => state.isOptionsLoading);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const hasPrivilegedRole = Boolean(
@@ -2193,7 +2194,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 								<Tabs
 									index={activeTab}
 									onChange={handleTabChange}
-									variant="enclosed"
+									className="xray-dialog-auto-sections"
+									variant="unstyled"
 									isLazy
 									w="full"
 								>
@@ -3094,9 +3096,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													{hasExistingKey && canSetCustomKey && (
 														<>
 															<FormControl
-																display="flex"
-																alignItems="center"
-																justifyContent="space-between"
+																className="rb-dialog-switch-row"
 															>
 																<FormLabel mb={0}>
 																	{t(
@@ -3174,20 +3174,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													minW={0}
 												>
 													<Box
+														className="xray-dialog-section rb-dialog-collapsible-section"
 														w="full"
 														minW={0}
-														borderWidth="1px"
-														borderRadius="md"
-														bg="white"
-														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
-														overflow="hidden"
 														mb="10px"
 													>
 														<Flex
+															className="rb-dialog-collapsible-trigger"
 															align="center"
 															justify="space-between"
-															px={4}
-															py={3}
 															cursor="pointer"
 															onClick={() => setAutoRenewOpen((prev) => !prev)}
 															gap={3}
@@ -3200,6 +3195,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																justify="flex-start"
 															>
 																<Text
+																	className="rb-dialog-collapsible-title"
 																	fontWeight="semibold"
 																	textAlign={isRTL ? "right" : "left"}
 																	w="full"
@@ -3223,10 +3219,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														</Flex>
 														<Collapse in={autoRenewOpen} animateOpacity>
 															<VStack
+																className="rb-dialog-collapsible-body"
 																align="stretch"
 																spacing={4}
-																px={4}
-																pb={4}
 																w="full"
 																minW={0}
 															>
@@ -3571,25 +3566,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
 													minW={0}
 												>
 													<Box
+														className="xray-dialog-section rb-dialog-collapsible-section"
 														w="full"
 														minW={0}
-														borderWidth="1px"
-														borderRadius="md"
-														bg="white"
-														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
-														overflow="hidden"
 														mb="10px"
 													>
 														<Flex
+															className="rb-dialog-collapsible-trigger"
 															align="center"
 															justify="space-between"
-															px={4}
-															py={3}
 															cursor="pointer"
 															onClick={() => setOtherInfoOpen((prev) => !prev)}
 															gap={3}
 														>
 															<Text
+																className="rb-dialog-collapsible-title"
 																fontWeight="semibold"
 																textAlign="start"
 																flex="1"
@@ -3607,10 +3598,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 														</Flex>
 														<Collapse in={otherInfoOpen} animateOpacity>
 															<VStack
+																className="rb-dialog-collapsible-body"
 																align="stretch"
 																spacing={3}
-																px={4}
-																pb={4}
 																w="full"
 																minW={0}
 															>
@@ -3787,41 +3777,39 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				)}
 																			</HStack>
 																			<HStack spacing={1} flexShrink={0}>
-																				<CopyToClipboard
-																					text={item.url}
-																					onCopy={() =>
-																						setCopiedSubscriptionKey(item.key)
+																				<Tooltip
+																					label={
+																						copiedSubscriptionKey === item.key
+																							? t("usersTable.copied")
+																							: t(
+																									"userDialog.links.copy",
+																									"Copy",
+																								)
 																					}
+																					placement="top"
 																				>
-																					<div>
-																						<Tooltip
-																							label={
-																								copiedSubscriptionKey ===
-																								item.key
-																									? t("usersTable.copied")
-																									: t(
-																											"userDialog.links.copy",
-																											"Copy",
-																										)
-																							}
-																							placement="top"
-																						>
-																							<IconButton
-																								aria-label="copy subscription link"
-																								variant="ghost"
-																								size="sm"
-																								type="button"
-																							>
-																								{copiedSubscriptionKey ===
-																								item.key ? (
-																									<CopiedActionIcon />
-																								) : (
-																									<CopyActionIcon />
-																								)}
-																							</IconButton>
-																						</Tooltip>
-																					</div>
-																				</CopyToClipboard>
+																					<IconButton
+																						aria-label="copy subscription link"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							void copyTextToClipboard(
+																								item.url,
+																							).then(() =>
+																								setCopiedSubscriptionKey(
+																									item.key,
+																								),
+																							);
+																						}}
+																					>
+																						{copiedSubscriptionKey === item.key ? (
+																							<CopiedActionIcon />
+																						) : (
+																							<CopyActionIcon />
+																						)}
+																					</IconButton>
+																				</Tooltip>
 																				<Tooltip
 																					label={t("userDialog.links.qr", "QR")}
 																					placement="top"
@@ -3867,37 +3855,32 @@ export const UserDialog: FC<UserDialogProps> = () => {
 															<Text fontWeight="semibold">
 																{t("userDialog.links.configs", "Configs")}
 															</Text>
-															<CopyToClipboard
-																text={configLinksText}
-																onCopy={() => {
-																	if (configItems.length > 0) {
-																		setCopiedAllConfigs(true);
-																	}
+															<Button
+																size="sm"
+																variant="outline"
+																type="button"
+																isDisabled={configItems.length === 0}
+																leftIcon={
+																	copiedAllConfigs ? (
+																		<CopiedActionIcon />
+																	) : (
+																		<CopyActionIcon />
+																	)
+																}
+																onClick={() => {
+																	if (configItems.length === 0) return;
+																	void copyTextToClipboard(configLinksText).then(() =>
+																		setCopiedAllConfigs(true),
+																	);
 																}}
 															>
-																<div>
-																	<Button
-																		size="sm"
-																		variant="outline"
-																		type="button"
-																		isDisabled={configItems.length === 0}
-																		leftIcon={
-																			copiedAllConfigs ? (
-																				<CopiedActionIcon />
-																			) : (
-																				<CopyActionIcon />
-																			)
-																		}
-																	>
-																		{copiedAllConfigs
-																			? t("usersTable.copied")
-																			: t(
-																					"userDialog.links.copyAllConfigs",
-																					"Copy all configs",
-																				)}
-																	</Button>
-																</div>
-															</CopyToClipboard>
+																{copiedAllConfigs
+																	? t("usersTable.copied")
+																	: t(
+																			"userDialog.links.copyAllConfigs",
+																			"Copy all configs",
+																		)}
+															</Button>
 														</HStack>
 
 														<VStack spacing={2} align="stretch">
@@ -3937,39 +3920,37 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																				{item.label}
 																			</Text>
 																			<HStack spacing={1} flexShrink={0}>
-																				<CopyToClipboard
-																					text={item.link}
-																					onCopy={() =>
-																						setCopiedConfigIndex(index)
+																				<Tooltip
+																					label={
+																						copiedConfigIndex === index
+																							? t("usersTable.copied")
+																							: t(
+																									"userDialog.links.copy",
+																									"Copy",
+																								)
 																					}
+																					placement="top"
 																				>
-																					<div>
-																						<Tooltip
-																							label={
-																								copiedConfigIndex === index
-																									? t("usersTable.copied")
-																									: t(
-																											"userDialog.links.copy",
-																											"Copy",
-																										)
-																							}
-																							placement="top"
-																						>
-																							<IconButton
-																								aria-label="copy config"
-																								variant="ghost"
-																								size="sm"
-																								type="button"
-																							>
-																								{copiedConfigIndex === index ? (
-																									<CopiedActionIcon />
-																								) : (
-																									<CopyActionIcon />
-																								)}
-																							</IconButton>
-																						</Tooltip>
-																					</div>
-																				</CopyToClipboard>
+																					<IconButton
+																						aria-label="copy config"
+																						variant="ghost"
+																						size="sm"
+																						type="button"
+																						onClick={() => {
+																							void copyTextToClipboard(
+																								item.link,
+																							).then(() =>
+																								setCopiedConfigIndex(index),
+																							);
+																						}}
+																					>
+																						{copiedConfigIndex === index ? (
+																							<CopiedActionIcon />
+																						) : (
+																							<CopyActionIcon />
+																						)}
+																					</IconButton>
+																				</Tooltip>
 																				<Tooltip
 																					label={t("userDialog.links.qr", "QR")}
 																					placement="top"

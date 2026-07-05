@@ -2,7 +2,7 @@ import { Box, Button, Heading, Text, VStack } from "@chakra-ui/react";
 import { createBrowserRouter } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { fetch } from "../service/http";
-import { getAuthToken } from "../utils/authStorage";
+import { getAuthToken, removeAuthToken } from "../utils/authStorage";
 import AccessInsightsPage from "./AccessInsightsPage";
 import { AdminsPage } from "./AdminsPage";
 import { ApiDocsPage } from "./ApiDocsPage";
@@ -141,6 +141,7 @@ const fetchAdminLoader = async () => {
 			(error as { response?: { status?: number }; status?: number })?.response
 				?.status ?? (error as { status?: number })?.status;
 		if (status === 401 || status === 403) {
+			removeAuthToken();
 			throw redirect("/login/");
 		}
 		console.error("Loader error:", error);

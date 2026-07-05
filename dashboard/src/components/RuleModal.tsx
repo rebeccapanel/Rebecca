@@ -10,10 +10,8 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	Stack,
 	Text,
-	Textarea,
 	Wrap,
 	WrapItem,
 } from "@chakra-ui/react";
@@ -21,9 +19,11 @@ import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { type FC, useEffect, useMemo } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { MultiValueAutocomplete } from "./common/MultiValueAutocomplete";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
 	XrayDialogSection,
+	XrayFieldGrid,
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
@@ -277,13 +277,20 @@ export const RuleModal: FC<RuleModalProps> = ({
 									<FormLabel>
 										{t("pages.xray.rules.type", "Rule Type")}
 									</FormLabel>
-									<Select {...register("type")} size="sm">
-										{TYPE_OPTIONS.map((option) => (
-											<option key={option} value={option}>
-												{option || t("core.none", "None")}
-											</option>
-										))}
-									</Select>
+									<Controller
+										control={control}
+										name="type"
+										render={({ field }) => (
+											<SearchableTagSelect
+												mode="single"
+												options={TYPE_OPTIONS}
+												value={field.value ?? ""}
+												onChange={(value) => field.onChange(value as string)}
+												placeholder={t("pages.xray.rules.type", "Rule Type")}
+												searchPlaceholder={t("search", "Search")}
+											/>
+										)}
+									/>
 								</FormControl>
 
 								<FormControl>
@@ -369,13 +376,23 @@ export const RuleModal: FC<RuleModalProps> = ({
 									<FormLabel>
 										{t("pages.xray.rules.domainMatcher", "Domain Matcher")}
 									</FormLabel>
-									<Select {...register("domainMatcher")} size="sm">
-										{DOMAIN_MATCHER_OPTIONS.map((option) => (
-											<option key={option || "empty"} value={option}>
-												{option ? option : t("core.default", "Default")}
-											</option>
-										))}
-									</Select>
+									<Controller
+										control={control}
+										name="domainMatcher"
+										render={({ field }) => (
+											<SearchableTagSelect
+												mode="single"
+												options={DOMAIN_MATCHER_OPTIONS.map((option) => ({
+													value: option,
+													label: option || t("core.default", "Default"),
+												}))}
+												value={field.value ?? ""}
+												onChange={(value) => field.onChange(value as string)}
+												placeholder={t("core.default", "Default")}
+												searchPlaceholder={t("search", "Search")}
+											/>
+										)}
+									/>
 								</FormControl>
 
 								<FormControl>
@@ -425,17 +442,23 @@ export const RuleModal: FC<RuleModalProps> = ({
 						<XrayDialogSection
 							title={t("pages.xray.rules.sourceGroup", "Source")}
 						>
-							<Stack spacing={3}>
+							<XrayFieldGrid>
 								<FormControl>
 									<FormLabel>
 										{t("pages.xray.rules.source", "Source IPs")}
 									</FormLabel>
-									<Textarea
-										{...register("sourceIps")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="sourceIps"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder={t(
+													"pages.xray.rules.useComma",
+													"Comma or space separated",
+												)}
+											/>
 										)}
 									/>
 								</FormControl>
@@ -444,32 +467,38 @@ export const RuleModal: FC<RuleModalProps> = ({
 									<FormLabel>
 										{t("pages.xray.rules.sourcePort", "Source Ports")}
 									</FormLabel>
-									<Textarea
-										{...register("sourcePort")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="sourcePort"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder="80, 443, 1000-2000"
+											/>
 										)}
 									/>
 								</FormControl>
-							</Stack>
+							</XrayFieldGrid>
 						</XrayDialogSection>
 
 						<XrayDialogSection
 							title={t("pages.xray.rules.destinationGroup", "Destination")}
 						>
-							<Stack spacing={3}>
+							<XrayFieldGrid>
 								<FormControl>
 									<FormLabel>
 										{t("pages.xray.rules.ip", "Destination IPs")}
 									</FormLabel>
-									<Textarea
-										{...register("ip")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="ip"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder="8.8.8.8, geoip:private"
+											/>
 										)}
 									/>
 								</FormControl>
@@ -478,40 +507,49 @@ export const RuleModal: FC<RuleModalProps> = ({
 									<FormLabel>
 										{t("pages.xray.rules.domain", "Domains")}
 									</FormLabel>
-									<Textarea
-										{...register("domain")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="domain"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder="domain:example.com, geosite:category-ads"
+											/>
 										)}
 									/>
 								</FormControl>
 
 								<FormControl>
 									<FormLabel>{t("pages.xray.rules.user", "Users")}</FormLabel>
-									<Textarea
-										{...register("user")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="user"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder="email@example.com, user-tag"
+											/>
 										)}
 									/>
 								</FormControl>
 
 								<FormControl>
 									<FormLabel>{t("pages.xray.rules.port", "Ports")}</FormLabel>
-									<Textarea
-										{...register("port")}
-										size="sm"
-										placeholder={t(
-											"pages.xray.rules.useComma",
-											"Comma or space separated",
+									<Controller
+										control={control}
+										name="port"
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												value={field.value ?? ""}
+												onChange={field.onChange}
+												placeholder="80, 443, 1000-2000"
+											/>
 										)}
 									/>
 								</FormControl>
-							</Stack>
+							</XrayFieldGrid>
 						</XrayDialogSection>
 
 						<XrayDialogSection

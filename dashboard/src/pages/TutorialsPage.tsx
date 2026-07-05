@@ -5,7 +5,6 @@ import {
 	chakra,
 	Divider,
 	Flex,
-	Heading,
 	HStack,
 	IconButton,
 	Input,
@@ -19,15 +18,8 @@ import {
 	OrderedList,
 	Skeleton,
 	Stack,
-	Table,
-	TableContainer,
 	Tag,
-	Tbody,
-	Td,
 	Text,
-	Th,
-	Thead,
-	Tr,
 	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
@@ -50,6 +42,7 @@ import {
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { StatusBadge } from "components/StatusBadge";
+import { DataTable, PageHeader, TabSystem, type DataTableColumn } from "components/ui";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -252,11 +245,10 @@ const TutorialsPage: FC = () => {
 	const cardStyles = useMemo(
 		() => ({
 			borderWidth: "1px",
-			borderColor: "light-border",
-			borderRadius: "lg",
-			bg: "surface.light",
-			_dark: { bg: "surface.dark", borderColor: "whiteAlpha.200" },
-			boxShadow: "sm",
+			borderColor: "panel.border",
+			borderRadius: "6px",
+			bg: "panel.surface",
+			boxShadow: "none",
 			p: { base: 3, md: 4 },
 		}),
 		[],
@@ -271,13 +263,6 @@ const TutorialsPage: FC = () => {
 	const menuActiveBg = useColorModeValue("primary.50", "whiteAlpha.100");
 	const menuHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.200");
 	const pagePanelBg = useColorModeValue("white", "gray.900");
-	const selectorBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
-	const selectorActiveBg = useColorModeValue(
-		"var(--chakra-colors-white)",
-		"var(--chakra-colors-gray-800)",
-	);
-	const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const tableColorScheme = useColorModeValue("gray", "whiteAlpha");
 	const pulseGlow = useMemo(
 		() =>
 			keyframes`
@@ -799,6 +784,59 @@ const TutorialsPage: FC = () => {
 		return `${formatNumber(dataLimitGb)} GB`;
 	};
 
+	const sampleColumns: DataTableColumn<SampleUser>[] = [
+		{
+			id: "username",
+			header: t("tutorials.table.username"),
+			accessor: "username",
+			priority: "primary",
+			isPrimary: true,
+			sortable: true,
+			truncate: true,
+		},
+		{
+			id: "status",
+			header: t("tutorials.table.status"),
+			priority: "high",
+			cell: (sample) => (
+				<StatusBadge
+					status={sample.status}
+					expiryDate={expiryToTimestamp(sample.expireInDays) ?? undefined}
+					compact
+				/>
+			),
+		},
+		{
+			id: "expire",
+			header: t("tutorials.table.expire"),
+			priority: "medium",
+			accessor: (sample) => formatExpiryLabel(sample.expireInDays),
+		},
+		{
+			id: "traffic",
+			header: t("tutorials.table.traffic"),
+			priority: "high",
+			accessor: formatTraffic,
+			cellAlign: "end",
+		},
+		{
+			id: "note",
+			header: t("tutorials.table.note"),
+			priority: "low",
+			multiline: true,
+			cell: (sample) => (
+				<VStack align="flex-start" spacing={1}>
+					<Text fontSize="sm">{sample.note || "-"}</Text>
+					{typeof sample.ipLimit === "number" ? (
+						<Tag colorScheme="gray" size="sm">
+							{t("tutorials.table.ipLimit", { count: sample.ipLimit })}
+						</Tag>
+					) : null}
+				</VStack>
+			),
+		},
+	];
+
 	const renderSkeleton = () => (
 		<VStack spacing={4} align="stretch">
 			<Skeleton h="30px" w="240px" />
@@ -1133,7 +1171,7 @@ const TutorialsPage: FC = () => {
 
 	return (
 		<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
-			<Box
+			<PageHeader
 				borderWidth="1px"
 				borderColor={menuBorder}
 				borderRadius="lg"
@@ -1215,7 +1253,7 @@ const TutorialsPage: FC = () => {
 						) : null}
 					</InputGroup>
 				</Stack>
-			</Box>
+			</PageHeader>
 
 			{error ? (
 				<Box
@@ -1277,75 +1315,40 @@ const TutorialsPage: FC = () => {
 					>
 						<VStack align="stretch" spacing={3}>
 							{hasAdminContent && (
-								<Box
-									position="relative"
-									borderWidth="1px"
-									borderColor={menuBorder}
-									borderRadius="lg"
-									bg={selectorBg}
-									p={1}
-									overflow="hidden"
-								>
-									<HStack spacing={1}>
-										<Button
-											size="sm"
-											variant="ghost"
-											color={
-												activeTab === "general" ? "primary.600" : textMuted
-											}
-											bg={
-												activeTab === "general"
-													? selectorActiveBg
-													: "transparent"
-											}
-											boxShadow={activeTab === "general" ? "sm" : "none"}
-											onClick={() => setActiveTab("general")}
-											flex="1"
-											leftIcon={<BookIcon />}
-											transition="background 120ms ease, color 120ms ease"
-											_hover={{
-												bg:
-													activeTab === "general"
-														? selectorActiveBg
-														: menuHoverBg,
-											}}
-											_active={{ bg: selectorActiveBg }}
-										>
-											<HStack spacing={2}>
-												<Text>{t("tutorials.menuTitle")}</Text>
-												{hasNewGeneral ? <NewTutorialMarker compact /> : null}
-											</HStack>
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											color={activeTab === "admin" ? "primary.600" : textMuted}
-											bg={
-												activeTab === "admin" ? selectorActiveBg : "transparent"
-											}
-											boxShadow={activeTab === "admin" ? "sm" : "none"}
-											onClick={() => setActiveTab("admin")}
-											flex="1"
-											leftIcon={<ShieldCheck />}
-											transition="background 120ms ease, color 120ms ease"
-											_hover={{
-												bg:
-													activeTab === "admin"
-														? selectorActiveBg
-														: menuHoverBg,
-											}}
-											_active={{ bg: selectorActiveBg }}
-										>
-											<HStack spacing={2}>
-												<Text>{t("tutorials.adminTab")}</Text>
-												{hasNewAdmin ? <NewTutorialMarker compact /> : null}
-											</HStack>
-										</Button>
-									</HStack>
-								</Box>
+								<TabSystem
+									tabs={[
+										{
+											value: "general",
+											isActive: activeTab === "general",
+											onClick: () => setActiveTab("general"),
+											label: (
+												<HStack spacing={2}>
+													<BookIcon />
+													<Text>{t("tutorials.menuTitle")}</Text>
+													{hasNewGeneral ? <NewTutorialMarker compact /> : null}
+												</HStack>
+											),
+										},
+										{
+											value: "admin",
+											isActive: activeTab === "admin",
+											onClick: () => setActiveTab("admin"),
+											label: (
+												<HStack spacing={2}>
+													<ShieldCheck />
+													<Text>{t("tutorials.adminTab")}</Text>
+													{hasNewAdmin ? <NewTutorialMarker compact /> : null}
+												</HStack>
+											),
+										},
+									]}
+									minH="44px"
+									gap={5}
+								/>
 							)}
 							{isMobile ? (
 								<Button
+									mt={hasAdminContent ? 1 : 0}
 									size="md"
 									variant="outline"
 									colorScheme="primary"
@@ -1381,29 +1384,19 @@ const TutorialsPage: FC = () => {
 							) : null}
 							<Collapse in={!isMobile || isMenuOpen} animateOpacity>
 								<Box
-									bg={menuCardBg}
-									borderWidth="1px"
-									borderColor={menuBorder}
-									borderRadius="xl"
-									boxShadow="md"
-									p={3}
+									mt={hasAdminContent || isMobile ? 1 : 0}
+									bg="transparent"
+									borderWidth="0"
+									borderRadius="0"
+									boxShadow="none"
+									p={0}
 								>
-									<VStack align="stretch" spacing={3}>
-										<HStack justify="space-between" align="center" spacing={3}>
-											<Heading size="sm">
-												{activeTab === "admin"
-													? t("tutorials.adminTab")
-													: t("tutorials.menuTitle")}
-											</Heading>
-											<Tag size="sm" colorScheme="gray" variant="subtle">
-												{menuEntryCount}
-											</Tag>
-										</HStack>
+									<VStack align="stretch" spacing={1}>
 										<VStack
 											align="stretch"
 											spacing={1}
-											maxH={{ base: "unset", md: "70vh" }}
-											overflowY={{ base: "visible", md: "auto" }}
+											maxH={{ base: "52vh", md: "70vh" }}
+											overflowY="auto"
 											borderRadius="lg"
 										>
 											{menuItems.map((item) => {
@@ -1976,77 +1969,14 @@ const TutorialsPage: FC = () => {
 								<Text fontSize="sm" color={textMuted} mb={3}>
 									{t("tutorials.sampleTableNote")}
 								</Text>
-								<TableContainer
-									overflowX="auto"
-									bg={innerCardBg}
-									borderWidth="1px"
-									borderColor="light-border"
-									borderRadius="lg"
-									_dark={{ borderColor: "whiteAlpha.200" }}
-									boxShadow="sm"
-								>
-									<Table
-										size="sm"
-										variant="striped"
-										colorScheme={tableColorScheme}
-									>
-										<Thead>
-											<Tr>
-												<Th fontWeight="bold">
-													{t("tutorials.table.username")}
-												</Th>
-												<Th fontWeight="bold">{t("tutorials.table.status")}</Th>
-												<Th fontWeight="bold">{t("tutorials.table.expire")}</Th>
-												<Th fontWeight="bold">
-													{t("tutorials.table.traffic")}
-												</Th>
-												<Th fontWeight="bold">{t("tutorials.table.note")}</Th>
-											</Tr>
-										</Thead>
-										<Tbody>
-											{filtered.samples.map((sample) => {
-												const expiryLabel = formatExpiryLabel(
-													sample.expireInDays,
-												);
-												const expiryTimestamp = expiryToTimestamp(
-													sample.expireInDays,
-												);
-												return (
-													<Tr key={sample.username} _hover={{ bg: rowHoverBg }}>
-														<Td fontWeight="medium">{sample.username}</Td>
-														<Td>
-															<StatusBadge
-																status={sample.status}
-																expiryDate={expiryTimestamp ?? undefined}
-																compact
-															/>
-														</Td>
-														<Td>
-															<Text fontSize="sm">{expiryLabel}</Text>
-														</Td>
-														<Td>
-															<Text fontSize="sm" dir="ltr">
-																{formatTraffic(sample)}
-															</Text>
-														</Td>
-														<Td>
-															<VStack align="flex-start" spacing={1}>
-																<Text fontSize="sm">{sample.note || "-"}</Text>
-																{typeof sample.ipLimit === "number" ? (
-																	<Tag colorScheme="gray" size="sm">
-																		{t("tutorials.table.ipLimit", {
-																			count: sample.ipLimit,
-																		})}
-																	</Tag>
-																) : null}
-															</VStack>
-														</Td>
-													</Tr>
-												);
-											})}
-										</Tbody>
-									</Table>
-								</TableContainer>
+								<DataTable
+									data={filtered.samples}
+									columns={sampleColumns}
+									getRowId={(sample) => sample.username}
+									actionsDisplay="none"
+									mobileBreakpoint="md"
+									ariaLabel={t("tutorials.sampleTable")}
+								/>
 							</Box>
 						) : null}
 

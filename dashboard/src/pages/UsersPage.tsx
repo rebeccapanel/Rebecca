@@ -1,11 +1,18 @@
-import { Box, Flex, Text, useColorModeValue, VStack } from "@chakra-ui/react";
-import { Filters } from "components/Filters";
+import {
+	Box,
+	Flex,
+	Text,
+	useColorModeValue,
+	VStack,
+} from "@chakra-ui/react";
+import { Filters, ReloadIcon } from "components/Filters";
 import { Pagination } from "components/Pagination";
 import { QRCodeDialog } from "components/QRCodeDialog";
 import { ResetUserUsageModal } from "components/ResetUserUsageModal";
 import { RevokeSubscriptionModal } from "components/RevokeSubscriptionModal";
 import { UserDialog } from "components/UserDialog";
 import { UsersTable } from "components/UsersTable";
+import { ResourceRefreshButton } from "components/ui";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { type FC, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,10 +20,10 @@ import { useTranslation } from "react-i18next";
 export const UsersPage: FC = () => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const panelBg = useColorModeValue("white", "whiteAlpha.50");
-	const filterBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const mutedColor = useColorModeValue("gray.600", "gray.400");
+	const borderColor = useColorModeValue("panel.border", "panel.border");
+	const panelBg = useColorModeValue("panel.surface", "panel.surface");
+	const mutedColor = useColorModeValue("panel.textSecondary", "panel.textSecondary");
+	const { loading, refetchUsers } = useDashboard();
 
 	useEffect(() => {
 		useDashboard.getState().refetchUsers(true);
@@ -32,11 +39,11 @@ export const UsersPage: FC = () => {
 	}, []);
 
 	return (
-		<VStack spacing={6} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
+		<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
 			<Flex
 				borderWidth="1px"
 				borderColor={borderColor}
-				borderRadius="md"
+				borderRadius="6px"
 				bg={panelBg}
 				px={{ base: 3, md: 4 }}
 				py={4}
@@ -54,16 +61,22 @@ export const UsersPage: FC = () => {
 					</Text>
 				</Box>
 			</Flex>
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={filterBg}
-				p={{ base: 3, md: 4 }}
-			>
-				<Filters />
-			</Box>
-			<UsersTable />
+			<UsersTable
+				toolbar={
+					<Box>
+						<Filters py={0} showRefresh={false} />
+					</Box>
+				}
+				footerActions={
+					<ResourceRefreshButton
+						aria-label={t("refresh", "Refresh")}
+						label={t("refresh", "Refresh")}
+						icon={<ReloadIcon />}
+						onClick={() => refetchUsers(true)}
+						isLoading={loading}
+					/>
+				}
+			/>
 			<Pagination />
 			<UserDialog />
 			<QRCodeDialog />

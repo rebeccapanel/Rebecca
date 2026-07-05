@@ -10,10 +10,10 @@ import {
 	FormControl,
 	FormLabel,
 	HStack,
-	IconButton,
 	Input,
 	InputGroup,
 	InputRightElement,
+	MenuItem,
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
@@ -25,9 +25,7 @@ import {
 	PopoverTrigger,
 	Portal,
 	SimpleGrid,
-	Spinner,
 	Stack,
-	Switch,
 	Tab,
 	TabList,
 	TabPanel,
@@ -45,11 +43,13 @@ import {
 	WrapItem,
 } from "@chakra-ui/react";
 import {
+	ArrowPathIcon,
+	CheckCircleIcon,
 	InformationCircleIcon,
-	ListBulletIcon,
 	PencilIcon,
 	PlusIcon,
-	Squares2X2Icon,
+	TrashIcon,
+	XCircleIcon,
 } from "@heroicons/react/24/outline";
 import {
 	proxyALPN,
@@ -61,7 +61,6 @@ import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
-	type KeyboardEvent,
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -71,10 +70,22 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NumericInput } from "./common/NumericInput";
+import {
+	MultiValueAutocomplete,
+	type MultiValueAutocompleteOption,
+} from "./common/MultiValueAutocomplete";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
+import { DeleteIcon } from "./common/DeleteIcon";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
-import { DeleteIcon } from "./DeleteUserModal";
 import { JsonEditor } from "./JsonEditor";
+import {
+	DataTable,
+	ResourceListCard,
+	ResourceRefreshButton,
+	type DataTableColumn,
+	type DataTableRowAction,
+	type ResourceSummaryItem,
+} from "./ui";
 import {
 	XrayModalBody,
 	XrayModalContent,
@@ -248,20 +259,6 @@ const AddIcon = chakra(PlusIcon, {
 	},
 });
 
-const GridViewIcon = chakra(Squares2X2Icon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
-const ListViewIcon = chakra(ListBulletIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
 const InfoIcon = chakra(InformationCircleIcon, {
 	baseStyle: {
 		w: 4,
@@ -340,342 +337,30 @@ const RotationControls: FC<RotationControlsProps> = ({
 	);
 };
 
-type HostMultiValueAutocompleteProps = {
-	emptyText?: string;
-	options?: AutocompleteOption[];
-	placeholder?: string;
-	rightElement?: ReactNode;
-	value: string;
-	onChange: (value: string) => void;
-};
-
-type AutocompleteOption =
-	| string
-	| {
-			label: string;
-			title?: string;
-			value: string;
-	  };
-
-type NormalizedAutocompleteOption = {
-	label: string;
-	title: string;
-	value: string;
-};
-
-const dedupeValues = (values: string[]) => {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const raw of values) {
-		const value = raw.trim();
-		if (!value) continue;
-		const key = value.toLowerCase();
-		if (seen.has(key)) continue;
-		seen.add(key);
-		result.push(value);
-	}
-	return result;
-};
-
-const textValuesToString = (values: string[]) =>
-	dedupeValues(values).join(", ");
-
-const normalizeAutocompleteOption = (
-	option: AutocompleteOption,
-): NormalizedAutocompleteOption => {
-	if (typeof option === "string") {
-		return { label: option, title: option, value: option };
-	}
-	return {
-		label: option.label,
-		title: option.title ?? option.label,
-		value: option.value,
-	};
-};
-
-const dedupeAutocompleteOptions = (options: NormalizedAutocompleteOption[]) => {
-	const seen = new Set<string>();
-	const result: NormalizedAutocompleteOption[] = [];
-	for (const option of options) {
-		const value = option.value.trim();
-		if (!value) continue;
-		const key = value.toLowerCase();
-		if (seen.has(key)) continue;
-		seen.add(key);
-		result.push({
-			...option,
-			value,
-		});
-	}
-	return result;
-};
-
 const shortNodeName = (name?: string | null) => {
 	const trimmed = (name ?? "").trim();
 	if (!trimmed) return "Node";
 	return trimmed.length > 5 ? `${trimmed.slice(0, 5)}...` : trimmed;
 };
 
-const getNodeAddressOptions = (nodes?: NodeType[]): AutocompleteOption[] =>
-	dedupeAutocompleteOptions(
-		(nodes ?? [])
-			.filter((node) => node.status !== "disabled")
-			.map((node) => {
-				const address =
-					typeof node.address === "string" ? node.address.trim() : "";
-				if (!address) return null;
-				const fullName = String(node.name ?? "").trim();
-				const labelName = shortNodeName(fullName);
-				return {
-					label: `${labelName} - ${address}`,
-					title: fullName ? `${fullName} - ${address}` : address,
-					value: address,
-				};
-			})
-			.filter(
-				(option): option is NormalizedAutocompleteOption => option !== null,
-			),
-	);
-
-const HostMultiValueAutocomplete: FC<HostMultiValueAutocompleteProps> = ({
-	emptyText,
-	options = [],
-	placeholder,
-	rightElement,
-	value,
-	onChange,
-}) => {
-	const { t } = useTranslation();
-	const [inputValue, setInputValue] = useState("");
-	const [isOpen, setIsOpen] = useState(false);
-	const selectedValues = useMemo(() => rotationTextToOptions(value), [value]);
-	const selectedSet = useMemo(
-		() => new Set(selectedValues.map((item) => item.toLowerCase())),
-		[selectedValues],
-	);
-	const mergedOptions = useMemo(
-		() =>
-			dedupeAutocompleteOptions([
-				...options.map(normalizeAutocompleteOption),
-				...selectedValues.map((item) => normalizeAutocompleteOption(item)),
-			]),
-		[options, selectedValues],
-	);
-	const searchTerm = inputValue.trim();
-	const filteredOptions = useMemo(() => {
-		const term = searchTerm.toLowerCase();
-		if (!term) return mergedOptions;
-		return mergedOptions.filter((option) =>
-			`${option.label} ${option.value}`.toLowerCase().includes(term),
-		);
-	}, [mergedOptions, searchTerm]);
-	const canCreate =
-		Boolean(searchTerm) &&
-		!mergedOptions.some(
-			(option) => option.value.toLowerCase() === searchTerm.toLowerCase(),
-		);
-	const borderColor = useColorModeValue("gray.200", "gray.700");
-	const bg = useColorModeValue("white", "gray.900");
-	const menuBg = useColorModeValue("white", "gray.800");
-	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
-	const selectedBg = useColorModeValue("primary.50", "whiteAlpha.100");
-	const mutedColor = useColorModeValue("gray.500", "gray.400");
-
-	const updateValues = (nextValues: string[]) =>
-		onChange(textValuesToString(nextValues));
-
-	const commitInput = (rawValue = inputValue) => {
-		const tokens = rotationTextToOptions(rawValue);
-		if (!tokens.length) {
-			setInputValue("");
-			return;
-		}
-		updateValues([...selectedValues, ...tokens]);
-		setInputValue("");
-		setIsOpen(true);
-	};
-
-	const toggleValue = (option: NormalizedAutocompleteOption) => {
-		if (selectedSet.has(option.value.toLowerCase())) {
-			updateValues(
-				selectedValues.filter(
-					(item) => item.toLowerCase() !== option.value.toLowerCase(),
-				),
-			);
-			return;
-		}
-		updateValues([...selectedValues, option.value]);
-	};
-
-	const removeValue = (option: string) => {
-		updateValues(
-			selectedValues.filter(
-				(item) => item.toLowerCase() !== option.toLowerCase(),
-			),
-		);
-	};
-
-	const handleInputChange = (nextValue: string) => {
-		if (/[,;\n]/.test(nextValue)) {
-			commitInput(nextValue);
-			return;
-		}
-		setInputValue(nextValue);
-		setIsOpen(true);
-	};
-
-	const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-		if (event.key === "Enter") {
-			event.preventDefault();
-			commitInput();
-			return;
-		}
-		if (event.key === "Backspace" && !inputValue && selectedValues.length) {
-			event.preventDefault();
-			removeValue(selectedValues[selectedValues.length - 1]);
-		}
-	};
-
-	return (
-		<Box
-			position="relative"
-			onBlur={(event) => {
-				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-					commitInput();
-					setIsOpen(false);
-				}
-			}}
-		>
-			<Box
-				borderWidth="1px"
-				borderRadius="md"
-				borderColor={borderColor}
-				bg={bg}
-				minH="36px"
-				px={1.5}
-				py={1}
-				pr={rightElement ? 10 : 2}
-				cursor="text"
-				onMouseDown={(event) => {
-					const target = event.target as HTMLElement | null;
-					if (target?.closest("button")) return;
-					event.preventDefault();
-					const input = event.currentTarget.querySelector("input");
-					input?.focus();
-					setIsOpen(true);
-				}}
-			>
-				<Wrap spacing={1.5} align="center">
-					{selectedValues.map((item) => (
-						<WrapItem key={item}>
-							<Tag
-								size="sm"
-								minH="22px"
-								borderRadius="full"
-								colorScheme="primary"
-								variant="subtle"
-							>
-								<TagLabel maxW="150px" noOfLines={1} fontSize="xs">
-									{item}
-								</TagLabel>
-								<TagCloseButton
-									onMouseDown={(event) => event.preventDefault()}
-									onClick={() => removeValue(item)}
-								/>
-							</Tag>
-						</WrapItem>
-					))}
-					<WrapItem flex="1" minW="140px">
-						<Input
-							variant="unstyled"
-							size="sm"
-							h="24px"
-							fontSize="sm"
-							value={inputValue}
-							placeholder={
-								selectedValues.length
-									? t("hostsDialog.addAnotherValue", "Add another value")
-									: placeholder
-							}
-							onFocus={() => setIsOpen(true)}
-							onChange={(event) => handleInputChange(event.target.value)}
-							onKeyDown={handleKeyDown}
-						/>
-					</WrapItem>
-				</Wrap>
-				{rightElement && (
-					<Box position="absolute" top="7px" right="8px" zIndex={1}>
-						{rightElement}
-					</Box>
-				)}
-			</Box>
-			{isOpen && (
-				<Box
-					position="absolute"
-					top="calc(100% + 6px)"
-					left={0}
-					right={0}
-					zIndex={16060}
-					borderWidth="1px"
-					borderColor={borderColor}
-					borderRadius="md"
-					bg={menuBg}
-					boxShadow="lg"
-					maxH="240px"
-					overflowY="auto"
-					p={1}
-					onMouseDown={(event) => event.preventDefault()}
-				>
-					{canCreate && (
-						<Button
-							w="full"
-							size="sm"
-							minH="28px"
-							justifyContent="flex-start"
-							variant="ghost"
-							onClick={() => commitInput(searchTerm)}
-						>
-							{t("hostsDialog.addCustomValue", "Add")} "{searchTerm}"
-						</Button>
-					)}
-					{filteredOptions.length ? (
-						filteredOptions.map((option) => {
-							const selected = selectedSet.has(option.value.toLowerCase());
-							return (
-								<Button
-									key={option.value}
-									w="full"
-									size="sm"
-									minH="28px"
-									justifyContent="space-between"
-									variant="ghost"
-									bg={selected ? selectedBg : "transparent"}
-									_hover={{ bg: selected ? selectedBg : hoverBg }}
-									onClick={() => toggleValue(option)}
-									title={option.title}
-								>
-									<Text as="span" noOfLines={1} textAlign="start">
-										{option.label}
-									</Text>
-									{selected && (
-										<Text as="span" fontSize="xs" color="primary.400" ml={2}>
-											{t("selected", "Selected")}
-										</Text>
-									)}
-								</Button>
-							);
-						})
-					) : !canCreate ? (
-						<Text px={2} py={2} fontSize="sm" color={mutedColor}>
-							{emptyText ??
-								t("hostsDialog.noAutocompleteOptions", "No options")}
-						</Text>
-					) : null}
-				</Box>
-			)}
-		</Box>
-	);
-};
+const getNodeAddressOptions = (
+	nodes?: NodeType[],
+): MultiValueAutocompleteOption[] =>
+	(nodes ?? [])
+		.filter((node) => node.status !== "disabled")
+		.reduce<MultiValueAutocompleteOption[]>((options, node) => {
+			const address =
+				typeof node.address === "string" ? node.address.trim() : "";
+			if (!address) return options;
+			const fullName = String(node.name ?? "").trim();
+			const labelName = shortNodeName(fullName);
+			options.push({
+				label: `${labelName} - ${address}`,
+				title: fullName ? `${fullName} - ${address}` : address,
+				value: address,
+			});
+			return options;
+		}, []);
 
 const HOST_MODAL_SX = {
 	".xray-dialog-section .chakra-form-control": {
@@ -1288,259 +973,6 @@ const buildInboundPayload = (
 	return payload;
 };
 
-type HostCardProps = {
-	host: HostState;
-	inboundOptions: InboundOption[];
-	onToggleActive: (uid: string, active: boolean) => void;
-	onEdit: (uid: string) => void;
-	onDelete: (uid: string) => void;
-	saving: boolean;
-	deleting: boolean;
-};
-
-const HostCard: FC<HostCardProps> = ({
-	host,
-	inboundOptions,
-	onToggleActive,
-	onEdit,
-	onDelete,
-	saving,
-	deleting,
-}) => {
-	const { t } = useTranslation();
-	const inbound = inboundOptions.find(
-		(option) => option.value === host.inboundTag,
-	);
-	const active = !host.data.is_disabled;
-	const dirty = isHostDirty(host);
-	const hostName = host.data.remark || t("hostsPage.untitledHost");
-
-	return (
-		<Card
-			borderWidth="1px"
-			borderColor={dirty ? "primary.400" : "gray.200"}
-			_dark={{
-				borderColor: dirty ? "primary.300" : "gray.700",
-				bg: dirty ? "gray.800" : "gray.900",
-			}}
-			cursor="pointer"
-			onClick={() => onEdit(host.uid)}
-			transition="border-color 0.2s ease"
-			_hover={{ borderColor: "primary.400" }}
-		>
-			<CardBody as={Stack} spacing={4}>
-				<HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
-					<VStack align="flex-start" spacing={1} flex="1">
-						<Tooltip label={host.data.remark} isDisabled={!host.data.remark}>
-							<Text fontWeight="semibold" noOfLines={1} maxW="full">
-								{hostName}
-							</Text>
-						</Tooltip>
-						<HStack spacing={2} flexWrap="wrap">
-							{inbound && (
-								<Tag colorScheme="purple" size="sm">
-									{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
-								</Tag>
-							)}
-							{typeof host.data.port === "number" && (
-								<Tag colorScheme="blue" size="sm">
-									{t("hostsPage.portTag", { value: host.data.port })}
-								</Tag>
-							)}
-							{dirty && (
-								<Tag colorScheme="orange" size="sm">
-									{t("hostsPage.unsaved")}
-								</Tag>
-							)}
-						</HStack>
-					</VStack>
-					<HStack
-						spacing={2}
-						onClick={(event) => event.stopPropagation()}
-						onPointerDown={(event) => event.stopPropagation()}
-					>
-						<Switch
-							size="sm"
-							colorScheme="primary"
-							isChecked={active}
-							onChange={(event) => {
-								event.stopPropagation();
-								onToggleActive(host.uid, event.target.checked);
-							}}
-							onClick={(event) => event.stopPropagation()}
-							onPointerDown={(event) => event.stopPropagation()}
-							aria-label={t("hostsPage.toggleActive")}
-						/>
-						<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-							{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
-						</Text>
-					</HStack>
-				</HStack>
-
-				<VStack
-					align="stretch"
-					spacing={2}
-					color="gray.600"
-					_dark={{ color: "gray.300" }}
-				>
-					<Text fontSize="sm">
-						{host.data.address || t("hostsPage.noAddress")}
-					</Text>
-					{host.data.path && (
-						<Text fontSize="sm" noOfLines={1}>
-							{t("hostsDialog.path")}: {host.data.path}
-						</Text>
-					)}
-					{host.data.sni && (
-						<Text fontSize="sm" noOfLines={1}>
-							{t("hostsDialog.sni")}: {host.data.sni}
-						</Text>
-					)}
-				</VStack>
-
-				<HStack justify="space-between">
-					<Button
-						size="sm"
-						variant="outline"
-						leftIcon={<EditIcon />}
-						onClick={(event) => {
-							event.stopPropagation();
-							onEdit(host.uid);
-						}}
-						isLoading={saving}
-					>
-						{t("hostsPage.edit")}
-					</Button>
-					<DeleteConfirmPopover
-						message={t("hostsPage.deleteConfirmation")}
-						isLoading={deleting}
-						onConfirm={() => onDelete(host.uid)}
-					>
-						<IconButton
-							aria-label={t("hostsPage.delete")}
-							size="sm"
-							colorScheme="red"
-							variant="ghost"
-							onClick={(event) => event.stopPropagation()}
-							icon={<DeleteIcon />}
-						/>
-					</DeleteConfirmPopover>
-				</HStack>
-			</CardBody>
-		</Card>
-	);
-};
-
-const HostListRow: FC<HostCardProps> = ({
-	host,
-	inboundOptions,
-	onToggleActive,
-	onEdit,
-	onDelete,
-	saving,
-	deleting,
-}) => {
-	const { t } = useTranslation();
-	const inbound = inboundOptions.find(
-		(option) => option.value === host.inboundTag,
-	);
-	const active = !host.data.is_disabled;
-	const dirty = isHostDirty(host);
-	const hostName = host.data.remark || t("hostsPage.untitledHost");
-
-	return (
-		<Box
-			borderWidth="1px"
-			borderRadius="md"
-			borderColor={dirty ? "primary.400" : "gray.200"}
-			_dark={{
-				borderColor: dirty ? "primary.300" : "gray.700",
-				bg: dirty ? "gray.800" : "gray.900",
-			}}
-			px={{ base: 4, md: 5 }}
-			py={3}
-			onClick={() => onEdit(host.uid)}
-			cursor="pointer"
-			transition="border-color 0.2s ease"
-			_hover={{ borderColor: "primary.400" }}
-		>
-			<HStack justify="space-between" align="center" spacing={4}>
-				<VStack align="flex-start" spacing={1} flex="1">
-					<HStack spacing={2} flexWrap="wrap">
-						<Text fontWeight="semibold" noOfLines={1}>
-							{hostName}
-						</Text>
-						{inbound && (
-							<Tag colorScheme="purple" size="sm">
-								{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
-							</Tag>
-						)}
-						{typeof host.data.port === "number" && (
-							<Tag colorScheme="blue" size="sm">
-								{t("hostsPage.portTag", { value: host.data.port })}
-							</Tag>
-						)}
-						{dirty && (
-							<Tag colorScheme="orange" size="sm">
-								{t("hostsPage.unsaved")}
-							</Tag>
-						)}
-					</HStack>
-					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-						{host.data.address || t("hostsPage.noAddress")}
-					</Text>
-				</VStack>
-				<HStack
-					spacing={3}
-					onClick={(event) => event.stopPropagation()}
-					onPointerDown={(event) => event.stopPropagation()}
-				>
-					<Switch
-						size="sm"
-						colorScheme="primary"
-						isChecked={active}
-						onChange={(event) => {
-							event.stopPropagation();
-							onToggleActive(host.uid, event.target.checked);
-						}}
-						onClick={(event) => event.stopPropagation()}
-						onPointerDown={(event) => event.stopPropagation()}
-						aria-label={t("hostsPage.toggleActive")}
-					/>
-					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-						{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
-					</Text>
-					<IconButton
-						aria-label={t("hostsPage.edit")}
-						size="sm"
-						variant="ghost"
-						icon={<EditIcon />}
-						onClick={(event) => {
-							event.stopPropagation();
-							onEdit(host.uid);
-						}}
-						isLoading={saving}
-					/>
-					<DeleteConfirmPopover
-						message={t("hostsPage.deleteConfirmation")}
-						isLoading={deleting}
-						onConfirm={() => onDelete(host.uid)}
-					>
-						<IconButton
-							aria-label={t("hostsPage.delete")}
-							size="sm"
-							colorScheme="red"
-							variant="ghost"
-							onClick={(event) => event.stopPropagation()}
-							icon={<DeleteIcon />}
-						/>
-					</DeleteConfirmPopover>
-				</HStack>
-			</HStack>
-		</Box>
-	);
-};
-
 type HostDetailModalProps = {
 	host: HostState | null;
 	inboundOptions: InboundOption[];
@@ -1752,7 +1184,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl isRequired>
 														<FormLabel>{t("hostsDialog.address")}</FormLabel>
-														<HostMultiValueAutocomplete
+														<MultiValueAutocomplete
 															value={host.data.address}
 															options={nodeAddressOptions}
 															placeholder={t(
@@ -1825,7 +1257,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-														<HostMultiValueAutocomplete
+														<MultiValueAutocomplete
 															value={host.data.sni}
 															placeholder={t(
 																"hostsDialog.sniPlaceholder",
@@ -1838,7 +1270,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.host")}</FormLabel>
-														<HostMultiValueAutocomplete
+														<MultiValueAutocomplete
 															value={host.data.host}
 															placeholder={t(
 																"hostsDialog.hostPlaceholder",
@@ -1905,7 +1337,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
-														<HostMultiValueAutocomplete
+														<MultiValueAutocomplete
 															value={host.data.alpn}
 															options={alpnAutocompleteOptions}
 															placeholder={t(
@@ -2224,7 +1656,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.address")}</FormLabel>
-							<HostMultiValueAutocomplete
+							<MultiValueAutocomplete
 								value={formState.address}
 								options={nodeAddressOptions}
 								placeholder={t(
@@ -2276,7 +1708,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							</FormControl>
 							<FormControl>
 								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-								<HostMultiValueAutocomplete
+								<MultiValueAutocomplete
 									value={formState.sni}
 									placeholder={t(
 										"hostsDialog.sniPlaceholder",
@@ -2305,7 +1737,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						</FormControl>
 						<FormControl>
 							<FormLabel>{t("hostsDialog.host")}</FormLabel>
-							<HostMultiValueAutocomplete
+							<MultiValueAutocomplete
 								value={formState.host}
 								placeholder={t(
 									"hostsDialog.hostPlaceholder",
@@ -2409,6 +1841,7 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
+	const [selectedHostUids, setSelectedHostUids] = useState<string[]>([]);
 	const [cloneHost, setCloneHost] = useState<HostState | null>(null);
 	// Disabled hosts are hidden by default.
 	const [includeDisabled, setIncludeDisabled] = useState(false);
@@ -2416,6 +1849,9 @@ export const HostsManager: FC = () => {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
 	const [deletingUid, setDeletingUid] = useState<string | null>(null);
+	const [bulkAction, setBulkAction] = useState<
+		"enable" | "disable" | "delete" | null
+	>(null);
 
 	const showHostValidationError = useCallback(
 		(errors: string[]) => {
@@ -2434,29 +1870,9 @@ export const HostsManager: FC = () => {
 		[t, toast],
 	);
 
-	const viewModeStorageKey = "hostsViewMode";
-	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
-		if (typeof window === "undefined") {
-			return "grid";
-		}
-		const saved = window.localStorage.getItem(viewModeStorageKey);
-		return saved === "list" ? "list" : "grid";
-	});
-
 	useEffect(() => {
 		fetchHosts();
 	}, [fetchHosts]);
-
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		try {
-			window.localStorage.setItem(viewModeStorageKey, viewMode);
-		} catch (error) {
-			console.warn("Unable to persist hosts view mode", error);
-		}
-	}, [viewMode]);
 
 	useEffect(() => {
 		if (!inbounds.size) {
@@ -2482,6 +1898,13 @@ export const HostsManager: FC = () => {
 			setSelectedHostUid(null);
 		}
 	}, [selectedHostUid]);
+
+	useEffect(() => {
+		const existing = new Set(_hostItemsState.map((host) => host.uid));
+		setSelectedHostUids((current) =>
+			current.filter((uid) => existing.has(uid)),
+		);
+	}, [_hostItemsState]);
 
 	const inboundOptions: InboundOption[] = useMemo(() => {
 		const options: InboundOption[] = [];
@@ -2756,9 +2179,6 @@ export const HostsManager: FC = () => {
 			),
 		);
 		applyHostItems(nextHosts);
-		if (!isActive) {
-			setIncludeDisabled(true);
-		}
 		setSavingHostUid(uid);
 		try {
 			const updatedHost = nextHosts.find((host) => host.uid === uid);
@@ -2812,6 +2232,93 @@ export const HostsManager: FC = () => {
 			});
 		} finally {
 			setDeletingUid(null);
+		}
+	};
+
+	const handleBulkToggleHosts = async (
+		items: HostState[],
+		isActive: boolean,
+	) => {
+		if (!items.length || isPostLoading || bulkAction) {
+			return;
+		}
+		const selected = new Set(items.map((host) => host.uid));
+		const affectedTags = new Set<string>();
+		items.forEach((host) => {
+			affectedTags.add(host.inboundTag);
+			affectedTags.add(host.initialInboundTag);
+		});
+		const previousHosts = hostItemsRef.current;
+		const nextHosts = sortHosts(
+			previousHosts.map((host) =>
+				selected.has(host.uid)
+					? { ...host, data: { ...host.data, is_disabled: !isActive } }
+					: host,
+			),
+		);
+		applyHostItems(nextHosts);
+		setBulkAction(isActive ? "enable" : "disable");
+		try {
+			const payload = buildInboundPayload(nextHosts, affectedTags);
+			await setHosts(payload);
+			await fetchHosts();
+			setSelectedHostUids([]);
+			toast({
+				title: isActive
+					? t("hostsPage.bulkEnabled", "Hosts enabled")
+					: t("hostsPage.bulkDisabled", "Hosts disabled"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.error.save"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setBulkAction(null);
+		}
+	};
+
+	const handleBulkDeleteHosts = async (items: HostState[]) => {
+		if (!items.length || isPostLoading || bulkAction) {
+			return;
+		}
+		const selected = new Set(items.map((host) => host.uid));
+		const affectedTags = new Set<string>();
+		items.forEach((host) => {
+			affectedTags.add(host.inboundTag);
+			affectedTags.add(host.initialInboundTag);
+		});
+		const previousHosts = hostItemsRef.current;
+		const nextHosts = previousHosts.filter((host) => !selected.has(host.uid));
+		applyHostItems(nextHosts);
+		setBulkAction("delete");
+		try {
+			const payload = buildInboundPayload(nextHosts, affectedTags);
+			await setHosts(payload);
+			await fetchHosts();
+			setSelectedHostUids([]);
+			toast({
+				title: t("hostsPage.bulkDeleted", "Hosts deleted"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.error.delete"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setBulkAction(null);
 		}
 	};
 
@@ -2908,122 +2415,422 @@ export const HostsManager: FC = () => {
 		}
 	};
 
+	const hostSummaryItems = useMemo<ResourceSummaryItem[]>(() => {
+		const total = allHosts.length;
+		const disabled = allHosts.filter((host) => host.data.is_disabled).length;
+		const enabled = total - disabled;
+		const inboundCount = new Set(allHosts.map((host) => host.inboundTag)).size;
+		return [
+			{
+				label: t("hostsPage.summary.total", "Total"),
+				value: total,
+				colorScheme: "gray",
+			},
+			{
+				label: t("hostsPage.summary.enabled", "Enabled"),
+				value: enabled,
+				colorScheme: "green",
+			},
+			{
+				label: t("hostsPage.summary.disabled", "Disabled"),
+				value: disabled,
+				colorScheme: "red",
+			},
+			{
+				label: t("hostsPage.summary.inbounds", "Inbounds"),
+				value: inboundCount,
+				colorScheme: "purple",
+			},
+			{
+				label: t("hostsPage.summary.filtered", "Filtered"),
+				value: displayedHosts.length,
+				colorScheme: "teal",
+			},
+		];
+	}, [allHosts, displayedHosts.length, t]);
+
+	const renderRotationValues = useCallback(
+		(value: string, emptyLabel: string) => {
+			const values = rotationTextToOptions(value);
+			if (!values.length) {
+				return <Text color="panel.textMuted">{emptyLabel}</Text>;
+			}
+			const visible = values.slice(0, 2);
+			const hiddenCount = values.length - visible.length;
+			return (
+				<Tooltip
+					label={values.join(", ")}
+					isDisabled={values.length <= visible.length}
+					hasArrow
+					placement="top"
+				>
+					<HStack spacing={1} flexWrap="wrap" maxW="full">
+						{visible.map((item) => (
+							<Tag key={item} size="sm" maxW="120px">
+								<Text as="span" noOfLines={1}>
+									{item}
+								</Text>
+							</Tag>
+						))}
+						{hiddenCount > 0 && (
+							<Tag size="sm" colorScheme="blue">
+								+{hiddenCount}
+							</Tag>
+						)}
+					</HStack>
+				</Tooltip>
+			);
+		},
+		[],
+	);
+
+	const hostColumns = useMemo<DataTableColumn<HostState>[]>(
+		() => [
+			{
+				id: "remark",
+				header: t("hostsPage.host", "Host"),
+				isPrimary: true,
+				priority: "primary",
+				width: { base: "150px", lg: "160px", xl: "180px" },
+				minWidth: "130px",
+				maxWidth: "220px",
+				mobilePriority: 0,
+				mobileMetaLabel: t("hostsPage.host", "Host"),
+				cell: (host) => {
+					const dirty = isHostDirty(host);
+					const hostName = host.data.remark || t("hostsPage.untitledHost");
+					return (
+						<Stack spacing={0.5} minW={0}>
+							<Tooltip label={hostName} isDisabled={hostName.length <= 24}>
+								<Text fontWeight="semibold" noOfLines={1}>
+									{hostName}
+								</Text>
+							</Tooltip>
+							<HStack spacing={1} flexWrap="wrap">
+								{host.data.id != null && (
+									<Text fontSize="xs" color="panel.textMuted">
+										ID: {host.data.id}
+									</Text>
+								)}
+								{dirty && (
+									<Tag size="sm" colorScheme="orange">
+										{t("hostsPage.unsaved")}
+									</Tag>
+								)}
+							</HStack>
+						</Stack>
+					);
+				},
+			},
+			{
+				id: "address",
+				header: t("hostsDialog.address", "Address"),
+				priority: "high",
+				width: { base: "210px", lg: "240px", xl: "280px" },
+				minWidth: "170px",
+				maxWidth: "320px",
+				mobilePriority: 1,
+				mobileMetaLabel: t("hostsDialog.address", "Address"),
+				cell: (host) =>
+					renderRotationValues(host.data.address, t("hostsPage.noAddress")),
+			},
+			{
+				id: "port",
+				header: t("hostsDialog.port", "Port"),
+				priority: "high",
+				width: "72px",
+				minWidth: "64px",
+				maxWidth: "82px",
+				mobilePriority: 2,
+				mobileMetaLabel: t("hostsDialog.port", "Port"),
+				cell: (host) =>
+					host.data.port != null ? (
+						<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{host.data.port}
+						</Text>
+					) : (
+						<Text color="panel.textMuted">-</Text>
+					),
+			},
+			{
+				id: "inbound",
+				header: t("hostsPage.inboundLabel", "Inbound"),
+				priority: "high",
+				width: { base: "150px", lg: "160px", xl: "190px" },
+				minWidth: "130px",
+				maxWidth: "230px",
+				mobilePriority: 3,
+				mobileMetaLabel: t("hostsPage.inboundLabel", "Inbound"),
+				cell: (host) => {
+					const inbound = inboundOptions.find(
+						(option) => option.value === host.inboundTag,
+					);
+					return (
+						<Stack spacing={0.5} minW={0}>
+							<Text fontWeight="semibold" noOfLines={1}>
+								{host.inboundTag}
+							</Text>
+							<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
+								{inbound
+									? `${inbound.protocol.toUpperCase()} / ${inbound.network}`
+									: t("hostsPage.unknownInbound", "Unknown inbound")}
+							</Text>
+						</Stack>
+					);
+				},
+			},
+			{
+				id: "sni",
+				header: t("hostsDialog.sni", "SNI"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "180px",
+				minWidth: "140px",
+				maxWidth: "220px",
+				mobilePriority: 4,
+				mobileMetaLabel: t("hostsDialog.sni", "SNI"),
+				cell: (host) => renderRotationValues(host.data.sni, "-"),
+			},
+			{
+				id: "request_host",
+				header: t("hostsDialog.host", "Request host"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "180px",
+				minWidth: "140px",
+				maxWidth: "220px",
+				mobilePriority: 5,
+				mobileMetaLabel: t("hostsDialog.host", "Request host"),
+				cell: (host) => renderRotationValues(host.data.host, "-"),
+			},
+			{
+				id: "security",
+				header: t("hostsDialog.security", "Security"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "130px",
+				maxWidth: "150px",
+				mobilePriority: 6,
+				mobileMetaLabel: t("hostsDialog.security", "Security"),
+				cell: (host) => (
+					<Tag size="sm" colorScheme="blue">
+						{host.data.security || "inbound_default"}
+					</Tag>
+				),
+			},
+		],
+		[inboundOptions, renderRotationValues, t],
+	);
+
+	const hostRowActions = useCallback(
+		(host: HostState): DataTableRowAction<HostState>[] => {
+			const isActive = !host.data.is_disabled;
+			return [
+				{
+					id: "edit",
+					label: t("hostsPage.edit", "Edit"),
+					icon: <EditIcon />,
+					onClick: () => setSelectedHostUid(host.uid),
+				},
+				{
+					id: "toggle",
+					label: isActive
+						? t("hostsPage.disable", "Disable")
+						: t("hostsPage.enable", "Enable"),
+					icon: isActive ? (
+						<XCircleIcon width={16} />
+					) : (
+						<CheckCircleIcon width={16} />
+					),
+					onClick: () => toggleActive(host.uid, !isActive),
+					isDisabled: isPostLoading,
+				},
+				{
+					id: "delete",
+					label: t("hostsPage.delete", "Delete"),
+					icon: <TrashIcon width={16} />,
+					isDanger: true,
+					render: (_row, onMenuClose) => (
+						<DeleteConfirmPopover
+							message={t("hostsPage.deleteConfirmation")}
+							isLoading={deletingUid === host.uid && isPostLoading}
+							onConfirm={async () => {
+								await handleDeleteHost(host.uid);
+								onMenuClose();
+							}}
+						>
+							<MenuItem
+								icon={<TrashIcon width={16} />}
+								color="red.400"
+								isDisabled={isPostLoading}
+								onClick={(event) => event.stopPropagation()}
+							>
+								{t("hostsPage.delete", "Delete")}
+							</MenuItem>
+						</DeleteConfirmPopover>
+					),
+				},
+			];
+		},
+		[deletingUid, isPostLoading, t],
+	);
+
 	return (
 		<VStack align="stretch" spacing={4}>
-			<Stack
-				direction={{ base: "column", md: "row" }}
-				spacing={3}
-				align={{ base: "stretch", md: "center" }}
-				justify="space-between"
-			>
-				<HStack spacing={3} flexWrap="wrap">
+			<ResourceListCard
+				title={t("hostsPage.listHeader", "Host list")}
+				summaryItems={hostSummaryItems}
+				actions={
 					<Button
 						colorScheme="primary"
 						size="sm"
 						onClick={() => setCreateOpen(true)}
 						leftIcon={<AddIcon />}
 						isDisabled={!inboundOptions.length}
+						h="36px"
+						px={3}
+						borderRadius="4px"
 					>
 						{t("hostsPage.addHost")}
 					</Button>
-					<Switch
-						isChecked={includeDisabled}
-						onChange={(event) => setIncludeDisabled(event.target.checked)}
-					>
-						{t("hostsPage.showDisabled")}
-					</Switch>
-				</HStack>
+				}
+				footerActions={
+					<ResourceRefreshButton
+						aria-label={t("hostsPage.refresh", "Refresh hosts")}
+						label={t("hostsPage.refresh", "Refresh hosts")}
+						icon={<ArrowPathIcon width={16} />}
+						isLoading={isRefreshing}
+						onClick={fetchHosts}
+					/>
+				}
+			>
 				<Stack
 					direction={{ base: "column", sm: "row" }}
 					spacing={2}
 					align={{ base: "stretch", sm: "center" }}
-					justify="flex-end"
-					w="full"
+					flexWrap="wrap"
 				>
 					<Input
 						value={searchQuery}
 						onChange={(event) => setSearchQuery(event.target.value)}
 						placeholder={t("hostsPage.searchPlaceholder")}
 						size="sm"
-						w="100%"
+						w={{ base: "full", md: "280px" }}
 					/>
-					<HStack spacing={2} justify="flex-end">
-						{isRefreshing && <Spinner size="sm" />}
-						<Tooltip label={t("hostsPage.viewList", "List view")}>
-							<IconButton
-								aria-label={t("hostsPage.viewList", "List view")}
-								icon={<ListViewIcon />}
-								variant={viewMode === "list" ? "solid" : "ghost"}
-								colorScheme={viewMode === "list" ? "primary" : undefined}
-								size="sm"
-								onClick={() => setViewMode("list")}
-							/>
-						</Tooltip>
-						<Tooltip label={t("hostsPage.viewGrid", "Grid view")}>
-							<IconButton
-								aria-label={t("hostsPage.viewGrid", "Grid view")}
-								icon={<GridViewIcon />}
-								variant={viewMode === "grid" ? "solid" : "ghost"}
-								colorScheme={viewMode === "grid" ? "primary" : undefined}
-								size="sm"
-								onClick={() => setViewMode("grid")}
-							/>
-						</Tooltip>
-					</HStack>
+					<Checkbox
+						isChecked={includeDisabled}
+						onChange={(event) => setIncludeDisabled(event.target.checked)}
+					>
+						{t("hostsPage.showDisabled")}
+					</Checkbox>
 				</Stack>
-			</Stack>
+			</ResourceListCard>
 
-			{isInitialLoading ? (
-				<HStack justify="center" py={10}>
-					<Spinner />
-				</HStack>
-			) : displayedHosts.length === 0 ? (
-				<Box
-					border="1px dashed"
-					borderRadius="md"
-					px={6}
-					py={10}
-					textAlign="center"
-					borderColor="gray.300"
-					_dark={{ borderColor: "gray.600" }}
-				>
-					<Text>
+			<DataTable
+				ariaLabel={t("hostsPage.tabHosts", "Hosts")}
+				data={displayedHosts}
+				columns={hostColumns}
+				getRowId={(host) => host.uid}
+				isLoading={isInitialLoading}
+				loadingRows={5}
+				emptyState={
+					<Box textAlign="center" color="panel.textMuted">
 						{showSearchEmptyState
 							? t("hostsPage.searchEmpty")
 							: t("hostsPage.emptyState")}
-					</Text>
-				</Box>
-			) : viewMode === "list" ? (
-				<VStack align="stretch" spacing={3}>
-					{displayedHosts.map((host) => (
-						<HostListRow
-							key={host.uid}
-							host={host}
-							inboundOptions={inboundOptions}
-							onToggleActive={toggleActive}
-							onEdit={setSelectedHostUid}
-							onDelete={handleDeleteHost}
-							saving={savingHostUid === host.uid && isPostLoading}
-							deleting={deletingUid === host.uid && isPostLoading}
-						/>
-					))}
-				</VStack>
-			) : (
-				<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-					{displayedHosts.map((host) => (
-						<HostCard
-							key={host.uid}
-							host={host}
-							inboundOptions={inboundOptions}
-							onToggleActive={toggleActive}
-							onEdit={setSelectedHostUid}
-							onDelete={handleDeleteHost}
-							saving={savingHostUid === host.uid && isPostLoading}
-							deleting={deletingUid === host.uid && isPostLoading}
-						/>
-					))}
-				</SimpleGrid>
-			)}
+					</Box>
+				}
+				rowActions={hostRowActions}
+				actionsDisplay="menu"
+				actionsPlacement="end"
+				actionsColumnWidth="60px"
+				showActionsOnHover
+				enableSelection
+				selectedRowIds={selectedHostUids}
+				selectedCount={selectedHostUids.length}
+				onSelectionChange={(rowIds) => setSelectedHostUids(rowIds)}
+				selectedLabel={t("hostsPage.selectedCount", {
+					defaultValue: "{{count}} hosts selected",
+					count: selectedHostUids.length,
+				})}
+				renderBulkActions={(selectedRows) => {
+					const enableTargets = selectedRows.filter(
+						(host) => host.data.is_disabled,
+					);
+					const disableTargets = selectedRows.filter(
+						(host) => !host.data.is_disabled,
+					);
+					return (
+						<>
+							<Button
+								size="sm"
+								variant="outline"
+								leftIcon={<CheckCircleIcon width={16} />}
+								isLoading={bulkAction === "enable"}
+								isDisabled={
+									Boolean(bulkAction) ||
+									isPostLoading ||
+									enableTargets.length === 0
+								}
+								onClick={() => handleBulkToggleHosts(enableTargets, true)}
+							>
+								{t("hostsPage.enable", "Enable")}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								leftIcon={<XCircleIcon width={16} />}
+								isLoading={bulkAction === "disable"}
+								isDisabled={
+									Boolean(bulkAction) ||
+									isPostLoading ||
+									disableTargets.length === 0
+								}
+								onClick={() => handleBulkToggleHosts(disableTargets, false)}
+							>
+								{t("hostsPage.disable", "Disable")}
+							</Button>
+							<DeleteConfirmPopover
+								message={t(
+									"hostsPage.confirmBulkDelete",
+									"Delete {{count}} selected host(s)?",
+									{ count: selectedRows.length },
+								)}
+								isLoading={bulkAction === "delete"}
+								isDisabled={selectedRows.length === 0}
+								onConfirm={() => handleBulkDeleteHosts(selectedRows)}
+							>
+								<Button
+									size="sm"
+									variant="outline"
+									colorScheme="red"
+									leftIcon={<TrashIcon width={16} />}
+									isLoading={bulkAction === "delete"}
+									isDisabled={
+										Boolean(bulkAction) ||
+										isPostLoading ||
+										selectedRows.length === 0
+									}
+								>
+									{t("hostsPage.delete", "Delete")}
+								</Button>
+							</DeleteConfirmPopover>
+						</>
+					);
+				}}
+				mobileBreakpoint="lg"
+				tableProps={{
+					w: "full",
+					sx: {
+						tableLayout: "fixed",
+						"& th, & td": {
+							px: { base: 2, xl: 2.5 },
+							py: 2.5,
+							verticalAlign: "middle",
+						},
+					},
+				}}
+			/>
 
 			<CreateHostModal
 				isOpen={createOpen}

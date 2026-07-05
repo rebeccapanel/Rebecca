@@ -198,6 +198,16 @@ export const getNodeDefaultValues = (): NodeType => ({
 
 export const FetchNodesQueryKey = "fetch-nodes-query-key";
 
+const liveMetricKeys: Array<keyof NodeType> = [
+	"cpu_usage_percent",
+	"memory_used",
+	"memory_total",
+	"memory_usage_percent",
+	"uptime_seconds",
+	"upload_speed",
+	"download_speed",
+];
+
 export type NodeStore = {
 	nodes: NodeType[];
 	addNode: (node: NodeType) => Promise<NodeType>;
@@ -215,10 +225,45 @@ export type NodeStore = {
 };
 
 export const useNodesQuery = (options?: { enabled?: boolean }) => {
+	const queryClient = useQueryClient();
 	return useQuery({
 		queryKey: FetchNodesQueryKey,
-		queryFn: useNodes.getState().fetchNodes,
+		queryFn: async () => {
+			const nextNodes = await useNodes.getState().fetchNodes();
+			const currentNodes =
+				queryClient.getQueryData<NodeType[]>(FetchNodesQueryKey);
+			if (!currentNodes?.length) return nextNodes;
+
+			const currentByID = new Map(
+				currentNodes
+					.filter((node) => node.id !== null && node.id !== undefined)
+					.map((node) => [node.id, node]),
+			);
+
+			return nextNodes.map((node) => {
+				const current =
+					node.id !== null && node.id !== undefined
+						? currentByID.get(node.id)
+						: undefined;
+				if (!current) return node;
+
+				const stableNode = { ...node };
+				liveMetricKeys.forEach((key) => {
+					const nextValue = stableNode[key];
+					const currentValue = current[key];
+					if (
+						(nextValue === null || nextValue === undefined) &&
+						currentValue !== null &&
+						currentValue !== undefined
+					) {
+						(stableNode as Record<keyof NodeType, unknown>)[key] = currentValue;
+					}
+				});
+				return stableNode;
+			});
+		},
 		refetchOnWindowFocus: false,
+		keepPreviousData: true,
 		enabled: options?.enabled ?? true,
 	});
 };

@@ -20,13 +20,13 @@ import {
 	ModalOverlay,
 	Radio,
 	RadioGroup,
-	Select,
 	SimpleGrid,
 	Stack,
 	Text,
 	Tooltip,
 	useColorModeValue,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	MinusIcon,

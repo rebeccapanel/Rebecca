@@ -177,7 +177,6 @@ export type Inbounds = Map<ProtocolType, InboundType[]>;
 type DashboardStateType = {
 	isCreatingNewUser: boolean;
 	editingUser: User | null | undefined;
-	deletingUser: UserListItem | null;
 	version: string | null;
 	users: UsersListResponse;
 	linkTemplates?: Record<string, string[]>; // Link templates for generating user links
@@ -198,7 +197,6 @@ type DashboardStateType = {
 	isEditingCore: boolean;
 	onCreateUser: (isOpen: boolean) => void;
 	onEditingUser: (user: User | UserListItem | null) => void;
-	onDeletingUser: (user: UserListItem | null) => void;
 	onResetAllUsage: (isResetingAllUsage: boolean) => void;
 	refetchUsers: (force?: boolean) => void;
 	resetAllUsage: () => Promise<void>;
@@ -383,7 +381,6 @@ export const clearDashboardCache = () => {
 		usersCacheKey: null,
 		usersCacheAuthToken: null,
 		editingUser: null,
-		deletingUser: null,
 		resetUsageUser: null,
 		revokeSubscriptionUser: null,
 		subscribeUrl: null,
@@ -397,7 +394,6 @@ export const useDashboard = create(
 	subscribeWithSelector<DashboardStateType>((set, get) => ({
 		version: null,
 		editingUser: null,
-		deletingUser: null,
 		isCreatingNewUser: false,
 		QRcodeLinks: null,
 		qrCodeUsername: null,
@@ -431,15 +427,13 @@ export const useDashboard = create(
 				set({ editingUser: null });
 				return;
 			}
+			set({ editingUser: editingUser as User });
 			// Fetch full user detail before opening editor to keep list payload lightweight
 			fetch(`/user/${editingUser.username}`)
 				.then((fullUser: User) => {
 					set({ editingUser: fullUser });
 				})
 				.catch(() => set({ editingUser: null }));
-		},
-		onDeletingUser: (deletingUser) => {
-			set({ deletingUser });
 		},
 		onFilterChange: (filters) => {
 			set({
@@ -459,7 +453,6 @@ export const useDashboard = create(
 		deleteUser: (user: UserListItem) => {
 			set({ editingUser: null });
 			return fetch(`/user/${user.username}`, { method: "DELETE" }).then(() => {
-				set({ deletingUser: null });
 				get().refetchUsers(true);
 				queryClient.invalidateQueries(StatisticsQueryKey);
 			});

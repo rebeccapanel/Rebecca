@@ -1,26 +1,16 @@
 import {
 	Box,
 	Button,
-	Collapse,
 	chakra,
 	Flex,
 	HStack,
 	IconButton,
+	MenuItem,
 	Progress,
-	Select,
-	SimpleGrid,
-	Skeleton,
-	SkeletonText,
 	Stack,
-	Table,
-	type TableProps,
-	Tbody,
-	Td,
+	type BoxProps,
 	Text,
-	Th,
-	Thead,
 	Tooltip,
-	Tr,
 	useBreakpointValue,
 	useColorModeValue,
 	useToast,
@@ -29,7 +19,6 @@ import {
 import {
 	ArrowPathIcon,
 	CheckIcon,
-	ChevronDownIcon,
 	ChevronRightIcon,
 	ClipboardIcon,
 	ClockIcon,
@@ -40,22 +29,20 @@ import {
 	QrCodeIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
+import type { SortingState } from "@tanstack/react-table";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
-import classNames from "classnames";
 import { resetStrategy, statusColors } from "constants/UserSettings";
-import { type FilterType, useDashboard } from "contexts/DashboardContext";
+import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import React, {
-	type ChangeEvent,
 	type FC,
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
-import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
@@ -65,25 +52,28 @@ import {
 	canViewUserTraffic,
 	isUserManagementLocked,
 } from "utils/adminTraffic";
-import { relativeExpiryDate } from "utils/dateFormatter";
+import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
+import { relativeExpiryDate } from "utils/dateFormatter";
 import { generateUserLinks } from "utils/userLinks";
-import { ChartBox } from "./common/ChartBox";
+import {
+	DataTable,
+	ResourceListCard,
+	type DataTableColumn,
+	type DataTableRowAction,
+	type ResourceSummaryItem,
+} from "./ui";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
 
-type TranslateFn = (key: string, defaultValue?: string) => string;
+type TranslateFn = (
+	key: string,
+	defaultValueOrOptions?: string | Record<string, unknown>,
+) => string;
 
 const EmptySectionIcon = chakra(AddFileIcon);
-
-const createStableKey = () => {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return crypto.randomUUID();
-	}
-	return Math.random().toString(36).slice(2);
-};
 
 const iconProps = {
 	baseStyle: {
@@ -106,12 +96,6 @@ const DeleteIcon = chakra(TrashIcon, {
 	baseStyle: {
 		width: "18px",
 		height: "18px",
-	},
-});
-const SortIcon = chakra(ChevronDownIcon, {
-	baseStyle: {
-		width: "15px",
-		height: "15px",
 	},
 });
 const LockOverlayIcon = chakra(LockClosedIcon, {
@@ -141,14 +125,6 @@ type UsageMeterProps = {
 	t: TranslateFn;
 };
 
-type SummaryStatProps = {
-	label: string;
-	value: string | number;
-	helper?: string;
-	accentColor?: string;
-	isMobile?: boolean;
-};
-
 type CreatedByTextProps = {
 	show: boolean;
 	adminUsername?: string | null;
@@ -166,6 +142,7 @@ const CreatedByText: FC<CreatedByTextProps> = ({ show, adminUsername }) => {
 			dir="ltr"
 			sx={{ unicodeBidi: "isolate" }}
 			lineHeight="1.2"
+			textAlign="start"
 		>
 			{t("usersTable.by", "by")}{" "}
 			<chakra.span color="primary.500" fontWeight="medium">
@@ -183,71 +160,77 @@ const getResetStrategy = (strategy: string): string => {
 const formatCount = (value: number | null | undefined, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value ?? 0);
 
-const SummaryStat: FC<SummaryStatProps> = ({
-	label,
-	value,
-	helper,
-	accentColor = "primary.500",
-	isMobile = false,
-}) => {
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
-	const helperColor = useColorModeValue("gray.600", "gray.400");
-	const accentBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
+const formatUsernamePreview = (username: string, maxLength = 20) =>
+	username.length > maxLength
+		? `${username.slice(0, Math.max(4, maxLength - 4))}...`
+		: username;
+
+const formatCompactUsagePair = (used: number, total: number | null) => {
+	const [usedValue, usedUnit] = formatBytes(used, 2, true);
+	if (total === 0 || total === null) return `${usedValue}${usedUnit}/∞`;
+
+	const [totalValue, totalUnit] = formatBytes(total, 2, true);
+	if (usedUnit === totalUnit) return `${usedValue}/${totalValue}${totalUnit}`;
+	return `${usedValue}${usedUnit}/${totalValue}${totalUnit}`;
+};
+
+const CompactUsageMeter: FC<Pick<UsageMeterProps, "used" | "total">> = ({
+	used,
+	total,
+}) => (
+	<Text
+		fontSize="sm"
+		fontWeight="semibold"
+		color="panel.text"
+		dir="ltr"
+		noOfLines={1}
+		sx={{ unicodeBidi: "isolate" }}
+	>
+		{formatCompactUsagePair(used, total)}
+	</Text>
+);
+
+const MobileExpiryDetail: FC<{
+	expire?: number | null;
+	t: TranslateFn;
+}> = ({ expire, t }) => {
+	const expiry = relativeExpiryDate(expire, { compact: true });
+	if (!expiry.time) {
+		return (
+			<Text fontSize="sm" color="panel.textMuted">
+				-
+			</Text>
+		);
+	}
 	return (
-		<Box
-			borderWidth="1px"
-			borderColor={borderColor}
-			borderRadius="md"
-			p={isMobile ? 3 : 4}
-			bg={bg}
-			transition="border-color 0.15s ease, background 0.15s ease"
-			position="relative"
-			overflow="hidden"
-			minH="92px"
-			_before={{
-				content: '""',
-				position: "absolute",
-				insetBlockStart: 0,
-				insetInlineStart: 0,
-				w: "4px",
-				h: "full",
-				bg: accentColor,
-			}}
-			_after={{
-				content: '""',
-				position: "absolute",
-				insetInlineEnd: 0,
-				insetBlockStart: 0,
-				w: "72px",
-				h: "72px",
-				bg: accentBg,
-				borderEndStartRadius: "72px",
-				pointerEvents: "none",
-			}}
+		<Text
+			fontSize="sm"
+			fontWeight="semibold"
+			color="panel.text"
+			dir="auto"
+			noOfLines={1}
 		>
-			<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
-				{label}
-			</Text>
-			<Text
-				mt={2}
-				fontWeight="bold"
-				fontSize={{ base: "xl", md: "2xl" }}
-				color={accentColor}
-				dir="ltr"
-				sx={{ unicodeBidi: "isolate" }}
-			>
-				{value}
-			</Text>
-			{helper ? (
-				<Text mt={1} fontSize="xs" color={helperColor}>
-					{helper}
-				</Text>
-			) : null}
-		</Box>
+			{t(expiry.status === "expires" ? "expires" : "expired", {
+				time: expiry.time,
+			})}
+		</Text>
 	);
 };
+
+const MobileLifetimeDetail: FC<{
+	totalUsedTraffic: number;
+}> = ({ totalUsedTraffic }) => (
+	<Text
+		fontSize="sm"
+		fontWeight="semibold"
+		color="panel.text"
+		dir="ltr"
+		noOfLines={1}
+		sx={{ unicodeBidi: "isolate" }}
+	>
+		{formatBytes(totalUsedTraffic)}
+	</Text>
+);
 
 const UsageMeter: FC<UsageMeterProps> = ({
 	used,
@@ -274,7 +257,15 @@ const UsageMeter: FC<UsageMeterProps> = ({
 	const totalLabel = isUnlimited ? "∞" : formatBytes(total ?? 0);
 
 	return (
-		<Stack spacing={1}>
+		<Stack
+			spacing={1}
+			h="42px"
+			minH="42px"
+			justify="center"
+			w="full"
+			maxW="full"
+			overflow="hidden"
+		>
 			<Progress
 				value={isUnlimited ? 0 : percentage}
 				isIndeterminate={isUnlimited}
@@ -287,14 +278,18 @@ const UsageMeter: FC<UsageMeterProps> = ({
 			/>
 			<HStack
 				justify="space-between"
-				spacing={2}
-				flexWrap="wrap"
+				spacing={3}
+				flexWrap="nowrap"
 				fontSize="xs"
 				color="gray.600"
 				_dark={{ color: "gray.400" }}
-				dir={isRTL ? "rtl" : "ltr"}
+				dir="ltr"
+				whiteSpace="nowrap"
+				overflow="hidden"
+				w="full"
+				minW={0}
 			>
-				<Text>
+				<Text noOfLines={1} minW={0} flex="1 1 auto" textAlign="start">
 					<chakra.span className="rb-usage-pair">
 						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 							{usedLabel}
@@ -306,8 +301,8 @@ const UsageMeter: FC<UsageMeterProps> = ({
 					</chakra.span>
 					{resetLabel ? ` · ${resetLabel}` : ""}
 				</Text>
-				<HStack spacing={1}>
-					<Text>{t("usersTable.lifetimeUsage", "Lifetime")}:</Text>
+				<HStack spacing={1} flexShrink={0} justify="flex-end" textAlign="end">
+					<Text noOfLines={1}>{t("usersTable.lifetimeUsage")}:</Text>
 					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 						{formatBytes(totalUsedTraffic)}
 					</chakra.span>
@@ -317,22 +312,16 @@ const UsageMeter: FC<UsageMeterProps> = ({
 	);
 };
 
-export type SortType = {
-	sort: string;
-	column: string;
-};
-export const Sort: FC<SortType> = ({ sort, column }) => {
-	if (sort.includes(column))
-		return (
-			<SortIcon
-				transform={sort.startsWith("-") ? undefined : "rotate(180deg)"}
-			/>
-		);
-	return null;
+type UsersTableProps = BoxProps & {
+	toolbar?: ReactNode;
+	footerActions?: ReactNode;
 };
 
-type UsersTableProps = TableProps;
-export const UsersTable: FC<UsersTableProps> = (props) => {
+export const UsersTable: FC<UsersTableProps> = ({
+	toolbar,
+	footerActions,
+	...props
+}) => {
 	const {
 		filters,
 		users: usersResponse,
@@ -344,22 +333,17 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		resetDataUsage,
 		revokeSubscription,
 		refetchUsers,
+		setQRCode,
+		setSubLink,
+		linkTemplates,
 	} = useDashboard();
 
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const locale = i18n.language || "en";
 	const toast = useToast();
-	const dialogBg = useColorModeValue("surface.light", "surface.dark");
-	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
-	const tableBorderColor = useColorModeValue(
-		"blackAlpha.200",
-		"whiteAlpha.200",
-	);
-	const tableHeaderBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const rowHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
-	const tableSurfaceBg = useColorModeValue("white", "whiteAlpha.50");
-	const mutedColor = useColorModeValue("gray.600", "gray.400");
+	const dialogBg = useColorModeValue("panel.surface", "panel.surface");
+	const dialogBorderColor = useColorModeValue("panel.border", "panel.border");
 
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
@@ -383,9 +367,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		hasFullAccess ||
 		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
 	const canOpenUserDialog =
-		!isAdminDisabled &&
-		(canCreateUsers || hasFullAccess) &&
-		!userManagementLocked;
+		!isAdminDisabled && (canCreateUsers || hasFullAccess);
 	const canToggleUserStatus =
 		!isAdminDisabled &&
 		(canCreateUsers || hasFullAccess || userManagementLocked);
@@ -402,13 +384,11 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 	const disabledReason = userData.disabled_reason;
 
 	const rowsToRender = filters.limit || 10;
-	const skeletonKeys = useMemo(
-		() => Array.from({ length: rowsToRender }, () => createStableKey()),
-		[rowsToRender],
-	);
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
 	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
+	const useCompactUsageCell =
+		useBreakpointValue({ base: true, lg: true, xl: false }) ?? true;
 	const hasSearchQuery = Boolean(filters.search?.trim());
 	const hasUsageScopeFilter = Boolean(
 		filters.search?.trim() ||
@@ -417,24 +397,37 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			filters.owner ||
 			filters.serviceId,
 	);
-	const compactMobileSearch = isMobile && hasSearchQuery;
-	const [contextMenu, setContextMenu] = useState<{
-		visible: boolean;
-		x: number;
-		y: number;
-		user: UserListItem | null;
-	}>({
-		visible: false,
-		x: 0,
-		y: 0,
-		user: null,
-	});
-	const [menuSize, setMenuSize] = useState<{ w: number; h: number }>({
-		w: 0,
-		h: 0,
-	});
-	const contextMenuRef = useRef<HTMLDivElement | null>(null);
 	const [contextAction, setContextAction] = useState<string | null>(null);
+	const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
+	const [bulkAction, setBulkAction] = useState<string | null>(null);
+
+	const visibleUsernames = useMemo(
+		() => usersResponse.users.map((user) => user.username),
+		[usersResponse.users],
+	);
+	const visibleUsernameSet = useMemo(
+		() => new Set(visibleUsernames),
+		[visibleUsernames],
+	);
+	const selectedUsernameSet = useMemo(
+		() => new Set(selectedUsernames),
+		[selectedUsernames],
+	);
+	const selectedUsers = useMemo(
+		() =>
+			usersResponse.users.filter((user) =>
+				selectedUsernameSet.has(user.username),
+			),
+		[usersResponse.users, selectedUsernameSet],
+	);
+
+	useEffect(() => {
+		setSelectedUsernames((prev) =>
+			prev.filter((username) => visibleUsernameSet.has(username)),
+		);
+	}, [visibleUsernameSet]);
+
+	const clearSelectedUsers = () => setSelectedUsernames([]);
 
 	const statusBreakdown = useMemo(() => {
 		if (usersResponse.status_breakdown) {
@@ -463,122 +456,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 			offset: 0,
 		});
 	};
-	const handleStatusFilter = (e: ChangeEvent<HTMLSelectElement>) => {
-		const nextStatus = (
-			e.target.value.length > 0 ? e.target.value : undefined
-		) as FilterType["status"];
-		onFilterChange({
-			status: nextStatus,
-			offset: 0,
-		});
-	};
 
-	const closeContextMenu = useCallback(() => {
-		setContextMenu({ visible: false, x: 0, y: 0, user: null });
-	}, []);
-
-	useEffect(() => {
-		if (!contextMenu.visible) return;
-		const handleClick = (event: Event) => {
-			if (contextMenuRef.current?.contains(event.target as Node)) {
-				return;
-			}
-			closeContextMenu();
-		};
-		const handleEscape = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				closeContextMenu();
-			}
-		};
-		const handlePointer = (event: Event) => {
-			if (!contextMenuRef.current) {
-				closeContextMenu();
-				return;
-			}
-			if (contextMenuRef.current.contains(event.target as Node)) {
-				return;
-			}
-			closeContextMenu();
-		};
-		const handleScroll = () => closeContextMenu();
-		window.addEventListener("click", handleClick, true);
-		window.addEventListener("mousedown", handlePointer, true);
-		window.addEventListener("contextmenu", handlePointer, true);
-		window.addEventListener("keydown", handleEscape);
-		window.addEventListener("scroll", handleScroll, true);
-		return () => {
-			window.removeEventListener("click", handleClick, true);
-			window.removeEventListener("mousedown", handlePointer, true);
-			window.removeEventListener("contextmenu", handlePointer, true);
-			window.removeEventListener("keydown", handleEscape);
-			window.removeEventListener("scroll", handleScroll, true);
-		};
-	}, [contextMenu.visible, closeContextMenu]);
-
-	useEffect(() => {
-		if (!contextMenu.visible) return;
-		const el = contextMenuRef.current;
-		if (!el) return;
-		const rect = el.getBoundingClientRect();
-		if (rect.width !== menuSize.w || rect.height !== menuSize.h) {
-			setMenuSize({ w: rect.width, h: rect.height });
-		}
-		const padding = 8;
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		let nextX = contextMenu.x;
-		let nextY = contextMenu.y;
-		if (nextX + rect.width > vw - padding) {
-			nextX = Math.max(padding, vw - rect.width - padding);
-		}
-		if (nextY + rect.height > vh - padding) {
-			nextY = Math.max(padding, vh - rect.height - padding);
-		}
-		if (nextX !== contextMenu.x || nextY !== contextMenu.y) {
-			setContextMenu((prev) => ({ ...prev, x: nextX, y: nextY }));
-		}
-	}, [contextMenu, menuSize.w, menuSize.h]);
-
-	const handleRowContextMenu = (
-		event: React.MouseEvent,
-		user: UserListItem,
-	) => {
-		if (!isDesktop) return;
-		const pos = { x: event.clientX, y: event.clientY };
-		const sameSpot =
-			contextMenu.visible &&
-			Math.abs(pos.x - contextMenu.x) < 4 &&
-			Math.abs(pos.y - contextMenu.y) < 4;
-		if (sameSpot) {
-			closeContextMenu();
-			return; // allow browser default menu
-		}
-		const allowTraffic =
-			canMutateUsers && user.data_limit !== null && user.data_limit !== 0;
-		const allowExpire =
-			canMutateUsers &&
-			user.expire !== null &&
-			user.expire !== 0 &&
-			user.expire !== undefined;
-		const hasActions =
-			canOpenUserDialog ||
-			canDeleteUserActions ||
-			canResetUsageActions ||
-			canRevokeSubActions ||
-			canToggleUserStatus ||
-			allowTraffic ||
-			allowExpire;
-		if (!hasActions) {
-			return;
-		}
-		event.preventDefault();
-		setContextMenu({
-			visible: true,
-			x: pos.x,
-			y: pos.y,
-			user,
-		});
-	};
+	const closeContextMenu = useCallback(() => undefined, []);
 
 	const handleResetUsage = async (user: UserListItem) => {
 		setContextAction("reset");
@@ -746,106 +625,567 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		}
 	};
 
-	const { className, sx, ...restProps } = props;
-	const normalizedSx = Array.isArray(sx)
-		? Object.assign({}, ...sx)
-		: (sx as Record<string, unknown> | undefined);
-	const baseTableSx: Record<string, unknown> = {
-		width: "100%",
-		borderCollapse: "collapse",
-		borderSpacing: 0,
-		bg: tableSurfaceBg,
-		"& th, & td": {
-			paddingInlineStart: "14px",
-			paddingInlineEnd: "14px",
-			paddingTop: "12px",
-			paddingBottom: "12px",
-			verticalAlign: "middle",
-			borderColor: tableBorderColor,
-		},
-		"& thead th": {
-			bg: tableHeaderBg,
-			color: mutedColor,
-			fontSize: "xs",
-			fontWeight: "semibold",
-			letterSpacing: 0,
-			textTransform: "none",
-			borderColor: tableBorderColor,
-		},
-		"& tbody tr.interactive:hover td": {
-			bg: rowHoverBg,
-		},
-	};
-	const tableClassName = isRTL
-		? classNames(className, "rb-rtl-table")
-		: className;
-	const tableProps = {
-		...restProps,
-		className: tableClassName,
-		sx: {
-			...baseTableSx,
-			...(isRTL
-				? {
-						"& th, & td": {
-							...(baseTableSx["& th, & td"] as object),
-							borderLeft: "0 !important",
-							borderRight: "0 !important",
-						},
-					}
-				: {}),
-			...(normalizedSx || {}),
-		},
+	const runBulkUserAction = async (
+		action: string,
+		users: UserListItem[],
+		handler: (user: UserListItem) => Promise<unknown>,
+		successLabel: string,
+	) => {
+		if (!users.length || bulkAction) return;
+		setBulkAction(action);
+		try {
+			await Promise.all(users.map((user) => handler(user)));
+			toast({
+				title: successLabel,
+				description: t("usersTable.bulkActionCount", "{{count}} users updated", {
+					count: users.length,
+				}),
+				status: "success",
+			});
+			clearSelectedUsers();
+			refetchUsers(true);
+		} catch (error: any) {
+			toast({
+				title: error?.data?.detail || error?.message || t("error"),
+				status: "error",
+			});
+		} finally {
+			setBulkAction(null);
+		}
 	};
 
-	const baseColumns: Array<
-		"username" | "status" | "service" | "usage" | "actions"
-	> = canViewTraffic
-		? ["username", "status", "service", "usage", "actions"]
-		: ["username", "status", "service", "actions"];
-	const columnsToRender = isRTL ? baseColumns.slice().reverse() : baseColumns;
-	const cellAlign = isRTL ? "right" : "left";
-	const actionsAlign = isRTL ? "left" : "right";
-	if (import.meta.env.MODE !== "production" && isRTL) {
-		const first = columnsToRender[0];
-		const last = columnsToRender[columnsToRender.length - 1];
-		if (first !== "actions" || last !== "username") {
-			console.warn("RTL users table columns misordered", columnsToRender);
+	const bulkDisableTargets = selectedUsers.filter(
+		(user) => user.status !== "disabled",
+	);
+	const bulkEnableTargets = selectedUsers.filter(
+		(user) => user.status === "disabled",
+	);
+	const bulkDeleteTargets = selectedUsers.filter((user) =>
+		canDeleteUserByTrafficCap(userData, user),
+	);
+
+	const handleBulkDisable = () =>
+		runBulkUserAction(
+			"disable",
+			bulkDisableTargets,
+			(user) =>
+				fetch(`/v2/users/${encodeURIComponent(user.username)}`, {
+					method: "PUT",
+					body: { status: "disabled" },
+				}),
+			t("usersTable.disableUser", "Disable user"),
+		);
+
+	const handleBulkEnable = () =>
+		runBulkUserAction(
+			"enable",
+			bulkEnableTargets,
+			(user) =>
+				fetch(`/v2/users/${encodeURIComponent(user.username)}`, {
+					method: "PUT",
+					body: { status: "active" },
+				}),
+			t("usersTable.enableUser", "Enable user"),
+		);
+
+	const handleBulkReset = () =>
+		runBulkUserAction(
+			"reset",
+			selectedUsers,
+			(user) => resetDataUsage(user),
+			t("usersTable.resetUsage", "Usage reset"),
+		);
+
+	const handleBulkRevoke = () =>
+		runBulkUserAction(
+			"revoke",
+			selectedUsers,
+			(user) => revokeSubscription(user),
+			t("usersTable.revokeSub", "Subscription revoked"),
+		);
+
+	const handleBulkDelete = () =>
+		runBulkUserAction(
+			"delete",
+			bulkDeleteTargets,
+			(user) => deleteUser(user),
+			t("deleteUser.title", "Delete user"),
+		);
+
+	const userColumns = useMemo<DataTableColumn<UserListItem>[]>(() => {
+		const columns: DataTableColumn<UserListItem>[] = [
+			{
+				id: "username",
+				header: t("username"),
+				accessor: "username",
+				sortable: true,
+				isPrimary: true,
+				priority: "primary",
+				width: { lg: "150px", xl: "168px" },
+				minWidth: "148px",
+				maxWidth: "188px",
+				truncate: true,
+				tooltip: true,
+				multiline: true,
+				cellAlign: "start",
+				headerInset: "20px",
+				mobilePriority: 0,
+				mobileMetaLabel: t("username"),
+				cell: (user) => (
+					<HStack
+						spacing={1.5}
+						align="center"
+						dir="ltr"
+						flexDirection="row"
+						justify="flex-start"
+						minW={0}
+						maxW="full"
+						w="full"
+					>
+						<Box
+							className="rb-user-online-indicator"
+							flex="0 0 20px"
+							w="20px"
+							display="flex"
+							alignItems="center"
+							justifyContent="center"
+							overflow="visible"
+						>
+							<OnlineBadge lastOnline={user.online_at ?? null} />
+						</Box>
+						<Box
+							minW={0}
+							flex="1 1 auto"
+							maxW="full"
+							py={0.5}
+							lineHeight="short"
+							textAlign="left"
+							overflow="hidden"
+						>
+							<Text
+								fontWeight="semibold"
+								noOfLines={1}
+								maxW="full"
+								color="panel.text"
+								dir="ltr"
+								sx={{ unicodeBidi: "isolate" }}
+								_hover={canOpenUserDialog ? { color: "panel.accent" } : undefined}
+							>
+								{formatUsernamePreview(user.username)}
+							</Text>
+							<CreatedByText
+								show={hasPrivilegedRole}
+								adminUsername={user.admin_username}
+							/>
+							<OnlineStatus lastOnline={user.online_at ?? null} />
+						</Box>
+					</HStack>
+				),
+			},
+			{
+				id: "expire",
+				header: t("usersTable.status"),
+				sortable: true,
+				priority: "high",
+				width: { lg: "128px", xl: "138px" },
+				minWidth: "112px",
+				maxWidth: "148px",
+				headerAlign: "center",
+				cellAlign: "start",
+				headerInset: "16px",
+				mobilePriority: 1,
+				mobileMetaLabel: t("usersTable.status"),
+				mobileDetailCell: (user) => (
+					<StatusBadge
+						expiryDate={null}
+						status={user.status}
+						compact
+					/>
+				),
+				cell: (user) => (
+					<Flex align="center" justify="flex-start" dir="ltr" w="full">
+						<StatusBadge
+							expiryDate={user.expire}
+							status={user.status}
+							compact
+							detailPlacement="inline"
+						/>
+					</Flex>
+				),
+			},
+			{
+				id: "expiry",
+				header: t("usersTable.expire"),
+				desktopVisible: false,
+				mobileVisible: true,
+				mobilePriority: 2,
+				mobileMetaLabel: t("usersTable.expire"),
+				cell: (user) => (
+					<MobileExpiryDetail expire={user.expire} t={t} />
+				),
+			},
+			{
+				id: "service",
+				header: t("usersTable.service", "Service"),
+				accessor: (user) =>
+					user.service_name ?? t("usersTable.defaultService", "Default"),
+				priority: "medium",
+				hideBelow: "xl",
+				width: "118px",
+				minWidth: "96px",
+				maxWidth: "138px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 3,
+				mobileVisible: true,
+				mobileMetaLabel: t("usersTable.service", "Service"),
+				cell: (user) => (
+					<Text
+						fontSize="sm"
+						color={user.service_name ? "panel.text" : "panel.textMuted"}
+						noOfLines={1}
+						maxW="full"
+					>
+						{user.service_name ?? t("usersTable.defaultService", "Default")}
+					</Text>
+				),
+			},
+		];
+
+		if (canViewTraffic) {
+			columns.push({
+				id: "used_traffic",
+				header: t("usersTable.dataUsage"),
+				sortable: true,
+				priority: "high",
+				hideBelow: "lg",
+				width: "clamp(104px, 16vw, 240px)",
+				minWidth: "104px",
+				maxWidth: "240px",
+				headerAlign: "center",
+				cellAlign: "start",
+				mobileVisible: true,
+				mobileSummary: true,
+				mobilePriority: 4,
+				mobileMetaLabel: t("usersTable.dataUsage"),
+				mobileDetailCell: (user) => (
+					<CompactUsageMeter
+						used={user.used_traffic}
+						total={user.data_limit}
+					/>
+				),
+				cell: (user) =>
+					useCompactUsageCell ? (
+						<CompactUsageMeter
+							used={user.used_traffic}
+							total={user.data_limit}
+						/>
+					) : (
+						<UsageMeter
+							status={user.status}
+							totalUsedTraffic={user.lifetime_used_traffic}
+							dataLimitResetStrategy={user.data_limit_reset_strategy}
+							used={user.used_traffic}
+							total={user.data_limit}
+							isRTL={isRTL}
+							t={t}
+						/>
+					),
+			});
+			columns.push({
+				id: "lifetime_used_traffic",
+				header: t("usersTable.lifetimeUsage"),
+				desktopVisible: false,
+				mobileVisible: true,
+				mobilePriority: 5,
+				mobileMetaLabel: t("usersTable.lifetimeUsage"),
+				cell: (user) => (
+					<MobileLifetimeDetail totalUsedTraffic={user.lifetime_used_traffic} />
+				),
+			});
 		}
-	}
+
+		return columns;
+	}, [
+		canOpenUserDialog,
+		canViewTraffic,
+		hasPrivilegedRole,
+		isRTL,
+		t,
+		useCompactUsageCell,
+	]);
+
+	const userSorting = useMemo<SortingState>(() => {
+		const currentSort = filters.sort || "";
+		const desc = currentSort.startsWith("-");
+		const id = desc ? currentSort.slice(1) : currentSort;
+		if (!id) return [];
+		return [{ id, desc }];
+	}, [filters.sort]);
+
+	const handleUserTableSorting = (nextSorting: SortingState) => {
+		const next = nextSorting[0];
+		if (!next) return;
+		handleSort(next.id);
+	};
+
+	const formatUserLink = (link?: string | null) => {
+		if (!link) return "";
+		return link.startsWith("/") ? window.location.origin + link : link;
+	};
+
+	const copyUserText = async (text: string, successLabel: string) => {
+		if (!text) return false;
+		try {
+			await copyTextToClipboard(text);
+			toast({
+				title: successLabel,
+				status: "success",
+				duration: 1200,
+			});
+			return true;
+		} catch {
+			toast({
+				title: t("usersTable.copyFailed", "Copy failed"),
+				status: "error",
+				duration: 1600,
+			});
+			return false;
+		}
+	};
+
+	const getUserRowActions = (
+		user: UserListItem,
+	): DataTableRowAction<UserListItem>[] => {
+		const subscriptionLink = formatUserLink(user.subscription_url);
+		const configLinks = generateUserLinks(user, linkTemplates);
+		const configLinksText = configLinks.join("\n");
+		const actions: DataTableRowAction<UserListItem>[] = [
+			{
+				id: "copy-subscription",
+				label: t("usersTable.copyLink", "Copy link"),
+				icon: <SubscriptionLinkIcon />,
+				isDisabled: !subscriptionLink,
+				onClick: () =>
+					copyUserText(
+						subscriptionLink,
+						t("usersTable.copied", "Copied"),
+					),
+			},
+			{
+				id: "copy-configs",
+				label: t("usersTable.copyConfigs", "Copy configs"),
+				icon: <CopyIcon />,
+				isDisabled: configLinks.length === 0,
+				onClick: () =>
+					copyUserText(
+						configLinksText,
+						t("usersTable.copied", "Copied"),
+					),
+			},
+			{
+				id: "qr",
+				label: t("usersTable.qrCode", "QR Code"),
+				icon: <QRIcon />,
+				onClick: () => {
+					setQRCode(configLinks, user.username);
+					setSubLink(subscriptionLink);
+				},
+			},
+		];
+
+		if (canOpenUserDialog) {
+			actions.push({
+				id: "edit",
+				label: t("userDialog.editUser", "Edit user"),
+				icon: <EditIcon />,
+				onClick: () => onEditingUser(user),
+			});
+		}
+
+		if (canToggleUserStatus && user.status !== "disabled") {
+			actions.push({
+				id: "disable",
+				label: t("usersTable.disableUser", "Disable user"),
+				icon: <RevokeIcon />,
+				isDisabled: contextAction === "disable",
+				onClick: () => handleDisableUser(user),
+			});
+		}
+
+		if (canToggleUserStatus && user.status === "disabled") {
+			actions.push({
+				id: "enable",
+				label: t("usersTable.enableUser", "Enable user"),
+				icon: <CheckIcon width={16} />,
+				isDisabled: contextAction === "enable",
+				onClick: () => handleEnableUser(user),
+			});
+		}
+
+		if (canResetUsageActions) {
+			actions.push({
+				id: "reset",
+				label: t("usersTable.resetUsage", "Reset usage"),
+				icon: <ResetIcon />,
+				isDisabled: contextAction === "reset",
+				onClick: () => handleResetUsage(user),
+			});
+		}
+
+		if (canRevokeSubActions) {
+			actions.push({
+				id: "revoke",
+				label: t("usersTable.revokeSub", "Revoke subscription"),
+				icon: <RevokeIcon />,
+				isDisabled: contextAction === "revoke",
+				onClick: () => handleRevokeSub(user),
+			});
+		}
+
+		if (canMutateUsers && user.data_limit !== null && user.data_limit !== 0) {
+			actions.push({
+				id: "add-traffic",
+				label: t("usersTable.addTraffic", "Add traffic"),
+				render: (_row, onClose) => (
+					<Box position="relative" role="group">
+						<MenuItem
+							icon={<TrafficIcon />}
+							isDisabled={contextAction?.startsWith("traffic-")}
+							closeOnSelect={false}
+							onClick={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+							}}
+						>
+							<HStack w="full" justify="space-between" spacing={3}>
+								<Text as="span" noOfLines={1}>
+									{t("usersTable.addTraffic", "Add traffic")}
+								</Text>
+								<ChevronRightIcon
+									width={14}
+									style={{
+										flexShrink: 0,
+										transform: isRTL ? "rotate(180deg)" : undefined,
+									}}
+								/>
+							</HStack>
+						</MenuItem>
+						<Stack
+							display="none"
+							_groupHover={{ display: "flex" }}
+							position="absolute"
+							top={0}
+							left={isRTL ? "auto" : "100%"}
+							right={isRTL ? "100%" : "auto"}
+							minW="140px"
+							spacing={1}
+							p={2}
+							bg={dialogBg}
+							borderWidth="1px"
+							borderColor={dialogBorderColor}
+							borderRadius="md"
+							boxShadow="lg"
+							zIndex={2501}
+						>
+							{[1, 2, 3, 5, 10].map((gigabytes) => (
+								<MenuItem
+									key={gigabytes}
+									isDisabled={contextAction === `traffic-${gigabytes}`}
+									onClick={(event) => {
+										event.stopPropagation();
+										onClose();
+										handleAdjustTraffic(user, gigabytes);
+									}}
+								>
+									{t("usersTable.addGb", "Add {{count}} GB", {
+										count: gigabytes,
+									})}
+								</MenuItem>
+							))}
+						</Stack>
+					</Box>
+				),
+			});
+		}
+
+		if (
+			canMutateUsers &&
+			user.expire !== null &&
+			user.expire !== 0 &&
+			user.expire !== undefined
+		) {
+			actions.push({
+				id: "extend-expire",
+				label: t("usersTable.add30Days", "Add 30 days"),
+				icon: <ExtendIcon />,
+				isDisabled: contextAction === "expire",
+				onClick: () => handleExtendExpire(user, 30),
+			});
+		}
+
+		if (canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)) {
+			actions.push({
+				id: "delete",
+				label: t("deleteUser.title", "Delete user"),
+				icon: <DeleteIcon />,
+				isDanger: true,
+				render: (_row, onClose) => (
+					<DeleteConfirmPopover
+						message={t("deleteUser.prompt", { username: user.username })}
+						onConfirm={async () => {
+							onClose();
+							await handleDeleteUser(user);
+						}}
+					>
+						<MenuItem
+							icon={<DeleteIcon />}
+							color="red.400"
+							onClick={(event) => event.stopPropagation()}
+						>
+							{t("deleteUser.title", "Delete user")}
+						</MenuItem>
+					</DeleteConfirmPopover>
+				),
+			});
+		}
+
+		return actions;
+	};
 
 	const filteredUsageTotal = usersResponse.usage_total ?? null;
 	const activeUsersCount =
 		statusBreakdown.active ?? usersResponse.active_total ?? 0;
-	const summaryItems: SummaryStatProps[] = [
+	const summaryItems: ResourceSummaryItem[] = [
 		{
 			label: t("usersTable.total"),
 			value: formatCount(usersResponse.total, locale),
-			accentColor: isUserLimitReached ? "red.400" : "primary.500",
+			colorScheme: isUserLimitReached ? "red" : "gray",
 		},
 		{
 			label: t("status.active"),
 			value: formatCount(activeUsersCount, locale),
-			accentColor: "green.400",
+			colorScheme: "green",
 		},
 		{
 			label: t("status.on_hold"),
 			value: formatCount(statusBreakdown.on_hold ?? 0, locale),
-			accentColor: "orange.400",
+			colorScheme: "orange",
 		},
 		{
 			label: t("status.limited"),
 			value: formatCount(statusBreakdown.limited ?? 0, locale),
-			accentColor: "yellow.500",
+			colorScheme: "yellow",
 		},
 		{
 			label: t("status.expired"),
 			value: formatCount(statusBreakdown.expired ?? 0, locale),
-			accentColor: "red.400",
+			colorScheme: "red",
 		},
 		{
 			label: t("status.online", "Online"),
 			value: formatCount(usersResponse.online_total ?? 0, locale),
-			accentColor: "teal.400",
+			colorScheme: "teal",
 		},
 	];
 
@@ -857,7 +1197,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 				? t("usersTable.filteredUsage", "Filtered usage")
 				: t("usersTable.listUsage", "Listed users usage"),
 			value: formatBytes(usageForSummary),
-			accentColor: "primary.500",
+			colorScheme: "blue",
 			helper: hasUsageScopeFilter
 				? t(
 						"usersTable.filteredUsageHelper",
@@ -870,463 +1210,172 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 		});
 	}
 
-	const summaryColumns = Math.min(Math.max(summaryItems.length, 1), 4);
-
-	const desktopTable = (
-		<Table
-			key={isRTL ? "rtl-desktop" : "ltr-desktop"}
-			variant="simple"
-			dir={isRTL ? "rtl" : "ltr"}
-			width="100%"
-			w="full"
-			{...tableProps}
-		>
-			<Thead>
-				{(() => {
-					const headers: Record<string, JSX.Element> = {
-						username: (
-							<Th
-								minW="200px"
-								cursor="pointer"
-								onClick={handleSort.bind(null, "username")}
-								textAlign={cellAlign}
-							>
-								<HStack
-									spacing={3}
-									align="center"
-									justify="flex-start"
-									flexDirection={isRTL ? "row-reverse" : "row"}
-								>
-									<Box
-										w="10px"
-										h="10px"
-										borderRadius="full"
-										borderWidth="1px"
-										borderColor="transparent"
-										flexShrink={0}
-									/>
-									<HStack spacing={2} align="center">
-										<span>{t("username")}</span>
-										<Sort sort={filters.sort} column="username" />
-									</HStack>
-								</HStack>
-							</Th>
-						),
-						status: (
-							<Th
-								minW="170px"
-								width="180px"
-								textAlign={cellAlign}
-								cursor="pointer"
-								onClick={handleSort.bind(null, "expire")}
-							>
-								<Flex
-									align="center"
-									justify="flex-start"
-									gap={2}
-									dir={isRTL ? "rtl" : "ltr"}
-								>
-									<span>{t("usersTable.status")}</span>
-									<Sort sort={filters.sort} column="expire" />
-								</Flex>
-							</Th>
-						),
-						service: (
-							<Th minW="140px" textAlign={cellAlign}>
-								{t("usersTable.service", "Service")}
-							</Th>
-						),
-						usage: (
-							<Th
-								minW="240px"
-								textAlign={cellAlign}
-								cursor={canViewTraffic ? "pointer" : "default"}
-								onClick={
-									canViewTraffic
-										? handleSort.bind(null, "used_traffic")
-										: undefined
-								}
-							>
-								<HStack spacing={2} align="center">
-									<span>{t("usersTable.dataUsage")}</span>
-									{canViewTraffic && (
-										<Sort sort={filters.sort} column="used_traffic" />
-									)}
-								</HStack>
-							</Th>
-						),
-						actions: (
-							<Th
-								minW="170px"
-								width="180px"
-								textAlign={actionsAlign}
-								data-actions="true"
-							/>
-						),
-					};
-
-					return (
-						<Tr>
-							{columnsToRender.map((key) => (
-								<React.Fragment key={`header-${key}`}>
-									{headers[key]}
-								</React.Fragment>
-							))}
-						</Tr>
-					);
-				})()}
-			</Thead>
-			<Tbody>
-				{loading
-					? skeletonKeys.map((rowKey) => {
-							const cells = {
-								username: (
-									<Td textAlign={cellAlign}>
-										<SkeletonText
-											noOfLines={1}
-											width="50%"
-											textAlign={cellAlign}
-										/>
-										<SkeletonText noOfLines={1} width="30%" mt={2} />
-									</Td>
-								),
-								status: (
-									<Td textAlign={cellAlign}>
-										<Skeleton height="16px" width="120px" />
-									</Td>
-								),
-								service: (
-									<Td textAlign={cellAlign}>
-										<SkeletonText noOfLines={1} width="60%" />
-									</Td>
-								),
-								usage: (
-									<Td textAlign={cellAlign}>
-										<Skeleton height="16px" width="220px" />
-									</Td>
-								),
-								actions: (
-									<Td textAlign={actionsAlign} width="180px" minW="170px">
-										<HStack
-											justify="flex-start"
-											align="center"
-											spacing={2}
-											dir={isRTL ? "rtl" : "ltr"}
-										>
-											<Skeleton height="16px" width="32px" />
-											<Skeleton height="16px" width="32px" />
-										</HStack>
-									</Td>
-								),
-							};
-							return (
-								<Tr key={`skeleton-desktop-${rowKey}`}>
-									{columnsToRender.map((key) => (
-										<React.Fragment key={`${rowKey}-${key}`}>
-											{cells[key]}
-										</React.Fragment>
-									))}
-								</Tr>
-							);
-						})
-					: usersResponse.users.map((user) => {
-							const cells = {
-								username: (
-									<Td textAlign={cellAlign}>
-										<HStack
-											spacing={3}
-											align="flex-start"
-											flexDirection={isRTL ? "row-reverse" : "row"}
-											justify="flex-start"
-										>
-											<OnlineBadge lastOnline={user.online_at ?? null} />
-											<Box minW={0}>
-												<Text
-													fontWeight="semibold"
-													noOfLines={1}
-													dir="ltr"
-													sx={{ unicodeBidi: "isolate" }}
-												>
-													{user.username}
-												</Text>
-												<CreatedByText
-													show={hasPrivilegedRole}
-													adminUsername={user.admin_username}
-												/>
-												<OnlineStatus lastOnline={user.online_at ?? null} />
-											</Box>
-										</HStack>
-									</Td>
-								),
-								status: (
-									<Td textAlign={cellAlign} minW="170px" width="180px">
-										<Flex
-											align="center"
-											justify="flex-start"
-											dir={isRTL ? "rtl" : "ltr"}
-											w="full"
-										>
-											<StatusBadge
-												expiryDate={user.expire}
-												status={user.status}
-											/>
-										</Flex>
-									</Td>
-								),
-								service: (
-									<Td textAlign={cellAlign}>
-										<Text
-											fontSize="sm"
-											color={user.service_name ? "gray.800" : "gray.500"}
-											_dark={{
-												color: user.service_name ? "gray.100" : "gray.500",
-											}}
-											noOfLines={1}
-										>
-											{user.service_name ??
-												t("usersTable.defaultService", "Default")}
-										</Text>
-									</Td>
-								),
-								usage: (
-									<Td textAlign={cellAlign}>
-										{canViewTraffic ? (
-											<UsageMeter
-												status={user.status}
-												totalUsedTraffic={user.lifetime_used_traffic}
-												dataLimitResetStrategy={user.data_limit_reset_strategy}
-												used={user.used_traffic}
-												total={user.data_limit}
-												isRTL={isRTL}
-												t={t}
-											/>
-										) : (
-											<Text color="gray.500" _dark={{ color: "gray.400" }}>
-												-
-											</Text>
-										)}
-									</Td>
-								),
-								actions: (
-									<Td
-										textAlign={actionsAlign}
-										width="180px"
-										minW="170px"
-										data-actions="true"
-										dir={isRTL ? "rtl" : "ltr"}
-									>
-										<HStack justify="flex-start" align="center" spacing={2}>
-											<ActionButtons
-												user={user}
-												isRTL={isRTL}
-												onEdit={
-													canOpenUserDialog
-														? () => onEditingUser(user)
-														: undefined
-												}
-												onDelete={
-													canDeleteUserActions &&
-													canDeleteUserByTrafficCap(userData, user)
-														? () => handleDeleteUser(user)
-														: undefined
-												}
-											/>
-										</HStack>
-									</Td>
-								),
-							};
-							return (
-								<Tr
-									key={user.username}
-									className={classNames("interactive")}
-									onClick={() => {
-										if (canOpenUserDialog) {
-											onEditingUser(user);
-										}
-									}}
-									onContextMenu={(event) => handleRowContextMenu(event, user)}
-									cursor={canOpenUserDialog ? "pointer" : "default"}
-								>
-									{columnsToRender.map((key) => (
-										<React.Fragment key={`${user.username}-${key}`}>
-											{cells[key]}
-										</React.Fragment>
-									))}
-								</Tr>
-							);
-						})}
-				{!loading && usersResponse.users.length === 0 && (
-					<Tr>
-						<Td colSpan={columnsToRender.length} borderBottom="0">
-							<EmptySection
-								isFiltered={isFiltered}
-								isCreateDisabled={
-									isAdminDisabled || !canCreateUsers || userManagementLocked
-								}
-							/>
-						</Td>
-					</Tr>
-				)}
-			</Tbody>
-		</Table>
-	);
-
-	const mobileList = (
-		<VStack
-			key={isRTL ? "rtl-mobile" : "ltr-mobile"}
-			spacing={3}
-			align="stretch"
-		>
-			{loading
-				? skeletonKeys.map((key) => (
-						<Box
-							key={key}
-							borderWidth="1px"
-							borderColor="light-border"
-							bg="surface.light"
-							_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-							borderRadius="xl"
-							p={4}
-						>
-							<Stack spacing={3}>
-								<SkeletonText noOfLines={1} width="50%" />
-								<Skeleton height="16px" width="80px" />
-								<Skeleton height="8px" width="100%" />
-								<HStack justify="flex-end" spacing={2}>
-									<Skeleton height="16px" width="32px" />
-									<Skeleton height="16px" width="32px" />
-								</HStack>
-							</Stack>
-						</Box>
-					))
-				: usersResponse.users.map((user) => (
-						<MobileUserCard
-							key={user.username}
-							user={user}
-							canEdit={canOpenUserDialog}
-							onEdit={() => onEditingUser(user)}
-							onDelete={
-								canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)
-									? () => handleDeleteUser(user)
-									: undefined
-							}
-							isRTL={isRTL}
-							showCreator={hasPrivilegedRole}
-							showUsage={canViewTraffic}
-							t={t}
-						/>
-					))}
-			{!loading && usersResponse.users.length === 0 && (
-				<EmptySection
-					isFiltered={isFiltered}
-					isCreateDisabled={
-						isAdminDisabled || !canCreateUsers || userManagementLocked
-					}
-				/>
-			)}
-		</VStack>
-	);
-
 	return (
 		<VStack
 			spacing={4}
 			align="stretch"
 			dir={isRTL ? "rtl" : "ltr"}
 			data-dir={isRTL ? "rtl" : "ltr"}
+			pb={selectedUsers.length > 0 ? { base: 32, md: 24 } : 0}
+			{...props}
 		>
-			{isDesktop && (
-				<SimpleGrid
-					columns={{
-						base: 1,
-						sm: Math.min(summaryColumns, 2),
-						xl: summaryColumns,
-					}}
-					gap={3}
-				>
-					{summaryItems.map((item, idx) => (
-						<SummaryStat key={`${item.label}-${idx}`} {...item} />
-					))}
-				</SimpleGrid>
-			)}
+			<ResourceListCard
+				title={t("usersTable.listHeader", "User list")}
+				summaryItems={summaryItems}
+				footerActions={footerActions}
+			>
+				{toolbar}
+			</ResourceListCard>
+
 			<Box position="relative">
-				<ChartBox
+				<Stack
+					spacing={3}
 					filter={isAdminDisabled ? "blur(4px)" : undefined}
 					pointerEvents={isAdminDisabled ? "none" : undefined}
 					aria-hidden={isAdminDisabled ? true : undefined}
-					title={compactMobileSearch ? undefined : t("users")}
-					headerActions={
-						compactMobileSearch ? undefined : (
-							<HStack spacing={2} align="center" flexWrap="wrap">
-								<Text fontSize="sm" color={mutedColor}>
-									{t("usersTable.status")}
-								</Text>
-								<Select
-									value={filters.status ?? ""}
-									fontSize="sm"
-									size="sm"
-									onChange={handleStatusFilter}
-									minW={{ base: "160px", md: "200px" }}
-								>
-									<option value="">
-										{t("usersPage.statusAll", "All statuses")}
-									</option>
-									<option value="active">{t("status.active")}</option>
-									<option value="on_hold">{t("status.on_hold")}</option>
-									<option value="disabled">{t("status.disabled")}</option>
-									<option value="limited">{t("status.limited")}</option>
-									<option value="expired">{t("status.expired")}</option>
-								</Select>
-							</HStack>
-						)
-					}
 				>
-					<Stack spacing={compactMobileSearch ? 0 : 3}>
-						{!compactMobileSearch && (
-							<Flex
-								align={{ base: "flex-start", md: "center" }}
-								justify="space-between"
-								gap={3}
-								flexWrap="wrap"
-							>
-								<Text fontSize="sm" color={mutedColor}>
-									{t("usersTable.total")}:{" "}
-									<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-										{formatCount(usersResponse.total, locale)}
-									</chakra.span>
-									{isFiltered ? ` • ${t("usersPage.filtered")}` : ""}
-								</Text>
-							</Flex>
+					<DataTable
+						ariaLabel={t("users", "Users")}
+						data={usersResponse.users}
+						columns={userColumns}
+						getRowId={(user) => user.username}
+						isLoading={loading}
+						loadingRows={rowsToRender}
+						emptyState={
+							<EmptySection
+								isFiltered={isFiltered}
+								isCreateDisabled={
+									isAdminDisabled || !canCreateUsers || userManagementLocked
+								}
+							/>
+						}
+						enableSelection
+						selectedRowIds={selectedUsernames}
+						selectedRows={selectedUsers}
+						selectedCount={selectedUsers.length}
+						onSelectionChange={(rowIds) => setSelectedUsernames(rowIds)}
+						rowActions={getUserRowActions}
+						renderRowActions={(user) => (
+							<ActionButtons
+								user={user}
+								isRTL={isRTL}
+								onEdit={
+									canOpenUserDialog ? () => onEditingUser(user) : undefined
+								}
+								onDelete={
+									canDeleteUserActions &&
+									canDeleteUserByTrafficCap(userData, user)
+										? () => handleDeleteUser(user)
+										: undefined
+								}
+							/>
 						)}
-						{!isDesktop && !(isMobile && hasSearchQuery) && (
-							<SimpleGrid columns={{ base: 2 }} gap={3}>
-								{summaryItems.map((item, idx) => (
-									<SummaryStat
-										key={`${item.label}-${idx}`}
-										{...item}
-										isMobile={isMobile}
-									/>
-								))}
-							</SimpleGrid>
+						actionsDisplay="inline"
+						actionsPlacement="end"
+						actionsColumnWidth="174px"
+						actionsAlwaysVisible
+						onRowClick={
+							canOpenUserDialog ? (user) => onEditingUser(user) : undefined
+						}
+						sorting={userSorting}
+						onSortingChange={handleUserTableSorting}
+						manualSorting
+						dir={isRTL ? "rtl" : "ltr"}
+						selectedLabel={t("usersTable.selectedCount", {
+							defaultValue: "{{count}} selected",
+							count: selectedUsers.length,
+						})}
+						renderBulkActions={() => (
+							<>
+								{canToggleUserStatus && (
+									<Button
+										size="sm"
+										variant="outline"
+										leftIcon={<RevokeIcon />}
+										onClick={handleBulkDisable}
+										isLoading={bulkAction === "disable"}
+										isDisabled={
+											Boolean(bulkAction) || bulkDisableTargets.length === 0
+										}
+									>
+										{t("usersTable.disableUser", "Disable user")}
+									</Button>
+								)}
+								{canToggleUserStatus && (
+									<Button
+										size="sm"
+										variant="outline"
+										leftIcon={<CheckIcon width={16} />}
+										onClick={handleBulkEnable}
+										isLoading={bulkAction === "enable"}
+										isDisabled={
+											Boolean(bulkAction) || bulkEnableTargets.length === 0
+										}
+									>
+										{t("usersTable.enableUser", "Enable user")}
+									</Button>
+								)}
+								{canResetUsageActions && (
+									<Button
+										size="sm"
+										variant="outline"
+										leftIcon={<ResetIcon />}
+										onClick={handleBulkReset}
+										isLoading={bulkAction === "reset"}
+										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+									>
+										{t("usersTable.resetUsage", "Reset usage")}
+									</Button>
+								)}
+								{canRevokeSubActions && (
+									<Button
+										size="sm"
+										variant="outline"
+										leftIcon={<RevokeIcon />}
+										onClick={handleBulkRevoke}
+										isLoading={bulkAction === "revoke"}
+										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+									>
+										{t("usersTable.revokeSub", "Revoke subscription")}
+									</Button>
+								)}
+								{canDeleteUserActions && (
+									<DeleteConfirmPopover
+										message={t(
+											"usersTable.bulkDeletePrompt",
+											"Delete selected users?",
+										)}
+										onConfirm={handleBulkDelete}
+									>
+										<Button
+											size="sm"
+											colorScheme="red"
+											variant="outline"
+											leftIcon={<DeleteIcon />}
+											isLoading={bulkAction === "delete"}
+											isDisabled={
+												Boolean(bulkAction) ||
+												bulkDeleteTargets.length === 0
+											}
+										>
+											{t("delete", "Delete")}
+										</Button>
+									</DeleteConfirmPopover>
+								)}
+							</>
 						)}
-						<Box
-							w="full"
-							px={{
-								base: 0,
-								md: 0,
-							}}
-						>
-							<Box
-								w="full"
-								borderWidth="1px"
-								borderColor={tableBorderColor}
-								borderRadius="md"
-								overflow="hidden"
-							>
-								{isDesktop ? desktopTable : mobileList}
-							</Box>
-						</Box>
-					</Stack>
-				</ChartBox>
+						tableProps={{
+							w: "full",
+							sx: {
+								"& th, & td": {
+									px: { base: 2, xl: 3 },
+									py: { base: 2.5, xl: 2.5 },
+									verticalAlign: "middle",
+								},
+							},
+						}}
+					/>
+				</Stack>
 				{isAdminDisabled && (
 					<Flex
 						position="absolute"
@@ -1355,499 +1404,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
 					</Flex>
 				)}
 			</Box>
-			{contextMenu.visible && contextMenu.user && (
-				<Box
-					position="fixed"
-					top={contextMenu.y}
-					left={contextMenu.x}
-					bg={dialogBg}
-					borderWidth="1px"
-					borderColor={dialogBorderColor}
-					borderRadius="md"
-					boxShadow="lg"
-					zIndex={1500}
-					minW="220px"
-					onClick={(e) => e.stopPropagation()}
-					onContextMenu={(e) => {
-						e.preventDefault();
-						closeContextMenu();
-					}}
-					ref={contextMenuRef}
-				>
-					<Stack spacing={1} p={2}>
-						{canOpenUserDialog && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<EditIcon />}
-								onClick={() => {
-									onEditingUser(contextMenu.user!);
-									closeContextMenu();
-								}}
-							>
-								{t("userDialog.editUser", "Edit user")}
-							</Button>
-						)}
-						{canToggleUserStatus && contextMenu.user.status !== "disabled" && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<RevokeIcon />}
-								onClick={() => handleDisableUser(contextMenu.user!)}
-								isLoading={contextAction === "disable"}
-							>
-								{t("usersTable.disableUser", "Disable user")}
-							</Button>
-						)}
-						{canToggleUserStatus && contextMenu.user.status === "disabled" && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<CheckIcon width={16} />}
-								onClick={() => handleEnableUser(contextMenu.user!)}
-								isLoading={contextAction === "enable"}
-							>
-								{t("usersTable.enableUser", "Enable user")}
-							</Button>
-						)}
-						{canResetUsageActions && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<ResetIcon />}
-								onClick={() => handleResetUsage(contextMenu.user!)}
-								isLoading={contextAction === "reset"}
-							>
-								{t("usersTable.resetUsage", "Reset usage")}
-							</Button>
-						)}
-						{canRevokeSubActions && (
-							<Button
-								variant="ghost"
-								justifyContent="flex-start"
-								leftIcon={<RevokeIcon />}
-								onClick={() => handleRevokeSub(contextMenu.user!)}
-								isLoading={contextAction === "revoke"}
-							>
-								{t("usersTable.revokeSub", "Revoke subscription")}
-							</Button>
-						)}
-						{canMutateUsers &&
-							contextMenu.user.data_limit !== null &&
-							contextMenu.user.data_limit !== 0 && (
-								<Box position="relative" role="group">
-									<Button
-										variant="ghost"
-										justifyContent="flex-start"
-										w="full"
-										isLoading={contextAction?.startsWith("traffic-")}
-									>
-										<HStack w="full" justify="space-between" spacing={3}>
-											<HStack spacing={2} minW={0}>
-												<TrafficIcon />
-												<Text as="span" noOfLines={1}>
-													{t("usersTable.addTraffic", "Add traffic")}
-												</Text>
-											</HStack>
-											<ChevronRightIcon
-												width={14}
-												style={{
-													flexShrink: 0,
-													transform: isRTL ? "rotate(180deg)" : undefined,
-												}}
-											/>
-										</HStack>
-									</Button>
-									<Stack
-										display="none"
-										_groupHover={{ display: "flex" }}
-										position="absolute"
-										top={0}
-										left={isRTL ? "auto" : "100%"}
-										right={isRTL ? "100%" : "auto"}
-										minW="140px"
-										spacing={1}
-										p={2}
-										bg={dialogBg}
-										borderWidth="1px"
-										borderColor={dialogBorderColor}
-										borderRadius="md"
-										boxShadow="lg"
-										zIndex={1501}
-									>
-										{[1, 2, 3, 5, 10].map((gigabytes) => (
-											<Button
-												key={gigabytes}
-												variant="ghost"
-												justifyContent="flex-start"
-												onClick={() =>
-													handleAdjustTraffic(contextMenu.user!, gigabytes)
-												}
-												isLoading={contextAction === `traffic-${gigabytes}`}
-											>
-												{t("usersTable.addGb", "Add {{count}} GB", {
-													count: gigabytes,
-												})}
-											</Button>
-										))}
-									</Stack>
-								</Box>
-							)}
-						{canMutateUsers &&
-							contextMenu.user.expire !== null &&
-							contextMenu.user.expire !== 0 &&
-							contextMenu.user.expire !== undefined && (
-								<Button
-									variant="ghost"
-									justifyContent="flex-start"
-									leftIcon={<ExtendIcon />}
-									onClick={() => handleExtendExpire(contextMenu.user!, 30)}
-									isLoading={contextAction === "expire"}
-								>
-									{t("usersTable.add30Days", "Add 30 days")}
-								</Button>
-							)}
-						{canDeleteUserActions &&
-							canDeleteUserByTrafficCap(userData, contextMenu.user) && (
-								<DeleteConfirmPopover
-									message={t("deleteUser.prompt", {
-										username: contextMenu.user.username,
-									})}
-									isLoading={contextAction === "delete"}
-									onConfirm={() => handleDeleteUser(contextMenu.user!)}
-								>
-									<Button
-										variant="ghost"
-										justifyContent="flex-start"
-										colorScheme="red"
-										leftIcon={<DeleteIcon />}
-									>
-										{t("deleteUser.title", "Delete user")}
-									</Button>
-								</DeleteConfirmPopover>
-							)}
-					</Stack>
-				</Box>
-			)}
 		</VStack>
-	);
-};
-
-type UserCardProps = {
-	user: UserListItem;
-	onEdit: () => void;
-	canEdit: boolean;
-	onDelete?: () => void;
-	isRTL: boolean;
-	showCreator: boolean;
-	showUsage?: boolean;
-	t: TranslateFn;
-};
-
-const _UserCard: FC<UserCardProps> = ({
-	user,
-	onEdit,
-	canEdit,
-	onDelete,
-	isRTL,
-	showCreator,
-	showUsage = true,
-	t,
-}) => (
-	<Box
-		borderWidth="1px"
-		borderColor="light-border"
-		bg="surface.light"
-		_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-		borderRadius="xl"
-		p={4}
-		dir={isRTL ? "rtl" : "ltr"}
-	>
-		<Stack spacing={4}>
-			<HStack justify="space-between" align="flex-start" spacing={3}>
-				<HStack spacing={3} align="center" minW={0}>
-					<OnlineBadge lastOnline={user.online_at ?? null} />
-					<Box minW={0}>
-						<Text
-							fontWeight="semibold"
-							noOfLines={1}
-							dir="ltr"
-							sx={{ unicodeBidi: "isolate" }}
-						>
-							{user.username}
-						</Text>
-						<CreatedByText
-							show={showCreator}
-							adminUsername={user.admin_username}
-						/>
-						<OnlineStatus lastOnline={user.online_at ?? null} />
-					</Box>
-				</HStack>
-				<StatusBadge expiryDate={user.expire} status={user.status} />
-			</HStack>
-			<HStack justify="space-between" align="flex-start" spacing={4}>
-				<Box>
-					<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
-						{t("usersTable.service", "Service")}
-					</Text>
-					<Text
-						fontWeight="medium"
-						color={user.service_name ? "gray.800" : "gray.500"}
-						_dark={{ color: user.service_name ? "gray.100" : "gray.500" }}
-						noOfLines={1}
-					>
-						{user.service_name ?? t("usersTable.defaultService", "Default")}
-					</Text>
-				</Box>
-				<Box textAlign={isRTL ? "left" : "right"}>
-					<Text fontSize="xs" color="gray.600" _dark={{ color: "gray.400" }}>
-						{t("usersTable.status")}
-					</Text>
-					<Text
-						fontWeight="medium"
-						color="gray.800"
-						_dark={{ color: "gray.100" }}
-					>
-						{t(`status.${user.status}`, user.status)}
-					</Text>
-				</Box>
-			</HStack>
-			{showUsage ? (
-				<UsageMeter
-					status={user.status}
-					totalUsedTraffic={user.lifetime_used_traffic}
-					dataLimitResetStrategy={user.data_limit_reset_strategy}
-					used={user.used_traffic}
-					total={user.data_limit}
-					isRTL={isRTL}
-					t={t}
-				/>
-			) : (
-				<Text color="gray.500" _dark={{ color: "gray.400" }}>
-					-
-				</Text>
-			)}
-			<HStack justify="space-between" align="center" spacing={3}>
-				<ActionButtons
-					user={user}
-					isRTL={isRTL}
-					onEdit={canEdit ? onEdit : undefined}
-					onDelete={onDelete}
-				/>
-			</HStack>
-		</Stack>
-	</Box>
-);
-
-const MobileUserCard: FC<UserCardProps> = ({
-	user,
-	onEdit,
-	canEdit,
-	onDelete,
-	isRTL,
-	showCreator,
-	showUsage = true,
-	t,
-}) => {
-	const [isOpen, setIsOpen] = useState(false);
-	const toggle = () => setIsOpen((prev) => !prev);
-	const expiryInfo = relativeExpiryDate(user.expire);
-	const hasExpiry =
-		user.expire !== null &&
-		user.expire !== undefined &&
-		Boolean(expiryInfo.time && expiryInfo.time.length > 0);
-	const expiryText = hasExpiry
-		? expiryInfo.status === "expires"
-			? t("expires", "Expires in {{time}}").replace("{{time}}", expiryInfo.time)
-			: t("expired", "Expired {{time}} ago").replace(
-					"{{time}}",
-					expiryInfo.time,
-				)
-		: "";
-	const usedLabel = formatBytes(user.used_traffic);
-	const totalLabel =
-		user.data_limit && user.data_limit > 0 ? formatBytes(user.data_limit) : "∞";
-	const usageLabelNode = showUsage ? (
-		<Text
-			fontSize="xs"
-			color="gray.500"
-			_dark={{ color: "gray.400" }}
-			className="rb-usage-pair"
-		>
-			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{usedLabel}
-			</chakra.span>
-			{" / "}
-			<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-				{totalLabel}
-			</chakra.span>
-		</Text>
-	) : null;
-
-	return (
-		<Box
-			borderWidth="1px"
-			borderColor="light-border"
-			bg="surface.light"
-			_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-			borderRadius="xl"
-			p={3}
-			dir={isRTL ? "rtl" : "ltr"}
-			onClick={toggle}
-			cursor="pointer"
-			_active={{ transform: "scale(0.995)" }}
-			transition="border-color 0.15s ease, transform 0.15s ease"
-		>
-			<Stack spacing={3}>
-				<HStack justify="space-between" align="flex-start" spacing={3}>
-					<HStack spacing={3} align="flex-start" minW={0}>
-						<OnlineBadge lastOnline={user.online_at ?? null} />
-						<VStack align="flex-start" spacing={1} minW={0}>
-							<Text
-								fontWeight="semibold"
-								noOfLines={1}
-								dir="ltr"
-								sx={{ unicodeBidi: "isolate" }}
-							>
-								{user.username}
-							</Text>
-							<CreatedByText
-								show={showCreator}
-								adminUsername={user.admin_username}
-							/>
-							<OnlineStatus
-								lastOnline={user.online_at ?? null}
-								withMargin={false}
-							/>
-							{usageLabelNode}
-						</VStack>
-					</HStack>
-					<VStack
-						align="center"
-						spacing={1}
-						flexShrink={0}
-						w="120px"
-						maxW="140px"
-					>
-						<StatusBadge
-							expiryDate={user.expire}
-							status={user.status}
-							showDetail={false}
-						/>
-						{expiryText ? (
-							<Text
-								fontSize="xs"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								textAlign="center"
-								whiteSpace="normal"
-								wordBreak="break-word"
-								w="full"
-								maxW="inherit"
-								lineHeight="1.35"
-							>
-								{expiryText}
-							</Text>
-						) : null}
-					</VStack>
-				</HStack>
-				{showUsage ? (
-					<UsageMeter
-						status={user.status}
-						totalUsedTraffic={user.lifetime_used_traffic}
-						dataLimitResetStrategy={user.data_limit_reset_strategy}
-						used={user.used_traffic}
-						total={user.data_limit}
-						isRTL={isRTL}
-						t={t}
-					/>
-				) : null}
-				<HStack
-					justify="space-between"
-					align="center"
-					spacing={3}
-					w="full"
-					flexWrap="wrap"
-					onClick={(e) => e.stopPropagation()}
-					borderTopWidth="1px"
-					borderColor="blackAlpha.100"
-					_dark={{ borderColor: "whiteAlpha.100" }}
-					pt={2}
-				>
-					<ActionButtons
-						user={user}
-						isRTL={isRTL}
-						onEdit={canEdit ? onEdit : undefined}
-						onDelete={onDelete}
-					/>
-					<Button
-						size="sm"
-						variant="ghost"
-						h="40px"
-						rightIcon={
-							<ChevronDownIcon
-								width={16}
-								style={{
-									transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-									transition: "transform 0.15s ease",
-								}}
-							/>
-						}
-						onClick={(event) => {
-							event.stopPropagation();
-							toggle();
-						}}
-					>
-						{t("usersTable.details", "Details")}
-					</Button>
-				</HStack>
-				<Collapse in={isOpen} animateOpacity>
-					<Stack spacing={3} pt={1}>
-						<HStack justify="space-between" align="flex-start" spacing={4}>
-							<Box>
-								<Text
-									fontSize="xs"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{t("usersTable.service", "Service")}
-								</Text>
-								<Text
-									fontWeight="medium"
-									color={user.service_name ? "gray.800" : "gray.500"}
-									_dark={{ color: user.service_name ? "gray.100" : "gray.500" }}
-									noOfLines={1}
-								>
-									{user.service_name ??
-										t("usersTable.defaultService", "Default")}
-								</Text>
-							</Box>
-							<Box textAlign={isRTL ? "left" : "right"}>
-								<Text
-									fontSize="xs"
-									color="gray.600"
-									_dark={{ color: "gray.400" }}
-								>
-									{t("usersTable.status")}
-								</Text>
-								<Text
-									fontWeight="medium"
-									color="gray.800"
-									_dark={{ color: "gray.100" }}
-								>
-									{t(`status.${user.status}`, user.status)}
-								</Text>
-							</Box>
-						</HStack>
-						{!showUsage ? (
-							<Text color="gray.500" _dark={{ color: "gray.400" }}>
-								-
-							</Text>
-						) : null}
-					</Stack>
-				</Collapse>
-			</Stack>
-		</Box>
 	);
 };
 
@@ -1898,99 +1455,81 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 		<HStack
 			dir={isRTL ? "rtl" : "ltr"}
 			justifyContent={isRTL ? "flex-start" : "flex-end"}
-			spacing={{ base: 1, md: 2 }}
-			flexWrap="wrap"
+			spacing={1}
+			flexWrap="nowrap"
 			onClick={(e) => {
 				e.preventDefault();
 				e.stopPropagation();
 			}}
 		>
-			<CopyToClipboard
-				text={subscriptionLink}
-				onCopy={() => {
-					setCopied(true);
-				}}
+			<Tooltip label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}>
+				<span>
+					<IconButton
+						aria-label={t("usersTable.copyLink")}
+						icon={copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
+						variant="ghost"
+						size="sm"
+						minW="30px"
+						h="30px"
+						isDisabled={!subscriptionLink}
+						onClick={() => {
+							void copyTextToClipboard(subscriptionLink)
+								.then(() => {
+									setCopied(true);
+								})
+								.catch(() => undefined);
+						}}
+					/>
+				</span>
+			</Tooltip>
+			<Tooltip
+				label={
+					copiedConfigs ? t("usersTable.copied") : t("usersTable.copyConfigs")
+				}
 			>
-				<div>
-					<Tooltip
-						label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}
-						placement="top"
-					>
-						<IconButton
-							p="0 !important"
-							aria-label="copy subscription link"
-							variant="ghost"
-							size={{ base: "md", md: "md" }}
-							minW={{ base: "40px", md: "auto" }}
-							h={{ base: "40px", md: "auto" }}
-						>
-							{copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
-						</IconButton>
-					</Tooltip>
-				</div>
-			</CopyToClipboard>
-			<CopyToClipboard
-				text={configLinksText}
-				onCopy={() => {
-					if (hasConfigLinks) setCopiedConfigs(true);
-				}}
-			>
-				<div>
-					<Tooltip
-						label={
-							copiedConfigs
-								? t("usersTable.copied")
-								: t("usersTable.copyConfigs")
-						}
-						placement="top"
-					>
-						<IconButton
-							p="0 !important"
-							aria-label="copy config links"
-							variant="ghost"
-							size={{ base: "md", md: "md" }}
-							minW={{ base: "40px", md: "auto" }}
-							h={{ base: "40px", md: "auto" }}
-							isDisabled={!hasConfigLinks}
-						>
-							{copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
-						</IconButton>
-					</Tooltip>
-				</div>
-			</CopyToClipboard>
-			<Tooltip label="QR Code" placement="top">
+				<span>
+					<IconButton
+						aria-label={t("usersTable.copyConfigs")}
+						icon={copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
+						variant="ghost"
+						size="sm"
+						minW="30px"
+						h="30px"
+						isDisabled={!hasConfigLinks}
+						onClick={() => {
+							void copyTextToClipboard(configLinksText)
+								.then(() => setCopiedConfigs(true))
+								.catch(() => undefined);
+						}}
+					/>
+				</span>
+			</Tooltip>
+			<Tooltip label={t("usersTable.qrCode", "QR Code")}>
 				<IconButton
-					p="0 !important"
-					aria-label="qr code"
+					aria-label={t("usersTable.qrCode", "QR Code")}
+					icon={<QRIcon />}
 					variant="ghost"
-					size={{ base: "md", md: "md" }}
-					minW={{ base: "40px", md: "auto" }}
-					h={{ base: "40px", md: "auto" }}
+					size="sm"
+					minW="30px"
+					h="30px"
 					onClick={() => {
 						const links = generateUserLinks(user, linkTemplates);
 						setQRCode(links, user.username);
 						setSubLink(subscriptionLink);
 					}}
-				>
-					<QRIcon />
-				</IconButton>
+				/>
 			</Tooltip>
 			{onEdit && (
-				<Tooltip label={t("userDialog.editUser")} placement="top">
+				<Tooltip label={t("userDialog.editUser")}>
 					<IconButton
-						p="0 !important"
-						aria-label="edit user"
+						aria-label={t("userDialog.editUser")}
+						icon={<EditIcon />}
 						variant="ghost"
-						size={{ base: "md", md: "md" }}
-						minW={{ base: "40px", md: "auto" }}
-						h={{ base: "40px", md: "auto" }}
-						onClick={(e) => {
-							e.stopPropagation();
-							onEdit();
-						}}
-					>
-						<EditIcon />
-					</IconButton>
+						size="sm"
+						minW="30px"
+						h="30px"
+						onClick={onEdit}
+					/>
 				</Tooltip>
 			)}
 			{onDelete && (
@@ -1998,20 +1537,16 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 					message={t("deleteUser.prompt", { username: user.username })}
 					onConfirm={onDelete}
 				>
-					<Tooltip label={t("deleteUser.title")} placement="top">
-						<IconButton
-							p="0 !important"
-							aria-label="delete user"
-							variant="ghost"
-							colorScheme="red"
-							size={{ base: "md", md: "md" }}
-							minW={{ base: "40px", md: "auto" }}
-							h={{ base: "40px", md: "auto" }}
-							onClick={(event) => event.stopPropagation()}
-						>
-							<DeleteIcon />
-						</IconButton>
-					</Tooltip>
+					<IconButton
+						aria-label={t("deleteUser.title")}
+						icon={<DeleteIcon />}
+						variant="ghost"
+						size="sm"
+						minW="30px"
+						h="30px"
+						color="red.400"
+						_hover={{ color: "red.300", bg: "whiteAlpha.100" }}
+					/>
 				</DeleteConfirmPopover>
 			)}
 		</HStack>

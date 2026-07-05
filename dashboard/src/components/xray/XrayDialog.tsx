@@ -9,6 +9,8 @@ import {
 	type ModalFooterProps,
 	ModalHeader,
 	type ModalHeaderProps,
+	SimpleGrid,
+	type SimpleGridProps,
 	Text,
 	useColorModeValue,
 } from "@chakra-ui/react";
@@ -25,11 +27,12 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 	const bodyBg = useColorModeValue("gray.50", "blackAlpha.300");
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.300");
 	const sectionBg = useColorModeValue("white", "whiteAlpha.50");
-	const fieldBg = useColorModeValue("white", "blackAlpha.200");
+	const sectionHoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
+	const fieldBg = useColorModeValue("white", "whiteAlpha.50");
 	const labelColor = useColorModeValue("gray.700", "gray.200");
 	const mutedColor = useColorModeValue("gray.500", "gray.400");
-	const tabActiveBg = useColorModeValue("primary.500", "whiteAlpha.200");
-	const tabActiveColor = useColorModeValue("white", "white");
+	const tabActiveBg = "transparent";
+	const tabActiveColor = useColorModeValue("primary.600", "primary.300");
 	const tabActiveBorder = useColorModeValue("primary.500", "primary.300");
 
 	return (
@@ -98,6 +101,18 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					fontSize: "13px",
 					width: "100%",
 				},
+				"input.rb-multi-value-autocomplete-input": {
+					bg: "transparent !important",
+					border: "0 !important",
+					borderRadius: "0 !important",
+					boxShadow: "none !important",
+					fontSize: "13px !important",
+					h: "24px !important",
+					minH: "24px !important",
+					outline: "0 !important",
+					p: "0 !important",
+					width: "100%",
+				},
 				".chakra-numberinput__field": {
 					width: "100%",
 				},
@@ -118,13 +133,14 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					minH: "68px",
 				},
 				".chakra-tabs__tablist": {
-					gap: "8px",
-					border: "1px solid",
+					gap: "18px",
+					border: "0",
+					borderBottom: "1px solid",
 					borderColor,
-					borderRadius: "6px",
-					bg,
-					p: "6px",
-					mb: 3,
+					borderRadius: 0,
+					bg: "transparent",
+					p: 0,
+					mb: 4,
 					maxWidth: "100%",
 					overflowX: "auto",
 					overflowY: "hidden",
@@ -139,12 +155,13 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					},
 				},
 				".chakra-tabs__tab": {
-					border: "1px solid transparent",
-					borderRadius: "5px",
+					border: "0",
+					borderBottom: "2px solid transparent",
+					borderRadius: 0,
 					flexShrink: 0,
-					px: 3,
-					py: 1.5,
-					minH: "30px",
+					px: 0,
+					py: 2,
+					minH: "34px",
 					fontSize: "13px",
 					fontWeight: "semibold",
 					color: mutedColor,
@@ -163,6 +180,56 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					borderRadius: "6px",
 					p: { base: 3, md: 3 },
 				},
+				".xray-dialog-section.rb-dialog-collapsible-section": {
+					p: 0,
+					overflow: "hidden",
+				},
+				".rb-dialog-collapsible-trigger": {
+					alignItems: "center",
+					cursor: "pointer",
+					display: "flex",
+					gap: "12px",
+					justifyContent: "space-between",
+					minH: "44px",
+					px: 3,
+					py: 2.5,
+					transition: "background-color 0.12s ease",
+				},
+				".rb-dialog-collapsible-trigger:hover": {
+					bg: sectionHoverBg,
+				},
+				".rb-dialog-collapsible-title": {
+					fontSize: "sm",
+					fontWeight: "semibold",
+					lineHeight: 1.35,
+				},
+				".rb-dialog-collapsible-body": {
+					borderTop: "1px solid",
+					borderColor,
+					px: 3,
+					pb: 3,
+					pt: 3,
+				},
+				".rb-dialog-switch-row": {
+					alignItems: "center",
+					bg: sectionBg,
+					border: "1px solid",
+					borderColor,
+					borderRadius: "6px",
+					display: "flex",
+					gap: 3,
+					justifyContent: "space-between",
+					minH: "44px",
+					px: 3,
+					py: 2,
+				},
+				".rb-dialog-switch-row .chakra-form__label": {
+					mb: "0 !important",
+				},
+				".rb-dialog-switch-row + .chakra-form-control, .rb-dialog-switch-row + .chakra-collapse":
+					{
+						mt: 3,
+					},
 				".xray-dialog-section .chakra-form-control": {
 					display: "block",
 					minW: 0,
@@ -187,22 +254,13 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					px: 3,
 					py: 2,
 				},
+				".xray-dialog-auto-sections .chakra-tabs__tab-panel": {
+					px: 0,
+					py: 0,
+				},
 				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box":
 					{
-						bg: sectionBg,
-						border: "1px solid",
-						borderColor,
-						borderRadius: "6px",
-						p: { base: 3, md: 3 },
-					},
-				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control":
-					{
-						display: "block",
 						minW: 0,
-					},
-				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control > .chakra-form__helper-text, .xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box .chakra-form-control > .chakra-form__error-message":
-					{
-						gridColumn: "auto",
 					},
 				".xray-dialog-auto-sections .chakra-tabs__tab-panel > .chakra-stack > .chakra-box > .chakra-text:first-of-type":
 					{
@@ -216,6 +274,11 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					},
 					"input, select": {
 						minH: "42px",
+					},
+					"input.rb-multi-value-autocomplete-input": {
+						fontSize: "16px !important",
+						h: "24px !important",
+						minH: "24px !important",
 					},
 					".chakra-input__left-addon, .chakra-input__right-addon": {
 						minH: "42px",
@@ -237,7 +300,7 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 					},
 					".chakra-tabs__tab": {
 						minH: "38px",
-						px: 3,
+						px: 0,
 					},
 					".xray-dialog-section": {
 						p: 3,
@@ -315,4 +378,13 @@ export const XrayDialogSection: FC<
 		)}
 		{children}
 	</Box>
+);
+
+export const XrayFieldGrid: FC<SimpleGridProps> = ({
+	children,
+	...props
+}) => (
+	<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} {...props}>
+		{children}
+	</SimpleGrid>
 );

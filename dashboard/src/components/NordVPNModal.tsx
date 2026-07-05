@@ -14,7 +14,6 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	SimpleGrid,
 	Spinner,
 	Stack,
@@ -29,6 +28,7 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	CloudArrowDownIcon,

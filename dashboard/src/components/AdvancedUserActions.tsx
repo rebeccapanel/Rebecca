@@ -15,7 +15,6 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	Select,
 	Stack,
 	Text,
 	useBreakpointValue,
@@ -23,6 +22,7 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SparklesIcon } from "@heroicons/react/24/outline";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";

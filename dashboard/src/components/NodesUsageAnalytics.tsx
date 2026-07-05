@@ -1,7 +1,6 @@
 import {
 	chakra,
 	HStack,
-	Select,
 	Spinner,
 	Stack,
 	Text,
@@ -10,6 +9,7 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
 import { ChartBox } from "components/common/ChartBox";

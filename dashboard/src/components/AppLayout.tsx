@@ -30,16 +30,20 @@ import {
 	ArrowUpOnSquareIcon,
 	Bars3Icon,
 	BookOpenIcon,
+	BriefcaseIcon,
+	CodeBracketSquareIcon,
 	CheckIcon,
 	Cog6ToothIcon,
-	GlobeAltIcon,
+	Cog8ToothIcon,
+	EyeIcon,
+	HomeIcon as HeroHomeIcon,
 	LanguageIcon,
-	ServerIcon,
-	ShieldCheckIcon,
-	Square3Stack3DIcon,
+	LinkIcon,
+	ServerStackIcon,
 	Squares2X2Icon,
 	UserCircleIcon,
 	UserGroupIcon,
+	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { motion } from "framer-motion";
 import { useAppleEmoji } from "hooks/useAppleEmoji";
@@ -75,17 +79,20 @@ const iconProps = {
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
-const DocsIcon = chakra(BookOpenIcon, iconProps);
+const DocsIcon = chakra(CodeBracketSquareIcon, iconProps);
 const UserIcon = chakra(UserCircleIcon, iconProps);
-const HomeIcon = chakra(Squares2X2Icon, iconProps);
+const HomeIcon = chakra(HeroHomeIcon, iconProps);
 const UsersIcon = chakra(UserGroupIcon, iconProps);
-const AdminsIcon = chakra(ShieldCheckIcon, iconProps);
+const AdminsIcon = chakra(BriefcaseIcon, iconProps);
 const SettingsIcon = chakra(Cog6ToothIcon, iconProps);
+const MasterSettingsIcon = chakra(Cog8ToothIcon, iconProps);
+const XraySettingsIcon = chakra(WrenchScrewdriverIcon, iconProps);
 const ServicesIcon = chakra(Squares2X2Icon, iconProps);
-const HostsIcon = chakra(ServerIcon, iconProps);
-const NodesIcon = chakra(Square3Stack3DIcon, iconProps);
-const InsightsIcon = chakra(GlobeAltIcon, iconProps);
+const HostsIcon = chakra(LinkIcon, iconProps);
+const NodesIcon = chakra(ServerStackIcon, iconProps);
+const InsightsIcon = chakra(EyeIcon, iconProps);
 const ShareIcon = chakra(ArrowUpOnSquareIcon, iconProps);
+const TutorialIcon = chakra(BookOpenIcon, iconProps);
 
 type SettingsMenuItem = {
 	key: string;
@@ -115,7 +122,7 @@ export function AppLayout() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	useAppleEmoji();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -155,11 +162,14 @@ export function AppLayout() {
 			md: isRTL ? "left-start" : "right-start",
 		}) ?? "bottom-start";
 
-	const menuBg = useColorModeValue("white", "gray.800");
-	const menuBorder = useColorModeValue("gray.200", "gray.700");
-	const menuHover = useColorModeValue("gray.100", "gray.700");
-	const textColor = useColorModeValue("gray.800", "gray.100");
-	const secondaryTextColor = useColorModeValue("gray.600", "gray.400");
+	const menuBg = useColorModeValue("panel.surface", "panel.surface");
+	const menuBorder = useColorModeValue("panel.border", "panel.border");
+	const menuHover = useColorModeValue("panel.elevated", "panel.elevated");
+	const textColor = useColorModeValue("panel.text", "panel.text");
+	const secondaryTextColor = useColorModeValue(
+		"panel.textSecondary",
+		"panel.textSecondary",
+	);
 	const glassPanelBg = useColorModeValue(
 		"rgba(255, 255, 255, 0.45)",
 		"rgba(18, 18, 22, 0.35)",
@@ -192,20 +202,20 @@ export function AppLayout() {
 		"0 6px 14px rgba(15, 23, 42, 0.1)",
 		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
-	const shellBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
+	const shellBorder = useColorModeValue("panel.border", "panel.border");
 	const shellHeaderBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.92)",
-		"rgba(15, 23, 42, 0.86)",
+		"panel.surface",
+		"panel.surface",
 	);
-	const shellHeaderShadow = useColorModeValue(
-		"0 10px 24px rgba(15, 23, 42, 0.06)",
-		"0 10px 24px rgba(0, 0, 0, 0.24)",
+	const shellHeaderShadow = "none";
+	const shellMainBg = useColorModeValue("panel.main", "panel.main");
+	const headerButtonBg = useColorModeValue(
+		"panel.elevated",
+		"panel.elevated",
 	);
-	const shellMainBg = useColorModeValue("gray.50", "blackAlpha.300");
-	const headerButtonBg = useColorModeValue("white", "whiteAlpha.50");
 	const headerButtonHoverBg = useColorModeValue(
-		"blackAlpha.50",
-		"whiteAlpha.100",
+		"panel.borderStrong",
+		"panel.borderStrong",
 	);
 
 	const setPreviewTabKeySafe = (value: string | null) => {
@@ -237,9 +247,8 @@ export function AppLayout() {
 		userData.role === AdminRole.FullAccess || userData.role === AdminRole.Sudo;
 
 	const settingsMenuItems = useMemo(() => {
-		if (!isPrivilegedAdmin) return [];
 		const items: Array<SettingsMenuItem | null> = [
-			sectionAccess?.[AdminSection.Services]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Services]
 				? {
 						key: "services",
 						label: t("services.menu", "Services"),
@@ -247,7 +256,7 @@ export function AppLayout() {
 						icon: ServicesIcon,
 					}
 				: null,
-			sectionAccess?.[AdminSection.Hosts]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Hosts]
 				? {
 						key: "hosts",
 						label: t("header.hostSettings", "Host settings"),
@@ -255,7 +264,7 @@ export function AppLayout() {
 						icon: HostsIcon,
 					}
 				: null,
-			sectionAccess?.[AdminSection.Nodes]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Nodes]
 				? {
 						key: "node-settings",
 						label: t("header.nodeSettings", "Node settings"),
@@ -263,23 +272,23 @@ export function AppLayout() {
 						icon: NodesIcon,
 					}
 				: null,
-			sectionAccess?.[AdminSection.Integrations]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Integrations]
 				? {
 						key: "integrations",
 						label: t("header.integrationSettings", "Master settings"),
 						to: "/integrations",
-						icon: SettingsIcon,
+						icon: MasterSettingsIcon,
 					}
 				: null,
-			sectionAccess?.[AdminSection.Xray]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
 				? {
 						key: "xray-settings",
 						label: t("header.xraySettings", "Xray settings"),
 						to: "/xray-settings",
-						icon: SettingsIcon,
+						icon: XraySettingsIcon,
 					}
 				: null,
-			sectionAccess?.[AdminSection.Xray]
+			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
 				? {
 						key: "access-insights",
 						label: t("header.accessInsights", "Access insights"),
@@ -287,11 +296,19 @@ export function AppLayout() {
 						icon: InsightsIcon,
 					}
 				: null,
-			{
+			isPrivilegedAdmin
+				? {
 				key: "api-docs",
 				label: t("apiDocs.menu", "API Docs"),
 				to: "/api-docs",
 				icon: DocsIcon,
+					}
+				: null,
+			{
+				key: "tutorials",
+				label: t("tutorials.menu", "Tutorials"),
+				to: "/tutorials",
+				icon: TutorialIcon,
 			},
 		];
 		return items.filter(Boolean) as SettingsMenuItem[];
@@ -399,6 +416,7 @@ export function AppLayout() {
 	const bottomNavItems = useMemo<BottomNavItem[]>(() => {
 		const items: BottomNavItem[] = [];
 		const canSeeAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
+		items.push({ key: "users", label: t("nav.users", "Users"), to: "/users" });
 		if (canSeeAdmins) {
 			items.push({
 				key: "admins",
@@ -406,7 +424,6 @@ export function AppLayout() {
 				to: "/admins",
 			});
 		}
-		items.push({ key: "users", label: t("nav.users", "Users"), to: "/users" });
 		items.push({
 			key: "dashboard",
 			label: t("nav.dashboard", "Dashboard"),
@@ -718,6 +735,14 @@ export function AppLayout() {
 				overflow="hidden"
 				direction={isRTL ? "row-reverse" : "row"}
 				dir={isRTL ? "rtl" : "ltr"}
+				bg="panel.app"
+				sx={{
+					"--rb-sidebar-offset": isMobile
+						? "0px"
+						: sidebarCollapsed
+							? "64px"
+							: "240px",
+				}}
 			>
 				{/* persistent sidebar on md+; drawer on mobile */}
 				{!isMobile ? (
@@ -739,12 +764,11 @@ export function AppLayout() {
 				>
 					<Box
 						as="header"
-						h="16"
-						minH="16"
+						h="12"
+						minH="12"
 						borderBottom="1px"
 						borderColor={shellBorder}
 						bg={shellHeaderBg}
-						backdropFilter="blur(16px)"
 						boxShadow={shellHeaderShadow}
 						display="flex"
 						alignItems="center"
@@ -782,6 +806,7 @@ export function AppLayout() {
 								<Menu
 									placement="bottom-end"
 									isLazy
+									autoSelect={false}
 									closeOnSelect={false}
 									isOpen={userMenu.isOpen}
 									onOpen={userMenu.onOpen}
@@ -829,10 +854,17 @@ export function AppLayout() {
 												"&:hover": {
 													bg: `${menuHover} !important`,
 												},
-												"&:active, &:focus": {
+												"&:active, &:focus-visible": {
 													bg: `${menuHover} !important`,
 												},
+												"&:focus:not(:focus-visible)": {
+													bg: "transparent !important",
+												},
 											},
+											".rb-logout-menu-item[data-focus]:not(:hover):not(:focus-visible)":
+												{
+													bg: "transparent !important",
+												},
 										}}
 									>
 										{/* User Info */}
@@ -864,10 +896,22 @@ export function AppLayout() {
 											onClose={languageMenu.onClose}
 											closeOnSelect={false}
 											isLazy
+											autoSelect={false}
 										>
 											<MenuButton
-												as={MenuItem}
-												icon={<LanguageIconStyled />}
+												as={Button}
+												leftIcon={<LanguageIconStyled />}
+												variant="ghost"
+												w="full"
+												h="40px"
+												justifyContent="flex-start"
+												fontWeight="500"
+												borderRadius="md"
+												px={3}
+												bg="transparent"
+												_hover={{ bg: menuHover }}
+												_active={{ bg: menuHover }}
+												_focusVisible={{ bg: menuHover }}
 												onClick={(e: ReactMouseEvent) => {
 													e.stopPropagation();
 													languageMenu.isOpen
@@ -875,7 +919,7 @@ export function AppLayout() {
 														: languageMenu.onOpen();
 												}}
 											>
-												<HStack justify="space-between" w="full">
+												<HStack justify="space-between" w="full" minW={0}>
 													<Text>{t("header.language", "Language")}</Text>
 													<Text fontSize="xs" color={secondaryTextColor}>
 														{languageItems.find(
@@ -894,16 +938,19 @@ export function AppLayout() {
 													zIndex={9999}
 													userSelect="none"
 													sx={{
-														".chakra-menu__menuitem": {
-															bg: "transparent !important",
-															"&:hover": {
-																bg: `${menuHover} !important`,
-															},
-															"&:active, &:focus": {
-																bg: `${menuHover} !important`,
-															},
+													".chakra-menu__menuitem": {
+														bg: "transparent !important",
+														"&:hover": {
+															bg: `${menuHover} !important`,
 														},
-													}}
+														"&:active, &:focus-visible": {
+															bg: `${menuHover} !important`,
+														},
+														"&:focus:not(:focus-visible)": {
+															bg: "transparent !important",
+														},
+													},
+												}}
 												>
 													{languageItems.map(({ code, label, flag }) => {
 														const isActiveLang = i18n.language === code;
@@ -956,12 +1003,19 @@ export function AppLayout() {
 
 										{/* Logout */}
 										<MenuItem
+											className="rb-logout-menu-item"
 											icon={<LogoutIcon />}
 											color="red.500"
 											bg="transparent"
 											_hover={{ bg: menuHover }}
-											_active={{ bg: menuHover }}
-											_focus={{ bg: menuHover }}
+											_active={{ bg: "transparent" }}
+											_focus={{ bg: "transparent" }}
+											_focusVisible={{ bg: menuHover }}
+											sx={{
+												"&[data-focus]:not(:hover):not(:focus-visible)": {
+													bg: "transparent !important",
+												},
+											}}
 											onClick={() => {
 												clearClientSession();
 												navigate("/login");
@@ -996,7 +1050,7 @@ export function AppLayout() {
 						size="xs"
 					>
 						<DrawerOverlay />
-						<DrawerContent bg={shellHeaderBg}>
+						<DrawerContent bg="panel.sidebar">
 							<DrawerBody p={0}>
 								<AppSidebar
 									collapsed={false}
@@ -1402,6 +1456,7 @@ export function AppLayout() {
 													key={item.key}
 													isOpen={accountMenu.isOpen}
 													onClose={handleAccountMenuClose}
+													autoFocus={false}
 													placement="top"
 													gutter={12}
 													closeOnBlur
@@ -1513,7 +1568,8 @@ export function AppLayout() {
 																	color="red.500"
 																	_hover={{ bg: menuHover }}
 																	_active={{ bg: menuHover }}
-																	_focus={{ bg: menuHover }}
+																	_focus={{ bg: "transparent" }}
+																	_focusVisible={{ bg: menuHover }}
 																	onClick={() => {
 																		clearClientSession();
 																		handleAccountMenuClose();
