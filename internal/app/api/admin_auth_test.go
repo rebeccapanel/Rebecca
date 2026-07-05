@@ -780,17 +780,24 @@ func TestAdminManagementFullAccessProtectionAndDelete(t *testing.T) {
 		t.Fatalf("delete worker status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	var adminsCount, usersCount, operationsCount int
+	var adminStatus, userStatus string
 	if err := db.QueryRow(`SELECT COUNT(*) FROM admins WHERE username = 'worker'`).Scan(&adminsCount); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE admin_id = 3`).Scan(&usersCount); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.QueryRow(`SELECT status FROM admins WHERE username = 'worker'`).Scan(&adminStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT status FROM users WHERE id = 10`).Scan(&userStatus); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE operation_type = 'remove_user' AND user_id = 10`).Scan(&operationsCount); err != nil {
 		t.Fatal(err)
 	}
-	if adminsCount != 0 || usersCount != 0 || operationsCount != 1 {
-		t.Fatalf("delete cleanup admins=%d users=%d operations=%d", adminsCount, usersCount, operationsCount)
+	if adminsCount != 1 || usersCount != 1 || adminStatus != "deleted" || userStatus != "deleted" || operationsCount != 1 {
+		t.Fatalf("delete cleanup admins=%d users=%d admin_status=%q user_status=%q operations=%d", adminsCount, usersCount, adminStatus, userStatus, operationsCount)
 	}
 }
 

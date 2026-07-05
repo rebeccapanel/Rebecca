@@ -486,6 +486,7 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admins_services WHERE admin_id = ?`, target.ID); err != nil {
 			return err
 		}
+		now := dbTimestamp(time.Now().UTC())
 		userIDs, err := userIDsByAdminTx(r.Context(), tx, target.ID, "")
 		if err != nil {
 			return err
@@ -495,10 +496,10 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(r.Context(), `DELETE FROM users WHERE admin_id = ?`, target.ID); err != nil {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE users SET status = ?, last_status_change = ? WHERE admin_id = ?`, "deleted", now, target.ID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admins WHERE id = ?`, target.ID); err != nil {
+		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET status = ? WHERE id = ?`, string(adminapp.StatusDeleted), target.ID); err != nil {
 			return err
 		}
 		return nil
