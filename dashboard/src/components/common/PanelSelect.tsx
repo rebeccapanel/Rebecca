@@ -497,20 +497,19 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						return renderOptionRow(
 							option.value || option.searchLabel,
 							<>
-								<HStack w="full" justifyContent="space-between" spacing={2}>
-									<HStack minW={0} spacing={2}>
-										<Box
-											w="16px"
-											color={selected ? "primary.500" : "transparent"}
-										>
-											<Check />
-										</Box>
-										<Text noOfLines={1} title={option.title}>
-											{option.label}
-										</Text>
-									</HStack>
-									{selected && mode === "multiple" && (
-										<Box
+									<HStack w="full" justifyContent="space-between" spacing={2}>
+										<HStack minW={0} spacing={2}>
+											<Text noOfLines={1} title={option.title}>
+												{option.label}
+											</Text>
+										</HStack>
+										{selected && mode === "single" && (
+											<Box color="primary.500" flexShrink={0}>
+												<Check />
+											</Box>
+										)}
+										{selected && mode === "multiple" && (
+											<Box
 											as="span"
 											role="button"
 											aria-label={`Remove ${option.title}`}
