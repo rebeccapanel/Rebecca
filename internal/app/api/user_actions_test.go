@@ -62,6 +62,14 @@ func TestUserMutationCreateUpdateDeleteQueuesOperations(t *testing.T) {
 	assertDBString(t, db, `SELECT credential_key FROM users WHERE username = 'proxy_payload'`, "11111111111141118111111111111111")
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM proxies WHERE user_id = (SELECT id FROM users WHERE username = 'proxy_payload')`, 0)
 
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/user", token, `{"username":"string_numbers","service_id":"1","data_limit":"3000","ip_limit":"0"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("string numeric create status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBInt64(t, db, `SELECT service_id FROM users WHERE username = 'string_numbers'`, 1)
+	assertDBInt64(t, db, `SELECT data_limit FROM users WHERE username = 'string_numbers'`, 3000)
+	assertDBInt64(t, db, `SELECT ip_limit FROM users WHERE username = 'string_numbers'`, 0)
+
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/user/go_user", token, `{"status":"disabled","data_limit":2000}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d body=%s", rec.Code, rec.Body.String())
