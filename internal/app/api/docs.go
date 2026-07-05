@@ -35,9 +35,54 @@ func swaggerUIHandler() http.Handler {
 		Title:       "Rebecca API",
 		SwaggerJSON: "/openapi.json",
 		BasePath:    "/docs/",
-		AppendHead:  template.HTML(swaggerDarkThemeCSS), //nolint:gosec // Static CSS only.
+		SettingsUI: map[string]string{
+			"persistAuthorization": "true",
+			"requestInterceptor":   swaggerRequestInterceptorJS,
+			"onComplete":           swaggerOnCompleteJS,
+		},
+		AppendHead: template.HTML(swaggerDarkThemeCSS), //nolint:gosec // Static CSS only.
 	})
 }
+
+const swaggerStoredTokenJS = `function() {
+	try {
+		var token = window.localStorage && window.localStorage.getItem("token");
+		return token && token.trim ? token.trim() : "";
+	} catch (error) {
+		return "";
+	}
+}`
+
+const swaggerRequestInterceptorJS = `function(req) {
+	if (!req.loadSpec) {
+		var token = (` + swaggerStoredTokenJS + `)();
+		if (token && !(req.headers && req.headers.Authorization)) {
+			req.headers = req.headers || {};
+			req.headers.Authorization = "Bearer " + token;
+		}
+	}
+	return req;
+}`
+
+const swaggerOnCompleteJS = `function() {
+	var token = (` + swaggerStoredTokenJS + `)();
+	if (token && window.ui && window.ui.preauthorizeApiKey) {
+		window.ui.preauthorizeApiKey("bearerAuth", token);
+	}
+
+	var dom = document.querySelector(".scheme-container select");
+	if (!dom) {
+		return;
+	}
+	for (var key in dom) {
+		if (key.startsWith("__reactInternalInstance$") && dom[key]._currentElement) {
+			var compWrapper = dom[key]._currentElement._owner;
+			if (compWrapper && compWrapper._instance && compWrapper._instance.setScheme) {
+				compWrapper._instance.setScheme(window.location.protocol.slice(0, -1));
+			}
+		}
+	}
+}`
 
 const swaggerDarkThemeCSS = `<style>
 :root {
@@ -146,6 +191,61 @@ body {
 	background: var(--rebecca-docs-code) !important;
 	color: var(--rebecca-docs-text) !important;
 	border-color: var(--rebecca-docs-border) !important;
+}
+
+.swagger-ui input::placeholder,
+.swagger-ui textarea::placeholder {
+	color: #73839d !important;
+}
+
+.swagger-ui .dialog-ux .backdrop-ux {
+	background: rgba(3, 7, 18, 0.78) !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux {
+	background: var(--rebecca-docs-panel) !important;
+	border: 1px solid var(--rebecca-docs-border) !important;
+	border-radius: 8px !important;
+	box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48) !important;
+	color: var(--rebecca-docs-text) !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux-header {
+	background: var(--rebecca-docs-panel-soft) !important;
+	border-bottom: 1px solid var(--rebecca-docs-border) !important;
+	color: var(--rebecca-docs-text) !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux-header h3,
+.swagger-ui .dialog-ux .modal-ux-content h4,
+.swagger-ui .dialog-ux .modal-ux-content label,
+.swagger-ui .dialog-ux .modal-ux-content p,
+.swagger-ui .dialog-ux .auth-container h4,
+.swagger-ui .dialog-ux .auth-container label,
+.swagger-ui .dialog-ux .auth-container .wrapper {
+	color: var(--rebecca-docs-text) !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux-content,
+.swagger-ui .dialog-ux .auth-container {
+	background: var(--rebecca-docs-panel) !important;
+	color: var(--rebecca-docs-text) !important;
+}
+
+.swagger-ui .dialog-ux .auth-container input {
+	background: #17243a !important;
+	color: var(--rebecca-docs-text) !important;
+	border: 1px solid #49698f !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux-header .close-modal {
+	background: transparent !important;
+	border: 0 !important;
+	color: var(--rebecca-docs-text) !important;
+}
+
+.swagger-ui .dialog-ux .modal-ux-header .close-modal svg {
+	fill: var(--rebecca-docs-text) !important;
 }
 
 .swagger-ui .btn,

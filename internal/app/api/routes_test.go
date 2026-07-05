@@ -97,6 +97,12 @@ func TestDocsRoutes(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "--rebecca-docs-bg") {
 			t.Fatalf("expected docs UI to include Rebecca dark theme CSS")
 		}
+		if !strings.Contains(rec.Body.String(), "preauthorizeApiKey") {
+			t.Fatalf("expected docs UI to auto-authorize with the current dashboard token")
+		}
+		if !strings.Contains(rec.Body.String(), "dialog-ux .modal-ux") {
+			t.Fatalf("expected docs UI to include dark authorization modal styling")
+		}
 	})
 }
 
