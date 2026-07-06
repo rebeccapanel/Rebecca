@@ -1,16 +1,16 @@
 {
   "project": "Rebecca",
   "latest": {
-    "build_tag": "dev-7d3dfb9",
-    "sha": "7d3dfb9117edcec669faaa10a7da8a0a4333cfc1",
+    "build_tag": "dev-5dacfe3",
+    "sha": "5dacfe3154c5c77f820a49b15a3c2fe4b4e54d7b",
     "branch": "dev",
     "workflow": "Binary Build",
-    "run_id": "28780773826",
-    "run_number": "451",
-    "generated_at": "2026-07-06T09:16:52Z",
+    "run_id": "28782394464",
+    "run_number": "452",
+    "generated_at": "2026-07-06T09:44:10Z",
     "assets": [
-      "rebecca-windows-amd64-dev-7d3dfb9.zip",
-      "rebecca-linux-amd64-dev-7d3dfb9.tar.gz"
+      "rebecca-linux-amd64-dev-5dacfe3.tar.gz",
+      "rebecca-windows-amd64-dev-5dacfe3.zip"
     ]
   }
 }
