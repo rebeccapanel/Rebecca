@@ -10,7 +10,7 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import useGetUser from "hooks/useGetUser";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
 import {
@@ -51,10 +51,6 @@ export const PhpMyAdminPage = () => {
 	const status = statusQuery.data ?? defaultStatus;
 
 	const phpMyAdminTheme = colorMode === "dark" ? "blueberry" : "";
-	const iframeSrc = useMemo(() => {
-		const cacheKey = encodeURIComponent(phpMyAdminTheme || "default");
-		return `/api/settings/phpmyadmin/embed/index.php?rb_theme=${cacheKey}`;
-	}, [phpMyAdminTheme]);
 	const embedQuery = useQuery(
 		["phpmyadmin-embed-session", phpMyAdminTheme || "default"],
 		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme || undefined),
@@ -135,7 +131,7 @@ export const PhpMyAdminPage = () => {
 					<Box
 						as="iframe"
 						title={t("phpmyadmin.title", "phpMyAdmin")}
-						src={iframeSrc}
+						srcDoc={embedQuery.data}
 						sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
 						w="100%"
 						h={{ base: "calc(100vh - 128px)", md: "calc(100vh - 112px)" }}
