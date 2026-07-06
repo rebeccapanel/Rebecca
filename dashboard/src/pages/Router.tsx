@@ -13,6 +13,7 @@ import { IntegrationSettingsPage } from "./IntegrationSettingsPage";
 import { Login } from "./Login";
 import MyAccountPage from "./MyAccountPage";
 import { NodesPage } from "./NodesPage";
+import { PhpMyAdminPage } from "./PhpMyAdminPage";
 import ServicesPage from "./ServicesPage";
 import TutorialsPage from "./TutorialsPage";
 import UsagePage from "./UsagePage";
@@ -86,6 +87,7 @@ const routeSegments = new Set([
 	"xray-logs",
 	"access-insights",
 	"api-docs",
+	"phpmyadmin",
 ]);
 
 const trimTrailingSlash = (value: string) => {
@@ -218,6 +220,10 @@ export const router = createBrowserRouter(
 				{
 					path: "api-docs",
 					element: <ApiDocsPage />,
+				},
+				{
+					path: "phpmyadmin",
+					element: <PhpMyAdminPage />,
 				},
 			],
 		},

@@ -32,7 +32,6 @@ import {
 	Switch,
 	Text,
 	Textarea,
-	useColorMode,
 	useColorModeValue,
 	useToast,
 	VStack,
@@ -60,13 +59,13 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { Link as RouterLink } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
 	disablePHPMyAdmin,
 	enablePHPMyAdmin,
 	getPanelSettings,
-	getPHPMyAdminEmbedHTML,
 	getPHPMyAdminStatus,
 	getRuntimeSettings,
 	getSubscriptionSettings,
@@ -740,7 +739,6 @@ const cleanTerminalOutput = (logs?: string[]) => {
 
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
-	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
 	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -876,22 +874,6 @@ export const IntegrationSettingsPage = () => {
 	}, [runtimeSettings]);
 
 	const phpMyAdminSupported = phpMyAdminStatus?.supported ?? false;
-	const phpMyAdminIsFullAccess = userData?.role === "full_access";
-	const phpMyAdminTheme = colorMode === "dark" ? "blueberry" : undefined;
-	const phpMyAdminEmbedQuery = useQuery(
-		["phpmyadmin-embed-html", phpMyAdminTheme ?? "default"],
-		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme),
-		{
-			enabled: Boolean(
-				canManageIntegrations &&
-					phpMyAdminSupported &&
-					runtimeSettingsForm.phpmyadmin_enabled &&
-					phpMyAdminIsFullAccess,
-			),
-			refetchOnWindowFocus: false,
-			retry: false,
-		},
-	);
 
 	const [adminOverrides, setAdminOverrides] = useState<
 		Record<number, AdminSubscriptionSettings>
@@ -2203,11 +2185,26 @@ export const IntegrationSettingsPage = () => {
 													<Text fontSize="sm" color="gray.500">
 														{t(
 															"phpmyadmin.settingsHint",
-															"Install phpMyAdmin on the host and serve it through the Rebecca panel.",
+															"Install phpMyAdmin on the host and open it from the dedicated panel page.",
 														)}
 													</Text>
 												</Box>
 												<HStack spacing={2} flexWrap="wrap">
+													<Button
+														as={RouterLink}
+														to="/phpmyadmin"
+														size="sm"
+														variant="outline"
+														isDisabled={
+															!runtimeSettingsForm.phpmyadmin_enabled ||
+															!phpMyAdminSupported
+														}
+													>
+														{t(
+															"phpmyadmin.openPanel",
+															"Open phpMyAdmin page",
+														)}
+													</Button>
 													<Button
 														size="sm"
 														colorScheme={
@@ -2270,88 +2267,11 @@ export const IntegrationSettingsPage = () => {
 													<FormHelperText>
 														{t(
 															"phpmyadmin.panelOnlyHint",
-															"phpMyAdmin opens inside this settings page and uses the panel database credentials.",
+															"phpMyAdmin opens inside its own panel page and uses the panel database credentials.",
 														)}
 													</FormHelperText>
 												</FormControl>
 											</SimpleGrid>
-											{runtimeSettingsForm.phpmyadmin_enabled &&
-											phpMyAdminSupported ? (
-												<Box
-													mt={4}
-													borderWidth="1px"
-													borderColor={borderColor}
-													borderRadius="md"
-													overflow="hidden"
-													bg={fieldBg}
-													minH={{ base: "520px", md: "680px" }}
-												>
-													{!phpMyAdminIsFullAccess ? (
-														<VStack
-															minH="360px"
-															align="center"
-															justify="center"
-															spacing={3}
-															p={6}
-														>
-															<Heading size="sm">
-																{t(
-																	"phpmyadmin.fullAccessOnly",
-																	"Full access required",
-																)}
-															</Heading>
-															<Text color="gray.500" textAlign="center">
-																{t(
-																	"phpmyadmin.fullAccessOnlyHint",
-																	"Embedded auto-login is available only for full access admins.",
-																)}
-															</Text>
-														</VStack>
-													) : phpMyAdminEmbedQuery.isLoading ? (
-														<Flex
-															minH="360px"
-															align="center"
-															justify="center"
-														>
-															<Spinner />
-														</Flex>
-													) : phpMyAdminEmbedQuery.isError ? (
-														<VStack
-															minH="360px"
-															align="center"
-															justify="center"
-															spacing={3}
-															p={6}
-														>
-															<Heading size="sm">
-																{t(
-																	"phpmyadmin.embedFailed",
-																	"Could not open embedded phpMyAdmin",
-																)}
-															</Heading>
-															<Text color="gray.500" textAlign="center">
-																{String(
-																	(phpMyAdminEmbedQuery.error as Error)
-																		?.message || "",
-																)}
-															</Text>
-														</VStack>
-													) : (
-														<Box
-															as="iframe"
-															title={t("phpmyadmin.title", "phpMyAdmin")}
-															srcDoc={phpMyAdminEmbedQuery.data || ""}
-															w="100%"
-															h={{
-																base: "calc(100vh - 180px)",
-																md: "calc(100vh - 160px)",
-															}}
-															minH={{ base: "520px", md: "680px" }}
-															border="0"
-														/>
-													)}
-												</Box>
-											) : null}
 										</Box>
 									</SimpleGrid>
 									<Flex className="master-settings-action-row" mt={4}>
