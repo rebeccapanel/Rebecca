@@ -14,18 +14,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
-
-var (
-	phpMyAdminFrameProtectionScriptRE = regexp.MustCompile(`(?is)<script\b[^>]*cross_framing_protection\.js[^>]*>\s*</script>\s*`)
-	phpMyAdminFrameProtectionStyleRE  = regexp.MustCompile(`(?is)<style\b[^>]*\bid=["']cfs-style["'][^>]*>.*?</style>\s*`)
-)
 
 const (
 	fcgiVersion1    = 1
@@ -408,8 +402,8 @@ func rewritePHPMyAdminBody(body []byte, status phpMyAdminResponse, proxyBase str
 	proxyBaseNoSlash := strings.TrimRight(proxyBase, "/")
 	const proxyBasePlaceholder = "__REBECCA_PMA_PROXY_BASE__"
 	const proxyBaseNoSlashPlaceholder = "__REBECCA_PMA_PROXY_BASE_NO_SLASH__"
-	body = phpMyAdminFrameProtectionScriptRE.ReplaceAll(body, nil)
-	body = phpMyAdminFrameProtectionStyleRE.ReplaceAll(body, nil)
+	body = stripHTMLBlockContaining(body, "<script", "</script>", "cross_framing_protection.js")
+	body = stripHTMLBlockContaining(body, "<style", "</style>", "cfs-style")
 	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBasePlaceholder))
 	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBasePlaceholder))
 	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBaseNoSlash), []byte(proxyBaseNoSlashPlaceholder))
@@ -419,4 +413,27 @@ func rewritePHPMyAdminBody(body []byte, status phpMyAdminResponse, proxyBase str
 	body = bytes.ReplaceAll(body, []byte(proxyBasePlaceholder), []byte(proxyBase))
 	body = bytes.ReplaceAll(body, []byte(proxyBaseNoSlashPlaceholder), []byte(proxyBaseNoSlash))
 	return body
+}
+
+func stripHTMLBlockContaining(body []byte, openTag string, closeTag string, marker string) []byte {
+	openNeedle := []byte(strings.ToLower(openTag))
+	closeNeedle := []byte(strings.ToLower(closeTag))
+	markerNeedle := []byte(strings.ToLower(marker))
+	for {
+		lower := bytes.ToLower(body)
+		markerIndex := bytes.Index(lower, markerNeedle)
+		if markerIndex < 0 {
+			return body
+		}
+		start := bytes.LastIndex(lower[:markerIndex], openNeedle)
+		if start < 0 {
+			return body
+		}
+		endRelative := bytes.Index(lower[markerIndex:], closeNeedle)
+		if endRelative < 0 {
+			return body
+		}
+		end := markerIndex + endRelative + len(closeNeedle)
+		body = append(body[:start], body[end:]...)
+	}
 }
