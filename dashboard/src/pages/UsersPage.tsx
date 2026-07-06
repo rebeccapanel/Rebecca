@@ -5,7 +5,7 @@ import {
 	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
-import { Filters, ReloadIcon } from "components/Filters";
+import { ReloadIcon } from "components/Filters";
 import { Pagination } from "components/Pagination";
 import { QRCodeDialog } from "components/QRCodeDialog";
 import { ResetUserUsageModal } from "components/ResetUserUsageModal";
@@ -13,6 +13,7 @@ import { RevokeSubscriptionModal } from "components/RevokeSubscriptionModal";
 import { UserDialog } from "components/UserDialog";
 import { UsersTable } from "components/UsersTable";
 import { ResourceRefreshButton } from "components/ui";
+import { UsersFilterBar } from "components/users";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { type FC, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -39,8 +40,14 @@ export const UsersPage: FC = () => {
 	}, []);
 
 	return (
-		<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
+		<VStack
+			className="rb-users-section"
+			spacing={5}
+			align="stretch"
+			dir={isRTL ? "rtl" : "ltr"}
+		>
 			<Flex
+				className="rb-users-header"
 				borderWidth="1px"
 				borderColor={borderColor}
 				borderRadius="6px"
@@ -62,12 +69,8 @@ export const UsersPage: FC = () => {
 				</Box>
 			</Flex>
 			<UsersTable
-				toolbar={
-					<Box>
-						<Filters py={0} showRefresh={false} />
-					</Box>
-				}
-				footerActions={
+				toolbar={<UsersFilterBar />}
+				headerActions={
 					<ResourceRefreshButton
 						aria-label={t("refresh", "Refresh")}
 						label={t("refresh", "Refresh")}

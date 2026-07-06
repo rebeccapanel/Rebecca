@@ -6,7 +6,6 @@ import {
 	HStack,
 	IconButton,
 	MenuItem,
-	Progress,
 	Stack,
 	type BoxProps,
 	Text,
@@ -32,10 +31,10 @@ import {
 import type { SortingState } from "@tanstack/react-table";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
-import { resetStrategy, statusColors } from "constants/UserSettings";
+import { resetStrategy } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
-import React, {
+import {
 	type FC,
 	type ReactNode,
 	useCallback,
@@ -54,7 +53,6 @@ import {
 } from "utils/adminTraffic";
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
-import { relativeExpiryDate } from "utils/dateFormatter";
 import { generateUserLinks } from "utils/userLinks";
 import {
 	DataTable,
@@ -64,14 +62,14 @@ import {
 	type ResourceSummaryItem,
 } from "./ui";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
-import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
-
-type TranslateFn = (
-	key: string,
-	defaultValueOrOptions?: string | Record<string, unknown>,
-) => string;
+import {
+	UserAdminChip,
+	UserExpiryCountdown,
+	UserStatusAvatar,
+	UserUsageBar,
+} from "./users";
 
 const EmptySectionIcon = chakra(AddFileIcon);
 
@@ -115,43 +113,6 @@ const RevokeIcon = chakra(NoSymbolIcon, iconProps);
 const TrafficIcon = chakra(PlusCircleIcon, iconProps);
 const ExtendIcon = chakra(ClockIcon, iconProps);
 
-type UsageMeterProps = {
-	used: number;
-	total: number | null;
-	totalUsedTraffic: number;
-	dataLimitResetStrategy: string | null;
-	status: string;
-	isRTL: boolean;
-	t: TranslateFn;
-};
-
-type CreatedByTextProps = {
-	show: boolean;
-	adminUsername?: string | null;
-};
-
-const CreatedByText: FC<CreatedByTextProps> = ({ show, adminUsername }) => {
-	const { t } = useTranslation();
-	if (!show || !adminUsername) return null;
-
-	return (
-		<Text
-			fontSize="xs"
-			color="gray.500"
-			_dark={{ color: "gray.400" }}
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
-			lineHeight="1.2"
-			textAlign="start"
-		>
-			{t("usersTable.by", "by")}{" "}
-			<chakra.span color="primary.500" fontWeight="medium">
-				{adminUsername}
-			</chakra.span>
-		</Text>
-	);
-};
-
 const getResetStrategy = (strategy: string): string => {
 	const entry = resetStrategy.find((item) => item.value === strategy);
 	return entry?.title ?? "No";
@@ -164,58 +125,6 @@ const formatUsernamePreview = (username: string, maxLength = 20) =>
 	username.length > maxLength
 		? `${username.slice(0, Math.max(4, maxLength - 4))}...`
 		: username;
-
-const formatCompactUsagePair = (used: number, total: number | null) => {
-	const [usedValue, usedUnit] = formatBytes(used, 2, true);
-	if (total === 0 || total === null) return `${usedValue}${usedUnit}/∞`;
-
-	const [totalValue, totalUnit] = formatBytes(total, 2, true);
-	if (usedUnit === totalUnit) return `${usedValue}/${totalValue}${totalUnit}`;
-	return `${usedValue}${usedUnit}/${totalValue}${totalUnit}`;
-};
-
-const CompactUsageMeter: FC<Pick<UsageMeterProps, "used" | "total">> = ({
-	used,
-	total,
-}) => (
-	<Text
-		fontSize="sm"
-		fontWeight="semibold"
-		color="panel.text"
-		dir="ltr"
-		noOfLines={1}
-		sx={{ unicodeBidi: "isolate" }}
-	>
-		{formatCompactUsagePair(used, total)}
-	</Text>
-);
-
-const MobileExpiryDetail: FC<{
-	expire?: number | null;
-	t: TranslateFn;
-}> = ({ expire, t }) => {
-	const expiry = relativeExpiryDate(expire, { compact: true });
-	if (!expiry.time) {
-		return (
-			<Text fontSize="sm" color="panel.textMuted">
-				-
-			</Text>
-		);
-	}
-	return (
-		<Text
-			fontSize="sm"
-			fontWeight="semibold"
-			color="panel.text"
-			dir="auto"
-			noOfLines={1}
-		>
-			{t(expiry.status === "expires" ? "expires" : "expired", {
-				time: expiry.time,
-			})}
-		</Text>
-	);
-};
 
 const MobileLifetimeDetail: FC<{
 	totalUsedTraffic: number;
@@ -232,94 +141,32 @@ const MobileLifetimeDetail: FC<{
 	</Text>
 );
 
-const UsageMeter: FC<UsageMeterProps> = ({
-	used,
-	total,
-	totalUsedTraffic,
-	dataLimitResetStrategy,
-	status,
-	isRTL,
-	t,
-}) => {
-	const isUnlimited = total === 0 || total === null;
-	const percentage = isUnlimited
-		? 0
-		: Math.min((used / (total || 1)) * 100, 100);
-	const resetLabel =
-		!isUnlimited &&
-		dataLimitResetStrategy &&
-		dataLimitResetStrategy !== "no_reset"
-			? t(`userDialog.resetStrategy${getResetStrategy(dataLimitResetStrategy)}`)
-			: undefined;
-	const colorScheme = statusColors[status]?.bandWidthColor ?? "primary";
-	const reached = !isUnlimited && percentage >= 100;
-	const usedLabel = formatBytes(used);
-	const totalLabel = isUnlimited ? "∞" : formatBytes(total ?? 0);
-
-	return (
-		<Stack
-			spacing={1}
-			h="42px"
-			minH="42px"
-			justify="center"
-			w="full"
-			maxW="full"
-			overflow="hidden"
-		>
-			<Progress
-				value={isUnlimited ? 0 : percentage}
-				isIndeterminate={isUnlimited}
-				size="sm"
-				colorScheme={reached ? "red" : colorScheme}
-				borderRadius="full"
-				bg="gray.100"
-				_dark={{ bg: "gray.700" }}
-				sx={isRTL ? { direction: "rtl" } : undefined}
-			/>
-			<HStack
-				justify="space-between"
-				spacing={3}
-				flexWrap="nowrap"
-				fontSize="xs"
-				color="gray.600"
-				_dark={{ color: "gray.400" }}
-				dir="ltr"
-				whiteSpace="nowrap"
-				overflow="hidden"
-				w="full"
-				minW={0}
-			>
-				<Text noOfLines={1} minW={0} flex="1 1 auto" textAlign="start">
-					<chakra.span className="rb-usage-pair">
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{usedLabel}
-						</chakra.span>{" "}
-						/{" "}
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{totalLabel}
-						</chakra.span>
-					</chakra.span>
-					{resetLabel ? ` · ${resetLabel}` : ""}
-				</Text>
-				<HStack spacing={1} flexShrink={0} justify="flex-end" textAlign="end">
-					<Text noOfLines={1}>{t("usersTable.lifetimeUsage")}:</Text>
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{formatBytes(totalUsedTraffic)}
-					</chakra.span>
-				</HStack>
-			</HStack>
-		</Stack>
+const getUsageResetLabel = (
+	user: UserListItem,
+	t: (key: string) => string,
+): string | undefined => {
+	const isUnlimited = user.data_limit === 0 || user.data_limit === null;
+	if (
+		isUnlimited ||
+		!user.data_limit_reset_strategy ||
+		user.data_limit_reset_strategy === "no_reset"
+	) {
+		return undefined;
+	}
+	return t(
+		`userDialog.resetStrategy${getResetStrategy(user.data_limit_reset_strategy)}`,
 	);
 };
 
 type UsersTableProps = BoxProps & {
 	toolbar?: ReactNode;
-	footerActions?: ReactNode;
+	/** Rendered in the header of the list summary card (e.g. refresh). */
+	headerActions?: ReactNode;
 };
 
 export const UsersTable: FC<UsersTableProps> = ({
 	toolbar,
-	footerActions,
+	headerActions,
 	...props
 }) => {
 	const {
@@ -342,6 +189,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const locale = i18n.language || "en";
 	const toast = useToast();
+	// One toast shape for every action in this section: top entrance, closable.
+	const notify = (
+		title: string,
+		status: "success" | "error",
+		options?: { description?: string; duration?: number },
+	) =>
+		toast({
+			title,
+			status,
+			description: options?.description,
+			duration: options?.duration ?? 2500,
+			isClosable: true,
+			position: "top",
+		});
 	const dialogBg = useColorModeValue("panel.surface", "panel.surface");
 	const dialogBorderColor = useColorModeValue("panel.border", "panel.border");
 
@@ -385,11 +246,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const rowsToRender = filters.limit || 10;
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
-	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
-	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 	const useCompactUsageCell =
 		useBreakpointValue({ base: true, lg: true, xl: false }) ?? true;
-	const hasSearchQuery = Boolean(filters.search?.trim());
 	const hasUsageScopeFilter = Boolean(
 		filters.search?.trim() ||
 			filters.status ||
@@ -463,16 +321,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("reset");
 		try {
 			await resetDataUsage(user);
-			toast({
-				title: t("usersTable.resetUsage", "Usage reset"),
-				status: "success",
-			});
+			notify(t("usersTable.resetUsage", "Usage reset"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -483,15 +335,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("revoke");
 		try {
 			await revokeSubscription(user);
-			toast({
-				title: t("usersTable.revokeSub", "Subscription revoked"),
-				status: "success",
-			});
+			notify(t("usersTable.revokeSub", "Subscription revoked"), "success");
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -511,16 +357,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { data_limit: nextLimit },
 			});
-			toast({
-				title: t("usersTable.addTrafficSuccess", "Traffic updated"),
-				status: "success",
-			});
+			notify(t("usersTable.addTrafficSuccess", "Traffic updated"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -538,16 +378,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { expire: nextExpire },
 			});
-			toast({
-				title: t("usersTable.extendExpireSuccess", "Expiration extended"),
-				status: "success",
-			});
+			notify(
+				t("usersTable.extendExpireSuccess", "Expiration extended"),
+				"success",
+			);
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -562,16 +399,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "disabled" },
 			});
-			toast({
-				title: t("usersTable.disableUser", "Disable user"),
-				status: "success",
-			});
+			notify(t("usersTable.disableUser", "Disable user"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -586,16 +417,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "active" },
 			});
-			toast({
-				title: t("usersTable.enableUser", "Enable user"),
-				status: "success",
-			});
+			notify(t("usersTable.enableUser", "Enable user"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -606,19 +431,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("delete");
 		try {
 			await deleteUser(user);
-			toast({
-				title: t("deleteUser.deleteSuccess", { username: user.username }),
-				status: "success",
-				isClosable: true,
-				position: "top",
+			notify(t("deleteUser.deleteSuccess", { username: user.username }), "success", {
 				duration: 3000,
 			});
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -635,20 +453,15 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setBulkAction(action);
 		try {
 			await Promise.all(users.map((user) => handler(user)));
-			toast({
-				title: successLabel,
+			notify(successLabel, "success", {
 				description: t("usersTable.bulkActionCount", "{{count}} users updated", {
 					count: users.length,
 				}),
-				status: "success",
 			});
 			clearSelectedUsers();
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setBulkAction(null);
 		}
@@ -728,12 +541,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 				tooltip: true,
 				multiline: true,
 				cellAlign: "start",
-				headerInset: "20px",
+				headerInset: "44px",
 				mobilePriority: 0,
 				mobileMetaLabel: t("username"),
 				cell: (user) => (
 					<HStack
-						spacing={1.5}
+						spacing={2.5}
 						align="center"
 						dir="ltr"
 						flexDirection="row"
@@ -742,17 +555,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 						maxW="full"
 						w="full"
 					>
-						<Box
-							className="rb-user-online-indicator"
-							flex="0 0 20px"
-							w="20px"
-							display="flex"
-							alignItems="center"
-							justifyContent="center"
-							overflow="visible"
-						>
-							<OnlineBadge lastOnline={user.online_at ?? null} />
-						</Box>
+						<UserStatusAvatar
+							username={user.username}
+							status={user.status}
+							lastOnline={user.online_at ?? null}
+						/>
 						<Box
 							minW={0}
 							flex="1 1 auto"
@@ -773,11 +580,23 @@ export const UsersTable: FC<UsersTableProps> = ({
 							>
 								{formatUsernamePreview(user.username)}
 							</Text>
-							<CreatedByText
-								show={hasPrivilegedRole}
-								adminUsername={user.admin_username}
-							/>
-							<OnlineStatus lastOnline={user.online_at ?? null} />
+							<HStack
+								className="rb-user-username-meta"
+								spacing={1.5}
+								minW={0}
+								maxW="full"
+								overflow="hidden"
+							>
+								<UserAdminChip
+									show={hasPrivilegedRole}
+									adminUsername={user.admin_username}
+								/>
+								<OnlineStatus
+									lastOnline={user.online_at ?? null}
+									withMargin={false}
+									compact
+								/>
+							</HStack>
 						</Box>
 					</HStack>
 				),
@@ -820,9 +639,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobileVisible: true,
 				mobilePriority: 2,
 				mobileMetaLabel: t("usersTable.expire"),
-				cell: (user) => (
-					<MobileExpiryDetail expire={user.expire} t={t} />
-				),
+				cell: (user) => <UserExpiryCountdown expire={user.expire} />,
 			},
 			{
 				id: "service",
@@ -869,26 +686,19 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 4,
 				mobileMetaLabel: t("usersTable.dataUsage"),
 				mobileDetailCell: (user) => (
-					<CompactUsageMeter
-						used={user.used_traffic}
-						total={user.data_limit}
-					/>
+					<UserUsageBar used={user.used_traffic} total={user.data_limit} />
 				),
 				cell: (user) =>
 					useCompactUsageCell ? (
-						<CompactUsageMeter
-							used={user.used_traffic}
-							total={user.data_limit}
-						/>
+						<UserUsageBar used={user.used_traffic} total={user.data_limit} />
 					) : (
-						<UsageMeter
-							status={user.status}
-							totalUsedTraffic={user.lifetime_used_traffic}
-							dataLimitResetStrategy={user.data_limit_reset_strategy}
+						<UserUsageBar
+							variant="detailed"
 							used={user.used_traffic}
 							total={user.data_limit}
-							isRTL={isRTL}
-							t={t}
+							lifetimeUsed={user.lifetime_used_traffic}
+							lifetimeLabel={t("usersTable.lifetimeUsage")}
+							resetLabel={getUsageResetLabel(user, t)}
 						/>
 					),
 			});
@@ -910,7 +720,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 		canOpenUserDialog,
 		canViewTraffic,
 		hasPrivilegedRole,
-		isRTL,
 		t,
 		useCompactUsageCell,
 	]);
@@ -938,16 +747,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (!text) return false;
 		try {
 			await copyTextToClipboard(text);
-			toast({
-				title: successLabel,
-				status: "success",
-				duration: 1200,
-			});
+			notify(successLabel, "success", { duration: 1200 });
 			return true;
 		} catch {
-			toast({
-				title: t("usersTable.copyFailed", "Copy failed"),
-				status: "error",
+			notify(t("usersTable.copyFailed", "Copy failed"), "error", {
 				duration: 1600,
 			});
 			return false;
@@ -1222,10 +1025,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 			<ResourceListCard
 				title={t("usersTable.listHeader", "User list")}
 				summaryItems={summaryItems}
-				footerActions={footerActions}
-			>
-				{toolbar}
-			</ResourceListCard>
+				actions={headerActions}
+			/>
+
+			{/* Sticky so search and quick filters stay reachable while scrolling. */}
+			{toolbar && <Box className="rb-users-toolbar">{toolbar}</Box>}
 
 			<Box position="relative">
 				<Stack
