@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -10,10 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"io"
-	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
@@ -125,7 +121,7 @@ func (s *Server) handlePHPMyAdminEnable(w http.ResponseWriter, r *http.Request) 
 	}
 	port := normalizePHPMyAdminPort(payload.Port)
 	path := normalizePHPMyAdminPath(payload.Path)
-	output, err := runRebeccaPHPMyAdminCommand(r.Context(), "enable-phpmyadmin", "--port", strconv.Itoa(port), "--path", path)
+	output, err := runRebeccaPHPMyAdminCommand(r.Context(), "enable-phpmyadmin", "--path", path)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, strings.TrimSpace(output+"\n"+err.Error()))
 		return
@@ -205,30 +201,9 @@ func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "phpMyAdmin is disabled")
 		return
 	}
-	target := &url.URL{
-		Scheme: "http",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(status.Port)),
-	}
-	targetPath := phpMyAdminTargetPath(status.Path, r.URL.Path)
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-		req.URL.Path = targetPath
-		req.URL.RawPath = ""
-		req.URL.RawQuery = r.URL.RawQuery
-		req.Host = target.Host
-		req.Header.Set("X-Forwarded-Host", r.Host)
-		req.Header.Set("X-Forwarded-Proto", requestScheme(r))
-		req.Header.Del("Accept-Encoding")
-	}
-	proxy.ModifyResponse = func(resp *http.Response) error {
-		return rewritePHPMyAdminProxyResponse(resp, status)
-	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+	if err := s.servePHPMyAdminLocal(w, r, status); err != nil {
 		writeError(w, http.StatusBadGateway, "phpMyAdmin proxy failed: "+err.Error())
 	}
-	proxy.ServeHTTP(w, r)
 }
 
 func (s *Server) phpMyAdminProxyAuthorized(r *http.Request) bool {
@@ -409,44 +384,6 @@ func verifyPHPMyAdminEmbedSession(value string, now time.Time) bool {
 		return false
 	}
 	return now.Unix() <= expiresUnix
-}
-
-func phpMyAdminTargetPath(configuredPath string, requestPath string) string {
-	suffix := strings.TrimPrefix(requestPath, phpMyAdminEmbedPath)
-	base := normalizePHPMyAdminPath(configuredPath)
-	if suffix == "" {
-		return base
-	}
-	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(suffix, "/")
-}
-
-func rewritePHPMyAdminProxyResponse(resp *http.Response, status phpMyAdminResponse) error {
-	upstreamBase := normalizePHPMyAdminPath(status.Path)
-	proxyBase := phpMyAdminEmbedPath
-	if location := strings.TrimSpace(resp.Header.Get("Location")); location != "" {
-		resp.Header.Set("Location", rewritePHPMyAdminURL(location, status, proxyBase))
-	}
-	rewritePHPMyAdminCookies(resp.Header, proxyBase)
-	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
-	if !strings.Contains(contentType, "text/html") &&
-		!strings.Contains(contentType, "text/css") &&
-		!strings.Contains(contentType, "javascript") {
-		return nil
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	_ = resp.Body.Close()
-	body = bytes.ReplaceAll(body, []byte(upstreamBase), []byte(proxyBase))
-	body = bytes.ReplaceAll(body, []byte(strings.TrimRight(upstreamBase, "/")), []byte(strings.TrimRight(proxyBase, "/")))
-	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
-	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
-	resp.Body = io.NopCloser(bytes.NewReader(body))
-	resp.ContentLength = int64(len(body))
-	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	resp.Header.Set("Cache-Control", "no-store")
-	return nil
 }
 
 func rewritePHPMyAdminURL(value string, status phpMyAdminResponse, proxyBase string) string {

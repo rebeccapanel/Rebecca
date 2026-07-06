@@ -1344,7 +1344,7 @@ export const IntegrationSettingsPage = () => {
 	const phpMyAdminEnableMutation = useMutation(
 		() =>
 			enablePHPMyAdmin({
-				port: Number(runtimeSettingsForm.phpmyadmin_port) || 8080,
+				port: 8080,
 				path: runtimeSettingsForm.phpmyadmin_path || "/phpmyadmin/",
 			}),
 		{
@@ -2212,7 +2212,7 @@ export const IntegrationSettingsPage = () => {
 													<Text fontSize="sm" color="gray.500">
 														{t(
 															"phpmyadmin.settingsHint",
-															"Install phpMyAdmin on the host and open it from inside Rebecca.",
+															"Install phpMyAdmin on the host and serve it through the Rebecca panel.",
 														)}
 													</Text>
 												</Box>
@@ -2264,28 +2264,6 @@ export const IntegrationSettingsPage = () => {
 												</HStack>
 											</Flex>
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-												<FormControl>
-													<FormLabel fontSize="sm">
-														{t("phpmyadmin.port", "Port")}
-													</FormLabel>
-													<Input
-														type="number"
-														min={1}
-														max={65535}
-														value={runtimeSettingsForm.phpmyadmin_port}
-														onChange={(event) =>
-															setRuntimeSettingsForm((prev) => ({
-																...prev,
-																phpmyadmin_port:
-																	Number(event.target.value) || 8080,
-															}))
-														}
-														isDisabled={
-															phpMyAdminEnableMutation.isLoading ||
-															phpMyAdminDisableMutation.isLoading
-														}
-													/>
-												</FormControl>
 												<FormControl>
 													<FormLabel fontSize="sm">
 														{t("phpmyadmin.path", "Path")}

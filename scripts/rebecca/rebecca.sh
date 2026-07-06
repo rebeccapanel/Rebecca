@@ -1399,8 +1399,6 @@ create_initial_admin_if_requested() {
 }
 
 prompt_phpmyadmin_settings() {
-    PHPMYADMIN_PORT=$(prompt_tcp_port "phpMyAdmin HTTP port" "8080")
-    echo
     PHPMYADMIN_PATH=$(prompt_url_path "phpMyAdmin path" "phpmyadmin")
     echo
 }
@@ -1411,33 +1409,15 @@ find_php_fpm_sock() {
     [ -n "$sock" ] && printf "%s" "$sock"
 }
 
-escape_nginx_regex_path() {
-    printf '%s' "$1" | sed -e 's/[.[\*^$()+?{}|]/\\&/g'
-}
-
-open_host_firewall_port() {
-    local port="$1"
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
-        ufw allow "${port}/tcp" >/dev/null 2>&1 || true
-    fi
-    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        firewall-cmd --add-port="${port}/tcp" --permanent >/dev/null 2>&1 || true
-        firewall-cmd --reload >/dev/null 2>&1 || true
-    fi
-}
-
 phpmyadmin_nginx_config_path() {
     printf "/etc/nginx/sites-available/%s-phpmyadmin" "$APP_NAME"
 }
 
 enable_host_phpmyadmin() {
     local database_type
-    local port="${1:-}"
-    local path="${2:-}"
+    local path="${1:-}"
     local normalized_path
     local fpm_sock
-    local nginx_config
-    local escaped_path
 
     database_type=$(get_configured_database_type)
     if [ "$database_type" = "sqlite" ]; then
@@ -1446,15 +1426,12 @@ enable_host_phpmyadmin() {
     fi
 
     detect_os
-    for package in nginx php-fpm php-mysql phpmyadmin; do
+    for package in php-fpm php-mysql phpmyadmin; do
         install_package "$package"
     done
-    systemctl enable --now nginx >/dev/null 2>&1 || true
     systemctl enable --now php*-fpm >/dev/null 2>&1 || true
 
-    port="${port:-${PHPMYADMIN_PORT:-$(get_env_value "PHPMYADMIN_PORT")}}"
-    path="${path:-${PHPMYADMIN_PATH:-$(get_env_value "PHPMYADMIN_PATH")}}"
-    port="${port:-8080}"
+    path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"
     normalized_path=$(normalize_url_path "$path" "phpmyadmin") || {
         colorized_echo red "Invalid phpMyAdmin path."
         return 1
@@ -1466,52 +1443,12 @@ enable_host_phpmyadmin() {
         colorized_echo red "Could not find php-fpm socket under /run/php."
         return 1
     fi
-    escaped_path=$(escape_nginx_regex_path "$path")
 
-    nginx_config=$(phpmyadmin_nginx_config_path)
-    cat > "$nginx_config" <<EOF
-server {
-    listen ${port};
-    server_name _;
-
-    location = ${path} {
-        return 301 ${path}/;
-    }
-
-    location ${path}/ {
-        alias /usr/share/phpmyadmin/;
-        index index.php index.html;
-        try_files \$uri \$uri/ ${path}/index.php?\$query_string;
-    }
-
-    location ~ ^${escaped_path}/(.+\.php)$ {
-        alias /usr/share/phpmyadmin/\$1;
-        include fastcgi_params;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME /usr/share/phpmyadmin/\$1;
-        fastcgi_param SCRIPT_NAME ${path}/\$1;
-        fastcgi_param DOCUMENT_ROOT /usr/share/phpmyadmin;
-        fastcgi_param HTTPS off;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
-        fastcgi_pass unix:${fpm_sock};
-    }
-
-    location ~ ^${escaped_path}/(.+\.(?:css|js|gif|png|jpg|jpeg|ico|svg|woff|woff2|ttf|eot|html|txt|xml))$ {
-        alias /usr/share/phpmyadmin/\$1;
-        access_log off;
-        expires 7d;
-    }
-}
-EOF
-    ln -sf "$nginx_config" "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin"
-    nginx -t >/dev/null
-    systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1
-    open_host_firewall_port "$port"
-
-    upsert_env_assignment "PHPMYADMIN_ENABLED" "true"
-    upsert_env_assignment "PHPMYADMIN_PORT" "$port"
-    upsert_env_assignment "PHPMYADMIN_PATH" "${path}/"
-    colorized_echo green "phpMyAdmin is available at http://$(hostname -I 2>/dev/null | awk '{print $1}'):${port}${path}/"
+    rm -f "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin" "$(phpmyadmin_nginx_config_path)"
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+    colorized_echo green "phpMyAdmin is installed and will be served through Rebecca using local php-fpm."
 }
 
 disable_host_phpmyadmin() {
@@ -1519,7 +1456,6 @@ disable_host_phpmyadmin() {
     if command -v nginx >/dev/null 2>&1; then
         nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
     fi
-    upsert_env_assignment "PHPMYADMIN_ENABLED" "false"
     colorized_echo green "phpMyAdmin has been disabled."
 }
 
@@ -1565,13 +1501,11 @@ EOF
 
 enable_phpmyadmin() {
     check_running_as_root
-    local cli_port=""
     local cli_path=""
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --port)
-                cli_port="${2:-}"
                 shift 2
                 ;;
             --path)
@@ -1602,13 +1536,12 @@ enable_phpmyadmin() {
         return 0
     fi
 
-    if [ -n "$cli_port" ] && [ -n "$cli_path" ]; then
-        PHPMYADMIN_PORT="$cli_port"
+    if [ -n "$cli_path" ]; then
         PHPMYADMIN_PATH="$cli_path"
     else
         prompt_phpmyadmin_settings
     fi
-    enable_host_phpmyadmin "$PHPMYADMIN_PORT" "$PHPMYADMIN_PATH"
+    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
 }
 
 disable_phpmyadmin() {
@@ -3795,7 +3728,7 @@ install_command() {
                 if [ "$install_phpmyadmin" = "true" ]; then
                     ui_section "phpMyAdmin"
                     prompt_phpmyadmin_settings
-                    enable_host_phpmyadmin "$PHPMYADMIN_PORT" "$PHPMYADMIN_PATH"
+                    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
                 fi
             else
                 install_rebecca "$rebecca_version" "$database_type"
@@ -4628,7 +4561,7 @@ menu_description_for() {
         script-uninstall) echo "Uninstall Rebecca script" ;;
         core-update) echo "Deprecated; Xray is managed by nodes" ;;
         enable-phpmyadmin) echo "Enable phpMyAdmin on local MySQL/MariaDB" ;;
-        disable-phpmyadmin) echo "Disable phpMyAdmin Nginx endpoint" ;;
+        disable-phpmyadmin) echo "Disable phpMyAdmin panel bridge" ;;
         edit) echo "Edit docker-compose.yml" ;;
         edit-env) echo "Edit environment file" ;;
         ssl) echo "Issue or renew SSL certificates" ;;
