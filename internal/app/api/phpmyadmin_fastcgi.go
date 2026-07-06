@@ -22,7 +22,10 @@ import (
 
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
 
-var phpMyAdminFrameProtectionScriptRE = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc=["'][^"']*cross_framing_protection\.js[^"']*["'][^>]*>\s*</script>\s*`)
+var (
+	phpMyAdminFrameProtectionScriptRE = regexp.MustCompile(`(?is)<script\b[^>]*cross_framing_protection\.js[^>]*>\s*</script>\s*`)
+	phpMyAdminFrameProtectionStyleRE  = regexp.MustCompile(`(?is)<style\b[^>]*\bid=["']cfs-style["'][^>]*>.*?</style>\s*`)
+)
 
 const (
 	fcgiVersion1    = 1
@@ -401,10 +404,19 @@ func splitFastCGIHeaders(stdout []byte) (textproto.MIMEHeader, []byte, error) {
 
 func rewritePHPMyAdminBody(body []byte, status phpMyAdminResponse, proxyBase string) []byte {
 	upstreamBase := normalizePHPMyAdminPath(status.Path)
+	upstreamBaseNoSlash := strings.TrimRight(upstreamBase, "/")
+	proxyBaseNoSlash := strings.TrimRight(proxyBase, "/")
+	const proxyBasePlaceholder = "__REBECCA_PMA_PROXY_BASE__"
+	const proxyBaseNoSlashPlaceholder = "__REBECCA_PMA_PROXY_BASE_NO_SLASH__"
 	body = phpMyAdminFrameProtectionScriptRE.ReplaceAll(body, nil)
-	body = bytes.ReplaceAll(body, []byte(upstreamBase), []byte(proxyBase))
-	body = bytes.ReplaceAll(body, []byte(strings.TrimRight(upstreamBase, "/")), []byte(strings.TrimRight(proxyBase, "/")))
-	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
-	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
+	body = phpMyAdminFrameProtectionStyleRE.ReplaceAll(body, nil)
+	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBasePlaceholder))
+	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBasePlaceholder))
+	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBaseNoSlash), []byte(proxyBaseNoSlashPlaceholder))
+	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBaseNoSlash), []byte(proxyBaseNoSlashPlaceholder))
+	body = bytes.ReplaceAll(body, []byte(upstreamBase), []byte(proxyBasePlaceholder))
+	body = bytes.ReplaceAll(body, []byte(upstreamBaseNoSlash), []byte(proxyBaseNoSlashPlaceholder))
+	body = bytes.ReplaceAll(body, []byte(proxyBasePlaceholder), []byte(proxyBase))
+	body = bytes.ReplaceAll(body, []byte(proxyBaseNoSlashPlaceholder), []byte(proxyBaseNoSlash))
 	return body
 }
