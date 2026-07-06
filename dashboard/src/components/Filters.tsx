@@ -71,13 +71,13 @@ export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 const PlusIconStyled = chakra(PlusIcon, iconProps);
 const HelpIcon = chakra(QuestionMarkCircleIcon, iconProps);
 
-type AdvancedFilterOption = {
+export type AdvancedFilterOption = {
 	key: string;
 	labelKey: string;
 	fallback: string;
 };
 
-const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
+export const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
 	{
 		key: "online",
 		labelKey: "filters.advanced.online",
