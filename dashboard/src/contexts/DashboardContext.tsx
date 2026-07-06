@@ -177,6 +177,11 @@ export type Inbounds = Map<ProtocolType, InboundType[]>;
 type DashboardStateType = {
 	isCreatingNewUser: boolean;
 	editingUser: User | null | undefined;
+	// Optional tab index to open the edit dialog on (e.g. usage history); the
+	// dialog reads it once on open and resets to the default tab afterwards.
+	editingUserInitialTab: number | null;
+	// Drives the lightweight quick-edit modal for a single user field.
+	quickEditUser: { user: UserListItem; field: "expire" | "data_limit" } | null;
 	version: string | null;
 	users: UsersListResponse;
 	linkTemplates?: Record<string, string[]>; // Link templates for generating user links
@@ -196,7 +201,10 @@ type DashboardStateType = {
 	revokeSubscriptionUser: UserListItem | null;
 	isEditingCore: boolean;
 	onCreateUser: (isOpen: boolean) => void;
-	onEditingUser: (user: User | UserListItem | null) => void;
+	onEditingUser: (
+		user: User | UserListItem | null,
+		initialTab?: number,
+	) => void;
 	onResetAllUsage: (isResetingAllUsage: boolean) => void;
 	refetchUsers: (force?: boolean) => void;
 	resetAllUsage: () => Promise<void>;
@@ -381,6 +389,8 @@ export const clearDashboardCache = () => {
 		usersCacheKey: null,
 		usersCacheAuthToken: null,
 		editingUser: null,
+		editingUserInitialTab: null,
+		quickEditUser: null,
 		resetUsageUser: null,
 		revokeSubscriptionUser: null,
 		subscribeUrl: null,
@@ -394,6 +404,8 @@ export const useDashboard = create(
 	subscribeWithSelector<DashboardStateType>((set, get) => ({
 		version: null,
 		editingUser: null,
+		editingUserInitialTab: null,
+		quickEditUser: null,
 		isCreatingNewUser: false,
 		QRcodeLinks: null,
 		qrCodeUsername: null,
@@ -422,18 +434,21 @@ export const useDashboard = create(
 		},
 		onResetAllUsage: (isResetingAllUsage) => set({ isResetingAllUsage }),
 		onCreateUser: (isCreatingNewUser) => set({ isCreatingNewUser }),
-		onEditingUser: (editingUser) => {
+		onEditingUser: (editingUser, initialTab) => {
 			if (!editingUser) {
-				set({ editingUser: null });
+				set({ editingUser: null, editingUserInitialTab: null });
 				return;
 			}
-			set({ editingUser: editingUser as User });
+			set({
+				editingUser: editingUser as User,
+				editingUserInitialTab: initialTab ?? null,
+			});
 			// Fetch full user detail before opening editor to keep list payload lightweight
 			fetch(`/user/${editingUser.username}`)
 				.then((fullUser: User) => {
 					set({ editingUser: fullUser });
 				})
-				.catch(() => set({ editingUser: null }));
+				.catch(() => set({ editingUser: null, editingUserInitialTab: null }));
 		},
 		onFilterChange: (filters) => {
 			set({

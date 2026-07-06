@@ -17,8 +17,11 @@ import {
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
+	CalendarDaysIcon,
+	ChartBarIcon,
 	CheckIcon,
 	ChevronRightIcon,
+	CircleStackIcon,
 	ClipboardIcon,
 	ClockIcon,
 	LinkIcon,
@@ -57,9 +60,11 @@ import { generateUserLinks } from "utils/userLinks";
 import {
 	DataTable,
 	ResourceListCard,
+	RowActionsMenu,
 	type DataTableColumn,
 	type DataTableRowAction,
 	type ResourceSummaryItem,
+	type RowActionItem,
 } from "./ui";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { OnlineStatus } from "./OnlineStatus";
@@ -114,6 +119,9 @@ const ResetIcon = chakra(ArrowPathIcon, iconProps);
 const RevokeIcon = chakra(NoSymbolIcon, iconProps);
 const TrafficIcon = chakra(PlusCircleIcon, iconProps);
 const ExtendIcon = chakra(ClockIcon, iconProps);
+const UsageHistoryIcon = chakra(ChartBarIcon, iconProps);
+const DataLimitIcon = chakra(CircleStackIcon, iconProps);
+const ExpiryIcon = chakra(CalendarDaysIcon, iconProps);
 
 const getResetStrategy = (strategy: string): string => {
 	const entry = resetStrategy.find((item) => item.value === strategy);
@@ -160,6 +168,29 @@ const MobileUsageDetail: FC<{
 		{formatUsagePair(used, total)}
 	</Text>
 );
+
+// Adapts the table's row-action descriptors into the shape the shared
+// RowActionsMenu ("...") expects, binding each callback to the given row.
+// Lets the desktop inline actions reuse the exact mobile overflow menu.
+const toMenuItems = (
+	actions: DataTableRowAction<UserListItem>[],
+	row: UserListItem,
+): RowActionItem[] =>
+	actions.map((action) => ({
+		id: action.id,
+		label: action.label,
+		icon: action.icon,
+		color: action.color,
+		isDanger: action.isDanger,
+		isDisabled:
+			typeof action.isDisabled === "function"
+				? action.isDisabled(row)
+				: action.isDisabled,
+		onClick: action.onClick ? () => action.onClick?.(row) : undefined,
+		render: action.render
+			? (onClose: () => void) => action.render?.(row, onClose)
+			: undefined,
+	}));
 
 const getUsageResetLabel = (
 	user: UserListItem,
@@ -864,6 +895,16 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
+		// Reuses the edit dialog's existing Usage tab (chart + /user/{u}/usage).
+		if (canViewTraffic) {
+			actions.push({
+				id: "usage-history",
+				label: t("usersTable.usageHistory", "Usage history"),
+				icon: <UsageHistoryIcon />,
+				onClick: () => onEditingUser(user, 1),
+			});
+		}
+
 		if (canToggleUserStatus && user.status !== "disabled") {
 			actions.push({
 				id: "disable",
@@ -970,6 +1011,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
+		// Absolute data-limit editor (PUT data_limit) — complements the
+		// relative "Add traffic" action above.
+		if (canMutateUsers) {
+			actions.push({
+				id: "set-data-limit",
+				label: t("usersTable.setDataLimit", "Set data limit"),
+				icon: <DataLimitIcon />,
+				onClick: () =>
+					useDashboard.setState({
+						quickEditUser: { user, field: "data_limit" },
+					}),
+			});
+		}
+
 		if (
 			canMutateUsers &&
 			user.expire !== null &&
@@ -982,6 +1037,19 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <ExtendIcon />,
 				isDisabled: contextAction === "expire",
 				onClick: () => handleExtendExpire(user, 30),
+			});
+		}
+
+		// Absolute expiry editor (PUT expire) — complements "Add 30 days".
+		if (canMutateUsers) {
+			actions.push({
+				id: "set-expiry",
+				label: t("usersTable.setExpiry", "Set custom expiry"),
+				icon: <ExpiryIcon />,
+				onClick: () =>
+					useDashboard.setState({
+						quickEditUser: { user, field: "expire" },
+					}),
 			});
 		}
 
@@ -1121,6 +1189,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 							<ActionButtons
 								user={user}
 								isRTL={isRTL}
+								menuActions={toMenuItems(getUserRowActions(user), user)}
 								onEdit={
 									canOpenUserDialog ? () => onEditingUser(user) : undefined
 								}
@@ -1134,7 +1203,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						)}
 						actionsDisplay="inline"
 						actionsPlacement="end"
-						actionsColumnWidth="174px"
+						actionsColumnWidth="210px"
 						actionsAlwaysVisible
 						onRowClick={
 							canOpenUserDialog ? (user) => onEditingUser(user) : undefined
@@ -1276,6 +1345,9 @@ type ActionButtonsProps = {
 	onDelete?: () => void | Promise<void>;
 	onEdit?: () => void;
 	isRTL?: boolean;
+	// Full overflow action set for the trailing "..." menu (desktop parity
+	// with the mobile card); omitted where there is nothing extra to show.
+	menuActions?: RowActionItem[];
 };
 
 const ActionButtons: FC<ActionButtonsProps> = ({
@@ -1283,6 +1355,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 	onDelete,
 	onEdit,
 	isRTL,
+	menuActions,
 }) => {
 	const { t } = useTranslation();
 	const { setQRCode, setSubLink, linkTemplates } = useDashboard();
@@ -1410,6 +1483,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 						_hover={{ color: "red.300", bg: "whiteAlpha.100" }}
 					/>
 				</DeleteConfirmPopover>
+			)}
+			{menuActions && menuActions.length > 0 && (
+				<RowActionsMenu actions={menuActions} label={t("actions", "Actions")} />
 			)}
 		</HStack>
 	);

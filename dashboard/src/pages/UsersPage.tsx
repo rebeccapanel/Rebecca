@@ -13,7 +13,7 @@ import { RevokeSubscriptionModal } from "components/RevokeSubscriptionModal";
 import { UserDialog } from "components/UserDialog";
 import { UsersTable } from "components/UsersTable";
 import { ResourceRefreshButton } from "components/ui";
-import { UsersFilterBar } from "components/users";
+import { UsersFilterBar, UserQuickEditModal } from "components/users";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { type FC, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -85,6 +85,7 @@ export const UsersPage: FC = () => {
 			<QRCodeDialog />
 			<ResetUserUsageModal />
 			<RevokeSubscriptionModal />
+			<UserQuickEditModal />
 		</VStack>
 	);
 };
