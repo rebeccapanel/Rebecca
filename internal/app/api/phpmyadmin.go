@@ -50,6 +50,9 @@ type phpMyAdminResponse struct {
 type phpMyAdminCredentials struct {
 	Username string
 	Password string
+	Host     string
+	Port     string
+	Database string
 }
 
 type jsonRaw = json.RawMessage
@@ -174,6 +177,11 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	theme := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("theme")))
+	if err := ensurePHPMyAdminRuntimeConfig(credentials, theme); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	expires := time.Now().Add(phpMyAdminEmbedTTL)
 	http.SetCookie(w, &http.Cookie{
 		Name:     phpMyAdminEmbedCookie,
@@ -188,8 +196,7 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	theme := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("theme")))
-	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", credentials, theme)))
+	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", theme)))
 }
 
 func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +306,69 @@ func parsePHPMyAdminCredentials(databaseURL string) (phpMyAdminCredentials, erro
 	if username == "" {
 		return phpMyAdminCredentials{}, fmt.Errorf("database username is missing")
 	}
-	return phpMyAdminCredentials{Username: username, Password: password}, nil
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(parsed.Port())
+	if port == "" {
+		port = "3306"
+	}
+	database := strings.Trim(strings.TrimPrefix(parsed.Path, "/"), "/")
+	if unescaped, err := url.PathUnescape(database); err == nil {
+		database = unescaped
+	}
+	return phpMyAdminCredentials{
+		Username: username,
+		Password: password,
+		Host:     host,
+		Port:     port,
+		Database: database,
+	}, nil
+}
+
+func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme string) error {
+	if err := os.MkdirAll("/etc/phpmyadmin/conf.d", 0o755); err != nil {
+		return fmt.Errorf("prepare phpMyAdmin config directory: %w", err)
+	}
+	theme = strings.ToLower(strings.TrimSpace(theme))
+	themeLine := ""
+	if theme == "blueberry" {
+		themeLine = "$cfg['ThemeDefault'] = 'blueberry';\n"
+	}
+	onlyDBLine := ""
+	if strings.TrimSpace(credentials.Database) != "" {
+		onlyDBLine = "$cfg['Servers'][$i]['only_db'] = " + phpString(credentials.Database) + ";\n"
+	}
+	config := "<?php\n" +
+		"declare(strict_types=1);\n" +
+		"$i = 1;\n" +
+		"$cfg['Servers'] = [];\n" +
+		"$cfg['Servers'][$i] = [];\n" +
+		"$cfg['Servers'][$i]['auth_type'] = 'config';\n" +
+		"$cfg['Servers'][$i]['host'] = " + phpString(credentials.Host) + ";\n" +
+		"$cfg['Servers'][$i]['port'] = " + phpString(credentials.Port) + ";\n" +
+		"$cfg['Servers'][$i]['connect_type'] = 'tcp';\n" +
+		"$cfg['Servers'][$i]['user'] = " + phpString(credentials.Username) + ";\n" +
+		"$cfg['Servers'][$i]['password'] = " + phpString(credentials.Password) + ";\n" +
+		"$cfg['Servers'][$i]['AllowNoPassword'] = false;\n" +
+		onlyDBLine +
+		"$cfg['AllowArbitraryServer'] = false;\n" +
+		themeLine
+	if err := os.WriteFile("/etc/phpmyadmin/conf.d/rebecca.php", []byte(config), 0o600); err != nil {
+		return fmt.Errorf("write phpMyAdmin runtime config: %w", err)
+	}
+	return nil
+}
+
+func phpString(value string) string {
+	replacer := strings.NewReplacer(
+		"\\", "\\\\",
+		"'", "\\'",
+		"\r", "\\r",
+		"\n", "\\n",
+	)
+	return "'" + replacer.Replace(value) + "'"
 }
 
 func runRebeccaPHPMyAdminCommand(parent context.Context, args ...string) (string, error) {
@@ -317,18 +386,16 @@ func runRebeccaPHPMyAdminCommand(parent context.Context, args ...string) (string
 	return string(output), err
 }
 
-func buildPHPMyAdminEmbedHTML(loginURL string, credentials phpMyAdminCredentials, theme string) string {
+func buildPHPMyAdminEmbedHTML(loginURL string, theme string) string {
 	theme = strings.TrimSpace(theme)
 	if theme != "blueberry" {
 		theme = ""
 	}
 	themeCookieScript := ""
-	themeInput := ""
 	if theme != "" {
 		escapedTheme := html.EscapeString(theme)
 		themeCookieScript = `document.cookie="pma_theme=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";
 document.cookie="pma_theme-1=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";`
-		themeInput = `<input type="hidden" name="pma_theme" value="` + escapedTheme + `">`
 	}
 	return `<!doctype html>
 <html lang="en">
@@ -344,13 +411,7 @@ html,body{height:100%;margin:0;background:#0b0f17;color:#dbeafe;font:14px system
 </head>
 <body>
 <div class="wrap"><div class="panel"><strong>Opening phpMyAdmin...</strong><p class="muted">Rebecca is signing in with the configured database account for this full-access session.</p></div></div>
-<form id="pma-login" method="post" action="` + html.EscapeString(loginURL) + `">
-<input type="hidden" name="pma_username" value="` + html.EscapeString(credentials.Username) + `">
-<input type="hidden" name="pma_password" value="` + html.EscapeString(credentials.Password) + `">
-<input type="hidden" name="server" value="1">
-` + themeInput + `
-</form>
-<script>` + themeCookieScript + `window.setTimeout(function(){document.getElementById("pma-login").submit();},150);</script>
+<script>` + themeCookieScript + `window.setTimeout(function(){window.location.replace("` + html.EscapeString(loginURL) + `");},150);</script>
 </body>
 </html>`
 }

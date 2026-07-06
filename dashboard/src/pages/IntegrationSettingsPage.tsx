@@ -32,6 +32,7 @@ import {
 	Switch,
 	Text,
 	Textarea,
+	useColorMode,
 	useColorModeValue,
 	useToast,
 	VStack,
@@ -59,7 +60,6 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
-import { Link as RouterLink } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
@@ -67,6 +67,7 @@ import {
 	enablePHPMyAdmin,
 	getPanelSettings,
 	getPHPMyAdminEmbedHTML,
+	getPHPMyAdminStatus,
 	getRuntimeSettings,
 	getSubscriptionSettings,
 	getSubscriptionTemplateContent,
@@ -739,6 +740,7 @@ const cleanTerminalOutput = (logs?: string[]) => {
 
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
+	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
 	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -791,6 +793,15 @@ export const IntegrationSettingsPage = () => {
 			enabled: canManageIntegrations,
 		},
 	);
+
+	const {
+		data: phpMyAdminStatus,
+		isLoading: isPHPMyAdminStatusLoading,
+		refetch: refetchPHPMyAdminStatus,
+	} = useQuery("phpmyadmin-status", getPHPMyAdminStatus, {
+		refetchOnWindowFocus: false,
+		enabled: canManageIntegrations,
+	});
 
 	const {
 		data: subscriptionBundle,
@@ -864,6 +875,24 @@ export const IntegrationSettingsPage = () => {
 		}
 	}, [runtimeSettings]);
 
+	const phpMyAdminSupported = phpMyAdminStatus?.supported ?? false;
+	const phpMyAdminIsFullAccess = userData?.role === "full_access";
+	const phpMyAdminTheme = colorMode === "dark" ? "blueberry" : undefined;
+	const phpMyAdminEmbedQuery = useQuery(
+		["phpmyadmin-embed-html", phpMyAdminTheme ?? "default"],
+		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme),
+		{
+			enabled: Boolean(
+				canManageIntegrations &&
+					phpMyAdminSupported &&
+					runtimeSettingsForm.phpmyadmin_enabled &&
+					phpMyAdminIsFullAccess,
+			),
+			refetchOnWindowFocus: false,
+			retry: false,
+		},
+	);
+
 	const [adminOverrides, setAdminOverrides] = useState<
 		Record<number, AdminSubscriptionSettings>
 	>({});
@@ -894,8 +923,6 @@ export const IntegrationSettingsPage = () => {
 	const [isMaintenanceProgressOpen, setMaintenanceProgressOpen] =
 		useState(false);
 	const [maintenanceIsWaitingForAPI, setMaintenanceIsWaitingForAPI] =
-		useState(false);
-	const [phpMyAdminExternalOpening, setPhpMyAdminExternalOpening] =
 		useState(false);
 	const panelReturnPollRef = useRef<number | null>(null);
 	const panelReturnSawOfflineRef = useRef(false);
@@ -1357,6 +1384,7 @@ export const IntegrationSettingsPage = () => {
 					phpmyadmin_public_url: result.status.public_url,
 				}));
 				void refetchRuntimeSettings();
+				void refetchPHPMyAdminStatus();
 				generateSuccessMessage(
 					t("phpmyadmin.enabled", "phpMyAdmin enabled."),
 					toast,
@@ -1375,6 +1403,7 @@ export const IntegrationSettingsPage = () => {
 				phpmyadmin_enabled: result.status.enabled,
 			}));
 			void refetchRuntimeSettings();
+			void refetchPHPMyAdminStatus();
 			generateSuccessMessage(
 				t("phpmyadmin.disabled", "phpMyAdmin disabled."),
 				toast,
@@ -1384,44 +1413,6 @@ export const IntegrationSettingsPage = () => {
 			generateErrorMessage(error, toast);
 		},
 	});
-
-	const phpMyAdminPanelProxyURL = useMemo(() => {
-		if (typeof window === "undefined") {
-			return "/api/settings/phpmyadmin/embed/";
-		}
-		return `${window.location.origin}/api/settings/phpmyadmin/embed/`;
-	}, []);
-
-	const openPHPMyAdminExternalPage = useCallback(async () => {
-		const opened = window.open("", "_blank");
-		if (!opened) {
-			generateErrorMessage(
-				new Error(
-					t(
-						"phpmyadmin.popupBlocked",
-						"Could not open a new tab. Please allow popups for this panel.",
-					),
-				),
-				toast,
-			);
-			return;
-		}
-		setPhpMyAdminExternalOpening(true);
-		opened.document.write(
-			`<!doctype html><html><body style="margin:0;background:#0b0f17;color:#dbeafe;font:14px system-ui;display:grid;min-height:100vh;place-items:center">Opening phpMyAdmin...</body></html>`,
-		);
-		try {
-			const html = await getPHPMyAdminEmbedHTML();
-			opened.document.open();
-			opened.document.write(html);
-			opened.document.close();
-		} catch (error) {
-			opened.close();
-			generateErrorMessage(error, toast);
-		} finally {
-			setPhpMyAdminExternalOpening(false);
-		}
-	}, [t, toast]);
 
 	const subscriptionSettingsMutation = useMutation(updateSubscriptionSettings, {
 		onSuccess: (updated) => {
@@ -2218,26 +2209,6 @@ export const IntegrationSettingsPage = () => {
 												</Box>
 												<HStack spacing={2} flexWrap="wrap">
 													<Button
-														as={RouterLink}
-														to="/phpmyadmin"
-														size="sm"
-														variant="outline"
-													>
-														{t("phpmyadmin.openPanel", "Open phpMyAdmin page")}
-													</Button>
-													<Button
-														size="sm"
-														variant="outline"
-														onClick={openPHPMyAdminExternalPage}
-														isDisabled={!runtimeSettingsForm.phpmyadmin_enabled}
-														isLoading={phpMyAdminExternalOpening}
-													>
-														{t(
-															"phpmyadmin.openExternal",
-															"Open external page",
-														)}
-													</Button>
-													<Button
 														size="sm"
 														colorScheme={
 															runtimeSettingsForm.phpmyadmin_enabled
@@ -2253,6 +2224,11 @@ export const IntegrationSettingsPage = () => {
 															phpMyAdminEnableMutation.isLoading ||
 															phpMyAdminDisableMutation.isLoading
 														}
+														isDisabled={
+															isPHPMyAdminStatusLoading ||
+															(!runtimeSettingsForm.phpmyadmin_enabled &&
+																!phpMyAdminSupported)
+														}
 													>
 														{runtimeSettingsForm.phpmyadmin_enabled
 															? t("phpmyadmin.disableAction", "Disable")
@@ -2263,6 +2239,15 @@ export const IntegrationSettingsPage = () => {
 													</Button>
 												</HStack>
 											</Flex>
+											{!phpMyAdminSupported ? (
+												<Alert status="warning" borderRadius="md" mb={4}>
+													<AlertIcon />
+													{t(
+														"phpmyadmin.sqliteDisabled",
+														"phpMyAdmin is available only for MySQL or MariaDB installations.",
+													)}
+												</Alert>
+											) : null}
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel fontSize="sm">
@@ -2283,10 +2268,90 @@ export const IntegrationSettingsPage = () => {
 														}
 													/>
 													<FormHelperText>
-														{phpMyAdminPanelProxyURL}
+														{t(
+															"phpmyadmin.panelOnlyHint",
+															"phpMyAdmin opens inside this settings page and uses the panel database credentials.",
+														)}
 													</FormHelperText>
 												</FormControl>
 											</SimpleGrid>
+											{runtimeSettingsForm.phpmyadmin_enabled &&
+											phpMyAdminSupported ? (
+												<Box
+													mt={4}
+													borderWidth="1px"
+													borderColor={borderColor}
+													borderRadius="md"
+													overflow="hidden"
+													bg={fieldBg}
+													minH={{ base: "520px", md: "680px" }}
+												>
+													{!phpMyAdminIsFullAccess ? (
+														<VStack
+															minH="360px"
+															align="center"
+															justify="center"
+															spacing={3}
+															p={6}
+														>
+															<Heading size="sm">
+																{t(
+																	"phpmyadmin.fullAccessOnly",
+																	"Full access required",
+																)}
+															</Heading>
+															<Text color="gray.500" textAlign="center">
+																{t(
+																	"phpmyadmin.fullAccessOnlyHint",
+																	"Embedded auto-login is available only for full access admins.",
+																)}
+															</Text>
+														</VStack>
+													) : phpMyAdminEmbedQuery.isLoading ? (
+														<Flex
+															minH="360px"
+															align="center"
+															justify="center"
+														>
+															<Spinner />
+														</Flex>
+													) : phpMyAdminEmbedQuery.isError ? (
+														<VStack
+															minH="360px"
+															align="center"
+															justify="center"
+															spacing={3}
+															p={6}
+														>
+															<Heading size="sm">
+																{t(
+																	"phpmyadmin.embedFailed",
+																	"Could not open embedded phpMyAdmin",
+																)}
+															</Heading>
+															<Text color="gray.500" textAlign="center">
+																{String(
+																	(phpMyAdminEmbedQuery.error as Error)
+																		?.message || "",
+																)}
+															</Text>
+														</VStack>
+													) : (
+														<Box
+															as="iframe"
+															title={t("phpmyadmin.title", "phpMyAdmin")}
+															srcDoc={phpMyAdminEmbedQuery.data || ""}
+															w="100%"
+															h={{
+																base: "calc(100vh - 180px)",
+																md: "calc(100vh - 160px)",
+															}}
+															minH={{ base: "520px", md: "680px" }}
+															border="0"
+														/>
+													)}
+												</Box>
+											) : null}
 										</Box>
 									</SimpleGrid>
 									<Flex className="master-settings-action-row" mt={4}>

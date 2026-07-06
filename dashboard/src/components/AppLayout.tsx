@@ -31,7 +31,6 @@ import {
 	Bars3Icon,
 	BookOpenIcon,
 	BriefcaseIcon,
-	CircleStackIcon,
 	CodeBracketSquareIcon,
 	CheckIcon,
 	Cog6ToothIcon,
@@ -81,7 +80,6 @@ const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
 const DocsIcon = chakra(CodeBracketSquareIcon, iconProps);
-const PHPMyAdminIcon = chakra(CircleStackIcon, iconProps);
 const UserIcon = chakra(UserCircleIcon, iconProps);
 const HomeIcon = chakra(HeroHomeIcon, iconProps);
 const UsersIcon = chakra(UserGroupIcon, iconProps);
@@ -304,14 +302,6 @@ export function AppLayout() {
 				label: t("apiDocs.menu", "API Docs"),
 				to: "/api-docs",
 				icon: DocsIcon,
-					}
-				: null,
-			isPrivilegedAdmin
-				? {
-						key: "phpmyadmin",
-						label: t("phpmyadmin.menu", "phpMyAdmin"),
-						to: "/phpmyadmin",
-						icon: PHPMyAdminIcon,
 					}
 				: null,
 			{
