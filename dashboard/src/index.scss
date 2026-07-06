@@ -2313,18 +2313,50 @@ img.twemoji-emoji {
   }
 }
 
-/* expanded-card actions: big, spaced, circular tap targets */
-.rb-users-section .rb-resource-expanded-actions .rb-inline-actions {
-  gap: 0.55rem;
+/* The generic every-action strip DataTable appends to the expanded card is
+   replaced by the curated 4-action bar below (rendered as the card's last
+   detail row); hide the generic strip on this page only. The full action
+   set stays reachable through the card's "..." menu. */
+.rb-users-section .rb-resource-expanded-actions {
+  display: none;
 }
 
-.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button {
+/* let the action-bar row span the details grid with no meta label */
+.rb-users-section .rb-resource-details .rb-resource-meta:has(.rb-user-card-actions) {
+  display: flex;
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--rb-panel-border);
+  border-bottom: 0;
+  margin-top: 0.45rem;
+  padding: 0.75rem 0 0;
+}
+
+.rb-users-section .rb-resource-meta:has(.rb-user-card-actions) > span {
+  display: none;
+}
+
+.rb-users-section .rb-resource-meta:has(.rb-user-card-actions) .rb-resource-meta-value {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* fixed primary actions: Edit / Copy link / QR ... Delete */
+.rb-user-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.rb-user-card-actions .chakra-button {
   width: 44px;
   height: 44px;
   min-width: 44px;
   border-radius: 50%;
   border: 1px solid var(--rb-panel-border);
   background: var(--rb-panel-elevated);
+  color: var(--rb-panel-text-secondary);
   transition:
     transform 120ms ease,
     background-color 140ms ease,
@@ -2332,13 +2364,28 @@ img.twemoji-emoji {
     color 140ms ease;
 }
 
-.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:hover {
+.rb-user-card-actions .chakra-button:hover {
   border-color: var(--rb-panel-border-strong);
+  color: var(--rb-panel-text);
 }
 
-.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:active {
+.rb-user-card-actions .chakra-button:active {
   transform: scale(0.9);
   background: var(--rb-panel-row-hover);
+}
+
+/* destructive action: red and pushed away from the other three */
+.rb-user-card-actions .rb-user-card-action--danger {
+  margin-inline-start: auto;
+  color: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 40%, transparent);
+  background: color-mix(in srgb, #ef4444 10%, var(--rb-panel-elevated));
+}
+
+.rb-user-card-actions .rb-user-card-action--danger:hover {
+  color: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 65%, transparent);
+  background: color-mix(in srgb, #ef4444 18%, var(--rb-panel-elevated));
 }
 
 /* floating bulk action bar: slide up with a spring, accent tint */

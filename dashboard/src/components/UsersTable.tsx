@@ -65,7 +65,9 @@ import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
 import {
+	formatUsagePair,
 	UserAdminChip,
+	UserCardActions,
 	UserExpiryCountdown,
 	UserStatusAvatar,
 	UserUsageBar,
@@ -141,6 +143,24 @@ const MobileLifetimeDetail: FC<{
 	</Text>
 );
 
+// Plain text on purpose: the expanded card sits right under the collapsed
+// row, which already shows the usage bar and percentage.
+const MobileUsageDetail: FC<{
+	used: number;
+	total: number | null;
+}> = ({ used, total }) => (
+	<Text
+		fontSize="sm"
+		fontWeight="semibold"
+		color="panel.text"
+		dir="ltr"
+		noOfLines={1}
+		sx={{ unicodeBidi: "isolate" }}
+	>
+		{formatUsagePair(used, total)}
+	</Text>
+);
+
 const getUsageResetLabel = (
 	user: UserListItem,
 	t: (key: string) => string,
@@ -190,19 +210,22 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const locale = i18n.language || "en";
 	const toast = useToast();
 	// One toast shape for every action in this section: top entrance, closable.
-	const notify = (
-		title: string,
-		status: "success" | "error",
-		options?: { description?: string; duration?: number },
-	) =>
-		toast({
-			title,
-			status,
-			description: options?.description,
-			duration: options?.duration ?? 2500,
-			isClosable: true,
-			position: "top",
-		});
+	const notify = useCallback(
+		(
+			title: string,
+			status: "success" | "error",
+			options?: { description?: string; duration?: number },
+		) =>
+			toast({
+				title,
+				status,
+				description: options?.description,
+				duration: options?.duration ?? 2500,
+				isClosable: true,
+				position: "top",
+			}),
+		[toast],
+	);
 	const dialogBg = useColorModeValue("panel.surface", "panel.surface");
 	const dialogBorderColor = useColorModeValue("panel.border", "panel.border");
 
@@ -427,21 +450,26 @@ export const UsersTable: FC<UsersTableProps> = ({
 		}
 	};
 
-	const handleDeleteUser = async (user: UserListItem) => {
-		setContextAction("delete");
-		try {
-			await deleteUser(user);
-			notify(t("deleteUser.deleteSuccess", { username: user.username }), "success", {
-				duration: 3000,
-			});
-			refetchUsers(true);
-		} catch (error: any) {
-			notify(error?.data?.detail || error?.message || t("error"), "error");
-		} finally {
-			setContextAction(null);
-			closeContextMenu();
-		}
-	};
+	const handleDeleteUser = useCallback(
+		async (user: UserListItem) => {
+			setContextAction("delete");
+			try {
+				await deleteUser(user);
+				notify(
+					t("deleteUser.deleteSuccess", { username: user.username }),
+					"success",
+					{ duration: 3000 },
+				);
+				refetchUsers(true);
+			} catch (error: any) {
+				notify(error?.data?.detail || error?.message || t("error"), "error");
+			} finally {
+				setContextAction(null);
+				closeContextMenu();
+			}
+		},
+		[closeContextMenu, deleteUser, notify, refetchUsers, t],
+	);
 
 	const runBulkUserAction = async (
 		action: string,
@@ -686,7 +714,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 4,
 				mobileMetaLabel: t("usersTable.dataUsage"),
 				mobileDetailCell: (user) => (
-					<UserUsageBar used={user.used_traffic} total={user.data_limit} />
+					<MobileUsageDetail
+						used={user.used_traffic}
+						total={user.data_limit}
+					/>
 				),
 				cell: (user) =>
 					useCompactUsageCell ? (
@@ -715,13 +746,40 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
+		// Fixed primary-action bar at the bottom of the expanded mobile card;
+		// the generic all-actions strip is hidden for this page via CSS and
+		// every action stays available in the card's "..." menu.
+		columns.push({
+			id: "card_actions",
+			header: "",
+			desktopVisible: false,
+			mobileVisible: true,
+			mobilePriority: 9,
+			mobileMetaLabel: "",
+			cell: (user) => (
+				<UserCardActions
+					user={user}
+					onEdit={canOpenUserDialog ? () => onEditingUser(user) : undefined}
+					onDelete={
+						canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)
+							? () => handleDeleteUser(user)
+							: undefined
+					}
+				/>
+			),
+		});
+
 		return columns;
 	}, [
+		canDeleteUserActions,
 		canOpenUserDialog,
 		canViewTraffic,
+		handleDeleteUser,
 		hasPrivilegedRole,
+		onEditingUser,
 		t,
 		useCompactUsageCell,
+		userData,
 	]);
 
 	const userSorting = useMemo<SortingState>(() => {
