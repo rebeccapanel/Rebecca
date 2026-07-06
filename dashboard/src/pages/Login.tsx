@@ -42,7 +42,6 @@ import {
 	type ReactElement,
 	type ReactNode,
 	useEffect,
-	useRef,
 	useState,
 } from "react";
 import {
@@ -51,7 +50,7 @@ import {
 	type UseFormRegisterReturn,
 } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { fetch } from "service/http";
 import { setAuthToken } from "utils/authStorage";
 import { clearClientSession } from "utils/session";
@@ -277,8 +276,6 @@ export const Login: FC = () => {
 	const [showPassword, setShowPassword] = useState(false);
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
-	const location = useLocation();
-	const didCompleteLoginRef = useRef(false);
 	const dir = i18n.language === "fa" ? "rtl" : "ltr";
 	const pageBg = useColorModeValue(
 		"var(--rb-panel-main)",
@@ -331,17 +328,6 @@ export const Login: FC = () => {
 		!isSubmitting;
 
 	useEffect(() => {
-		if (didCompleteLoginRef.current) {
-			return;
-		}
-		clearClientSession();
-		if (location.pathname !== "/login") {
-			navigate("/login", { replace: true });
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [location.pathname, navigate]);
-
-	useEffect(() => {
 		if (error) {
 			setError("");
 		}
@@ -368,7 +354,6 @@ export const Login: FC = () => {
 			);
 			clearClientSession();
 			setAuthToken(token);
-			didCompleteLoginRef.current = true;
 			navigate("/");
 		} catch (err: any) {
 			setError(err.response?._data?.detail || "Login failed");
