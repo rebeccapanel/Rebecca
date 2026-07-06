@@ -42,6 +42,7 @@ import {
 	type ReactElement,
 	type ReactNode,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -277,6 +278,7 @@ export const Login: FC = () => {
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
+	const didCompleteLoginRef = useRef(false);
 	const dir = i18n.language === "fa" ? "rtl" : "ltr";
 	const pageBg = useColorModeValue(
 		"var(--rb-panel-main)",
@@ -329,6 +331,9 @@ export const Login: FC = () => {
 		!isSubmitting;
 
 	useEffect(() => {
+		if (didCompleteLoginRef.current) {
+			return;
+		}
 		clearClientSession();
 		if (location.pathname !== "/login") {
 			navigate("/login", { replace: true });
@@ -363,6 +368,7 @@ export const Login: FC = () => {
 			);
 			clearClientSession();
 			setAuthToken(token);
+			didCompleteLoginRef.current = true;
 			navigate("/");
 		} catch (err: any) {
 			setError(err.response?._data?.detail || "Login failed");
