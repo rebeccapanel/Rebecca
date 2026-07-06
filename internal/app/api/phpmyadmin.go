@@ -358,6 +358,9 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 	if err := os.WriteFile("/etc/phpmyadmin/conf.d/rebecca.php", []byte(config), 0o644); err != nil {
 		return fmt.Errorf("write phpMyAdmin runtime config: %w", err)
 	}
+	if err := os.Chmod("/etc/phpmyadmin/conf.d/rebecca.php", 0o644); err != nil {
+		return fmt.Errorf("set phpMyAdmin runtime config permissions: %w", err)
+	}
 	return nil
 }
 
