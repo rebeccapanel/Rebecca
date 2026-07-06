@@ -15,6 +15,8 @@ import (
 const (
 	defaultSubscriptionType            = "key"
 	defaultDashboardPath               = "/dashboard/"
+	defaultPHPMyAdminPort              = 8080
+	defaultPHPMyAdminPath              = "/phpmyadmin/"
 	defaultSubscriptionProfileTitle    = "Subscription"
 	defaultSubscriptionSupportURL      = "https://t.me/"
 	defaultSubscriptionUpdateInterval  = "12"
@@ -115,7 +117,15 @@ func (r Repository) UpdateRuntimeSettings(ctx context.Context, raw map[string]js
 		switch key {
 		case "dashboard_path":
 			add(key, normalizeDashboardPath(rawStringDefault(value, defaultDashboardPath)))
+		case "phpmyadmin_port":
+			add(key, normalizePort(rawIntDefault(value, defaultPHPMyAdminPort), defaultPHPMyAdminPort))
+		case "phpmyadmin_path":
+			add(key, normalizeURLPath(rawStringDefault(value, defaultPHPMyAdminPath), defaultPHPMyAdminPath))
+		case "phpmyadmin_public_url":
+			add(key, strings.TrimSpace(rawStringDefault(value, "")))
 		case "record_node_usage", "record_node_user_usages", "subscription_read_only", "api_docs_enabled":
+			add(key, rawBoolDefault(value, false))
+		case "phpmyadmin_enabled":
 			add(key, rawBoolDefault(value, false))
 		}
 	}
@@ -280,7 +290,11 @@ SELECT
 	COALESCE(record_node_usage, 1),
 	COALESCE(record_node_user_usages, 1),
 	COALESCE(subscription_read_only, 0),
-	COALESCE(api_docs_enabled, 0)
+	COALESCE(api_docs_enabled, 0),
+	COALESCE(phpmyadmin_enabled, 0),
+	COALESCE(phpmyadmin_port, 8080),
+	COALESCE(phpmyadmin_path, '/phpmyadmin/'),
+	COALESCE(phpmyadmin_public_url, '')
 FROM settings
 WHERE id = 1
 LIMIT 1`).Scan(
@@ -289,11 +303,17 @@ LIMIT 1`).Scan(
 		&result.RecordNodeUserUsages,
 		&result.SubscriptionReadOnly,
 		&result.APIDocsEnabled,
+		&result.PHPMyAdminEnabled,
+		&result.PHPMyAdminPort,
+		&result.PHPMyAdminPath,
+		&result.PHPMyAdminPublicURL,
 	)
 	if err != nil {
 		return RuntimeSettings{}, err
 	}
 	result.DashboardPath = normalizeDashboardPath(result.DashboardPath)
+	result.PHPMyAdminPort = normalizePort(result.PHPMyAdminPort, defaultPHPMyAdminPort)
+	result.PHPMyAdminPath = normalizeURLPath(result.PHPMyAdminPath, defaultPHPMyAdminPath)
 	return result, nil
 }
 
@@ -313,15 +333,23 @@ INSERT INTO settings (
 	record_node_user_usages,
 	subscription_read_only,
 	api_docs_enabled,
+	phpmyadmin_enabled,
+	phpmyadmin_port,
+	phpmyadmin_path,
+	phpmyadmin_public_url,
 	created_at,
 	updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		1,
 		defaultDashboardPath,
 		true,
 		true,
 		false,
 		false,
+		false,
+		defaultPHPMyAdminPort,
+		defaultPHPMyAdminPath,
+		"",
 		dbTime(time.Now().UTC()),
 		dbTime(time.Now().UTC()),
 	)

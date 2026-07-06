@@ -59,9 +59,12 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { Link as RouterLink } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
+	disablePHPMyAdmin,
+	enablePHPMyAdmin,
 	getPanelSettings,
 	getRuntimeSettings,
 	getSubscriptionSettings,
@@ -234,6 +237,10 @@ const defaultRuntimeSettings: RuntimeSettingsResponse = {
 	record_node_user_usages: true,
 	subscription_read_only: false,
 	api_docs_enabled: false,
+	phpmyadmin_enabled: false,
+	phpmyadmin_port: 8080,
+	phpmyadmin_path: "/phpmyadmin/",
+	phpmyadmin_public_url: "",
 };
 
 const flattenEventToggleValues = (
@@ -1322,6 +1329,50 @@ export const IntegrationSettingsPage = () => {
 		},
 	});
 
+	const phpMyAdminEnableMutation = useMutation(
+		() =>
+			enablePHPMyAdmin({
+				port: Number(runtimeSettingsForm.phpmyadmin_port) || 8080,
+				path: runtimeSettingsForm.phpmyadmin_path || "/phpmyadmin/",
+			}),
+		{
+			onSuccess: (result) => {
+				setRuntimeSettingsForm((prev) => ({
+					...prev,
+					phpmyadmin_enabled: result.status.enabled,
+					phpmyadmin_port: result.status.port,
+					phpmyadmin_path: result.status.path,
+					phpmyadmin_public_url: result.status.public_url,
+				}));
+				void refetchRuntimeSettings();
+				generateSuccessMessage(
+					t("phpmyadmin.enabled", "phpMyAdmin enabled."),
+					toast,
+				);
+			},
+			onError: (error) => {
+				generateErrorMessage(error, toast);
+			},
+		},
+	);
+
+	const phpMyAdminDisableMutation = useMutation(disablePHPMyAdmin, {
+		onSuccess: (result) => {
+			setRuntimeSettingsForm((prev) => ({
+				...prev,
+				phpmyadmin_enabled: result.status.enabled,
+			}));
+			void refetchRuntimeSettings();
+			generateSuccessMessage(
+				t("phpmyadmin.disabled", "phpMyAdmin disabled."),
+				toast,
+			);
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+
 	const subscriptionSettingsMutation = useMutation(updateSubscriptionSettings, {
 		onSuccess: (updated) => {
 			resetSubscription(buildSubscriptionDefaults(updated));
@@ -2087,6 +2138,117 @@ export const IntegrationSettingsPage = () => {
 												/>
 											}
 										/>
+										<Box
+											borderWidth="1px"
+											borderColor="whiteAlpha.200"
+											borderRadius="md"
+											p={4}
+											gridColumn={{ base: "auto", md: "1 / -1" }}
+										>
+											<Flex
+												align={{ base: "flex-start", md: "center" }}
+												justify="space-between"
+												gap={4}
+												flexDirection={{ base: "column", md: "row" }}
+												mb={4}
+											>
+												<Box>
+													<Heading size="xs" mb={1}>
+														{t("phpmyadmin.title", "phpMyAdmin")}
+													</Heading>
+													<Text fontSize="sm" color="gray.500">
+														{t(
+															"phpmyadmin.settingsHint",
+															"Install phpMyAdmin on the host and open it from inside Rebecca.",
+														)}
+													</Text>
+												</Box>
+												<HStack spacing={2} flexWrap="wrap">
+													<Button
+														as={RouterLink}
+														to="/phpmyadmin"
+														size="sm"
+														variant="outline"
+													>
+														{t("phpmyadmin.openPanel", "Open phpMyAdmin page")}
+													</Button>
+													<Button
+														size="sm"
+														colorScheme={
+															runtimeSettingsForm.phpmyadmin_enabled
+																? "red"
+																: "primary"
+														}
+														onClick={() =>
+															runtimeSettingsForm.phpmyadmin_enabled
+																? phpMyAdminDisableMutation.mutate()
+																: phpMyAdminEnableMutation.mutate()
+														}
+														isLoading={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													>
+														{runtimeSettingsForm.phpmyadmin_enabled
+															? t("phpmyadmin.disableAction", "Disable")
+															: t(
+																	"phpmyadmin.enableAction",
+																	"Install and enable",
+																)}
+													</Button>
+												</HStack>
+											</Flex>
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.port", "Port")}
+													</FormLabel>
+													<Input
+														type="number"
+														min={1}
+														max={65535}
+														value={runtimeSettingsForm.phpmyadmin_port}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_port:
+																	Number(event.target.value) || 8080,
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.path", "Path")}
+													</FormLabel>
+													<Input
+														value={runtimeSettingsForm.phpmyadmin_path}
+														placeholder="/phpmyadmin/"
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_path: event.target.value,
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													/>
+													<FormHelperText>
+														{runtimeSettingsForm.phpmyadmin_public_url ||
+															t(
+																"phpmyadmin.externalHint",
+																"The external HTTP endpoint still requires phpMyAdmin login.",
+															)}
+													</FormHelperText>
+												</FormControl>
+											</SimpleGrid>
+										</Box>
 									</SimpleGrid>
 									<Flex className="master-settings-action-row" mt={4}>
 										<Button

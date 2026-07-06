@@ -1,5 +1,5 @@
 import { getAuthToken } from "utils/authStorage";
-import { $fetch, fetch as apiFetch } from "./http";
+import { $fetch, apiBaseURL, fetch as apiFetch } from "./http";
 
 export interface TelegramTopicSettingsPayload {
 	title: string;
@@ -228,6 +228,10 @@ export interface RuntimeSettingsResponse {
 	record_node_user_usages: boolean;
 	subscription_read_only: boolean;
 	api_docs_enabled: boolean;
+	phpmyadmin_enabled: boolean;
+	phpmyadmin_port: number;
+	phpmyadmin_path: string;
+	phpmyadmin_public_url: string;
 }
 
 export type RuntimeSettingsUpdatePayload = Partial<RuntimeSettingsResponse>;
@@ -243,6 +247,66 @@ export const updateRuntimeSettings = async (
 		method: "PUT",
 		body: JSON.stringify(payload),
 	});
+};
+
+export interface PHPMyAdminStatus {
+	enabled: boolean;
+	supported: boolean;
+	database: string;
+	port: number;
+	path: string;
+	public_url: string;
+	external_url: string;
+	embed_url: string;
+}
+
+export interface PHPMyAdminActionResponse {
+	ok: boolean;
+	status: PHPMyAdminStatus;
+	output?: string;
+}
+
+export const getPHPMyAdminStatus = async (): Promise<PHPMyAdminStatus> => {
+	return apiFetch("/settings/phpmyadmin");
+};
+
+export const enablePHPMyAdmin = async (payload: {
+	port: number;
+	path: string;
+}): Promise<PHPMyAdminActionResponse> => {
+	return apiFetch("/settings/phpmyadmin/enable", {
+		method: "POST",
+		body: JSON.stringify(payload),
+		timeout: 600000,
+	});
+};
+
+export const disablePHPMyAdmin =
+	async (): Promise<PHPMyAdminActionResponse> => {
+		return apiFetch("/settings/phpmyadmin/disable", {
+			method: "POST",
+			body: JSON.stringify({}),
+			timeout: 600000,
+		});
+	};
+
+export const getPHPMyAdminEmbedHTML = async (): Promise<string> => {
+	const token = getAuthToken();
+	const response = await fetch(`${apiBaseURL}/settings/phpmyadmin/embed-html`, {
+		headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+		cache: "no-store",
+	});
+	if (!response.ok) {
+		let detail = await response.text();
+		try {
+			const parsed = JSON.parse(detail);
+			detail = parsed?.detail || detail;
+		} catch {
+			// keep raw response body
+		}
+		throw new Error(detail || `Request failed with status ${response.status}`);
+	}
+	return response.text();
 };
 
 export const getPanelSettings = async (): Promise<PanelSettingsResponse> => {

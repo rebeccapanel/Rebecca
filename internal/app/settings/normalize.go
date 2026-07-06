@@ -56,6 +56,25 @@ func normalizeDashboardPath(value string) string {
 	return cleaned
 }
 
+func normalizeURLPath(value string, fallback string) string {
+	cleaned := strings.TrimSpace(value)
+	if cleaned == "" {
+		cleaned = fallback
+	}
+	cleaned = "/" + strings.Trim(cleaned, "/") + "/"
+	if cleaned == "//" {
+		return "/"
+	}
+	return cleaned
+}
+
+func normalizePort(value int, fallback int) int {
+	if value < 1 || value > 65535 {
+		return fallback
+	}
+	return value
+}
+
 func normalizeAlias(alias string) string {
 	cleaned := strings.TrimSpace(alias)
 	if cleaned == "" {
@@ -168,6 +187,28 @@ func rawBoolDefault(raw json.RawMessage, fallback bool) bool {
 			return true
 		case "0", "false", "no", "off", "":
 			return false
+		}
+	}
+	return fallback
+}
+
+func rawIntDefault(raw json.RawMessage, fallback int) int {
+	if string(raw) == "null" {
+		return fallback
+	}
+	var value int
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	var number float64
+	if err := json.Unmarshal(raw, &number); err == nil {
+		return int(number)
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		parsed, err := strconv.Atoi(strings.TrimSpace(text))
+		if err == nil {
+			return parsed
 		}
 	}
 	return fallback

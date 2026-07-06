@@ -14,6 +14,10 @@ type RuntimeSettings struct {
 	RecordNodeUserUsages bool   `json:"record_node_user_usages"`
 	SubscriptionReadOnly bool   `json:"subscription_read_only"`
 	APIDocsEnabled       bool   `json:"api_docs_enabled"`
+	PHPMyAdminEnabled    bool   `json:"phpmyadmin_enabled"`
+	PHPMyAdminPort       int    `json:"phpmyadmin_port"`
+	PHPMyAdminPath       string `json:"phpmyadmin_path"`
+	PHPMyAdminPublicURL  string `json:"phpmyadmin_public_url"`
 }
 
 type RuntimeSettingsUpdate struct {
@@ -22,6 +26,10 @@ type RuntimeSettingsUpdate struct {
 	RecordNodeUserUsages *bool   `json:"record_node_user_usages,omitempty"`
 	SubscriptionReadOnly *bool   `json:"subscription_read_only,omitempty"`
 	APIDocsEnabled       *bool   `json:"api_docs_enabled,omitempty"`
+	PHPMyAdminEnabled    *bool   `json:"phpmyadmin_enabled,omitempty"`
+	PHPMyAdminPort       *int    `json:"phpmyadmin_port,omitempty"`
+	PHPMyAdminPath       *string `json:"phpmyadmin_path,omitempty"`
+	PHPMyAdminPublicURL  *string `json:"phpmyadmin_public_url,omitempty"`
 }
 
 type SubscriptionSettings struct {

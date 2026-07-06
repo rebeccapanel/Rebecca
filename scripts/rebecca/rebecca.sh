@@ -491,7 +491,7 @@ detect_os() {
 detect_and_update_package_manager() {
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        ui_spinner_run "Updating package index" bash -c "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER update -qq"
+        ui_spinner_run "Updating package index" bash -c "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -o Acquire::AllowReleaseInfoChange=true -o Acquire::AllowReleaseInfoChange::Label=true update -qq"
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
         ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
@@ -1565,6 +1565,27 @@ EOF
 
 enable_phpmyadmin() {
     check_running_as_root
+    local cli_port=""
+    local cli_path=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --port)
+                cli_port="${2:-}"
+                shift 2
+                ;;
+            --path)
+                cli_path="${2:-}"
+                shift 2
+                ;;
+            --yes|-y)
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
     if ! is_rebecca_installed; then
         colorized_echo red "Rebecca is not installed. Please install Rebecca first."
@@ -1581,7 +1602,12 @@ enable_phpmyadmin() {
         return 0
     fi
 
-    prompt_phpmyadmin_settings
+    if [ -n "$cli_port" ] && [ -n "$cli_path" ]; then
+        PHPMYADMIN_PORT="$cli_port"
+        PHPMYADMIN_PATH="$cli_path"
+    else
+        prompt_phpmyadmin_settings
+    fi
     enable_host_phpmyadmin "$PHPMYADMIN_PORT" "$PHPMYADMIN_PATH"
 }
 
