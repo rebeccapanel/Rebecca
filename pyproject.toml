@@ -17,7 +17,7 @@ description = "Rebecca, Unified GUI Censorship Resistant Solution Powered by Xra
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "alembic==1.14.0",
+    "alembic==1.18.5",
     "anyio==4.2.0",
     "apscheduler==3.9.1.post1",
     "bcrypt==4.0.1",
