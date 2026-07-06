@@ -369,7 +369,7 @@ func writePHPMyAdminFastCGIResponse(w http.ResponseWriter, stdout []byte, status
 
 func shouldSkipPHPMyAdminEmbedHeader(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "content-length", "x-frame-options", "content-security-policy":
+	case "content-length", "x-frame-options", "content-security-policy", "x-content-security-policy", "x-webkit-csp":
 		return true
 	default:
 		return false

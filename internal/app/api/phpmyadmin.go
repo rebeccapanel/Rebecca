@@ -416,8 +416,31 @@ iframe{display:block;width:100%;height:100%;border:0;background:#fff}
 </head>
 <body>
 <div class="loading" id="loading"><div class="panel"><strong>Opening phpMyAdmin...</strong><p class="muted">Rebecca is signing in with the configured database account for this full-access session.</p></div></div>
-<iframe src="` + escapedLoginURL + `" title="phpMyAdmin" onload="document.getElementById('loading').style.display='none'"></iframe>
-<script>` + themeCookieScript + `</script>
+<iframe id="pma-frame" src="` + escapedLoginURL + `" title="phpMyAdmin" onload="rebeccaRevealPHPMyAdmin()"></iframe>
+<script>
+` + themeCookieScript + `
+function rebeccaRevealPHPMyAdmin(){
+  document.getElementById('loading').style.display='none';
+  var frame=document.getElementById('pma-frame');
+  try {
+    var doc=frame.contentDocument || frame.contentWindow.document;
+    if (!doc) return;
+    var blocker=doc.getElementById('cfs-style');
+    if (blocker) blocker.remove();
+    if (doc.documentElement) {
+      doc.documentElement.style.display='block';
+      doc.documentElement.style.visibility='visible';
+    }
+    if (doc.body) doc.body.style.visibility='visible';
+  } catch (_) {}
+}
+var rebeccaPMARevealAttempts=0;
+var rebeccaPMARevealTimer=setInterval(function(){
+  rebeccaRevealPHPMyAdmin();
+  rebeccaPMARevealAttempts++;
+  if (rebeccaPMARevealAttempts > 40) clearInterval(rebeccaPMARevealTimer);
+}, 250);
+</script>
 </body>
 </html>`
 }
