@@ -1917,80 +1917,35 @@ img.twemoji-emoji {
    components render. Other pages are intentionally unaffected.
    ============================================================ */
 
-/* --- status avatar ------------------------------------------------ */
+/* --- status dot ---------------------------------------------------- */
 
-/* The wrapper keeps the original footprint so row layout, spacing and
-   header alignment stay untouched; the visible circle is drawn smaller
-   and centered inside it, with the status ring (box-shadow) filling the
-   freed space instead of extending past the wrapper. */
-.rb-user-avatar {
-  position: relative;
-  width: var(--rb-user-avatar-size, 34px);
-  height: var(--rb-user-avatar-size, 34px);
+/* Minimal status indicator: a small dot colored by user status, with a
+   soft pulse halo while the user is online. */
+.rb-user-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 50%;
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.rb-user-avatar-circle {
-  width: calc(var(--rb-user-avatar-size, 34px) * 0.76);
-  height: calc(var(--rb-user-avatar-size, 34px) * 0.76);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--rb-panel-surface);
-  color: var(--rb-panel-text);
-  font-size: calc(var(--rb-user-avatar-size, 34px) * 0.34);
-  font-weight: 700;
-  line-height: 1;
-  user-select: none;
-  box-shadow:
-    0 0 0 2px var(--rb-panel-surface),
-    0 0 0 4px var(--rb-user-ring, var(--rb-panel-border-strong));
-}
-
-.rb-user-avatar-dot {
-  position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--rb-panel-surface);
-  background: #9ca3af;
-}
-
-.rb-user-avatar[data-online="online"] .rb-user-avatar-dot {
-  background: #22c55e;
-}
-
-.rb-user-avatar[data-online="never"] .rb-user-avatar-dot {
-  background: transparent;
-  border-color: var(--rb-panel-border-strong);
+  background: var(--rb-user-dot, var(--rb-panel-border-strong));
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .rb-user-avatar[data-online="online"] .rb-user-avatar-circle {
-    animation: rb-user-ring-pulse 2.6s ease-out infinite;
+  .rb-user-status-dot[data-online="true"] {
+    animation: rb-user-dot-pulse 2.6s ease-out infinite;
   }
 }
 
-@keyframes rb-user-ring-pulse {
+@keyframes rb-user-dot-pulse {
   0% {
-    box-shadow:
-      0 0 0 2px var(--rb-panel-surface),
-      0 0 0 4px var(--rb-user-ring),
-      0 0 0 4px color-mix(in srgb, var(--rb-user-ring) 45%, transparent);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--rb-user-dot, #22c55e) 45%, transparent);
   }
 
   70%,
   100% {
-    box-shadow:
-      0 0 0 2px var(--rb-panel-surface),
-      0 0 0 4px var(--rb-user-ring),
-      0 0 0 12px transparent;
+    box-shadow: 0 0 0 8px transparent;
   }
 }
 
@@ -2017,22 +1972,29 @@ img.twemoji-emoji {
 
 /* --- "by admin" chip ---------------------------------------------- */
 
-/* inline-block (not flex) so text-overflow can ellipsize the admin name */
+/* inline-block (not flex) so text-overflow can ellipsize the admin name;
+   deliberately slim so it costs little horizontal space in table rows */
 .rb-user-admin-chip {
   display: inline-block;
   vertical-align: middle;
   border: 1px solid;
   border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  line-height: 1.5;
+  padding: 0 6px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1.45;
   white-space: nowrap;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Mobile: the tag stays out of the collapsed card row (it re-appears as
+   an "Admin" row inside the expanded details instead). */
+.rb-users-section .rb-resource-card-main .rb-user-admin-chip {
+  display: none;
 }
 
 /* --- gradient usage meter ------------------------------------------ */
@@ -2093,35 +2055,6 @@ img.twemoji-emoji {
 
 .rb-user-usage[data-tone="critical"] .rb-user-usage-percent {
   color: #ef4444;
-}
-
-/* --- sticky search / filter bar ------------------------------------ */
-
-.rb-users-toolbar {
-  position: sticky;
-  top: 8px;
-  z-index: 30;
-}
-
-@media (max-width: 767px) {
-  .rb-users-toolbar {
-    top: 4px;
-  }
-}
-
-.rb-users-filterbar {
-  border: 1px solid var(--rb-panel-border);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--rb-panel-surface) 88%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
-  padding: 10px 12px;
-}
-
-.rb-theme-light .rb-users-filterbar,
-.chakra-ui-light .rb-users-filterbar {
-  box-shadow: 0 10px 24px rgb(15 23 42 / 10%);
 }
 
 /* --- quick filter chips --------------------------------------------- */
@@ -2321,79 +2254,21 @@ img.twemoji-emoji {
   padding-bottom: 0.35rem;
 }
 
-/* The generic every-action strip DataTable appends to the expanded card is
-   replaced by the curated 4-action bar below (rendered as the card's last
-   detail row); hide the generic strip on this page only. The full action
-   set stays reachable through the card's "..." menu. */
-.rb-users-section .rb-resource-expanded-actions {
-  display: none;
+/* Expanded-card actions: the full inline action strip, kept flat (ghost
+   line icons, no filled circles) and tightly grouped in a wrapping row. */
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions {
+  gap: 0.25rem;
 }
 
-/* let the action-bar row span the details grid with no meta label */
-.rb-users-section .rb-resource-details .rb-resource-meta:has(.rb-user-card-actions) {
-  display: flex;
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--rb-panel-border);
-  border-bottom: 0;
-  margin-top: 0.45rem;
-  padding: 0.75rem 0 0;
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
 }
 
-.rb-users-section .rb-resource-meta:has(.rb-user-card-actions) > span {
-  display: none;
-}
-
-.rb-users-section .rb-resource-meta:has(.rb-user-card-actions) .rb-resource-meta-value {
-  width: 100%;
-  max-width: 100%;
-}
-
-/* fixed primary actions: Edit / Copy link / QR ... Delete */
-.rb-user-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  width: 100%;
-  min-width: 0;
-}
-
-.rb-user-card-actions .chakra-button {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  border-radius: 50%;
-  border: 1px solid var(--rb-panel-border);
-  background: var(--rb-panel-elevated);
-  color: var(--rb-panel-text-secondary);
-  transition:
-    transform 120ms ease,
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
-}
-
-.rb-user-card-actions .chakra-button:hover {
-  border-color: var(--rb-panel-border-strong);
-  color: var(--rb-panel-text);
-}
-
-.rb-user-card-actions .chakra-button:active {
-  transform: scale(0.9);
-  background: var(--rb-panel-row-hover);
-}
-
-/* destructive action: red and pushed away from the other three */
-.rb-user-card-actions .rb-user-card-action--danger {
-  margin-inline-start: auto;
-  color: #ef4444;
-  border-color: color-mix(in srgb, #ef4444 40%, transparent);
-  background: color-mix(in srgb, #ef4444 10%, var(--rb-panel-elevated));
-}
-
-.rb-user-card-actions .rb-user-card-action--danger:hover {
-  color: #ef4444;
-  border-color: color-mix(in srgb, #ef4444 65%, transparent);
-  background: color-mix(in srgb, #ef4444 18%, var(--rb-panel-elevated));
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:active {
+  transform: scale(0.92);
 }
 
 /* floating bulk action bar: slide up with a spring, accent tint */

@@ -250,9 +250,15 @@ export const UsersFilterBar: FC = () => {
 	const hasClearableFilters = activeFilterTotal > 0;
 
 	return (
-		<Box className="rb-users-filterbar">
+		<Box w="full" minW={0}>
 			<Flex align="center" gap={2} w="full" minW={0}>
-				<InputGroup flex="1 1 auto" minW={0}>
+				<InputGroup
+					flex="1 1 auto"
+					minW={0}
+					// Capped so the search field stays balanced inside the header
+					// card instead of swallowing the whole row on wide screens.
+					maxW={{ base: "100%", sm: "340px" }}
+				>
 					<InputLeftElement pointerEvents="none" h="full">
 						<SearchIcon color="panel.textMuted" />
 					</InputLeftElement>
@@ -414,6 +420,10 @@ export const UsersFilterBar: FC = () => {
 					</PopoverContent>
 				</Popover>
 
+				{/* On desktop the bulk/create actions sit at the end of the row;
+					on mobile they stay compact next to the search field. */}
+				{!isMobile && <Box flex="1 1 auto" minW={0} />}
+				{!isMobile && <AdvancedUserActions />}
 				{showCreateButton &&
 					(isMobile ? (
 						<IconButton
@@ -446,7 +456,7 @@ export const UsersFilterBar: FC = () => {
 					))}
 			</Flex>
 
-			<Flex className="rb-users-chips" align="center" gap={2} mt={2.5}>
+			<Flex className="rb-users-chips" align="center" gap={2} mt={2}>
 				{QUICK_FILTERS.map((chip) => {
 					const isActive = activeFilters.includes(chip.key);
 					const count = quickFilterCounts[chip.key];
@@ -510,9 +520,11 @@ export const UsersFilterBar: FC = () => {
 						<ClearIcon w={3} h={3} />
 					</chakra.button>
 				)}
-				<Box className="rb-users-chips-actions" ms="auto" flexShrink={0}>
-					<AdvancedUserActions />
-				</Box>
+				{isMobile && (
+					<Box className="rb-users-chips-actions" ms="auto" flexShrink={0}>
+						<AdvancedUserActions />
+					</Box>
+				)}
 			</Flex>
 		</Box>
 	);

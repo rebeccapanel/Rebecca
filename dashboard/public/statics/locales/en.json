@@ -1847,5 +1847,6 @@
 	"usersTable.setDataLimitSuccess": "Data limit updated",
 	"usersTable.setExpirySuccess": "Expiry date updated",
 	"usersTable.unlimitedHint": "Set 0 for unlimited.",
-	"usersTable.expiryClearHint": "Leave empty for no expiry."
+	"usersTable.expiryClearHint": "Leave empty for no expiry.",
+	"usersTable.admin": "Admin"
 }

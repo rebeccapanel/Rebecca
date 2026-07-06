@@ -40,17 +40,8 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	const tone = getUsageTone(percent, isUnlimited);
 	const fillWidth = isUnlimited ? "100%" : `${Math.max(percent, 2)}%`;
 
-	return (
-		<Stack
-			className="rb-user-usage"
-			data-tone={tone}
-			data-variant={variant}
-			spacing={1}
-			w="full"
-			maxW="full"
-			justify="center"
-			overflow="hidden"
-		>
+	const meter = (
+		<Stack spacing={1} flex="1 1 auto" minW={0} justify="center">
 			<Box className="rb-user-usage-track">
 				<Box
 					className="rb-user-usage-fill"
@@ -82,20 +73,56 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 					{isUnlimited ? "∞" : `${Math.round(percent)}%`}
 				</Text>
 			</HStack>
-			{variant === "detailed" && lifetimeUsed !== undefined && (
+		</Stack>
+	);
+
+	if (variant === "compact") {
+		return (
+			<Stack
+				className="rb-user-usage"
+				data-tone={tone}
+				data-variant={variant}
+				spacing={0}
+				w="full"
+				maxW="full"
+				justify="center"
+				overflow="hidden"
+			>
+				{meter}
+			</Stack>
+		);
+	}
+
+	// Detailed: lifetime usage sits beside the meter, vertically centered,
+	// so the desktop row stays a single compact line.
+	return (
+		<HStack
+			className="rb-user-usage"
+			data-tone={tone}
+			data-variant={variant}
+			spacing={4}
+			align="center"
+			w="full"
+			maxW="full"
+			overflow="hidden"
+		>
+			{meter}
+			{lifetimeUsed !== undefined && (
 				<Text
 					fontSize="xs"
 					color="panel.textMuted"
 					noOfLines={1}
+					flexShrink={0}
+					textAlign="end"
 					dir="ltr"
 					sx={{ unicodeBidi: "isolate" }}
 				>
 					{lifetimeLabel ? `${lifetimeLabel}: ` : ""}
-					<chakra.span fontWeight="semibold">
+					<chakra.span fontWeight="semibold" color="panel.textSecondary">
 						{formatBytes(lifetimeUsed)}
 					</chakra.span>
 				</Text>
 			)}
-		</Stack>
+		</HStack>
 	);
 };

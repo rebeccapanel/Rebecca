@@ -72,9 +72,8 @@ import { StatusBadge } from "./StatusBadge";
 import {
 	formatUsagePair,
 	UserAdminChip,
-	UserCardActions,
 	UserExpiryCountdown,
-	UserStatusAvatar,
+	UserStatusDot,
 	UserUsageBar,
 } from "./users";
 
@@ -600,7 +599,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				tooltip: true,
 				multiline: true,
 				cellAlign: "start",
-				headerInset: "44px",
+				headerInset: "20px",
 				mobilePriority: 0,
 				mobileMetaLabel: t("username"),
 				cell: (user) => (
@@ -614,8 +613,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						maxW="full"
 						w="full"
 					>
-						<UserStatusAvatar
-							username={user.username}
+						<UserStatusDot
 							status={user.status}
 							lastOnline={user.online_at ?? null}
 						/>
@@ -777,40 +775,29 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
-		// Fixed primary-action bar at the bottom of the expanded mobile card;
-		// the generic all-actions strip is hidden for this page via CSS and
-		// every action stays available in the card's "..." menu.
-		columns.push({
-			id: "card_actions",
-			header: "",
-			desktopVisible: false,
-			mobileVisible: true,
-			mobilePriority: 9,
-			mobileMetaLabel: "",
-			cell: (user) => (
-				<UserCardActions
-					user={user}
-					onEdit={canOpenUserDialog ? () => onEditingUser(user) : undefined}
-					onDelete={
-						canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)
-							? () => handleDeleteUser(user)
-							: undefined
-					}
-				/>
-			),
-		});
+		// The reseller tag is hidden in the collapsed mobile row (CSS) and
+		// surfaces here instead, inside the expanded details.
+		if (hasPrivilegedRole) {
+			columns.push({
+				id: "admin",
+				header: t("usersTable.admin", "Admin"),
+				desktopVisible: false,
+				mobileVisible: true,
+				mobilePriority: 6,
+				mobileMetaLabel: t("usersTable.admin", "Admin"),
+				cell: (user) => (
+					<UserAdminChip adminUsername={user.admin_username} />
+				),
+			});
+		}
 
 		return columns;
 	}, [
-		canDeleteUserActions,
 		canOpenUserDialog,
 		canViewTraffic,
-		handleDeleteUser,
 		hasPrivilegedRole,
-		onEditingUser,
 		t,
 		useCompactUsageCell,
-		userData,
 	]);
 
 	const userSorting = useMemo<SortingState>(() => {
@@ -949,6 +936,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			actions.push({
 				id: "add-traffic",
 				label: t("usersTable.addTraffic", "Add traffic"),
+				icon: <TrafficIcon />,
 				render: (_row, onClose) => (
 					<Box position="relative" role="group">
 						<MenuItem
@@ -1148,14 +1136,14 @@ export const UsersTable: FC<UsersTableProps> = ({
 			pb={selectedUsers.length > 0 ? { base: 32, md: 24 } : 0}
 			{...props}
 		>
+			{/* One unified header card: stats on top, search + quick filters below. */}
 			<ResourceListCard
 				title={t("usersTable.listHeader", "User list")}
 				summaryItems={summaryItems}
 				actions={headerActions}
-			/>
-
-			{/* Sticky so search and quick filters stay reachable while scrolling. */}
-			{toolbar && <Box className="rb-users-toolbar">{toolbar}</Box>}
+			>
+				{toolbar}
+			</ResourceListCard>
 
 			<Box position="relative">
 				<Stack
