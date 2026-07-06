@@ -397,21 +397,24 @@ func buildPHPMyAdminEmbedHTML(loginURL string, theme string) string {
 		themeCookieScript = `document.cookie="pma_theme=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";
 document.cookie="pma_theme-1=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";`
 	}
+	escapedLoginURL := html.EscapeString(loginURL)
 	return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-html,body{height:100%;margin:0;background:#0b0f17;color:#dbeafe;font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.wrap{display:grid;min-height:100%;place-items:center;padding:24px;text-align:center}
-.panel{max-width:520px;border:1px solid rgba(148,163,184,.22);border-radius:12px;background:rgba(15,23,42,.84);padding:24px;box-shadow:0 20px 48px rgba(0,0,0,.35)}
-.muted{color:#94a3b8}
+html,body{height:100%;margin:0;background:#0b0f17;color:#dbeafe;font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:#0b0f17;color:#dbeafe;z-index:1}
+.panel{max-width:520px;border:1px solid rgba(148,163,184,.22);border-radius:12px;background:rgba(15,23,42,.84);padding:24px;text-align:center;box-shadow:0 20px 48px rgba(0,0,0,.35)}
+.muted{color:#94a3b8;margin:.5rem 0 0}
 </style>
 </head>
 <body>
-<div class="wrap"><div class="panel"><strong>Opening phpMyAdmin...</strong><p class="muted">Rebecca is signing in with the configured database account for this full-access session.</p></div></div>
-<script>` + themeCookieScript + `window.setTimeout(function(){window.location.replace("` + html.EscapeString(loginURL) + `");},150);</script>
+<div class="loading" id="loading"><div class="panel"><strong>Opening phpMyAdmin...</strong><p class="muted">Rebecca is signing in with the configured database account for this full-access session.</p></div></div>
+<iframe src="` + escapedLoginURL + `" title="phpMyAdmin" onload="document.getElementById('loading').style.display='none'"></iframe>
+<script>` + themeCookieScript + `</script>
 </body>
 </html>`
 }

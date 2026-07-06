@@ -32,6 +32,7 @@ import {
 	Switch,
 	Text,
 	Textarea,
+	useColorMode,
 	useColorModeValue,
 	useToast,
 	VStack,
@@ -66,6 +67,7 @@ import {
 	disablePHPMyAdmin,
 	enablePHPMyAdmin,
 	getPanelSettings,
+	getPHPMyAdminEmbedHTML,
 	getPHPMyAdminStatus,
 	getRuntimeSettings,
 	getSubscriptionSettings,
@@ -739,6 +741,7 @@ const cleanTerminalOutput = (logs?: string[]) => {
 
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
+	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
 	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -892,6 +895,8 @@ export const IntegrationSettingsPage = () => {
 	const [templateIsJson, setTemplateIsJson] = useState<boolean>(true);
 	const [templateLoading, setTemplateLoading] = useState<boolean>(false);
 	const [isDevUpdateConfirmOpen, setDevUpdateConfirmOpen] = useState(false);
+	const [isOpeningPHPMyAdminExternal, setOpeningPHPMyAdminExternal] =
+		useState(false);
 	const [certificateForm, setCertificateForm] = useState<{
 		email: string;
 		domains: string;
@@ -1395,6 +1400,20 @@ export const IntegrationSettingsPage = () => {
 			generateErrorMessage(error, toast);
 		},
 	});
+
+	const openPHPMyAdminExternal = async () => {
+		try {
+			setOpeningPHPMyAdminExternal(true);
+			await getPHPMyAdminEmbedHTML(
+				colorMode === "dark" ? "blueberry" : undefined,
+			);
+			window.open("/api/settings/phpmyadmin/embed/index.php", "_blank", "noopener");
+		} catch (error) {
+			generateErrorMessage(error, toast);
+		} finally {
+			setOpeningPHPMyAdminExternal(false);
+		}
+	};
 
 	const subscriptionSettingsMutation = useMutation(updateSubscriptionSettings, {
 		onSuccess: (updated) => {
@@ -2204,6 +2223,18 @@ export const IntegrationSettingsPage = () => {
 															"phpmyadmin.openPanel",
 															"Open phpMyAdmin page",
 														)}
+													</Button>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={openPHPMyAdminExternal}
+														isLoading={isOpeningPHPMyAdminExternal}
+														isDisabled={
+															!runtimeSettingsForm.phpmyadmin_enabled ||
+															!phpMyAdminSupported
+														}
+													>
+														{t("phpmyadmin.openExternal", "Open external link")}
 													</Button>
 													<Button
 														size="sm"
