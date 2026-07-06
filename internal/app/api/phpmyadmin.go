@@ -130,7 +130,7 @@ func (s *Server) handlePHPMyAdminEnable(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadGateway, strings.TrimSpace(output+"\n"+err.Error()))
 		return
 	}
-	publicURL := buildPHPMyAdminPublicURL(r, port, path)
+	publicURL := buildPHPMyAdminPanelURL(r)
 	if _, err := s.settingsRepo.UpdateRuntimeSettings(r.Context(), map[string]jsonRaw{
 		"phpmyadmin_enabled":    rawJSONBool(true),
 		"phpmyadmin_port":       rawJSONInt(port),
@@ -250,10 +250,7 @@ func (s *Server) phpMyAdminStatus(r *http.Request) phpMyAdminResponse {
 	}
 	port := normalizePHPMyAdminPort(settings.PHPMyAdminPort)
 	path := normalizePHPMyAdminPath(settings.PHPMyAdminPath)
-	publicURL := strings.TrimSpace(settings.PHPMyAdminPublicURL)
-	if publicURL == "" || isLoopbackPHPMyAdminURL(publicURL) {
-		publicURL = buildPHPMyAdminPublicURL(r, port, path)
-	}
+	publicURL := buildPHPMyAdminPanelURL(r)
 	return phpMyAdminResponse{
 		Enabled:     settings.PHPMyAdminEnabled,
 		Supported:   s.phpMyAdminSupported(),
@@ -301,35 +298,15 @@ func normalizePHPMyAdminPath(path string) string {
 	return cleaned
 }
 
-func buildPHPMyAdminPublicURL(r *http.Request, port int, path string) string {
+func buildPHPMyAdminPanelURL(r *http.Request) string {
 	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
 	if host == "" {
 		host = r.Host
 	}
-	if hostOnly, _, err := net.SplitHostPort(host); err == nil {
-		host = hostOnly
-	} else if strings.Count(host, ":") == 1 && !strings.HasPrefix(host, "[") {
-		if before, _, ok := strings.Cut(host, ":"); ok {
-			host = before
-		}
-	}
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	return fmt.Sprintf("http://%s:%d%s", host, normalizePHPMyAdminPort(port), normalizePHPMyAdminPath(path))
-}
-
-func isLoopbackPHPMyAdminURL(value string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return false
-	}
-	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return fmt.Sprintf("%s://%s%s", requestScheme(r), host, phpMyAdminEmbedPath)
 }
 
 func parsePHPMyAdminCredentials(databaseURL string) (phpMyAdminCredentials, error) {

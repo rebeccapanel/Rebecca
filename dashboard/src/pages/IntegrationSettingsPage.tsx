@@ -66,6 +66,7 @@ import {
 	disablePHPMyAdmin,
 	enablePHPMyAdmin,
 	getPanelSettings,
+	getPHPMyAdminEmbedHTML,
 	getRuntimeSettings,
 	getSubscriptionSettings,
 	getSubscriptionTemplateContent,
@@ -724,6 +725,18 @@ const parseAdminChatIds = (value: string): number[] =>
 		.map((token) => Number(token))
 		.filter((token) => Number.isFinite(token));
 
+const ansiEscapePattern =
+	/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+
+const cleanTerminalOutput = (logs?: string[]) => {
+	const output = (logs || []).join("\n");
+	return output
+		.replace(ansiEscapePattern, "")
+		.replace(/\r(?!\n)/g, "\n")
+		.replace(/\u0008/g, "")
+		.trimEnd();
+};
+
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -881,6 +894,8 @@ export const IntegrationSettingsPage = () => {
 	const [isMaintenanceProgressOpen, setMaintenanceProgressOpen] =
 		useState(false);
 	const [maintenanceIsWaitingForAPI, setMaintenanceIsWaitingForAPI] =
+		useState(false);
+	const [phpMyAdminExternalOpening, setPhpMyAdminExternalOpening] =
 		useState(false);
 	const panelReturnPollRef = useRef<number | null>(null);
 	const panelReturnSawOfflineRef = useRef(false);
@@ -1369,6 +1384,44 @@ export const IntegrationSettingsPage = () => {
 			generateErrorMessage(error, toast);
 		},
 	});
+
+	const phpMyAdminPanelProxyURL = useMemo(() => {
+		if (typeof window === "undefined") {
+			return "/api/settings/phpmyadmin/embed/";
+		}
+		return `${window.location.origin}/api/settings/phpmyadmin/embed/`;
+	}, []);
+
+	const openPHPMyAdminExternalPage = useCallback(async () => {
+		const opened = window.open("", "_blank");
+		if (!opened) {
+			generateErrorMessage(
+				new Error(
+					t(
+						"phpmyadmin.popupBlocked",
+						"Could not open a new tab. Please allow popups for this panel.",
+					),
+				),
+				toast,
+			);
+			return;
+		}
+		setPhpMyAdminExternalOpening(true);
+		opened.document.write(
+			`<!doctype html><html><body style="margin:0;background:#0b0f17;color:#dbeafe;font:14px system-ui;display:grid;min-height:100vh;place-items:center">Opening phpMyAdmin...</body></html>`,
+		);
+		try {
+			const html = await getPHPMyAdminEmbedHTML();
+			opened.document.open();
+			opened.document.write(html);
+			opened.document.close();
+		} catch (error) {
+			opened.close();
+			generateErrorMessage(error, toast);
+		} finally {
+			setPhpMyAdminExternalOpening(false);
+		}
+	}, [t, toast]);
 
 	const subscriptionSettingsMutation = useMutation(updateSubscriptionSettings, {
 		onSuccess: (updated) => {
@@ -2174,6 +2227,18 @@ export const IntegrationSettingsPage = () => {
 													</Button>
 													<Button
 														size="sm"
+														variant="outline"
+														onClick={openPHPMyAdminExternalPage}
+														isDisabled={!runtimeSettingsForm.phpmyadmin_enabled}
+														isLoading={phpMyAdminExternalOpening}
+													>
+														{t(
+															"phpmyadmin.openExternal",
+															"Open external page",
+														)}
+													</Button>
+													<Button
+														size="sm"
 														colorScheme={
 															runtimeSettingsForm.phpmyadmin_enabled
 																? "red"
@@ -2240,11 +2305,7 @@ export const IntegrationSettingsPage = () => {
 														}
 													/>
 													<FormHelperText>
-														{runtimeSettingsForm.phpmyadmin_public_url ||
-															t(
-																"phpmyadmin.externalHint",
-																"The external HTTP endpoint still requires phpMyAdmin login.",
-															)}
+														{phpMyAdminPanelProxyURL}
 													</FormHelperText>
 												</FormControl>
 											</SimpleGrid>
@@ -4768,7 +4829,7 @@ export const IntegrationSettingsPage = () => {
 									fontSize="xs"
 									whiteSpace="pre-wrap"
 								>
-									{(maintenanceOperation?.logs || []).join("\n") ||
+									{cleanTerminalOutput(maintenanceOperation?.logs) ||
 										t(
 											"settings.panel.waitingForOutput",
 											"Waiting for command output...",
