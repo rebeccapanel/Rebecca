@@ -12,12 +12,6 @@ export const hashNameToHue = (name: string): number => {
 	return Math.abs(hash) % 360;
 };
 
-export const avatarGradient = (username: string): string => {
-	const hue = hashNameToHue(username);
-	const secondHue = (hue + 42) % 360;
-	return `linear-gradient(135deg, hsl(${hue} 70% 52%), hsl(${secondHue} 72% 40%))`;
-};
-
 const STATUS_RING_COLORS: Record<Status, string> = {
 	active: "#22c55e",
 	connected: "#22c55e",

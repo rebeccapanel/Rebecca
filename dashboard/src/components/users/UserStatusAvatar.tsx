@@ -3,7 +3,7 @@ import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { CSSProperties, FC } from "react";
 import type { Status } from "types/User";
 import { parseServerTimeToUnix } from "utils/dateFormatter";
-import { avatarGradient, statusRingColor } from "./userColors";
+import { statusRingColor } from "./userColors";
 
 type OnlineState = "online" | "offline" | "never";
 
@@ -23,8 +23,10 @@ const getOnlineState = (lastOnline?: string | null): OnlineState => {
 };
 
 /**
- * Colorful avatar for the Users list: the ring color mirrors the user's
- * status while the bottom-right dot (and pulse) reflects live online state.
+ * Avatar for the Users list: the ring color mirrors the user's status while
+ * the bottom-right dot (and pulse) reflects live online state. The circle
+ * itself follows the active theme's surface color (white in light mode,
+ * the dark surface in dark mode) via the rb-panel CSS variables.
  */
 export const UserStatusAvatar: FC<UserStatusAvatarProps> = ({
 	username,
@@ -47,11 +49,7 @@ export const UserStatusAvatar: FC<UserStatusAvatarProps> = ({
 				} as CSSProperties
 			}
 		>
-			<Box
-				className="rb-user-avatar-circle"
-				style={{ backgroundImage: avatarGradient(username) }}
-				aria-hidden="true"
-			>
+			<Box className="rb-user-avatar-circle" aria-hidden="true">
 				{initial}
 			</Box>
 			<Box as="span" className="rb-user-avatar-dot" aria-hidden="true" />
