@@ -14,12 +14,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 const phpMyAdminDocumentRoot = "/usr/share/phpmyadmin"
+
+var phpMyAdminFrameProtectionScriptRE = regexp.MustCompile(`(?is)<script\b[^>]*\bsrc=["'][^"']*cross_framing_protection\.js[^"']*["'][^>]*>\s*</script>\s*`)
 
 const (
 	fcgiVersion1    = 1
@@ -398,6 +401,7 @@ func splitFastCGIHeaders(stdout []byte) (textproto.MIMEHeader, []byte, error) {
 
 func rewritePHPMyAdminBody(body []byte, status phpMyAdminResponse, proxyBase string) []byte {
 	upstreamBase := normalizePHPMyAdminPath(status.Path)
+	body = phpMyAdminFrameProtectionScriptRE.ReplaceAll(body, nil)
 	body = bytes.ReplaceAll(body, []byte(upstreamBase), []byte(proxyBase))
 	body = bytes.ReplaceAll(body, []byte(strings.TrimRight(upstreamBase, "/")), []byte(strings.TrimRight(proxyBase, "/")))
 	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))

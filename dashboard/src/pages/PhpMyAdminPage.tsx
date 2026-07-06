@@ -136,6 +136,7 @@ export const PhpMyAdminPage = () => {
 						as="iframe"
 						title={t("phpmyadmin.title", "phpMyAdmin")}
 						src={iframeSrc}
+						sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
 						w="100%"
 						h={{ base: "calc(100vh - 128px)", md: "calc(100vh - 112px)" }}
 						minH={{ base: "520px", md: "680px" }}

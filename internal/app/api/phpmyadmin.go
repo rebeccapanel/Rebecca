@@ -355,7 +355,7 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 		onlyDBLine +
 		"$cfg['AllowArbitraryServer'] = false;\n" +
 		themeLine
-	if err := os.WriteFile("/etc/phpmyadmin/conf.d/rebecca.php", []byte(config), 0o600); err != nil {
+	if err := os.WriteFile("/etc/phpmyadmin/conf.d/rebecca.php", []byte(config), 0o644); err != nil {
 		return fmt.Errorf("write phpMyAdmin runtime config: %w", err)
 	}
 	return nil
