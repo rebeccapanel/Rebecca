@@ -1184,27 +1184,21 @@ export const IntegrationSettingsPage = () => {
 		],
 		[],
 	);
-	const splitHash = useCallback(() => {
-		const hash = window.location.hash || "";
-		const idx = hash.indexOf("#", 1);
+	const readSettingsHash = useCallback(() => {
+		const hash = (window.location.hash || "").replace(/^#/, "");
+		const [tabWithQuery = ""] = hash.split("#").filter(Boolean);
+		const [tab = "", query = ""] = tabWithQuery.split("?");
 		return {
-			base: idx >= 0 ? hash.slice(0, idx) : hash,
-			tab: idx >= 0 ? hash.slice(idx + 1) : "",
+			tab,
+			focus: query ? new URLSearchParams(query).get("focus") || "" : "",
 		};
 	}, []);
 	const getFocusFromHash = useCallback(() => {
-		const { base, tab } = splitHash();
-		const queryStart = base.indexOf("?");
-		const params =
-			queryStart >= 0 ? new URLSearchParams(base.slice(queryStart + 1)) : null;
-		return {
-			tab,
-			focus: params?.get("focus") || "",
-		};
-	}, [splitHash]);
+		return readSettingsHash();
+	}, [readSettingsHash]);
 	useEffect(() => {
 		const syncTabFromHash = () => {
-			const { tab } = splitHash();
+			const { tab } = readSettingsHash();
 			const idx = integrationTabKeys.findIndex(
 				(key) => key.toLowerCase() === tab.toLowerCase(),
 			);
@@ -1213,15 +1207,18 @@ export const IntegrationSettingsPage = () => {
 			} else {
 				// default tab if none present in hash
 				setActiveIntegrationTab(0);
-				const { base } = splitHash();
 				const defaultKey = integrationTabKeys[0];
-				window.location.hash = `${base || "#"}#${defaultKey}`;
+				window.history.replaceState(
+					null,
+					"",
+					`${window.location.pathname}${window.location.search}#${defaultKey}`,
+				);
 			}
 		};
 		syncTabFromHash();
 		window.addEventListener("hashchange", syncTabFromHash);
 		return () => window.removeEventListener("hashchange", syncTabFromHash);
-	}, [integrationTabKeys, splitHash]);
+	}, [integrationTabKeys, readSettingsHash]);
 
 	useEffect(() => {
 		const { focus, tab } = getFocusFromHash();
@@ -1703,8 +1700,11 @@ export const IntegrationSettingsPage = () => {
 	const handleIntegrationTabChange = (index: number) => {
 		setActiveIntegrationTab(index);
 		const key = integrationTabKeys[index] || "";
-		const { base } = splitHash();
-		window.location.hash = `${base || "#"}${key ? `#${key}` : ""}`;
+		window.history.replaceState(
+			null,
+			"",
+			`${window.location.pathname}${window.location.search}${key ? `#${key}` : ""}`,
+		);
 	};
 
 	const adminOptions = Object.values(adminOverrides);

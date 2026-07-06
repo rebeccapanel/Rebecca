@@ -276,9 +276,9 @@ export function AppLayout() {
 				: null,
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Integrations]
 				? {
-						key: "integrations",
-						label: t("header.integrationSettings", "Master settings"),
-						to: "/integrations",
+						key: "settings",
+						label: t("header.integrationSettings", "Settings"),
+						to: "/settings",
 						icon: MasterSettingsIcon,
 					}
 				: null,
@@ -714,7 +714,7 @@ export function AppLayout() {
 	};
 
 	const settingsDefaultTabByPath: Record<string, string> = {
-		"/integrations": "panel",
+		"/settings": "panel",
 		"/hosts": "inbounds",
 		"/usage": "services",
 		"/xray-settings": "basic",

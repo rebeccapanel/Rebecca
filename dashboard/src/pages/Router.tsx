@@ -21,6 +21,7 @@ import { UsersPage } from "./UsersPage";
 import { XrayLogsPage } from "./XrayLogsPage";
 import {
 	isRouteErrorResponse,
+	Navigate,
 	redirect,
 	useNavigate,
 	useRouteError,
@@ -81,6 +82,7 @@ const routeSegments = new Set([
 	"hosts",
 	"node-settings",
 	"integrations",
+	"settings",
 	"xray-settings",
 	"xray-logs",
 	"access-insights",
@@ -196,8 +198,12 @@ export const router = createBrowserRouter(
 					element: <NodesPage />,
 				},
 				{
-					path: "integrations",
+					path: "settings",
 					element: <IntegrationSettingsPage />,
+				},
+				{
+					path: "integrations",
+					element: <Navigate to="/settings#panel" replace />,
 				},
 				{
 					path: "xray-settings",

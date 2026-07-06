@@ -1,12 +1,19 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
@@ -16,6 +23,11 @@ import (
 )
 
 const phpMyAdminSQLiteDetail = "phpMyAdmin is available only for MySQL or MariaDB installations."
+const phpMyAdminEmbedPath = "/api/settings/phpmyadmin/embed/"
+const phpMyAdminEmbedCookie = "rebecca_pma_embed"
+const phpMyAdminEmbedTTL = 15 * time.Minute
+
+var phpMyAdminEmbedSecret = newPHPMyAdminEmbedSecret()
 
 type phpMyAdminEnableRequest struct {
 	Port int    `json:"port"`
@@ -63,6 +75,10 @@ func rawJSONString(value string) json.RawMessage {
 }
 
 func (s *Server) handlePHPMyAdmin(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, phpMyAdminEmbedPath) {
+		s.handlePHPMyAdminProxy(w, r)
+		return
+	}
 	switch r.URL.Path {
 	case "/api/settings/phpmyadmin":
 		if r.Method != http.MethodGet {
@@ -162,9 +178,68 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	expires := time.Now().Add(phpMyAdminEmbedTTL)
+	http.SetCookie(w, &http.Cookie{
+		Name:     phpMyAdminEmbedCookie,
+		Value:    signPHPMyAdminEmbedSession(principal.Username, expires),
+		Path:     phpMyAdminEmbedPath,
+		Expires:  expires,
+		MaxAge:   int(phpMyAdminEmbedTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   isHTTPSRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(status.ExternalURL, credentials)))
+	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", credentials)))
+}
+
+func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
+	if !s.phpMyAdminProxyAuthorized(r) {
+		writeAuthError(w, fmt.Errorf("missing bearer token"))
+		return
+	}
+	status := s.phpMyAdminStatus(r)
+	if !status.Enabled {
+		writeError(w, http.StatusConflict, "phpMyAdmin is disabled")
+		return
+	}
+	target := &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(status.Port)),
+	}
+	targetPath := phpMyAdminTargetPath(status.Path, r.URL.Path)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Director = func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path = targetPath
+		req.URL.RawPath = ""
+		req.URL.RawQuery = r.URL.RawQuery
+		req.Host = target.Host
+		req.Header.Set("X-Forwarded-Host", r.Host)
+		req.Header.Set("X-Forwarded-Proto", requestScheme(r))
+		req.Header.Del("Accept-Encoding")
+	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		return rewritePHPMyAdminProxyResponse(resp, status)
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		writeError(w, http.StatusBadGateway, "phpMyAdmin proxy failed: "+err.Error())
+	}
+	proxy.ServeHTTP(w, r)
+}
+
+func (s *Server) phpMyAdminProxyAuthorized(r *http.Request) bool {
+	if principal, err := s.authenticate(r.Context(), r); err == nil && principal.Role == "full_access" {
+		return true
+	}
+	cookie, err := r.Cookie(phpMyAdminEmbedCookie)
+	if err != nil {
+		return false
+	}
+	return verifyPHPMyAdminEmbedSession(cookie.Value, time.Now())
 }
 
 func (s *Server) phpMyAdminStatus(r *http.Request) phpMyAdminResponse {
@@ -176,7 +251,7 @@ func (s *Server) phpMyAdminStatus(r *http.Request) phpMyAdminResponse {
 	port := normalizePHPMyAdminPort(settings.PHPMyAdminPort)
 	path := normalizePHPMyAdminPath(settings.PHPMyAdminPath)
 	publicURL := strings.TrimSpace(settings.PHPMyAdminPublicURL)
-	if publicURL == "" {
+	if publicURL == "" || isLoopbackPHPMyAdminURL(publicURL) {
 		publicURL = buildPHPMyAdminPublicURL(r, port, path)
 	}
 	return phpMyAdminResponse{
@@ -244,6 +319,19 @@ func buildPHPMyAdminPublicURL(r *http.Request, port int, path string) string {
 	return fmt.Sprintf("http://%s:%d%s", host, normalizePHPMyAdminPort(port), normalizePHPMyAdminPath(path))
 }
 
+func isLoopbackPHPMyAdminURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func parsePHPMyAdminCredentials(databaseURL string) (phpMyAdminCredentials, error) {
 	parsed, err := url.Parse(strings.TrimSpace(databaseURL))
 	if err != nil {
@@ -276,8 +364,7 @@ func runRebeccaPHPMyAdminCommand(parent context.Context, args ...string) (string
 	return string(output), err
 }
 
-func buildPHPMyAdminEmbedHTML(externalURL string, credentials phpMyAdminCredentials) string {
-	loginURL := strings.TrimRight(externalURL, "/") + "/index.php"
+func buildPHPMyAdminEmbedHTML(loginURL string, credentials phpMyAdminCredentials) string {
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -300,4 +387,143 @@ html,body{height:100%;margin:0;background:#0b0f17;color:#dbeafe;font:14px system
 <script>window.setTimeout(function(){document.getElementById("pma-login").submit();},150);</script>
 </body>
 </html>`
+}
+
+func newPHPMyAdminEmbedSecret() []byte {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err == nil {
+		return secret
+	}
+	return []byte(fmt.Sprintf("rebecca-pma-%d", time.Now().UnixNano()))
+}
+
+func signPHPMyAdminEmbedSession(username string, expires time.Time) string {
+	payload := fmt.Sprintf("%s|%d", username, expires.Unix())
+	mac := hmac.New(sha256.New, phpMyAdminEmbedSecret)
+	_, _ = mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
+		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func verifyPHPMyAdminEmbedSession(value string, now time.Time) bool {
+	payloadEncoded, sigEncoded, ok := strings.Cut(value, ".")
+	if !ok {
+		return false
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadEncoded)
+	if err != nil {
+		return false
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(sigEncoded)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, phpMyAdminEmbedSecret)
+	_, _ = mac.Write(payloadBytes)
+	if !hmac.Equal(signature, mac.Sum(nil)) {
+		return false
+	}
+	_, expiresRaw, ok := strings.Cut(string(payloadBytes), "|")
+	if !ok {
+		return false
+	}
+	expiresUnix, err := strconv.ParseInt(expiresRaw, 10, 64)
+	if err != nil {
+		return false
+	}
+	return now.Unix() <= expiresUnix
+}
+
+func phpMyAdminTargetPath(configuredPath string, requestPath string) string {
+	suffix := strings.TrimPrefix(requestPath, phpMyAdminEmbedPath)
+	base := normalizePHPMyAdminPath(configuredPath)
+	if suffix == "" {
+		return base
+	}
+	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(suffix, "/")
+}
+
+func rewritePHPMyAdminProxyResponse(resp *http.Response, status phpMyAdminResponse) error {
+	upstreamBase := normalizePHPMyAdminPath(status.Path)
+	proxyBase := phpMyAdminEmbedPath
+	if location := strings.TrimSpace(resp.Header.Get("Location")); location != "" {
+		resp.Header.Set("Location", rewritePHPMyAdminURL(location, status, proxyBase))
+	}
+	rewritePHPMyAdminCookies(resp.Header, proxyBase)
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+	if !strings.Contains(contentType, "text/html") &&
+		!strings.Contains(contentType, "text/css") &&
+		!strings.Contains(contentType, "javascript") {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	body = bytes.ReplaceAll(body, []byte(upstreamBase), []byte(proxyBase))
+	body = bytes.ReplaceAll(body, []byte(strings.TrimRight(upstreamBase, "/")), []byte(strings.TrimRight(proxyBase, "/")))
+	body = bytes.ReplaceAll(body, []byte("http://127.0.0.1:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
+	body = bytes.ReplaceAll(body, []byte("http://localhost:"+strconv.Itoa(status.Port)+upstreamBase), []byte(proxyBase))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	resp.Header.Set("Cache-Control", "no-store")
+	return nil
+}
+
+func rewritePHPMyAdminURL(value string, status phpMyAdminResponse, proxyBase string) string {
+	configuredPath := normalizePHPMyAdminPath(status.Path)
+	if strings.HasPrefix(value, configuredPath) {
+		return proxyBase + strings.TrimLeft(strings.TrimPrefix(value, configuredPath), "/")
+	}
+	parsed, err := url.Parse(value)
+	if err == nil && parsed.Hostname() != "" {
+		host := parsed.Hostname()
+		if (host == "127.0.0.1" || host == "localhost") && parsed.Port() == strconv.Itoa(status.Port) {
+			rewritten := proxyBase + strings.TrimLeft(strings.TrimPrefix(parsed.Path, configuredPath), "/")
+			if parsed.RawQuery != "" {
+				rewritten += "?" + parsed.RawQuery
+			}
+			return rewritten
+		}
+	}
+	return value
+}
+
+func rewritePHPMyAdminCookies(header http.Header, proxyBase string) {
+	cookies := header.Values("Set-Cookie")
+	if len(cookies) == 0 {
+		return
+	}
+	header.Del("Set-Cookie")
+	for _, raw := range cookies {
+		parts := strings.Split(raw, ";")
+		hasPath := false
+		for i, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if strings.HasPrefix(strings.ToLower(trimmed), "path=") {
+				parts[i] = " Path=" + proxyBase
+				hasPath = true
+			}
+		}
+		if !hasPath {
+			parts = append(parts, " Path="+proxyBase)
+		}
+		header.Add("Set-Cookie", strings.Join(parts, ";"))
+	}
+}
+
+func isHTTPSRequest(r *http.Request) bool {
+	return requestScheme(r) == "https"
+}
+
+func requestScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	if scheme := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); scheme != "" {
+		return scheme
+	}
+	return "http"
 }

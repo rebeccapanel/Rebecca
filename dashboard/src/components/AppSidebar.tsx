@@ -314,8 +314,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			: null,
 		sectionAccess?.[AdminSection.Integrations]
 			? {
-					title: t("header.integrationSettings", "Master Settings"),
-					url: "/integrations",
+					title: t("header.integrationSettings", "Settings"),
+					url: "/settings",
 					icon: MasterSettingsIconStyled,
 				}
 			: null,
@@ -371,7 +371,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	}
 
 	const defaultTabByPath: Record<string, string> = {
-		"/integrations": "panel",
+		"/settings": "panel",
 		"/hosts": "inbounds",
 		"/usage": "services",
 		"/xray-settings": "basic",
@@ -464,7 +464,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		{
 			title: t("sidebar.groups.system", "System"),
 			items: [
-				pickSetting("/integrations"),
+				pickSetting("/settings"),
 				pickSetting("/xray-settings"),
 				pickSetting("/xray-logs"),
 				pickSetting("/access-insights"),

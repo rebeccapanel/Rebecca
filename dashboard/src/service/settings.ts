@@ -295,6 +295,7 @@ export const getPHPMyAdminEmbedHTML = async (): Promise<string> => {
 	const response = await fetch(`${apiBaseURL}/settings/phpmyadmin/embed-html`, {
 		headers: token ? { Authorization: `Bearer ${token}` } : undefined,
 		cache: "no-store",
+		credentials: "same-origin",
 	});
 	if (!response.ok) {
 		let detail = await response.text();
