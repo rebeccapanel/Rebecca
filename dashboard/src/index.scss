@@ -2313,6 +2313,14 @@ img.twemoji-emoji {
   }
 }
 
+/* Lighter detail rows: drop the per-row divider lines in favour of plain
+   spacing. Scoped to the Users page so other resource cards keep dividers. */
+.rb-users-section .rb-resource-details .rb-resource-meta {
+  border-bottom: 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
 /* The generic every-action strip DataTable appends to the expanded card is
    replaced by the curated 4-action bar below (rendered as the card's last
    detail row); hide the generic strip on this page only. The full action
