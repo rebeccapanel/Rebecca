@@ -188,7 +188,8 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", credentials)))
+	theme := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("theme")))
+	_, _ = w.Write([]byte(buildPHPMyAdminEmbedHTML(phpMyAdminEmbedPath+"index.php", credentials, theme)))
 }
 
 func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +317,19 @@ func runRebeccaPHPMyAdminCommand(parent context.Context, args ...string) (string
 	return string(output), err
 }
 
-func buildPHPMyAdminEmbedHTML(loginURL string, credentials phpMyAdminCredentials) string {
+func buildPHPMyAdminEmbedHTML(loginURL string, credentials phpMyAdminCredentials, theme string) string {
+	theme = strings.TrimSpace(theme)
+	if theme != "blueberry" {
+		theme = ""
+	}
+	themeCookieScript := ""
+	themeInput := ""
+	if theme != "" {
+		escapedTheme := html.EscapeString(theme)
+		themeCookieScript = `document.cookie="pma_theme=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";
+document.cookie="pma_theme-1=` + escapedTheme + `;path=` + phpMyAdminEmbedPath + `;SameSite=Lax";`
+		themeInput = `<input type="hidden" name="pma_theme" value="` + escapedTheme + `">`
+	}
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -335,8 +348,9 @@ html,body{height:100%;margin:0;background:#0b0f17;color:#dbeafe;font:14px system
 <input type="hidden" name="pma_username" value="` + html.EscapeString(credentials.Username) + `">
 <input type="hidden" name="pma_password" value="` + html.EscapeString(credentials.Password) + `">
 <input type="hidden" name="server" value="1">
+` + themeInput + `
 </form>
-<script>window.setTimeout(function(){document.getElementById("pma-login").submit();},150);</script>
+<script>` + themeCookieScript + `window.setTimeout(function(){document.getElementById("pma-login").submit();},150);</script>
 </body>
 </html>`
 }

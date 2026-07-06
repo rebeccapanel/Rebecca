@@ -1409,6 +1409,40 @@ find_php_fpm_sock() {
     [ -n "$sock" ] && printf "%s" "$sock"
 }
 
+install_phpmyadmin_blueberry_theme() {
+    local theme_dir="/usr/share/phpmyadmin/themes"
+    local theme_url="https://files.phpmyadmin.net/themes/blueberry/1.1.0/blueberry-1.1.0.zip"
+    local temp_zip
+
+    if [ ! -d "$theme_dir" ]; then
+        return 0
+    fi
+    if [ -d "$theme_dir/blueberry" ]; then
+        return 0
+    fi
+    install_package unzip
+    temp_zip=$(mktemp)
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$theme_url" -o "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$theme_url" -O "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    else
+        rm -f "$temp_zip"
+        colorized_echo yellow "curl or wget is required to download phpMyAdmin blueberry theme."
+        return 0
+    fi
+    unzip -qo "$temp_zip" -d "$theme_dir" >/dev/null 2>&1 || colorized_echo yellow "Could not extract phpMyAdmin blueberry theme."
+    rm -f "$temp_zip"
+}
+
 phpmyadmin_nginx_config_path() {
     printf "/etc/nginx/sites-available/%s-phpmyadmin" "$APP_NAME"
 }
@@ -1429,6 +1463,7 @@ enable_host_phpmyadmin() {
     for package in php-fpm php-mysql phpmyadmin; do
         install_package "$package"
     done
+    install_phpmyadmin_blueberry_theme
     systemctl enable --now php*-fpm >/dev/null 2>&1 || true
 
     path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"

@@ -5,6 +5,7 @@ import {
 	Spinner,
 	Stack,
 	Text,
+	useColorMode,
 	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
@@ -32,6 +33,7 @@ const defaultStatus: PHPMyAdminStatus = {
 
 export const PhpMyAdminPage = () => {
 	const { t } = useTranslation();
+	const { colorMode } = useColorMode();
 	const { userData } = useGetUser();
 	const isFullAccess = userData.role === AdminRole.FullAccess;
 	const [embedHTML, setEmbedHTML] = useState("");
@@ -48,12 +50,17 @@ export const PhpMyAdminPage = () => {
 	});
 	const status = statusQuery.data ?? defaultStatus;
 
-	const embedQuery = useQuery("phpmyadmin-embed-html", getPHPMyAdminEmbedHTML, {
-		enabled: Boolean(status.enabled && isFullAccess),
-		refetchOnWindowFocus: false,
-		retry: false,
-		onSuccess: setEmbedHTML,
-	});
+	const phpMyAdminTheme = colorMode === "dark" ? "blueberry" : undefined;
+	const embedQuery = useQuery(
+		["phpmyadmin-embed-html", phpMyAdminTheme ?? "default"],
+		() => getPHPMyAdminEmbedHTML(phpMyAdminTheme),
+		{
+			enabled: Boolean(status.enabled && isFullAccess),
+			refetchOnWindowFocus: false,
+			retry: false,
+			onSuccess: setEmbedHTML,
+		},
+	);
 
 	return (
 		<Stack spacing={4}>

@@ -337,6 +337,9 @@ func writePHPMyAdminFastCGIResponse(w http.ResponseWriter, stdout []byte, status
 			}
 			continue
 		}
+		if shouldSkipPHPMyAdminEmbedHeader(key) {
+			continue
+		}
 		for _, value := range values {
 			if strings.EqualFold(key, "Location") {
 				value = rewritePHPMyAdminURL(value, status, phpMyAdminEmbedPath)
@@ -347,9 +350,19 @@ func writePHPMyAdminFastCGIResponse(w http.ResponseWriter, stdout []byte, status
 	rewritePHPMyAdminCookies(w.Header(), phpMyAdminEmbedPath)
 	body = rewritePHPMyAdminBody(body, status, phpMyAdminEmbedPath)
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(statusCode)
 	_, err = w.Write(body)
 	return err
+}
+
+func shouldSkipPHPMyAdminEmbedHeader(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "content-length", "x-frame-options", "content-security-policy":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitFastCGIHeaders(stdout []byte) (textproto.MIMEHeader, []byte, error) {

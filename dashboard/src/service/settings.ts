@@ -290,13 +290,19 @@ export const disablePHPMyAdmin =
 		});
 	};
 
-export const getPHPMyAdminEmbedHTML = async (): Promise<string> => {
+export const getPHPMyAdminEmbedHTML = async (
+	theme?: string,
+): Promise<string> => {
 	const token = getAuthToken();
-	const response = await fetch(`${apiBaseURL}/settings/phpmyadmin/embed-html`, {
-		headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-		cache: "no-store",
-		credentials: "same-origin",
-	});
+	const search = theme ? `?theme=${encodeURIComponent(theme)}` : "";
+	const response = await fetch(
+		`${apiBaseURL}/settings/phpmyadmin/embed-html${search}`,
+		{
+			headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+			cache: "no-store",
+			credentials: "same-origin",
+		},
+	);
 	if (!response.ok) {
 		let detail = await response.text();
 		try {
