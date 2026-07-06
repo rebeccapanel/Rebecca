@@ -1908,3 +1908,464 @@ img.twemoji-emoji {
 .rb-seasonal-christmas textarea {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg transform='rotate(-18 20 20)'%3E%3Cpath d='M20 4l-4 6h8l-4-6z' fill='%23fff' stroke='%23c62828' stroke-width='1.6'/%3E%3Cpath d='M20 8l-5 7h10l-5-7z' fill='%23e8f5e9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 12l-6 8h12l-6-8z' fill='%23c8e6c9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 17l-7 9h14l-7-9z' fill='%23a5d6a7' stroke='%232e7d32' stroke-width='1.6'/%3E%3Crect x='17' y='26' width='6' height='7' rx='1.2' fill='%238d6e63'/%3E%3Ccircle cx='20' cy='10' r='1.4' fill='%23c62828'/%3E%3Ccircle cx='18' cy='15' r='1.4' fill='%23fbc02d'/%3E%3Ccircle cx='22' cy='17' r='1.4' fill='%2300acc1'/%3E%3Ccircle cx='16.5' cy='20' r='1.4' fill='%23ef6c00'/%3E%3Ccircle cx='23.5' cy='22' r='1.4' fill='%238e24aa'/%3E%3C/g%3E%3C/svg%3E") 10 4, auto;
 }
+
+/* ============================================================
+   Users section
+   Everything below is scoped to the Users page: either under the
+   .rb-users-section wrapper (overrides of shared rb-* pieces) or
+   via rb-user-* / rb-users-* classes that only the Users
+   components render. Other pages are intentionally unaffected.
+   ============================================================ */
+
+/* --- status avatar ------------------------------------------------ */
+
+.rb-user-avatar {
+  position: relative;
+  width: var(--rb-user-avatar-size, 34px);
+  height: var(--rb-user-avatar-size, 34px);
+  flex: 0 0 auto;
+}
+
+.rb-user-avatar-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: calc(var(--rb-user-avatar-size, 34px) * 0.42);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  box-shadow:
+    0 0 0 2px var(--rb-panel-surface),
+    0 0 0 4px var(--rb-user-ring, var(--rb-panel-border-strong));
+}
+
+.rb-user-avatar-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--rb-panel-surface);
+  background: #9ca3af;
+}
+
+.rb-user-avatar[data-online="online"] .rb-user-avatar-dot {
+  background: #22c55e;
+}
+
+.rb-user-avatar[data-online="never"] .rb-user-avatar-dot {
+  background: transparent;
+  border-color: var(--rb-panel-border-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rb-user-avatar[data-online="online"] .rb-user-avatar-circle {
+    animation: rb-user-ring-pulse 2.6s ease-out infinite;
+  }
+}
+
+@keyframes rb-user-ring-pulse {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--rb-panel-surface),
+      0 0 0 4px var(--rb-user-ring),
+      0 0 0 4px color-mix(in srgb, var(--rb-user-ring) 45%, transparent);
+  }
+
+  70%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--rb-panel-surface),
+      0 0 0 4px var(--rb-user-ring),
+      0 0 0 12px transparent;
+  }
+}
+
+/* --- username meta row (admin chip + last-seen) --------------------- */
+
+.rb-user-username-meta {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+/* both truncate/clip on their own single line instead of wrapping */
+.rb-user-username-meta > .rb-user-admin-chip {
+  flex: 0 1 auto;
+  min-width: 3.5em;
+}
+
+.rb-user-username-meta > span:not(.rb-user-admin-chip) {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap !important;
+  white-space: nowrap;
+}
+
+/* --- "by admin" chip ---------------------------------------------- */
+
+/* inline-block (not flex) so text-overflow can ellipsize the admin name */
+.rb-user-admin-chip {
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- gradient usage meter ------------------------------------------ */
+
+.rb-user-usage-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rb-panel-elevated);
+  overflow: hidden;
+}
+
+.rb-user-usage[data-variant="compact"] .rb-user-usage-track {
+  height: 5px;
+}
+
+.rb-user-usage-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
+  opacity: 0.55;
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
+    animation: rb-user-usage-flow 3.2s linear infinite;
+  }
+}
+
+@keyframes rb-user-usage-flow {
+  from {
+    background-position: 0% 0;
+  }
+
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.rb-user-usage-pair {
+  color: var(--rb-panel-text-secondary);
+  font-weight: 600;
+}
+
+.rb-user-usage-percent {
+  color: var(--rb-panel-text-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-user-usage[data-tone="warn"] .rb-user-usage-percent {
+  color: #f59e0b;
+}
+
+.rb-user-usage[data-tone="critical"] .rb-user-usage-percent {
+  color: #ef4444;
+}
+
+/* --- sticky search / filter bar ------------------------------------ */
+
+.rb-users-toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
+}
+
+@media (max-width: 767px) {
+  .rb-users-toolbar {
+    top: 4px;
+  }
+}
+
+.rb-users-filterbar {
+  border: 1px solid var(--rb-panel-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--rb-panel-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 22%);
+  padding: 10px 12px;
+}
+
+.rb-theme-light .rb-users-filterbar,
+.chakra-ui-light .rb-users-filterbar {
+  box-shadow: 0 10px 24px rgb(15 23 42 / 10%);
+}
+
+/* --- quick filter chips --------------------------------------------- */
+
+.rb-users-chips {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+}
+
+.rb-users-chips::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .rb-users-chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+.rb-users-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rb-panel-border);
+  background: var(--rb-panel-elevated);
+  color: var(--rb-panel-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 120ms ease;
+}
+
+.rb-users-chip:hover {
+  border-color: var(--rb-panel-border-strong);
+  color: var(--rb-panel-text);
+}
+
+.rb-users-chip:active {
+  transform: scale(0.95);
+}
+
+.rb-users-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rb-chip-color, var(--rb-panel-accent));
+  flex: 0 0 auto;
+}
+
+.rb-users-chip[data-active="true"] {
+  background: color-mix(
+    in srgb,
+    var(--rb-chip-color, var(--rb-panel-accent)) 18%,
+    var(--rb-panel-surface)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--rb-chip-color, var(--rb-panel-accent)) 55%,
+    transparent
+  );
+  color: var(--rb-panel-text);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--rb-chip-color, var(--rb-panel-accent)) 35%, transparent);
+}
+
+.rb-users-chip-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--rb-chip-color, var(--rb-panel-accent)) 22%,
+    transparent
+  );
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* removable tag flavor (active advanced/service/admin filters) */
+.rb-users-chip--tag {
+  --rb-chip-color: var(--rb-panel-accent);
+
+  background: color-mix(in srgb, var(--rb-panel-accent) 14%, var(--rb-panel-surface));
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 45%, transparent);
+  color: var(--rb-panel-text);
+}
+
+/* "Advanced actions" trigger rendered at the end of the chips row */
+.rb-users-chips-actions .chakra-button {
+  height: 32px;
+  min-width: 0;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  padding-inline: 12px;
+}
+
+/* --- page header accent --------------------------------------------- */
+
+.rb-users-section .rb-users-header {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-users-section .rb-users-header::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--primary-400),
+    var(--primary-600)
+  );
+}
+
+/* --- shared-piece overrides, scoped to the Users page ---------------- */
+
+/* summary count tags read as colorful pills */
+.rb-users-section .chakra-tag {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* softer corners on desktop rows */
+.rb-users-section .rb-data-table-row > td:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.rb-users-section .rb-data-table-row > td:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* mobile cards: rounder, and glowing accent while expanded */
+.rb-users-section .rb-resource-card {
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.rb-users-section .rb-resource-card[data-expanded="true"] {
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 45%, var(--rb-panel-border));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+}
+
+.rb-theme-light .rb-users-section .rb-resource-card[data-expanded="true"],
+.chakra-ui-light .rb-users-section .rb-resource-card[data-expanded="true"] {
+  box-shadow: 0 12px 26px rgb(15 23 42 / 12%);
+}
+
+/* springy scale-in when a card expands */
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-resource-expanded {
+    animation: rb-users-expand-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: top center;
+  }
+}
+
+@keyframes rb-users-expand-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* expanded-card actions: big, spaced, circular tap targets */
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions {
+  gap: 0.55rem;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--rb-panel-border);
+  background: var(--rb-panel-elevated);
+  transition:
+    transform 120ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:hover {
+  border-color: var(--rb-panel-border-strong);
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:active {
+  transform: scale(0.9);
+  background: var(--rb-panel-row-hover);
+}
+
+/* floating bulk action bar: slide up with a spring, accent tint */
+.rb-users-section .rb-bulk-action-bar {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 35%, var(--rb-panel-border-strong));
+  background: color-mix(in srgb, var(--rb-panel-surface) 94%, var(--rb-panel-accent));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.rb-users-section .rb-bulk-action-bar .chakra-button {
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    animation: rb-users-bulk-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@keyframes rb-users-bulk-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* skeleton loading rows: match the rounded look */
+.rb-users-section .chakra-skeleton {
+  border-radius: 8px;
+}
