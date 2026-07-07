@@ -711,6 +711,9 @@ export const validateInboundFormFields = (
 		if (values.l2tpTunnelPort.trim() && !isValidPortText(values.l2tpTunnelPort)) {
 			errors.l2tpTunnelPort = "Tunnel port must be a number between 1 and 65535.";
 		}
+		if (values.protocol === "l2tp" && values.l2tpTunnelPort.trim() !== "1702") {
+			errors.l2tpTunnelPort = "L2TP tunnel port must be 1702.";
+		}
 		if (
 			values.l2tpTunnelPort.trim() &&
 			isValidPortText(values.l2tpTunnelPort) &&
@@ -1115,7 +1118,7 @@ export const createDefaultInboundForm = (
 	ovTlsCrypt: "",
 	ovTlsAuth: "",
 	ovExtraClientConfig: "",
-	l2tpTunnelPort: protocol === "l2tp" ? "41941" : protocol === "pptp" ? "41942" : "",
+	l2tpTunnelPort: protocol === "l2tp" ? "1702" : protocol === "pptp" ? "41942" : "",
 	l2tpIPv4Pool: "10.67.0.0/16",
 	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
 	l2tpIPSecPSK: protocol === "l2tp" ? defaultL2TPPSK() : "",
@@ -1715,7 +1718,9 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? (settings.extra_client_config ?? base.ovExtraClientConfig)
 				: base.ovExtraClientConfig,
 		l2tpTunnelPort:
-			protocol === "l2tp" || protocol === "pptp"
+			protocol === "l2tp"
+				? "1702"
+				: protocol === "pptp"
 				? toInputValue(
 						settings.tunnel_port ??
 							settings.xray_tunnel_port ??
@@ -2446,7 +2451,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.dns_servers = splitLines(values.l2tpDNSServers);
 			if (values.protocol === "l2tp") {
 				base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
-				base.l2tp_port = parsePort(values.port) || 1701;
+				base.l2tp_port = 1701;
 				base.ipsec_ike_port = 500;
 				base.ipsec_nat_port = 4500;
 			} else {
@@ -2455,7 +2460,10 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.redirect_gateway = values.l2tpRedirectGateway;
 			base.tproxy_enabled = values.l2tpTproxyEnabled;
 			base.accounting_enabled = values.l2tpAccountingEnabled;
-			base.tunnel_port = parseOptionalNumber(values.l2tpTunnelPort);
+			base.tunnel_port =
+				values.protocol === "l2tp"
+					? 1702
+					: parseOptionalNumber(values.l2tpTunnelPort);
 			base.mtu = parseOptionalNumber(values.l2tpMTU);
 			base.mru = parseOptionalNumber(values.l2tpMRU);
 			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);

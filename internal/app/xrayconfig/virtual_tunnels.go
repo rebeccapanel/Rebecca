@@ -13,6 +13,10 @@ const (
 	defaultOVPoolCIDR   = "10.66.0.0/16"
 	defaultL2TPPoolCIDR = "10.67.0.0/16"
 	defaultPPTPPoolCIDR = "10.68.0.0/16"
+	L2TPIPSecIKEPort    = 500
+	L2TPIPSecNATPort    = 4500
+	L2TPPort            = 1701
+	L2TPTunnelPort      = 1702
 )
 
 func isManageableInboundProtocol(protocol string) bool {
@@ -150,15 +154,10 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
 	}
-	if _, ok := out["ipsec_ike_port"]; !ok {
-		out["ipsec_ike_port"] = 500
-	}
-	if _, ok := out["ipsec_nat_port"]; !ok {
-		out["ipsec_nat_port"] = 4500
-	}
-	if _, ok := out["l2tp_port"]; !ok {
-		out["l2tp_port"] = 1701
-	}
+	out["ipsec_ike_port"] = L2TPIPSecIKEPort
+	out["ipsec_nat_port"] = L2TPIPSecNATPort
+	out["l2tp_port"] = L2TPPort
+	out["tunnel_port"] = L2TPTunnelPort
 	for _, item := range []struct {
 		key      string
 		fallback int
@@ -176,13 +175,16 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 			out[item.key] = item.fallback
 		}
 	}
-	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port", "ipsec_ike_port", "ipsec_nat_port", "l2tp_port"} {
+	for _, key := range []string{"xray_tunnel_port", "tproxy_port", "management_port"} {
 		if port, ok := normalizedOptionalPort(out[key]); ok {
 			out[key] = port
 		} else {
 			delete(out, key)
 		}
 	}
+	delete(out, "xray_tunnel_port")
+	delete(out, "tproxy_port")
+	delete(out, "management_port")
 	for _, key := range []string{"ipsec_psk"} {
 		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
 			out[key] = value
@@ -262,8 +264,20 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	if protocol == L2TPProtocol {
-		if port != 1701 {
-			return fmt.Errorf("invalid inbound %q: L2TP port must be 1701", tag)
+		if port != L2TPPort {
+			return fmt.Errorf("invalid inbound %q: L2TP port must be %d", tag, L2TPPort)
+		}
+		if tunnelPort, ok := virtualTunnelPort(settings); !ok || tunnelPort != L2TPTunnelPort {
+			return fmt.Errorf("invalid inbound %q: L2TP tunnel_port must be %d", tag, L2TPTunnelPort)
+		}
+		if intValue(settings["ipsec_ike_port"]) != L2TPIPSecIKEPort {
+			return fmt.Errorf("invalid inbound %q: L2TP ipsec_ike_port must be %d", tag, L2TPIPSecIKEPort)
+		}
+		if intValue(settings["ipsec_nat_port"]) != L2TPIPSecNATPort {
+			return fmt.Errorf("invalid inbound %q: L2TP ipsec_nat_port must be %d", tag, L2TPIPSecNATPort)
+		}
+		if intValue(settings["l2tp_port"]) != L2TPPort {
+			return fmt.Errorf("invalid inbound %q: L2TP l2tp_port must be %d", tag, L2TPPort)
 		}
 		if strings.TrimSpace(stringValue(settings["ipsec_psk"])) == "" {
 			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)

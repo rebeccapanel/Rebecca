@@ -402,7 +402,7 @@ func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
 		}
 	}
 	validSettings := map[string]any{
-		"tunnel_port":    51200,
+		"tunnel_port":    1702,
 		"ipv4_pool_cidr": "10.67.0.0/16",
 		"ipsec_psk":      "secret",
 	}
@@ -419,7 +419,6 @@ func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
 		key  string
 		want string
 	}{
-		{name: "missing tunnel port", key: "tunnel_port", want: "tunnel_port is required"},
 		{name: "missing psk", key: "ipsec_psk", want: "ipsec_psk is required"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -447,7 +446,7 @@ func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
 				"port":     1701,
 				"protocol": "l2tp",
 				"settings": map[string]any{
-					"tunnel_port":    51200,
+					"tunnel_port":    1702,
 					"ipv4_pool_cidr": "10.67.0.0/16",
 					"ipsec_psk":      "secret",
 				},

@@ -546,13 +546,21 @@ export const InboundFormModal: FC<Props> = ({
 		return unique.map((label) => ({ label, value: label }));
 	}, [defaultVlessAuthLabels, vlessAuthOptions]);
 	const visibleProtocolOptions = useMemo(() => {
+		const l2tpExists = existingInbounds.some(
+			(inbound) =>
+				String(inbound.protocol || "").toLowerCase() === "l2tp" &&
+				String(inbound.tag || "") !== String(initialValue?.tag || ""),
+		);
 		if (isEditMode) {
 			return protocolOptions;
 		}
 		return protocolOptions.filter(
-			(option) => option !== "http" && option !== "socks",
+			(option) =>
+				option !== "http" &&
+				option !== "socks" &&
+				!(option === "l2tp" && l2tpExists),
 		);
-	}, [isEditMode]);
+	}, [existingInbounds, initialValue?.tag, isEditMode]);
 	const availableTargets = useMemo<CoreConfigTarget[]>(
 		() =>
 			configTargets.length
@@ -665,15 +673,9 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		}
 		const currentTunnelPort = String(l2tpTunnelPortValue || "").trim();
-		if (
-			currentTunnelPort &&
-			currentTunnelPort !== autoL2TPTunnelPortRef.current
-		) {
-			return;
-		}
-		if (currentTunnelPort !== "41941") {
-			autoL2TPTunnelPortRef.current = "41941";
-			form.setValue("l2tpTunnelPort", "41941", {
+		if (currentTunnelPort !== "1702") {
+			autoL2TPTunnelPortRef.current = "1702";
+			form.setValue("l2tpTunnelPort", "1702", {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
@@ -1359,6 +1361,7 @@ export const InboundFormModal: FC<Props> = ({
 													placeholder="443"
 													{...register("port", { required: true })}
 													value={portValue}
+													isDisabled={currentProtocol === "l2tp"}
 													onChange={(event) => {
 														register("port").onChange(event);
 														form.setValue("port", event.target.value, {
@@ -1378,6 +1381,7 @@ export const InboundFormModal: FC<Props> = ({
 														variant="ghost"
 														leftIcon={<SparklesIcon width={16} height={16} />}
 														onClick={() => generateRandomPort()}
+														isDisabled={currentProtocol === "l2tp"}
 													>
 														{t("inbounds.randomPort", "Random")}
 													</Button>
@@ -1454,7 +1458,7 @@ export const InboundFormModal: FC<Props> = ({
 																	shouldDirty: true,
 																	shouldValidate: true,
 																});
-																form.setValue("l2tpTunnelPort", "41941", {
+																form.setValue("l2tpTunnelPort", "1702", {
 																	shouldDirty: true,
 																	shouldValidate: true,
 																});
@@ -2144,6 +2148,25 @@ export const InboundFormModal: FC<Props> = ({
 										)}
 										{(currentProtocol === "l2tp" || currentProtocol === "pptp") && (
 											<Stack spacing={3}>
+												{currentProtocol === "l2tp" && (
+													<Alert status="info" borderRadius="md">
+														<AlertIcon />
+														<Box>
+															<AlertTitle fontSize="sm">
+																{t(
+																	"inbounds.l2tp.fixedPortsTitle",
+																	"L2TP/IPsec uses fixed ports",
+																)}
+															</AlertTitle>
+															<AlertDescription fontSize="sm">
+																{t(
+																	"inbounds.l2tp.fixedPortsDescription",
+																	"UDP 500 for IPsec/IKE, UDP 4500 for IPsec NAT-T, UDP 1701 for L2TP, and local Xray tunnel port 1702 are reserved and cannot be changed.",
+																)}
+															</AlertDescription>
+														</Box>
+													</Alert>
+												)}
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
 														isRequired
@@ -2159,7 +2182,8 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 														<Input
 															{...register("l2tpTunnelPort")}
-															placeholder="51200"
+															placeholder={currentProtocol === "l2tp" ? "1702" : "51200"}
+															isDisabled={currentProtocol === "l2tp"}
 														/>
 														{fieldValidationErrors.l2tpTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>

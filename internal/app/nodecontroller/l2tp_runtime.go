@@ -76,7 +76,7 @@ func (r Repository) L2TPRuntime(ctx context.Context, nodeID int64) (L2TPRuntime,
 		if err != nil {
 			return L2TPRuntime{}, err
 		}
-		tunnelPort := xrayconfig.RuntimeTunnelPortForInbound(inbound, usedPorts)
+		tunnelPort := xrayconfig.L2TPTunnelPort
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}
 		}
@@ -156,15 +156,10 @@ func L2TPRuntimeSettings(inbound map[string]any) map[string]any {
 	if _, ok := out["accounting_enabled"]; !ok {
 		out["accounting_enabled"] = true
 	}
-	if _, ok := out["ipsec_ike_port"]; !ok {
-		out["ipsec_ike_port"] = 500
-	}
-	if _, ok := out["ipsec_nat_port"]; !ok {
-		out["ipsec_nat_port"] = 4500
-	}
-	if _, ok := out["l2tp_port"]; !ok {
-		out["l2tp_port"] = 1701
-	}
+	out["ipsec_ike_port"] = xrayconfig.L2TPIPSecIKEPort
+	out["ipsec_nat_port"] = xrayconfig.L2TPIPSecNATPort
+	out["l2tp_port"] = xrayconfig.L2TPPort
+	out["tunnel_port"] = xrayconfig.L2TPTunnelPort
 	for _, item := range []struct {
 		key      string
 		fallback int

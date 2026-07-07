@@ -111,6 +111,9 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if len(directTargets) > 0 {
 		return InboundMutationResult{}, fmt.Errorf("%w: inbound %q already exists", ErrDuplicateInboundTag, tag)
 	}
+	if err := r.ensureSingleL2TPInboundTx(ctx, tx, inbound, ""); err != nil {
+		return InboundMutationResult{}, err
+	}
 
 	configs, err := r.ensureTargetConfigsForMutationTx(ctx, tx, targetIDs)
 	if err != nil {
@@ -163,6 +166,9 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	}
 	inbound, err := r.prepareInboundPayload(cleanPayload, tag)
 	if err != nil {
+		return InboundMutationResult{}, err
+	}
+	if err := r.ensureSingleL2TPInboundTx(ctx, tx, inbound, tag); err != nil {
 		return InboundMutationResult{}, err
 	}
 	targetSet := make(map[string]bool, len(targetIDs))
@@ -800,6 +806,63 @@ func (r Repository) findManageableInboundTx(ctx context.Context, tx *sql.Tx, tag
 		return nil, err
 	}
 	return nil, ErrInboundNotFound
+}
+
+func (r Repository) ensureSingleL2TPInboundTx(ctx context.Context, tx *sql.Tx, inbound map[string]any, allowedTag string) error {
+	if normalizeProxyProtocol(stringValue(inbound["protocol"])) != L2TPProtocol {
+		return nil
+	}
+	tag, err := r.findL2TPInboundTagTx(ctx, tx, allowedTag)
+	if err != nil {
+		return err
+	}
+	if tag != "" {
+		return fmt.Errorf("%w: only one L2TP/IPsec inbound is supported; existing inbound %q already uses UDP 500/4500/1701", ErrInvalidInbound, tag)
+	}
+	return nil
+}
+
+func (r Repository) findL2TPInboundTagTx(ctx context.Context, tx *sql.Tx, allowedTag string) (string, error) {
+	master, err := r.masterRawConfigTx(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	if master != nil {
+		if tag := r.findL2TPInboundTagInConfig(master, allowedTag); tag != "" {
+			return tag, nil
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return "", err
+		}
+		if tag := r.findL2TPInboundTagInConfig(NormalizePayload(jsonMap(raw)), allowedTag); tag != "" {
+			return tag, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+func (r Repository) findL2TPInboundTagInConfig(config map[string]any, allowedTag string) string {
+	for _, candidate := range listOfMaps(config["inbounds"]) {
+		tag := stringValue(candidate["tag"])
+		if tag == "" || tag == allowedTag || !r.isManageableInbound(candidate) {
+			continue
+		}
+		if normalizeProxyProtocol(stringValue(candidate["protocol"])) == L2TPProtocol {
+			return tag
+		}
+	}
+	return ""
 }
 
 func findInboundInConfig(config map[string]any, tag string) map[string]any {
