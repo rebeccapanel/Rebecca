@@ -761,7 +761,7 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 	}
 	if !operation.NodeID.Valid {
 		switch operation.OperationType {
-		case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user", "restart_node":
+		case "sync_config", "add_user", "update_user", "remove_user", "disable_user", "enable_user", "restart_node", "reboot_node":
 		default:
 			return fmt.Errorf("unsupported node operation: %s", operation.OperationType)
 		}
@@ -912,6 +912,9 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 			}
 		}
 		_, err := c.Restart(ctx, Request{NodeID: operation.NodeID.Int64, ConfigJSON: configJSON})
+		return err
+	case "reboot_node":
+		_, err := c.RebootHost(ctx, Request{NodeID: operation.NodeID.Int64})
 		return err
 	default:
 		return fmt.Errorf("unsupported node operation: %s", operation.OperationType)

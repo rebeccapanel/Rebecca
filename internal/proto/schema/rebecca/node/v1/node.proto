@@ -25,6 +25,7 @@ service NodeRuntimeService {
   rpc UpdateGeo(GeoUpdateRequest) returns (RuntimeActionResponse);
   rpc RestartService(ServiceRestartRequest) returns (RuntimeActionResponse);
   rpc UpdateService(ServiceUpdateRequest) returns (RuntimeActionResponse);
+  rpc RebootHost(HostRebootRequest) returns (RuntimeActionResponse);
 }
 
 service NodeUsageService {
@@ -182,6 +183,10 @@ message ServiceUpdateRequest {
   string operation_id = 1;
   string channel = 2;
   string version = 3;
+}
+
+message HostRebootRequest {
+  string operation_id = 1;
 }
 
 message SystemMetrics {

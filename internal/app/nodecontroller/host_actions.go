@@ -101,3 +101,20 @@ func (c Controller) UpdateService(ctx context.Context, req Request) (RuntimeResu
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }
+
+func (c Controller) RebootHost(ctx context.Context, req Request) (RuntimeResult, error) {
+	client, node, err := c.dial(ctx, req.NodeID)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("reboot host", req.NodeID, err)
+	}
+	defer client.Close()
+	res, err := client.Runtime().RebootHost(ctx, &nodev1.HostRebootRequest{
+		OperationId: "reboot-host-" + strconv.FormatInt(req.NodeID, 10),
+	})
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("reboot host", req.NodeID, err)
+	}
+	return runtimeResult(node, res.GetRuntime(), nil), nil
+}
