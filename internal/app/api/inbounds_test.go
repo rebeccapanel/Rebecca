@@ -122,6 +122,38 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	}
 }
 
+func TestInboundCreateRejectsMissingTLSCertificateFiles(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertRawMasterXrayConfig(t, db, inboundConfig())
+	token := adminBearerToken(t, server, "pouria", "pass123")
+
+	payload := `{
+		"tag":"bad-cert",
+		"protocol":"vless",
+		"port":9443,
+		"settings":{"decryption":"none"},
+		"streamSettings":{
+			"network":"tcp",
+			"security":"tls",
+			"tlsSettings":{
+				"certificates":[{
+					"certificateFile":"/missing/rebecca/fullchain.pem",
+					"keyFile":"/missing/rebecca/privkey.pem"
+				}]
+			}
+		},
+		"target_ids":["master"]
+	}`
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/inbounds", token, payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing certificate path status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "does not exist") || !strings.Contains(rec.Body.String(), "directory") {
+		t.Fatalf("expected missing file/directory error, got %s", rec.Body.String())
+	}
+}
+
 func TestInboundDeleteRemovesHostsAndRefreshesUsers(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)

@@ -474,6 +474,9 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 	if err := validateExecutableInbound(inbound); err != nil {
 		return nil, err
 	}
+	if err := validateStreamCertificateFiles(inbound); err != nil {
+		return nil, fmt.Errorf("inbound %q TLS certificate: %w", tag, err)
+	}
 	return inbound, nil
 }
 

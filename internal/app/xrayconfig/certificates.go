@@ -73,7 +73,7 @@ func validateCertificateFile(certificate map[string]any, contentKey string, path
 	info, err := os.Stat(cleanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s file %q does not exist", contentKey, path)
+			return fmt.Errorf("%s file %q does not exist or its directory does not exist", contentKey, path)
 		}
 		return fmt.Errorf("%s file %q is not accessible: %w", contentKey, path, err)
 	}
