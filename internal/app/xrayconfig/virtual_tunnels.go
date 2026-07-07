@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	OVProtocol        = "openvpn"
-	defaultOVPoolCIDR = "10.66.0.0/16"
+	OVProtocol          = "openvpn"
+	L2TPProtocol        = "l2tp"
+	defaultOVPoolCIDR   = "10.66.0.0/16"
+	defaultL2TPPoolCIDR = "10.67.0.0/16"
 )
 
 func isManageableInboundProtocol(protocol string) bool {
@@ -31,14 +33,23 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 	normalized := deepCopyMap(inbound)
 	protocol := normalizeProxyProtocol(stringValue(normalized["protocol"]))
 	normalized["protocol"] = protocol
-	if protocol != OVProtocol {
+	if protocol != OVProtocol && protocol != L2TPProtocol {
 		return normalized
 	}
-	settings := normalizeOVSettings(mapValue(normalized["settings"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(normalized["settings"]))
 	normalized["settings"] = settings
 	delete(normalized, "streamSettings")
 	delete(normalized, "sniffing")
 	return normalized
+}
+
+func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) map[string]any {
+	switch protocol {
+	case L2TPProtocol:
+		return normalizeL2TPSettings(settings)
+	default:
+		return normalizeOVSettings(settings)
+	}
 }
 
 func normalizeOVSettings(settings map[string]any) map[string]any {
@@ -96,6 +107,55 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	return out
 }
 
+func normalizeL2TPSettings(settings map[string]any) map[string]any {
+	out := make(map[string]any, len(settings)+8)
+	for key, value := range settings {
+		out[key] = value
+	}
+	pool := strings.TrimSpace(firstNonEmptyString(out["ipv4_pool_cidr"], out["ipv4PoolCidr"]))
+	if pool == "" {
+		pool = defaultL2TPPoolCIDR
+	}
+	out["ipv4_pool_cidr"] = pool
+	delete(out, "ipv4PoolCidr")
+	out["dns_servers"] = normalizeStringAnyList(firstNonEmptyAny(out["dns_servers"], out["dnsServers"]))
+	delete(out, "dnsServers")
+	if _, ok := out["redirect_gateway"]; !ok {
+		out["redirect_gateway"] = true
+	}
+	if _, ok := out["accounting_enabled"]; !ok {
+		out["accounting_enabled"] = true
+	}
+	if _, ok := out["tproxy_enabled"]; !ok {
+		out["tproxy_enabled"] = true
+	}
+	if _, ok := out["ipsec_ike_port"]; !ok {
+		out["ipsec_ike_port"] = 500
+	}
+	if _, ok := out["ipsec_nat_port"]; !ok {
+		out["ipsec_nat_port"] = 4500
+	}
+	if _, ok := out["l2tp_port"]; !ok {
+		out["l2tp_port"] = 1701
+	}
+	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port", "ipsec_ike_port", "ipsec_nat_port", "l2tp_port"} {
+		if port, ok := normalizedOptionalPort(out[key]); ok {
+			out[key] = port
+		} else {
+			delete(out, key)
+		}
+	}
+	for _, key := range []string{"ipsec_psk"} {
+		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
+			out[key] = value
+		} else {
+			delete(out, key)
+		}
+	}
+	delete(out, "clients")
+	return out
+}
+
 func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 	if _, ok := inbound["port"]; !ok {
 		return fmt.Errorf("invalid inbound %q: port is required", tag)
@@ -108,48 +168,56 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
-	if protocol != OVProtocol {
+	if protocol != OVProtocol && protocol != L2TPProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
-	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
 	if _, ok := virtualTunnelPort(settings); !ok {
-		return fmt.Errorf("invalid inbound %q: OV tunnel_port is required", tag)
+		return fmt.Errorf("invalid inbound %q: %s tunnel_port is required", tag, strings.ToUpper(protocol))
 	}
 	if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort == port {
-		return fmt.Errorf("invalid inbound %q: OV tunnel_port must be different from port", tag)
-	}
-	transport := stringValue(settings["transport"])
-	if transport != "tcp" && transport != "udp" {
-		return fmt.Errorf("invalid inbound %q: OV transport must be udp or tcp", tag)
+		return fmt.Errorf("invalid inbound %q: %s tunnel_port must be different from port", tag, strings.ToUpper(protocol))
 	}
 	if _, err := netip.ParsePrefix(stringValue(settings["ipv4_pool_cidr"])); err != nil {
-		return fmt.Errorf("invalid inbound %q: OV IPv4 pool CIDR is invalid", tag)
+		return fmt.Errorf("invalid inbound %q: %s IPv4 pool CIDR is invalid", tag, strings.ToUpper(protocol))
 	}
 	for _, server := range normalizeStringAnyList(settings["dns_servers"]) {
 		addr, err := netip.ParseAddr(stringValue(server))
 		if err != nil || !addr.Is4() {
-			return fmt.Errorf("invalid inbound %q: OV DNS servers must be IPv4 addresses", tag)
+			return fmt.Errorf("invalid inbound %q: %s DNS servers must be IPv4 addresses", tag, strings.ToUpper(protocol))
 		}
 	}
-	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port"} {
+	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port", "ipsec_ike_port", "ipsec_nat_port", "l2tp_port"} {
 		if _, exists := settings[key]; !exists {
 			continue
 		}
 		parsed, ok := normalizedOptionalPort(settings[key])
 		if !ok || parsed < 1 || parsed > 65535 {
-			return fmt.Errorf("invalid inbound %q: OV %s must be between 1 and 65535", tag, key)
+			return fmt.Errorf("invalid inbound %q: %s %s must be between 1 and 65535", tag, strings.ToUpper(protocol), key)
 		}
 	}
-	for _, key := range []string{"ca", "server_certificate", "server_key"} {
-		if strings.TrimSpace(stringValue(settings[key])) == "" {
-			return fmt.Errorf("invalid inbound %q: OV %s is required", tag, key)
+	if protocol == OVProtocol {
+		transport := stringValue(settings["transport"])
+		if transport != "tcp" && transport != "udp" {
+			return fmt.Errorf("invalid inbound %q: OV transport must be udp or tcp", tag)
+		}
+		for _, key := range []string{"ca", "server_certificate", "server_key"} {
+			if strings.TrimSpace(stringValue(settings[key])) == "" {
+				return fmt.Errorf("invalid inbound %q: OV %s is required", tag, key)
+			}
+		}
+	}
+	if protocol == L2TPProtocol {
+		if strings.TrimSpace(stringValue(settings["ipsec_psk"])) == "" {
+			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)
 		}
 	}
 	return nil
 }
 
 func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[string]any) {
-	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
 	switch normalizeProxyProtocol(stringValue(inbound["protocol"])) {
 	case OVProtocol:
 		resolved["network"] = stringValue(settings["transport"])
@@ -160,15 +228,32 @@ func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[st
 		if port, ok := virtualTunnelPort(settings); ok {
 			resolved["tunnel_port"] = port
 		}
+	case L2TPProtocol:
+		resolved["network"] = "udp"
+		resolved["tls"] = "none"
+		resolved["settings"] = settings
+		resolved["ipv4_pool_cidr"] = stringValue(settings["ipv4_pool_cidr"])
+		resolved["tunnel_tag"] = RuntimeTunnelTagForProtocol(L2TPProtocol, stringValue(inbound["tag"]))
+		if port, ok := virtualTunnelPort(settings); ok {
+			resolved["tunnel_port"] = port
+		}
 	}
 }
 
 func RuntimeTunnelTag(tag string) string {
+	return RuntimeTunnelTagForProtocol(OVProtocol, tag)
+}
+
+func RuntimeTunnelTagForProtocol(protocol string, tag string) string {
 	tag = strings.TrimSpace(tag)
-	if tag == "" {
-		return "__rebecca_ov_tunnel"
+	prefix := "__rebecca_ov_tunnel"
+	if normalizeProxyProtocol(protocol) == L2TPProtocol {
+		prefix = "__rebecca_l2tp_tunnel"
 	}
-	return "__rebecca_ov_tunnel__" + tag
+	if tag == "" {
+		return prefix
+	}
+	return prefix + "__" + tag
 }
 
 func TranslateVirtualTunnelInboundsForRuntime(raw map[string]any) map[string]any {
@@ -212,9 +297,10 @@ func runtimeTunnelInbound(inbound map[string]any, usedPorts map[int]struct{}) ma
 	if tunnelPort < 1 {
 		tunnelPort = 41940
 	}
-	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
 	return map[string]any{
-		"tag":      RuntimeTunnelTag(stringValue(inbound["tag"])),
+		"tag":      RuntimeTunnelTagForProtocol(protocol, stringValue(inbound["tag"])),
 		"listen":   firstNonEmptyString(settings["tunnel_listen"], settings["tproxy_listen"], "127.0.0.1"),
 		"port":     tunnelPort,
 		"protocol": "tunnel",
@@ -231,7 +317,8 @@ func runtimeTunnelInbound(inbound map[string]any, usedPorts map[int]struct{}) ma
 }
 
 func RuntimeTunnelPortForInbound(inbound map[string]any, usedPorts map[int]struct{}) int {
-	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
 	publicPort, _ := parseConfigPort(inbound["port"])
 	tunnelPort, ok := virtualTunnelPort(settings)
 	if ok && tunnelPort >= 1 && tunnelPort <= 65535 {

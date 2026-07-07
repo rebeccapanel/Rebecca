@@ -13,13 +13,23 @@ func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, oper
 		OperationId: operationID,
 		ConfigJson:  configJSON,
 	}
-	runtimeConfig, err := c.repo.OVRuntime(ctx, node.ID)
+	ovRuntime, err := c.repo.OVRuntime(ctx, node.ID)
 	if err != nil {
 		return nil, fmt.Errorf("OV runtime: %w", err)
 	}
-	raw, err := json.Marshal(runtimeConfig)
+	l2tpRuntime, err := c.repo.L2TPRuntime(ctx, node.ID)
 	if err != nil {
-		return nil, fmt.Errorf("OV runtime: %w", err)
+		return nil, fmt.Errorf("L2TP runtime: %w", err)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"generated_at":   ovRuntime.GeneratedAt,
+		"target":         ovRuntime.Target,
+		"inbounds":       ovRuntime.Inbounds,
+		"l2tp_inbounds":  l2tpRuntime.Inbounds,
+		"l2tp_generated": l2tpRuntime.GeneratedAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("VPN runtime: %w", err)
 	}
 	req.OvRuntimeJson = string(raw)
 	return req, nil

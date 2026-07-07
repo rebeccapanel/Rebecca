@@ -24,7 +24,8 @@ var proxyProtocols = map[string]struct{}{
 }
 
 var virtualTunnelProtocols = map[string]struct{}{
-	OVProtocol: {},
+	OVProtocol:   {},
+	L2TPProtocol: {},
 }
 
 var (

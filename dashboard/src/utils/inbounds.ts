@@ -7,6 +7,7 @@ export type Protocol =
 	| "shadowsocks"
 	| "hysteria"
 	| "openvpn"
+	| "l2tp"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -295,6 +296,14 @@ export type InboundFormValues = {
 	ovTlsAuth: string;
 	ovExtraClientConfig: string;
 
+	l2tpTunnelPort: string;
+	l2tpIPv4Pool: string;
+	l2tpDNSServers: string;
+	l2tpIPSecPSK: string;
+	l2tpRedirectGateway: boolean;
+	l2tpTproxyEnabled: boolean;
+	l2tpAccountingEnabled: boolean;
+
 	targetIds: string[];
 };
 
@@ -333,6 +342,7 @@ export const protocolOptions: Protocol[] = [
 	"shadowsocks",
 	"hysteria",
 	"openvpn",
+	"l2tp",
 	"http",
 	"socks",
 ];
@@ -399,6 +409,17 @@ const randomLowerAndNum = (length: number): string => {
 		}
 	}
 	return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+};
+
+const randomPortText = (): string => {
+	const blocked = new Set([21, 22, 23, 25, 53, 67, 68, 110, 111, 123, 137, 143, 161, 162, 993]);
+	for (let i = 0; i < 12; i += 1) {
+		const candidate = Math.floor(Math.random() * 55000) + 10000;
+		if (candidate <= 65535 && !blocked.has(candidate)) {
+			return String(candidate);
+		}
+	}
+	return "443";
 };
 
 export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
@@ -654,6 +675,27 @@ export const validateInboundFormFields = (
 			errors.ovServerKey = "Server key is required.";
 		}
 	}
+	if (values.protocol === "l2tp") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
+			errors.l2tpIPv4Pool = "IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
+		}
+		if (!values.l2tpTunnelPort.trim()) {
+			errors.l2tpTunnelPort = "Tunnel port is required.";
+		}
+		if (values.l2tpTunnelPort.trim() && !isValidPortText(values.l2tpTunnelPort)) {
+			errors.l2tpTunnelPort = "Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.l2tpTunnelPort.trim() &&
+			isValidPortText(values.l2tpTunnelPort) &&
+			values.l2tpTunnelPort.trim() === values.port.trim()
+		) {
+			errors.l2tpTunnelPort = "Tunnel port must be different from the L2TP port.";
+		}
+		if (!values.l2tpIPSecPSK.trim()) {
+			errors.l2tpIPSecPSK = "IPsec pre-shared key is required.";
+		}
+	}
 	if (values.streamSecurity === "reality") {
 		if (!isHostPortTarget(values.realityTarget ?? "")) {
 			errors.realityTarget =
@@ -885,7 +927,7 @@ export const createDefaultInboundForm = (
 ): InboundFormValues => ({
 	tag: "",
 	listen: "",
-	port: "",
+	port: randomPortText(),
 	protocol,
 	tcpAcceptProxyProtocol: false,
 	wsAcceptProxyProtocol: false,
@@ -1024,6 +1066,13 @@ export const createDefaultInboundForm = (
 	ovTlsCrypt: "",
 	ovTlsAuth: "",
 	ovExtraClientConfig: "",
+	l2tpTunnelPort: "",
+	l2tpIPv4Pool: "10.67.0.0/16",
+	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
+	l2tpIPSecPSK: "",
+	l2tpRedirectGateway: true,
+	l2tpTproxyEnabled: true,
+	l2tpAccountingEnabled: true,
 	targetIds: ["master"],
 });
 
@@ -1588,6 +1637,38 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "openvpn"
 				? (settings.extra_client_config ?? base.ovExtraClientConfig)
 				: base.ovExtraClientConfig,
+		l2tpTunnelPort:
+			protocol === "l2tp"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.l2tpTunnelPort,
+		l2tpIPv4Pool:
+			protocol === "l2tp"
+				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.l2tpIPv4Pool)
+				: base.l2tpIPv4Pool,
+		l2tpDNSServers:
+			protocol === "l2tp"
+				? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers))
+				: base.l2tpDNSServers,
+		l2tpIPSecPSK:
+			protocol === "l2tp"
+				? (settings.ipsec_psk ?? base.l2tpIPSecPSK)
+				: base.l2tpIPSecPSK,
+		l2tpRedirectGateway:
+			protocol === "l2tp"
+				? Boolean(settings.redirect_gateway ?? base.l2tpRedirectGateway)
+				: base.l2tpRedirectGateway,
+		l2tpTproxyEnabled:
+			protocol === "l2tp"
+				? Boolean(settings.tproxy_enabled ?? base.l2tpTproxyEnabled)
+				: base.l2tpTproxyEnabled,
+		l2tpAccountingEnabled:
+			protocol === "l2tp"
+				? Boolean(settings.accounting_enabled ?? base.l2tpAccountingEnabled)
+				: base.l2tpAccountingEnabled,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -2264,6 +2345,18 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.extra_client_config =
 				values.ovExtraClientConfig.trim() || undefined;
 			break;
+		case "l2tp":
+			base.ipv4_pool_cidr = values.l2tpIPv4Pool.trim() || "10.67.0.0/16";
+			base.dns_servers = splitLines(values.l2tpDNSServers);
+			base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
+			base.redirect_gateway = values.l2tpRedirectGateway;
+			base.tproxy_enabled = values.l2tpTproxyEnabled;
+			base.accounting_enabled = values.l2tpAccountingEnabled;
+			base.tunnel_port = parseOptionalNumber(values.l2tpTunnelPort);
+			base.l2tp_port = parsePort(values.port) || 1701;
+			base.ipsec_ike_port = 500;
+			base.ipsec_nat_port = 4500;
+			break;
 	}
 
 	return cleanObject(base);
@@ -2276,7 +2369,8 @@ export const buildInboundPayload = (
 	const supportsStream =
 		values.protocol !== "http" &&
 		values.protocol !== "socks" &&
-		values.protocol !== "openvpn";
+		values.protocol !== "openvpn" &&
+		values.protocol !== "l2tp";
 	const streamSettings = supportsStream
 		? buildStreamSettings(values, options)
 		: undefined;
@@ -2292,7 +2386,7 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.protocol === "openvpn") {
+	if (values.protocol === "openvpn" || values.protocol === "l2tp") {
 		delete payload.sniffing;
 	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;

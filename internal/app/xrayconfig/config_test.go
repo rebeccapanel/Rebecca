@@ -385,6 +385,87 @@ func TestParseRejectsIncompleteOVInbound(t *testing.T) {
 	}
 }
 
+func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
+	base := func(settings map[string]any) map[string]any {
+		return map[string]any{
+			"inbounds": []any{
+				map[string]any{
+					"tag":      "l2tp",
+					"port":     1701,
+					"protocol": "l2tp",
+					"settings": settings,
+				},
+			},
+			"outbounds": []any{
+				map[string]any{"tag": "DIRECT", "protocol": "freedom"},
+			},
+		}
+	}
+	validSettings := map[string]any{
+		"tunnel_port":    51200,
+		"ipv4_pool_cidr": "10.67.0.0/16",
+		"ipsec_psk":      "secret",
+	}
+	if _, err := Parse(base(validSettings), Options{}); err != nil {
+		t.Fatalf("valid L2TP inbound rejected: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "missing tunnel port", key: "tunnel_port", want: "tunnel_port is required"},
+		{name: "missing psk", key: "ipsec_psk", want: "ipsec_psk is required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[string]any{}
+			for key, value := range validSettings {
+				settings[key] = value
+			}
+			delete(settings, tc.key)
+			_, err := Parse(base(settings), Options{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{
+			map[string]any{
+				"tag":      "l2tp-edge",
+				"port":     1701,
+				"protocol": "l2tp",
+				"settings": map[string]any{
+					"tunnel_port":    51200,
+					"ipv4_pool_cidr": "10.67.0.0/16",
+					"ipsec_psk":      "secret",
+				},
+			},
+		},
+		"routing": map[string]any{
+			"rules": []any{
+				map[string]any{"type": "field", "inboundTag": []any{"l2tp-edge"}, "outboundTag": "warp"},
+			},
+		},
+	}
+	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
+	inbound := runtime["inbounds"].([]any)[0].(map[string]any)
+	if inbound["protocol"] != "tunnel" || inbound["tag"] != "__rebecca_l2tp_tunnel__l2tp-edge" {
+		t.Fatalf("unexpected runtime inbound: %#v", inbound)
+	}
+	rule := runtime["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	tags := rule["inboundTag"].([]any)
+	if len(tags) != 1 || tags[0] != "__rebecca_l2tp_tunnel__l2tp-edge" {
+		t.Fatalf("unexpected translated rule: %#v", rule)
+	}
+}
+
 func hasAPIInbound(payload map[string]any) bool {
 	for _, inbound := range payload["inbounds"].([]any) {
 		if inbound.(map[string]any)["tag"] == "API_INBOUND" {

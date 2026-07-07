@@ -1055,7 +1055,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				: undefined,
 		[inboundOptions, host],
 	);
-	const isOVInbound = selectedInbound?.protocol === "openvpn";
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp";
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1198,7 +1200,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															rightElement={<DynamicTokensPopover />}
 														/>
 													</FormControl>
-													{!isOVInbound && (
+													{!isVirtualTunnelInbound && (
 														<FormControl>
 															<FormLabel>{t("hostsDialog.port")}</FormLabel>
 															<NumericInput
@@ -1235,7 +1237,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														}
 													/>
 												)}
-												{!isOVInbound && (
+												{!isVirtualTunnelInbound && (
 													<FormControl>
 														<FormLabel>{t("hostsDialog.path")}</FormLabel>
 														<Input
@@ -1251,7 +1253,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardBody>
 									</Card>
 
-									{!isOVInbound && (
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1377,7 +1379,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 									</Card>
 									)}
 
-									{!isOVInbound && (
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1575,7 +1577,9 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 			inboundOptions.find((option) => option.value === formState.inboundTag),
 		[inboundOptions, formState.inboundTag],
 	);
-	const isOVInbound = selectedInbound?.protocol === "openvpn";
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp";
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1700,7 +1704,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								}
 							/>
 						)}
-						{!isOVInbound && (
+						{!isVirtualTunnelInbound && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<FormControl>
 									<FormLabel>{t("hostsDialog.port")}</FormLabel>
@@ -1735,7 +1739,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								</FormControl>
 							</SimpleGrid>
 						)}
-						{!isOVInbound && (
+						{!isVirtualTunnelInbound && (
 							<FormControl>
 								<FormLabel>{t("hostsDialog.path")}</FormLabel>
 								<Input
@@ -1749,7 +1753,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								/>
 							</FormControl>
 						)}
-						{!isOVInbound && (
+						{!isVirtualTunnelInbound && (
 							<FormControl>
 								<FormLabel>{t("hostsDialog.host")}</FormLabel>
 								<MultiValueAutocomplete
@@ -1768,7 +1772,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								/>
 							</FormControl>
 						)}
-						{!isOVInbound && (hasMultipleRotationValues(formState.sni) ||
+						{!isVirtualTunnelInbound && (hasMultipleRotationValues(formState.sni) ||
 							hasMultipleRotationValues(formState.host)) && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								{hasMultipleRotationValues(formState.sni) && (

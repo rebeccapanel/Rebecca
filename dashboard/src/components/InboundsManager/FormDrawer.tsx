@@ -458,10 +458,14 @@ export const InboundFormModal: FC<Props> = ({
 		"";
 	const tagValue = useWatch({ control, name: "tag" }) || watch("tag") || "";
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
+	const ovTunnelPortValue =
+		useWatch({ control, name: "ovTunnelPort" }) || watch("ovTunnelPort") || "";
+	const autoOVTunnelPortRef = useRef("");
 	const supportsStreamSettings =
 		currentProtocol !== "http" &&
 		currentProtocol !== "socks" &&
-		currentProtocol !== "openvpn";
+		currentProtocol !== "openvpn" &&
+		currentProtocol !== "l2tp";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
 	const defaultVlessAuthLabels = useMemo(
@@ -593,7 +597,27 @@ export const InboundFormModal: FC<Props> = ({
 
 	useEffect(() => {
 		if (currentProtocol !== "openvpn") {
+			autoOVTunnelPortRef.current = "";
 			return;
+		}
+		const port = Number(portValue);
+		if (!Number.isInteger(port) || port < 1 || port >= 65535) {
+			return;
+		}
+		const nextTunnelPort = String(port + 1);
+		const currentTunnelPort = String(ovTunnelPortValue || "").trim();
+		if (
+			currentTunnelPort &&
+			currentTunnelPort !== autoOVTunnelPortRef.current
+		) {
+			return;
+		}
+		if (currentTunnelPort !== nextTunnelPort) {
+			autoOVTunnelPortRef.current = nextTunnelPort;
+			form.setValue("ovTunnelPort", nextTunnelPort, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
 		}
 		if (streamSecurity !== "none") {
 			form.setValue("streamSecurity", "none", {
@@ -613,7 +637,15 @@ export const InboundFormModal: FC<Props> = ({
 				shouldValidate: true,
 			});
 		}
-	}, [currentProtocol, form, sniffingEnabled, streamNetwork, streamSecurity]);
+	}, [
+		currentProtocol,
+		form,
+		ovTunnelPortValue,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+	]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -1940,6 +1972,121 @@ export const InboundFormModal: FC<Props> = ({
 														{...register("ovExtraClientConfig")}
 													/>
 												</FormControl>
+											</Stack>
+										)}
+										{currentProtocol === "l2tp" && (
+											<Stack spacing={3}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.tunnelPort",
+															"Tunnel port",
+															"inbounds.l2tp.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public L2TP port.",
+														)}
+														<Input
+															{...register("l2tpTunnelPort")}
+															placeholder="51200"
+														/>
+														{fieldValidationErrors.l2tpTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpIPv4Pool,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.l2tp.help.ipv4Pool",
+															"Private IPv4 range assigned to L2TP users. Each user receives a deterministic address from this pool.",
+														)}
+														<Input
+															{...register("l2tpIPv4Pool")}
+															placeholder="10.67.0.0/16"
+														/>
+														{fieldValidationErrors.l2tpIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.l2tpIPSecPSK)}
+												>
+													{ovLabel(
+														"inbounds.l2tp.ipsecPsk",
+														"IPsec pre-shared key",
+														"inbounds.l2tp.help.ipsecPsk",
+														"Shared IPsec secret used by clients before L2TP username/password authentication.",
+													)}
+													<Input
+														{...register("l2tpIPSecPSK")}
+														placeholder="change-this-secret"
+													/>
+													{fieldValidationErrors.l2tpIPSecPSK && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.l2tpIPSecPSK}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl>
+													{ovLabel(
+														"inbounds.l2tp.dns",
+														"DNS servers",
+														"inbounds.l2tp.help.dns",
+														"DNS resolvers pushed to L2TP clients, one IPv4 address per line.",
+													)}
+													<Textarea
+														rows={3}
+														{...register("l2tpDNSServers")}
+														placeholder={"1.1.1.1\n8.8.8.8"}
+													/>
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.redirectGateway",
+															"Redirect gateway",
+															"inbounds.l2tp.help.redirectGateway",
+															"Route all client traffic through the L2TP/IPsec VPN.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpRedirectGateway")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.tproxy",
+															"Enable TProxy automation",
+															"inbounds.l2tp.help.tproxy",
+															"Create nftables and policy routing rules that forward L2TP client traffic into the generated Xray tunnel inbound.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.accounting",
+															"Enable accounting",
+															"inbounds.l2tp.help.accounting",
+															"Record L2TP session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
 											</Stack>
 										)}
 									</Stack>
