@@ -354,7 +354,6 @@ export const protocolOptions: Protocol[] = [
 	"hysteria",
 	"openvpn",
 	"l2tp",
-	"pptp",
 	"http",
 	"socks",
 ];
