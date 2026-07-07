@@ -81,7 +81,7 @@ func servePHPMyAdminStatic(w http.ResponseWriter, r *http.Request, fullPath stri
 }
 
 func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, status phpMyAdminResponse, scriptRel string, scriptPath string) error {
-	credentials, err := parsePHPMyAdminCredentials(s.cfg.Database)
+	credentials, err := s.phpMyAdminCredentials(r.Context())
 	if err != nil {
 		return err
 	}
@@ -162,6 +162,7 @@ func phpMyAdminFastCGIParams(r *http.Request, scriptRel string, scriptPath strin
 		"SERVER_PROTOCOL":   r.Proto,
 		"REMOTE_ADDR":       remoteHost(r.RemoteAddr),
 		"HTTPS":             "off",
+		"PHP_VALUE":         strings.Join(phpMyAdminUploadPHPDirectives(), "\n"),
 	}
 	if requestScheme(r) == "https" {
 		params["HTTPS"] = "on"
@@ -183,6 +184,16 @@ func phpMyAdminFastCGIParams(r *http.Request, scriptRel string, scriptPath strin
 		params[cgiName] = strings.Join(values, ", ")
 	}
 	return params
+}
+
+func phpMyAdminUploadPHPDirectives() []string {
+	return []string{
+		"upload_max_filesize=4096M",
+		"post_max_size=4096M",
+		"memory_limit=4096M",
+		"max_execution_time=0",
+		"max_input_time=0",
+	}
 }
 
 func remoteHost(remoteAddr string) string {

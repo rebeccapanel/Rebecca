@@ -78,7 +78,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "services", []string{"id", "name", "description", "flow", "used_traffic", "lifetime_used_traffic", "users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "admins_services", []string{"admin_id", "service_id", "used_traffic", "lifetime_used_traffic", "created_traffic", "data_limit", "users_limit", "traffic_limit_mode", "show_user_traffic", "delete_user_usage_limit", "deleted_users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "service_hosts", []string{"service_id", "host_id", "sort", "created_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "settings", []string{"dashboard_path", "record_node_usage", "phpmyadmin_enabled", "phpmyadmin_port", "phpmyadmin_path", "phpmyadmin_public_url"})
+	assertTableColumns(t, ctx, db, "sqlite", "settings", []string{"dashboard_path", "record_node_usage", "phpmyadmin_enabled", "phpmyadmin_port", "phpmyadmin_path", "phpmyadmin_public_url", "phpmyadmin_login_mode", "phpmyadmin_username", "phpmyadmin_password"})
 	assertTableColumns(t, ctx, db, "sqlite", "subscription_settings", []string{"subscription_profile_title", "subscription_support_url", "subscription_aliases", "subscription_path", "subscription_ports"})
 	assertTableColumns(t, ctx, db, "sqlite", "subscription_domains", []string{"domain", "admin_id", "email", "provider", "alt_names"})
 	assertTableColumns(t, ctx, db, "sqlite", "telegram_settings", []string{"use_telegram", "event_toggles", "backup_enabled", "backup_scope", "backup_interval_value", "backup_chat_id", "backup_chat_is_forum", "last_sent_at", "last_error"})

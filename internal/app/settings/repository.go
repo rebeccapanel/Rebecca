@@ -17,6 +17,7 @@ const (
 	defaultDashboardPath               = "/dashboard/"
 	defaultPHPMyAdminPort              = 8080
 	defaultPHPMyAdminPath              = "/phpmyadmin/"
+	defaultPHPMyAdminLoginMode         = "rebecca"
 	defaultSubscriptionProfileTitle    = "Subscription"
 	defaultSubscriptionSupportURL      = "https://t.me/"
 	defaultSubscriptionUpdateInterval  = "12"
@@ -123,6 +124,12 @@ func (r Repository) UpdateRuntimeSettings(ctx context.Context, raw map[string]js
 			add(key, normalizeURLPath(rawStringDefault(value, defaultPHPMyAdminPath), defaultPHPMyAdminPath))
 		case "phpmyadmin_public_url":
 			add(key, strings.TrimSpace(rawStringDefault(value, "")))
+		case "phpmyadmin_login_mode":
+			add(key, normalizePHPMyAdminLoginMode(rawStringDefault(value, defaultPHPMyAdminLoginMode)))
+		case "phpmyadmin_username":
+			add(key, strings.TrimSpace(rawStringDefault(value, "")))
+		case "phpmyadmin_password":
+			add(key, rawStringDefault(value, ""))
 		case "record_node_usage", "record_node_user_usages", "subscription_read_only", "api_docs_enabled":
 			add(key, rawBoolDefault(value, false))
 		case "phpmyadmin_enabled":
@@ -294,7 +301,10 @@ SELECT
 	COALESCE(phpmyadmin_enabled, 0),
 	COALESCE(phpmyadmin_port, 8080),
 	COALESCE(phpmyadmin_path, '/phpmyadmin/'),
-	COALESCE(phpmyadmin_public_url, '')
+	COALESCE(phpmyadmin_public_url, ''),
+	COALESCE(phpmyadmin_login_mode, 'rebecca'),
+	COALESCE(phpmyadmin_username, ''),
+	COALESCE(phpmyadmin_password, '')
 FROM settings
 WHERE id = 1
 LIMIT 1`).Scan(
@@ -307,6 +317,9 @@ LIMIT 1`).Scan(
 		&result.PHPMyAdminPort,
 		&result.PHPMyAdminPath,
 		&result.PHPMyAdminPublicURL,
+		&result.PHPMyAdminLoginMode,
+		&result.PHPMyAdminUsername,
+		&result.PHPMyAdminPassword,
 	)
 	if err != nil {
 		return RuntimeSettings{}, err
@@ -314,6 +327,7 @@ LIMIT 1`).Scan(
 	result.DashboardPath = normalizeDashboardPath(result.DashboardPath)
 	result.PHPMyAdminPort = normalizePort(result.PHPMyAdminPort, defaultPHPMyAdminPort)
 	result.PHPMyAdminPath = normalizeURLPath(result.PHPMyAdminPath, defaultPHPMyAdminPath)
+	result.PHPMyAdminLoginMode = normalizePHPMyAdminLoginMode(result.PHPMyAdminLoginMode)
 	return result, nil
 }
 
@@ -337,9 +351,12 @@ INSERT INTO settings (
 	phpmyadmin_port,
 	phpmyadmin_path,
 	phpmyadmin_public_url,
+	phpmyadmin_login_mode,
+	phpmyadmin_username,
+	phpmyadmin_password,
 	created_at,
 	updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		1,
 		defaultDashboardPath,
 		true,
@@ -349,6 +366,9 @@ INSERT INTO settings (
 		false,
 		defaultPHPMyAdminPort,
 		defaultPHPMyAdminPath,
+		"",
+		defaultPHPMyAdminLoginMode,
+		"",
 		"",
 		dbTime(time.Now().UTC()),
 		dbTime(time.Now().UTC()),

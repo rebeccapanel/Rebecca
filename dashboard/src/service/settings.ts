@@ -232,6 +232,9 @@ export interface RuntimeSettingsResponse {
 	phpmyadmin_port: number;
 	phpmyadmin_path: string;
 	phpmyadmin_public_url: string;
+	phpmyadmin_login_mode: "rebecca" | "custom";
+	phpmyadmin_username: string;
+	phpmyadmin_password: string;
 }
 
 export type RuntimeSettingsUpdatePayload = Partial<RuntimeSettingsResponse>;
@@ -258,6 +261,7 @@ export interface PHPMyAdminStatus {
 	public_url: string;
 	external_url: string;
 	embed_url: string;
+	login_mode: "rebecca" | "custom";
 }
 
 export interface PHPMyAdminActionResponse {

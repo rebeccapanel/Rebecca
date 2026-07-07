@@ -75,6 +75,15 @@ func normalizePort(value int, fallback int) int {
 	return value
 }
 
+func normalizePHPMyAdminLoginMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "custom":
+		return "custom"
+	default:
+		return defaultPHPMyAdminLoginMode
+	}
+}
+
 func normalizeAlias(alias string) string {
 	cleaned := strings.TrimSpace(alias)
 	if cleaned == "" {

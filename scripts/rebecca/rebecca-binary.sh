@@ -1481,6 +1481,25 @@ install_phpmyadmin_blueberry_theme() {
     rm -f "$temp_zip"
 }
 
+configure_phpmyadmin_upload_limits() {
+    local ini_content
+    ini_content="upload_max_filesize=4096M
+post_max_size=4096M
+memory_limit=4096M
+max_execution_time=0
+max_input_time=0"
+    local wrote=0
+    local dir
+    for dir in /etc/php/*/fpm/conf.d /etc/php/*/cli/conf.d; do
+        [ -d "$dir" ] || continue
+        printf "%s\n" "$ini_content" > "$dir/99-rebecca-phpmyadmin-upload.ini" || true
+        wrote=1
+    done
+    if [ "$wrote" = "1" ]; then
+        systemctl reload php*-fpm >/dev/null 2>&1 || systemctl restart php*-fpm >/dev/null 2>&1 || true
+    fi
+}
+
 phpmyadmin_nginx_config_path() {
     printf "/etc/nginx/sites-available/%s-phpmyadmin" "$APP_NAME"
 }
@@ -1502,6 +1521,7 @@ enable_host_phpmyadmin() {
         install_package "$package"
     done
     install_phpmyadmin_blueberry_theme
+    configure_phpmyadmin_upload_limits
     systemctl enable --now php*-fpm >/dev/null 2>&1 || true
 
     path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"

@@ -244,6 +244,9 @@ const defaultRuntimeSettings: RuntimeSettingsResponse = {
 	phpmyadmin_port: 8080,
 	phpmyadmin_path: "/phpmyadmin/",
 	phpmyadmin_public_url: "",
+	phpmyadmin_login_mode: "rebecca",
+	phpmyadmin_username: "",
+	phpmyadmin_password: "",
 };
 
 const flattenEventToggleValues = (
@@ -2301,6 +2304,96 @@ export const IntegrationSettingsPage = () => {
 															"phpMyAdmin opens inside its own panel page and uses the panel database credentials.",
 														)}
 													</FormHelperText>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t(
+															"phpmyadmin.loginMode",
+															"Login credentials",
+														)}
+													</FormLabel>
+													<Select
+														value={runtimeSettingsForm.phpmyadmin_login_mode}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_login_mode: event.target.value as
+																	| "rebecca"
+																	| "custom",
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													>
+														<option value="rebecca">
+															{t(
+																"phpmyadmin.loginModeRebecca",
+																"Login with Rebecca database account",
+															)}
+														</option>
+														<option value="custom">
+															{t(
+																"phpmyadmin.loginModeCustom",
+																"Login with custom username password",
+															)}
+														</option>
+													</Select>
+													<FormHelperText>
+														{t(
+															"phpmyadmin.loginModeHint",
+															"Custom credentials are used only for embedded phpMyAdmin login.",
+														)}
+													</FormHelperText>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.username", "Username")}
+													</FormLabel>
+													<Input
+														value={runtimeSettingsForm.phpmyadmin_username}
+														placeholder="root"
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_username: event.target.value,
+															}))
+														}
+													/>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.password", "Password")}
+													</FormLabel>
+													<Input
+														type="password"
+														value={runtimeSettingsForm.phpmyadmin_password}
+														placeholder={t(
+															"phpmyadmin.passwordPlaceholder",
+															"Database password",
+														)}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_password: event.target.value,
+															}))
+														}
+													/>
 												</FormControl>
 											</SimpleGrid>
 										</Box>

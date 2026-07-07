@@ -18,6 +18,9 @@ type RuntimeSettings struct {
 	PHPMyAdminPort       int    `json:"phpmyadmin_port"`
 	PHPMyAdminPath       string `json:"phpmyadmin_path"`
 	PHPMyAdminPublicURL  string `json:"phpmyadmin_public_url"`
+	PHPMyAdminLoginMode  string `json:"phpmyadmin_login_mode"`
+	PHPMyAdminUsername   string `json:"phpmyadmin_username"`
+	PHPMyAdminPassword   string `json:"phpmyadmin_password"`
 }
 
 type RuntimeSettingsUpdate struct {
@@ -30,6 +33,9 @@ type RuntimeSettingsUpdate struct {
 	PHPMyAdminPort       *int    `json:"phpmyadmin_port,omitempty"`
 	PHPMyAdminPath       *string `json:"phpmyadmin_path,omitempty"`
 	PHPMyAdminPublicURL  *string `json:"phpmyadmin_public_url,omitempty"`
+	PHPMyAdminLoginMode  *string `json:"phpmyadmin_login_mode,omitempty"`
+	PHPMyAdminUsername   *string `json:"phpmyadmin_username,omitempty"`
+	PHPMyAdminPassword   *string `json:"phpmyadmin_password,omitempty"`
 }
 
 type SubscriptionSettings struct {
