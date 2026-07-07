@@ -459,7 +459,8 @@ type ServiceActionConfirm =
 				| "bulk-disable"
 				| "bulk-delete"
 				| "bulk-reset"
-				| "bulk-update";
+				| "bulk-update"
+				| "bulk-reboot";
 			nodes: NodeType[];
 			count: number;
 			hostImpact?: NodeHostImpact;
@@ -1146,7 +1147,8 @@ export const NodesPage: FC = () => {
 			serviceActionConfirm.type === "bulk-disable" ||
 			serviceActionConfirm.type === "bulk-delete" ||
 			serviceActionConfirm.type === "bulk-reset" ||
-			serviceActionConfirm.type === "bulk-update"
+			serviceActionConfirm.type === "bulk-update" ||
+			serviceActionConfirm.type === "bulk-reboot"
 		) {
 			const actionType = serviceActionConfirm.type;
 			const targetNodes = serviceActionConfirm.nodes.filter(
@@ -1197,6 +1199,11 @@ export const NodesPage: FC = () => {
 								body: {
 									channel: getNodeUpdateChannel(node, nodeUpdateChannel),
 								},
+							});
+							break;
+						case "bulk-reboot":
+							await apiFetch(`/node/${node.id}/host/reboot`, {
+								method: "POST",
 							});
 							break;
 						default:
@@ -1684,7 +1691,8 @@ export const NodesPage: FC = () => {
 			| "bulk-disable"
 			| "bulk-delete"
 			| "bulk-reset"
-			| "bulk-update",
+			| "bulk-update"
+			| "bulk-reboot",
 		nodesForAction: NodeType[],
 	) => {
 		if (nodesForAction.length === 0) {
@@ -1790,6 +1798,8 @@ export const NodesPage: FC = () => {
 									? t("nodes.bulkResetTraffic", "Reset selected traffic")
 									: serviceActionConfirm?.type === "bulk-update"
 										? t("nodes.bulkUpdateService", "Update selected services")
+										: serviceActionConfirm?.type === "bulk-reboot"
+											? t("nodes.bulkRebootHost", "Reboot selected servers")
 					: "";
 
 	const serviceActionConfirmMessage =
@@ -1860,6 +1870,12 @@ export const NodesPage: FC = () => {
 												"Update Rebecca-node service on {{count}} selected binary nodes?",
 												{ count: serviceActionConfirm.count },
 											)
+										: serviceActionConfirm?.type === "bulk-reboot"
+											? t(
+													"nodes.bulkRebootHostConfirm",
+													"Reboot {{count}} selected node servers now? All active connections on those nodes will disconnect until the servers come back online.",
+													{ count: serviceActionConfirm.count },
+												)
 					: "";
 
 	const serviceActionConfirmLabel =
@@ -1881,6 +1897,8 @@ export const NodesPage: FC = () => {
 								? t("nodes.resetUsage", "Reset usage")
 								: serviceActionConfirm?.type === "bulk-update"
 									? t("nodes.updateServiceAction", "Update node service")
+									: serviceActionConfirm?.type === "bulk-reboot"
+										? t("nodes.rebootHostAction", "Reboot server")
 				: t("nodes.updateServiceAction", "Update node service");
 
 	const serviceActionConfirmLoading =
@@ -3001,6 +3019,23 @@ export const NodesPage: FC = () => {
 						</Button>
 						<Button
 							size="sm"
+							variant="outline"
+							leftIcon={<ArrowPathIconStyled />}
+							onClick={() =>
+								openBulkActionConfirm(
+									"bulk-reboot",
+									selectedConnectedBinaryNodes(),
+								)
+							}
+							isDisabled={
+								Boolean(bulkNodeActionLoading) ||
+								selectedConnectedBinaryNodes().length === 0
+							}
+						>
+							{t("nodes.rebootHostAction", "Reboot server")}
+						</Button>
+						<Button
+							size="sm"
 							colorScheme="red"
 							variant="outline"
 							leftIcon={<DeleteIconStyled />}
@@ -3057,7 +3092,8 @@ export const NodesPage: FC = () => {
 						: serviceActionConfirm?.type === "reboot"
 							? "red"
 						: serviceActionConfirm?.type === "bulk-delete" ||
-								serviceActionConfirm?.type === "bulk-reset"
+								serviceActionConfirm?.type === "bulk-reset" ||
+								serviceActionConfirm?.type === "bulk-reboot"
 							? "red"
 							: "blue"
 				}
