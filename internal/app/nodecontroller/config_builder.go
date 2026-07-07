@@ -55,7 +55,6 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	}
 	raw = mergeNodeVirtualTunnelConfig(raw, node.XrayConfig)
 	raw = xrayconfig.TranslateVirtualTunnelInboundsForRuntime(raw)
-	applyRuntimeAPI(raw, node.APIPort)
 	if err := inlineTLSCertificateFiles(raw); err != nil {
 		return "", err
 	}
