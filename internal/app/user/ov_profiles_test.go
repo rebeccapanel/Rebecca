@@ -18,10 +18,17 @@ func TestOVSubscriptionPathUsesHostTag(t *testing.T) {
 	}
 }
 
-func TestOVHostTagIncludesHostID(t *testing.T) {
+func TestOVHostTagUsesHostTagWithoutID(t *testing.T) {
 	host := Host{ID: 42, InboundTag: "openvpn-udp", Remark: "Germany Edge", Address: "vpn.example.com"}
-	if got := OVHostTag(host, "Germany Edge", "vpn.example.com"); got != "Germany-Edge-42" {
+	if got := OVHostTag(host, "Germany Edge", "vpn.example.com"); got != "Germany-Edge" {
 		t.Fatalf("host tag = %q", got)
+	}
+}
+
+func TestOVHostTagMatchesLegacyIDTag(t *testing.T) {
+	host := Host{ID: 42, InboundTag: "openvpn-udp", Remark: "Germany Edge", Address: "vpn.example.com"}
+	if !OVHostTagMatches(host, "Germany Edge", "vpn.example.com", OVHostTag(host, "Germany Edge", "vpn.example.com"), "Germany-Edge-42") {
+		t.Fatal("expected legacy id-suffixed host tag to match")
 	}
 }
 

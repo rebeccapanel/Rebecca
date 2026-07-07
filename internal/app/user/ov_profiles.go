@@ -77,7 +77,7 @@ func (s Service) OVProfiles(ctx context.Context, userID int64, hostTag string, i
 			continue
 		}
 		tag := OVHostTag(host, remark, address)
-		if hostTag != "" && tag != hostTag {
+		if hostTag != "" && !OVHostTagMatches(host, remark, address, tag, hostTag) {
 			continue
 		}
 		profile := OVProfile{
@@ -258,15 +258,36 @@ func formatOVRemote(address string) string {
 }
 
 func OVHostTag(host Host, remark string, address string) string {
-	tag := OVSafePathComponent(firstNonEmptyString(host.Remark, remark, host.Address, address, host.InboundTag, "host"))
+	return OVSafePathComponent(firstNonEmptyString(host.Remark, remark, host.Address, address, host.InboundTag, "host"))
+}
+
+func OVHostTagMatches(host Host, remark string, address string, generated string, requested string) bool {
+	requested = OVSafePathComponent(strings.TrimSuffix(strings.TrimSpace(requested), ".ovpn"))
+	if requested == "" {
+		return true
+	}
+	candidates := []string{
+		generated,
+		host.Remark,
+		remark,
+		host.Address,
+		address,
+		host.InboundTag,
+	}
 	if host.ID > 0 {
-		return fmt.Sprintf("%s-%d", tag, host.ID)
+		for _, candidate := range append([]string{}, candidates...) {
+			safe := OVSafePathComponent(candidate)
+			if safe != "" {
+				candidates = append(candidates, fmt.Sprintf("%s-%d", safe, host.ID))
+			}
+		}
 	}
-	fallback := OVSafePathComponent(host.InboundTag)
-	if fallback != "" && fallback != tag {
-		return tag + "-" + fallback
+	for _, candidate := range candidates {
+		if OVSafePathComponent(candidate) == requested {
+			return true
+		}
 	}
-	return tag
+	return false
 }
 
 func OVProfileFilename(username string, hostTag string) string {
@@ -334,7 +355,19 @@ func OVPasswordFromCredentialKey(credentialKey string) (string, error) {
 	return keyToPassword(key, "openvpn"), nil
 }
 
+func L2TPPasswordFromCredentialKey(credentialKey string) (string, error) {
+	key, err := normalizeCredentialKey(credentialKey)
+	if err != nil {
+		return "", err
+	}
+	return keyToPassword(key, "l2tp"), nil
+}
+
 func OVIPv4AddressForUser(userID int64, pool string) string {
+	return OVIPv4ForUser(userID, pool)
+}
+
+func L2TPIPv4AddressForUser(userID int64, pool string) string {
 	return OVIPv4ForUser(userID, pool)
 }
 

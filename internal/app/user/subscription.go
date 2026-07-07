@@ -134,8 +134,26 @@ func wantsSubscriptionHTML(req SubscriptionRenderRequest) bool {
 	return false
 }
 
-func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderRequest) (UserDetail, error) {
-	return s.resolveSubscriptionUser(ctx, req)
+func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderRequest) (map[string]any, error) {
+	user, err := s.resolveSubscriptionUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	ovLinks, err := s.OVDownloadLinks(ctx, user, req.URL)
+	if err != nil {
+		return nil, err
+	}
+	l2tpItems, err := s.L2TPInfos(ctx, user, req.URL)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"user": user,
+		"ov": map[string]any{
+			"downloads": ovLinks,
+		},
+		"l2tp": l2tpItems,
+	}, nil
 }
 
 func (s Service) SubscriptionUsage(ctx context.Context, req SubscriptionRenderRequest) (map[string]any, error) {
