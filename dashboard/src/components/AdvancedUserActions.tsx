@@ -8,6 +8,7 @@ import {
 	FormHelperText,
 	FormLabel,
 	HStack,
+	IconButton,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -17,6 +18,7 @@ import {
 	ModalOverlay,
 	Stack,
 	Text,
+	Tooltip,
 	useBreakpointValue,
 	useDisclosure,
 	useToast,
@@ -54,7 +56,12 @@ type ServiceScopePayload = Partial<
 
 type OwnerSelection = "my_users" | "all_users" | `admin:${string}`;
 
-const AdvancedUserActions = () => {
+type AdvancedUserActionsProps = {
+	/** Render the trigger as a round icon button for tight toolbars. */
+	compact?: boolean;
+};
+
+const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 	const { t } = useTranslation();
 	const toast = useToast();
 	const { performBulkUserAction } = useDashboard();
@@ -370,19 +377,34 @@ const AdvancedUserActions = () => {
 
 	return (
 		<>
-			<Button
-				leftIcon={<SparklesIcon className="w-4 h-4" />}
-				onClick={onOpen}
-				size={isMobile ? "sm" : "md"}
-				variant="outline"
-				h={isMobile ? "36px" : undefined}
-				minW={isMobile ? "auto" : "8.5rem"}
-				fontSize={isMobile ? "xs" : "sm"}
-				fontWeight="semibold"
-				whiteSpace="nowrap"
-			>
-				{t("filters.advancedActions.button", "Advanced actions")}
-			</Button>
+			{compact ? (
+				<Tooltip label={t("filters.advancedActions.button", "Advanced actions")}>
+					<IconButton
+						aria-label={t("filters.advancedActions.button", "Advanced actions")}
+						icon={<SparklesIcon className="w-4 h-4" />}
+						onClick={onOpen}
+						variant="outline"
+						borderRadius="full"
+						w="40px"
+						h="40px"
+						flexShrink={0}
+					/>
+				</Tooltip>
+			) : (
+				<Button
+					leftIcon={<SparklesIcon className="w-4 h-4" />}
+					onClick={onOpen}
+					size={isMobile ? "sm" : "md"}
+					variant="outline"
+					h={isMobile ? "36px" : undefined}
+					minW={isMobile ? "auto" : "8.5rem"}
+					fontSize={isMobile ? "xs" : "sm"}
+					fontWeight="semibold"
+					whiteSpace="nowrap"
+				>
+					{t("filters.advancedActions.button", "Advanced actions")}
+				</Button>
+			)}
 
 			<Modal isOpen={isOpen} onClose={onClose} size="lg">
 				<ModalOverlay />

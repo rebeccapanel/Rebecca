@@ -40,13 +40,7 @@ import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
 import type React from "react";
-import {
-	type CSSProperties,
-	type FC,
-	useEffect,
-	useMemo,
-	useState,
-} from "react";
+import { type FC, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminStatus, UserPermissionToggle } from "types/Admin";
 import { isUserManagementLocked } from "utils/adminTraffic";
@@ -64,53 +58,16 @@ const ClearIcon = chakra(XMarkIcon, iconProps);
 const PlusIconStyled = chakra(PlusIcon, iconProps);
 const HelpIcon = chakra(QuestionMarkCircleIcon, iconProps);
 
-type QuickFilter = {
-	key: string;
-	labelKey: string;
-	fallback: string;
-	color: string;
-};
-
-/** One-tap status chips; each key maps onto an existing advanced filter. */
-const QUICK_FILTERS: QuickFilter[] = [
-	{
-		key: "online",
-		labelKey: "status.online",
-		fallback: "Online",
-		color: "#22c55e",
-	},
-	{
-		key: "on_hold",
-		labelKey: "status.on_hold",
-		fallback: "On hold",
-		color: "#a855f7",
-	},
-	{
-		key: "expired",
-		labelKey: "status.expired",
-		fallback: "Expired",
-		color: "#f97316",
-	},
-];
-
-const QUICK_FILTER_KEYS = new Set(QUICK_FILTERS.map((chip) => chip.key));
-
 const formatChipCount = (value: number, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value);
 
 /**
- * Users-only search & filter bar: sticky, mobile-first, with one-tap quick
- * filter chips. Intentionally separate from the shared <Filters /> so the
+ * Users-only search & filter bar: mobile-first search + advanced filters
+ * popover. Intentionally separate from the shared <Filters /> so the
  * Admins page keeps its own untouched toolbar.
  */
 export const UsersFilterBar: FC = () => {
-	const {
-		loading,
-		filters,
-		onFilterChange,
-		onCreateUser,
-		users: usersResponse,
-	} = useDashboard();
+	const { loading, filters, onFilterChange, onCreateUser } = useDashboard();
 	const { t, i18n } = useTranslation();
 	const locale = i18n.language || "en";
 	const [search, setSearch] = useState("");
@@ -234,298 +191,210 @@ export const UsersFilterBar: FC = () => {
 
 	const isMobile = useBreakpointValue({ base: true, sm: false }) ?? false;
 
-	const statusBreakdown = usersResponse.status_breakdown ?? {};
-	const quickFilterCounts: Record<string, number | undefined> = {
-		online: usersResponse.online_total ?? undefined,
-		on_hold: statusBreakdown.on_hold,
-		expired: statusBreakdown.expired,
-	};
-
-	// Tags for active filters without a dedicated quick chip (plus scope tags).
-	const extraFilterTags = activeFilters.filter(
-		(filterKey) => !QUICK_FILTER_KEYS.has(filterKey),
-	);
 	const activeFilterTotal =
 		activeFilters.length + (serviceId ? 1 : 0) + (ownerFilter ? 1 : 0);
 	const hasClearableFilters = activeFilterTotal > 0;
 
 	return (
-		<Box w="full" minW={0}>
-			<Flex align="center" gap={2} w="full" minW={0}>
-				<InputGroup
-					flex="1 1 auto"
-					minW={0}
-					// Capped so the search field stays balanced inside the header
-					// card instead of swallowing the whole row on wide screens.
-					maxW={{ base: "100%", sm: "340px" }}
-				>
-					<InputLeftElement pointerEvents="none" h="full">
-						<SearchIcon color="panel.textMuted" />
-					</InputLeftElement>
-					<Input
-						className="rb-users-search-input"
-						placeholder={t("search")}
-						value={search}
-						onChange={onSearchChange}
-						borderRadius="full"
-						borderColor="panel.border"
-						bg="panel.elevated"
-						_focusVisible={{
-							borderColor: "primary.400",
-							bg: "panel.surface",
-						}}
-					/>
-					<InputRightElement w="auto" pe={1.5} h="full">
-						<HStack spacing={0.5}>
-							{loading && <Spinner size="xs" color="panel.textMuted" />}
-							{filters.search && filters.search.length > 0 && (
-								<IconButton
-									onClick={clearSearch}
-									aria-label={t("usersFilter.clearSearch", "Clear search")}
-									size="xs"
-									variant="ghost"
-									borderRadius="full"
-								>
-									<ClearIcon />
-								</IconButton>
-							)}
-							<Tooltip
-								label={t(
-									"users.searchHelp",
-									"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
-								)}
-								placement="top"
-								hasArrow
-							>
-								<Box
-									display="inline-flex"
-									alignItems="center"
-									color="panel.textMuted"
-									px={1}
-								>
-									<HelpIcon />
-								</Box>
-							</Tooltip>
-						</HStack>
-					</InputRightElement>
-				</InputGroup>
-
-				<Popover placement="bottom-end">
-					<PopoverTrigger>
-						<Box position="relative" flexShrink={0}>
+		<Flex align="center" gap={2} w="full" minW={0}>
+			<InputGroup
+				flex="1 1 auto"
+				minW={0}
+				// Capped so the search field stays balanced inside the header
+				// card instead of swallowing the whole row on wide screens.
+				maxW={{ base: "100%", sm: "340px" }}
+			>
+				<InputLeftElement pointerEvents="none" h="full">
+					<SearchIcon color="panel.textMuted" />
+				</InputLeftElement>
+				<Input
+					className="rb-users-search-input"
+					placeholder={t("search")}
+					value={search}
+					onChange={onSearchChange}
+					borderRadius="full"
+					borderColor="panel.border"
+					bg="panel.elevated"
+					_focusVisible={{
+						borderColor: "primary.400",
+						bg: "panel.surface",
+					}}
+				/>
+				<InputRightElement w="auto" pe={1.5} h="full">
+					<HStack spacing={0.5}>
+						{loading && <Spinner size="xs" color="panel.textMuted" />}
+						{filters.search && filters.search.length > 0 && (
 							<IconButton
-								aria-label={t("filters.advancedButton", "Filters")}
-								icon={<FilterIcon />}
-								variant="outline"
+								onClick={clearSearch}
+								aria-label={t("usersFilter.clearSearch", "Clear search")}
+								size="xs"
+								variant="ghost"
 								borderRadius="full"
-								w="40px"
-								h="40px"
-							/>
-							{hasClearableFilters && (
-								<Badge
-									className="rb-users-filter-badge"
-									colorScheme="primary"
-									variant="solid"
-									borderRadius="full"
-									position="absolute"
-									top="-4px"
-									insetInlineEnd="-4px"
-									fontSize="0.6rem"
-									px={1.5}
-									pointerEvents="none"
-								>
-									{formatChipCount(activeFilterTotal, locale)}
-								</Badge>
+							>
+								<ClearIcon />
+							</IconButton>
+						)}
+						<Tooltip
+							label={t(
+								"users.searchHelp",
+								"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
 							)}
-						</Box>
-					</PopoverTrigger>
-					<PopoverContent borderColor="light-border" minW="260px">
-						<PopoverArrow />
-						<PopoverCloseButton />
-						<PopoverHeader fontWeight="semibold">
-							{t("filters.advancedTitle", "Advanced filters")}
-						</PopoverHeader>
-						<PopoverBody>
-							<Stack spacing={2}>
-								{ADVANCED_FILTER_OPTIONS.map((option) => (
-									<Checkbox
-										key={option.key}
-										isChecked={activeFilters.includes(option.key)}
-										onChange={() => toggleAdvancedFilter(option.key)}
-									>
-										{getFilterLabel(option.key)}
-									</Checkbox>
-								))}
-							</Stack>
-							<Stack spacing={3} mt={3}>
+							placement="top"
+							hasArrow
+						>
+							<Box
+								display="inline-flex"
+								alignItems="center"
+								color="panel.textMuted"
+								px={1}
+							>
+								<HelpIcon />
+							</Box>
+						</Tooltip>
+					</HStack>
+				</InputRightElement>
+			</InputGroup>
+
+			<Popover placement="bottom-end">
+				<PopoverTrigger>
+					<Box position="relative" flexShrink={0}>
+						<IconButton
+							aria-label={t("filters.advancedButton", "Filters")}
+							icon={<FilterIcon />}
+							variant="outline"
+							borderRadius="full"
+							w="40px"
+							h="40px"
+						/>
+						{hasClearableFilters && (
+							<Badge
+								className="rb-users-filter-badge"
+								colorScheme="primary"
+								variant="solid"
+								borderRadius="full"
+								position="absolute"
+								top="-4px"
+								insetInlineEnd="-4px"
+								fontSize="0.6rem"
+								px={1.5}
+								pointerEvents="none"
+							>
+								{formatChipCount(activeFilterTotal, locale)}
+							</Badge>
+						)}
+					</Box>
+				</PopoverTrigger>
+				<PopoverContent borderColor="light-border" minW="260px">
+					<PopoverArrow />
+					<PopoverCloseButton />
+					<PopoverHeader fontWeight="semibold">
+						{t("filters.advancedTitle", "Advanced filters")}
+					</PopoverHeader>
+					<PopoverBody>
+						<Stack spacing={2}>
+							{ADVANCED_FILTER_OPTIONS.map((option) => (
+								<Checkbox
+									key={option.key}
+									isChecked={activeFilters.includes(option.key)}
+									onChange={() => toggleAdvancedFilter(option.key)}
+								>
+									{getFilterLabel(option.key)}
+								</Checkbox>
+							))}
+						</Stack>
+						<Stack spacing={3} mt={3}>
+							<Box>
+								<Text fontSize="sm" fontWeight="semibold" mb={1}>
+									{t("filters.advanced.serviceLabel", "Service filter")}
+								</Text>
+								<Select
+									value={serviceId ? String(serviceId) : ""}
+									onChange={(event) => handleServiceChange(event.target.value)}
+									size="sm"
+								>
+									<option value="">
+										{t("filters.advanced.serviceAll", "All services")}
+									</option>
+									{serviceOptions.map((service) => (
+										<option key={service.id} value={String(service.id)}>
+											{service.name}
+										</option>
+									))}
+								</Select>
+							</Box>
+							{hasPrivilegedRole && (
 								<Box>
 									<Text fontSize="sm" fontWeight="semibold" mb={1}>
-										{t("filters.advanced.serviceLabel", "Service filter")}
+										{t("filters.advanced.adminLabel", "Admin filter")}
 									</Text>
 									<Select
-										value={serviceId ? String(serviceId) : ""}
-										onChange={(event) =>
-											handleServiceChange(event.target.value)
-										}
+										value={ownerFilter ?? ""}
+										onChange={(event) => handleAdminChange(event.target.value)}
 										size="sm"
 									>
 										<option value="">
-											{t("filters.advanced.serviceAll", "All services")}
+											{t("filters.advanced.adminAll", "All admins")}
 										</option>
-										{serviceOptions.map((service) => (
-											<option key={service.id} value={String(service.id)}>
-												{service.name}
+										<option value={userData.username}>
+											{t("filters.advanced.adminMyUsers", "My users")}
+										</option>
+										{safeAdminOptions.map((record) => (
+											<option key={record.username} value={record.username}>
+												{record.username}
 											</option>
 										))}
 									</Select>
 								</Box>
-								{hasPrivilegedRole && (
-									<Box>
-										<Text fontSize="sm" fontWeight="semibold" mb={1}>
-											{t("filters.advanced.adminLabel", "Admin filter")}
-										</Text>
-										<Select
-											value={ownerFilter ?? ""}
-											onChange={(event) =>
-												handleAdminChange(event.target.value)
-											}
-											size="sm"
-										>
-											<option value="">
-												{t("filters.advanced.adminAll", "All admins")}
-											</option>
-											<option value={userData.username}>
-												{t("filters.advanced.adminMyUsers", "My users")}
-											</option>
-											{safeAdminOptions.map((record) => (
-												<option key={record.username} value={record.username}>
-													{record.username}
-												</option>
-											))}
-										</Select>
-									</Box>
-								)}
-							</Stack>
-							<Button
-								variant="ghost"
-								size="sm"
-								mt={3}
-								w="full"
-								onClick={clearAdvancedFilters}
-								isDisabled={!hasClearableFilters}
-							>
-								{t("filters.advancedClear", "Clear filters")}
-							</Button>
-						</PopoverBody>
-					</PopoverContent>
-				</Popover>
-
-				{/* On desktop the bulk/create actions sit at the end of the row;
-					on mobile they stay compact next to the search field. */}
-				{!isMobile && <Box flex="1 1 auto" minW={0} />}
-				{!isMobile && <AdvancedUserActions />}
-				{showCreateButton &&
-					(isMobile ? (
-						<IconButton
-							className="rb-users-create-btn"
-							aria-label={t("createUser")}
-							icon={<PlusIconStyled w={5} h={5} />}
-							colorScheme="primary"
-							borderRadius="full"
-							w="40px"
-							h="40px"
-							flexShrink={0}
-							onClick={handleCreate}
-						/>
-					) : (
-						<Button
-							className="rb-users-create-btn"
-							colorScheme="primary"
-							leftIcon={<PlusIconStyled />}
-							borderRadius="full"
-							h="40px"
-							px={5}
-							fontSize="sm"
-							fontWeight="semibold"
-							whiteSpace="nowrap"
-							flexShrink={0}
-							onClick={handleCreate}
-						>
-							{t("createUser")}
-						</Button>
-					))}
-			</Flex>
-
-			<Flex className="rb-users-chips" align="center" gap={2} mt={2}>
-				{QUICK_FILTERS.map((chip) => {
-					const isActive = activeFilters.includes(chip.key);
-					const count = quickFilterCounts[chip.key];
-					return (
-						<chakra.button
-							key={chip.key}
-							type="button"
-							className="rb-users-chip"
-							data-active={isActive ? "true" : undefined}
-							style={{ "--rb-chip-color": chip.color } as CSSProperties}
-							onClick={() => toggleAdvancedFilter(chip.key)}
-							aria-pressed={isActive}
-						>
-							<chakra.span className="rb-users-chip-dot" aria-hidden="true" />
-							{t(chip.labelKey, chip.fallback)}
-							{count !== undefined && (
-								<chakra.span className="rb-users-chip-count">
-									{formatChipCount(count, locale)}
-								</chakra.span>
 							)}
-						</chakra.button>
-					);
-				})}
-				{extraFilterTags.map((filterKey) => (
-					<chakra.button
-						key={filterKey}
-						type="button"
-						className="rb-users-chip rb-users-chip--tag"
-						onClick={() => toggleAdvancedFilter(filterKey)}
-						aria-label={t("usersFilter.removeFilter", "Remove filter")}
+						</Stack>
+						<Button
+							variant="ghost"
+							size="sm"
+							mt={3}
+							w="full"
+							onClick={clearAdvancedFilters}
+							isDisabled={!hasClearableFilters}
+						>
+							{t("filters.advancedClear", "Clear filters")}
+						</Button>
+					</PopoverBody>
+				</PopoverContent>
+			</Popover>
+
+			{/* On desktop the bulk/create actions sit at the end of the row;
+				on mobile they stay compact next to the search field. */}
+			{!isMobile && <Box flex="1 1 auto" minW={0} />}
+			<AdvancedUserActions compact={isMobile} />
+			{showCreateButton &&
+				(isMobile ? (
+					<IconButton
+						className="rb-users-create-btn"
+						aria-label={t("createUser")}
+						icon={<PlusIconStyled w={5} h={5} />}
+						colorScheme="primary"
+						borderRadius="full"
+						w="40px"
+						h="40px"
+						flexShrink={0}
+						onClick={handleCreate}
+					/>
+				) : (
+					<Button
+						className="rb-users-create-btn"
+						colorScheme="primary"
+						leftIcon={<PlusIconStyled />}
+						borderRadius="full"
+						h="40px"
+						px={5}
+						fontSize="sm"
+						fontWeight="semibold"
+						whiteSpace="nowrap"
+						flexShrink={0}
+						onClick={handleCreate}
 					>
-						{getFilterLabel(filterKey)}
-						<ClearIcon w={3} h={3} />
-					</chakra.button>
+						{t("createUser")}
+					</Button>
 				))}
-				{serviceId && (
-					<chakra.button
-						type="button"
-						className="rb-users-chip rb-users-chip--tag"
-						onClick={() => handleServiceChange("")}
-						aria-label={t("usersFilter.removeFilter", "Remove filter")}
-					>
-						{t("filters.advanced.serviceTag", "Service: {{name}}", {
-							name:
-								serviceOptions.find((service) => service.id === serviceId)
-									?.name ?? serviceId,
-						})}
-						<ClearIcon w={3} h={3} />
-					</chakra.button>
-				)}
-				{ownerFilter && (
-					<chakra.button
-						type="button"
-						className="rb-users-chip rb-users-chip--tag"
-						onClick={() => handleAdminChange("")}
-						aria-label={t("usersFilter.removeFilter", "Remove filter")}
-					>
-						{ownerFilter === userData.username
-							? t("filters.advanced.adminTagMine", "My users")
-							: ownerFilter}
-						<ClearIcon w={3} h={3} />
-					</chakra.button>
-				)}
-				{isMobile && (
-					<Box className="rb-users-chips-actions" ms="auto" flexShrink={0}>
-						<AdvancedUserActions />
-					</Box>
-				)}
-			</Flex>
-		</Box>
+		</Flex>
 	);
 };
