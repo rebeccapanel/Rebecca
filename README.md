@@ -94,6 +94,14 @@ Install Rebecca master with the binary installer:
 curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install
 ```
 
+Do not run the installers with `sudo bash -c "$(curl ...)"`; the downloaded script can exceed Linux's single-argument limit and fail with `Argument list too long`. Always pipe the download into `sudo bash -s --` as shown above.
+
+For the dev channel, use:
+
+```bash
+curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install --dev
+```
+
 Install Rebecca-node on each node server with the binary node installer:
 
 ```bash
