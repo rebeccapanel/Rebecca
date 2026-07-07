@@ -1331,6 +1331,10 @@ func normalizeProxyProtocol(value string) string {
 		return "shadowsocks"
 	case "vmess", "vless", "trojan":
 		return cleaned
+	case "l2tp", "l2tp-ipsec", "l2tp/ipsec":
+		return "l2tp"
+	case "openvpn", "ov":
+		return "openvpn"
 	default:
 		return cleaned
 	}

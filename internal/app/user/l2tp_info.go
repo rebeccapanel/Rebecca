@@ -7,9 +7,15 @@ import (
 
 type L2TPInfo struct {
 	HostTag    string `json:"host_tag"`
+	HostName   string `json:"host_name"`
 	InboundTag string `json:"inbound_tag"`
 	Remark     string `json:"remark"`
 	Server     string `json:"server"`
+	Address    string `json:"address"`
+	Port       int    `json:"port"`
+	IKEPort    int    `json:"ike_port"`
+	NATTPort   int    `json:"natt_port"`
+	TunnelPort int    `json:"tunnel_port"`
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	IPSecPSK   string `json:"ipsec_psk"`
@@ -72,9 +78,15 @@ func (s Service) L2TPInfos(ctx context.Context, user UserDetail, subscriptionURL
 		settings := mapValue(effective["settings"])
 		result = append(result, L2TPInfo{
 			HostTag:    l2tpHostTag(host, remark, address),
+			HostName:   firstNonEmptyString(host.Remark, remark, address),
 			InboundTag: host.InboundTag,
 			Remark:     remark,
 			Server:     address,
+			Address:    address,
+			Port:       1701,
+			IKEPort:    500,
+			NATTPort:   4500,
+			TunnelPort: 1702,
 			Username:   item.Username,
 			Password:   password,
 			IPSecPSK:   strings.TrimSpace(stringValue(settings["ipsec_psk"])),

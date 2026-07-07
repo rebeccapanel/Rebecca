@@ -230,6 +230,42 @@ func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *te
 	}
 }
 
+func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
+	template := `{% for link in ov.downloads %}{{ link }}{% endfor %} {% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:               "alice",
+		Status:                 "active",
+		DataLimitResetStrategy: "no_reset",
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token", map[string]any{
+		"ov": map[string]any{
+			"downloads": []string{"https://vpn.example/sub/token/ov/edge.ovpn"},
+		},
+		"openvpn": map[string]any{
+			"downloads": []string{"https://vpn.example/sub/token/ov/edge.ovpn"},
+		},
+		"l2tp": []L2TPInfo{{
+			Server:   "l2tp.example.com",
+			Username: "alice",
+		}},
+		"pptp": []PPTPInfo{{
+			Server: "pptp.example.com",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"https://vpn.example/sub/token/ov/edge.ovpn",
+		"l2tp.example.com",
+		"alice",
+		"pptp.example.com",
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected %q in html:\n%s", expected, html)
+		}
+	}
+}
+
 func TestSubscriptionBrowserRequestsRenderHTMLEvenWithWildcardAccept(t *testing.T) {
 	req := SubscriptionRenderRequest{
 		Accept:    "*/*",

@@ -139,22 +139,46 @@ func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderReq
 	if err != nil {
 		return nil, err
 	}
-	ovLinks, err := s.OVDownloadLinks(ctx, user, req.URL)
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
 	if err != nil {
 		return nil, err
 	}
-	l2tpItems, err := s.L2TPInfos(ctx, user, req.URL)
+	info := map[string]any{
+		"user": user,
+	}
+	for key, value := range vpnInfo {
+		info[key] = value
+	}
+	return info, nil
+}
+
+func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subscriptionURL string) (map[string]any, error) {
+	ovProfiles, err := s.OVDownloadProfiles(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
 	}
-	pptpItems, err := s.PPTPInfos(ctx, user, req.URL)
+	ovLinks := make([]string, 0, len(ovProfiles))
+	for _, profile := range ovProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			ovLinks = append(ovLinks, profile.DownloadURL)
+		}
+	}
+	l2tpItems, err := s.L2TPInfos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	pptpItems, err := s.PPTPInfos(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{
-		"user": user,
 		"ov": map[string]any{
 			"downloads": ovLinks,
+			"profiles":  ovProfiles,
+		},
+		"openvpn": map[string]any{
+			"downloads": ovLinks,
+			"profiles":  ovProfiles,
 		},
 		"l2tp": l2tpItems,
 		"pptp": pptpItems,
@@ -724,8 +748,14 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 		path = strings.TrimRight(parsed.Path, "/")
 	}
 	rawLinks := append([]string{}, links.Links...)
-	if downloadLinks, err := s.OVDownloadLinks(ctx, user, req.URL); err == nil {
-		rawLinks = append(rawLinks, downloadLinks...)
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
+	if err != nil {
+		return "", err
+	}
+	if ov, ok := vpnInfo["ov"].(map[string]any); ok {
+		if downloadLinks, ok := ov["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
 	}
 	content := fallbackSubscriptionPageTemplate
 	if s.templates != nil {
@@ -737,7 +767,7 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			content = templateContent.Content
 		}
 	}
-	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier)
+	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier, vpnInfo)
 }
 
 func renderClashLikeYAML(username string, links []string, meta bool) string {
@@ -1431,7 +1461,7 @@ var (
 	subscriptionDirectUserLinksPattern     = regexp.MustCompile(`\{\{\s*user\.links\s*\}\}`)
 )
 
-func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string) (string, error) {
+func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) (string, error) {
 	if err := registerSubscriptionTemplateFilters(); err != nil {
 		return "", err
 	}
@@ -1442,7 +1472,7 @@ func renderSubscriptionPageTemplate(content string, user UserDetail, links []str
 	if err != nil {
 		return "", err
 	}
-	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, token))
+	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, token, vpnInfo...))
 	if err != nil {
 		return "", err
 	}
@@ -1486,7 +1516,7 @@ func normalizeLegacySubscriptionTemplate(content string) string {
 	return normalized
 }
 
-func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, token string) pongo2.Context {
+func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) pongo2.Context {
 	var dataLimit any
 	if user.DataLimit != nil && *user.DataLimit > 0 {
 		dataLimit = *user.DataLimit
@@ -1499,7 +1529,11 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 	if resetStrategy == "" {
 		resetStrategy = "no_reset"
 	}
-	return pongo2.Context{
+	vpn := map[string]any{}
+	if len(vpnInfo) > 0 && vpnInfo[0] != nil {
+		vpn = vpnInfo[0]
+	}
+	context := pongo2.Context{
 		"user": map[string]any{
 			"username":                  user.Username,
 			"status":                    user.Status,
@@ -1522,6 +1556,13 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
+	for _, key := range []string{"ov", "openvpn", "l2tp", "pptp"} {
+		if value, ok := vpn[key]; ok {
+			context[key] = value
+		}
+	}
+	context["vpn"] = vpn
+	return context
 }
 
 func legacyTemplateStringList(values []string) string {

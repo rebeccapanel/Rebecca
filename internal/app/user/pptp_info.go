@@ -7,9 +7,12 @@ import (
 
 type PPTPInfo struct {
 	HostTag    string `json:"host_tag"`
+	HostName   string `json:"host_name"`
 	InboundTag string `json:"inbound_tag"`
 	Remark     string `json:"remark"`
 	Server     string `json:"server"`
+	Address    string `json:"address"`
+	Port       int    `json:"port"`
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 }
@@ -70,9 +73,12 @@ func (s Service) PPTPInfos(ctx context.Context, user UserDetail, subscriptionURL
 		}
 		result = append(result, PPTPInfo{
 			HostTag:    l2tpHostTag(host, remark, address),
+			HostName:   firstNonEmptyString(host.Remark, remark, address),
 			InboundTag: host.InboundTag,
 			Remark:     remark,
 			Server:     address,
+			Address:    address,
+			Port:       1723,
 			Username:   item.Username,
 			Password:   password,
 		})

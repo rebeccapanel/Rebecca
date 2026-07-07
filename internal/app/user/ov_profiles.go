@@ -16,11 +16,12 @@ import (
 const defaultOVPoolCIDR = "10.66.0.0/16"
 
 type OVProfile struct {
-	HostTag    string `json:"host_tag"`
-	InboundTag string `json:"inbound_tag"`
-	Remark     string `json:"remark"`
-	Filename   string `json:"filename"`
-	Body       string `json:"body,omitempty"`
+	HostTag     string `json:"host_tag"`
+	InboundTag  string `json:"inbound_tag"`
+	Remark      string `json:"remark"`
+	Filename    string `json:"filename"`
+	DownloadURL string `json:"download_url,omitempty"`
+	Body        string `json:"body,omitempty"`
 }
 
 func (s Service) OVProfiles(ctx context.Context, userID int64, hostTag string, includeBody bool) ([]OVProfile, error) {
@@ -135,13 +136,39 @@ func (s Service) OVDownloadLinks(ctx context.Context, user UserDetail, subscript
 	}
 	links := make([]string, 0, len(profiles))
 	for _, profile := range profiles {
-		next := *baseURL
-		next.RawQuery = ""
-		next.Fragment = ""
-		next.Path = basePath + "/ov/" + url.PathEscape(profile.HostTag) + ".ovpn"
-		links = append(links, next.String())
+		links = append(links, ovProfileDownloadURL(baseURL, basePath, profile.HostTag))
 	}
 	return links, nil
+}
+
+func (s Service) OVDownloadProfiles(ctx context.Context, user UserDetail, subscriptionURL string) ([]OVProfile, error) {
+	profiles, err := s.OVProfiles(ctx, user.ID, "", false)
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		return []OVProfile{}, nil
+	}
+	baseURL, err := url.Parse(subscriptionURL)
+	if err != nil {
+		return profiles, nil
+	}
+	basePath := strings.TrimRight(baseURL.Path, "/")
+	if strings.HasSuffix(basePath, "/usage") || strings.HasSuffix(basePath, "/info") {
+		basePath = path.Dir(basePath)
+	}
+	for i := range profiles {
+		profiles[i].DownloadURL = ovProfileDownloadURL(baseURL, basePath, profiles[i].HostTag)
+	}
+	return profiles, nil
+}
+
+func ovProfileDownloadURL(baseURL *url.URL, basePath string, hostTag string) string {
+	next := *baseURL
+	next.RawQuery = ""
+	next.Fragment = ""
+	next.Path = basePath + "/ov/" + url.PathEscape(hostTag) + ".ovpn"
+	return next.String()
 }
 
 func applyOVResolvedSettings(resolved ResolvedInbound, inbound map[string]any) {
