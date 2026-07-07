@@ -3714,6 +3714,11 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Object"
+            },
+            "example": {
+              "name": "example",
+              "status": "active",
+              "settings": {}
             }
           }
         },
@@ -3769,6 +3774,11 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/AnyValue"
+            },
+            "example": {
+              "id": 1,
+              "status": "ok",
+              "detail": "Operation completed"
             }
           }
         }
@@ -3806,10 +3816,19 @@
     "schemas": {
       "Object": {
         "type": "object",
-        "additionalProperties": true
+        "additionalProperties": true,
+        "example": {
+          "name": "example",
+          "status": "active",
+          "settings": {}
+        }
       },
       "AnyValue": {
         "nullable": true,
+        "example": {
+          "id": 1,
+          "status": "ok"
+        },
         "oneOf": [
           {
             "type": "object",
