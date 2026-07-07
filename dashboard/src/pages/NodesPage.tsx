@@ -2107,6 +2107,7 @@ export const NodesPage: FC = () => {
 				maxWidth: "142px",
 				truncate: true,
 				tooltip: true,
+				align: "start",
 				mobileLabel: t("nodes.runtime", "Runtime"),
 				mobilePriority: 4,
 				cell: (node) => {
@@ -2136,7 +2137,7 @@ export const NodesPage: FC = () => {
 					const rebootRequired = /reboot/i.test(node.message ?? "");
 					return (
 						<VStack
-							align="center"
+							align="start"
 							justify="center"
 							spacing={1}
 							minW={0}
@@ -2150,7 +2151,7 @@ export const NodesPage: FC = () => {
 									maxW="full"
 									overflow="hidden"
 									whiteSpace="nowrap"
-									justifyContent="center"
+									justifyContent="flex-start"
 								>
 									{t("nodes.nodeServiceVersionTag", {
 										version: nodeRuntimeDisplayVersion,
@@ -2167,7 +2168,7 @@ export const NodesPage: FC = () => {
 								noOfLines={1}
 								minW={0}
 								maxW="full"
-								textAlign="center"
+								textAlign="start"
 							>
 								{nodeInstallLabel}
 							</Text>
