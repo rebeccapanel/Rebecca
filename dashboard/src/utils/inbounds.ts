@@ -288,6 +288,12 @@ export type InboundFormValues = {
 	ovManagementPort: string;
 	ovCipher: string;
 	ovAuth: string;
+	ovInlineCA: boolean;
+	ovSetClientCertNone: boolean;
+	ovAuthNoCache: boolean;
+	ovEmbedCredentials: boolean;
+	ovRouteNoPull: boolean;
+	ovBlockOutsideDNS: boolean;
 	ovCA: string;
 	ovServerCertificate: string;
 	ovServerKey: string;
@@ -303,6 +309,10 @@ export type InboundFormValues = {
 	l2tpRedirectGateway: boolean;
 	l2tpTproxyEnabled: boolean;
 	l2tpAccountingEnabled: boolean;
+	l2tpMTU: string;
+	l2tpMRU: string;
+	l2tpLcpEchoInterval: string;
+	l2tpLcpEchoFailure: string;
 
 	targetIds: string[];
 };
@@ -695,6 +705,23 @@ export const validateInboundFormFields = (
 		if (!values.l2tpIPSecPSK.trim()) {
 			errors.l2tpIPSecPSK = "IPsec pre-shared key is required.";
 		}
+		const validateL2TPNumber = (
+			key: "l2tpMTU" | "l2tpMRU" | "l2tpLcpEchoInterval" | "l2tpLcpEchoFailure",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateL2TPNumber("l2tpMTU", "MTU", 576, 1500);
+		validateL2TPNumber("l2tpMRU", "MRU", 576, 1500);
+		validateL2TPNumber("l2tpLcpEchoInterval", "LCP echo interval", 1, 3600);
+		validateL2TPNumber("l2tpLcpEchoFailure", "LCP echo failure", 1, 20);
 	}
 	if (values.streamSecurity === "reality") {
 		if (!isHostPortTarget(values.realityTarget ?? "")) {
@@ -1059,6 +1086,12 @@ export const createDefaultInboundForm = (
 	ovManagementPort: "",
 	ovCipher: "AES-256-GCM",
 	ovAuth: "SHA256",
+	ovInlineCA: true,
+	ovSetClientCertNone: true,
+	ovAuthNoCache: true,
+	ovEmbedCredentials: true,
+	ovRouteNoPull: false,
+	ovBlockOutsideDNS: false,
 	ovCA: "",
 	ovServerCertificate: "",
 	ovServerKey: "",
@@ -1073,6 +1106,10 @@ export const createDefaultInboundForm = (
 	l2tpRedirectGateway: true,
 	l2tpTproxyEnabled: true,
 	l2tpAccountingEnabled: true,
+	l2tpMTU: "1410",
+	l2tpMRU: "1410",
+	l2tpLcpEchoInterval: "30",
+	l2tpLcpEchoFailure: "4",
 	targetIds: ["master"],
 });
 
@@ -1611,6 +1648,30 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "openvpn"
 				? (settings.auth ?? base.ovAuth)
 				: base.ovAuth,
+		ovInlineCA:
+			protocol === "openvpn"
+				? Boolean(settings.inline_ca ?? base.ovInlineCA)
+				: base.ovInlineCA,
+		ovSetClientCertNone:
+			protocol === "openvpn"
+				? Boolean(settings.set_client_cert_none ?? base.ovSetClientCertNone)
+				: base.ovSetClientCertNone,
+		ovAuthNoCache:
+			protocol === "openvpn"
+				? Boolean(settings.auth_nocache ?? base.ovAuthNoCache)
+				: base.ovAuthNoCache,
+		ovEmbedCredentials:
+			protocol === "openvpn"
+				? Boolean(settings.embed_credentials ?? base.ovEmbedCredentials)
+				: base.ovEmbedCredentials,
+		ovRouteNoPull:
+			protocol === "openvpn"
+				? Boolean(settings.route_nopull ?? base.ovRouteNoPull)
+				: base.ovRouteNoPull,
+		ovBlockOutsideDNS:
+			protocol === "openvpn"
+				? Boolean(settings.block_outside_dns ?? base.ovBlockOutsideDNS)
+				: base.ovBlockOutsideDNS,
 		ovCA:
 			protocol === "openvpn" ? (settings.ca ?? base.ovCA) : base.ovCA,
 		ovServerCertificate:
@@ -1669,6 +1730,18 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "l2tp"
 				? Boolean(settings.accounting_enabled ?? base.l2tpAccountingEnabled)
 				: base.l2tpAccountingEnabled,
+		l2tpMTU:
+			protocol === "l2tp" ? toInputValue(settings.mtu) : base.l2tpMTU,
+		l2tpMRU:
+			protocol === "l2tp" ? toInputValue(settings.mru) : base.l2tpMRU,
+		l2tpLcpEchoInterval:
+			protocol === "l2tp"
+				? toInputValue(settings.lcp_echo_interval)
+				: base.l2tpLcpEchoInterval,
+		l2tpLcpEchoFailure:
+			protocol === "l2tp"
+				? toInputValue(settings.lcp_echo_failure)
+				: base.l2tpLcpEchoFailure,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -2335,6 +2408,12 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.management_port = parseOptionalNumber(values.ovManagementPort);
 			base.cipher = values.ovCipher.trim() || undefined;
 			base.auth = values.ovAuth.trim() || undefined;
+			base.inline_ca = values.ovInlineCA;
+			base.set_client_cert_none = values.ovSetClientCertNone;
+			base.auth_nocache = values.ovAuthNoCache;
+			base.embed_credentials = values.ovEmbedCredentials;
+			base.route_nopull = values.ovRouteNoPull;
+			base.block_outside_dns = values.ovBlockOutsideDNS;
 			base.ca = values.ovCA.trim() || undefined;
 			base.server_certificate =
 				values.ovServerCertificate.trim() || undefined;
@@ -2356,6 +2435,10 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.l2tp_port = parsePort(values.port) || 1701;
 			base.ipsec_ike_port = 500;
 			base.ipsec_nat_port = 4500;
+			base.mtu = parseOptionalNumber(values.l2tpMTU);
+			base.mru = parseOptionalNumber(values.l2tpMRU);
+			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);
+			base.lcp_echo_failure = parseOptionalNumber(values.l2tpLcpEchoFailure);
 			break;
 	}
 

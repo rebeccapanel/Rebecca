@@ -1835,6 +1835,68 @@ export const InboundFormModal: FC<Props> = ({
 														<Switch {...register("ovAccountingEnabled")} />
 													</FormControl>
 												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.inlineCa",
+															"Embed CA in profile",
+															"inbounds.openvpn.help.inlineCa",
+															"Include the CA certificate inside generated .ovpn files. Disable only if clients will receive the CA by another secure method.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovInlineCA")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.setClientCertNone",
+															"Disable external certificate prompt",
+															"inbounds.openvpn.help.setClientCertNone",
+															"Add setenv CLIENT_CERT 0 so OpenVPN Connect does not ask for a separate client certificate.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovSetClientCertNone")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.authNoCache",
+															"Do not cache password",
+															"inbounds.openvpn.help.authNoCache",
+															"Add auth-nocache so the client does not keep the VPN password in memory after authentication.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovAuthNoCache")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.embedCredentials",
+															"Embed user credentials",
+															"inbounds.openvpn.help.embedCredentials",
+															"Include username and generated password inside the .ovpn profile. Disable to make clients ask for credentials.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovEmbedCredentials")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.routeNoPull",
+															"Ignore pushed routes",
+															"inbounds.openvpn.help.routeNoPull",
+															"Add route-nopull so clients connect but ignore routes pushed by the server.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovRouteNoPull")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.blockOutsideDns",
+															"Block outside DNS",
+															"inbounds.openvpn.help.blockOutsideDns",
+															"Add block-outside-dns for Windows clients to reduce DNS leaks outside the VPN.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovBlockOutsideDNS")} />
+													</FormControl>
+												</SimpleGrid>
 												<FormControl
 													isInvalid={Boolean(
 														fieldValidationErrors.ovManagementPort,
@@ -2055,6 +2117,84 @@ export const InboundFormModal: FC<Props> = ({
 														placeholder={"1.1.1.1\n8.8.8.8"}
 													/>
 												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.l2tpMTU)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.mtu",
+															"MTU",
+															"inbounds.l2tp.help.mtu",
+															"PPP MTU for L2TP clients. 1410 is a conservative default for IPsec/NAT paths.",
+														)}
+														<Input {...register("l2tpMTU")} placeholder="1410" />
+														{fieldValidationErrors.l2tpMTU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpMTU}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.l2tpMRU)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.mru",
+															"MRU",
+															"inbounds.l2tp.help.mru",
+															"PPP MRU for L2TP clients. Keep it close to MTU unless you have a path-specific reason.",
+														)}
+														<Input {...register("l2tpMRU")} placeholder="1410" />
+														{fieldValidationErrors.l2tpMRU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpMRU}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpLcpEchoInterval,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.lcpEchoInterval",
+															"LCP echo interval",
+															"inbounds.l2tp.help.lcpEchoInterval",
+															"Seconds between PPP keepalive probes used to detect dead L2TP sessions.",
+														)}
+														<Input
+															{...register("l2tpLcpEchoInterval")}
+															placeholder="30"
+														/>
+														{fieldValidationErrors.l2tpLcpEchoInterval && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{
+																	fieldValidationErrors.l2tpLcpEchoInterval
+																}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpLcpEchoFailure,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.lcpEchoFailure",
+															"LCP echo failure",
+															"inbounds.l2tp.help.lcpEchoFailure",
+															"How many missed PPP keepalive probes are allowed before the L2TP session is considered dead.",
+														)}
+														<Input
+															{...register("l2tpLcpEchoFailure")}
+															placeholder="4"
+														/>
+														{fieldValidationErrors.l2tpLcpEchoFailure && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpLcpEchoFailure}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl display="flex" alignItems="center">
 														{ovLabel(
@@ -4418,6 +4558,7 @@ export const InboundFormModal: FC<Props> = ({
 										</Stack>
 									)}
 
+									{currentProtocol !== "openvpn" && currentProtocol !== "l2tp" && (
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Flex align="center" justify="space-between">
 											<HStack spacing={2}>
@@ -4484,6 +4625,7 @@ export const InboundFormModal: FC<Props> = ({
 											</Stack>
 										)}
 									</Stack>
+									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>

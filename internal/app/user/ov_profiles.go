@@ -181,6 +181,24 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	if _, ok := out["accounting_enabled"]; !ok {
 		out["accounting_enabled"] = true
 	}
+	if _, ok := out["inline_ca"]; !ok {
+		out["inline_ca"] = true
+	}
+	if _, ok := out["set_client_cert_none"]; !ok {
+		out["set_client_cert_none"] = true
+	}
+	if _, ok := out["auth_nocache"]; !ok {
+		out["auth_nocache"] = true
+	}
+	if _, ok := out["embed_credentials"]; !ok {
+		out["embed_credentials"] = true
+	}
+	if _, ok := out["route_nopull"]; !ok {
+		out["route_nopull"] = false
+	}
+	if _, ok := out["block_outside_dns"]; !ok {
+		out["block_outside_dns"] = false
+	}
 	return out
 }
 
@@ -206,7 +224,18 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	writeOVLine(&b, "persist-key")
 	writeOVLine(&b, "persist-tun")
 	writeOVLine(&b, "remote-cert-tls server")
-	writeOVLine(&b, "auth-nocache")
+	if boolSetting(settings, "auth_nocache", true) {
+		writeOVLine(&b, "auth-nocache")
+	}
+	if boolSetting(settings, "set_client_cert_none", true) {
+		writeOVLine(&b, "setenv CLIENT_CERT 0")
+	}
+	if boolSetting(settings, "route_nopull", false) {
+		writeOVLine(&b, "route-nopull")
+	}
+	if boolSetting(settings, "block_outside_dns", false) {
+		writeOVLine(&b, "block-outside-dns")
+	}
 	writeOVLine(&b, "verb 3")
 	if cipher := strings.TrimSpace(stringValue(settings["cipher"])); cipher != "" {
 		writeOVLine(&b, "cipher "+cipher)
@@ -218,8 +247,10 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 		writeOVLine(&b, "dhcp-option DNS "+dns)
 	}
 	writeOVLine(&b, "auth-user-pass")
-	writeOVInline(&b, "auth-user-pass", username+"\n"+password+"\n")
-	if ca := strings.TrimSpace(stringValue(settings["ca"])); ca != "" {
+	if boolSetting(settings, "embed_credentials", true) {
+		writeOVInline(&b, "auth-user-pass", username+"\n"+password+"\n")
+	}
+	if ca := strings.TrimSpace(stringValue(settings["ca"])); ca != "" && boolSetting(settings, "inline_ca", true) {
 		writeOVInline(&b, "ca", ca)
 	}
 	if tlsCrypt := strings.TrimSpace(stringValue(settings["tls_crypt"])); tlsCrypt != "" {
@@ -235,6 +266,14 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	}
 	_ = remark
 	return b.String(), nil
+}
+
+func boolSetting(settings map[string]any, key string, fallback bool) bool {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return fallback
+	}
+	return boolValue(value)
 }
 
 func writeOVLine(b *strings.Builder, line string) {

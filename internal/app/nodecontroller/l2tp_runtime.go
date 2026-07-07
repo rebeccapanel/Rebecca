@@ -165,6 +165,23 @@ func L2TPRuntimeSettings(inbound map[string]any) map[string]any {
 	if _, ok := out["l2tp_port"]; !ok {
 		out["l2tp_port"] = 1701
 	}
+	for _, item := range []struct {
+		key      string
+		fallback int
+		min      int
+		max      int
+	}{
+		{"mtu", 1410, 576, 1500},
+		{"mru", 1410, 576, 1500},
+		{"lcp_echo_interval", 30, 1, 3600},
+		{"lcp_echo_failure", 4, 1, 20},
+	} {
+		value := OVIntValue(out[item.key])
+		if value < item.min || value > item.max {
+			value = item.fallback
+		}
+		out[item.key] = value
+	}
 	for _, key := range []string{"ipsec_psk"} {
 		if value := strings.TrimSpace(OVStringValue(out[key])); value != "" {
 			out[key] = value

@@ -200,6 +200,21 @@ func OVRuntimeSettings(inbound map[string]any) map[string]any {
 	if _, ok := out["accounting_enabled"]; !ok {
 		out["accounting_enabled"] = true
 	}
+	for _, item := range []struct {
+		key      string
+		fallback bool
+	}{
+		{"inline_ca", true},
+		{"set_client_cert_none", true},
+		{"auth_nocache", true},
+		{"embed_credentials", true},
+		{"route_nopull", false},
+		{"block_outside_dns", false},
+	} {
+		if _, ok := out[item.key]; !ok {
+			out[item.key] = item.fallback
+		}
+	}
 	for _, key := range []string{"cipher", "auth", "ca", "server_certificate", "server_key", "dh", "tls_crypt", "tls_auth", "extra_client_config"} {
 		if value := strings.TrimSpace(OVStringValue(out[key])); value != "" {
 			out[key] = value

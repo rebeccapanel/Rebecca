@@ -89,6 +89,23 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
 	}
+	for _, item := range []struct {
+		key      string
+		fallback bool
+	}{
+		{"inline_ca", true},
+		{"set_client_cert_none", true},
+		{"auth_nocache", true},
+		{"embed_credentials", true},
+		{"route_nopull", false},
+		{"block_outside_dns", false},
+	} {
+		if _, ok := out[item.key]; !ok {
+			out[item.key] = item.fallback
+		} else {
+			out[item.key] = boolValue(out[item.key])
+		}
+	}
 	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port"} {
 		if port, ok := normalizedOptionalPort(out[key]); ok {
 			out[key] = port
@@ -138,6 +155,23 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 	if _, ok := out["l2tp_port"]; !ok {
 		out["l2tp_port"] = 1701
 	}
+	for _, item := range []struct {
+		key      string
+		fallback int
+		min      int
+		max      int
+	}{
+		{"mtu", 1410, 576, 1500},
+		{"mru", 1410, 576, 1500},
+		{"lcp_echo_interval", 30, 1, 3600},
+		{"lcp_echo_failure", 4, 1, 20},
+	} {
+		if value, ok := normalizedOptionalInt(out[item.key], item.min, item.max); ok {
+			out[item.key] = value
+		} else {
+			out[item.key] = item.fallback
+		}
+	}
 	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port", "ipsec_ike_port", "ipsec_nat_port", "l2tp_port"} {
 		if port, ok := normalizedOptionalPort(out[key]); ok {
 			out[key] = port
@@ -171,7 +205,8 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 	if protocol != OVProtocol && protocol != L2TPProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
-	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
+	rawSettings := mapValue(inbound["settings"])
+	settings := normalizeVirtualTunnelSettings(protocol, rawSettings)
 	if _, ok := virtualTunnelPort(settings); !ok {
 		return fmt.Errorf("invalid inbound %q: %s tunnel_port is required", tag, strings.ToUpper(protocol))
 	}
@@ -210,6 +245,25 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 	if protocol == L2TPProtocol {
 		if strings.TrimSpace(stringValue(settings["ipsec_psk"])) == "" {
 			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)
+		}
+		for _, item := range []struct {
+			key string
+			min int
+			max int
+		}{
+			{"mtu", 576, 1500},
+			{"mru", 576, 1500},
+			{"lcp_echo_interval", 1, 3600},
+			{"lcp_echo_failure", 1, 20},
+		} {
+			rawValue, exists := rawSettings[item.key]
+			if !exists || strings.TrimSpace(stringValue(rawValue)) == "" {
+				continue
+			}
+			value, ok := normalizedOptionalInt(rawValue, item.min, item.max)
+			if !ok || value < item.min || value > item.max {
+				return fmt.Errorf("invalid inbound %q: L2TP %s must be between %d and %d", tag, item.key, item.min, item.max)
+			}
 		}
 	}
 	return nil
@@ -437,6 +491,29 @@ func normalizedOptionalPort(value any) (int, bool) {
 		}
 		port, err := parseConfigPort(cleaned)
 		return port, err == nil && port > 0
+	}
+	return 0, false
+}
+
+func normalizedOptionalInt(value any, min int, max int) (int, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return 0, false
+	case int:
+		return typed, typed >= min && typed <= max
+	case int64:
+		return int(typed), typed >= int64(min) && typed <= int64(max)
+	case float64:
+		if float64(int(typed)) == typed && int(typed) >= min && int(typed) <= max {
+			return int(typed), true
+		}
+	case string:
+		cleaned := strings.TrimSpace(typed)
+		if cleaned == "" {
+			return 0, false
+		}
+		value, err := parseConfigPort(cleaned)
+		return value, err == nil && value >= min && value <= max
 	}
 	return 0, false
 }
