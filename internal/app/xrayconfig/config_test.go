@@ -329,6 +329,62 @@ func TestParseRejectsInvalidExecutableInbound(t *testing.T) {
 	}
 }
 
+func TestParseRejectsIncompleteOVInbound(t *testing.T) {
+	base := func(settings map[string]any) map[string]any {
+		return map[string]any{
+			"inbounds": []any{
+				map[string]any{
+					"tag":      "ov",
+					"port":     1194,
+					"protocol": "openvpn",
+					"settings": settings,
+				},
+			},
+			"outbounds": []any{
+				map[string]any{"tag": "DIRECT", "protocol": "freedom"},
+			},
+		}
+	}
+	validSettings := map[string]any{
+		"transport":          "udp",
+		"tunnel_port":        51194,
+		"ipv4_pool_cidr":     "10.66.0.0/16",
+		"ca":                 "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
+		"server_certificate": "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----",
+		"server_key":         "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+	}
+	if _, err := Parse(base(validSettings), Options{}); err != nil {
+		t.Fatalf("valid OV inbound rejected: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "missing tunnel port", key: "tunnel_port", want: "tunnel_port is required"},
+		{name: "missing ca", key: "ca", want: "ca is required"},
+		{name: "missing server certificate", key: "server_certificate", want: "server_certificate is required"},
+		{name: "missing server key", key: "server_key", want: "server_key is required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[string]any{}
+			for key, value := range validSettings {
+				settings[key] = value
+			}
+			delete(settings, tc.key)
+			_, err := Parse(base(settings), Options{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func hasAPIInbound(payload map[string]any) bool {
 	for _, inbound := range payload["inbounds"].([]any) {
 		if inbound.(map[string]any)["tag"] == "API_INBOUND" {

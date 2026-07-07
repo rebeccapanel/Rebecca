@@ -24,6 +24,12 @@ export type EchCertResponse = {
 	echConfigList: string;
 };
 
+export type OVSelfSignedResponse = {
+	ca: string;
+	serverCertificate: string;
+	serverKey: string;
+};
+
 export type Mldsa65Response = {
 	seed: string;
 	verify: string;
@@ -48,6 +54,11 @@ export const generateEchCert = async (
 ): Promise<EchCertResponse> => {
 	return fetch<EchCertResponse>("/xray/ech", { query: { sni } });
 };
+
+export const generateOVSelfSigned =
+	async (): Promise<OVSelfSignedResponse> => {
+		return fetch<OVSelfSignedResponse>("/xray/ov-self-signed");
+	};
 
 export const generateMldsa65 = async (): Promise<Mldsa65Response> => {
 	return fetch<Mldsa65Response>("/xray/mldsa65");

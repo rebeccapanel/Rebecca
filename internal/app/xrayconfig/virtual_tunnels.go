@@ -112,6 +112,9 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
 	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	if _, ok := virtualTunnelPort(settings); !ok {
+		return fmt.Errorf("invalid inbound %q: OV tunnel_port is required", tag)
+	}
 	if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort == port {
 		return fmt.Errorf("invalid inbound %q: OV tunnel_port must be different from port", tag)
 	}
@@ -135,6 +138,11 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		parsed, ok := normalizedOptionalPort(settings[key])
 		if !ok || parsed < 1 || parsed > 65535 {
 			return fmt.Errorf("invalid inbound %q: OV %s must be between 1 and 65535", tag, key)
+		}
+	}
+	for _, key := range []string{"ca", "server_certificate", "server_key"} {
+		if strings.TrimSpace(stringValue(settings[key])) == "" {
+			return fmt.Errorf("invalid inbound %q: OV %s is required", tag, key)
 		}
 	}
 	return nil

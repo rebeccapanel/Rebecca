@@ -619,6 +619,9 @@ export const validateInboundFormFields = (
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.ovIPv4Pool.trim())) {
 			errors.ovIPv4Pool = "IPv4 pool must be a CIDR, for example 10.66.0.0/16.";
 		}
+		if (!values.ovTunnelPort.trim()) {
+			errors.ovTunnelPort = "Tunnel port is required.";
+		}
 		if (
 			values.ovTunnelPort.trim() &&
 			!isValidPortText(values.ovTunnelPort)
@@ -640,6 +643,15 @@ export const validateInboundFormFields = (
 		) {
 			errors.ovManagementPort =
 				"Management port must be a number between 1 and 65535.";
+		}
+		if (!values.ovCA.trim()) {
+			errors.ovCA = "CA certificate is required.";
+		}
+		if (!values.ovServerCertificate.trim()) {
+			errors.ovServerCertificate = "Server certificate is required.";
+		}
+		if (!values.ovServerKey.trim()) {
+			errors.ovServerKey = "Server key is required.";
 		}
 	}
 	if (values.streamSecurity === "reality") {

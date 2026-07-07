@@ -1,4 +1,4 @@
-import type { InputProps, TextareaProps } from "@chakra-ui/react";
+import type { FormLabelProps, InputProps, TextareaProps } from "@chakra-ui/react";
 import {
 	Alert,
 	AlertDescription,
@@ -39,6 +39,7 @@ import {
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
+	InformationCircleIcon,
 	QuestionMarkCircleIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
@@ -59,6 +60,7 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
 	generateEchCert,
+	generateOVSelfSigned,
 	generateMldsa65,
 	generateRealityKeypair,
 	generateRealityShortId,
@@ -298,10 +300,33 @@ export const InboundFormModal: FC<Props> = ({
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
+	const ovLabel = (
+		labelKey: string,
+		labelFallback: string,
+		helpKey: string,
+		helpFallback: string,
+		labelProps: FormLabelProps = {},
+	) => (
+		<FormLabel {...labelProps}>
+			<HStack spacing={1.5} align="center">
+				<Text as="span">{t(labelKey, labelFallback)}</Text>
+				<Tooltip label={t(helpKey, helpFallback)} hasArrow placement="top">
+					<Box
+						as={InformationCircleIcon}
+						boxSize={4}
+						color="gray.500"
+						cursor="help"
+						aria-label={t("common.info", "Info")}
+					/>
+				</Tooltip>
+			</HStack>
+		</FormLabel>
+	);
 	const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>(
 		[],
 	);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
+	const [ovCertLoading, setOVCertLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
 	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
@@ -854,6 +879,45 @@ export const InboundFormModal: FC<Props> = ({
 		form.setValue("tlsEchServerKeys", "", { shouldDirty: true });
 		form.setValue("tlsEchConfigList", "", { shouldDirty: true });
 	}, [form]);
+
+	const handleGenerateOVSelfSigned = useCallback(async () => {
+		setOVCertLoading(true);
+		try {
+			const certs = await generateOVSelfSigned();
+			form.setValue("ovCA", certs.ca ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("ovServerCertificate", certs.serverCertificate ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("ovServerKey", certs.serverKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			toast({
+				status: "success",
+				title: t(
+					"inbounds.openvpn.generateSelfSignedSuccess",
+					"Self-signed certificates generated",
+				),
+				duration: 2500,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.openvpn.generateSelfSignedError",
+					"Unable to generate OpenVPN certificates",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setOVCertLoading(false);
+		}
+	}, [form, t, toast]);
 
 	const handleGenerateMldsa65 = useCallback(async () => {
 		try {
@@ -1594,9 +1658,12 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.transport", "Transport")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.transport",
+															"Transport",
+															"inbounds.openvpn.help.transport",
+															"Select UDP for the usual OpenVPN mode, or TCP when UDP is blocked by the network.",
+														)}
 														<SearchableTagSelect
 															value={formValues.ovTransport || "udp"}
 															options={["udp", "tcp"]}
@@ -1619,16 +1686,17 @@ export const InboundFormModal: FC<Props> = ({
 														/>
 													</FormControl>
 													<FormControl
+														isRequired
 														isInvalid={Boolean(
 															fieldValidationErrors.ovTunnelPort,
 														)}
 													>
-														<FormLabel>
-															{t(
-																"inbounds.openvpn.tunnelPort",
-																"Tunnel port",
-															)}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.tunnelPort",
+															"Tunnel port",
+															"inbounds.openvpn.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public OpenVPN port.",
+														)}
 														<Input
 															{...register("ovTunnelPort")}
 															placeholder="41940"
@@ -1642,16 +1710,17 @@ export const InboundFormModal: FC<Props> = ({
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
+														isRequired
 														isInvalid={Boolean(
 															fieldValidationErrors.ovIPv4Pool,
 														)}
 													>
-														<FormLabel>
-															{t(
-																"inbounds.openvpn.ipv4Pool",
-																"IPv4 pool CIDR",
-															)}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.openvpn.help.ipv4Pool",
+															"Private IPv4 range assigned to OpenVPN users. Each user receives a deterministic address from this pool.",
+														)}
 														<Input
 															{...register("ovIPv4Pool")}
 															placeholder="10.66.0.0/16"
@@ -1663,9 +1732,12 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</FormControl>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.dns", "DNS servers")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.dns",
+															"DNS servers",
+															"inbounds.openvpn.help.dns",
+															"DNS resolvers pushed to OpenVPN clients, one IPv4 address per line.",
+														)}
 														<Textarea
 															rows={3}
 															{...register("ovDNSServers")}
@@ -1675,18 +1747,24 @@ export const InboundFormModal: FC<Props> = ({
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.cipher", "Cipher")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.cipher",
+															"Cipher",
+															"inbounds.openvpn.help.cipher",
+															"Optional OpenVPN data cipher. Leave empty to use the OpenVPN default for your installed version.",
+														)}
 														<Input
 															{...register("ovCipher")}
 															placeholder="AES-256-GCM"
 														/>
 													</FormControl>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.auth", "Auth digest")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.auth",
+															"Auth digest",
+															"inbounds.openvpn.help.auth",
+															"Optional packet authentication digest such as SHA256. Leave empty to use OpenVPN defaults.",
+														)}
 														<Input
 															{...register("ovAuth")}
 															placeholder="SHA256"
@@ -1695,30 +1773,33 @@ export const InboundFormModal: FC<Props> = ({
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl display="flex" alignItems="center">
-														<FormLabel mb={0}>
-															{t(
-																"inbounds.openvpn.redirectGateway",
-																"Redirect gateway",
-															)}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.redirectGateway",
+															"Redirect gateway",
+															"inbounds.openvpn.help.redirectGateway",
+															"Push the default route to clients so all client traffic enters the VPN.",
+															{ mb: 0 },
+														)}
 														<Switch {...register("ovRedirectGateway")} />
 													</FormControl>
 													<FormControl display="flex" alignItems="center">
-														<FormLabel mb={0}>
-															{t(
-																"inbounds.openvpn.tproxy",
-																"Enable TProxy automation",
-															)}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.tproxy",
+															"Enable TProxy automation",
+															"inbounds.openvpn.help.tproxy",
+															"Create nftables and policy routing rules that forward OpenVPN client traffic into the generated Xray tunnel inbound.",
+															{ mb: 0 },
+														)}
 														<Switch {...register("ovTproxyEnabled")} />
 													</FormControl>
 													<FormControl display="flex" alignItems="center">
-														<FormLabel mb={0}>
-															{t(
-																"inbounds.openvpn.accounting",
-																"Enable accounting",
-															)}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.accounting",
+															"Enable accounting",
+															"inbounds.openvpn.help.accounting",
+															"Record OpenVPN session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
 														<Switch {...register("ovAccountingEnabled")} />
 													</FormControl>
 												</SimpleGrid>
@@ -1727,12 +1808,12 @@ export const InboundFormModal: FC<Props> = ({
 														fieldValidationErrors.ovManagementPort,
 													)}
 												>
-													<FormLabel>
-														{t(
-															"inbounds.openvpn.managementPort",
-															"Management port",
-														)}
-													</FormLabel>
+													{ovLabel(
+														"inbounds.openvpn.managementPort",
+														"Management port",
+														"inbounds.openvpn.help.managementPort",
+														"Optional local OpenVPN management port used by the node process. Leave empty unless you need explicit control.",
+													)}
 													<Input
 														{...register("ovManagementPort")}
 														placeholder="7505"
@@ -1743,62 +1824,117 @@ export const InboundFormModal: FC<Props> = ({
 														</Text>
 													)}
 												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.openvpn.ca", "CA certificate")}
-													</FormLabel>
+												<Box>
+													<Button
+														size="sm"
+														leftIcon={<SparklesIcon width={16} />}
+														onClick={handleGenerateOVSelfSigned}
+														isLoading={ovCertLoading}
+													>
+														{t(
+															"inbounds.openvpn.generateSelfSigned",
+															"Generate self-signed certs",
+														)}
+													</Button>
+												</Box>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.ovCA)}
+												>
+													{ovLabel(
+														"inbounds.openvpn.ca",
+														"CA certificate",
+														"inbounds.openvpn.help.ca",
+														"Certificate authority used to sign the OpenVPN server certificate. A self-signed CA is fine for personal use.",
+													)}
 													<Textarea rows={4} {...register("ovCA")} />
+													{fieldValidationErrors.ovCA && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.ovCA}
+														</Text>
+													)}
 												</FormControl>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
-														<FormLabel>
-															{t(
-																"inbounds.openvpn.serverCertificate",
-																"Server certificate",
-															)}
-														</FormLabel>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.ovServerCertificate,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.serverCertificate",
+															"Server certificate",
+															"inbounds.openvpn.help.serverCertificate",
+															"OpenVPN server certificate signed by the CA above. Clients verify the server with this trust chain.",
+														)}
 														<Textarea
 															rows={4}
 															{...register("ovServerCertificate")}
 														/>
+														{fieldValidationErrors.ovServerCertificate && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{
+																	fieldValidationErrors.ovServerCertificate
+																}
+															</Text>
+														)}
 													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t(
-																"inbounds.openvpn.serverKey",
-																"Server key",
-															)}
-														</FormLabel>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.ovServerKey,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.serverKey",
+															"Server key",
+															"inbounds.openvpn.help.serverKey",
+															"Private key for the OpenVPN server certificate. Keep it private; it is written only to the node's OpenVPN config.",
+														)}
 														<Textarea rows={4} {...register("ovServerKey")} />
+														{fieldValidationErrors.ovServerKey && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovServerKey}
+															</Text>
+														)}
 													</FormControl>
 												</SimpleGrid>
 												<FormControl>
-													<FormLabel>
-														{t("inbounds.openvpn.dh", "DH parameters")}
-													</FormLabel>
+													{ovLabel(
+														"inbounds.openvpn.dh",
+														"DH parameters",
+														"inbounds.openvpn.help.dh",
+														"Optional Diffie-Hellman parameters for older TLS modes. Usually not needed with modern ECDHE/OpenVPN setups.",
+													)}
 													<Textarea rows={4} {...register("ovDH")} />
 												</FormControl>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.tlsCrypt", "tls-crypt")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.tlsCrypt",
+															"tls-crypt",
+															"inbounds.openvpn.help.tlsCrypt",
+															"Optional static key that encrypts and authenticates the OpenVPN control channel.",
+														)}
 														<Textarea rows={4} {...register("ovTlsCrypt")} />
 													</FormControl>
 													<FormControl>
-														<FormLabel>
-															{t("inbounds.openvpn.tlsAuth", "tls-auth")}
-														</FormLabel>
+														{ovLabel(
+															"inbounds.openvpn.tlsAuth",
+															"tls-auth",
+															"inbounds.openvpn.help.tlsAuth",
+															"Optional static HMAC key for authenticating the OpenVPN control channel.",
+														)}
 														<Textarea rows={4} {...register("ovTlsAuth")} />
 													</FormControl>
 												</SimpleGrid>
 												<FormControl>
-													<FormLabel>
-														{t(
-															"inbounds.openvpn.extraClient",
-															"Extra client config",
-														)}
-													</FormLabel>
+													{ovLabel(
+														"inbounds.openvpn.extraClient",
+														"Extra client config",
+														"inbounds.openvpn.help.extraClient",
+														"Extra directives appended to generated client profiles. Use only valid OpenVPN client options.",
+													)}
 													<Textarea
 														rows={4}
 														{...register("ovExtraClientConfig")}

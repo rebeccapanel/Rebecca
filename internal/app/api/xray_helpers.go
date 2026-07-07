@@ -2,9 +2,15 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
+	"math/big"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/curve25519"
 )
@@ -25,6 +31,8 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 		s.handleRealityKeypair(w)
 	case "/api/xray/reality-shortid", "/xray/reality-shortid":
 		s.handleRealityShortID(w)
+	case "/api/xray/ov-self-signed", "/xray/ov-self-signed":
+		s.handleOVSelfSigned(w)
 	case "/api/xray/mldsa65", "/xray/mldsa65":
 		writeError(w, http.StatusGone, "ML-DSA-65 generation is node-only and is not available on the master")
 	case "/api/xray/ech", "/xray/ech":
@@ -58,4 +66,90 @@ func (s *Server) handleRealityShortID(w http.ResponseWriter) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"shortId": hex.EncodeToString(value)})
+}
+
+func (s *Server) handleOVSelfSigned(w http.ResponseWriter) {
+	caCert, caKey, err := generateOVCA()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate OV CA")
+		return
+	}
+	serverCert, serverKey, err := generateOVServerCertificate(caCert, caKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate OV server certificate")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"ca":                string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw})),
+		"serverCertificate": serverCert,
+		"serverKey":         serverKey,
+	})
+}
+
+func generateOVCA() (*x509.Certificate, *rsa.PrivateKey, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+	serial, err := randomSerial()
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName: "Rebecca OV CA",
+		},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		MaxPathLen:            1,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cert, key, nil
+}
+
+func generateOVServerCertificate(ca *x509.Certificate, caKey *rsa.PrivateKey) (string, string, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return "", "", err
+	}
+	serial, err := randomSerial()
+	if err != nil {
+		return "", "", err
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			CommonName: "Rebecca OV Server",
+		},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
+	if err != nil {
+		return "", "", err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	return string(certPEM), string(keyPEM), nil
+}
+
+func randomSerial() (*big.Int, error) {
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	return rand.Int(rand.Reader, serialLimit)
 }
