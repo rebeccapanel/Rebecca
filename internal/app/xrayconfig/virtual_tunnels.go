@@ -9,8 +9,10 @@ import (
 const (
 	OVProtocol          = "openvpn"
 	L2TPProtocol        = "l2tp"
+	PPTPProtocol        = "pptp"
 	defaultOVPoolCIDR   = "10.66.0.0/16"
 	defaultL2TPPoolCIDR = "10.67.0.0/16"
+	defaultPPTPPoolCIDR = "10.68.0.0/16"
 )
 
 func isManageableInboundProtocol(protocol string) bool {
@@ -33,7 +35,7 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 	normalized := deepCopyMap(inbound)
 	protocol := normalizeProxyProtocol(stringValue(normalized["protocol"]))
 	normalized["protocol"] = protocol
-	if protocol != OVProtocol && protocol != L2TPProtocol {
+	if protocol != OVProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
 		return normalized
 	}
 	settings := normalizeVirtualTunnelSettings(protocol, mapValue(normalized["settings"]))
@@ -47,6 +49,8 @@ func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) ma
 	switch protocol {
 	case L2TPProtocol:
 		return normalizeL2TPSettings(settings)
+	case PPTPProtocol:
+		return normalizePPTPSettings(settings)
 	default:
 		return normalizeOVSettings(settings)
 	}
@@ -190,6 +194,21 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 	return out
 }
 
+func normalizePPTPSettings(settings map[string]any) map[string]any {
+	out := normalizeL2TPSettings(settings)
+	pool := strings.TrimSpace(firstNonEmptyString(settings["ipv4_pool_cidr"], settings["ipv4PoolCidr"]))
+	if pool == "" {
+		pool = defaultPPTPPoolCIDR
+	}
+	out["ipv4_pool_cidr"] = pool
+	delete(out, "ipsec_psk")
+	delete(out, "ipsec_ike_port")
+	delete(out, "ipsec_nat_port")
+	delete(out, "l2tp_port")
+	out["pptp_port"] = 1723
+	return out
+}
+
 func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 	if _, ok := inbound["port"]; !ok {
 		return fmt.Errorf("invalid inbound %q: port is required", tag)
@@ -202,7 +221,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
-	if protocol != OVProtocol && protocol != L2TPProtocol {
+	if protocol != OVProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
 	rawSettings := mapValue(inbound["settings"])
@@ -246,6 +265,11 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		if strings.TrimSpace(stringValue(settings["ipsec_psk"])) == "" {
 			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)
 		}
+	}
+	if protocol == PPTPProtocol && port != 1723 {
+		return fmt.Errorf("invalid inbound %q: PPTP port must be 1723", tag)
+	}
+	if protocol == L2TPProtocol || protocol == PPTPProtocol {
 		for _, item := range []struct {
 			key string
 			min int
@@ -291,6 +315,15 @@ func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[st
 		if port, ok := virtualTunnelPort(settings); ok {
 			resolved["tunnel_port"] = port
 		}
+	case PPTPProtocol:
+		resolved["network"] = "tcp"
+		resolved["tls"] = "none"
+		resolved["settings"] = settings
+		resolved["ipv4_pool_cidr"] = stringValue(settings["ipv4_pool_cidr"])
+		resolved["tunnel_tag"] = RuntimeTunnelTagForProtocol(PPTPProtocol, stringValue(inbound["tag"]))
+		if port, ok := virtualTunnelPort(settings); ok {
+			resolved["tunnel_port"] = port
+		}
 	}
 }
 
@@ -303,6 +336,8 @@ func RuntimeTunnelTagForProtocol(protocol string, tag string) string {
 	prefix := "__rebecca_ov_tunnel"
 	if normalizeProxyProtocol(protocol) == L2TPProtocol {
 		prefix = "__rebecca_l2tp_tunnel"
+	} else if normalizeProxyProtocol(protocol) == PPTPProtocol {
+		prefix = "__rebecca_pptp_tunnel"
 	}
 	if tag == "" {
 		return prefix

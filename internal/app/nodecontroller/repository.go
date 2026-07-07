@@ -299,6 +299,9 @@ func (r Repository) SetConnecting(ctx context.Context, nodeID int64) error {
 }
 
 func (r Repository) SetConnected(ctx context.Context, nodeID int64, version string, message string) error {
+	if len(message) > 1024 {
+		message = message[:1024]
+	}
 	previousStatus := ""
 	_ = r.db.QueryRowContext(ctx, `SELECT LOWER(COALESCE(status, '')) FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&previousStatus)
 	if err := r.updateStatus(ctx, nodeID, "connected", message, version); err != nil {

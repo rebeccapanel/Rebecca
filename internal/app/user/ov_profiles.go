@@ -402,11 +402,23 @@ func L2TPPasswordFromCredentialKey(credentialKey string) (string, error) {
 	return keyToPassword(key, "l2tp"), nil
 }
 
+func PPTPPasswordFromCredentialKey(credentialKey string) (string, error) {
+	key, err := normalizeCredentialKey(credentialKey)
+	if err != nil {
+		return "", err
+	}
+	return keyToPassword(key, "pptp"), nil
+}
+
 func OVIPv4AddressForUser(userID int64, pool string) string {
 	return OVIPv4ForUser(userID, pool)
 }
 
 func L2TPIPv4AddressForUser(userID int64, pool string) string {
+	return OVIPv4ForUser(userID, pool)
+}
+
+func PPTPIPv4AddressForUser(userID int64, pool string) string {
 	return OVIPv4ForUser(userID, pool)
 }
 

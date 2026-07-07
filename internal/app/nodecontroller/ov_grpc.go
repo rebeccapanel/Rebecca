@@ -21,12 +21,18 @@ func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, oper
 	if err != nil {
 		return nil, fmt.Errorf("L2TP runtime: %w", err)
 	}
+	pptpRuntime, err := c.repo.PPTPRuntime(ctx, node.ID)
+	if err != nil {
+		return nil, fmt.Errorf("PPTP runtime: %w", err)
+	}
 	raw, err := json.Marshal(map[string]any{
 		"generated_at":   ovRuntime.GeneratedAt,
 		"target":         ovRuntime.Target,
 		"inbounds":       ovRuntime.Inbounds,
 		"l2tp_inbounds":  l2tpRuntime.Inbounds,
 		"l2tp_generated": l2tpRuntime.GeneratedAt,
+		"pptp_inbounds":  pptpRuntime.Inbounds,
+		"pptp_generated": pptpRuntime.GeneratedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("VPN runtime: %w", err)

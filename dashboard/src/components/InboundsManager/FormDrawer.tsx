@@ -465,7 +465,8 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "http" &&
 		currentProtocol !== "socks" &&
 		currentProtocol !== "openvpn" &&
-		currentProtocol !== "l2tp";
+		currentProtocol !== "l2tp" &&
+		currentProtocol !== "pptp";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
 	const defaultVlessAuthLabels = useMemo(
@@ -1372,7 +1373,17 @@ export const InboundFormModal: FC<Props> = ({
 																shouldDirty: true,
 															});
 														}
-														if (nextProtocol === "openvpn") {
+														if (
+															nextProtocol === "openvpn" ||
+															nextProtocol === "l2tp" ||
+															nextProtocol === "pptp"
+														) {
+															if (nextProtocol === "pptp") {
+																form.setValue("port", "1723", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+															}
 															form.setValue("streamNetwork", "tcp", {
 																shouldDirty: true,
 																shouldValidate: true,
@@ -2036,7 +2047,7 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</Stack>
 										)}
-										{currentProtocol === "l2tp" && (
+										{(currentProtocol === "l2tp" || currentProtocol === "pptp") && (
 											<Stack spacing={3}>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
@@ -2084,26 +2095,28 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</FormControl>
 												</SimpleGrid>
-												<FormControl
-													isRequired
-													isInvalid={Boolean(fieldValidationErrors.l2tpIPSecPSK)}
-												>
-													{ovLabel(
-														"inbounds.l2tp.ipsecPsk",
-														"IPsec pre-shared key",
-														"inbounds.l2tp.help.ipsecPsk",
-														"Shared IPsec secret used by clients before L2TP username/password authentication.",
-													)}
-													<Input
-														{...register("l2tpIPSecPSK")}
-														placeholder="change-this-secret"
-													/>
-													{fieldValidationErrors.l2tpIPSecPSK && (
-														<Text fontSize="xs" color="red.500" mt={1}>
-															{fieldValidationErrors.l2tpIPSecPSK}
-														</Text>
-													)}
-												</FormControl>
+												{currentProtocol === "l2tp" && (
+													<FormControl
+														isRequired
+														isInvalid={Boolean(fieldValidationErrors.l2tpIPSecPSK)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.ipsecPsk",
+															"IPsec pre-shared key",
+															"inbounds.l2tp.help.ipsecPsk",
+															"Shared IPsec secret used by clients before L2TP username/password authentication.",
+														)}
+														<Input
+															{...register("l2tpIPSecPSK")}
+															placeholder="change-this-secret"
+														/>
+														{fieldValidationErrors.l2tpIPSecPSK && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpIPSecPSK}
+															</Text>
+														)}
+													</FormControl>
+												)}
 												<FormControl>
 													{ovLabel(
 														"inbounds.l2tp.dns",
@@ -4558,7 +4571,7 @@ export const InboundFormModal: FC<Props> = ({
 										</Stack>
 									)}
 
-									{currentProtocol !== "openvpn" && currentProtocol !== "l2tp" && (
+									{currentProtocol !== "openvpn" && currentProtocol !== "l2tp" && currentProtocol !== "pptp" && (
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Flex align="center" justify="space-between">
 											<HStack spacing={2}>

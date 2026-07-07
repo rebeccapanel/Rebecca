@@ -8,6 +8,7 @@ export type Protocol =
 	| "hysteria"
 	| "openvpn"
 	| "l2tp"
+	| "pptp"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -353,6 +354,7 @@ export const protocolOptions: Protocol[] = [
 	"hysteria",
 	"openvpn",
 	"l2tp",
+	"pptp",
 	"http",
 	"socks",
 ];
@@ -570,6 +572,9 @@ export const validateInboundFormFields = (
 	if (!isValidPortText(values.port ?? "")) {
 		errors.port = "Port must be a number between 1 and 65535.";
 	}
+	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
+		errors.port = "PPTP port must be 1723.";
+	}
 	if (values.streamNetwork === "ws") {
 		const error = validatePath(values.wsPath ?? "", "WebSocket path");
 		if (error) errors.wsPath = error;
@@ -685,7 +690,7 @@ export const validateInboundFormFields = (
 			errors.ovServerKey = "Server key is required.";
 		}
 	}
-	if (values.protocol === "l2tp") {
+	if (values.protocol === "l2tp" || values.protocol === "pptp") {
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
 			errors.l2tpIPv4Pool = "IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
 		}
@@ -700,9 +705,9 @@ export const validateInboundFormFields = (
 			isValidPortText(values.l2tpTunnelPort) &&
 			values.l2tpTunnelPort.trim() === values.port.trim()
 		) {
-			errors.l2tpTunnelPort = "Tunnel port must be different from the L2TP port.";
+			errors.l2tpTunnelPort = "Tunnel port must be different from the VPN port.";
 		}
-		if (!values.l2tpIPSecPSK.trim()) {
+		if (values.protocol === "l2tp" && !values.l2tpIPSecPSK.trim()) {
 			errors.l2tpIPSecPSK = "IPsec pre-shared key is required.";
 		}
 		const validateL2TPNumber = (
@@ -992,7 +997,7 @@ export const createDefaultInboundForm = (
 	tlsMaxVersion: "1.3",
 	tlsCipherSuites: "",
 	tlsRejectUnknownSni: false,
-	tlsVerifyPeerCertByName: "dns.google",
+	tlsVerifyPeerCertByName: "",
 	tlsDisableSystemRoot: false,
 	tlsEnableSessionResumption: false,
 	tlsCertificates: [createDefaultTlsCertificate()],
@@ -1699,7 +1704,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? (settings.extra_client_config ?? base.ovExtraClientConfig)
 				: base.ovExtraClientConfig,
 		l2tpTunnelPort:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? toInputValue(
 						settings.tunnel_port ??
 							settings.xray_tunnel_port ??
@@ -1707,11 +1712,11 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 					)
 				: base.l2tpTunnelPort,
 		l2tpIPv4Pool:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.l2tpIPv4Pool)
 				: base.l2tpIPv4Pool,
 		l2tpDNSServers:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers))
 				: base.l2tpDNSServers,
 		l2tpIPSecPSK:
@@ -1719,27 +1724,27 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? (settings.ipsec_psk ?? base.l2tpIPSecPSK)
 				: base.l2tpIPSecPSK,
 		l2tpRedirectGateway:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? Boolean(settings.redirect_gateway ?? base.l2tpRedirectGateway)
 				: base.l2tpRedirectGateway,
 		l2tpTproxyEnabled:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? Boolean(settings.tproxy_enabled ?? base.l2tpTproxyEnabled)
 				: base.l2tpTproxyEnabled,
 		l2tpAccountingEnabled:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? Boolean(settings.accounting_enabled ?? base.l2tpAccountingEnabled)
 				: base.l2tpAccountingEnabled,
 		l2tpMTU:
-			protocol === "l2tp" ? toInputValue(settings.mtu) : base.l2tpMTU,
+			protocol === "l2tp" || protocol === "pptp" ? toInputValue(settings.mtu) : base.l2tpMTU,
 		l2tpMRU:
-			protocol === "l2tp" ? toInputValue(settings.mru) : base.l2tpMRU,
+			protocol === "l2tp" || protocol === "pptp" ? toInputValue(settings.mru) : base.l2tpMRU,
 		l2tpLcpEchoInterval:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? toInputValue(settings.lcp_echo_interval)
 				: base.l2tpLcpEchoInterval,
 		l2tpLcpEchoFailure:
-			protocol === "l2tp"
+			protocol === "l2tp" || protocol === "pptp"
 				? toInputValue(settings.lcp_echo_failure)
 				: base.l2tpLcpEchoFailure,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
@@ -2425,16 +2430,21 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				values.ovExtraClientConfig.trim() || undefined;
 			break;
 		case "l2tp":
+		case "pptp":
 			base.ipv4_pool_cidr = values.l2tpIPv4Pool.trim() || "10.67.0.0/16";
 			base.dns_servers = splitLines(values.l2tpDNSServers);
-			base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
+			if (values.protocol === "l2tp") {
+				base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
+				base.l2tp_port = parsePort(values.port) || 1701;
+				base.ipsec_ike_port = 500;
+				base.ipsec_nat_port = 4500;
+			} else {
+				base.pptp_port = parsePort(values.port) || 1723;
+			}
 			base.redirect_gateway = values.l2tpRedirectGateway;
 			base.tproxy_enabled = values.l2tpTproxyEnabled;
 			base.accounting_enabled = values.l2tpAccountingEnabled;
 			base.tunnel_port = parseOptionalNumber(values.l2tpTunnelPort);
-			base.l2tp_port = parsePort(values.port) || 1701;
-			base.ipsec_ike_port = 500;
-			base.ipsec_nat_port = 4500;
 			base.mtu = parseOptionalNumber(values.l2tpMTU);
 			base.mru = parseOptionalNumber(values.l2tpMRU);
 			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);
@@ -2453,7 +2463,8 @@ export const buildInboundPayload = (
 		values.protocol !== "http" &&
 		values.protocol !== "socks" &&
 		values.protocol !== "openvpn" &&
-		values.protocol !== "l2tp";
+		values.protocol !== "l2tp" &&
+		values.protocol !== "pptp";
 	const streamSettings = supportsStream
 		? buildStreamSettings(values, options)
 		: undefined;
@@ -2469,7 +2480,7 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.protocol === "openvpn" || values.protocol === "l2tp") {
+	if (values.protocol === "openvpn" || values.protocol === "l2tp" || values.protocol === "pptp") {
 		delete payload.sniffing;
 	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;

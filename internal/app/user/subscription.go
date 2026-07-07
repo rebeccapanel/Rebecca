@@ -147,12 +147,17 @@ func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderReq
 	if err != nil {
 		return nil, err
 	}
+	pptpItems, err := s.PPTPInfos(ctx, user, req.URL)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"user": user,
 		"ov": map[string]any{
 			"downloads": ovLinks,
 		},
 		"l2tp": l2tpItems,
+		"pptp": pptpItems,
 	}, nil
 }
 

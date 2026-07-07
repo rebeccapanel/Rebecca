@@ -3172,7 +3172,7 @@
           "Subscriptions"
         ],
         "summary": "Subscription info",
-        "description": "Return subscription user info for a resolved identifier, including OV download links and L2TP/IPsec connection info when the user service has those hosts.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.",
+        "description": "Return subscription user info for a resolved identifier, including OV download links, L2TP/IPsec connection info, and PPTP connection info when the user service has those hosts.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.",
         "security": [],
         "parameters": [
           {
@@ -3272,7 +3272,7 @@
           "Subscriptions"
         ],
         "summary": "Username/key subscription info",
-        "description": "Return subscription user info using explicit username and credential key, including OV download links and L2TP/IPsec connection info when available.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
+        "description": "Return subscription user info using explicit username and credential key, including OV download links, L2TP/IPsec connection info, and PPTP connection info when available.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
         "security": [],
         "parameters": [
           {

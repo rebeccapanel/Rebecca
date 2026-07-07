@@ -209,7 +209,21 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 	if err != nil {
 		return false, err
 	}
-	return len(runtimeConfig.Inbounds) > 0, nil
+	if len(runtimeConfig.Inbounds) > 0 {
+		return true, nil
+	}
+	l2tpRuntimeConfig, err := c.repo.L2TPRuntime(ctx, node.ID)
+	if err != nil {
+		return false, err
+	}
+	if len(l2tpRuntimeConfig.Inbounds) > 0 {
+		return true, nil
+	}
+	pptpRuntimeConfig, err := c.repo.PPTPRuntime(ctx, node.ID)
+	if err != nil {
+		return false, err
+	}
+	return len(pptpRuntimeConfig.Inbounds) > 0, nil
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {
