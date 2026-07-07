@@ -409,6 +409,11 @@ func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
 	if _, err := Parse(base(validSettings), Options{}); err != nil {
 		t.Fatalf("valid L2TP inbound rejected: %v", err)
 	}
+	invalidPort := base(validSettings)
+	invalidPort["inbounds"].([]any)[0].(map[string]any)["port"] = 4999
+	if _, err := Parse(invalidPort, Options{}); err == nil || !strings.Contains(err.Error(), "L2TP port must be 1701") {
+		t.Fatalf("expected L2TP port validation error, got %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		key  string

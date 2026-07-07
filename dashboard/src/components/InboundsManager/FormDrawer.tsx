@@ -460,7 +460,12 @@ export const InboundFormModal: FC<Props> = ({
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
 	const ovTunnelPortValue =
 		useWatch({ control, name: "ovTunnelPort" }) || watch("ovTunnelPort") || "";
+	const l2tpTunnelPortValue =
+		useWatch({ control, name: "l2tpTunnelPort" }) ||
+		watch("l2tpTunnelPort") ||
+		"";
 	const autoOVTunnelPortRef = useRef("");
+	const autoL2TPTunnelPortRef = useRef("");
 	const supportsStreamSettings =
 		currentProtocol !== "http" &&
 		currentProtocol !== "socks" &&
@@ -648,6 +653,65 @@ export const InboundFormModal: FC<Props> = ({
 		streamSecurity,
 	]);
 
+	useEffect(() => {
+		if (currentProtocol !== "l2tp") {
+			autoL2TPTunnelPortRef.current = "";
+			return;
+		}
+		if (portValue !== "1701") {
+			form.setValue("port", "1701", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		const currentTunnelPort = String(l2tpTunnelPortValue || "").trim();
+		if (
+			currentTunnelPort &&
+			currentTunnelPort !== autoL2TPTunnelPortRef.current
+		) {
+			return;
+		}
+		if (currentTunnelPort !== "41941") {
+			autoL2TPTunnelPortRef.current = "41941";
+			form.setValue("l2tpTunnelPort", "41941", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (!String(form.getValues("l2tpIPSecPSK") || "").trim()) {
+			form.setValue("l2tpIPSecPSK", `rb-l2tp-${randomLowerAndNum(24)}`, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [
+		currentProtocol,
+		form,
+		l2tpTunnelPortValue,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+	]);
+
 	const BLOCKED_PORTS = useMemo(
 		() =>
 			new Set([
@@ -671,6 +735,13 @@ export const InboundFormModal: FC<Props> = ({
 	);
 
 	const generateRandomPort = useCallback(() => {
+		if (currentProtocol === "l2tp") {
+			form.setValue("port", "1701", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			return "1701";
+		}
 		let candidate = 0;
 		for (let i = 0; i < 10; i += 1) {
 			const randomPort = Math.floor(Math.random() * 9000) + 1000; // 4-digit
@@ -684,7 +755,7 @@ export const InboundFormModal: FC<Props> = ({
 		}
 		form.setValue("port", candidate.toString(), { shouldDirty: true });
 		return candidate.toString();
-	}, [BLOCKED_PORTS, form]);
+	}, [BLOCKED_PORTS, currentProtocol, form]);
 
 	useEffect(() => {
 		if (!portValue) {
@@ -1378,8 +1449,32 @@ export const InboundFormModal: FC<Props> = ({
 															nextProtocol === "l2tp" ||
 															nextProtocol === "pptp"
 														) {
+															if (nextProtocol === "l2tp") {
+																form.setValue("port", "1701", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("l2tpTunnelPort", "41941", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																if (!form.getValues("l2tpIPSecPSK")) {
+																	form.setValue(
+																		"l2tpIPSecPSK",
+																		`rb-l2tp-${randomLowerAndNum(24)}`,
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	);
+																}
+															}
 															if (nextProtocol === "pptp") {
 																form.setValue("port", "1723", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("l2tpTunnelPort", "41942", {
 																	shouldDirty: true,
 																	shouldValidate: true,
 																});

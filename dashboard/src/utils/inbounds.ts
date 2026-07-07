@@ -434,6 +434,14 @@ const randomPortText = (): string => {
 	return "443";
 };
 
+const defaultPortText = (protocol: Protocol): string => {
+	if (protocol === "l2tp") return "1701";
+	if (protocol === "pptp") return "1723";
+	return randomPortText();
+};
+
+const defaultL2TPPSK = (): string => `rb-l2tp-${randomLowerAndNum(24)}`;
+
 export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
 	type: "salamander",
 	mode: "salamander",
@@ -574,6 +582,9 @@ export const validateInboundFormFields = (
 	}
 	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
 		errors.port = "PPTP port must be 1723.";
+	}
+	if (values.protocol === "l2tp" && values.port.trim() !== "1701") {
+		errors.port = "L2TP/IPsec port must be 1701.";
 	}
 	if (values.streamNetwork === "ws") {
 		const error = validatePath(values.wsPath ?? "", "WebSocket path");
@@ -959,7 +970,7 @@ export const createDefaultInboundForm = (
 ): InboundFormValues => ({
 	tag: "",
 	listen: "",
-	port: randomPortText(),
+	port: defaultPortText(protocol),
 	protocol,
 	tcpAcceptProxyProtocol: false,
 	wsAcceptProxyProtocol: false,
@@ -986,7 +997,7 @@ export const createDefaultInboundForm = (
 	hysteriaUdpMasks:
 		protocol === "hysteria" ? [createDefaultHysteriaUdpMask()] : [],
 	hysteriaQuicParams: createDefaultHysteriaQuicParams(),
-	sniffingEnabled: true,
+	sniffingEnabled: protocol !== "openvpn" && protocol !== "l2tp" && protocol !== "pptp",
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
@@ -1104,10 +1115,10 @@ export const createDefaultInboundForm = (
 	ovTlsCrypt: "",
 	ovTlsAuth: "",
 	ovExtraClientConfig: "",
-	l2tpTunnelPort: "",
+	l2tpTunnelPort: protocol === "l2tp" ? "41941" : protocol === "pptp" ? "41942" : "",
 	l2tpIPv4Pool: "10.67.0.0/16",
 	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
-	l2tpIPSecPSK: "",
+	l2tpIPSecPSK: protocol === "l2tp" ? defaultL2TPPSK() : "",
 	l2tpRedirectGateway: true,
 	l2tpTproxyEnabled: true,
 	l2tpAccountingEnabled: true,

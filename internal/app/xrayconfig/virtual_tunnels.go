@@ -262,6 +262,9 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	if protocol == L2TPProtocol {
+		if port != 1701 {
+			return fmt.Errorf("invalid inbound %q: L2TP port must be 1701", tag)
+		}
 		if strings.TrimSpace(stringValue(settings["ipsec_psk"])) == "" {
 			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)
 		}
