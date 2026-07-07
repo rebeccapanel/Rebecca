@@ -4,6 +4,7 @@ import {
 	Box,
 	Button,
 	Checkbox,
+	chakra,
 	FormControl,
 	FormHelperText,
 	FormLabel,
@@ -24,8 +25,8 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SparklesIcon } from "@heroicons/react/24/outline";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -33,14 +34,22 @@ import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
-import { NumericInput } from "./common/NumericInput";
-import { isUserManagementLocked } from "utils/adminTraffic";
 import type {
 	AdvancedUserActionPayload,
 	AdvancedUserActionScopeStatus,
 	AdvancedUserActionStatus,
 	AdvancedUserActionType,
 } from "types/User";
+import { isUserManagementLocked } from "utils/adminTraffic";
+import { NumericInput } from "./common/NumericInput";
+
+// `className="w-4 h-4"` (Tailwind) is a no-op in this project - there is no
+// Tailwind build step - so the raw 24x24 heroicon rendered ~2.4x oversized
+// next to the neighboring 16px icons. Size it the same way every other
+// toolbar icon in this codebase is sized, via Chakra's style props.
+const AdvancedActionsIcon = chakra(SparklesIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
 
 const cleanupOptions: AdvancedUserActionStatus[] = ["expired", "limited"];
 const scopeStatusOptions: AdvancedUserActionScopeStatus[] = [
@@ -321,7 +330,10 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 			return;
 		}
 		const resolvedTargetServiceId = Number(targetServiceValue);
-		if (!Number.isFinite(resolvedTargetServiceId) || resolvedTargetServiceId <= 0) {
+		if (
+			!Number.isFinite(resolvedTargetServiceId) ||
+			resolvedTargetServiceId <= 0
+		) {
 			showToast(
 				t(
 					"filters.advancedActions.error.targetServiceRequired",
@@ -378,10 +390,12 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 	return (
 		<>
 			{compact ? (
-				<Tooltip label={t("filters.advancedActions.button", "Advanced actions")}>
+				<Tooltip
+					label={t("filters.advancedActions.button", "Advanced actions")}
+				>
 					<IconButton
 						aria-label={t("filters.advancedActions.button", "Advanced actions")}
-						icon={<SparklesIcon className="w-4 h-4" />}
+						icon={<AdvancedActionsIcon />}
 						onClick={onOpen}
 						variant="outline"
 						borderRadius="full"
@@ -392,7 +406,7 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 				</Tooltip>
 			) : (
 				<Button
-					leftIcon={<SparklesIcon className="w-4 h-4" />}
+					leftIcon={<AdvancedActionsIcon />}
 					onClick={onOpen}
 					size={isMobile ? "sm" : "md"}
 					variant="outline"
@@ -507,51 +521,51 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 									</FormControl>
 
 									{!serviceTransferDisabled && (
-									<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-										<Stack spacing={3}>
-											<Text fontWeight="semibold">
-												{t(
-													"filters.advancedActions.serviceChange.title",
-													"Change users' service",
-												)}
-											</Text>
-											<Text fontSize="sm" color="gray.500">
-												{t(
-													"filters.advancedActions.serviceChange.helper",
-													"Move the filtered users to another service.",
-												)}
-											</Text>
-											<Select
-												placeholder={t(
-													"filters.advancedActions.serviceChange.placeholder",
-													"Select target service",
-												)}
-												value={targetServiceValue}
-												onChange={(event) =>
-													setTargetServiceValue(event.target.value)
-												}
-												size="sm"
-											>
-												{servicesStore.serviceOptions.map((service) => (
-													<option key={service.id} value={String(service.id)}>
-														{service.name}
-													</option>
-												))}
-											</Select>
-											<Button
-												colorScheme="primary"
-												size="sm"
-												alignSelf="flex-start"
-												isLoading={isChangingService}
-												onClick={handleChangeService}
-											>
-												{t(
-													"filters.advancedActions.serviceChange.button",
-													"Move to service",
-												)}
-											</Button>
-										</Stack>
-									</Box>
+										<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+											<Stack spacing={3}>
+												<Text fontWeight="semibold">
+													{t(
+														"filters.advancedActions.serviceChange.title",
+														"Change users' service",
+													)}
+												</Text>
+												<Text fontSize="sm" color="gray.500">
+													{t(
+														"filters.advancedActions.serviceChange.helper",
+														"Move the filtered users to another service.",
+													)}
+												</Text>
+												<Select
+													placeholder={t(
+														"filters.advancedActions.serviceChange.placeholder",
+														"Select target service",
+													)}
+													value={targetServiceValue}
+													onChange={(event) =>
+														setTargetServiceValue(event.target.value)
+													}
+													size="sm"
+												>
+													{servicesStore.serviceOptions.map((service) => (
+														<option key={service.id} value={String(service.id)}>
+															{service.name}
+														</option>
+													))}
+												</Select>
+												<Button
+													colorScheme="primary"
+													size="sm"
+													alignSelf="flex-start"
+													isLoading={isChangingService}
+													onClick={handleChangeService}
+												>
+													{t(
+														"filters.advancedActions.serviceChange.button",
+														"Move to service",
+													)}
+												</Button>
+											</Stack>
+										</Box>
 									)}
 								</>
 							)}
