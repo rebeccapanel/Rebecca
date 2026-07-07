@@ -51,10 +51,16 @@ func (c Controller) legacySyncConfig(ctx context.Context, node NodeRow, configJS
 	}
 	c.rememberNodeProtocol(node.ID, "legacy")
 	var payload map[string]any
-	if err := client.post(ctx, "/restart", map[string]any{
+	body := map[string]any{
 		"session_id": client.sessionID,
 		"config":     configJSON,
-	}, &payload); err != nil {
+	}
+	runtimeConfig, err := c.repo.OVRuntime(ctx, node.ID)
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	body["ov_runtime"] = runtimeConfig
+	if err := client.post(ctx, "/restart", body, &payload); err != nil {
 		return RuntimeResult{}, err
 	}
 	result := legacyRuntimeResult(node, payload, "runtime config synced")

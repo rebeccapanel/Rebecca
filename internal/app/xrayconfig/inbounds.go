@@ -58,6 +58,11 @@ func (r Repository) GroupedInbounds(ctx context.Context) (map[string][]map[strin
 			grouped[protocol] = []map[string]any{}
 		}
 	}
+	for protocol := range virtualTunnelProtocols {
+		if _, ok := grouped[protocol]; !ok {
+			grouped[protocol] = []map[string]any{}
+		}
+	}
 	return grouped, nil
 }
 
@@ -419,8 +424,18 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 	if protocol == "" {
 		return nil, fmt.Errorf("%w: protocol is required", ErrInvalidInbound)
 	}
-	if _, ok := proxyProtocols[protocol]; !ok {
+	protocol = normalizeProxyProtocol(protocol)
+	if !isManageableInboundProtocol(protocol) {
 		return nil, fmt.Errorf("%w: unsupported protocol %q", ErrInvalidInbound, protocol)
+	}
+	if isVirtualTunnelProtocol(protocol) {
+		inbound["tag"] = tag
+		inbound["protocol"] = protocol
+		inbound = normalizeVirtualTunnelInbound(inbound)
+		if err := validateExecutableInbound(inbound); err != nil {
+			return nil, err
+		}
+		return inbound, nil
 	}
 	settings := mapValue(inbound["settings"])
 	if len(settings) == 0 {
@@ -553,20 +568,47 @@ func removeWhitespace(value string) string {
 }
 
 func validatePortAvailable(config map[string]any, inbound map[string]any, skipTag string) error {
-	port := fmt.Sprint(inbound["port"])
-	if port == "" || port == "<nil>" {
+	ports := inboundRuntimePorts(inbound)
+	if len(ports) == 0 {
 		return nil
+	}
+	seen := map[int]struct{}{}
+	for _, port := range ports {
+		if _, exists := seen[port]; exists {
+			return fmt.Errorf("%w: port %d is already used in target", ErrDuplicateInboundPort, port)
+		}
+		seen[port] = struct{}{}
 	}
 	for _, existing := range listOfMaps(config["inbounds"]) {
 		tag := stringValue(existing["tag"])
 		if skipTag != "" && tag == skipTag {
 			continue
 		}
-		if fmt.Sprint(existing["port"]) == port {
-			return fmt.Errorf("%w: port %s is already used in target", ErrDuplicateInboundPort, port)
+		for _, existingPort := range inboundRuntimePorts(existing) {
+			for _, port := range ports {
+				if existingPort == port {
+					return fmt.Errorf("%w: port %d is already used in target", ErrDuplicateInboundPort, port)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+func inboundRuntimePorts(inbound map[string]any) []int {
+	ports := make([]int, 0, 2)
+	if port, err := parseConfigPort(inbound["port"]); err == nil && port > 0 {
+		ports = append(ports, port)
+	}
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	if !isVirtualTunnelProtocol(protocol) {
+		return ports
+	}
+	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort > 0 {
+		ports = append(ports, tunnelPort)
+	}
+	return ports
 }
 
 func upsertInbound(config map[string]any, inbound map[string]any, oldTag string) {
@@ -612,7 +654,9 @@ func sanitizeInbound(inbound map[string]any, directTargets []string, effectiveTa
 	if len(settings) == 0 {
 		settings = make(map[string]any)
 	}
-	settings["clients"] = []any{}
+	if !isVirtualTunnelProtocol(normalizeProxyProtocol(stringValue(sanitized["protocol"]))) {
+		settings["clients"] = []any{}
+	}
 	sanitized["settings"] = settings
 	sanitized["targets"] = targetObjects(directTargets)
 	sanitized["effective_targets"] = targetObjects(effectiveTargets)

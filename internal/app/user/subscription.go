@@ -31,6 +31,8 @@ type SubscriptionRenderRequest struct {
 	Username   string
 	Key        string
 	ClientType string
+	InboundTag string
+	HostTag    string
 	UserAgent  string
 	Accept     string
 	URL        string
@@ -60,6 +62,7 @@ var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
 	"v2ray":      {Format: "v2ray", Media: "text/plain", Base64: true},
 	"outline":    {Format: "outline", Media: "application/json"},
 	"v2ray-json": {Format: "v2ray-json", Media: "application/json"},
+	"openvpn":    {Format: "openvpn", Media: "application/x-openvpn-profile"},
 }
 
 func NormalizeSubscriptionClientType(value string) (string, bool) {
@@ -90,6 +93,9 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	}
 	if !req.ReadOnly {
 		_ = s.repo.updateSubscriptionAccess(ctx, user.ID, req.UserAgent)
+	}
+	if req.ClientType == "openvpn" {
+		return s.generateOVProfile(ctx, user, req)
 	}
 	clientType := req.ClientType
 	if clientType == "" {
@@ -556,12 +562,27 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1]}, true
 	}
 	if len(segments) == 3 {
+		if segments[1] == "ov" {
+			return SubscriptionRenderRequest{
+				Identifier: segments[0],
+				ClientType: "openvpn",
+				HostTag:    strings.TrimSuffix(segments[2], ".ovpn"),
+			}, true
+		}
 		if segments[2] == "info" || segments[2] == "usage" {
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: segments[2]}, true
 		}
 		if client, ok := NormalizeSubscriptionClientType(segments[2]); ok {
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: client}, true
 		}
+	}
+	if len(segments) == 4 && segments[2] == "ov" {
+		return SubscriptionRenderRequest{
+			Username:   segments[0],
+			Key:        segments[1],
+			ClientType: "openvpn",
+			HostTag:    strings.TrimSuffix(segments[3], ".ovpn"),
+		}, true
 	}
 	return SubscriptionRenderRequest{}, false
 }
@@ -679,6 +700,10 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if parsed, err := url.Parse(req.URL); err == nil {
 		path = strings.TrimRight(parsed.Path, "/")
 	}
+	rawLinks := append([]string{}, links.Links...)
+	if downloadLinks, err := s.OVDownloadLinks(ctx, user, req.URL); err == nil {
+		rawLinks = append(rawLinks, downloadLinks...)
+	}
 	content := fallbackSubscriptionPageTemplate
 	if s.templates != nil {
 		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)
@@ -689,7 +714,7 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			content = templateContent.Content
 		}
 	}
-	return renderSubscriptionPageTemplate(content, user, links.Links, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier)
+	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier)
 }
 
 func renderClashLikeYAML(username string, links []string, meta bool) string {

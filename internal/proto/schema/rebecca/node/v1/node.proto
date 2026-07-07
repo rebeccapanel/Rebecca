@@ -88,6 +88,7 @@ message RuntimeConfigRequest {
   string operation_id = 1;
   string config_json = 2;
   bool include_db_users = 3;
+  string ov_runtime_json = 4;
 }
 
 message StopRuntimeRequest {

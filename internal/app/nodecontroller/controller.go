@@ -70,10 +70,12 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 	}
 	state := connect.GetRuntime()
 	if strings.TrimSpace(req.ConfigJSON) != "" {
-		syncRes, err := client.Runtime().SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
-			OperationId: "sync-" + strconv.FormatInt(req.NodeID, 10),
-			ConfigJson:  req.ConfigJSON,
-		})
+		syncReq, err := c.runtimeConfigRequest(ctx, node, "sync-"+strconv.FormatInt(req.NodeID, 10), req.ConfigJSON)
+		if err != nil {
+			_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+			return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
+		}
+		syncRes, err := client.Runtime().SyncConfig(ctx, syncReq)
 		if err != nil {
 			if c.shouldAttemptLegacyFallback(node.ID) {
 				if result, legacyErr := c.legacySyncConfig(ctx, node, req.ConfigJSON); legacyErr == nil {
@@ -129,10 +131,12 @@ func (c Controller) Restart(ctx context.Context, req Request) (RuntimeResult, er
 			return RuntimeResult{}, err
 		}
 	}
-	res, err := client.Runtime().RestartRuntime(ctx, &nodev1.RuntimeConfigRequest{
-		OperationId: "restart-" + strconv.FormatInt(req.NodeID, 10),
-		ConfigJson:  configJSON,
-	})
+	runtimeReq, err := c.runtimeConfigRequest(ctx, node, "restart-"+strconv.FormatInt(req.NodeID, 10), configJSON)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
+	}
+	res, err := client.Runtime().RestartRuntime(ctx, runtimeReq)
 	if err != nil {
 		if c.shouldAttemptLegacyFallback(node.ID) {
 			if result, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {
@@ -876,10 +880,12 @@ func (c Controller) applyOperationWithConfigData(ctx context.Context, operation 
 				return err
 			}
 		}
-		res, err := client.Runtime().SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
-			OperationId: fmt.Sprintf("%s-%d", operation.OperationType, operation.ID),
-			ConfigJson:  configJSON,
-		})
+		runtimeReq, err := c.runtimeConfigRequest(ctx, node, fmt.Sprintf("%s-%d", operation.OperationType, operation.ID), configJSON)
+		if err != nil {
+			_ = c.repo.SetError(ctx, operation.NodeID.Int64, err.Error())
+			return err
+		}
+		res, err := client.Runtime().SyncConfig(ctx, runtimeReq)
 		if err != nil {
 			if c.shouldAttemptLegacyFallback(node.ID) {
 				if _, legacyErr := c.legacySyncConfig(ctx, node, configJSON); legacyErr == nil {

@@ -434,7 +434,9 @@ export const InboundFormModal: FC<Props> = ({
 	const tagValue = useWatch({ control, name: "tag" }) || watch("tag") || "";
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
 	const supportsStreamSettings =
-		currentProtocol !== "http" && currentProtocol !== "socks";
+		currentProtocol !== "http" &&
+		currentProtocol !== "socks" &&
+		currentProtocol !== "openvpn";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
 	const defaultVlessAuthLabels = useMemo(
@@ -563,6 +565,30 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		}
 	}, [currentProtocol, form, streamNetwork, streamSecurity]);
+
+	useEffect(() => {
+		if (currentProtocol !== "openvpn") {
+			return;
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [currentProtocol, form, sniffingEnabled, streamNetwork, streamSecurity]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -1250,6 +1276,20 @@ export const InboundFormModal: FC<Props> = ({
 																shouldDirty: true,
 															});
 														}
+														if (nextProtocol === "openvpn") {
+															form.setValue("streamNetwork", "tcp", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("streamSecurity", "none", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("sniffingEnabled", false, {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+														}
 													}}
 												/>
 											</FormControl>
@@ -1548,6 +1588,222 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</Stack>
 												)}
+											</Stack>
+										)}
+										{currentProtocol === "openvpn" && (
+											<Stack spacing={3}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.transport", "Transport")}
+														</FormLabel>
+														<SearchableTagSelect
+															value={formValues.ovTransport || "udp"}
+															options={["udp", "tcp"]}
+															placeholder={t(
+																"inbounds.openvpn.transport",
+																"Transport",
+															)}
+															onChange={(value) =>
+																form.setValue(
+																	"ovTransport",
+																	String(
+																		value,
+																	) as InboundFormValues["ovTransport"],
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.ovTunnelPort,
+														)}
+													>
+														<FormLabel>
+															{t(
+																"inbounds.openvpn.tunnelPort",
+																"Tunnel port",
+															)}
+														</FormLabel>
+														<Input
+															{...register("ovTunnelPort")}
+															placeholder="41940"
+														/>
+														{fieldValidationErrors.ovTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.ovIPv4Pool,
+														)}
+													>
+														<FormLabel>
+															{t(
+																"inbounds.openvpn.ipv4Pool",
+																"IPv4 pool CIDR",
+															)}
+														</FormLabel>
+														<Input
+															{...register("ovIPv4Pool")}
+															placeholder="10.66.0.0/16"
+														/>
+														{fieldValidationErrors.ovIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.dns", "DNS servers")}
+														</FormLabel>
+														<Textarea
+															rows={3}
+															{...register("ovDNSServers")}
+															placeholder={"1.1.1.1\n8.8.8.8"}
+														/>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.cipher", "Cipher")}
+														</FormLabel>
+														<Input
+															{...register("ovCipher")}
+															placeholder="AES-256-GCM"
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.auth", "Auth digest")}
+														</FormLabel>
+														<Input
+															{...register("ovAuth")}
+															placeholder="SHA256"
+														/>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t(
+																"inbounds.openvpn.redirectGateway",
+																"Redirect gateway",
+															)}
+														</FormLabel>
+														<Switch {...register("ovRedirectGateway")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t(
+																"inbounds.openvpn.tproxy",
+																"Enable TProxy automation",
+															)}
+														</FormLabel>
+														<Switch {...register("ovTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														<FormLabel mb={0}>
+															{t(
+																"inbounds.openvpn.accounting",
+																"Enable accounting",
+															)}
+														</FormLabel>
+														<Switch {...register("ovAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.ovManagementPort,
+													)}
+												>
+													<FormLabel>
+														{t(
+															"inbounds.openvpn.managementPort",
+															"Management port",
+														)}
+													</FormLabel>
+													<Input
+														{...register("ovManagementPort")}
+														placeholder="7505"
+													/>
+													{fieldValidationErrors.ovManagementPort && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.ovManagementPort}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t("inbounds.openvpn.ca", "CA certificate")}
+													</FormLabel>
+													<Textarea rows={4} {...register("ovCA")} />
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>
+															{t(
+																"inbounds.openvpn.serverCertificate",
+																"Server certificate",
+															)}
+														</FormLabel>
+														<Textarea
+															rows={4}
+															{...register("ovServerCertificate")}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t(
+																"inbounds.openvpn.serverKey",
+																"Server key",
+															)}
+														</FormLabel>
+														<Textarea rows={4} {...register("ovServerKey")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl>
+													<FormLabel>
+														{t("inbounds.openvpn.dh", "DH parameters")}
+													</FormLabel>
+													<Textarea rows={4} {...register("ovDH")} />
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.tlsCrypt", "tls-crypt")}
+														</FormLabel>
+														<Textarea rows={4} {...register("ovTlsCrypt")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel>
+															{t("inbounds.openvpn.tlsAuth", "tls-auth")}
+														</FormLabel>
+														<Textarea rows={4} {...register("ovTlsAuth")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl>
+													<FormLabel>
+														{t(
+															"inbounds.openvpn.extraClient",
+															"Extra client config",
+														)}
+													</FormLabel>
+													<Textarea
+														rows={4}
+														{...register("ovExtraClientConfig")}
+													/>
+												</FormControl>
 											</Stack>
 										)}
 									</Stack>

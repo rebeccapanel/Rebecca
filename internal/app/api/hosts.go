@@ -293,6 +293,7 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 	if err != nil {
 		return err
 	}
+	inboundProtocol := s.hostInboundProtocol(r.Context(), inboundTag)
 	remaining := make(map[int64]bool, len(existing))
 	for _, id := range existing {
 		remaining[id] = true
@@ -300,6 +301,7 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 
 	for _, host := range payload {
 		host = normalizeHostPayload(host)
+		host = sanitizeHostPayloadForInboundProtocol(host, inboundProtocol)
 		if err := validateHostPayload(host); err != nil {
 			return err
 		}
@@ -363,6 +365,40 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 		}
 	}
 	return nil
+}
+
+func (s *Server) hostInboundProtocol(ctx context.Context, tag string) string {
+	inbound, err := s.configRepo.GetInbound(ctx, tag)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(fmt.Sprint(inbound["protocol"])))
+}
+
+func sanitizeHostPayloadForInboundProtocol(payload hostPayload, protocol string) hostPayload {
+	if protocol != "openvpn" {
+		return payload
+	}
+	payload.Port = nil
+	payload.Path = nil
+	payload.SNI = nil
+	payload.SNIOptions = nil
+	payload.SNIMode = "random"
+	payload.SNITTL = nil
+	payload.Host = nil
+	payload.HostOptions = nil
+	payload.HostMode = "random"
+	payload.HostTTL = nil
+	payload.Security = "inbound_default"
+	payload.ALPN = "none"
+	payload.Fingerprint = "none"
+	payload.AllowInsecure = nil
+	payload.MuxEnable = boolPtr(false)
+	payload.FragmentSetting = nil
+	payload.NoiseSetting = nil
+	payload.RandomUserAgent = boolPtr(false)
+	payload.UseSNIAsHost = boolPtr(false)
+	return payload
 }
 
 func (s *Server) manageableInboundTags(r *http.Request) ([]string, error) {

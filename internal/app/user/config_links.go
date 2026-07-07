@@ -28,6 +28,18 @@ var proxyProtocols = map[string]struct{}{
 	"hysteria":    {},
 }
 
+var subscriptionDownloadProtocols = map[string]struct{}{
+	"openvpn": {},
+}
+
+func isResolvableInboundProtocol(protocol string) bool {
+	if _, ok := proxyProtocols[protocol]; ok {
+		return true
+	}
+	_, ok := subscriptionDownloadProtocols[protocol]
+	return ok
+}
+
 type configHost struct {
 	host     Host
 	position int
@@ -320,7 +332,7 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	path = applyFormat(path, variables)
 
 	effective := copyInbound(inbound)
-	if host.Port != nil {
+	if host.Port != nil && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "openvpn" {
 		effective["port"] = *host.Port
 	}
 	if tls := normalizedHostSecurity(host.Security); tls != "" {
@@ -1150,6 +1162,10 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 			resolved["encryption"] = encryption
 		}
 	}
+	if protocol == "openvpn" {
+		applyOVResolvedSettings(resolved, inbound)
+		return resolved, nil
+	}
 
 	stream := mapValue(inbound["streamSettings"])
 	if network := normalizeNetwork(stringValue(stream["network"])); network != "" {
@@ -1306,10 +1322,6 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		resolved["host"] = stringList(networkSettings["host"])
 	}
 	return resolved, nil
-}
-
-func excludedInboundTags() map[string]struct{} {
-	return map[string]struct{}{}
 }
 
 func normalizeProxyProtocol(value string) string {

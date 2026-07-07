@@ -1055,6 +1055,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				: undefined,
 		[inboundOptions, host],
 	);
+	const isOVInbound = selectedInbound?.protocol === "openvpn";
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1197,24 +1198,26 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															rightElement={<DynamicTokensPopover />}
 														/>
 													</FormControl>
-													<FormControl>
-														<FormLabel>{t("hostsDialog.port")}</FormLabel>
-														<NumericInput
-															value={host.data.port ?? ""}
-															allowMouseWheel
-															fieldProps={{
-																placeholder:
-																	inboundPortPlaceholder(selectedInbound),
-															}}
-															onChange={(_, num) =>
-																onChange(
-																	host.uid,
-																	"port",
-																	Number.isNaN(num) ? null : num,
-																)
-															}
-														/>
-													</FormControl>
+													{!isOVInbound && (
+														<FormControl>
+															<FormLabel>{t("hostsDialog.port")}</FormLabel>
+															<NumericInput
+																value={host.data.port ?? ""}
+																allowMouseWheel
+																fieldProps={{
+																	placeholder:
+																		inboundPortPlaceholder(selectedInbound),
+																}}
+																onChange={(_, num) =>
+																	onChange(
+																		host.uid,
+																		"port",
+																		Number.isNaN(num) ? null : num,
+																	)
+																}
+															/>
+														</FormControl>
+													)}
 												</SimpleGrid>
 												{hasMultipleRotationValues(host.data.address) && (
 													<RotationControls
@@ -1232,20 +1235,23 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														}
 													/>
 												)}
-												<FormControl>
-													<FormLabel>{t("hostsDialog.path")}</FormLabel>
-													<Input
-														value={host.data.path}
-														onChange={(event) =>
-															onChange(host.uid, "path", event.target.value)
-														}
-														placeholder="/"
-													/>
-												</FormControl>
+												{!isOVInbound && (
+													<FormControl>
+														<FormLabel>{t("hostsDialog.path")}</FormLabel>
+														<Input
+															value={host.data.path}
+															onChange={(event) =>
+																onChange(host.uid, "path", event.target.value)
+															}
+															placeholder="/"
+														/>
+													</FormControl>
+												)}
 											</VStack>
 										</CardBody>
 									</Card>
 
+									{!isOVInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1369,7 +1375,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 
+									{!isOVInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1446,6 +1454,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>
@@ -1566,6 +1575,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 			inboundOptions.find((option) => option.value === formState.inboundTag),
 		[inboundOptions, formState.inboundTag],
 	);
+	const isOVInbound = selectedInbound?.protocol === "openvpn";
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1690,69 +1700,75 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								}
 							/>
 						)}
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+						{!isOVInbound && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<FormControl>
+									<FormLabel>{t("hostsDialog.port")}</FormLabel>
+									<NumericInput
+										value={formState.port ?? ""}
+										fieldProps={{
+											placeholder: inboundPortPlaceholder(selectedInbound),
+										}}
+										onChange={(_, num) =>
+											setFormState((prev) => ({
+												...prev,
+												port: Number.isNaN(num) ? null : num,
+											}))
+										}
+									/>
+								</FormControl>
+								<FormControl>
+									<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+									<MultiValueAutocomplete
+										value={formState.sni}
+										placeholder={t(
+											"hostsDialog.sniPlaceholder",
+											"Type SNI values",
+										)}
+										onChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni: value,
+											}))
+										}
+									/>
+								</FormControl>
+							</SimpleGrid>
+						)}
+						{!isOVInbound && (
 							<FormControl>
-								<FormLabel>{t("hostsDialog.port")}</FormLabel>
-								<NumericInput
-									value={formState.port ?? ""}
-									fieldProps={{
-										placeholder: inboundPortPlaceholder(selectedInbound),
-									}}
-									onChange={(_, num) =>
+								<FormLabel>{t("hostsDialog.path")}</FormLabel>
+								<Input
+									value={formState.path}
+									onChange={(event) =>
 										setFormState((prev) => ({
 											...prev,
-											port: Number.isNaN(num) ? null : num,
+											path: event.target.value,
 										}))
 									}
 								/>
 							</FormControl>
+						)}
+						{!isOVInbound && (
 							<FormControl>
-								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+								<FormLabel>{t("hostsDialog.host")}</FormLabel>
 								<MultiValueAutocomplete
-									value={formState.sni}
+									value={formState.host}
 									placeholder={t(
-										"hostsDialog.sniPlaceholder",
-										"Type SNI values",
+										"hostsDialog.hostPlaceholder",
+										"Type request host values",
 									)}
 									onChange={(value) =>
 										setFormState((prev) => ({
 											...prev,
-											sni: value,
+											host: value,
 										}))
 									}
+									rightElement={<DynamicTokensPopover />}
 								/>
 							</FormControl>
-						</SimpleGrid>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.path")}</FormLabel>
-							<Input
-								value={formState.path}
-								onChange={(event) =>
-									setFormState((prev) => ({
-										...prev,
-										path: event.target.value,
-									}))
-								}
-							/>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.host")}</FormLabel>
-							<MultiValueAutocomplete
-								value={formState.host}
-								placeholder={t(
-									"hostsDialog.hostPlaceholder",
-									"Type request host values",
-								)}
-								onChange={(value) =>
-									setFormState((prev) => ({
-										...prev,
-										host: value,
-									}))
-								}
-								rightElement={<DynamicTokensPopover />}
-							/>
-						</FormControl>
-						{(hasMultipleRotationValues(formState.sni) ||
+						)}
+						{!isOVInbound && (hasMultipleRotationValues(formState.sni) ||
 							hasMultipleRotationValues(formState.host)) && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								{hasMultipleRotationValues(formState.sni) && (

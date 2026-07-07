@@ -819,6 +819,30 @@ install_package () {
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
 }
 
+ensure_ov_binary_prerequisites() {
+    detect_os
+    local packages=()
+    if ! command -v openvpn >/dev/null 2>&1; then
+        packages+=("openvpn")
+    fi
+    if ! command -v nft >/dev/null 2>&1; then
+        packages+=("nftables")
+    fi
+    if ! command -v ip >/dev/null 2>&1; then
+        if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]]; then
+            packages+=("iproute")
+        else
+            packages+=("iproute2")
+        fi
+    fi
+    for package in "${packages[@]}"; do
+        install_package "$package"
+    done
+    if command -v modprobe >/dev/null 2>&1 && [ ! -c /dev/net/tun ]; then
+        modprobe tun >/dev/null 2>&1 || colorized_echo yellow "Unable to load tun module automatically; OpenVPN needs /dev/net/tun."
+    fi
+}
+
 ensure_python3_venv() {
     detect_os
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
@@ -1192,6 +1216,7 @@ install_binary_rebecca_node() {
             install_package "$package"
         fi
     done
+    ensure_ov_binary_prerequisites
 
     binary_arch=$(detect_node_binary_arch)
     tmp_dir=$(mktemp -d)

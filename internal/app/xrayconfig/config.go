@@ -23,6 +23,10 @@ var proxyProtocols = map[string]struct{}{
 	"hysteria":    {},
 }
 
+var virtualTunnelProtocols = map[string]struct{}{
+	OVProtocol: {},
+}
+
 var (
 	validInboundNetworks = map[string]struct{}{
 		"tcp":         {},
@@ -150,7 +154,7 @@ func IsManageableInbound(inbound map[string]any) bool {
 	if tag == "" || protocol == "" {
 		return false
 	}
-	if _, ok := proxyProtocols[protocol]; !ok {
+	if !isManageableInboundProtocol(protocol) {
 		return false
 	}
 	return true
@@ -201,6 +205,9 @@ func (c *Config) validate() error {
 func validateExecutableInbound(inbound map[string]any) error {
 	tag := stringValue(inbound["tag"])
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	if isVirtualTunnelProtocol(protocol) {
+		return validateVirtualTunnelInbound(tag, inbound)
+	}
 	if _, ok := proxyProtocols[protocol]; !ok {
 		return nil
 	}
@@ -427,7 +434,7 @@ func (c *Config) resolveInbounds() error {
 		if tag == "" || protocol == "" {
 			continue
 		}
-		if _, ok := proxyProtocols[protocol]; !ok {
+		if !isManageableInboundProtocol(protocol) {
 			continue
 		}
 		resolved, err := c.resolveInbound(inbound)
@@ -462,6 +469,11 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 		if encryption := firstNonEmptyString(settings["encryption"]); encryption != "" {
 			resolved["encryption"] = encryption
 		}
+	}
+
+	if isVirtualTunnelProtocol(protocol) {
+		applyVirtualTunnelResolvedSettings(resolved, inbound)
+		return resolved, nil
 	}
 
 	if _, ok := inbound["port"]; ok {
@@ -541,7 +553,7 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 }
 
 func (c *Config) runtimePayload() map[string]any {
-	runtime := deepCopyMap(c.raw)
+	runtime := TranslateVirtualTunnelInboundsForRuntime(c.raw)
 	runtime["api"] = map[string]any{
 		"services": []any{"HandlerService", "StatsService", "LoggerService"},
 		"tag":      "API",
@@ -795,8 +807,11 @@ func ensureAPIInbound(runtime map[string]any, host string, port int) {
 			inbound["listen"] = host
 		}
 		inbound["port"] = port
+		inbound["protocol"] = "tunnel"
 		settings := mapValue(inbound["settings"])
-		settings["address"] = host
+		delete(settings, "address")
+		settings["allowedNetwork"] = "tcp"
+		settings["rewriteAddress"] = host
 		inbound["settings"] = settings
 		runtime["inbounds"] = mapsToAnySlice(inbounds)
 		return
@@ -804,9 +819,12 @@ func ensureAPIInbound(runtime map[string]any, host string, port int) {
 	apiInbound := map[string]any{
 		"listen":   host,
 		"port":     port,
-		"protocol": "dokodemo-door",
-		"settings": map[string]any{"address": host},
-		"tag":      "API_INBOUND",
+		"protocol": "tunnel",
+		"settings": map[string]any{
+			"allowedNetwork": "tcp",
+			"rewriteAddress": host,
+		},
+		"tag": "API_INBOUND",
 	}
 	anyInbounds := mapsToAnySlice(inbounds)
 	runtime["inbounds"] = append([]any{apiInbound}, anyInbounds...)

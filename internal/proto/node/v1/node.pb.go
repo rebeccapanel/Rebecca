@@ -498,6 +498,7 @@ type RuntimeConfigRequest struct {
 	OperationId    string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	ConfigJson     string                 `protobuf:"bytes,2,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
 	IncludeDbUsers bool                   `protobuf:"varint,3,opt,name=include_db_users,json=includeDbUsers,proto3" json:"include_db_users,omitempty"`
+	OvRuntimeJson  string                 `protobuf:"bytes,4,opt,name=ov_runtime_json,json=ovRuntimeJson,proto3" json:"ov_runtime_json,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -551,6 +552,13 @@ func (x *RuntimeConfigRequest) GetIncludeDbUsers() bool {
 		return x.IncludeDbUsers
 	}
 	return false
+}
+
+func (x *RuntimeConfigRequest) GetOvRuntimeJson() string {
+	if x != nil {
+		return x.OvRuntimeJson
+	}
+	return ""
 }
 
 type StopRuntimeRequest struct {
@@ -2176,12 +2184,13 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\fnode_version\x18\x04 \x01(\tR\vnodeVersion\x12!\n" +
 	"\finstall_mode\x18\x05 \x01(\tR\vinstallMode\x12%\n" +
 	"\x0eupdate_channel\x18\x06 \x01(\tR\rupdateChannel\x12\x18\n" +
-	"\amessage\x18\a \x01(\tR\amessage\"\x84\x01\n" +
+	"\amessage\x18\a \x01(\tR\amessage\"\xac\x01\n" +
 	"\x14RuntimeConfigRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
 	"\vconfig_json\x18\x02 \x01(\tR\n" +
 	"configJson\x12(\n" +
-	"\x10include_db_users\x18\x03 \x01(\bR\x0eincludeDbUsers\"r\n" +
+	"\x10include_db_users\x18\x03 \x01(\bR\x0eincludeDbUsers\x12&\n" +
+	"\x0fov_runtime_json\x18\x04 \x01(\tR\rovRuntimeJson\"r\n" +
 	"\x12StopRuntimeRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x129\n" +
 	"\x19collect_usage_before_stop\x18\x02 \x01(\bR\x16collectUsageBeforeStop\"\xa9\x01\n" +

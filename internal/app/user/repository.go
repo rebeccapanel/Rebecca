@@ -262,7 +262,6 @@ func (r Repository) ResolvedInboundsByTag(ctx context.Context) (map[string]Resol
 	}
 	result := map[string]ResolvedInbound{}
 	order := make([]string, 0)
-	excluded := excludedInboundTags()
 	for _, raw := range rawConfigs {
 		inbounds := listOfMaps(raw["inbounds"])
 		for _, inbound := range inbounds {
@@ -271,10 +270,7 @@ func (r Repository) ResolvedInboundsByTag(ctx context.Context) (map[string]Resol
 			if tag == "" || protocol == "" {
 				continue
 			}
-			if _, ok := proxyProtocols[protocol]; !ok {
-				continue
-			}
-			if _, skip := excluded[tag]; skip {
+			if !isResolvableInboundProtocol(protocol) {
 				continue
 			}
 			resolved, err := resolveInbound(inbound)

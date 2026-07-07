@@ -6,6 +6,7 @@ export type Protocol =
 	| "trojan"
 	| "shadowsocks"
 	| "hysteria"
+	| "openvpn"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -275,6 +276,25 @@ export type InboundFormValues = {
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
 
+	// OpenVPN virtual inbound
+	ovTransport: "udp" | "tcp";
+	ovTunnelPort: string;
+	ovIPv4Pool: string;
+	ovDNSServers: string;
+	ovRedirectGateway: boolean;
+	ovTproxyEnabled: boolean;
+	ovAccountingEnabled: boolean;
+	ovManagementPort: string;
+	ovCipher: string;
+	ovAuth: string;
+	ovCA: string;
+	ovServerCertificate: string;
+	ovServerKey: string;
+	ovDH: string;
+	ovTlsCrypt: string;
+	ovTlsAuth: string;
+	ovExtraClientConfig: string;
+
 	targetIds: string[];
 };
 
@@ -312,6 +332,7 @@ export const protocolOptions: Protocol[] = [
 	"trojan",
 	"shadowsocks",
 	"hysteria",
+	"openvpn",
 	"http",
 	"socks",
 ];
@@ -589,6 +610,36 @@ export const validateInboundFormFields = (
 					"Gecko packet size must look like 512-1200 with max <= 2048.";
 				break;
 			}
+		}
+	}
+	if (values.protocol === "openvpn") {
+		if (!["udp", "tcp"].includes(values.ovTransport)) {
+			errors.ovTransport = "OpenVPN transport must be udp or tcp.";
+		}
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.ovIPv4Pool.trim())) {
+			errors.ovIPv4Pool = "IPv4 pool must be a CIDR, for example 10.66.0.0/16.";
+		}
+		if (
+			values.ovTunnelPort.trim() &&
+			!isValidPortText(values.ovTunnelPort)
+		) {
+			errors.ovTunnelPort =
+				"Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.ovTunnelPort.trim() &&
+			isValidPortText(values.ovTunnelPort) &&
+			values.ovTunnelPort.trim() === values.port.trim()
+		) {
+			errors.ovTunnelPort =
+				"Tunnel port must be different from the OpenVPN port.";
+		}
+		if (
+			values.ovManagementPort.trim() &&
+			!isValidPortText(values.ovManagementPort)
+		) {
+			errors.ovManagementPort =
+				"Management port must be a number between 1 and 65535.";
 		}
 	}
 	if (values.streamSecurity === "reality") {
@@ -944,6 +995,23 @@ export const createDefaultInboundForm = (
 	socksAccounts: [createDefaultProxyAccount()],
 	socksUdpEnabled: false,
 	socksUdpIp: "",
+	ovTransport: "udp",
+	ovTunnelPort: "",
+	ovIPv4Pool: "10.66.0.0/16",
+	ovDNSServers: "1.1.1.1\n8.8.8.8",
+	ovRedirectGateway: true,
+	ovTproxyEnabled: true,
+	ovAccountingEnabled: true,
+	ovManagementPort: "",
+	ovCipher: "AES-256-GCM",
+	ovAuth: "SHA256",
+	ovCA: "",
+	ovServerCertificate: "",
+	ovServerKey: "",
+	ovDH: "",
+	ovTlsCrypt: "",
+	ovTlsAuth: "",
+	ovExtraClientConfig: "",
 	targetIds: ["master"],
 });
 
@@ -1438,6 +1506,76 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		ovTransport:
+			protocol === "openvpn" && settings.transport === "tcp"
+				? "tcp"
+				: base.ovTransport,
+		ovTunnelPort:
+			protocol === "openvpn"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.ovTunnelPort,
+		ovIPv4Pool:
+			protocol === "openvpn"
+				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.ovIPv4Pool)
+				: base.ovIPv4Pool,
+		ovDNSServers:
+			protocol === "openvpn"
+				? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers))
+				: base.ovDNSServers,
+		ovRedirectGateway:
+			protocol === "openvpn"
+				? Boolean(settings.redirect_gateway ?? base.ovRedirectGateway)
+				: base.ovRedirectGateway,
+		ovTproxyEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.tproxy_enabled ?? base.ovTproxyEnabled)
+				: base.ovTproxyEnabled,
+		ovAccountingEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.accounting_enabled ?? base.ovAccountingEnabled)
+				: base.ovAccountingEnabled,
+		ovManagementPort:
+			protocol === "openvpn"
+				? toInputValue(settings.management_port)
+				: base.ovManagementPort,
+		ovCipher:
+			protocol === "openvpn"
+				? (settings.cipher ?? base.ovCipher)
+				: base.ovCipher,
+		ovAuth:
+			protocol === "openvpn"
+				? (settings.auth ?? base.ovAuth)
+				: base.ovAuth,
+		ovCA:
+			protocol === "openvpn" ? (settings.ca ?? base.ovCA) : base.ovCA,
+		ovServerCertificate:
+			protocol === "openvpn"
+				? (settings.server_certificate ??
+					settings.serverCertificate ??
+					base.ovServerCertificate)
+				: base.ovServerCertificate,
+		ovServerKey:
+			protocol === "openvpn"
+				? (settings.server_key ?? settings.serverKey ?? base.ovServerKey)
+				: base.ovServerKey,
+		ovDH:
+			protocol === "openvpn" ? (settings.dh ?? base.ovDH) : base.ovDH,
+		ovTlsCrypt:
+			protocol === "openvpn"
+				? (settings.tls_crypt ?? base.ovTlsCrypt)
+				: base.ovTlsCrypt,
+		ovTlsAuth:
+			protocol === "openvpn"
+				? (settings.tls_auth ?? base.ovTlsAuth)
+				: base.ovTlsAuth,
+		ovExtraClientConfig:
+			protocol === "openvpn"
+				? (settings.extra_client_config ?? base.ovExtraClientConfig)
+				: base.ovExtraClientConfig,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -2093,9 +2231,30 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			}
 			break;
 		}
+		case "openvpn":
+			base.transport = values.ovTransport;
+			base.ipv4_pool_cidr = values.ovIPv4Pool.trim() || "10.66.0.0/16";
+			base.dns_servers = splitLines(values.ovDNSServers);
+			base.redirect_gateway = values.ovRedirectGateway;
+			base.tproxy_enabled = values.ovTproxyEnabled;
+			base.accounting_enabled = values.ovAccountingEnabled;
+			base.tunnel_port = parseOptionalNumber(values.ovTunnelPort);
+			base.management_port = parseOptionalNumber(values.ovManagementPort);
+			base.cipher = values.ovCipher.trim() || undefined;
+			base.auth = values.ovAuth.trim() || undefined;
+			base.ca = values.ovCA.trim() || undefined;
+			base.server_certificate =
+				values.ovServerCertificate.trim() || undefined;
+			base.server_key = values.ovServerKey.trim() || undefined;
+			base.dh = values.ovDH.trim() || undefined;
+			base.tls_crypt = values.ovTlsCrypt.trim() || undefined;
+			base.tls_auth = values.ovTlsAuth.trim() || undefined;
+			base.extra_client_config =
+				values.ovExtraClientConfig.trim() || undefined;
+			break;
 	}
 
-	return base;
+	return cleanObject(base);
 };
 
 export const buildInboundPayload = (
@@ -2103,7 +2262,9 @@ export const buildInboundPayload = (
 	options?: BuildInboundOptions,
 ): RawInbound => {
 	const supportsStream =
-		values.protocol !== "http" && values.protocol !== "socks";
+		values.protocol !== "http" &&
+		values.protocol !== "socks" &&
+		values.protocol !== "openvpn";
 	const streamSettings = supportsStream
 		? buildStreamSettings(values, options)
 		: undefined;
@@ -2119,7 +2280,9 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.sniffingEnabled) {
+	if (values.protocol === "openvpn") {
+		delete payload.sniffing;
+	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
 		const sniffing = cleanObject({
 			enabled: true,
