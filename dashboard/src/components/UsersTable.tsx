@@ -613,10 +613,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						maxW="full"
 						w="full"
 					>
-						<UserStatusDot
-							status={user.status}
-							lastOnline={user.online_at ?? null}
-						/>
+						<UserStatusDot lastOnline={user.online_at ?? null} />
 						<Box
 							minW={0}
 							flex="1 1 auto"

@@ -1,7 +1,6 @@
-import { chakra, useColorModeValue } from "@chakra-ui/react";
+import { chakra } from "@chakra-ui/react";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
-import { hashNameToHue } from "./userColors";
 
 type UserAdminChipProps = {
 	adminUsername?: string | null;
@@ -9,27 +8,15 @@ type UserAdminChipProps = {
 };
 
 /**
- * "by <admin>" tag with a deterministic accent color per admin, so rows that
- * belong to the same reseller can be scanned at a glance.
+ * "by <admin>" tag for rows owned by another admin/reseller. Deliberately
+ * muted and uniform (styled via .rb-user-admin-chip with the panel theme
+ * tokens) so it reads as quiet metadata rather than a colored label.
  */
 export const UserAdminChip: FC<UserAdminChipProps> = ({
 	adminUsername,
 	show = true,
 }) => {
 	const { t } = useTranslation();
-	const hue = hashNameToHue(adminUsername ?? "");
-	const chipBg = useColorModeValue(
-		`hsla(${hue}, 70%, 45%, 0.12)`,
-		`hsla(${hue}, 70%, 60%, 0.16)`,
-	);
-	const chipColor = useColorModeValue(
-		`hsl(${hue}, 60%, 34%)`,
-		`hsl(${hue}, 75%, 74%)`,
-	);
-	const chipBorderColor = useColorModeValue(
-		`hsla(${hue}, 60%, 40%, 0.28)`,
-		`hsla(${hue}, 70%, 65%, 0.32)`,
-	);
 
 	if (!show || !adminUsername) return null;
 
@@ -37,13 +24,10 @@ export const UserAdminChip: FC<UserAdminChipProps> = ({
 		<chakra.span
 			className="rb-user-admin-chip"
 			dir="ltr"
-			bg={chipBg}
-			color={chipColor}
-			borderColor={chipBorderColor}
 			sx={{ unicodeBidi: "isolate" }}
 		>
 			{t("usersTable.by", "by")}{" "}
-			<chakra.span fontWeight="bold">{adminUsername}</chakra.span>
+			<chakra.span fontWeight="semibold">{adminUsername}</chakra.span>
 		</chakra.span>
 	);
 };

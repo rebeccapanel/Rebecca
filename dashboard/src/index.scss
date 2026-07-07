@@ -1917,10 +1917,10 @@ img.twemoji-emoji {
    components render. Other pages are intentionally unaffected.
    ============================================================ */
 
-/* --- status dot ---------------------------------------------------- */
+/* --- online dot ----------------------------------------------------- */
 
-/* Minimal status indicator: a small dot colored by user status, with a
-   soft pulse halo while the user is online. */
+/* Online indicator only: green (pulsing) while the user is connected,
+   neutral gray otherwise. Subscription status lives in the badge column. */
 .rb-user-status-dot {
   display: inline-block;
   width: 10px;
@@ -1928,7 +1928,11 @@ img.twemoji-emoji {
   min-width: 10px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: var(--rb-user-dot, var(--rb-panel-border-strong));
+  background: var(--rb-panel-border-strong);
+}
+
+.rb-user-status-dot[data-online="true"] {
+  background: #22c55e;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1939,8 +1943,7 @@ img.twemoji-emoji {
 
 @keyframes rb-user-dot-pulse {
   0% {
-    box-shadow: 0 0 0 0
-      color-mix(in srgb, var(--rb-user-dot, #22c55e) 45%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 45%, transparent);
   }
 
   70%,
@@ -1973,11 +1976,12 @@ img.twemoji-emoji {
 /* --- "by admin" chip ---------------------------------------------- */
 
 /* inline-block (not flex) so text-overflow can ellipsize the admin name;
-   deliberately slim so it costs little horizontal space in table rows */
+   deliberately slim and uniformly muted (one neutral look for every
+   reseller) so it reads as quiet metadata, not a colored label */
 .rb-user-admin-chip {
   display: inline-block;
   vertical-align: middle;
-  border: 1px solid;
+  border: 1px solid var(--rb-panel-border);
   border-radius: 999px;
   padding: 0 6px;
   font-size: 0.62rem;
@@ -1989,6 +1993,8 @@ img.twemoji-emoji {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: var(--rb-panel-elevated);
+  color: var(--rb-panel-text-secondary);
 }
 
 /* Mobile: the tag stays out of the collapsed card row (it re-appears as

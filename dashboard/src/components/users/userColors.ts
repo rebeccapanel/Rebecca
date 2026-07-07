@@ -1,31 +1,3 @@
-import type { Status } from "types/User";
-
-/**
- * Deterministic hue (0-359) for a name so the same admin/reseller always
- * renders with the same accent color across sessions and pages.
- */
-export const hashNameToHue = (name: string): number => {
-	let hash = 0;
-	for (let index = 0; index < name.length; index += 1) {
-		hash = (hash * 31 + name.charCodeAt(index)) | 0;
-	}
-	return Math.abs(hash) % 360;
-};
-
-const STATUS_RING_COLORS: Record<Status, string> = {
-	active: "#22c55e",
-	connected: "#22c55e",
-	disabled: "#9ca3af",
-	expired: "#f97316",
-	on_hold: "#a855f7",
-	connecting: "#f97316",
-	limited: "#ef4444",
-	error: "#ef4444",
-};
-
-export const statusRingColor = (status: Status): string =>
-	STATUS_RING_COLORS[status] ?? "#9ca3af";
-
 export type UsageTone = "unlimited" | "ok" | "warn" | "critical";
 
 export const getUsageTone = (

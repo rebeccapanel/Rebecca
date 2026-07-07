@@ -1,12 +1,9 @@
 import { Box } from "@chakra-ui/react";
 import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
-import type { CSSProperties, FC } from "react";
-import type { Status } from "types/User";
+import type { FC } from "react";
 import { parseServerTimeToUnix } from "utils/dateFormatter";
-import { statusRingColor } from "./userColors";
 
 type UserStatusDotProps = {
-	status: Status;
 	lastOnline?: string | null;
 };
 
@@ -18,20 +15,16 @@ const isOnline = (lastOnline?: string | null): boolean => {
 };
 
 /**
- * Minimal status indicator for the Users list: a small dot colored by the
- * user's status (active/on-hold/expired/...) with a soft pulse while the
- * user is online.
+ * Online indicator for the Users list: a small dot that lights up green
+ * (with a soft pulse) while the user is connected and stays a neutral,
+ * muted gray otherwise. Subscription status is conveyed by the status
+ * badge column, not this dot.
  */
-export const UserStatusDot: FC<UserStatusDotProps> = ({
-	status,
-	lastOnline,
-}) => (
+export const UserStatusDot: FC<UserStatusDotProps> = ({ lastOnline }) => (
 	<Box
 		as="span"
 		className="rb-user-status-dot"
 		data-online={isOnline(lastOnline) ? "true" : undefined}
-		data-status={status}
-		style={{ "--rb-user-dot": statusRingColor(status) } as CSSProperties}
 		aria-hidden="true"
 	/>
 );
