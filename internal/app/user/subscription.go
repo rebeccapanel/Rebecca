@@ -172,10 +172,6 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 		return nil, err
 	}
 	return map[string]any{
-		"ov": map[string]any{
-			"downloads": ovLinks,
-			"profiles":  ovProfiles,
-		},
 		"openvpn": map[string]any{
 			"downloads": ovLinks,
 			"profiles":  ovProfiles,
@@ -752,8 +748,8 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 	if err != nil {
 		return "", err
 	}
-	if ov, ok := vpnInfo["ov"].(map[string]any); ok {
-		if downloadLinks, ok := ov["downloads"].([]string); ok {
+	if openvpn, ok := vpnInfo["openvpn"].(map[string]any); ok {
+		if downloadLinks, ok := openvpn["downloads"].([]string); ok {
 			rawLinks = append(rawLinks, downloadLinks...)
 		}
 	}
@@ -1556,7 +1552,7 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
-	for _, key := range []string{"ov", "openvpn", "l2tp", "pptp"} {
+	for _, key := range []string{"openvpn", "l2tp", "pptp"} {
 		if value, ok := vpn[key]; ok {
 			context[key] = value
 		}

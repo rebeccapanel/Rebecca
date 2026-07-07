@@ -886,3 +886,28 @@ func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveInboundKeepsL2TPSettings(t *testing.T) {
+	resolved, err := resolveInbound(map[string]any{
+		"tag":      "l2tp",
+		"protocol": "l2tp",
+		"port":     1701,
+		"settings": map[string]any{
+			"ipsec_psk":   "secret",
+			"tunnel_port": 1702,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeProxyProtocol(stringValue(resolved["protocol"])); got != "l2tp" {
+		t.Fatalf("protocol = %q, want l2tp", got)
+	}
+	settings := mapValue(resolved["settings"])
+	if got := stringValue(settings["ipsec_psk"]); got != "secret" {
+		t.Fatalf("ipsec_psk = %q, want secret", got)
+	}
+	if got := intValue(settings["tunnel_port"]); got != 1702 {
+		t.Fatalf("tunnel_port = %d, want 1702", got)
+	}
+}

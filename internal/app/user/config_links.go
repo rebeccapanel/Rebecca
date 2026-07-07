@@ -30,6 +30,8 @@ var proxyProtocols = map[string]struct{}{
 
 var subscriptionDownloadProtocols = map[string]struct{}{
 	"openvpn": {},
+	"l2tp":    {},
+	"pptp":    {},
 }
 
 func isResolvableInboundProtocol(protocol string) bool {
@@ -1164,6 +1166,10 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	}
 	if protocol == "openvpn" {
 		applyOVResolvedSettings(resolved, inbound)
+		return resolved, nil
+	}
+	if protocol == "l2tp" || protocol == "pptp" {
+		resolved["settings"] = settings
 		return resolved, nil
 	}
 
