@@ -2096,12 +2096,13 @@ img.twemoji-emoji {
    shared component sizes this box to fit its own content ("auto" basis),
    which let the progress bar render at a different width on every row
    depending on the usage/lifetime text length. Pin it to a fixed basis
-   instead so every row's bar is identical, while staying responsive via
-   the same viewport-capped size the shared rule already uses. */
+   instead so every row's bar is identical, while staying responsive.
+   Sized smaller than the shared default so it doesn't crowd out the
+   username column on narrow phones. */
 .rb-users-section .rb-resource-mobile-head-summary,
 .rb-users-section .rb-resource-summary {
   flex-grow: 0;
-  flex-basis: min(38vw, 9.5rem);
+  flex-basis: min(30vw, 8rem);
 }
 
 /* softer corners on desktop rows */
