@@ -1,6 +1,9 @@
 package user
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestOVSubscriptionPathUsesHostTag(t *testing.T) {
 	req, ok := resolvePrefixedSubscriptionPath("/sub/alice-token/ov/germany-12.ovpn", "/sub/")
@@ -45,5 +48,24 @@ func TestOVEffectiveInboundKeepsInboundPort(t *testing.T) {
 	}
 	if got := effective["port"]; got != 1194 {
 		t.Fatalf("OV effective port = %v", got)
+	}
+}
+
+func TestOVProfileUsesTCPClientProto(t *testing.T) {
+	profile, err := buildOVProfile(
+		ConfigLinkUser{Username: "alice", CredentialKey: "0123456789abcdef0123456789abcdef"},
+		"OV TCP",
+		"vpn.example.com",
+		ResolvedInbound{
+			"protocol": "openvpn",
+			"port":     1194,
+			"settings": map[string]any{"transport": "tcp"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(profile, "proto tcp-client\n") {
+		t.Fatalf("profile does not use tcp-client:\n%s", profile)
 	}
 }

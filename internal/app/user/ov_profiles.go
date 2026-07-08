@@ -241,10 +241,15 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	}
 	username := item.Username
 	password := keyToPassword(key, "openvpn")
+	transport := firstNonEmptyString(settings["transport"], "udp")
+	profileProto := transport
+	if transport == "tcp" {
+		profileProto = "tcp-client"
+	}
 	var b strings.Builder
 	writeOVLine(&b, "client")
 	writeOVLine(&b, "dev "+firstNonEmptyString(settings["device"], "tun"))
-	writeOVLine(&b, "proto "+firstNonEmptyString(settings["transport"], "udp"))
+	writeOVLine(&b, "proto "+profileProto)
 	writeOVLine(&b, "remote "+formatOVRemote(address)+" "+port)
 	writeOVLine(&b, "resolv-retry infinite")
 	writeOVLine(&b, "nobind")
