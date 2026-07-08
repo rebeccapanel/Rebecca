@@ -1,5 +1,6 @@
 import {
 	Box,
+	type BoxProps,
 	Button,
 	chakra,
 	Flex,
@@ -7,7 +8,6 @@ import {
 	IconButton,
 	MenuItem,
 	Stack,
-	type BoxProps,
 	Text,
 	Tooltip,
 	useBreakpointValue,
@@ -31,8 +31,8 @@ import {
 	QrCodeIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
-import type { SortingState } from "@tanstack/react-table";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
+import type { SortingState } from "@tanstack/react-table";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
 import { resetStrategy } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
@@ -57,18 +57,18 @@ import {
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
-import {
-	DataTable,
-	ResourceListCard,
-	RowActionsMenu,
-	type DataTableColumn,
-	type DataTableRowAction,
-	type ResourceSummaryItem,
-	type RowActionItem,
-} from "./ui";
 import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
+import {
+	DataTable,
+	type DataTableColumn,
+	type DataTableRowAction,
+	ResourceListCard,
+	type ResourceSummaryItem,
+	type RowActionItem,
+	RowActionsMenu,
+} from "./ui";
 import {
 	formatUsagePair,
 	UserAdminChip,
@@ -299,8 +299,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const rowsToRender = filters.limit || 10;
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
-	const useCompactUsageCell =
-		useBreakpointValue({ base: true, lg: true, xl: false }) ?? true;
+	// Matches DataTable's own mobile/desktop threshold (mobileBreakpoint
+	// defaults to "lg") so the two-row detailed usage layout applies at
+	// every genuine desktop width, while the mobile card's collapsed-row
+	// summary (which reuses this same cell) keeps its original compact form.
+	const isDesktopUsageLayout =
+		useBreakpointValue({ base: false, lg: true }) ?? false;
 	const hasUsageScopeFilter = Boolean(
 		filters.search?.trim() ||
 			filters.status ||
@@ -512,9 +516,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 		try {
 			await Promise.all(users.map((user) => handler(user)));
 			notify(successLabel, "success", {
-				description: t("usersTable.bulkActionCount", "{{count}} users updated", {
-					count: users.length,
-				}),
+				description: t(
+					"usersTable.bulkActionCount",
+					"{{count}} users updated",
+					{
+						count: users.length,
+					},
+				),
 			});
 			clearSelectedUsers();
 			refetchUsers(true);
@@ -630,7 +638,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 								color="panel.text"
 								dir="ltr"
 								sx={{ unicodeBidi: "isolate" }}
-								_hover={canOpenUserDialog ? { color: "panel.accent" } : undefined}
+								_hover={
+									canOpenUserDialog ? { color: "panel.accent" } : undefined
+								}
 							>
 								{formatUsernamePreview(user.username)}
 							</Text>
@@ -669,11 +679,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 1,
 				mobileMetaLabel: t("usersTable.status"),
 				mobileDetailCell: (user) => (
-					<StatusBadge
-						expiryDate={null}
-						status={user.status}
-						compact
-					/>
+					<StatusBadge expiryDate={null} status={user.status} compact />
 				),
 				cell: (user) => (
 					<Flex align="center" justify="flex-start" dir="ltr" w="full">
@@ -740,15 +746,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 4,
 				mobileMetaLabel: t("usersTable.dataUsage"),
 				mobileDetailCell: (user) => (
-					<MobileUsageDetail
-						used={user.used_traffic}
-						total={user.data_limit}
-					/>
+					<MobileUsageDetail used={user.used_traffic} total={user.data_limit} />
 				),
 				cell: (user) =>
-					useCompactUsageCell ? (
-						<UserUsageBar used={user.used_traffic} total={user.data_limit} />
-					) : (
+					isDesktopUsageLayout ? (
 						<UserUsageBar
 							variant="detailed"
 							used={user.used_traffic}
@@ -757,6 +758,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 							lifetimeLabel={t("usersTable.lifetimeUsage")}
 							resetLabel={getUsageResetLabel(user, t)}
 						/>
+					) : (
+						<UserUsageBar used={user.used_traffic} total={user.data_limit} />
 					),
 			});
 			columns.push({
@@ -782,9 +785,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobileVisible: true,
 				mobilePriority: 6,
 				mobileMetaLabel: t("usersTable.admin", "Admin"),
-				cell: (user) => (
-					<UserAdminChip adminUsername={user.admin_username} />
-				),
+				cell: (user) => <UserAdminChip adminUsername={user.admin_username} />,
 			});
 		}
 
@@ -793,8 +794,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 		canOpenUserDialog,
 		canViewTraffic,
 		hasPrivilegedRole,
+		isDesktopUsageLayout,
 		t,
-		useCompactUsageCell,
 	]);
 
 	const userSorting = useMemo<SortingState>(() => {
@@ -843,10 +844,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <SubscriptionLinkIcon />,
 				isDisabled: !subscriptionLink,
 				onClick: () =>
-					copyUserText(
-						subscriptionLink,
-						t("usersTable.copied", "Copied"),
-					),
+					copyUserText(subscriptionLink, t("usersTable.copied", "Copied")),
 			},
 			{
 				id: "copy-configs",
@@ -854,10 +852,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <CopyIcon />,
 				isDisabled: configLinks.length === 0,
 				onClick: () =>
-					copyUserText(
-						configLinksText,
-						t("usersTable.copied", "Copied"),
-					),
+					copyUserText(configLinksText, t("usersTable.copied", "Copied")),
 			},
 			{
 				id: "qr",
@@ -1238,7 +1233,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 										leftIcon={<ResetIcon />}
 										onClick={handleBulkReset}
 										isLoading={bulkAction === "reset"}
-										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+										isDisabled={
+											Boolean(bulkAction) || selectedUsers.length === 0
+										}
 									>
 										{t("usersTable.resetUsage", "Reset usage")}
 									</Button>
@@ -1250,7 +1247,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 										leftIcon={<RevokeIcon />}
 										onClick={handleBulkRevoke}
 										isLoading={bulkAction === "revoke"}
-										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+										isDisabled={
+											Boolean(bulkAction) || selectedUsers.length === 0
+										}
 									>
 										{t("usersTable.revokeSub", "Revoke subscription")}
 									</Button>
@@ -1270,8 +1269,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 											leftIcon={<DeleteIcon />}
 											isLoading={bulkAction === "delete"}
 											isDisabled={
-												Boolean(bulkAction) ||
-												bulkDeleteTargets.length === 0
+												Boolean(bulkAction) || bulkDeleteTargets.length === 0
 											}
 										>
 											{t("delete", "Delete")}
@@ -1382,7 +1380,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				e.stopPropagation();
 			}}
 		>
-			<Tooltip label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}>
+			<Tooltip
+				label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}
+			>
 				<span>
 					<IconButton
 						aria-label={t("usersTable.copyLink")}
