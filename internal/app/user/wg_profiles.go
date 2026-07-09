@@ -140,7 +140,7 @@ func (s Service) generateWGProfile(ctx context.Context, user UserDetail, req Sub
 }
 
 func (s Service) WGDownloadProfiles(ctx context.Context, user UserDetail, subscriptionURL string) ([]WGProfile, error) {
-	profiles, err := s.WGProfiles(ctx, user.ID, "", false)
+	profiles, err := s.WGProfiles(ctx, user.ID, "", true)
 	if err != nil {
 		return nil, err
 	}
