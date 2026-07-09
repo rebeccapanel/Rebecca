@@ -1936,6 +1936,16 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl display="flex" alignItems="center">
 														{ovLabel(
+															"inbounds.openvpn.requireDco",
+															"Require DCO",
+															"inbounds.openvpn.help.requireDco",
+															"Require OpenVPN data channel offload on the node. If the kernel or OpenVPN build cannot use DCO, this inbound is rejected instead of falling back.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovRequireDCO")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
 															"inbounds.openvpn.accounting",
 															"Enable accounting",
 															"inbounds.openvpn.help.accounting",

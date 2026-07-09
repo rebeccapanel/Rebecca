@@ -208,6 +208,9 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	if _, ok := out["accounting_enabled"]; !ok {
 		out["accounting_enabled"] = true
 	}
+	if _, ok := out["require_dco"]; !ok {
+		out["require_dco"] = false
+	}
 	if _, ok := out["inline_ca"]; !ok {
 		out["inline_ca"] = true
 	}
@@ -225,6 +228,9 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	}
 	if _, ok := out["block_outside_dns"]; !ok {
 		out["block_outside_dns"] = false
+	}
+	if boolSetting(out, "require_dco", false) {
+		out["data_ciphers"] = xrayconfig.OVDCODataCiphers
 	}
 	return out
 }
@@ -271,6 +277,9 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	writeOVLine(&b, "verb 3")
 	if cipher := strings.TrimSpace(stringValue(settings["cipher"])); cipher != "" {
 		writeOVLine(&b, "cipher "+cipher)
+	}
+	if dataCiphers := strings.TrimSpace(stringValue(settings["data_ciphers"])); dataCiphers != "" {
+		writeOVLine(&b, "data-ciphers "+dataCiphers)
 	}
 	if auth := strings.TrimSpace(stringValue(settings["auth"])); auth != "" {
 		writeOVLine(&b, "auth "+auth)

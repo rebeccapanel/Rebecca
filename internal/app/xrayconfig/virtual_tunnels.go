@@ -17,6 +17,7 @@ const (
 	L2TPIPSecNATPort    = 4500
 	L2TPPort            = 1701
 	L2TPTunnelPort      = 1702
+	OVDCODataCiphers    = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
 )
 
 func isManageableInboundProtocol(protocol string) bool {
@@ -97,6 +98,11 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
 	}
+	if _, ok := out["require_dco"]; !ok {
+		out["require_dco"] = false
+	} else {
+		out["require_dco"] = boolValue(out["require_dco"])
+	}
 	for _, item := range []struct {
 		key      string
 		fallback bool
@@ -121,7 +127,10 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 			delete(out, key)
 		}
 	}
-	for _, key := range []string{"cipher", "auth", "ca", "server_certificate", "server_key", "dh", "tls_crypt", "tls_auth", "extra_client_config"} {
+	if boolValue(out["require_dco"]) {
+		out["data_ciphers"] = OVDCODataCiphers
+	}
+	for _, key := range []string{"cipher", "auth", "ca", "server_certificate", "server_key", "dh", "tls_crypt", "tls_auth", "extra_client_config", "data_ciphers"} {
 		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
 			out[key] = value
 		} else {
@@ -260,6 +269,16 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		for _, key := range []string{"ca", "server_certificate", "server_key"} {
 			if strings.TrimSpace(stringValue(settings[key])) == "" {
 				return fmt.Errorf("invalid inbound %q: OV %s is required", tag, key)
+			}
+		}
+		if boolValue(settings["require_dco"]) {
+			if cipher := strings.TrimSpace(stringValue(settings["cipher"])); cipher != "" && !ovDCOCipherAllowed(cipher) {
+				return fmt.Errorf("invalid inbound %q: OV cipher %s is not DCO-compatible", tag, cipher)
+			}
+			for _, cipher := range strings.Split(strings.TrimSpace(stringValue(settings["data_ciphers"])), ":") {
+				if !ovDCOCipherAllowed(cipher) {
+					return fmt.Errorf("invalid inbound %q: OV data cipher %s is not DCO-compatible", tag, strings.TrimSpace(cipher))
+				}
 			}
 		}
 	}
@@ -434,6 +453,15 @@ func RuntimeTunnelPortForInbound(inbound map[string]any, usedPorts map[int]struc
 		usedPorts = map[int]struct{}{}
 	}
 	return derivedTunnelPort(publicPort, usedPorts)
+}
+
+func ovDCOCipherAllowed(cipher string) bool {
+	switch strings.ToUpper(strings.TrimSpace(cipher)) {
+	case "", "AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305":
+		return true
+	default:
+		return false
+	}
 }
 
 func derivedTunnelPort(publicPort int, usedPorts map[int]struct{}) int {

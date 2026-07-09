@@ -285,6 +285,7 @@ export type InboundFormValues = {
 	ovDNSServers: string;
 	ovRedirectGateway: boolean;
 	ovTproxyEnabled: boolean;
+	ovRequireDCO: boolean;
 	ovAccountingEnabled: boolean;
 	ovManagementPort: string;
 	ovCipher: string;
@@ -689,6 +690,18 @@ export const validateInboundFormFields = (
 		) {
 			errors.ovManagementPort =
 				"Management port must be a number between 1 and 65535.";
+		}
+		if (values.ovRequireDCO) {
+			const cipher = values.ovCipher.trim().toUpperCase();
+			if (
+				cipher &&
+				!["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"].includes(
+					cipher,
+				)
+			) {
+				errors.ovCipher =
+					"Require DCO only supports AES-256-GCM, AES-128-GCM, or CHACHA20-POLY1305.";
+			}
 		}
 		if (!values.ovCA.trim()) {
 			errors.ovCA = "CA certificate is required.";
@@ -1100,6 +1113,7 @@ export const createDefaultInboundForm = (
 	ovDNSServers: "1.1.1.1\n8.8.8.8",
 	ovRedirectGateway: true,
 	ovTproxyEnabled: true,
+	ovRequireDCO: false,
 	ovAccountingEnabled: true,
 	ovManagementPort: "",
 	ovCipher: "AES-256-GCM",
@@ -1650,6 +1664,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "openvpn"
 				? Boolean(settings.tproxy_enabled ?? base.ovTproxyEnabled)
 				: base.ovTproxyEnabled,
+		ovRequireDCO:
+			protocol === "openvpn"
+				? Boolean(settings.require_dco ?? base.ovRequireDCO)
+				: base.ovRequireDCO,
 		ovAccountingEnabled:
 			protocol === "openvpn"
 				? Boolean(settings.accounting_enabled ?? base.ovAccountingEnabled)
@@ -2423,6 +2441,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.dns_servers = splitLines(values.ovDNSServers);
 			base.redirect_gateway = values.ovRedirectGateway;
 			base.tproxy_enabled = values.ovTproxyEnabled;
+			base.require_dco = values.ovRequireDCO;
 			base.accounting_enabled = values.ovAccountingEnabled;
 			base.tunnel_port = parseOptionalNumber(values.ovTunnelPort);
 			base.management_port = parseOptionalNumber(values.ovManagementPort);

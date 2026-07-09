@@ -197,6 +197,9 @@ func OVRuntimeSettings(inbound map[string]any) map[string]any {
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
 	}
+	if _, ok := out["require_dco"]; !ok {
+		out["require_dco"] = false
+	}
 	if _, ok := out["accounting_enabled"]; !ok {
 		out["accounting_enabled"] = true
 	}
@@ -221,6 +224,9 @@ func OVRuntimeSettings(inbound map[string]any) map[string]any {
 		} else {
 			delete(out, key)
 		}
+	}
+	if OVBoolValue(out["require_dco"]) {
+		out["data_ciphers"] = xrayconfig.OVDCODataCiphers
 	}
 	delete(out, "clients")
 	return out
@@ -311,6 +317,24 @@ func OVIntValue(value any) int {
 		return parsed
 	default:
 		return 0
+	}
+}
+
+func OVBoolValue(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		cleaned := strings.ToLower(strings.TrimSpace(typed))
+		return cleaned == "true" || cleaned == "1" || cleaned == "yes" || cleaned == "on"
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	case float64:
+		return typed != 0
+	default:
+		return false
 	}
 }
 
