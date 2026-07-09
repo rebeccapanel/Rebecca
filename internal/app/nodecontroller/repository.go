@@ -2,11 +2,13 @@ package nodecontroller
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -35,6 +37,12 @@ type NodeRow struct {
 type TLSRow struct {
 	Certificate string
 	Key         string
+}
+
+type RuntimeSessionCallback struct {
+	URL    string `json:"url,omitempty"`
+	Token  string `json:"token,omitempty"`
+	NodeID int64  `json:"node_id,omitempty"`
 }
 
 type OperationRow struct {
@@ -189,6 +197,7 @@ func (r Repository) RuntimeUserIDsForServices(ctx context.Context, serviceIDs []
 }
 
 func (r Repository) runtimeUsers(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
+	excludeVPNSessions, _ := r.tableExists(ctx, "vpn_user_sessions")
 	query := `
 SELECT
 	u.id,
@@ -210,6 +219,14 @@ LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type
 WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0
   AND (p.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM proxies existing WHERE existing.user_id = u.id))`
 	args := []any{}
+	if excludeVPNSessions {
+		query += `
+  AND NOT EXISTS (
+    SELECT 1
+    FROM vpn_user_sessions vus
+    WHERE vus.user_id = u.id AND vus.ended_at IS NULL
+  )`
+	}
 	if userID > 0 {
 		query += ` AND u.id = ?`
 		args = append(args, userID)
@@ -248,6 +265,90 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (RuntimeSessionCallback, error) {
+	if node.ID > 0 && strings.TrimSpace(node.Certificate) == "" {
+		full, err := r.Node(ctx, node.ID)
+		if err != nil {
+			return RuntimeSessionCallback{}, err
+		}
+		node = full
+	}
+	base := strings.TrimSpace(os.Getenv("REBECCA_NODE_SESSION_CALLBACK_URL"))
+	if base == "" {
+		base = strings.TrimSpace(os.Getenv("REBECCA_PUBLIC_URL"))
+	}
+	if base == "" {
+		base = strings.TrimSpace(os.Getenv("PUBLIC_URL"))
+	}
+	if base == "" && r.tableExistsSilent(ctx, "subscription_settings") {
+		var prefix sql.NullString
+		_ = r.db.QueryRowContext(ctx, `SELECT subscription_url_prefix FROM subscription_settings ORDER BY id LIMIT 1`).Scan(&prefix)
+		base = strings.TrimSpace(prefix.String)
+	}
+	if base == "" {
+		return RuntimeSessionCallback{}, nil
+	}
+	base = strings.TrimRight(base, "/")
+	if strings.HasSuffix(base, "/internal/node/session-event") {
+		base = strings.TrimSuffix(base, "/internal/node/session-event")
+	}
+	secret, err := r.callbackSecret(ctx)
+	if err != nil {
+		return RuntimeSessionCallback{}, err
+	}
+	if secret == "" || strings.TrimSpace(node.Certificate) == "" {
+		return RuntimeSessionCallback{}, nil
+	}
+	return RuntimeSessionCallback{
+		URL:    base + "/internal/node/session-event",
+		Token:  NodeSessionEventToken(secret, node.ID, node.Certificate),
+		NodeID: node.ID,
+	}, nil
+}
+
+func (r Repository) callbackSecret(ctx context.Context) (string, error) {
+	if !r.tableExistsSilent(ctx, "jwt") {
+		return "", nil
+	}
+	var adminSecret, legacySecret sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT admin_secret_key, secret_key FROM jwt ORDER BY id LIMIT 1`).Scan(&adminSecret, &legacySecret)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if value := strings.TrimSpace(adminSecret.String); value != "" {
+		return value, nil
+	}
+	return strings.TrimSpace(legacySecret.String), nil
+}
+
+func NodeSessionEventToken(secret string, nodeID int64, certificate string) string {
+	mac := hmac.New(sha256.New, []byte(strings.TrimSpace(secret)))
+	_, _ = mac.Write([]byte(fmt.Sprintf("node-session:%d:%s", nodeID, strings.TrimSpace(certificate))))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (r Repository) tableExistsSilent(ctx context.Context, table string) bool {
+	ok, err := r.tableExists(ctx, table)
+	return err == nil && ok
+}
+
+func (r Repository) tableExists(ctx context.Context, table string) (bool, error) {
+	table = strings.TrimSpace(table)
+	if table == "" {
+		return false, nil
+	}
+	var count int
+	if r.dialect == "mysql" || r.dialect == "mariadb" {
+		err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`, table).Scan(&count)
+		return count > 0, err
+	}
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count)
+	return count > 0, err
 }
 
 func uniquePositiveInt64(values []int64) []int64 {

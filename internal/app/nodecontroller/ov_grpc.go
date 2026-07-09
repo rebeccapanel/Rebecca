@@ -30,15 +30,16 @@ func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, oper
 		return nil, fmt.Errorf("WireGuard runtime: %w", err)
 	}
 	raw, err := json.Marshal(map[string]any{
-		"generated_at":   ovRuntime.GeneratedAt,
-		"target":         ovRuntime.Target,
-		"inbounds":       ovRuntime.Inbounds,
-		"l2tp_inbounds":  l2tpRuntime.Inbounds,
-		"l2tp_generated": l2tpRuntime.GeneratedAt,
-		"pptp_inbounds":  pptpRuntime.Inbounds,
-		"pptp_generated": pptpRuntime.GeneratedAt,
-		"wg_inbounds":    wgRuntime.Inbounds,
-		"wg_generated":   wgRuntime.GeneratedAt,
+		"generated_at":     ovRuntime.GeneratedAt,
+		"target":           ovRuntime.Target,
+		"session_callback": ovRuntime.SessionCallback,
+		"inbounds":         ovRuntime.Inbounds,
+		"l2tp_inbounds":    l2tpRuntime.Inbounds,
+		"l2tp_generated":   l2tpRuntime.GeneratedAt,
+		"pptp_inbounds":    pptpRuntime.Inbounds,
+		"pptp_generated":   pptpRuntime.GeneratedAt,
+		"wg_inbounds":      wgRuntime.Inbounds,
+		"wg_generated":     wgRuntime.GeneratedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("VPN runtime: %w", err)

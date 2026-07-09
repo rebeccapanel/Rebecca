@@ -12,9 +12,10 @@ import (
 )
 
 type WGRuntime struct {
-	GeneratedAt string             `json:"generated_at"`
-	Target      string             `json:"target,omitempty"`
-	Inbounds    []WGRuntimeInbound `json:"inbounds"`
+	GeneratedAt     string                 `json:"generated_at"`
+	Target          string                 `json:"target,omitempty"`
+	SessionCallback RuntimeSessionCallback `json:"session_callback,omitempty"`
+	Inbounds        []WGRuntimeInbound     `json:"inbounds"`
 }
 
 type WGRuntimeInbound struct {
@@ -36,6 +37,7 @@ type WGRuntimePeer struct {
 	UsedTraffic  int64  `json:"used_traffic"`
 	DataLimit    *int64 `json:"data_limit,omitempty"`
 	Expire       *int64 `json:"expire,omitempty"`
+	DeviceLimit  int64  `json:"device_limit,omitempty"`
 }
 
 func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, error) {
@@ -55,6 +57,11 @@ func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, err
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Target:      target,
 		Inbounds:    []WGRuntimeInbound{},
+	}
+	if callback, err := r.RuntimeSessionCallback(ctx, NodeRow{ID: nodeID}); err != nil {
+		return WGRuntime{}, err
+	} else {
+		runtimeConfig.SessionCallback = callback
 	}
 	for _, inbound := range inbounds {
 		if strings.ToLower(OVStringValue(inbound["protocol"])) != xrayconfig.WGProtocol {
@@ -103,7 +110,7 @@ func (r Repository) WGUsersForServices(ctx context.Context, serviceIDs []int64, 
 		args = append(args, id)
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire
+SELECT id, username, COALESCE(credential_key, ''), status, COALESCE(used_traffic, 0), data_limit, expire, COALESCE(ip_limit, 0)
 FROM users
 WHERE status IN ('active', 'on_hold')
   AND service_id IN (`+strings.Join(placeholders, ",")+`)
@@ -117,7 +124,7 @@ ORDER BY id`, args...)
 		var item WGRuntimePeer
 		var credentialKey string
 		var dataLimit, expire sql.NullInt64
-		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire); err != nil {
+		if err := rows.Scan(&item.UserID, &item.Username, &credentialKey, &item.Status, &item.UsedTraffic, &dataLimit, &expire, &item.DeviceLimit); err != nil {
 			return nil, err
 		}
 		pair, err := userapp.WGKeyPairFromCredentialKey(credentialKey)
