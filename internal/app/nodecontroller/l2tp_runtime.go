@@ -77,6 +77,9 @@ func (r Repository) L2TPRuntime(ctx context.Context, nodeID int64) (L2TPRuntime,
 			return L2TPRuntime{}, err
 		}
 		tunnelPort := xrayconfig.L2TPTunnelPort
+		if !OVBoolValue(settings["tproxy_enabled"]) {
+			tunnelPort = 0
+		}
 		if tunnelPort > 0 {
 			usedPorts[tunnelPort] = struct{}{}
 		}

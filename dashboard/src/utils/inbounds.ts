@@ -666,7 +666,7 @@ export const validateInboundFormFields = (
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.ovIPv4Pool.trim())) {
 			errors.ovIPv4Pool = "IPv4 pool must be a CIDR, for example 10.66.0.0/16.";
 		}
-		if (!values.ovTunnelPort.trim()) {
+		if (values.ovTproxyEnabled && !values.ovTunnelPort.trim()) {
 			errors.ovTunnelPort = "Tunnel port is required.";
 		}
 		if (
@@ -717,13 +717,13 @@ export const validateInboundFormFields = (
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
 			errors.l2tpIPv4Pool = "IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
 		}
-		if (!values.l2tpTunnelPort.trim()) {
+		if (values.l2tpTproxyEnabled && !values.l2tpTunnelPort.trim()) {
 			errors.l2tpTunnelPort = "Tunnel port is required.";
 		}
 		if (values.l2tpTunnelPort.trim() && !isValidPortText(values.l2tpTunnelPort)) {
 			errors.l2tpTunnelPort = "Tunnel port must be a number between 1 and 65535.";
 		}
-		if (values.protocol === "l2tp" && values.l2tpTunnelPort.trim() !== "1702") {
+		if (values.protocol === "l2tp" && values.l2tpTproxyEnabled && values.l2tpTunnelPort.trim() !== "1702") {
 			errors.l2tpTunnelPort = "L2TP tunnel port must be 1702.";
 		}
 		if (
@@ -2443,7 +2443,9 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.tproxy_enabled = values.ovTproxyEnabled;
 			base.require_dco = values.ovRequireDCO;
 			base.accounting_enabled = values.ovAccountingEnabled;
-			base.tunnel_port = parseOptionalNumber(values.ovTunnelPort);
+			base.tunnel_port = values.ovTproxyEnabled
+				? parseOptionalNumber(values.ovTunnelPort)
+				: undefined;
 			base.management_port = parseOptionalNumber(values.ovManagementPort);
 			base.cipher = values.ovCipher.trim() || undefined;
 			base.auth = values.ovAuth.trim() || undefined;
@@ -2478,10 +2480,11 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.redirect_gateway = values.l2tpRedirectGateway;
 			base.tproxy_enabled = values.l2tpTproxyEnabled;
 			base.accounting_enabled = values.l2tpAccountingEnabled;
-			base.tunnel_port =
-				values.protocol === "l2tp"
+			base.tunnel_port = values.l2tpTproxyEnabled
+				? values.protocol === "l2tp"
 					? 1702
-					: parseOptionalNumber(values.l2tpTunnelPort);
+					: parseOptionalNumber(values.l2tpTunnelPort)
+				: undefined;
 			base.mtu = parseOptionalNumber(values.l2tpMTU);
 			base.mru = parseOptionalNumber(values.l2tpMRU);
 			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);

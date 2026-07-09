@@ -2033,6 +2033,21 @@ export const CoreSettingsPage: FC = () => {
 			Array.from(
 				new Set(
 					(watchedConfig?.inbounds ?? [])
+						.filter((inbound: any) => {
+							const protocol = String(inbound?.protocol ?? "")
+								.toLowerCase()
+								.trim();
+							if (
+								!["openvpn", "wireguard", "l2tp", "pptp"].includes(protocol)
+							) {
+								return true;
+							}
+							const rawTproxy = inbound?.settings?.tproxy_enabled;
+							return !(
+								rawTproxy === false ||
+								String(rawTproxy ?? "").toLowerCase().trim() === "false"
+							);
+						})
 						.map((inbound: any) => inbound?.tag)
 						.filter((tag: string | undefined): tag is string => Boolean(tag)),
 				),

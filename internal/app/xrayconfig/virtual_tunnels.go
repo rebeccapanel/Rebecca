@@ -97,6 +97,8 @@ func normalizeOVSettings(settings map[string]any) map[string]any {
 	}
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
+	} else {
+		out["tproxy_enabled"] = boolValue(out["tproxy_enabled"])
 	}
 	if _, ok := out["require_dco"]; !ok {
 		out["require_dco"] = false
@@ -162,6 +164,8 @@ func normalizeL2TPSettings(settings map[string]any) map[string]any {
 	}
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
+	} else {
+		out["tproxy_enabled"] = boolValue(out["tproxy_enabled"])
 	}
 	out["ipsec_ike_port"] = L2TPIPSecIKEPort
 	out["ipsec_nat_port"] = L2TPIPSecNATPort
@@ -237,11 +241,21 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 	}
 	rawSettings := mapValue(inbound["settings"])
 	settings := normalizeVirtualTunnelSettings(protocol, rawSettings)
-	if _, ok := virtualTunnelPort(settings); !ok {
-		return fmt.Errorf("invalid inbound %q: %s tunnel_port is required", tag, strings.ToUpper(protocol))
+	requiresTunnel := virtualTunnelRoutesToXray(settings)
+	if requiresTunnel {
+		if _, ok := virtualTunnelPort(settings); !ok {
+			return fmt.Errorf("invalid inbound %q: %s tunnel_port is required", tag, strings.ToUpper(protocol))
+		}
 	}
-	if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort == port {
-		return fmt.Errorf("invalid inbound %q: %s tunnel_port must be different from port", tag, strings.ToUpper(protocol))
+	if !requiresTunnel {
+		delete(settings, "tunnel_port")
+		delete(settings, "xray_tunnel_port")
+		delete(settings, "tproxy_port")
+	}
+	if requiresTunnel {
+		if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort == port {
+			return fmt.Errorf("invalid inbound %q: %s tunnel_port must be different from port", tag, strings.ToUpper(protocol))
+		}
 	}
 	if _, err := netip.ParsePrefix(stringValue(settings["ipv4_pool_cidr"])); err != nil {
 		return fmt.Errorf("invalid inbound %q: %s IPv4 pool CIDR is invalid", tag, strings.ToUpper(protocol))
@@ -286,7 +300,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		if port != L2TPPort {
 			return fmt.Errorf("invalid inbound %q: L2TP port must be %d", tag, L2TPPort)
 		}
-		if tunnelPort, ok := virtualTunnelPort(settings); !ok || tunnelPort != L2TPTunnelPort {
+		if tunnelPort, ok := virtualTunnelPort(settings); requiresTunnel && (!ok || tunnelPort != L2TPTunnelPort) {
 			return fmt.Errorf("invalid inbound %q: L2TP tunnel_port must be %d", tag, L2TPTunnelPort)
 		}
 		if intValue(settings["ipsec_ike_port"]) != L2TPIPSecIKEPort {
@@ -394,6 +408,7 @@ func TranslateVirtualTunnelInboundsForRuntime(raw map[string]any) map[string]any
 		}
 	}
 	tagMap := map[string]string{}
+	skippedTags := map[string]struct{}{}
 	next := make([]any, 0, len(inbounds))
 	for _, inbound := range inbounds {
 		protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
@@ -401,8 +416,15 @@ func TranslateVirtualTunnelInboundsForRuntime(raw map[string]any) map[string]any
 			next = append(next, inbound)
 			continue
 		}
-		runtimeInbound := runtimeTunnelInbound(inbound, usedPorts)
 		originalTag := stringValue(inbound["tag"])
+		settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
+		if !virtualTunnelRoutesToXray(settings) {
+			if originalTag != "" {
+				skippedTags[originalTag] = struct{}{}
+			}
+			continue
+		}
+		runtimeInbound := runtimeTunnelInbound(inbound, usedPorts)
 		tunnelTag := stringValue(runtimeInbound["tag"])
 		if originalTag != "" && tunnelTag != "" {
 			tagMap[originalTag] = tunnelTag
@@ -414,6 +436,7 @@ func TranslateVirtualTunnelInboundsForRuntime(raw map[string]any) map[string]any
 	}
 	runtime["inbounds"] = next
 	translateRoutingInboundTags(runtime, tagMap)
+	pruneSkippedRoutingInboundTags(runtime, skippedTags)
 	return runtime
 }
 
@@ -444,6 +467,9 @@ func runtimeTunnelInbound(inbound map[string]any, usedPorts map[int]struct{}) ma
 func RuntimeTunnelPortForInbound(inbound map[string]any, usedPorts map[int]struct{}) int {
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
 	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
+	if !virtualTunnelRoutesToXray(settings) {
+		return 0
+	}
 	publicPort, _ := parseConfigPort(inbound["port"])
 	tunnelPort, ok := virtualTunnelPort(settings)
 	if ok && tunnelPort >= 1 && tunnelPort <= 65535 {
@@ -453,6 +479,14 @@ func RuntimeTunnelPortForInbound(inbound map[string]any, usedPorts map[int]struc
 		usedPorts = map[int]struct{}{}
 	}
 	return derivedTunnelPort(publicPort, usedPorts)
+}
+
+func virtualTunnelRoutesToXray(settings map[string]any) bool {
+	value, ok := settings["tproxy_enabled"]
+	if !ok {
+		return true
+	}
+	return boolValue(value)
 }
 
 func ovDCOCipherAllowed(cipher string) bool {
@@ -508,6 +542,63 @@ func translateRoutingInboundTags(runtime map[string]any, tagMap map[string]strin
 	}
 	routing["rules"] = rules
 	runtime["routing"] = routing
+}
+
+func pruneSkippedRoutingInboundTags(runtime map[string]any, skippedTags map[string]struct{}) {
+	if len(skippedTags) == 0 {
+		return
+	}
+	routing := mapValue(runtime["routing"])
+	rules := interfaceSlice(routing["rules"])
+	next := make([]any, 0, len(rules))
+	for _, item := range rules {
+		rule := mapValue(item)
+		if len(rule) == 0 {
+			next = append(next, item)
+			continue
+		}
+		value, hasInboundTag := rule["inboundTag"]
+		if !hasInboundTag {
+			next = append(next, item)
+			continue
+		}
+		filtered, kept := pruneInboundTagValue(value, skippedTags)
+		if !kept {
+			continue
+		}
+		rule["inboundTag"] = filtered
+		next = append(next, rule)
+	}
+	routing["rules"] = next
+	runtime["routing"] = routing
+}
+
+func pruneInboundTagValue(value any, skippedTags map[string]struct{}) (any, bool) {
+	switch typed := value.(type) {
+	case string:
+		if _, skipped := skippedTags[strings.TrimSpace(typed)]; skipped {
+			return nil, false
+		}
+		return typed, true
+	case []string:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			if _, skipped := skippedTags[strings.TrimSpace(item)]; !skipped {
+				out = append(out, item)
+			}
+		}
+		return out, len(out) > 0
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			if _, skipped := skippedTags[stringValue(item)]; !skipped {
+				out = append(out, item)
+			}
+		}
+		return out, len(out) > 0
+	default:
+		return value, true
+	}
 }
 
 func translateInboundTagValue(value any, tagMap map[string]string) any {

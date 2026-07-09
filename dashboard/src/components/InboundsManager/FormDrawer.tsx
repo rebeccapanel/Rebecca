@@ -460,10 +460,18 @@ export const InboundFormModal: FC<Props> = ({
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
 	const ovTunnelPortValue =
 		useWatch({ control, name: "ovTunnelPort" }) || watch("ovTunnelPort") || "";
+	const ovTproxyEnabled =
+		useWatch({ control, name: "ovTproxyEnabled" }) ??
+		watch("ovTproxyEnabled") ??
+		true;
 	const l2tpTunnelPortValue =
 		useWatch({ control, name: "l2tpTunnelPort" }) ||
 		watch("l2tpTunnelPort") ||
 		"";
+	const l2tpTproxyEnabled =
+		useWatch({ control, name: "l2tpTproxyEnabled" }) ??
+		watch("l2tpTproxyEnabled") ??
+		true;
 	const autoOVTunnelPortRef = useRef("");
 	const autoL2TPTunnelPortRef = useRef("");
 	const supportsStreamSettings =
@@ -1828,7 +1836,7 @@ export const InboundFormModal: FC<Props> = ({
 														/>
 													</FormControl>
 													<FormControl
-														isRequired
+														isRequired={ovTproxyEnabled}
 														isInvalid={Boolean(
 															fieldValidationErrors.ovTunnelPort,
 														)}
@@ -1842,6 +1850,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Input
 															{...register("ovTunnelPort")}
 															placeholder="41940"
+														isDisabled={!ovTproxyEnabled}
 														/>
 														{fieldValidationErrors.ovTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>
@@ -1927,9 +1936,9 @@ export const InboundFormModal: FC<Props> = ({
 													<FormControl display="flex" alignItems="center">
 														{ovLabel(
 															"inbounds.openvpn.tproxy",
-															"Enable TProxy automation",
+															"Route through Xray",
 															"inbounds.openvpn.help.tproxy",
-															"Create nftables and policy routing rules that forward OpenVPN client traffic into the generated Xray tunnel inbound.",
+															"Forward OpenVPN client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("ovTproxyEnabled")} />
@@ -2171,7 +2180,7 @@ export const InboundFormModal: FC<Props> = ({
 															<AlertDescription fontSize="sm">
 																{t(
 																	"inbounds.l2tp.fixedPortsDescription",
-																	"UDP 500 for IPsec/IKE, UDP 4500 for IPsec NAT-T, UDP 1701 for L2TP, and local Xray tunnel port 1702 are reserved and cannot be changed.",
+																	"UDP 500 for IPsec/IKE, UDP 4500 for IPsec NAT-T, and UDP 1701 for L2TP are fixed. Local Xray tunnel port 1702 is used only when Route through Xray is enabled.",
 																)}
 															</AlertDescription>
 														</Box>
@@ -2179,7 +2188,7 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl
-														isRequired
+														isRequired={l2tpTproxyEnabled}
 														isInvalid={Boolean(
 															fieldValidationErrors.l2tpTunnelPort,
 														)}
@@ -2193,7 +2202,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Input
 															{...register("l2tpTunnelPort")}
 															placeholder={currentProtocol === "l2tp" ? "1702" : "51200"}
-															isDisabled={currentProtocol === "l2tp"}
+															isDisabled={currentProtocol === "l2tp" || !l2tpTproxyEnabled}
 														/>
 														{fieldValidationErrors.l2tpTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>
@@ -2351,9 +2360,9 @@ export const InboundFormModal: FC<Props> = ({
 													<FormControl display="flex" alignItems="center">
 														{ovLabel(
 															"inbounds.l2tp.tproxy",
-															"Enable TProxy automation",
+															"Route through Xray",
 															"inbounds.l2tp.help.tproxy",
-															"Create nftables and policy routing rules that forward L2TP client traffic into the generated Xray tunnel inbound.",
+															"Forward VPN client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
 															{ mb: 0 },
 														)}
 														<Switch {...register("l2tpTproxyEnabled")} />

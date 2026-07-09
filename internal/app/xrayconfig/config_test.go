@@ -365,6 +365,15 @@ func TestParseRejectsIncompleteOVInbound(t *testing.T) {
 	if _, err := Parse(base(dcoSettings), Options{}); err == nil || !strings.Contains(err.Error(), "not DCO-compatible") {
 		t.Fatalf("expected DCO cipher validation error, got %v", err)
 	}
+	directSettings := map[string]any{}
+	for key, value := range validSettings {
+		directSettings[key] = value
+	}
+	directSettings["tproxy_enabled"] = false
+	delete(directSettings, "tunnel_port")
+	if _, err := Parse(base(directSettings), Options{}); err != nil {
+		t.Fatalf("direct OV inbound without tunnel_port rejected: %v", err)
+	}
 
 	cases := []struct {
 		name string
@@ -476,6 +485,45 @@ func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
 	tags := rule["inboundTag"].([]any)
 	if len(tags) != 1 || tags[0] != "__rebecca_l2tp_tunnel__l2tp-edge" {
 		t.Fatalf("unexpected translated rule: %#v", rule)
+	}
+}
+
+func TestTranslateDirectVirtualInboundSkipsRuntimeTunnelAndRouting(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{
+			map[string]any{
+				"tag":      "ov-direct",
+				"port":     1194,
+				"protocol": "openvpn",
+				"settings": map[string]any{
+					"tproxy_enabled":     false,
+					"ipv4_pool_cidr":     "10.66.0.0/16",
+					"ca":                 "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
+					"server_certificate": "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----",
+					"server_key":         "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+				},
+			},
+			map[string]any{"tag": "vless", "port": 443, "protocol": "vless", "settings": map[string]any{}},
+		},
+		"routing": map[string]any{
+			"rules": []any{
+				map[string]any{"type": "field", "inboundTag": []any{"ov-direct"}, "outboundTag": "warp"},
+				map[string]any{"type": "field", "inboundTag": []any{"vless", "ov-direct"}, "outboundTag": "direct"},
+			},
+		},
+	}
+	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
+	inbounds := runtime["inbounds"].([]any)
+	if len(inbounds) != 1 || inbounds[0].(map[string]any)["tag"] != "vless" {
+		t.Fatalf("unexpected runtime inbounds: %#v", inbounds)
+	}
+	rules := runtime["routing"].(map[string]any)["rules"].([]any)
+	if len(rules) != 1 {
+		t.Fatalf("unexpected runtime rules: %#v", rules)
+	}
+	tags := rules[0].(map[string]any)["inboundTag"].([]any)
+	if len(tags) != 1 || tags[0] != "vless" {
+		t.Fatalf("unexpected filtered rule: %#v", rules[0])
 	}
 }
 
