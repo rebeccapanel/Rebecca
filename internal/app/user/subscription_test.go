@@ -231,7 +231,7 @@ func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *te
 }
 
 func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
-	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
+	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for link in wireguard.downloads %}{{ link }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
 	html, err := renderSubscriptionPageTemplate(template, UserDetail{
 		Username:               "alice",
 		Status:                 "active",
@@ -239,6 +239,9 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token", map[string]any{
 		"openvpn": map[string]any{
 			"downloads": []string{"https://vpn.example/sub/token/ov/edge.ovpn"},
+		},
+		"wireguard": map[string]any{
+			"downloads": []string{"https://vpn.example/sub/token/wg/edge.conf"},
 		},
 		"l2tp": []L2TPInfo{{
 			Server:   "l2tp.example.com",
@@ -253,6 +256,7 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"https://vpn.example/sub/token/ov/edge.ovpn",
+		"https://vpn.example/sub/token/wg/edge.conf",
 		"l2tp.example.com",
 		"alice",
 		"pptp.example.com",

@@ -97,6 +97,9 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if req.ClientType == "openvpn" {
 		return s.generateOVProfile(ctx, user, req)
 	}
+	if req.ClientType == "wireguard" {
+		return s.generateWGProfile(ctx, user, req)
+	}
 	clientType := req.ClientType
 	if clientType == "" {
 		clientType = selectSubscriptionClientType(req.UserAgent, s.effectiveSettings(ctx, user.AdminID))
@@ -163,6 +166,20 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			ovLinks = append(ovLinks, profile.DownloadURL)
 		}
 	}
+	wgProfiles, err := s.WGDownloadProfiles(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	wgDownloads := make([]string, 0, len(wgProfiles))
+	wgLinks := make([]string, 0, len(wgProfiles))
+	for _, profile := range wgProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			wgDownloads = append(wgDownloads, profile.DownloadURL)
+		}
+		if strings.TrimSpace(profile.Link) != "" {
+			wgLinks = append(wgLinks, profile.Link)
+		}
+	}
 	l2tpItems, err := s.L2TPInfos(ctx, user, subscriptionURL)
 	if err != nil {
 		return nil, err
@@ -175,6 +192,11 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 		"openvpn": map[string]any{
 			"downloads": ovLinks,
 			"profiles":  ovProfiles,
+		},
+		"wireguard": map[string]any{
+			"downloads": wgDownloads,
+			"links":     wgLinks,
+			"profiles":  wgProfiles,
 		},
 		"l2tp": l2tpItems,
 		"pptp": pptpItems,
@@ -612,6 +634,13 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 				HostTag:    strings.TrimSuffix(segments[2], ".ovpn"),
 			}, true
 		}
+		if segments[1] == "wg" || segments[1] == "wireguard" {
+			return SubscriptionRenderRequest{
+				Identifier: segments[0],
+				ClientType: "wireguard",
+				HostTag:    strings.TrimSuffix(segments[2], ".conf"),
+			}, true
+		}
 		if segments[2] == "info" || segments[2] == "usage" {
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: segments[2]}, true
 		}
@@ -625,6 +654,14 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 			Key:        segments[1],
 			ClientType: "openvpn",
 			HostTag:    strings.TrimSuffix(segments[3], ".ovpn"),
+		}, true
+	}
+	if len(segments) == 4 && (segments[2] == "wg" || segments[2] == "wireguard") {
+		return SubscriptionRenderRequest{
+			Username:   segments[0],
+			Key:        segments[1],
+			ClientType: "wireguard",
+			HostTag:    strings.TrimSuffix(segments[3], ".conf"),
 		}, true
 	}
 	return SubscriptionRenderRequest{}, false
@@ -1552,7 +1589,7 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
-	for _, key := range []string{"openvpn", "l2tp", "pptp"} {
+	for _, key := range []string{"openvpn", "wireguard", "l2tp", "pptp"} {
 		if value, ok := vpn[key]; ok {
 			context[key] = value
 		}

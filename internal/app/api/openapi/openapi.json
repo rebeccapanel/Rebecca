@@ -3172,7 +3172,7 @@
           "Subscriptions"
         ],
         "summary": "Subscription info",
-        "description": "Return subscription user info for a resolved identifier, including OV download links, L2TP/IPsec connection info, and PPTP connection info when the user service has those hosts.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.",
+        "description": "Return subscription user info for a resolved identifier, including OpenVPN and WireGuard download links, L2TP/IPsec connection info, and PPTP connection info when the user service has those hosts.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.",
         "security": [],
         "parameters": [
           {
@@ -3272,7 +3272,7 @@
           "Subscriptions"
         ],
         "summary": "Username/key subscription info",
-        "description": "Return subscription user info using explicit username and credential key, including OV download links, L2TP/IPsec connection info, and PPTP connection info when available.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
+        "description": "Return subscription user info using explicit username and credential key, including OpenVPN and WireGuard download links, L2TP/IPsec connection info, and PPTP connection info when available.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
         "security": [],
         "parameters": [
           {
@@ -3575,6 +3575,49 @@
             "description": "OV profile",
             "content": {
               "application/x-openvpn-profile": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/sub/{identifier}/wg/{host_tag}.conf": {
+      "get": {
+        "tags": [
+          "Subscriptions"
+        ],
+        "summary": "Download WireGuard profile",
+        "description": "Download a single WireGuard profile for the resolved subscription user and host tag. The host tag is the host tag/remark-safe value, not the inbound tag.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
+        "operationId": "getSubIdentifierWgHostTagProfile",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WireGuard profile",
+            "content": {
+              "application/x-wireguard-profile": {
                 "schema": {
                   "type": "string"
                 }

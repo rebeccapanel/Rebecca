@@ -29,9 +29,10 @@ var proxyProtocols = map[string]struct{}{
 }
 
 var subscriptionDownloadProtocols = map[string]struct{}{
-	"openvpn": {},
-	"l2tp":    {},
-	"pptp":    {},
+	"openvpn":   {},
+	"wireguard": {},
+	"l2tp":      {},
+	"pptp":      {},
 }
 
 func isResolvableInboundProtocol(protocol string) bool {
@@ -133,11 +134,30 @@ func BuildConfigLinks(
 	// protocols (e.g. shadowsocks) to the top regardless of the service order.
 	for _, selected := range selectedHosts {
 		host := selected.host
-		binding, ok := bindings[host.InboundTag]
+		inbound, ok := inbounds[host.InboundTag]
 		if !ok {
 			continue
 		}
-		inbound, ok := inbounds[host.InboundTag]
+		if normalizeProxyProtocol(stringValue(inbound["protocol"])) == "wireguard" {
+			inboundVariables := cloneFormatVariables(formatVariables)
+			inboundVariables["PROTOCOL"] = "wireguard"
+			inboundVariables["protocol"] = "wireguard"
+			inboundVariables["TRANSPORT"] = configTransportName(inbound)
+			inboundVariables["transport"] = strings.ToLower(inboundVariables["TRANSPORT"])
+			remark, address, effective, ok := effectiveInboundForHost(username, inboundVariables, inbound, host)
+			if !ok {
+				continue
+			}
+			link, err := buildWGShareLink(item, remark, address, effective)
+			if err != nil {
+				return ConfigLinksResponse{}, err
+			}
+			if link != "" {
+				links = append(links, link)
+			}
+			continue
+		}
+		binding, ok := bindings[host.InboundTag]
 		if !ok {
 			continue
 		}
@@ -1341,6 +1361,8 @@ func normalizeProxyProtocol(value string) string {
 		return "l2tp"
 	case "openvpn", "ov":
 		return "openvpn"
+	case "wireguard", "wg":
+		return "wireguard"
 	default:
 		return cleaned
 	}
