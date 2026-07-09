@@ -49,6 +49,24 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 		t.Fatalf("invalid public key %q len=%d err=%v", keypair.PublicKey, len(decoded), err)
 	}
 
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/wg-keypair", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("wireguard keypair status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var wgKeypair struct {
+		PrivateKey string `json:"privateKey"`
+		PublicKey  string `json:"publicKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &wgKeypair); err != nil {
+		t.Fatal(err)
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(wgKeypair.PrivateKey); err != nil || len(decoded) != 32 {
+		t.Fatalf("invalid wireguard private key %q len=%d err=%v", wgKeypair.PrivateKey, len(decoded), err)
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(wgKeypair.PublicKey); err != nil || len(decoded) != 32 {
+		t.Fatalf("invalid wireguard public key %q len=%d err=%v", wgKeypair.PublicKey, len(decoded), err)
+	}
+
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/reality-shortid", token, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reality shortid status=%d body=%s", rec.Code, rec.Body.String())

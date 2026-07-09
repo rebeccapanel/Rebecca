@@ -30,6 +30,11 @@ export type OVSelfSignedResponse = {
 	serverKey: string;
 };
 
+export type WGKeypairResponse = {
+	privateKey: string;
+	publicKey: string;
+};
+
 export type Mldsa65Response = {
 	seed: string;
 	verify: string;
@@ -59,6 +64,10 @@ export const generateOVSelfSigned =
 	async (): Promise<OVSelfSignedResponse> => {
 		return fetch<OVSelfSignedResponse>("/xray/ov-self-signed");
 	};
+
+export const generateWGKeypair = async (): Promise<WGKeypairResponse> => {
+	return fetch<WGKeypairResponse>("/xray/wg-keypair");
+};
 
 export const generateMldsa65 = async (): Promise<Mldsa65Response> => {
 	return fetch<Mldsa65Response>("/xray/mldsa65");

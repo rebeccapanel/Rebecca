@@ -222,7 +222,14 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 	if err != nil {
 		return false, err
 	}
-	return len(pptpRuntimeConfig.Inbounds) > 0, nil
+	if len(pptpRuntimeConfig.Inbounds) > 0 {
+		return true, nil
+	}
+	wgRuntimeConfig, err := c.repo.WGRuntime(ctx, node.ID)
+	if err != nil {
+		return false, err
+	}
+	return len(wgRuntimeConfig.Inbounds) > 0, nil
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {

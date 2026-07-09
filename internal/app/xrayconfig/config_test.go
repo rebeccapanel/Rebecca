@@ -356,15 +356,6 @@ func TestParseRejectsIncompleteOVInbound(t *testing.T) {
 	if _, err := Parse(base(validSettings), Options{}); err != nil {
 		t.Fatalf("valid OV inbound rejected: %v", err)
 	}
-	dcoSettings := map[string]any{}
-	for key, value := range validSettings {
-		dcoSettings[key] = value
-	}
-	dcoSettings["require_dco"] = true
-	dcoSettings["cipher"] = "AES-256-CBC"
-	if _, err := Parse(base(dcoSettings), Options{}); err == nil || !strings.Contains(err.Error(), "not DCO-compatible") {
-		t.Fatalf("expected DCO cipher validation error, got %v", err)
-	}
 	directSettings := map[string]any{}
 	for key, value := range validSettings {
 		directSettings[key] = value
@@ -373,6 +364,15 @@ func TestParseRejectsIncompleteOVInbound(t *testing.T) {
 	delete(directSettings, "tunnel_port")
 	if _, err := Parse(base(directSettings), Options{}); err != nil {
 		t.Fatalf("direct OV inbound without tunnel_port rejected: %v", err)
+	}
+	dcoSettings := map[string]any{}
+	for key, value := range validSettings {
+		dcoSettings[key] = value
+	}
+	dcoSettings["require_dco"] = true
+	dcoSettings["cipher"] = "AES-256-CBC"
+	if _, err := Parse(base(dcoSettings), Options{}); err == nil || !strings.Contains(err.Error(), "not DCO-compatible") {
+		t.Fatalf("expected DCO cipher validation error, got %v", err)
 	}
 
 	cases := []struct {

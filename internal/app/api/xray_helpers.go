@@ -33,6 +33,8 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 		s.handleRealityShortID(w)
 	case "/api/xray/ov-self-signed", "/xray/ov-self-signed":
 		s.handleOVSelfSigned(w)
+	case "/api/xray/wg-keypair", "/xray/wg-keypair":
+		s.handleWGKeypair(w)
 	case "/api/xray/mldsa65", "/xray/mldsa65":
 		writeError(w, http.StatusGone, "ML-DSA-65 generation is node-only and is not available on the master")
 	case "/api/xray/ech", "/xray/ech":
@@ -56,6 +58,26 @@ func (s *Server) handleRealityKeypair(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"privateKey": base64.RawURLEncoding.EncodeToString(privateKey),
 		"publicKey":  base64.RawURLEncoding.EncodeToString(publicKey),
+	})
+}
+
+func (s *Server) handleWGKeypair(w http.ResponseWriter) {
+	privateKey := make([]byte, curve25519.ScalarSize)
+	if _, err := rand.Read(privateKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate WireGuard key pair")
+		return
+	}
+	privateKey[0] &= 248
+	privateKey[31] &= 127
+	privateKey[31] |= 64
+	publicKey, err := curve25519.X25519(privateKey, curve25519.Basepoint)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate WireGuard key pair")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"privateKey": base64.StdEncoding.EncodeToString(privateKey),
+		"publicKey":  base64.StdEncoding.EncodeToString(publicKey),
 	})
 }
 

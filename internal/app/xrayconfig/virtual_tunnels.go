@@ -1,6 +1,7 @@
 package xrayconfig
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -8,9 +9,11 @@ import (
 
 const (
 	OVProtocol          = "openvpn"
+	WGProtocol          = "wireguard"
 	L2TPProtocol        = "l2tp"
 	PPTPProtocol        = "pptp"
 	defaultOVPoolCIDR   = "10.66.0.0/16"
+	defaultWGPoolCIDR   = "10.69.0.0/16"
 	defaultL2TPPoolCIDR = "10.67.0.0/16"
 	defaultPPTPPoolCIDR = "10.68.0.0/16"
 	L2TPIPSecIKEPort    = 500
@@ -40,7 +43,7 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 	normalized := deepCopyMap(inbound)
 	protocol := normalizeProxyProtocol(stringValue(normalized["protocol"]))
 	normalized["protocol"] = protocol
-	if protocol != OVProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
 		return normalized
 	}
 	settings := normalizeVirtualTunnelSettings(protocol, mapValue(normalized["settings"]))
@@ -52,6 +55,8 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 
 func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) map[string]any {
 	switch protocol {
+	case WGProtocol:
+		return normalizeWGSettings(settings)
 	case L2TPProtocol:
 		return normalizeL2TPSettings(settings)
 	case PPTPProtocol:
@@ -59,6 +64,63 @@ func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) ma
 	default:
 		return normalizeOVSettings(settings)
 	}
+}
+
+func normalizeWGSettings(settings map[string]any) map[string]any {
+	out := make(map[string]any, len(settings)+8)
+	for key, value := range settings {
+		out[key] = value
+	}
+	pool := strings.TrimSpace(firstNonEmptyString(out["address_pool"], out["ipv4_pool_cidr"], out["ipv4PoolCidr"]))
+	if pool == "" {
+		pool = defaultWGPoolCIDR
+	}
+	out["address_pool"] = pool
+	out["ipv4_pool_cidr"] = pool
+	delete(out, "ipv4PoolCidr")
+	if _, ok := out["tproxy_enabled"]; !ok {
+		out["tproxy_enabled"] = true
+	} else {
+		out["tproxy_enabled"] = boolValue(out["tproxy_enabled"])
+	}
+	if _, ok := out["nat_enabled"]; !ok {
+		out["nat_enabled"] = false
+	} else {
+		out["nat_enabled"] = boolValue(out["nat_enabled"])
+	}
+	if _, ok := out["accounting_enabled"]; !ok {
+		out["accounting_enabled"] = true
+	}
+	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port"} {
+		if port, ok := normalizedOptionalPort(out[key]); ok {
+			out[key] = port
+		} else {
+			delete(out, key)
+		}
+	}
+	for _, key := range []string{"private_key", "server_address", "public_key"} {
+		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
+			out[key] = value
+		} else {
+			delete(out, key)
+		}
+	}
+	for _, item := range []struct {
+		key string
+		min int
+		max int
+	}{
+		{"mtu", 576, 1500},
+		{"persistent_keepalive", 0, 3600},
+	} {
+		if value, ok := normalizedOptionalInt(out[item.key], item.min, item.max); ok {
+			out[item.key] = value
+		} else {
+			delete(out, item.key)
+		}
+	}
+	delete(out, "clients")
+	return out
 }
 
 func normalizeOVSettings(settings map[string]any) map[string]any {
@@ -236,7 +298,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
-	if protocol != OVProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
 	rawSettings := mapValue(inbound["settings"])
@@ -293,6 +355,39 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 				if !ovDCOCipherAllowed(cipher) {
 					return fmt.Errorf("invalid inbound %q: OV data cipher %s is not DCO-compatible", tag, strings.TrimSpace(cipher))
 				}
+			}
+		}
+	}
+	if protocol == WGProtocol {
+		if strings.TrimSpace(stringValue(settings["private_key"])) == "" {
+			return fmt.Errorf("invalid inbound %q: WireGuard private_key is required", tag)
+		}
+		if privateKey, err := base64.StdEncoding.DecodeString(strings.TrimSpace(stringValue(settings["private_key"]))); err != nil || len(privateKey) != 32 {
+			return fmt.Errorf("invalid inbound %q: WireGuard private_key must be a 32-byte base64 key", tag)
+		}
+		serverAddress := strings.TrimSpace(stringValue(settings["server_address"]))
+		if serverAddress == "" {
+			return fmt.Errorf("invalid inbound %q: WireGuard server_address is required", tag)
+		}
+		prefix, err := netip.ParsePrefix(serverAddress)
+		if err != nil || !prefix.Addr().Is4() {
+			return fmt.Errorf("invalid inbound %q: WireGuard server_address must be an IPv4 CIDR", tag)
+		}
+		for _, item := range []struct {
+			key string
+			min int
+			max int
+		}{
+			{"mtu", 576, 1500},
+			{"persistent_keepalive", 0, 3600},
+		} {
+			rawValue, exists := rawSettings[item.key]
+			if !exists || strings.TrimSpace(stringValue(rawValue)) == "" {
+				continue
+			}
+			value, ok := normalizedOptionalInt(rawValue, item.min, item.max)
+			if !ok || value < item.min || value > item.max {
+				return fmt.Errorf("invalid inbound %q: WireGuard %s must be between %d and %d", tag, item.key, item.min, item.max)
 			}
 		}
 	}
@@ -356,6 +451,15 @@ func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[st
 		if port, ok := virtualTunnelPort(settings); ok {
 			resolved["tunnel_port"] = port
 		}
+	case WGProtocol:
+		resolved["network"] = "udp"
+		resolved["tls"] = "none"
+		resolved["settings"] = settings
+		resolved["ipv4_pool_cidr"] = stringValue(settings["ipv4_pool_cidr"])
+		resolved["tunnel_tag"] = RuntimeTunnelTagForProtocol(WGProtocol, stringValue(inbound["tag"]))
+		if port, ok := virtualTunnelPort(settings); ok {
+			resolved["tunnel_port"] = port
+		}
 	case L2TPProtocol:
 		resolved["network"] = "udp"
 		resolved["tls"] = "none"
@@ -384,7 +488,9 @@ func RuntimeTunnelTag(tag string) string {
 func RuntimeTunnelTagForProtocol(protocol string, tag string) string {
 	tag = strings.TrimSpace(tag)
 	prefix := "__rebecca_ov_tunnel"
-	if normalizeProxyProtocol(protocol) == L2TPProtocol {
+	if normalizeProxyProtocol(protocol) == WGProtocol {
+		prefix = "__rebecca_wg_tunnel"
+	} else if normalizeProxyProtocol(protocol) == L2TPProtocol {
 		prefix = "__rebecca_l2tp_tunnel"
 	} else if normalizeProxyProtocol(protocol) == PPTPProtocol {
 		prefix = "__rebecca_pptp_tunnel"

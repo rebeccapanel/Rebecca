@@ -61,6 +61,7 @@ import { useTranslation } from "react-i18next";
 import {
 	generateEchCert,
 	generateOVSelfSigned,
+	generateWGKeypair,
 	generateMldsa65,
 	generateRealityKeypair,
 	generateRealityShortId,
@@ -327,6 +328,7 @@ export const InboundFormModal: FC<Props> = ({
 	);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
 	const [ovCertLoading, setOVCertLoading] = useState(false);
+	const [wgKeyLoading, setWGKeyLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
 	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
@@ -464,6 +466,12 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "ovTproxyEnabled" }) ??
 		watch("ovTproxyEnabled") ??
 		true;
+	const wgTunnelPortValue =
+		useWatch({ control, name: "wgTunnelPort" }) || watch("wgTunnelPort") || "";
+	const wgTproxyEnabled =
+		useWatch({ control, name: "wgTproxyEnabled" }) ??
+		watch("wgTproxyEnabled") ??
+		true;
 	const l2tpTunnelPortValue =
 		useWatch({ control, name: "l2tpTunnelPort" }) ||
 		watch("l2tpTunnelPort") ||
@@ -473,11 +481,13 @@ export const InboundFormModal: FC<Props> = ({
 		watch("l2tpTproxyEnabled") ??
 		true;
 	const autoOVTunnelPortRef = useRef("");
+	const autoWGTunnelPortRef = useRef("");
 	const autoL2TPTunnelPortRef = useRef("");
 	const supportsStreamSettings =
 		currentProtocol !== "http" &&
 		currentProtocol !== "socks" &&
 		currentProtocol !== "openvpn" &&
+		currentProtocol !== "wireguard" &&
 		currentProtocol !== "l2tp" &&
 		currentProtocol !== "pptp";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
@@ -667,6 +677,62 @@ export const InboundFormModal: FC<Props> = ({
 		sniffingEnabled,
 		streamNetwork,
 		streamSecurity,
+	]);
+
+	useEffect(() => {
+		if (currentProtocol !== "wireguard") {
+			autoWGTunnelPortRef.current = "";
+			return;
+		}
+		const port = Number(portValue);
+		if (Number.isInteger(port) && port >= 1 && port < 65535) {
+			const nextTunnelPort = String(port + 1);
+			const currentTunnelPort = String(wgTunnelPortValue || "").trim();
+			if (
+				!currentTunnelPort ||
+				currentTunnelPort === autoWGTunnelPortRef.current
+			) {
+				if (currentTunnelPort !== nextTunnelPort) {
+					autoWGTunnelPortRef.current = nextTunnelPort;
+					form.setValue("wgTunnelPort", nextTunnelPort, {
+						shouldDirty: true,
+						shouldValidate: true,
+					});
+				}
+			}
+		}
+		if (!String(form.getValues("wgServerAddress") || "").trim()) {
+			form.setValue("wgServerAddress", "10.69.0.1/16", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [
+		currentProtocol,
+		form,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+		wgTunnelPortValue,
 	]);
 
 	useEffect(() => {
@@ -1030,6 +1096,41 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		} finally {
 			setOVCertLoading(false);
+		}
+	}, [form, t, toast]);
+
+	const handleGenerateWGKeypair = useCallback(async () => {
+		setWGKeyLoading(true);
+		try {
+			const keys = await generateWGKeypair();
+			form.setValue("wgPrivateKey", keys.privateKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("wgPublicKey", keys.publicKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			toast({
+				status: "success",
+				title: t(
+					"inbounds.wireguard.generateKeysSuccess",
+					"WireGuard key pair generated",
+				),
+				duration: 2500,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.wireguard.generateKeysError",
+					"Unable to generate WireGuard key pair",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setWGKeyLoading(false);
 		}
 	}, [form, t, toast]);
 
@@ -1458,6 +1559,7 @@ export const InboundFormModal: FC<Props> = ({
 														}
 														if (
 															nextProtocol === "openvpn" ||
+															nextProtocol === "wireguard" ||
 															nextProtocol === "l2tp" ||
 															nextProtocol === "pptp"
 														) {
@@ -1490,6 +1592,24 @@ export const InboundFormModal: FC<Props> = ({
 																	shouldDirty: true,
 																	shouldValidate: true,
 																});
+															}
+															if (nextProtocol === "wireguard") {
+																if (!form.getValues("wgIPv4Pool")) {
+																	form.setValue("wgIPv4Pool", "10.69.0.0/16", {
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	});
+																}
+																if (!form.getValues("wgServerAddress")) {
+																	form.setValue(
+																		"wgServerAddress",
+																		"10.69.0.1/16",
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	);
+																}
 															}
 															form.setValue("streamNetwork", "tcp", {
 																shouldDirty: true,
@@ -1850,7 +1970,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Input
 															{...register("ovTunnelPort")}
 															placeholder="41940"
-														isDisabled={!ovTproxyEnabled}
+															isDisabled={!ovTproxyEnabled}
 														/>
 														{fieldValidationErrors.ovTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>
@@ -1897,7 +2017,9 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.ovCipher)}
+													>
 														{ovLabel(
 															"inbounds.openvpn.cipher",
 															"Cipher",
@@ -1908,6 +2030,11 @@ export const InboundFormModal: FC<Props> = ({
 															{...register("ovCipher")}
 															placeholder="AES-256-GCM"
 														/>
+														{fieldValidationErrors.ovCipher && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovCipher}
+															</Text>
+														)}
 													</FormControl>
 													<FormControl>
 														{ovLabel(
@@ -2165,6 +2292,177 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</Stack>
 										)}
+										{currentProtocol === "wireguard" && (
+											<Stack spacing={3}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired={wgTproxyEnabled}
+														isInvalid={Boolean(
+															fieldValidationErrors.wgTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.tunnelPort",
+															"Tunnel port",
+															"inbounds.wireguard.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public WireGuard port.",
+														)}
+														<Input
+															{...register("wgTunnelPort")}
+															placeholder="51821"
+															isDisabled={!wgTproxyEnabled}
+														/>
+														{fieldValidationErrors.wgTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(fieldValidationErrors.wgIPv4Pool)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.wireguard.help.ipv4Pool",
+															"Private IPv4 range assigned to WireGuard users. Each user receives a deterministic address from this pool.",
+														)}
+														<Input
+															{...register("wgIPv4Pool")}
+															placeholder="10.69.0.0/16"
+														/>
+														{fieldValidationErrors.wgIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.wgServerAddress,
+														)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.serverAddress",
+															"Server address",
+															"inbounds.wireguard.help.serverAddress",
+															"WireGuard address assigned to the server interface. Keep it inside the selected IPv4 pool.",
+														)}
+														<Input
+															{...register("wgServerAddress")}
+															placeholder="10.69.0.1/16"
+														/>
+														{fieldValidationErrors.wgServerAddress && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgServerAddress}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.wgMTU)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.mtu",
+															"MTU",
+															"inbounds.wireguard.help.mtu",
+															"WireGuard interface MTU. 1420 is the common default; lower it only for path-specific fragmentation issues.",
+														)}
+														<Input {...register("wgMTU")} placeholder="1420" />
+														{fieldValidationErrors.wgMTU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgMTU}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.wgPersistentKeepalive,
+													)}
+												>
+													{ovLabel(
+														"inbounds.wireguard.persistentKeepalive",
+														"Persistent keepalive",
+														"inbounds.wireguard.help.persistentKeepalive",
+														"Seconds between client keepalive packets. 25 helps clients behind NAT stay reachable; 0 disables it.",
+													)}
+													<Input
+														{...register("wgPersistentKeepalive")}
+														placeholder="25"
+													/>
+													{fieldValidationErrors.wgPersistentKeepalive && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.wgPersistentKeepalive}
+														</Text>
+													)}
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.wireguard.tproxy",
+															"Route through Xray",
+															"inbounds.wireguard.help.tproxy",
+															"Forward WireGuard client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("wgTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.wireguard.accounting",
+															"Enable accounting",
+															"inbounds.wireguard.help.accounting",
+															"Record WireGuard peer traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("wgAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
+												<Box>
+													<Button
+														size="sm"
+														leftIcon={<SparklesIcon width={16} />}
+														onClick={handleGenerateWGKeypair}
+														isLoading={wgKeyLoading}
+													>
+														{t(
+															"inbounds.wireguard.generateKeys",
+															"Generate key pair",
+														)}
+													</Button>
+												</Box>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.wgPrivateKey)}
+												>
+													{ovLabel(
+														"inbounds.wireguard.privateKey",
+														"Private key",
+														"inbounds.wireguard.help.privateKey",
+														"Private key used by the WireGuard server interface. Generate a key pair here unless you already have one.",
+													)}
+													<Textarea rows={2} {...register("wgPrivateKey")} />
+													{fieldValidationErrors.wgPrivateKey && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.wgPrivateKey}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl>
+													{ovLabel(
+														"inbounds.wireguard.publicKey",
+														"Public key",
+														"inbounds.wireguard.help.publicKey",
+														"Server public key shown for reference and future profile generation. The node derives the runtime key from the private key.",
+													)}
+													<Input {...register("wgPublicKey")} isReadOnly />
+												</FormControl>
+											</Stack>
+										)}
 										{(currentProtocol === "l2tp" || currentProtocol === "pptp") && (
 											<Stack spacing={3}>
 												{currentProtocol === "l2tp" && (
@@ -2202,7 +2500,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Input
 															{...register("l2tpTunnelPort")}
 															placeholder={currentProtocol === "l2tp" ? "1702" : "51200"}
-															isDisabled={currentProtocol === "l2tp" || !l2tpTproxyEnabled}
+															isDisabled={!l2tpTproxyEnabled || currentProtocol === "l2tp"}
 														/>
 														{fieldValidationErrors.l2tpTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>
@@ -4709,7 +5007,7 @@ export const InboundFormModal: FC<Props> = ({
 										</Stack>
 									)}
 
-									{currentProtocol !== "openvpn" && currentProtocol !== "l2tp" && currentProtocol !== "pptp" && (
+									{currentProtocol !== "openvpn" && currentProtocol !== "wireguard" && currentProtocol !== "l2tp" && currentProtocol !== "pptp" && (
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Flex align="center" justify="space-between">
 											<HStack spacing={2}>

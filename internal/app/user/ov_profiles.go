@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"net/netip"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
+	"golang.org/x/crypto/curve25519"
 )
 
 const defaultOVPoolCIDR = "10.66.0.0/16"
@@ -451,7 +453,37 @@ func PPTPPasswordFromCredentialKey(credentialKey string) (string, error) {
 	return keyToPassword(key, "pptp"), nil
 }
 
+type WGKeyPair struct {
+	PrivateKey string
+	PublicKey  string
+}
+
+func WGKeyPairFromCredentialKey(credentialKey string) (WGKeyPair, error) {
+	key, err := normalizeCredentialKey(credentialKey)
+	if err != nil {
+		return WGKeyPair{}, err
+	}
+	sum := sha256.Sum256([]byte("wireguard:" + key))
+	private := make([]byte, 32)
+	copy(private, sum[:])
+	private[0] &= 248
+	private[31] &= 127
+	private[31] |= 64
+	public, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil {
+		return WGKeyPair{}, err
+	}
+	return WGKeyPair{
+		PrivateKey: base64.StdEncoding.EncodeToString(private),
+		PublicKey:  base64.StdEncoding.EncodeToString(public),
+	}, nil
+}
+
 func OVIPv4AddressForUser(userID int64, pool string) string {
+	return OVIPv4ForUser(userID, pool)
+}
+
+func WGIPv4AddressForUser(userID int64, pool string) string {
 	return OVIPv4ForUser(userID, pool)
 }
 

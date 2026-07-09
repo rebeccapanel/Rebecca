@@ -25,6 +25,10 @@ func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, oper
 	if err != nil {
 		return nil, fmt.Errorf("PPTP runtime: %w", err)
 	}
+	wgRuntime, err := c.repo.WGRuntime(ctx, node.ID)
+	if err != nil {
+		return nil, fmt.Errorf("WireGuard runtime: %w", err)
+	}
 	raw, err := json.Marshal(map[string]any{
 		"generated_at":   ovRuntime.GeneratedAt,
 		"target":         ovRuntime.Target,
@@ -33,6 +37,8 @@ func (c Controller) runtimeConfigRequest(ctx context.Context, node NodeRow, oper
 		"l2tp_generated": l2tpRuntime.GeneratedAt,
 		"pptp_inbounds":  pptpRuntime.Inbounds,
 		"pptp_generated": pptpRuntime.GeneratedAt,
+		"wg_inbounds":    wgRuntime.Inbounds,
+		"wg_generated":   wgRuntime.GeneratedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("VPN runtime: %w", err)

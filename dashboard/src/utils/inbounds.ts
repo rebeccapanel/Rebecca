@@ -7,6 +7,7 @@ export type Protocol =
 	| "shadowsocks"
 	| "hysteria"
 	| "openvpn"
+	| "wireguard"
 	| "l2tp"
 	| "pptp"
 	| "http"
@@ -304,6 +305,18 @@ export type InboundFormValues = {
 	ovTlsAuth: string;
 	ovExtraClientConfig: string;
 
+	// WireGuard virtual inbound
+	wgTunnelPort: string;
+	wgIPv4Pool: string;
+	wgServerAddress: string;
+	wgPrivateKey: string;
+	wgPublicKey: string;
+	wgMTU: string;
+	wgPersistentKeepalive: string;
+	wgTproxyEnabled: boolean;
+	wgNatEnabled: boolean;
+	wgAccountingEnabled: boolean;
+
 	l2tpTunnelPort: string;
 	l2tpIPv4Pool: string;
 	l2tpDNSServers: string;
@@ -354,6 +367,7 @@ export const protocolOptions: Protocol[] = [
 	"shadowsocks",
 	"hysteria",
 	"openvpn",
+	"wireguard",
 	"l2tp",
 	"http",
 	"socks",
@@ -713,6 +727,56 @@ export const validateInboundFormFields = (
 			errors.ovServerKey = "Server key is required.";
 		}
 	}
+	if (values.protocol === "wireguard") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.wgIPv4Pool.trim())) {
+			errors.wgIPv4Pool =
+				"IPv4 pool must be a CIDR, for example 10.69.0.0/16.";
+		}
+		if (
+			!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(
+				values.wgServerAddress.trim(),
+			)
+		) {
+			errors.wgServerAddress =
+				"Server address must be a CIDR, for example 10.69.0.1/16.";
+		}
+		if (values.wgTproxyEnabled && !values.wgTunnelPort.trim()) {
+			errors.wgTunnelPort = "Tunnel port is required.";
+		}
+		if (
+			values.wgTunnelPort.trim() &&
+			!isValidPortText(values.wgTunnelPort)
+		) {
+			errors.wgTunnelPort =
+				"Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.wgTunnelPort.trim() &&
+			isValidPortText(values.wgTunnelPort) &&
+			values.wgTunnelPort.trim() === values.port.trim()
+		) {
+			errors.wgTunnelPort =
+				"Tunnel port must be different from the WireGuard port.";
+		}
+		if (!values.wgPrivateKey.trim()) {
+			errors.wgPrivateKey = "WireGuard private key is required.";
+		}
+		const validateWGNumber = (
+			key: "wgMTU" | "wgPersistentKeepalive",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateWGNumber("wgMTU", "MTU", 576, 1500);
+		validateWGNumber("wgPersistentKeepalive", "Persistent keepalive", 0, 3600);
+	}
 	if (values.protocol === "l2tp" || values.protocol === "pptp") {
 		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
 			errors.l2tpIPv4Pool = "IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
@@ -1012,7 +1076,11 @@ export const createDefaultInboundForm = (
 	hysteriaUdpMasks:
 		protocol === "hysteria" ? [createDefaultHysteriaUdpMask()] : [],
 	hysteriaQuicParams: createDefaultHysteriaQuicParams(),
-	sniffingEnabled: protocol !== "openvpn" && protocol !== "l2tp" && protocol !== "pptp",
+	sniffingEnabled:
+		protocol !== "openvpn" &&
+		protocol !== "wireguard" &&
+		protocol !== "l2tp" &&
+		protocol !== "pptp",
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
@@ -1131,6 +1199,16 @@ export const createDefaultInboundForm = (
 	ovTlsCrypt: "",
 	ovTlsAuth: "",
 	ovExtraClientConfig: "",
+	wgTunnelPort: "",
+	wgIPv4Pool: "10.69.0.0/16",
+	wgServerAddress: "10.69.0.1/16",
+	wgPrivateKey: "",
+	wgPublicKey: "",
+	wgMTU: "1420",
+	wgPersistentKeepalive: "25",
+	wgTproxyEnabled: true,
+	wgNatEnabled: false,
+	wgAccountingEnabled: true,
 	l2tpTunnelPort: protocol === "l2tp" ? "1702" : protocol === "pptp" ? "41942" : "",
 	l2tpIPv4Pool: "10.67.0.0/16",
 	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
@@ -1734,6 +1812,59 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "openvpn"
 				? (settings.extra_client_config ?? base.ovExtraClientConfig)
 				: base.ovExtraClientConfig,
+		wgTunnelPort:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.wgTunnelPort,
+		wgIPv4Pool:
+			protocol === "wireguard"
+				? (settings.address_pool ??
+					settings.ipv4_pool_cidr ??
+					settings.ipv4PoolCidr ??
+					base.wgIPv4Pool)
+				: base.wgIPv4Pool,
+		wgServerAddress:
+			protocol === "wireguard"
+				? (settings.server_address ??
+					settings.serverAddress ??
+					base.wgServerAddress)
+				: base.wgServerAddress,
+		wgPrivateKey:
+			protocol === "wireguard"
+				? (settings.private_key ?? settings.privateKey ?? base.wgPrivateKey)
+				: base.wgPrivateKey,
+		wgPublicKey:
+			protocol === "wireguard"
+				? (settings.public_key ?? settings.publicKey ?? base.wgPublicKey)
+				: base.wgPublicKey,
+		wgMTU:
+			protocol === "wireguard"
+				? toInputValue(settings.mtu ?? base.wgMTU)
+				: base.wgMTU,
+		wgPersistentKeepalive:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.persistent_keepalive ??
+							settings.persistentKeepalive ??
+							base.wgPersistentKeepalive,
+					)
+				: base.wgPersistentKeepalive,
+		wgTproxyEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.tproxy_enabled ?? base.wgTproxyEnabled)
+				: base.wgTproxyEnabled,
+		wgNatEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.nat_enabled ?? base.wgNatEnabled)
+				: base.wgNatEnabled,
+		wgAccountingEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.accounting_enabled ?? base.wgAccountingEnabled)
+				: base.wgAccountingEnabled,
 		l2tpTunnelPort:
 			protocol === "l2tp"
 				? "1702"
@@ -2465,6 +2596,24 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.extra_client_config =
 				values.ovExtraClientConfig.trim() || undefined;
 			break;
+		case "wireguard":
+			base.address_pool = values.wgIPv4Pool.trim() || "10.69.0.0/16";
+			base.ipv4_pool_cidr = base.address_pool;
+			base.server_address =
+				values.wgServerAddress.trim() || "10.69.0.1/16";
+			base.private_key = values.wgPrivateKey.trim() || undefined;
+			base.public_key = values.wgPublicKey.trim() || undefined;
+			base.tunnel_port = values.wgTproxyEnabled
+				? parseOptionalNumber(values.wgTunnelPort)
+				: undefined;
+			base.mtu = parseOptionalNumber(values.wgMTU);
+			base.persistent_keepalive = parseOptionalNumber(
+				values.wgPersistentKeepalive,
+			);
+			base.tproxy_enabled = values.wgTproxyEnabled;
+			base.nat_enabled = !values.wgTproxyEnabled || values.wgNatEnabled;
+			base.accounting_enabled = values.wgAccountingEnabled;
+			break;
 		case "l2tp":
 		case "pptp":
 			base.ipv4_pool_cidr = values.l2tpIPv4Pool.trim() || "10.67.0.0/16";
@@ -2503,6 +2652,7 @@ export const buildInboundPayload = (
 		values.protocol !== "http" &&
 		values.protocol !== "socks" &&
 		values.protocol !== "openvpn" &&
+		values.protocol !== "wireguard" &&
 		values.protocol !== "l2tp" &&
 		values.protocol !== "pptp";
 	const streamSettings = supportsStream
@@ -2520,7 +2670,12 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.protocol === "openvpn" || values.protocol === "l2tp" || values.protocol === "pptp") {
+	if (
+		values.protocol === "openvpn" ||
+		values.protocol === "wireguard" ||
+		values.protocol === "l2tp" ||
+		values.protocol === "pptp"
+	) {
 		delete payload.sniffing;
 	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
