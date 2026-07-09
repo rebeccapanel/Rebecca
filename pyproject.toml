@@ -33,7 +33,7 @@ dependencies = [
     "protobuf==6.31.1",
     "psutil==5.9.4",
     "pysocks==1.7.1",
-    "pydantic==2.10.4",
+    "pydantic==2.13.4",
     "pyjwt==2.8.0",
     "pymysql==1.1.1",
     "pyopenssl==24.2.1",
