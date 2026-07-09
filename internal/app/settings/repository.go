@@ -27,6 +27,8 @@ const (
 	defaultHomePageTemplate            = "home/index.html"
 	defaultV2RaySubscriptionTemplate   = "v2ray/default.json"
 	defaultV2RaySettingsTemplate       = "v2ray/settings.json"
+	defaultHappSubscriptionTemplate    = "v2ray/default.json"
+	defaultIncySubscriptionTemplate    = "v2ray/default.json"
 	defaultSingBoxSubscriptionTemplate = "singbox/default.json"
 	defaultSingBoxSettingsTemplate     = "singbox/settings.json"
 	defaultMuxTemplate                 = "mux/default.json"
@@ -46,6 +48,8 @@ var templateKeys = map[string]bool{
 	"home_page_template":            true,
 	"v2ray_subscription_template":   true,
 	"v2ray_settings_template":       true,
+	"happ_subscription_template":    true,
+	"incy_subscription_template":    true,
 	"singbox_subscription_template": true,
 	"singbox_settings_template":     true,
 	"mux_template":                  true,
@@ -204,9 +208,9 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 			}
 			encoded, _ := json.Marshal(normalizePorts(ports))
 			add(key, string(encoded))
-		case "use_custom_json_default", "use_custom_json_for_v2rayn", "use_custom_json_for_v2rayng", "use_custom_json_for_streisand", "use_custom_json_for_happ":
+		case "use_custom_json_default", "use_custom_json_for_v2rayn", "use_custom_json_for_v2rayng", "use_custom_json_for_streisand", "use_custom_json_for_happ", "use_custom_json_for_incy":
 			add(key, rawBoolDefault(value, false))
-		case "custom_templates_directory", "clash_subscription_template", "clash_settings_template", "subscription_page_template", "home_page_template", "v2ray_subscription_template", "v2ray_settings_template", "singbox_subscription_template", "singbox_settings_template", "mux_template":
+		case "custom_templates_directory", "clash_subscription_template", "clash_settings_template", "subscription_page_template", "home_page_template", "v2ray_subscription_template", "v2ray_settings_template", "happ_subscription_template", "incy_subscription_template", "singbox_subscription_template", "singbox_settings_template", "mux_template":
 			if string(value) == "null" {
 				add(key, nil)
 			} else {
@@ -423,6 +427,8 @@ subscription_page_template,
 home_page_template,
 v2ray_subscription_template,
 v2ray_settings_template,
+happ_subscription_template,
+incy_subscription_template,
 singbox_subscription_template,
 singbox_settings_template,
 mux_template,
@@ -431,6 +437,7 @@ COALESCE(use_custom_json_for_v2rayn, 0),
 COALESCE(use_custom_json_for_v2rayng, 0),
 COALESCE(use_custom_json_for_streisand, 0),
 COALESCE(use_custom_json_for_happ, 0),
+COALESCE(use_custom_json_for_incy, 0),
 subscription_path,
 subscription_aliases,
 subscription_ports
@@ -438,7 +445,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	var result SubscriptionSettings
 	var customDir sql.NullString
 	var aliasesRaw, portsRaw sql.NullString
-	var useDefault, useV2RayN, useV2RayNG, useStreisand, useHapp sql.NullBool
+	var useDefault, useV2RayN, useV2RayNG, useStreisand, useHapp, useIncy sql.NullBool
 	if err := row.Scan(
 		&result.SubscriptionURLPrefix,
 		&result.SubscriptionProfileTitle,
@@ -451,6 +458,8 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 		&result.HomePageTemplate,
 		&result.V2RaySubscriptionTemplate,
 		&result.V2RaySettingsTemplate,
+		&result.HappSubscriptionTemplate,
+		&result.IncySubscriptionTemplate,
 		&result.SingBoxSubscriptionTemplate,
 		&result.SingBoxSettingsTemplate,
 		&result.MuxTemplate,
@@ -459,6 +468,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 		&useV2RayNG,
 		&useStreisand,
 		&useHapp,
+		&useIncy,
 		&result.SubscriptionPath,
 		&aliasesRaw,
 		&portsRaw,
@@ -473,6 +483,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	result.UseCustomJSONForV2RayNG = useV2RayNG.Valid && useV2RayNG.Bool
 	result.UseCustomJSONForStreisand = useStreisand.Valid && useStreisand.Bool
 	result.UseCustomJSONForHapp = useHapp.Valid && useHapp.Bool
+	result.UseCustomJSONForIncy = useIncy.Valid && useIncy.Bool
 	result.SubscriptionURLPrefix = normalizePrefix(result.SubscriptionURLPrefix)
 	result.SubscriptionSupportURL = normalizeSupportURL(result.SubscriptionSupportURL)
 	result.SubscriptionPath = normalizePath(result.SubscriptionPath)
@@ -503,6 +514,8 @@ subscription_page_template,
 home_page_template,
 v2ray_subscription_template,
 v2ray_settings_template,
+happ_subscription_template,
+incy_subscription_template,
 singbox_subscription_template,
 singbox_settings_template,
 mux_template,
@@ -511,12 +524,13 @@ use_custom_json_for_v2rayn,
 use_custom_json_for_v2rayng,
 use_custom_json_for_streisand,
 use_custom_json_for_happ,
+use_custom_json_for_incy,
 subscription_path,
 subscription_aliases,
 subscription_ports,
 created_at,
 updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"",
 		defaultSubscriptionProfileTitle,
 		defaultSubscriptionSupportURL,
@@ -528,9 +542,12 @@ updated_at
 		defaultHomePageTemplate,
 		defaultV2RaySubscriptionTemplate,
 		defaultV2RaySettingsTemplate,
+		defaultHappSubscriptionTemplate,
+		defaultIncySubscriptionTemplate,
 		defaultSingBoxSubscriptionTemplate,
 		defaultSingBoxSettingsTemplate,
 		defaultMuxTemplate,
+		false,
 		false,
 		false,
 		false,
@@ -814,7 +831,7 @@ func (r Repository) templateSelectionTx(ctx context.Context, tx *sql.Tx, templat
 	}
 	var columns subscriptionTemplateColumns
 	var customDir sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT clash_subscription_template, clash_settings_template, subscription_page_template, home_page_template, v2ray_subscription_template, v2ray_settings_template, singbox_subscription_template, singbox_settings_template, mux_template, custom_templates_directory FROM subscription_settings ORDER BY id DESC LIMIT 1`).
+	if err := tx.QueryRowContext(ctx, `SELECT clash_subscription_template, clash_settings_template, subscription_page_template, home_page_template, v2ray_subscription_template, v2ray_settings_template, happ_subscription_template, incy_subscription_template, singbox_subscription_template, singbox_settings_template, mux_template, custom_templates_directory FROM subscription_settings ORDER BY id DESC LIMIT 1`).
 		Scan(
 			&columns.ClashSubscription,
 			&columns.ClashSettings,
@@ -822,6 +839,8 @@ func (r Repository) templateSelectionTx(ctx context.Context, tx *sql.Tx, templat
 			&columns.HomePage,
 			&columns.V2RaySubscription,
 			&columns.V2RaySettings,
+			&columns.HappSubscription,
+			&columns.IncySubscription,
 			&columns.SingBoxSubscription,
 			&columns.SingBoxSettings,
 			&columns.Mux,
@@ -857,6 +876,8 @@ type subscriptionTemplateColumns struct {
 	HomePage            string
 	V2RaySubscription   string
 	V2RaySettings       string
+	HappSubscription    string
+	IncySubscription    string
 	SingBoxSubscription string
 	SingBoxSettings     string
 	Mux                 string
@@ -876,6 +897,10 @@ func (c subscriptionTemplateColumns) value(templateKey string) string {
 		return c.V2RaySubscription
 	case "v2ray_settings_template":
 		return c.V2RaySettings
+	case "happ_subscription_template":
+		return c.HappSubscription
+	case "incy_subscription_template":
+		return c.IncySubscription
 	case "singbox_subscription_template":
 		return c.SingBoxSubscription
 	case "singbox_settings_template":

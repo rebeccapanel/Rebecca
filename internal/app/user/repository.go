@@ -140,6 +140,7 @@ func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSetti
 	result.UseCustomJSONForV2rayNG = truthy(row["use_custom_json_for_v2rayng"])
 	result.UseCustomJSONForStreisand = truthy(row["use_custom_json_for_streisand"])
 	result.UseCustomJSONForHapp = truthy(row["use_custom_json_for_happ"])
+	result.UseCustomJSONForIncy = truthy(row["use_custom_json_for_incy"])
 	result.RawSubscriptionSettings = json.RawMessage(mustJSON(row))
 	return result, nil
 }

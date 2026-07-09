@@ -284,6 +284,12 @@ func applySubscriptionDefaults(settings *SubscriptionSettings) {
 	if settings.V2RaySettingsTemplate == "" {
 		settings.V2RaySettingsTemplate = defaultV2RaySettingsTemplate
 	}
+	if settings.HappSubscriptionTemplate == "" {
+		settings.HappSubscriptionTemplate = defaultHappSubscriptionTemplate
+	}
+	if settings.IncySubscriptionTemplate == "" {
+		settings.IncySubscriptionTemplate = defaultIncySubscriptionTemplate
+	}
 	if settings.SingBoxSubscriptionTemplate == "" {
 		settings.SingBoxSubscriptionTemplate = defaultSingBoxSubscriptionTemplate
 	}

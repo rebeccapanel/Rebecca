@@ -31,6 +31,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		home_page_template TEXT NULL,
 		v2ray_subscription_template TEXT NULL,
 		v2ray_settings_template TEXT NULL,
+		happ_subscription_template TEXT NULL,
+		incy_subscription_template TEXT NULL,
 		singbox_subscription_template TEXT NULL,
 		singbox_settings_template TEXT NULL,
 		mux_template TEXT NULL,
@@ -39,6 +41,7 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		use_custom_json_for_v2rayng INTEGER NULL,
 		use_custom_json_for_streisand INTEGER NULL,
 		use_custom_json_for_happ INTEGER NULL,
+		use_custom_json_for_incy INTEGER NULL,
 		subscription_path TEXT NULL,
 		subscription_aliases TEXT NULL,
 		subscription_ports TEXT NULL,
@@ -68,6 +71,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		home_page_template,
 		v2ray_subscription_template,
 		v2ray_settings_template,
+		happ_subscription_template,
+		incy_subscription_template,
 		singbox_subscription_template,
 		singbox_settings_template,
 		mux_template,
@@ -76,6 +81,7 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		use_custom_json_for_v2rayng,
 		use_custom_json_for_streisand,
 		use_custom_json_for_happ,
+		use_custom_json_for_incy,
 		subscription_path,
 		subscription_aliases,
 		subscription_ports
@@ -84,9 +90,10 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		'clash/default.yml', 'clash/settings.yml',
 		'subscription/index.html', 'home/index.html',
 		'v2ray/default.json', 'v2ray/settings.json',
+		'v2ray/default.json', 'v2ray/default.json',
 		'singbox/default.json', 'singbox/settings.json',
 		'mux/default.json',
-		0, 0, 0, 0, 0, 'sub', '[]', '[]'
+		0, 0, 0, 0, 0, 0, 'sub', '[]', '[]'
 	)`); err != nil {
 		t.Fatal(err)
 	}

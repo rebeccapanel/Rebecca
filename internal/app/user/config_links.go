@@ -1188,6 +1188,10 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		applyOVResolvedSettings(resolved, inbound)
 		return resolved, nil
 	}
+	if protocol == "wireguard" {
+		resolved["settings"] = settings
+		return resolved, nil
+	}
 	if protocol == "l2tp" || protocol == "pptp" {
 		resolved["settings"] = settings
 		return resolved, nil

@@ -2,9 +2,33 @@ package user
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func readTestTemplateFile(t *testing.T, relativePath string) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		candidate := filepath.Join(dir, relativePath)
+		content, readErr := os.ReadFile(candidate)
+		if readErr == nil {
+			return string(content)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	t.Fatalf("unable to locate template file %q", relativePath)
+	return ""
+}
 
 func TestRenderClashLikeYAMLBuildsRealProxies(t *testing.T) {
 	body := renderClashLikeYAML(
@@ -149,6 +173,52 @@ func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
 	}
 }
 
+func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
+	template := readTestTemplateFile(t, filepath.Join("templates", "subscription", "index.html"))
+	onlineAt := "2026-07-01 10:20:30"
+	serviceName := "Premium Plan"
+	dataLimit := int64(10 * 1024 * 1024 * 1024)
+	expire := int64(1782950400)
+
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username:               "alice",
+		Status:                 "on_hold",
+		UsedTraffic:            3 * 1024 * 1024,
+		CreatedAt:              "2026-06-30 09:10:11",
+		OnlineAt:               &onlineAt,
+		DataLimit:              &dataLimit,
+		Expire:                 &expire,
+		DataLimitResetStrategy: "month",
+		SubscriptionURL:        "/sub/token",
+		ServiceName:            &serviceName,
+	}, []string{
+		"vless://id@example.com:443?security=tls&type=ws#Alpha",
+		"ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta",
+	}, "/sub/token/usage", "https://support.example", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{
+		`data-created-at="2026-06-30 09:10:11"`,
+		`data-online-at="2026-07-01 10:20:30"`,
+		`data-service-name="Premium Plan"`,
+		`href="https://support.example"`,
+		`id="langMenu"`,
+		`data-lang-choice="zh"`,
+		`id="appDownloadList"`,
+		`data-fallback-platform="android"`,
+		`class="rb-app-icon" src="https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"`,
+		`appDownloadsTitle: 'Download apps'`,
+		`name: 'v2rayNG'`,
+		`var rawLinks = ['vless://id@example.com:443?security=tls&type=ws#Alpha', 'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta'];`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected %q in rendered bundled template:\n%s", expected, html)
+		}
+	}
+}
+
 func TestSubscriptionPageTemplateAcceptsLegacyJinjaHelpers(t *testing.T) {
 	expire := int64(4102444800)
 	template := `<!doctype html>
@@ -231,7 +301,7 @@ func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *te
 }
 
 func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
-	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for link in wireguard.downloads %}{{ link }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
+	template := `{% for link in openvpn.downloads %}{{ link }}{% endfor %} {% for link in wireguard.downloads %}{{ link }}{% endfor %} {% for link in wireguard.links %}{{ link }}{% endfor %} {% for item in wireguard.profiles %}{{ item.Body }}{% endfor %} {% for item in l2tp %}{{ item.Server }} {{ item.Username }}{% endfor %} {% for item in pptp %}{{ item.Server }}{% endfor %}`
 	html, err := renderSubscriptionPageTemplate(template, UserDetail{
 		Username:               "alice",
 		Status:                 "active",
@@ -242,6 +312,10 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 		},
 		"wireguard": map[string]any{
 			"downloads": []string{"https://vpn.example/sub/token/wg/edge.conf"},
+			"links":     []string{"wg://vpn.example:51820/?pk=client#edge"},
+			"profiles": []WGProfile{{
+				Body: "[Interface]\nPrivateKey = key\n",
+			}},
 		},
 		"l2tp": []L2TPInfo{{
 			Server:   "l2tp.example.com",
@@ -257,6 +331,8 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 	for _, expected := range []string{
 		"https://vpn.example/sub/token/ov/edge.ovpn",
 		"https://vpn.example/sub/token/wg/edge.conf",
+		"wg://vpn.example:51820/?pk=client#edge",
+		"PrivateKey = key",
 		"l2tp.example.com",
 		"alice",
 		"pptp.example.com",
@@ -288,6 +364,42 @@ func TestSubscriptionNonBrowserWildcardAcceptKeepsConfigResponse(t *testing.T) {
 	}
 	if wantsSubscriptionHTML(req) {
 		t.Fatal("expected client subscription request to render config")
+	}
+}
+
+func TestSubscriptionClientAliasesAndAppUserAgents(t *testing.T) {
+	tests := map[string]string{
+		"v2ray-tun":    "v2raytun",
+		"thron":        "throne",
+		"nekobox-plus": "nekobox",
+		"passwall2":    "passwall",
+		"clashmi":      "clash-mi",
+		"wg":           "wireguard",
+	}
+	for input, expected := range tests {
+		got, ok := NormalizeSubscriptionClientType(input)
+		if !ok || got != expected {
+			t.Fatalf("NormalizeSubscriptionClientType(%q) = %q, %v; want %q, true", input, got, ok, expected)
+		}
+	}
+
+	settings := SubscriptionSettings{
+		UseCustomJSONForHapp: true,
+		UseCustomJSONForIncy: true,
+	}
+	for ua, expected := range map[string]string{
+		"v2RayTun/4.1":     "v2raytun",
+		"Shadowrocket/2.2": "shadowrocket",
+		"NekoBox/1.3":      "nekobox",
+		"PassWall/25":      "passwall",
+		"Throne/1.0":       "throne",
+		"ClashMi/1.2":      "clash-mi",
+		"Happ/1.63.1":      "happ",
+		"Incy/2.0":         "incy",
+	} {
+		if got := selectSubscriptionClientType(ua, settings); got != expected {
+			t.Fatalf("selectSubscriptionClientType(%q) = %q, want %q", ua, got, expected)
+		}
 	}
 }
 

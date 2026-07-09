@@ -20,10 +20,11 @@ import (
 )
 
 type SubscriptionClientConfig struct {
-	Format  string
-	Media   string
-	Base64  bool
-	Reverse bool
+	Format      string
+	Media       string
+	Base64      bool
+	Reverse     bool
+	TemplateKey string
 }
 
 type SubscriptionRenderRequest struct {
@@ -56,19 +57,47 @@ type subscriptionTokenPayload struct {
 }
 
 var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
-	"clash-meta": {Format: "clash-meta", Media: "text/yaml"},
-	"sing-box":   {Format: "sing-box", Media: "application/json"},
-	"clash":      {Format: "clash", Media: "text/yaml"},
-	"v2ray":      {Format: "v2ray", Media: "text/plain", Base64: true},
-	"outline":    {Format: "outline", Media: "application/json"},
-	"v2ray-json": {Format: "v2ray-json", Media: "application/json"},
-	"openvpn":    {Format: "openvpn", Media: "application/x-openvpn-profile"},
+	"clash-meta":   {Format: "clash-meta", Media: "text/yaml"},
+	"sing-box":     {Format: "sing-box", Media: "application/json"},
+	"clash":        {Format: "clash", Media: "text/yaml"},
+	"v2ray":        {Format: "v2ray", Media: "text/plain", Base64: true},
+	"outline":      {Format: "outline", Media: "application/json"},
+	"v2ray-json":   {Format: "v2ray-json", Media: "application/json", TemplateKey: "v2ray_subscription_template"},
+	"happ":         {Format: "v2ray-json", Media: "application/json", TemplateKey: "happ_subscription_template"},
+	"v2raytun":     {Format: "v2ray", Media: "text/plain", Base64: true},
+	"throne":       {Format: "v2ray", Media: "text/plain", Base64: true},
+	"shadowrocket": {Format: "v2ray", Media: "text/plain", Base64: true},
+	"karing":       {Format: "sing-box", Media: "application/json"},
+	"clash-mi":     {Format: "clash-meta", Media: "text/yaml"},
+	"incy":         {Format: "v2ray-json", Media: "application/json", TemplateKey: "incy_subscription_template"},
+	"passwall":     {Format: "v2ray", Media: "text/plain", Base64: true},
+	"nekobox":      {Format: "v2ray", Media: "text/plain", Base64: true},
+	"openvpn":      {Format: "openvpn", Media: "application/x-openvpn-profile"},
+	"wireguard":    {Format: "wireguard", Media: "application/x-wireguard-profile"},
 }
 
 func NormalizeSubscriptionClientType(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if value == "json" {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "_", "-")
+	switch value {
+	case "json":
 		value = "v2ray-json"
+	case "clashmeta", "clash.meta", "mihomo", "clash-mihomo":
+		value = "clash-meta"
+	case "clashmi":
+		value = "clash-mi"
+	case "singbox", "sing":
+		value = "sing-box"
+	case "v2ray-tun", "v2ray-tunnel", "v2raytun-plus":
+		value = "v2raytun"
+	case "thron", "throne-vpn", "thronevpn":
+		value = "throne"
+	case "nekobox-plus", "nekoboxplus", "nekobox+":
+		value = "nekobox"
+	case "passwall2":
+		value = "passwall"
+	case "wg":
+		value = "wireguard"
 	}
 	_, ok := subscriptionClientConfigs[value]
 	return value, ok
@@ -377,7 +406,8 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 	case "outline":
 		return marshalPretty(map[string]any{"servers": raw})
 	case "v2ray-json":
-		return renderV2RayJSONSubscriptionWithTemplate(raw, false, s.subscriptionTemplateContent(ctx, "v2ray_subscription_template", user.AdminID))
+		templateKey := firstNonEmptyString(config.TemplateKey, "v2ray_subscription_template")
+		return renderV2RayJSONSubscriptionWithTemplate(raw, false, s.subscriptionTemplateContent(ctx, templateKey, user.AdminID))
 	case "sing-box":
 		outbounds := make([]map[string]any, 0, len(raw)+1)
 		for i, link := range raw {
@@ -732,11 +762,32 @@ func selectSubscriptionClientType(userAgent string, settings SubscriptionSetting
 	if regexp.MustCompile(`^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)`).MatchString(ua) {
 		return "clash-meta"
 	}
+	if regexp.MustCompile(`(?i)^clash\s*mi`).MatchString(ua) || regexp.MustCompile(`(?i)^clashmi`).MatchString(ua) {
+		return "clash-mi"
+	}
 	if regexp.MustCompile(`^([Cc]lash|[Ss]tash)`).MatchString(ua) {
 		return "clash"
 	}
-	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)`).MatchString(ua) {
+	if regexp.MustCompile(`(?i)^karing`).MatchString(ua) {
+		return "karing"
+	}
+	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Hh]iddify[Nn]ext)`).MatchString(ua) {
 		return "sing-box"
+	}
+	if regexp.MustCompile(`(?i)^v2raytun`).MatchString(ua) {
+		return "v2raytun"
+	}
+	if regexp.MustCompile(`(?i)^shadowrocket`).MatchString(ua) {
+		return "shadowrocket"
+	}
+	if regexp.MustCompile(`(?i)^(nekobox|nekoboxforandroid)`).MatchString(ua) {
+		return "nekobox"
+	}
+	if regexp.MustCompile(`(?i)^passwall`).MatchString(ua) {
+		return "passwall"
+	}
+	if regexp.MustCompile(`(?i)^thron(e)?`).MatchString(ua) {
+		return "throne"
 	}
 	if regexp.MustCompile(`^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)`).MatchString(ua) {
 		return "outline"
@@ -751,8 +802,11 @@ func selectSubscriptionClientType(userAgent string, settings SubscriptionSetting
 	}
 	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForHapp) && regexp.MustCompile(`^Happ/(\d+\.\d+\.\d+)`).MatchString(ua) {
 		if versionAtLeast(firstVersion(ua), "1.63.1") {
-			return "v2ray-json"
+			return "happ"
 		}
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForIncy) && regexp.MustCompile(`(?i)^incy`).MatchString(ua) {
+		return "incy"
 	}
 	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForStreisand) && strings.HasPrefix(ua, "Streisand") {
 		return "v2ray-json"
@@ -1575,6 +1629,8 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 			"used_traffic":              user.UsedTraffic,
 			"data_limit_reset_strategy": resetStrategy,
 			"expire":                    expire,
+			"created_at":                user.CreatedAt,
+			"online_at":                 user.OnlineAt,
 			"links":                     links,
 			"subscription_url":          user.SubscriptionURL,
 			"subscription_urls":         user.SubscriptionURLs,

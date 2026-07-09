@@ -125,12 +125,19 @@ type PreferencesOptions = {
 type AppImportOs = "windows" | "macos" | "ios" | "android" | "linux";
 
 type AppImportDeepLinkKey =
+	| "happ"
+	| "v2raytun"
+	| "throne"
 	| "v2rayng"
 	| "singbox"
+	| "karing"
 	| "v2box"
 	| "streisand"
 	| "nekobox"
 	| "clash"
+	| "clashmi"
+	| "incy"
+	| "passwall"
 	| "shadowrocket"
 	| "foxray"
 	| "custom";
@@ -332,24 +339,38 @@ const APP_IMPORT_OS_VALUES: AppImportOs[] = [
 ];
 
 const APP_IMPORT_DEEPLINK_KEYS: AppImportDeepLinkKey[] = [
+	"happ",
+	"v2raytun",
+	"throne",
 	"v2rayng",
 	"singbox",
+	"karing",
 	"v2box",
 	"streisand",
 	"nekobox",
 	"clash",
+	"clashmi",
+	"incy",
+	"passwall",
 	"shadowrocket",
 	"foxray",
 	"custom",
 ];
 
 const APP_IMPORT_DEEPLINK_LABELS: Record<AppImportDeepLinkKey, string> = {
+	happ: "Happ",
+	v2raytun: "v2RayTun",
+	throne: "Throne",
 	v2rayng: "v2rayNG",
 	singbox: "sing-box",
+	karing: "Karing",
 	v2box: "v2Box",
 	streisand: "Streisand",
 	nekobox: "NekoBox",
 	clash: "Clash",
+	clashmi: "Clash Mi",
+	incy: "Incy",
+	passwall: "PassWall",
 	shadowrocket: "Shadowrocket",
 	foxray: "FoXray",
 	custom: "Custom",
@@ -359,17 +380,38 @@ const APP_IMPORT_DEFAULT_APP_BY_KEY: Record<
 	Exclude<AppImportDeepLinkKey, "custom">,
 	{ label: string; supportedOS: AppImportOs[] }
 > = {
+	happ: { label: "Happ", supportedOS: ["ios", "android", "windows"] },
+	v2raytun: { label: "v2RayTun", supportedOS: ["ios", "android", "windows"] },
+	throne: { label: "Throne", supportedOS: ["windows"] },
 	v2rayng: { label: "v2rayNG", supportedOS: ["android"] },
 	singbox: { label: "sing-box", supportedOS: ["android", "ios", "macos", "windows", "linux"] },
+	karing: { label: "Karing", supportedOS: ["ios", "android", "windows"] },
 	v2box: { label: "v2Box", supportedOS: ["ios"] },
 	streisand: { label: "Streisand", supportedOS: ["ios"] },
 	nekobox: { label: "NekoBox", supportedOS: ["android"] },
 	clash: { label: "Clash", supportedOS: ["windows", "macos", "linux"] },
+	clashmi: { label: "Clash Mi", supportedOS: ["ios", "android", "windows"] },
+	incy: { label: "Incy", supportedOS: ["ios", "android", "windows"] },
+	passwall: { label: "PassWall", supportedOS: ["linux"] },
 	shadowrocket: { label: "Shadowrocket", supportedOS: ["ios"] },
 	foxray: { label: "FoXray", supportedOS: ["ios"] },
 };
 
 const DEFAULT_APP_IMPORT_APPS: AppImportApp[] = [
+	{
+		id: "happ",
+		label: "Happ",
+		recommended: true,
+		supportedOS: ["ios", "android", "windows"],
+		deepLinkKey: "happ",
+	},
+	{
+		id: "v2raytun",
+		label: "v2RayTun",
+		recommended: true,
+		supportedOS: ["ios", "android", "windows"],
+		deepLinkKey: "v2raytun",
+	},
 	{
 		id: "v2rayng",
 		label: "v2rayNG",
@@ -383,6 +425,13 @@ const DEFAULT_APP_IMPORT_APPS: AppImportApp[] = [
 		recommended: true,
 		supportedOS: ["android", "ios", "macos", "windows", "linux"],
 		deepLinkKey: "singbox",
+	},
+	{
+		id: "karing",
+		label: "Karing",
+		recommended: true,
+		supportedOS: ["ios", "android", "windows"],
+		deepLinkKey: "karing",
 	},
 	{
 		id: "v2box",
@@ -406,6 +455,27 @@ const DEFAULT_APP_IMPORT_APPS: AppImportApp[] = [
 		deepLinkKey: "nekobox",
 	},
 	{
+		id: "clashmi",
+		label: "Clash Mi",
+		recommended: false,
+		supportedOS: ["ios", "android", "windows"],
+		deepLinkKey: "clashmi",
+	},
+	{
+		id: "incy",
+		label: "Incy",
+		recommended: false,
+		supportedOS: ["ios", "android", "windows"],
+		deepLinkKey: "incy",
+	},
+	{
+		id: "throne",
+		label: "Throne",
+		recommended: false,
+		supportedOS: ["windows"],
+		deepLinkKey: "throne",
+	},
+	{
 		id: "clash",
 		label: "Clash",
 		recommended: false,
@@ -418,6 +488,13 @@ const DEFAULT_APP_IMPORT_APPS: AppImportApp[] = [
 		recommended: false,
 		supportedOS: ["ios"],
 		deepLinkKey: "shadowrocket",
+	},
+	{
+		id: "passwall",
+		label: "PassWall",
+		recommended: false,
+		supportedOS: ["linux"],
+		deepLinkKey: "passwall",
 	},
 	{
 		id: "foxray",
@@ -3119,12 +3196,19 @@ ${qrModal}
 	}
 
 	function appImportDefaultMetaByKey(key) {
+		if (key === "happ") return { label: "Happ", supportedOS: ["ios", "android", "windows"] };
+		if (key === "v2raytun") return { label: "v2RayTun", supportedOS: ["ios", "android", "windows"] };
+		if (key === "throne") return { label: "Throne", supportedOS: ["windows"] };
 		if (key === "v2rayng") return { label: "v2rayNG", supportedOS: ["android"] };
 		if (key === "singbox") return { label: "sing-box", supportedOS: ["android", "ios", "macos", "windows", "linux"] };
+		if (key === "karing") return { label: "Karing", supportedOS: ["ios", "android", "windows"] };
 		if (key === "v2box") return { label: "v2Box", supportedOS: ["ios"] };
 		if (key === "streisand") return { label: "Streisand", supportedOS: ["ios"] };
 		if (key === "nekobox") return { label: "NekoBox", supportedOS: ["android"] };
 		if (key === "clash") return { label: "Clash", supportedOS: ["windows", "macos", "linux"] };
+		if (key === "clashmi") return { label: "Clash Mi", supportedOS: ["ios", "android", "windows"] };
+		if (key === "incy") return { label: "Incy", supportedOS: ["ios", "android", "windows"] };
+		if (key === "passwall") return { label: "PassWall", supportedOS: ["linux"] };
 		if (key === "shadowrocket") return { label: "Shadowrocket", supportedOS: ["ios"] };
 		if (key === "foxray") return { label: "FoXray", supportedOS: ["ios"] };
 		return { label: "Custom App", supportedOS: ["android"] };
@@ -3152,13 +3236,20 @@ ${qrModal}
 	function normalizeAppImportsConfig(raw) {
 		var value = raw && typeof raw === "object" ? raw : {};
 		var fallbackApps = [
+			{ id: "happ", label: "Happ", recommended: true, supportedOS: ["ios", "android", "windows"], deepLinkKey: "happ" },
+			{ id: "v2raytun", label: "v2RayTun", recommended: true, supportedOS: ["ios", "android", "windows"], deepLinkKey: "v2raytun" },
 			{ id: "v2rayng", label: "v2rayNG", recommended: true, supportedOS: ["android"], deepLinkKey: "v2rayng" },
 			{ id: "singbox", label: "sing-box", recommended: true, supportedOS: ["android", "ios", "macos", "windows", "linux"], deepLinkKey: "singbox" },
+			{ id: "karing", label: "Karing", recommended: true, supportedOS: ["ios", "android", "windows"], deepLinkKey: "karing" },
 			{ id: "v2box", label: "v2Box", recommended: true, supportedOS: ["ios"], deepLinkKey: "v2box" },
 			{ id: "streisand", label: "Streisand", recommended: true, supportedOS: ["ios"], deepLinkKey: "streisand" },
 			{ id: "nekobox", label: "NekoBox", recommended: false, supportedOS: ["android"], deepLinkKey: "nekobox" },
+			{ id: "clashmi", label: "Clash Mi", recommended: false, supportedOS: ["ios", "android", "windows"], deepLinkKey: "clashmi" },
+			{ id: "incy", label: "Incy", recommended: false, supportedOS: ["ios", "android", "windows"], deepLinkKey: "incy" },
+			{ id: "throne", label: "Throne", recommended: false, supportedOS: ["windows"], deepLinkKey: "throne" },
 			{ id: "clash", label: "Clash", recommended: false, supportedOS: ["windows", "macos", "linux"], deepLinkKey: "clash" },
 			{ id: "shadowrocket", label: "Shadowrocket", recommended: false, supportedOS: ["ios"], deepLinkKey: "shadowrocket" },
+			{ id: "passwall", label: "PassWall", recommended: false, supportedOS: ["linux"], deepLinkKey: "passwall" },
 			{ id: "foxray", label: "FoXray", recommended: false, supportedOS: ["ios"], deepLinkKey: "foxray" }
 		];
 		var osOrder = normalizeOsList(value.osOrder, ["windows", "macos", "ios", "android", "linux"]);
@@ -3170,7 +3261,7 @@ ${qrModal}
 		var apps = appSource
 			.map(function (candidate, index) {
 				if (!candidate || typeof candidate !== "object") return null;
-				var allowedKeys = ["v2rayng", "singbox", "v2box", "streisand", "nekobox", "clash", "shadowrocket", "foxray", "custom"];
+				var allowedKeys = ["happ", "v2raytun", "throne", "v2rayng", "singbox", "karing", "v2box", "streisand", "nekobox", "clash", "clashmi", "incy", "passwall", "shadowrocket", "foxray", "custom"];
 				var key = allowedKeys.indexOf(candidate.deepLinkKey) >= 0 ? candidate.deepLinkKey : "v2rayng";
 				var defaults = appImportDefaultMetaByKey(key);
 				var label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim().slice(0, 80) : defaults.label;
@@ -3206,17 +3297,36 @@ ${qrModal}
 		return translate("osLinux");
 	}
 
+	function appImportBase64(value) {
+		try {
+			return btoa(unescape(encodeURIComponent(value)));
+		} catch (error) {
+			try {
+				return btoa(value);
+			} catch (innerError) {
+				return "";
+			}
+		}
+	}
+
 	function buildAppImportLink(appKey, url, customTemplate) {
 		var encodedUrl = encodeURIComponent(url);
 		var profileNameRaw = config.appearance && typeof config.appearance.pageTitle === "string" ? config.appearance.pageTitle : "Subscription";
 		var profileName = encodeURIComponent(profileNameRaw);
+		if (appKey === "happ") return url;
+		if (appKey === "v2raytun") return "v2raytun://import/" + url;
+		if (appKey === "throne") return "throne://addsub/?url=" + encodedUrl + "&name=" + profileName + "&autoupdate=yes";
 		if (appKey === "streisand") return "streisand://import/" + encodedUrl;
 		if (appKey === "v2box") return "v2box://install-sub?url=" + encodedUrl + "&name=" + profileName;
 		if (appKey === "v2rayng") return "v2rayng://install-config?url=" + encodedUrl;
 		if (appKey === "singbox") return "sing-box://import-remote-profile?url=" + encodedUrl + "#" + profileName;
+		if (appKey === "karing") return "karing://install-config?url=" + encodedUrl + "&name=" + profileName;
 		if (appKey === "nekobox") return "sn://subscription?url=" + encodedUrl + "&name=" + profileName;
 		if (appKey === "clash") return "clash://install-config?url=" + encodedUrl;
-		if (appKey === "shadowrocket") return "sub://" + encodedUrl;
+		if (appKey === "clashmi") return "clash://install-config?url=" + encodedUrl + "&name=" + profileName;
+		if (appKey === "incy") return "incy://import/" + url;
+		if (appKey === "passwall") return url;
+		if (appKey === "shadowrocket") return "shadowrocket://add/sub://" + appImportBase64(url) + "?remark=" + profileName;
 		if (appKey === "foxray") return "foxray://yiguo.dev/sub/add/?url=" + encodedUrl + "#" + profileName;
 		if (appKey === "custom") {
 			var template = typeof customTemplate === "string" ? customTemplate.trim() : "";

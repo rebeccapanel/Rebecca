@@ -158,6 +158,8 @@ export interface SubscriptionTemplateSettings {
 	home_page_template: string;
 	v2ray_subscription_template: string;
 	v2ray_settings_template: string;
+	happ_subscription_template: string;
+	incy_subscription_template: string;
 	singbox_subscription_template: string;
 	singbox_settings_template: string;
 	mux_template: string;
@@ -166,6 +168,7 @@ export interface SubscriptionTemplateSettings {
 	use_custom_json_for_v2rayng: boolean;
 	use_custom_json_for_streisand: boolean;
 	use_custom_json_for_happ: boolean;
+	use_custom_json_for_incy: boolean;
 	subscription_path: string;
 	subscription_aliases: string[];
 	subscription_ports: number[];
