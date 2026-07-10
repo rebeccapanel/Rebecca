@@ -21,6 +21,7 @@ type nodeSessionEventPayload struct {
 	InboundTag string `json:"inbound_tag,omitempty"`
 	SessionID  string `json:"session_id"`
 	AssignedIP string `json:"assigned_ip,omitempty"`
+	ClientIP   string `json:"client_ip,omitempty"`
 	Event      string `json:"event"`
 }
 
@@ -107,7 +108,7 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	before, err := activeVPNSessionCount(ctx, tx, payload.UserID)
+	before, err := activeVPNSessionLimitState(ctx, tx, payload.UserID)
 	if err != nil {
 		return err
 	}
@@ -121,38 +122,89 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 			return err
 		}
 	}
-	after, err := activeVPNSessionCount(ctx, tx, payload.UserID)
+	after, err := activeVPNSessionLimitState(ctx, tx, payload.UserID)
 	if err != nil {
 		return err
 	}
 	userID := payload.UserID
-	if before == 0 && after > 0 {
-		if err := enqueueNodeOperationTx(ctx, tx, "disable_user", nil, &userID, map[string]any{"source": "vpn_session", "protocol": payload.Protocol}); err != nil {
+	if !before.Blocked && after.Blocked {
+		if err := enqueueNodeOperationTx(ctx, tx, "disable_user", nil, &userID, map[string]any{"source": "device_limit", "protocol": payload.Protocol}); err != nil {
 			return err
 		}
-	} else if before > 0 && after == 0 {
-		if err := enqueueNodeOperationTx(ctx, tx, "enable_user", nil, &userID, map[string]any{"source": "vpn_session", "protocol": payload.Protocol}); err != nil {
+	} else if before.Blocked && !after.Blocked {
+		if err := enqueueNodeOperationTx(ctx, tx, "enable_user", nil, &userID, map[string]any{"source": "device_limit", "protocol": payload.Protocol}); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func activeVPNSessionCount(ctx context.Context, tx *sql.Tx, userID int64) (int64, error) {
-	var count int64
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = ? AND ended_at IS NULL`, userID).Scan(&count)
-	return count, err
+type vpnSessionLimitState struct {
+	Count   int64
+	Limit   int64
+	Blocked bool
+}
+
+func activeVPNSessionLimitState(ctx context.Context, tx *sql.Tx, userID int64) (vpnSessionLimitState, error) {
+	var state vpnSessionLimitState
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(ip_limit, 0) FROM users WHERE id = ? LIMIT 1`, userID).Scan(&state.Limit)
+	if err == sql.ErrNoRows {
+		return state, nil
+	}
+	if err != nil {
+		return state, err
+	}
+	rows, err := tx.QueryContext(ctx, `
+SELECT COALESCE(client_ip, ''), COALESCE(assigned_ip, ''), session_id
+FROM vpn_user_sessions
+WHERE user_id = ? AND ended_at IS NULL`, userID)
+	if err != nil {
+		return state, err
+	}
+	defer rows.Close()
+	devices := map[string]struct{}{}
+	for rows.Next() {
+		var clientIP, assignedIP, sessionID string
+		if err := rows.Scan(&clientIP, &assignedIP, &sessionID); err != nil {
+			return state, err
+		}
+		key := sessionLimitDeviceKey(clientIP, assignedIP, sessionID)
+		if key == "" {
+			continue
+		}
+		devices[key] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return state, err
+	}
+	state.Count = int64(len(devices))
+	state.Blocked = state.Limit > 0 && state.Count >= state.Limit
+	return state, nil
+}
+
+func sessionLimitDeviceKey(clientIP string, assignedIP string, sessionID string) string {
+	if value := strings.TrimSpace(clientIP); value != "" {
+		return "client:" + value
+	}
+	if value := strings.TrimSpace(assignedIP); value != "" {
+		return "assigned:" + value
+	}
+	if value := strings.TrimSpace(sessionID); value != "" {
+		return "session:" + value
+	}
+	return ""
 }
 
 func upsertVPNSession(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload, now time.Time) error {
 	res, err := tx.ExecContext(ctx, `
 UPDATE vpn_user_sessions
-SET user_id = ?, protocol = ?, inbound_tag = ?, assigned_ip = ?, last_seen_at = ?, ended_at = NULL
+SET user_id = ?, protocol = ?, inbound_tag = ?, assigned_ip = ?, client_ip = ?, last_seen_at = ?, ended_at = NULL
 WHERE node_id = ? AND session_id = ?`,
 		payload.UserID,
 		normalizedVPNProtocol(payload.Protocol),
 		nullableTrimmed(payload.InboundTag),
 		nullableTrimmed(payload.AssignedIP),
+		nullableTrimmed(payload.ClientIP),
 		dbTimestamp(now),
 		payload.NodeID,
 		strings.TrimSpace(payload.SessionID),
@@ -164,14 +216,15 @@ WHERE node_id = ? AND session_id = ?`,
 		return nil
 	}
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, started_at, last_seen_at, ended_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, client_ip, started_at, last_seen_at, ended_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		payload.NodeID,
 		payload.UserID,
 		normalizedVPNProtocol(payload.Protocol),
 		nullableTrimmed(payload.InboundTag),
 		strings.TrimSpace(payload.SessionID),
 		nullableTrimmed(payload.AssignedIP),
+		nullableTrimmed(payload.ClientIP),
 		dbTimestamp(now),
 		dbTimestamp(now),
 	)

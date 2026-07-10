@@ -22,6 +22,7 @@ CREATE TABLE vpn_user_sessions (
 	inbound_tag TEXT NULL,
 	session_id TEXT NOT NULL,
 	assigned_ip TEXT NULL,
+	client_ip TEXT NULL,
 	started_at DATETIME NOT NULL,
 	last_seen_at DATETIME NOT NULL,
 	ended_at DATETIME NULL,
@@ -33,22 +34,31 @@ CREATE TABLE vpn_user_sessions (
 	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert'), (8, 'node-8', 'connected', 'other-cert')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO users (id, username, status, service_id) VALUES (42, 'pool-user', 'active', 1)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO users (id, username, status, service_id, ip_limit) VALUES (42, 'pool-user', 'active', 1, 2)`); err != nil {
 		t.Fatal(err)
 	}
 
 	token := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
-	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"wg","inbound_tag":"wg-main","session_id":"wg:one","assigned_ip":"10.70.0.2","event":"start"}`)
+	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"wg","inbound_tag":"wg-main","session_id":"wg:one","assigned_ip":"10.70.0.2","client_ip":"198.51.100.10","event":"start"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 1)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'disable_user'`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'disable_user'`, 0)
+	assertDBString(t, db, `SELECT client_ip FROM vpn_user_sessions WHERE session_id = 'wg:one'`, "198.51.100.10")
 
-	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"ov","inbound_tag":"ov-main","session_id":"ov:two","assigned_ip":"10.66.0.2","event":"start"}`)
+	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"ov","inbound_tag":"ov-main","session_id":"ov:two","assigned_ip":"10.66.0.2","client_ip":"198.51.100.10","event":"start"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'disable_user'`, 0)
+
+	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"l2tp","inbound_tag":"l2tp-main","session_id":"l2tp:three","assigned_ip":"10.67.0.2","event":"start"}`)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 3)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'disable_user'`, 2)
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"wg","session_id":"wg:one","event":"stop"}`)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 2)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'enable_user'`, 0)
+
+	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"l2tp","session_id":"l2tp:three","event":"stop"}`)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'enable_user'`, 2)
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"ov","session_id":"ov:two","event":"stop"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 0)

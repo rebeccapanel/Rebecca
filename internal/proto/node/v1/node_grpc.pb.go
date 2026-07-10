@@ -212,6 +212,7 @@ const (
 	NodeRuntimeService_RestartService_FullMethodName = "/rebecca.node.v1.NodeRuntimeService/RestartService"
 	NodeRuntimeService_UpdateService_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/UpdateService"
 	NodeRuntimeService_RebootHost_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/RebootHost"
+	NodeRuntimeService_ApplyIPBlocks_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/ApplyIPBlocks"
 )
 
 // NodeRuntimeServiceClient is the client API for NodeRuntimeService service.
@@ -233,6 +234,7 @@ type NodeRuntimeServiceClient interface {
 	RestartService(ctx context.Context, in *ServiceRestartRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	UpdateService(ctx context.Context, in *ServiceUpdateRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	RebootHost(ctx context.Context, in *HostRebootRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
+	ApplyIPBlocks(ctx context.Context, in *IPBlockRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 }
 
 type nodeRuntimeServiceClient struct {
@@ -393,6 +395,16 @@ func (c *nodeRuntimeServiceClient) RebootHost(ctx context.Context, in *HostReboo
 	return out, nil
 }
 
+func (c *nodeRuntimeServiceClient) ApplyIPBlocks(ctx context.Context, in *IPBlockRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuntimeActionResponse)
+	err := c.cc.Invoke(ctx, NodeRuntimeService_ApplyIPBlocks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeRuntimeServiceServer is the server API for NodeRuntimeService service.
 // All implementations must embed UnimplementedNodeRuntimeServiceServer
 // for forward compatibility.
@@ -412,6 +424,7 @@ type NodeRuntimeServiceServer interface {
 	RestartService(context.Context, *ServiceRestartRequest) (*RuntimeActionResponse, error)
 	UpdateService(context.Context, *ServiceUpdateRequest) (*RuntimeActionResponse, error)
 	RebootHost(context.Context, *HostRebootRequest) (*RuntimeActionResponse, error)
+	ApplyIPBlocks(context.Context, *IPBlockRequest) (*RuntimeActionResponse, error)
 	mustEmbedUnimplementedNodeRuntimeServiceServer()
 }
 
@@ -466,6 +479,9 @@ func (UnimplementedNodeRuntimeServiceServer) UpdateService(context.Context, *Ser
 }
 func (UnimplementedNodeRuntimeServiceServer) RebootHost(context.Context, *HostRebootRequest) (*RuntimeActionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RebootHost not implemented")
+}
+func (UnimplementedNodeRuntimeServiceServer) ApplyIPBlocks(context.Context, *IPBlockRequest) (*RuntimeActionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyIPBlocks not implemented")
 }
 func (UnimplementedNodeRuntimeServiceServer) mustEmbedUnimplementedNodeRuntimeServiceServer() {}
 func (UnimplementedNodeRuntimeServiceServer) testEmbeddedByValue()                            {}
@@ -758,6 +774,24 @@ func _NodeRuntimeService_RebootHost_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeRuntimeService_ApplyIPBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IPBlockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRuntimeServiceServer).ApplyIPBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRuntimeService_ApplyIPBlocks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRuntimeServiceServer).ApplyIPBlocks(ctx, req.(*IPBlockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeRuntimeService_ServiceDesc is the grpc.ServiceDesc for NodeRuntimeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -824,6 +858,10 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RebootHost",
 			Handler:    _NodeRuntimeService_RebootHost_Handler,
+		},
+		{
+			MethodName: "ApplyIPBlocks",
+			Handler:    _NodeRuntimeService_ApplyIPBlocks_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -26,6 +26,7 @@ service NodeRuntimeService {
   rpc RestartService(ServiceRestartRequest) returns (RuntimeActionResponse);
   rpc UpdateService(ServiceUpdateRequest) returns (RuntimeActionResponse);
   rpc RebootHost(HostRebootRequest) returns (RuntimeActionResponse);
+  rpc ApplyIPBlocks(IPBlockRequest) returns (RuntimeActionResponse);
 }
 
 service NodeUsageService {
@@ -189,6 +190,20 @@ message HostRebootRequest {
   string operation_id = 1;
 }
 
+message IPBlockRequest {
+  string operation_id = 1;
+  repeated IPBlockEntry blocks = 2;
+  repeated uint32 tcp_ports = 3;
+  repeated uint32 udp_ports = 4;
+}
+
+message IPBlockEntry {
+  string ip = 1;
+  uint32 ttl_seconds = 2;
+  string user_uid = 3;
+  string reason = 4;
+}
+
 message SystemMetrics {
   int32 cpu_cores = 1;
   double cpu_frequency_hz = 2;
@@ -214,11 +229,23 @@ message CollectUsageRequest {
 message UserUsageBatch {
   string batch_id = 1;
   repeated UserUsageSample stats = 2;
+  repeated OnlineUserIP online_ips = 3;
 }
 
 message UserUsageSample {
   string uid = 1;
   uint64 value = 2;
+}
+
+message OnlineUserIP {
+  string uid = 1;
+  string email = 2;
+  repeated OnlineIP ips = 3;
+}
+
+message OnlineIP {
+  string ip = 1;
+  int64 last_seen_unix = 2;
 }
 
 message OutboundUsageBatch {

@@ -127,6 +127,9 @@ func (c Controller) collectUsageForNode(
 				result.UserSamples++
 			}
 		}
+		if err := c.repo.StoreNodeOnlineIPs(ctx, node.ID, onlineIPSamplesFromBatch(userBatch.GetOnlineIps())); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("node %d online IPs: %s", node.ID, err.Error()))
+		}
 	}
 
 	if collectOutbound {
@@ -164,6 +167,11 @@ func (c Controller) collectUsageForNode(
 	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, persistOptions); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d DB write: %s", node.ID, err.Error()))
 		return result
+	}
+	if collectUsers {
+		if err := c.applyIPLimitBlocksForNode(nodeCtx, client, node); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("node %d IP limiter: %s", node.ID, err.Error()))
+		}
 	}
 
 	if userBatch != nil && strings.TrimSpace(userBatch.GetBatchId()) != "" {

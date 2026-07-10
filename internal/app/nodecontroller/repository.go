@@ -198,6 +198,20 @@ func (r Repository) RuntimeUserIDsForServices(ctx context.Context, serviceIDs []
 
 func (r Repository) runtimeUsers(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
 	excludeVPNSessions, _ := r.tableExists(ctx, "vpn_user_sessions")
+	vpnDeviceExpr := `
+      CASE
+        WHEN COALESCE(vus.client_ip, '') != '' THEN 'client:' || vus.client_ip
+        WHEN COALESCE(vus.assigned_ip, '') != '' THEN 'assigned:' || vus.assigned_ip
+        ELSE 'session:' || vus.session_id
+      END`
+	if r.dialect == "mysql" || r.dialect == "mariadb" {
+		vpnDeviceExpr = `
+      CASE
+        WHEN COALESCE(vus.client_ip, '') != '' THEN CONCAT('client:', vus.client_ip)
+        WHEN COALESCE(vus.assigned_ip, '') != '' THEN CONCAT('assigned:', vus.assigned_ip)
+        ELSE CONCAT('session:', vus.session_id)
+      END`
+	}
 	query := `
 SELECT
 	u.id,
@@ -221,10 +235,13 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 	args := []any{}
 	if excludeVPNSessions {
 		query += `
-  AND NOT EXISTS (
-    SELECT 1
-    FROM vpn_user_sessions vus
-    WHERE vus.user_id = u.id AND vus.ended_at IS NULL
+  AND (
+    COALESCE(u.ip_limit, 0) <= 0
+    OR (
+      SELECT COUNT(DISTINCT ` + vpnDeviceExpr + `)
+      FROM vpn_user_sessions vus
+      WHERE vus.user_id = u.id AND vus.ended_at IS NULL
+    ) < COALESCE(u.ip_limit, 0)
   )`
 	}
 	if userID > 0 {
