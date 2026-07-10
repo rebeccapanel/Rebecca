@@ -260,7 +260,11 @@ func (c Controller) applyIPLimitBlocksForNode(ctx context.Context, client *nodec
 
 func (r Repository) activeLimiterEndpointsForNode(ctx context.Context, nodeID int64, cutoff time.Time) ([]limiterEndpoint, error) {
 	result := []limiterEndpoint{}
-	if ok, err := r.tableExists(ctx, "user_online_ips"); err == nil && ok {
+	hasOnlineIPs, err := r.tableExists(ctx, "user_online_ips")
+	if err != nil {
+		return nil, err
+	}
+	if hasOnlineIPs {
 		rows, err := r.db.QueryContext(ctx, `
 SELECT uoi.node_id, uoi.user_id, COALESCE(u.ip_limit, 0), uoi.protocol, uoi.ip, uoi.last_seen_at
 FROM user_online_ips uoi
@@ -288,7 +292,9 @@ WHERE uoi.node_id = ? AND uoi.protocol = 'xray' AND uoi.last_seen_at >= ?`,
 			return nil, err
 		}
 	}
-	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err == nil && ok {
+	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err != nil {
+		return nil, err
+	} else if ok && hasOnlineIPs {
 		hasClientIP, _ := r.tableHasColumn(ctx, "vpn_user_sessions", "client_ip")
 		clientExpr := "''"
 		if hasClientIP {
@@ -298,8 +304,17 @@ WHERE uoi.node_id = ? AND uoi.protocol = 'xray' AND uoi.last_seen_at >= ?`,
 SELECT vus.node_id, vus.user_id, COALESCE(u.ip_limit, 0), vus.protocol, `+clientExpr+`, COALESCE(vus.assigned_ip, ''), vus.session_id, vus.last_seen_at
 FROM vpn_user_sessions vus
 JOIN users u ON u.id = vus.user_id
-WHERE vus.node_id = ? AND vus.ended_at IS NULL`,
+WHERE vus.ended_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM user_online_ips uoi
+    WHERE uoi.node_id = ?
+      AND uoi.user_id = vus.user_id
+      AND uoi.protocol = 'xray'
+      AND uoi.last_seen_at >= ?
+  )`,
 			nodeID,
+			r.timeArg(cutoff.UTC()),
 		)
 		if err != nil {
 			return nil, err

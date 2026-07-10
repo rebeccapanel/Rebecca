@@ -11,7 +11,7 @@ import (
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
-func TestNodeSessionEventTogglesXrayRuntimeAccess(t *testing.T) {
+func TestNodeSessionEventTracksSessionsWithoutRuntimeUserOps(t *testing.T) {
 	server, db := testAdminServer(t)
 	_, err := db.Exec(`
 CREATE TABLE vpn_user_sessions (
@@ -50,19 +50,19 @@ CREATE TABLE vpn_user_sessions (
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"l2tp","inbound_tag":"l2tp-main","session_id":"l2tp:three","assigned_ip":"10.67.0.2","event":"start"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 3)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'disable_user'`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"wg","session_id":"wg:one","event":"stop"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 2)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'enable_user'`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"l2tp","session_id":"l2tp:three","event":"stop"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 1)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'enable_user'`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"ov","session_id":"ov:two","event":"stop"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 0)
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type = 'enable_user'`, 2)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 }
 
 func postNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {
