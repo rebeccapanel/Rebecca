@@ -236,6 +236,9 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 	if err != nil {
 		return nil, err
 	}
+	for serviceID := range affectedServices {
+		changedServices[serviceID] = true
+	}
 	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return nil, err
 	}
@@ -279,6 +282,9 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	if err != nil {
 		return hostResponse{}, err
 	}
+	for serviceID := range serviceSet {
+		changedServices[serviceID] = true
+	}
 	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return hostResponse{}, err
 	}
@@ -306,22 +312,16 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 			return err
 		}
 		if host.ID != nil && *host.ID > 0 {
-			oldTag, oldDisabled, err := hostRuntimeLinkStateTx(r.Context(), tx, *host.ID)
-			if err != nil {
-				return err
-			}
 			if exists, err := hostExistsTx(r.Context(), tx, *host.ID); err != nil {
 				return err
 			} else if exists {
 				newDisabled := boolPtrValue(host.IsDisabled)
-				if oldTag != inboundTag || oldDisabled != newDisabled {
-					oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
-					if err != nil {
-						return err
-					}
-					if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
-						return err
-					}
+				oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
+				if err != nil {
+					return err
+				}
+				if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
+					return err
 				}
 				if err := updateHostTx(r.Context(), tx, inboundTag, host); err != nil {
 					return err
@@ -977,19 +977,6 @@ func hostExistsTx(ctx context.Context, tx *sql.Tx, hostID int64) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
-}
-
-func hostRuntimeLinkStateTx(ctx context.Context, tx *sql.Tx, hostID int64) (string, bool, error) {
-	var inboundTag string
-	var disabled int
-	err := tx.QueryRowContext(ctx, `SELECT inbound_tag, COALESCE(is_disabled, 0) FROM hosts WHERE id = ? LIMIT 1`, hostID).Scan(&inboundTag, &disabled)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	return inboundTag, disabled != 0, nil
 }
 
 func serviceIDsForHostTx(ctx context.Context, tx *sql.Tx, hostID int64) ([]int64, error) {
