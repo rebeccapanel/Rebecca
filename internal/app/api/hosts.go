@@ -205,6 +205,10 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 			return nil, statusError{status: http.StatusBadRequest, detail: fmt.Sprintf("Inbound %s doesn't exist", inboundTag)}
 		}
 	}
+	inboundProtocols := make(map[string]string, len(payload))
+	for inboundTag := range payload {
+		inboundProtocols[inboundTag] = s.hostInboundProtocol(r.Context(), inboundTag)
+	}
 
 	allKeptIDs := make(map[int64]bool)
 	for _, hosts := range payload {
@@ -228,7 +232,7 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 		if err := ensureHostInboundRecordTx(r.Context(), tx, inboundTag); err != nil {
 			return nil, err
 		}
-		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, payload[inboundTag], allKeptIDs, affectedServices, beforeServiceTags); err != nil {
+		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, inboundProtocols[inboundTag], payload[inboundTag], allKeptIDs, affectedServices, beforeServiceTags); err != nil {
 			return nil, err
 		}
 	}
@@ -294,12 +298,11 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	return queryHostByID(r, s.db, hostID)
 }
 
-func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool, beforeServiceTags map[int64]map[string]bool) error {
+func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, inboundProtocol string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool, beforeServiceTags map[int64]map[string]bool) error {
 	existing, err := existingHostIDsForInboundTx(r.Context(), tx, inboundTag)
 	if err != nil {
 		return err
 	}
-	inboundProtocol := s.hostInboundProtocol(r.Context(), inboundTag)
 	remaining := make(map[int64]bool, len(existing))
 	for _, id := range existing {
 		remaining[id] = true
