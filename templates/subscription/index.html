@@ -536,6 +536,10 @@
             gap: 8px;
         }
 
+        .rb-card-head .rb-button-row {
+            margin-inline-end: 15px;
+        }
+
         .rb-button,
         .rb-link-button {
             display: inline-flex;
@@ -583,7 +587,14 @@
             gap: 0;
         }
 
+        .rb-button--icon span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         .rb-button--icon svg {
+            display: block;
             width: 17px;
             height: 17px;
         }
@@ -601,6 +612,16 @@
             color: var(--rb-panel-text-secondary);
             cursor: pointer;
             transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+
+        .rb-icon-button span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rb-icon-button svg {
+            display: block;
         }
 
         .rb-icon-button:hover {
@@ -1271,6 +1292,10 @@
             margin-bottom: 14px;
         }
 
+        .rb-modal-head-meta {
+            min-width: 0;
+        }
+
         .rb-modal-title {
             margin: 0;
             font-size: 1.02rem;
@@ -1278,29 +1303,43 @@
 
         .rb-modal-subtitle {
             margin: 6px 0 0;
+            overflow: hidden;
             color: var(--rb-panel-text-secondary);
             font-size: 0.9rem;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         .rb-qr-frame {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 304px;
-            padding: 16px;
+            width: fit-content;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+            padding: 10px;
             border: 1px solid var(--rb-panel-border);
-            border-radius: 18px;
+            border-radius: 16px;
             background: #ffffff;
         }
 
         .rb-modal-url {
             margin: 14px 0 0;
-            color: var(--rb-panel-text-secondary);
-            font-size: 0.84rem;
-            line-height: 1.55;
-            word-break: break-word;
+            padding: 10px 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            background: var(--rb-panel-main);
+            color: var(--rb-panel-text-muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.76rem;
+            line-height: 1.5;
+            word-break: break-all;
             direction: ltr;
             unicode-bidi: isolate;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
         }
 
         .rb-modal-actions {
@@ -1592,6 +1631,9 @@
                             <div class="rb-button-row">
                                 <button class="rb-button" type="button" id="copyAllConfigsButton">
                                     <span data-i18n="copyAllButton">Copy all</span>
+                                </button>
+                                <button class="rb-icon-button" type="button" id="showSubscriptionQrButton" title="QR code">
+                                    <span id="showSubscriptionQrButtonIcon" aria-hidden="true"></span>
                                 </button>
                             </div>
                         </div>
@@ -1981,7 +2023,7 @@
         <div class="rb-modal-backdrop" data-close-qr></div>
         <div class="rb-modal-card">
             <div class="rb-modal-head">
-                <div>
+                <div class="rb-modal-head-meta">
                     <h4 class="rb-modal-title" data-i18n="qrModalTitle">QR code</h4>
                     <p class="rb-modal-subtitle" id="qrModalSubtitle"></p>
                 </div>
@@ -3210,14 +3252,18 @@
                 state.qrLabel = label;
                 var modal = document.getElementById('qrModal');
                 var frame = document.getElementById('qrCodeFrame');
-                document.getElementById('qrModalSubtitle').textContent = label;
-                document.getElementById('qrModalUrl').textContent = value;
+                var subtitleEl = document.getElementById('qrModalSubtitle');
+                var urlEl = document.getElementById('qrModalUrl');
+                subtitleEl.textContent = label;
+                subtitleEl.title = label;
+                urlEl.textContent = value;
+                urlEl.title = value;
                 frame.innerHTML = '';
                 if (typeof QRCode === 'function') {
                     new QRCode(frame, {
                         text: value,
-                        width: 260,
-                        height: 260,
+                        width: 236,
+                        height: 236,
                         correctLevel: QRCode.CorrectLevel.M
                     });
                 }
@@ -3234,6 +3280,7 @@
                 var title = document.getElementById('protocolCardTitle');
                 var count = document.getElementById('configsCountText');
                 var copyAllButton = document.getElementById('copyAllConfigsButton');
+                var qrSubButton = document.getElementById('showSubscriptionQrButton');
                 var searchWrap = document.getElementById('configSearchWrap');
                 var linksPanel = document.getElementById('linksProtocolPanel');
                 var ovpnPanel = document.getElementById('ovpnProtocolPanel');
@@ -3252,6 +3299,15 @@
                 }
                 if (copyAllButton) {
                     copyAllButton.hidden = !isLinkView;
+                }
+                if (qrSubButton) {
+                    qrSubButton.hidden = !isLinkView;
+                    qrSubButton.setAttribute('title', t('qrButton'));
+                    qrSubButton.setAttribute('aria-label', t('qrButton'));
+                    var qrSubIcon = document.getElementById('showSubscriptionQrButtonIcon');
+                    if (qrSubIcon && !qrSubIcon.innerHTML) {
+                        qrSubIcon.innerHTML = iconQrSolid();
+                    }
                 }
                 if (linksPanel) {
                     linksPanel.hidden = !isLinkView;
@@ -3719,6 +3775,9 @@
                 });
                 document.getElementById('copyAllConfigsButton').addEventListener('click', function () {
                     copyText(filteredConfigs().map(function (item) { return item.value; }).join('\n'), null);
+                });
+                document.getElementById('showSubscriptionQrButton').addEventListener('click', function () {
+                    openQrModal(normalizeUrl(bodyData.subscriptionUrl), t('qrSubscriptionLabel'));
                 });
                 document.getElementById('copyQrValueButton').addEventListener('click', function () {
                     copyText(state.qrValue, null);
