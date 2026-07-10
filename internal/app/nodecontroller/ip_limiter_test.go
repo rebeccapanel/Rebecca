@@ -39,6 +39,33 @@ func TestXrayIPBlocksForLimiterEndpointsUnlimited(t *testing.T) {
 	}
 }
 
+func TestXrayIPBlocksIgnoreTunneledVPNAssignedIP(t *testing.T) {
+	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	blocks := xrayIPBlocksForLimiterEndpoints([]limiterEndpoint{
+		{NodeID: 1, UserID: 42, Limit: 1, Protocol: "ov", IP: "198.51.100.10", AssignedIP: "10.66.0.2", LastSeenAt: base},
+		{NodeID: 1, UserID: 42, Limit: 1, Protocol: "xray", IP: "10.66.0.2", LastSeenAt: base.Add(time.Second)},
+	})
+	if len(blocks) != 0 {
+		t.Fatalf("expected tunneled VPN-assigned Xray IP to be ignored, got %d blocks", len(blocks))
+	}
+}
+
+func TestXrayIPBlocksTreatSameClientIPAsOneDevice(t *testing.T) {
+	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	blocks := xrayIPBlocksForLimiterEndpoints([]limiterEndpoint{
+		{NodeID: 1, UserID: 42, Limit: 2, Protocol: "wg", IP: "198.51.100.10", AssignedIP: "10.69.0.2", LastSeenAt: base},
+		{NodeID: 1, UserID: 42, Limit: 2, Protocol: "ov", IP: "198.51.100.11", AssignedIP: "10.66.0.2", LastSeenAt: base.Add(time.Second)},
+		{NodeID: 1, UserID: 42, Limit: 2, Protocol: "xray", IP: "198.51.100.10", LastSeenAt: base.Add(3 * time.Second)},
+		{NodeID: 1, UserID: 42, Limit: 2, Protocol: "xray", IP: "198.51.100.12", LastSeenAt: base.Add(2 * time.Second)},
+	})
+	if len(blocks) != 1 {
+		t.Fatalf("expected one excess Xray IP block, got %d", len(blocks))
+	}
+	if got, want := blocks[0].GetIp(), "198.51.100.12"; got != want {
+		t.Fatalf("blocked IP = %q, want %q", got, want)
+	}
+}
+
 func TestActiveLimiterEndpointsForNodeCountsVPNSessionsAcrossNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ip-limiter.db")+"?_pragma=busy_timeout(30000)")

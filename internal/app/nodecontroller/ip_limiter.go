@@ -348,13 +348,14 @@ func xrayIPBlocksForLimiterEndpoints(endpoints []limiterEndpoint) []*nodev1.IPBl
 	}
 	blocks := []*nodev1.IPBlockEntry{}
 	for userID, items := range byUser {
+		items = withoutTunneledXrayEndpoints(items)
 		seenDevices := map[string]limiterEndpoint{}
 		for _, item := range items {
 			key := limiterDeviceKey(item)
 			if key == "" {
 				continue
 			}
-			if current, ok := seenDevices[key]; !ok || item.LastSeenAt.After(current.LastSeenAt) {
+			if current, ok := seenDevices[key]; !ok || preferLimiterEndpoint(item, current) {
 				seenDevices[key] = item
 			}
 		}
@@ -391,24 +392,68 @@ func xrayIPBlocksForLimiterEndpoints(endpoints []limiterEndpoint) []*nodev1.IPBl
 	return blocks
 }
 
+func withoutTunneledXrayEndpoints(items []limiterEndpoint) []limiterEndpoint {
+	assigned := map[string]struct{}{}
+	for _, item := range items {
+		if strings.EqualFold(normalizedOnlineProtocol(item.Protocol), "xray") {
+			continue
+		}
+		if ip, ok := normalizedUsableIP(item.AssignedIP); ok {
+			assigned[ip] = struct{}{}
+		}
+	}
+	if len(assigned) == 0 {
+		return items
+	}
+	result := items[:0]
+	for _, item := range items {
+		if strings.EqualFold(normalizedOnlineProtocol(item.Protocol), "xray") {
+			if ip, ok := normalizedUsableIP(item.IP); ok {
+				if _, duplicate := assigned[ip]; duplicate {
+					continue
+				}
+			}
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func preferLimiterEndpoint(candidate limiterEndpoint, current limiterEndpoint) bool {
+	candidateVPN := !strings.EqualFold(normalizedOnlineProtocol(candidate.Protocol), "xray")
+	currentVPN := !strings.EqualFold(normalizedOnlineProtocol(current.Protocol), "xray")
+	if candidateVPN != currentVPN {
+		return candidateVPN
+	}
+	return candidate.LastSeenAt.After(current.LastSeenAt)
+}
+
 func limiterDeviceKey(item limiterEndpoint) string {
 	protocol := normalizedOnlineProtocol(item.Protocol)
 	if protocol == "xray" {
-		if !usableOnlineIP(item.IP) {
-			return ""
+		if ip, ok := normalizedUsableIP(item.IP); ok {
+			return "client:" + ip
 		}
-		return "xray:" + item.IP
+		return ""
 	}
-	if usableOnlineIP(item.IP) {
-		return "client:" + item.IP
+	if ip, ok := normalizedUsableIP(item.IP); ok {
+		return "client:" + ip
 	}
-	if text := strings.TrimSpace(item.AssignedIP); text != "" {
-		return "assigned:" + text
+	if ip, ok := normalizedUsableIP(item.AssignedIP); ok {
+		return "assigned:" + ip
 	}
 	if text := strings.TrimSpace(item.SessionID); text != "" {
 		return "session:" + text
 	}
 	return ""
+}
+
+func normalizedUsableIP(value string) (string, bool) {
+	addr, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil || addr.IsLoopback() || addr.IsUnspecified() || addr.IsMulticast() {
+		return "", false
+	}
+	return addr.String(), true
 }
 
 func normalizedOnlineProtocol(value string) string {
