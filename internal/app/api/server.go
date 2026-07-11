@@ -328,6 +328,12 @@ func (s *Server) handleNodePath(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleNodeServiceUpdate(w, r, id)
+	case "host/reboot":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleNodeHostReboot(w, r, id)
 	case "certificate/regenerate":
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -532,6 +538,17 @@ func (s *Server) handleNodeServiceUpdate(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, http.StatusOK, flattenRuntimeResult(result))
+}
+
+func (s *Server) handleNodeHostReboot(w http.ResponseWriter, r *http.Request, nodeID int64) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	result, err := s.nodeController.RebootHost(ctx, nodecontroller.Request{NodeID: nodeID})
+	if err != nil {
+		writeControllerError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, flattenRuntimeResult(result))
 }
 
 func parseNodePath(path string) (int64, string, bool) {

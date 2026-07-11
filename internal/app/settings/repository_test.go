@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *testing.T) {
+func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +31,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		home_page_template TEXT NULL,
 		v2ray_subscription_template TEXT NULL,
 		v2ray_settings_template TEXT NULL,
+		happ_subscription_template TEXT NULL,
+		incy_subscription_template TEXT NULL,
 		singbox_subscription_template TEXT NULL,
 		singbox_settings_template TEXT NULL,
 		mux_template TEXT NULL,
@@ -39,6 +41,7 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		use_custom_json_for_v2rayng INTEGER NULL,
 		use_custom_json_for_streisand INTEGER NULL,
 		use_custom_json_for_happ INTEGER NULL,
+		use_custom_json_for_incy INTEGER NULL,
 		subscription_path TEXT NULL,
 		subscription_aliases TEXT NULL,
 		subscription_ports TEXT NULL,
@@ -68,6 +71,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		home_page_template,
 		v2ray_subscription_template,
 		v2ray_settings_template,
+		happ_subscription_template,
+		incy_subscription_template,
 		singbox_subscription_template,
 		singbox_settings_template,
 		mux_template,
@@ -76,6 +81,7 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		use_custom_json_for_v2rayng,
 		use_custom_json_for_streisand,
 		use_custom_json_for_happ,
+		use_custom_json_for_incy,
 		subscription_path,
 		subscription_aliases,
 		subscription_ports
@@ -84,20 +90,31 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 		'clash/default.yml', 'clash/settings.yml',
 		'subscription/index.html', 'home/index.html',
 		'v2ray/default.json', 'v2ray/settings.json',
+		'v2ray/default.json', 'v2ray/default.json',
 		'singbox/default.json', 'singbox/settings.json',
 		'mux/default.json',
-		0, 0, 0, 0, 0, 'sub', '[]', '[]'
+		0, 0, 0, 0, 0, 0, 'sub', '[]', '[]'
 	)`); err != nil {
 		t.Fatal(err)
 	}
 
 	dataDir := t.TempDir()
 	t.Setenv("REBECCA_DATA_DIR", dataDir)
-	templatePath := filepath.Join(dataDir, "templates", "subscription", "index.html")
-	if err := os.MkdirAll(filepath.Dir(templatePath), 0o755); err != nil {
+	staleTemplatePath := filepath.Join(dataDir, "templates", "subscription", "index.html")
+	if err := os.MkdirAll(filepath.Dir(staleTemplatePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(templatePath, []byte("persistent subscription template"), 0o644); err != nil {
+	if err := os.WriteFile(staleTemplatePath, []byte("persistent subscription template"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	templateRoot := t.TempDir()
+	t.Chdir(templateRoot)
+	appTemplatePath := filepath.Join(templateRoot, "templates", "subscription", "index.html")
+	if err := os.MkdirAll(filepath.Dir(appTemplatePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(appTemplatePath, []byte("app subscription template"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,8 +122,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(content.Content) != "persistent subscription template" {
-		t.Fatalf("expected persistent template content, got %q", content.Content)
+	if strings.TrimSpace(content.Content) != "app subscription template" {
+		t.Fatalf("expected app template content, got %q", content.Content)
 	}
 	if content.ResolvedPath == nil || strings.TrimSpace(*content.ResolvedPath) == "" {
 		t.Fatalf("expected a resolved path, got %#v", content.ResolvedPath)

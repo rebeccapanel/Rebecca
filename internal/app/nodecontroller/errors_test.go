@@ -8,7 +8,7 @@ import (
 )
 
 func TestFriendlyNodeErrorClassifiesTimeoutChains(t *testing.T) {
-	err := friendlyNodeError("metrics", 16, errors.New(`node gRPC dial failed: 109.176.202.15:6252: context deadline exceeded; legacy REST failed: Get "https://109.176.202.15:6250/connect": context deadline exceeded`))
+	err := friendlyNodeError("metrics", 16, errors.New(`node gRPC dial failed: 109.176.202.15:6252: context deadline exceeded`))
 	if err == nil {
 		t.Fatal("expected error")
 	}

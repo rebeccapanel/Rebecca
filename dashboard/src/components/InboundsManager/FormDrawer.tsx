@@ -1,4 +1,4 @@
-import type { InputProps, TextareaProps } from "@chakra-ui/react";
+import type { FormLabelProps, InputProps, TextareaProps } from "@chakra-ui/react";
 import {
 	Alert,
 	AlertDescription,
@@ -39,6 +39,7 @@ import {
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
+	InformationCircleIcon,
 	QuestionMarkCircleIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
@@ -59,6 +60,8 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
 	generateEchCert,
+	generateOVSelfSigned,
+	generateWGKeypair,
 	generateMldsa65,
 	generateRealityKeypair,
 	generateRealityShortId,
@@ -298,10 +301,34 @@ export const InboundFormModal: FC<Props> = ({
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
+	const ovLabel = (
+		labelKey: string,
+		labelFallback: string,
+		helpKey: string,
+		helpFallback: string,
+		labelProps: FormLabelProps = {},
+	) => (
+		<FormLabel {...labelProps}>
+			<HStack spacing={1.5} align="center">
+				<Text as="span">{t(labelKey, labelFallback)}</Text>
+				<Tooltip label={t(helpKey, helpFallback)} hasArrow placement="top">
+					<Box
+						as={InformationCircleIcon}
+						boxSize={4}
+						color="gray.500"
+						cursor="help"
+						aria-label={t("common.info", "Info")}
+					/>
+				</Tooltip>
+			</HStack>
+		</FormLabel>
+	);
 	const [vlessAuthOptions, setVlessAuthOptions] = useState<VlessEncAuthBlock[]>(
 		[],
 	);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
+	const [ovCertLoading, setOVCertLoading] = useState(false);
+	const [wgKeyLoading, setWGKeyLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
 	const [jsonText, setJsonText] = useState<string>("");
 	const [jsonError, setJsonError] = useState<string | null>(null);
@@ -433,8 +460,36 @@ export const InboundFormModal: FC<Props> = ({
 		"";
 	const tagValue = useWatch({ control, name: "tag" }) || watch("tag") || "";
 	const portValue = useWatch({ control, name: "port" }) || watch("port") || "";
+	const ovTunnelPortValue =
+		useWatch({ control, name: "ovTunnelPort" }) || watch("ovTunnelPort") || "";
+	const ovTproxyEnabled =
+		useWatch({ control, name: "ovTproxyEnabled" }) ??
+		watch("ovTproxyEnabled") ??
+		true;
+	const wgTunnelPortValue =
+		useWatch({ control, name: "wgTunnelPort" }) || watch("wgTunnelPort") || "";
+	const wgTproxyEnabled =
+		useWatch({ control, name: "wgTproxyEnabled" }) ??
+		watch("wgTproxyEnabled") ??
+		true;
+	const l2tpTunnelPortValue =
+		useWatch({ control, name: "l2tpTunnelPort" }) ||
+		watch("l2tpTunnelPort") ||
+		"";
+	const l2tpTproxyEnabled =
+		useWatch({ control, name: "l2tpTproxyEnabled" }) ??
+		watch("l2tpTproxyEnabled") ??
+		true;
+	const autoOVTunnelPortRef = useRef("");
+	const autoWGTunnelPortRef = useRef("");
+	const autoL2TPTunnelPortRef = useRef("");
 	const supportsStreamSettings =
-		currentProtocol !== "http" && currentProtocol !== "socks";
+		currentProtocol !== "http" &&
+		currentProtocol !== "socks" &&
+		currentProtocol !== "openvpn" &&
+		currentProtocol !== "wireguard" &&
+		currentProtocol !== "l2tp" &&
+		currentProtocol !== "pptp";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
 	const defaultVlessAuthLabels = useMemo(
@@ -509,13 +564,21 @@ export const InboundFormModal: FC<Props> = ({
 		return unique.map((label) => ({ label, value: label }));
 	}, [defaultVlessAuthLabels, vlessAuthOptions]);
 	const visibleProtocolOptions = useMemo(() => {
+		const l2tpExists = existingInbounds.some(
+			(inbound) =>
+				String(inbound.protocol || "").toLowerCase() === "l2tp" &&
+				String(inbound.tag || "") !== String(initialValue?.tag || ""),
+		);
 		if (isEditMode) {
 			return protocolOptions;
 		}
 		return protocolOptions.filter(
-			(option) => option !== "http" && option !== "socks",
+			(option) =>
+				option !== "http" &&
+				option !== "socks" &&
+				!(option === "l2tp" && l2tpExists),
 		);
-	}, [isEditMode]);
+	}, [existingInbounds, initialValue?.tag, isEditMode]);
 	const availableTargets = useMemo<CoreConfigTarget[]>(
 		() =>
 			configTargets.length
@@ -564,6 +627,167 @@ export const InboundFormModal: FC<Props> = ({
 		}
 	}, [currentProtocol, form, streamNetwork, streamSecurity]);
 
+	useEffect(() => {
+		if (currentProtocol !== "openvpn") {
+			autoOVTunnelPortRef.current = "";
+			return;
+		}
+		const port = Number(portValue);
+		if (!Number.isInteger(port) || port < 1 || port >= 65535) {
+			return;
+		}
+		const nextTunnelPort = String(port + 1);
+		const currentTunnelPort = String(ovTunnelPortValue || "").trim();
+		if (
+			currentTunnelPort &&
+			currentTunnelPort !== autoOVTunnelPortRef.current
+		) {
+			return;
+		}
+		if (currentTunnelPort !== nextTunnelPort) {
+			autoOVTunnelPortRef.current = nextTunnelPort;
+			form.setValue("ovTunnelPort", nextTunnelPort, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [
+		currentProtocol,
+		form,
+		ovTunnelPortValue,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+	]);
+
+	useEffect(() => {
+		if (currentProtocol !== "wireguard") {
+			autoWGTunnelPortRef.current = "";
+			return;
+		}
+		const port = Number(portValue);
+		if (Number.isInteger(port) && port >= 1 && port < 65535) {
+			const nextTunnelPort = String(port + 1);
+			const currentTunnelPort = String(wgTunnelPortValue || "").trim();
+			if (
+				!currentTunnelPort ||
+				currentTunnelPort === autoWGTunnelPortRef.current
+			) {
+				if (currentTunnelPort !== nextTunnelPort) {
+					autoWGTunnelPortRef.current = nextTunnelPort;
+					form.setValue("wgTunnelPort", nextTunnelPort, {
+						shouldDirty: true,
+						shouldValidate: true,
+					});
+				}
+			}
+		}
+		if (!String(form.getValues("wgServerAddress") || "").trim()) {
+			form.setValue("wgServerAddress", "10.69.0.1/16", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [
+		currentProtocol,
+		form,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+		wgTunnelPortValue,
+	]);
+
+	useEffect(() => {
+		if (currentProtocol !== "l2tp") {
+			autoL2TPTunnelPortRef.current = "";
+			return;
+		}
+		if (portValue !== "1701") {
+			form.setValue("port", "1701", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		const currentTunnelPort = String(l2tpTunnelPortValue || "").trim();
+		if (currentTunnelPort !== "1702") {
+			autoL2TPTunnelPortRef.current = "1702";
+			form.setValue("l2tpTunnelPort", "1702", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (!String(form.getValues("l2tpIPSecPSK") || "").trim()) {
+			form.setValue("l2tpIPSecPSK", `rb-l2tp-${randomLowerAndNum(24)}`, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamSecurity !== "none") {
+			form.setValue("streamSecurity", "none", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (streamNetwork !== "tcp") {
+			form.setValue("streamNetwork", "tcp", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+		if (sniffingEnabled) {
+			form.setValue("sniffingEnabled", false, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [
+		currentProtocol,
+		form,
+		l2tpTunnelPortValue,
+		portValue,
+		sniffingEnabled,
+		streamNetwork,
+		streamSecurity,
+	]);
+
 	const BLOCKED_PORTS = useMemo(
 		() =>
 			new Set([
@@ -587,6 +811,13 @@ export const InboundFormModal: FC<Props> = ({
 	);
 
 	const generateRandomPort = useCallback(() => {
+		if (currentProtocol === "l2tp") {
+			form.setValue("port", "1701", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			return "1701";
+		}
 		let candidate = 0;
 		for (let i = 0; i < 10; i += 1) {
 			const randomPort = Math.floor(Math.random() * 9000) + 1000; // 4-digit
@@ -600,7 +831,7 @@ export const InboundFormModal: FC<Props> = ({
 		}
 		form.setValue("port", candidate.toString(), { shouldDirty: true });
 		return candidate.toString();
-	}, [BLOCKED_PORTS, form]);
+	}, [BLOCKED_PORTS, currentProtocol, form]);
 
 	useEffect(() => {
 		if (!portValue) {
@@ -828,6 +1059,80 @@ export const InboundFormModal: FC<Props> = ({
 		form.setValue("tlsEchServerKeys", "", { shouldDirty: true });
 		form.setValue("tlsEchConfigList", "", { shouldDirty: true });
 	}, [form]);
+
+	const handleGenerateOVSelfSigned = useCallback(async () => {
+		setOVCertLoading(true);
+		try {
+			const certs = await generateOVSelfSigned();
+			form.setValue("ovCA", certs.ca ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("ovServerCertificate", certs.serverCertificate ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("ovServerKey", certs.serverKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			toast({
+				status: "success",
+				title: t(
+					"inbounds.openvpn.generateSelfSignedSuccess",
+					"Self-signed certificates generated",
+				),
+				duration: 2500,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.openvpn.generateSelfSignedError",
+					"Unable to generate OpenVPN certificates",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setOVCertLoading(false);
+		}
+	}, [form, t, toast]);
+
+	const handleGenerateWGKeypair = useCallback(async () => {
+		setWGKeyLoading(true);
+		try {
+			const keys = await generateWGKeypair();
+			form.setValue("wgPrivateKey", keys.privateKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("wgPublicKey", keys.publicKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			toast({
+				status: "success",
+				title: t(
+					"inbounds.wireguard.generateKeysSuccess",
+					"WireGuard key pair generated",
+				),
+				duration: 2500,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.wireguard.generateKeysError",
+					"Unable to generate WireGuard key pair",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setWGKeyLoading(false);
+		}
+	}, [form, t, toast]);
 
 	const handleGenerateMldsa65 = useCallback(async () => {
 		try {
@@ -1165,6 +1470,7 @@ export const InboundFormModal: FC<Props> = ({
 													placeholder="443"
 													{...register("port", { required: true })}
 													value={portValue}
+													isDisabled={currentProtocol === "l2tp"}
 													onChange={(event) => {
 														register("port").onChange(event);
 														form.setValue("port", event.target.value, {
@@ -1184,6 +1490,7 @@ export const InboundFormModal: FC<Props> = ({
 														variant="ghost"
 														leftIcon={<SparklesIcon width={16} height={16} />}
 														onClick={() => generateRandomPort()}
+														isDisabled={currentProtocol === "l2tp"}
 													>
 														{t("inbounds.randomPort", "Random")}
 													</Button>
@@ -1248,6 +1555,73 @@ export const InboundFormModal: FC<Props> = ({
 															});
 															form.setValue("tlsFingerprint", "", {
 																shouldDirty: true,
+															});
+														}
+														if (
+															nextProtocol === "openvpn" ||
+															nextProtocol === "wireguard" ||
+															nextProtocol === "l2tp" ||
+															nextProtocol === "pptp"
+														) {
+															if (nextProtocol === "l2tp") {
+																form.setValue("port", "1701", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("l2tpTunnelPort", "1702", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																if (!form.getValues("l2tpIPSecPSK")) {
+																	form.setValue(
+																		"l2tpIPSecPSK",
+																		`rb-l2tp-${randomLowerAndNum(24)}`,
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	);
+																}
+															}
+															if (nextProtocol === "pptp") {
+																form.setValue("port", "1723", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("l2tpTunnelPort", "41942", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+															}
+															if (nextProtocol === "wireguard") {
+																if (!form.getValues("wgIPv4Pool")) {
+																	form.setValue("wgIPv4Pool", "10.69.0.0/16", {
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	});
+																}
+																if (!form.getValues("wgServerAddress")) {
+																	form.setValue(
+																		"wgServerAddress",
+																		"10.69.0.1/16",
+																		{
+																			shouldDirty: true,
+																			shouldValidate: true,
+																		},
+																	);
+																}
+															}
+															form.setValue("streamNetwork", "tcp", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("streamSecurity", "none", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("sniffingEnabled", false, {
+																shouldDirty: true,
+																shouldValidate: true,
 															});
 														}
 													}}
@@ -1548,6 +1922,760 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</Stack>
 												)}
+											</Stack>
+										)}
+										{currentProtocol === "openvpn" && (
+											<Stack spacing={3}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														{ovLabel(
+															"inbounds.openvpn.transport",
+															"Transport",
+															"inbounds.openvpn.help.transport",
+															"Select UDP for the usual OpenVPN mode, or TCP when UDP is blocked by the network.",
+														)}
+														<SearchableTagSelect
+															value={formValues.ovTransport || "udp"}
+															options={["udp", "tcp"]}
+															placeholder={t(
+																"inbounds.openvpn.transport",
+																"Transport",
+															)}
+															onChange={(value) =>
+																form.setValue(
+																	"ovTransport",
+																	String(
+																		value,
+																	) as InboundFormValues["ovTransport"],
+																	{
+																		shouldDirty: true,
+																		shouldValidate: true,
+																	},
+																)
+															}
+														/>
+													</FormControl>
+													<FormControl
+														isRequired={ovTproxyEnabled}
+														isInvalid={Boolean(
+															fieldValidationErrors.ovTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.tunnelPort",
+															"Tunnel port",
+															"inbounds.openvpn.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public OpenVPN port.",
+														)}
+														<Input
+															{...register("ovTunnelPort")}
+															placeholder="41940"
+															isDisabled={!ovTproxyEnabled}
+														/>
+														{fieldValidationErrors.ovTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.ovIPv4Pool,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.openvpn.help.ipv4Pool",
+															"Private IPv4 range assigned to OpenVPN users. Each user receives a deterministic address from this pool.",
+														)}
+														<Input
+															{...register("ovIPv4Pool")}
+															placeholder="10.66.0.0/16"
+														/>
+														{fieldValidationErrors.ovIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl>
+														{ovLabel(
+															"inbounds.openvpn.dns",
+															"DNS servers",
+															"inbounds.openvpn.help.dns",
+															"DNS resolvers pushed to OpenVPN clients, one IPv4 address per line.",
+														)}
+														<Textarea
+															rows={3}
+															{...register("ovDNSServers")}
+															placeholder={"1.1.1.1\n8.8.8.8"}
+														/>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.ovCipher)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.cipher",
+															"Cipher",
+															"inbounds.openvpn.help.cipher",
+															"Optional OpenVPN data cipher. Leave empty to use the OpenVPN default for your installed version.",
+														)}
+														<Input
+															{...register("ovCipher")}
+															placeholder="AES-256-GCM"
+														/>
+														{fieldValidationErrors.ovCipher && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovCipher}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl>
+														{ovLabel(
+															"inbounds.openvpn.auth",
+															"Auth digest",
+															"inbounds.openvpn.help.auth",
+															"Optional packet authentication digest such as SHA256. Leave empty to use OpenVPN defaults.",
+														)}
+														<Input
+															{...register("ovAuth")}
+															placeholder="SHA256"
+														/>
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.redirectGateway",
+															"Redirect gateway",
+															"inbounds.openvpn.help.redirectGateway",
+															"Push the default route to clients so all client traffic enters the VPN.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovRedirectGateway")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.tproxy",
+															"Route through Xray",
+															"inbounds.openvpn.help.tproxy",
+															"Forward OpenVPN client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.requireDco",
+															"Require DCO",
+															"inbounds.openvpn.help.requireDco",
+															"Require OpenVPN data channel offload on the node. If the kernel or OpenVPN build cannot use DCO, this inbound is rejected instead of falling back.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovRequireDCO")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.accounting",
+															"Enable accounting",
+															"inbounds.openvpn.help.accounting",
+															"Record OpenVPN session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.inlineCa",
+															"Embed CA in profile",
+															"inbounds.openvpn.help.inlineCa",
+															"Include the CA certificate inside generated .ovpn files. Disable only if clients will receive the CA by another secure method.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovInlineCA")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.setClientCertNone",
+															"Disable external certificate prompt",
+															"inbounds.openvpn.help.setClientCertNone",
+															"Add setenv CLIENT_CERT 0 so OpenVPN Connect does not ask for a separate client certificate.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovSetClientCertNone")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.authNoCache",
+															"Do not cache password",
+															"inbounds.openvpn.help.authNoCache",
+															"Add auth-nocache so the client does not keep the VPN password in memory after authentication.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovAuthNoCache")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.embedCredentials",
+															"Embed user credentials",
+															"inbounds.openvpn.help.embedCredentials",
+															"Include username and generated password inside the .ovpn profile. Disable to make clients ask for credentials.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovEmbedCredentials")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.routeNoPull",
+															"Ignore pushed routes",
+															"inbounds.openvpn.help.routeNoPull",
+															"Add route-nopull so clients connect but ignore routes pushed by the server.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovRouteNoPull")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.openvpn.blockOutsideDns",
+															"Block outside DNS",
+															"inbounds.openvpn.help.blockOutsideDns",
+															"Add block-outside-dns for Windows clients to reduce DNS leaks outside the VPN.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("ovBlockOutsideDNS")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.ovManagementPort,
+													)}
+												>
+													{ovLabel(
+														"inbounds.openvpn.managementPort",
+														"Management port",
+														"inbounds.openvpn.help.managementPort",
+														"Optional local OpenVPN management port used by the node process. Leave empty unless you need explicit control.",
+													)}
+													<Input
+														{...register("ovManagementPort")}
+														placeholder="7505"
+													/>
+													{fieldValidationErrors.ovManagementPort && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.ovManagementPort}
+														</Text>
+													)}
+												</FormControl>
+												<Box>
+													<Button
+														size="sm"
+														leftIcon={<SparklesIcon width={16} />}
+														onClick={handleGenerateOVSelfSigned}
+														isLoading={ovCertLoading}
+													>
+														{t(
+															"inbounds.openvpn.generateSelfSigned",
+															"Generate self-signed certs",
+														)}
+													</Button>
+												</Box>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.ovCA)}
+												>
+													{ovLabel(
+														"inbounds.openvpn.ca",
+														"CA certificate",
+														"inbounds.openvpn.help.ca",
+														"Certificate authority used to sign the OpenVPN server certificate. A self-signed CA is fine for personal use.",
+													)}
+													<Textarea rows={4} {...register("ovCA")} />
+													{fieldValidationErrors.ovCA && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.ovCA}
+														</Text>
+													)}
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.ovServerCertificate,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.serverCertificate",
+															"Server certificate",
+															"inbounds.openvpn.help.serverCertificate",
+															"OpenVPN server certificate signed by the CA above. Clients verify the server with this trust chain.",
+														)}
+														<Textarea
+															rows={4}
+															{...register("ovServerCertificate")}
+														/>
+														{fieldValidationErrors.ovServerCertificate && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{
+																	fieldValidationErrors.ovServerCertificate
+																}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.ovServerKey,
+														)}
+													>
+														{ovLabel(
+															"inbounds.openvpn.serverKey",
+															"Server key",
+															"inbounds.openvpn.help.serverKey",
+															"Private key for the OpenVPN server certificate. Keep it private; it is written only to the node's OpenVPN config.",
+														)}
+														<Textarea rows={4} {...register("ovServerKey")} />
+														{fieldValidationErrors.ovServerKey && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.ovServerKey}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<FormControl>
+													{ovLabel(
+														"inbounds.openvpn.dh",
+														"DH parameters",
+														"inbounds.openvpn.help.dh",
+														"Optional Diffie-Hellman parameters for older TLS modes. Usually not needed with modern ECDHE/OpenVPN setups.",
+													)}
+													<Textarea rows={4} {...register("ovDH")} />
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl>
+														{ovLabel(
+															"inbounds.openvpn.tlsCrypt",
+															"tls-crypt",
+															"inbounds.openvpn.help.tlsCrypt",
+															"Optional static key that encrypts and authenticates the OpenVPN control channel.",
+														)}
+														<Textarea rows={4} {...register("ovTlsCrypt")} />
+													</FormControl>
+													<FormControl>
+														{ovLabel(
+															"inbounds.openvpn.tlsAuth",
+															"tls-auth",
+															"inbounds.openvpn.help.tlsAuth",
+															"Optional static HMAC key for authenticating the OpenVPN control channel.",
+														)}
+														<Textarea rows={4} {...register("ovTlsAuth")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl>
+													{ovLabel(
+														"inbounds.openvpn.extraClient",
+														"Extra client config",
+														"inbounds.openvpn.help.extraClient",
+														"Extra directives appended to generated client profiles. Use only valid OpenVPN client options.",
+													)}
+													<Textarea
+														rows={4}
+														{...register("ovExtraClientConfig")}
+													/>
+												</FormControl>
+											</Stack>
+										)}
+										{currentProtocol === "wireguard" && (
+											<Stack spacing={3}>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired={wgTproxyEnabled}
+														isInvalid={Boolean(
+															fieldValidationErrors.wgTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.tunnelPort",
+															"Tunnel port",
+															"inbounds.wireguard.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public WireGuard port.",
+														)}
+														<Input
+															{...register("wgTunnelPort")}
+															placeholder="51821"
+															isDisabled={!wgTproxyEnabled}
+														/>
+														{fieldValidationErrors.wgTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(fieldValidationErrors.wgIPv4Pool)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.wireguard.help.ipv4Pool",
+															"Private IPv4 range assigned to WireGuard users. Each user receives a deterministic address from this pool.",
+														)}
+														<Input
+															{...register("wgIPv4Pool")}
+															placeholder="10.69.0.0/16"
+														/>
+														{fieldValidationErrors.wgIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.wgServerAddress,
+														)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.serverAddress",
+															"Server address",
+															"inbounds.wireguard.help.serverAddress",
+															"WireGuard address assigned to the server interface. Keep it inside the selected IPv4 pool.",
+														)}
+														<Input
+															{...register("wgServerAddress")}
+															placeholder="10.69.0.1/16"
+														/>
+														{fieldValidationErrors.wgServerAddress && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgServerAddress}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.wgMTU)}
+													>
+														{ovLabel(
+															"inbounds.wireguard.mtu",
+															"MTU",
+															"inbounds.wireguard.help.mtu",
+															"WireGuard interface MTU. 1420 is the common default; lower it only for path-specific fragmentation issues.",
+														)}
+														<Input {...register("wgMTU")} placeholder="1420" />
+														{fieldValidationErrors.wgMTU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.wgMTU}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isInvalid={Boolean(
+														fieldValidationErrors.wgPersistentKeepalive,
+													)}
+												>
+													{ovLabel(
+														"inbounds.wireguard.persistentKeepalive",
+														"Persistent keepalive",
+														"inbounds.wireguard.help.persistentKeepalive",
+														"Seconds between client keepalive packets. 25 helps clients behind NAT stay reachable; 0 disables it.",
+													)}
+													<Input
+														{...register("wgPersistentKeepalive")}
+														placeholder="25"
+													/>
+													{fieldValidationErrors.wgPersistentKeepalive && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.wgPersistentKeepalive}
+														</Text>
+													)}
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.wireguard.tproxy",
+															"Route through Xray",
+															"inbounds.wireguard.help.tproxy",
+															"Forward WireGuard client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("wgTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.wireguard.accounting",
+															"Enable accounting",
+															"inbounds.wireguard.help.accounting",
+															"Record WireGuard peer traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("wgAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
+												<Box>
+													<Button
+														size="sm"
+														leftIcon={<SparklesIcon width={16} />}
+														onClick={handleGenerateWGKeypair}
+														isLoading={wgKeyLoading}
+													>
+														{t(
+															"inbounds.wireguard.generateKeys",
+															"Generate key pair",
+														)}
+													</Button>
+												</Box>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.wgPrivateKey)}
+												>
+													{ovLabel(
+														"inbounds.wireguard.privateKey",
+														"Private key",
+														"inbounds.wireguard.help.privateKey",
+														"Private key used by the WireGuard server interface. Generate a key pair here unless you already have one.",
+													)}
+													<Textarea rows={2} {...register("wgPrivateKey")} />
+													{fieldValidationErrors.wgPrivateKey && (
+														<Text fontSize="xs" color="red.500" mt={1}>
+															{fieldValidationErrors.wgPrivateKey}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl>
+													{ovLabel(
+														"inbounds.wireguard.publicKey",
+														"Public key",
+														"inbounds.wireguard.help.publicKey",
+														"Server public key shown for reference and future profile generation. The node derives the runtime key from the private key.",
+													)}
+													<Input {...register("wgPublicKey")} isReadOnly />
+												</FormControl>
+											</Stack>
+										)}
+										{(currentProtocol === "l2tp" || currentProtocol === "pptp") && (
+											<Stack spacing={3}>
+												{currentProtocol === "l2tp" && (
+													<Alert status="info" borderRadius="md">
+														<AlertIcon />
+														<Box>
+															<AlertTitle fontSize="sm">
+																{t(
+																	"inbounds.l2tp.fixedPortsTitle",
+																	"L2TP/IPsec uses fixed ports",
+																)}
+															</AlertTitle>
+															<AlertDescription fontSize="sm">
+																{t(
+																	"inbounds.l2tp.fixedPortsDescription",
+																	"UDP 500 for IPsec/IKE, UDP 4500 for IPsec NAT-T, and UDP 1701 for L2TP are fixed. Local Xray tunnel port 1702 is used only when Route through Xray is enabled.",
+																)}
+															</AlertDescription>
+														</Box>
+													</Alert>
+												)}
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isRequired={l2tpTproxyEnabled}
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.tunnelPort",
+															"Tunnel port",
+															"inbounds.l2tp.help.tunnelPort",
+															"Internal Xray tunnel port used by nftables/TProxy. It must be unique and different from the public L2TP port.",
+														)}
+														<Input
+															{...register("l2tpTunnelPort")}
+															placeholder={currentProtocol === "l2tp" ? "1702" : "51200"}
+															isDisabled={!l2tpTproxyEnabled || currentProtocol === "l2tp"}
+														/>
+														{fieldValidationErrors.l2tpTunnelPort && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpIPv4Pool,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.l2tp.help.ipv4Pool",
+															"Private IPv4 range assigned to L2TP users. Each user receives a deterministic address from this pool.",
+														)}
+														<Input
+															{...register("l2tpIPv4Pool")}
+															placeholder="10.67.0.0/16"
+														/>
+														{fieldValidationErrors.l2tpIPv4Pool && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												{currentProtocol === "l2tp" && (
+													<FormControl
+														isRequired
+														isInvalid={Boolean(fieldValidationErrors.l2tpIPSecPSK)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.ipsecPsk",
+															"IPsec pre-shared key",
+															"inbounds.l2tp.help.ipsecPsk",
+															"Shared IPsec secret used by clients before L2TP username/password authentication.",
+														)}
+														<Input
+															{...register("l2tpIPSecPSK")}
+															placeholder="change-this-secret"
+														/>
+														{fieldValidationErrors.l2tpIPSecPSK && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpIPSecPSK}
+															</Text>
+														)}
+													</FormControl>
+												)}
+												<FormControl>
+													{ovLabel(
+														"inbounds.l2tp.dns",
+														"DNS servers",
+														"inbounds.l2tp.help.dns",
+														"DNS resolvers pushed to L2TP clients, one IPv4 address per line.",
+													)}
+													<Textarea
+														rows={3}
+														{...register("l2tpDNSServers")}
+														placeholder={"1.1.1.1\n8.8.8.8"}
+													/>
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.l2tpMTU)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.mtu",
+															"MTU",
+															"inbounds.l2tp.help.mtu",
+															"PPP MTU for L2TP clients. 1410 is a conservative default for IPsec/NAT paths.",
+														)}
+														<Input {...register("l2tpMTU")} placeholder="1410" />
+														{fieldValidationErrors.l2tpMTU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpMTU}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(fieldValidationErrors.l2tpMRU)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.mru",
+															"MRU",
+															"inbounds.l2tp.help.mru",
+															"PPP MRU for L2TP clients. Keep it close to MTU unless you have a path-specific reason.",
+														)}
+														<Input {...register("l2tpMRU")} placeholder="1410" />
+														{fieldValidationErrors.l2tpMRU && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpMRU}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpLcpEchoInterval,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.lcpEchoInterval",
+															"LCP echo interval",
+															"inbounds.l2tp.help.lcpEchoInterval",
+															"Seconds between PPP keepalive probes used to detect dead L2TP sessions.",
+														)}
+														<Input
+															{...register("l2tpLcpEchoInterval")}
+															placeholder="30"
+														/>
+														{fieldValidationErrors.l2tpLcpEchoInterval && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{
+																	fieldValidationErrors.l2tpLcpEchoInterval
+																}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpLcpEchoFailure,
+														)}
+													>
+														{ovLabel(
+															"inbounds.l2tp.lcpEchoFailure",
+															"LCP echo failure",
+															"inbounds.l2tp.help.lcpEchoFailure",
+															"How many missed PPP keepalive probes are allowed before the L2TP session is considered dead.",
+														)}
+														<Input
+															{...register("l2tpLcpEchoFailure")}
+															placeholder="4"
+														/>
+														{fieldValidationErrors.l2tpLcpEchoFailure && (
+															<Text fontSize="xs" color="red.500" mt={1}>
+																{fieldValidationErrors.l2tpLcpEchoFailure}
+															</Text>
+														)}
+													</FormControl>
+												</SimpleGrid>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.redirectGateway",
+															"Redirect gateway",
+															"inbounds.l2tp.help.redirectGateway",
+															"Route all client traffic through the L2TP/IPsec VPN.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpRedirectGateway")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.tproxy",
+															"Route through Xray",
+															"inbounds.l2tp.help.tproxy",
+															"Forward VPN client traffic into Xray so routing rules and Xray outbounds apply. Disable for direct NAT egress from the node.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.l2tp.accounting",
+															"Enable accounting",
+															"inbounds.l2tp.help.accounting",
+															"Record L2TP session traffic and report it to the same Rebecca user quota/accounting pipeline.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("l2tpAccountingEnabled")} />
+													</FormControl>
+												</SimpleGrid>
 											</Stack>
 										)}
 									</Stack>
@@ -3879,6 +5007,7 @@ export const InboundFormModal: FC<Props> = ({
 										</Stack>
 									)}
 
+									{currentProtocol !== "openvpn" && currentProtocol !== "wireguard" && currentProtocol !== "l2tp" && currentProtocol !== "pptp" && (
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Flex align="center" justify="space-between">
 											<HStack spacing={2}>
@@ -3945,6 +5074,7 @@ export const InboundFormModal: FC<Props> = ({
 											</Stack>
 										)}
 									</Stack>
+									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>

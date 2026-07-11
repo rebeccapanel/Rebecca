@@ -29,6 +29,7 @@ const defaultStatus: PHPMyAdminStatus = {
 	public_url: "",
 	external_url: "",
 	embed_url: "/api/settings/phpmyadmin/embed-html",
+	login_mode: "rebecca",
 };
 
 export const PhpMyAdminPage = () => {

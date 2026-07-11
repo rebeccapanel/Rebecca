@@ -487,11 +487,49 @@ detect_os() {
     fi
 }
 
+remove_broken_xanmod_apt_sources() {
+    local matches
+    matches=$(grep -RIlE 'deb\.xanmod\.org|xanmod\.org' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+    if [ -z "$matches" ]; then
+        return 1
+    fi
+    colorized_echo yellow "Removing broken XanMod apt source entries"
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "$file" in
+            /etc/apt/sources.list)
+                sed -i.bak '/deb\.xanmod\.org/d;/xanmod\.org/d' "$file"
+            ;;
+            /etc/apt/sources.list.d/*)
+                rm -f "$file"
+            ;;
+        esac
+    done <<< "$matches"
+    return 0
+}
+
+apt_update_with_repo_repair() {
+    local log_file
+    log_file=$(mktemp)
+    if DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
+    cat "$log_file" >&2
+    if grep -qiE 'deb\.xanmod\.org|xanmod.*release file|does not have a release file' "$log_file" && remove_broken_xanmod_apt_sources; then
+        rm -f "$log_file"
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq
+        return
+    fi
+    rm -f "$log_file"
+    return 1
+}
+
 
 detect_and_update_package_manager() {
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        ui_spinner_run "Updating package index" bash -c "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -o Acquire::AllowReleaseInfoChange=true -o Acquire::AllowReleaseInfoChange::Label=true update -qq"
+        ui_spinner_run "Updating package index" apt_update_with_repo_repair -o Acquire::AllowReleaseInfoChange=true -o Acquire::AllowReleaseInfoChange::Label=true
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
         ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
@@ -1443,6 +1481,25 @@ install_phpmyadmin_blueberry_theme() {
     rm -f "$temp_zip"
 }
 
+configure_phpmyadmin_upload_limits() {
+    local ini_content
+    ini_content="upload_max_filesize=4096M
+post_max_size=4096M
+memory_limit=4096M
+max_execution_time=0
+max_input_time=0"
+    local wrote=0
+    local dir
+    for dir in /etc/php/*/fpm/conf.d /etc/php/*/cli/conf.d; do
+        [ -d "$dir" ] || continue
+        printf "%s\n" "$ini_content" > "$dir/99-rebecca-phpmyadmin-upload.ini" || true
+        wrote=1
+    done
+    if [ "$wrote" = "1" ]; then
+        systemctl reload php*-fpm >/dev/null 2>&1 || systemctl restart php*-fpm >/dev/null 2>&1 || true
+    fi
+}
+
 phpmyadmin_nginx_config_path() {
     printf "/etc/nginx/sites-available/%s-phpmyadmin" "$APP_NAME"
 }
@@ -1464,6 +1521,7 @@ enable_host_phpmyadmin() {
         install_package "$package"
     done
     install_phpmyadmin_blueberry_theme
+    configure_phpmyadmin_upload_limits
     systemctl enable --now php*-fpm >/dev/null 2>&1 || true
 
     path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"

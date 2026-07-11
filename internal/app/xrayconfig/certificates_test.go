@@ -34,8 +34,8 @@ func TestValidateCertificateFilesMissingFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing certificate file, got nil")
 	}
-	if !strings.Contains(err.Error(), "does not exist") {
-		t.Fatalf("expected 'does not exist' error, got %q", err.Error())
+	if !strings.Contains(err.Error(), "does not exist") || !strings.Contains(err.Error(), "directory") {
+		t.Fatalf("expected missing file/directory error, got %q", err.Error())
 	}
 	if !strings.Contains(err.Error(), "VLESS_TLS") {
 		t.Fatalf("expected error to reference inbound tag, got %q", err.Error())

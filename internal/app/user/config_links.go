@@ -28,6 +28,21 @@ var proxyProtocols = map[string]struct{}{
 	"hysteria":    {},
 }
 
+var subscriptionDownloadProtocols = map[string]struct{}{
+	"openvpn":   {},
+	"wireguard": {},
+	"l2tp":      {},
+	"pptp":      {},
+}
+
+func isResolvableInboundProtocol(protocol string) bool {
+	if _, ok := proxyProtocols[protocol]; ok {
+		return true
+	}
+	_, ok := subscriptionDownloadProtocols[protocol]
+	return ok
+}
+
 type configHost struct {
 	host     Host
 	position int
@@ -119,11 +134,30 @@ func BuildConfigLinks(
 	// protocols (e.g. shadowsocks) to the top regardless of the service order.
 	for _, selected := range selectedHosts {
 		host := selected.host
-		binding, ok := bindings[host.InboundTag]
+		inbound, ok := inbounds[host.InboundTag]
 		if !ok {
 			continue
 		}
-		inbound, ok := inbounds[host.InboundTag]
+		if normalizeProxyProtocol(stringValue(inbound["protocol"])) == "wireguard" {
+			inboundVariables := cloneFormatVariables(formatVariables)
+			inboundVariables["PROTOCOL"] = "wireguard"
+			inboundVariables["protocol"] = "wireguard"
+			inboundVariables["TRANSPORT"] = configTransportName(inbound)
+			inboundVariables["transport"] = strings.ToLower(inboundVariables["TRANSPORT"])
+			remark, address, effective, ok := effectiveInboundForHost(username, inboundVariables, inbound, host)
+			if !ok {
+				continue
+			}
+			link, err := buildWGShareLink(item, remark, address, effective)
+			if err != nil {
+				return ConfigLinksResponse{}, err
+			}
+			if link != "" {
+				links = append(links, link)
+			}
+			continue
+		}
+		binding, ok := bindings[host.InboundTag]
 		if !ok {
 			continue
 		}
@@ -320,7 +354,7 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	path = applyFormat(path, variables)
 
 	effective := copyInbound(inbound)
-	if host.Port != nil {
+	if host.Port != nil && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "openvpn" {
 		effective["port"] = *host.Port
 	}
 	if tls := normalizedHostSecurity(host.Security); tls != "" {
@@ -1150,6 +1184,18 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 			resolved["encryption"] = encryption
 		}
 	}
+	if protocol == "openvpn" {
+		applyOVResolvedSettings(resolved, inbound)
+		return resolved, nil
+	}
+	if protocol == "wireguard" {
+		resolved["settings"] = settings
+		return resolved, nil
+	}
+	if protocol == "l2tp" || protocol == "pptp" {
+		resolved["settings"] = settings
+		return resolved, nil
+	}
 
 	stream := mapValue(inbound["streamSettings"])
 	if network := normalizeNetwork(stringValue(stream["network"])); network != "" {
@@ -1308,10 +1354,6 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	return resolved, nil
 }
 
-func excludedInboundTags() map[string]struct{} {
-	return map[string]struct{}{}
-}
-
 func normalizeProxyProtocol(value string) string {
 	cleaned := strings.ToLower(strings.TrimSpace(value))
 	switch cleaned {
@@ -1319,6 +1361,12 @@ func normalizeProxyProtocol(value string) string {
 		return "shadowsocks"
 	case "vmess", "vless", "trojan":
 		return cleaned
+	case "l2tp", "l2tp-ipsec", "l2tp/ipsec":
+		return "l2tp"
+	case "openvpn", "ov":
+		return "openvpn"
+	case "wireguard", "wg":
+		return "wireguard"
 	default:
 		return cleaned
 	}

@@ -1290,15 +1290,15 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "data_usage",
-				header: t("admins.details.used", "Used"),
+				header: t("admins.trafficUsedLimit", "Used / Limit"),
 				sortable: true,
 				priority: "medium",
-				width: "132px",
-				maxWidth: "150px",
+				width: "152px",
+				maxWidth: "174px",
 				headerAlign: "center",
 				mobilePriority: 8,
 				mobileSummary: true,
-				mobileMetaLabel: t("admins.details.used", "Used"),
+				mobileMetaLabel: t("admins.trafficUsedLimit", "Used / Limit"),
 				cell: (admin) => (
 					<Text
 						fontSize="sm"
@@ -1306,28 +1306,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						sx={{ unicodeBidi: "isolate" }}
 						whiteSpace="nowrap"
 					>
-						{formatBytes(getAdminEffectiveUsage(admin), 2)}
-					</Text>
-				),
-			},
-			{
-				id: "data_limit",
-				header: t("admins.details.limit", "Limit"),
-				sortable: true,
-				priority: "low",
-				hideBelow: "xl",
-				width: "120px",
-				maxWidth: "136px",
-				headerAlign: "center",
-				mobilePriority: 9,
-				mobileMetaLabel: t("admins.details.limit", "Limit"),
-				cell: (admin) => (
-					<Text
-						fontSize="sm"
-						dir="ltr"
-						sx={{ unicodeBidi: "isolate" }}
-						whiteSpace="nowrap"
-					>
+						{formatBytes(getAdminEffectiveUsage(admin), 2)} /{" "}
 						{formatByteLimit(admin.data_limit)}
 					</Text>
 				),

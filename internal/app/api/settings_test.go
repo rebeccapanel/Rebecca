@@ -50,6 +50,8 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 			home_page_template TEXT NOT NULL DEFAULT 'home/index.html',
 			v2ray_subscription_template TEXT NOT NULL DEFAULT 'v2ray/default.json',
 			v2ray_settings_template TEXT NOT NULL DEFAULT 'v2ray/settings.json',
+			happ_subscription_template TEXT NOT NULL DEFAULT 'v2ray/default.json',
+			incy_subscription_template TEXT NOT NULL DEFAULT 'v2ray/default.json',
 			singbox_subscription_template TEXT NOT NULL DEFAULT 'singbox/default.json',
 			singbox_settings_template TEXT NOT NULL DEFAULT 'singbox/settings.json',
 			mux_template TEXT NOT NULL DEFAULT 'mux/default.json',
@@ -58,6 +60,7 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 			use_custom_json_for_v2rayng INTEGER NOT NULL DEFAULT 0,
 			use_custom_json_for_streisand INTEGER NOT NULL DEFAULT 0,
 			use_custom_json_for_happ INTEGER NOT NULL DEFAULT 0,
+			use_custom_json_for_incy INTEGER NOT NULL DEFAULT 0,
 			subscription_aliases TEXT NOT NULL DEFAULT '[]',
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL
@@ -487,8 +490,11 @@ func TestSubscriptionTemplateContentRoutes(t *testing.T) {
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions", token, `{"clash_subscription_template":"../escape.yml"}`)
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("set traversal template status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := db.Exec(`UPDATE subscription_settings SET clash_subscription_template = '../escape.yml'`); err != nil {
+		t.Fatal(err)
 	}
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions/templates/clash_subscription_template", token, `{"content":"nope"}`)
 	if rec.Code != http.StatusBadRequest {

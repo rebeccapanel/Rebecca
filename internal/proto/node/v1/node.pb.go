@@ -498,6 +498,7 @@ type RuntimeConfigRequest struct {
 	OperationId    string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
 	ConfigJson     string                 `protobuf:"bytes,2,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
 	IncludeDbUsers bool                   `protobuf:"varint,3,opt,name=include_db_users,json=includeDbUsers,proto3" json:"include_db_users,omitempty"`
+	OvRuntimeJson  string                 `protobuf:"bytes,4,opt,name=ov_runtime_json,json=ovRuntimeJson,proto3" json:"ov_runtime_json,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -551,6 +552,13 @@ func (x *RuntimeConfigRequest) GetIncludeDbUsers() bool {
 		return x.IncludeDbUsers
 	}
 	return false
+}
+
+func (x *RuntimeConfigRequest) GetOvRuntimeJson() string {
+	if x != nil {
+		return x.OvRuntimeJson
+	}
+	return ""
 }
 
 type StopRuntimeRequest struct {
@@ -1497,6 +1505,186 @@ func (x *ServiceUpdateRequest) GetVersion() string {
 	return ""
 }
 
+type HostRebootRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostRebootRequest) Reset() {
+	*x = HostRebootRequest{}
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostRebootRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostRebootRequest) ProtoMessage() {}
+
+func (x *HostRebootRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostRebootRequest.ProtoReflect.Descriptor instead.
+func (*HostRebootRequest) Descriptor() ([]byte, []int) {
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *HostRebootRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+type IPBlockRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Blocks        []*IPBlockEntry        `protobuf:"bytes,2,rep,name=blocks,proto3" json:"blocks,omitempty"`
+	TcpPorts      []uint32               `protobuf:"varint,3,rep,packed,name=tcp_ports,json=tcpPorts,proto3" json:"tcp_ports,omitempty"`
+	UdpPorts      []uint32               `protobuf:"varint,4,rep,packed,name=udp_ports,json=udpPorts,proto3" json:"udp_ports,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IPBlockRequest) Reset() {
+	*x = IPBlockRequest{}
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IPBlockRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IPBlockRequest) ProtoMessage() {}
+
+func (x *IPBlockRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IPBlockRequest.ProtoReflect.Descriptor instead.
+func (*IPBlockRequest) Descriptor() ([]byte, []int) {
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *IPBlockRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *IPBlockRequest) GetBlocks() []*IPBlockEntry {
+	if x != nil {
+		return x.Blocks
+	}
+	return nil
+}
+
+func (x *IPBlockRequest) GetTcpPorts() []uint32 {
+	if x != nil {
+		return x.TcpPorts
+	}
+	return nil
+}
+
+func (x *IPBlockRequest) GetUdpPorts() []uint32 {
+	if x != nil {
+		return x.UdpPorts
+	}
+	return nil
+}
+
+type IPBlockEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ip            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
+	TtlSeconds    uint32                 `protobuf:"varint,2,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	UserUid       string                 `protobuf:"bytes,3,opt,name=user_uid,json=userUid,proto3" json:"user_uid,omitempty"`
+	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IPBlockEntry) Reset() {
+	*x = IPBlockEntry{}
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IPBlockEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IPBlockEntry) ProtoMessage() {}
+
+func (x *IPBlockEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IPBlockEntry.ProtoReflect.Descriptor instead.
+func (*IPBlockEntry) Descriptor() ([]byte, []int) {
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *IPBlockEntry) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
+func (x *IPBlockEntry) GetTtlSeconds() uint32 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+func (x *IPBlockEntry) GetUserUid() string {
+	if x != nil {
+		return x.UserUid
+	}
+	return ""
+}
+
+func (x *IPBlockEntry) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 type SystemMetrics struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	CpuCores           int32                  `protobuf:"varint,1,opt,name=cpu_cores,json=cpuCores,proto3" json:"cpu_cores,omitempty"`
@@ -1512,7 +1700,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[25]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1524,7 +1712,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[25]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1537,7 +1725,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{25}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *SystemMetrics) GetCpuCores() int32 {
@@ -1601,7 +1789,7 @@ type TransferMetrics struct {
 
 func (x *TransferMetrics) Reset() {
 	*x = TransferMetrics{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[26]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1613,7 +1801,7 @@ func (x *TransferMetrics) String() string {
 func (*TransferMetrics) ProtoMessage() {}
 
 func (x *TransferMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[26]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1626,7 +1814,7 @@ func (x *TransferMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferMetrics.ProtoReflect.Descriptor instead.
 func (*TransferMetrics) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{26}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *TransferMetrics) GetUplinkTotal() uint64 {
@@ -1667,7 +1855,7 @@ type CollectUsageRequest struct {
 
 func (x *CollectUsageRequest) Reset() {
 	*x = CollectUsageRequest{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[27]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1679,7 +1867,7 @@ func (x *CollectUsageRequest) String() string {
 func (*CollectUsageRequest) ProtoMessage() {}
 
 func (x *CollectUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[27]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1692,7 +1880,7 @@ func (x *CollectUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectUsageRequest.ProtoReflect.Descriptor instead.
 func (*CollectUsageRequest) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{27}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CollectUsageRequest) GetCollectorId() string {
@@ -1713,13 +1901,14 @@ type UserUsageBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BatchId       string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
 	Stats         []*UserUsageSample     `protobuf:"bytes,2,rep,name=stats,proto3" json:"stats,omitempty"`
+	OnlineIps     []*OnlineUserIP        `protobuf:"bytes,3,rep,name=online_ips,json=onlineIps,proto3" json:"online_ips,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UserUsageBatch) Reset() {
 	*x = UserUsageBatch{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[28]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1731,7 +1920,7 @@ func (x *UserUsageBatch) String() string {
 func (*UserUsageBatch) ProtoMessage() {}
 
 func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[28]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1744,7 +1933,7 @@ func (x *UserUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageBatch.ProtoReflect.Descriptor instead.
 func (*UserUsageBatch) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{28}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *UserUsageBatch) GetBatchId() string {
@@ -1761,6 +1950,13 @@ func (x *UserUsageBatch) GetStats() []*UserUsageSample {
 	return nil
 }
 
+func (x *UserUsageBatch) GetOnlineIps() []*OnlineUserIP {
+	if x != nil {
+		return x.OnlineIps
+	}
+	return nil
+}
+
 type UserUsageSample struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
@@ -1771,7 +1967,7 @@ type UserUsageSample struct {
 
 func (x *UserUsageSample) Reset() {
 	*x = UserUsageSample{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[29]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1783,7 +1979,7 @@ func (x *UserUsageSample) String() string {
 func (*UserUsageSample) ProtoMessage() {}
 
 func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[29]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1796,7 +1992,7 @@ func (x *UserUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUsageSample.ProtoReflect.Descriptor instead.
 func (*UserUsageSample) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{29}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *UserUsageSample) GetUid() string {
@@ -1813,6 +2009,118 @@ func (x *UserUsageSample) GetValue() uint64 {
 	return 0
 }
 
+type OnlineUserIP struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
+	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	Ips           []*OnlineIP            `protobuf:"bytes,3,rep,name=ips,proto3" json:"ips,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OnlineUserIP) Reset() {
+	*x = OnlineUserIP{}
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OnlineUserIP) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OnlineUserIP) ProtoMessage() {}
+
+func (x *OnlineUserIP) ProtoReflect() protoreflect.Message {
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OnlineUserIP.ProtoReflect.Descriptor instead.
+func (*OnlineUserIP) Descriptor() ([]byte, []int) {
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *OnlineUserIP) GetUid() string {
+	if x != nil {
+		return x.Uid
+	}
+	return ""
+}
+
+func (x *OnlineUserIP) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *OnlineUserIP) GetIps() []*OnlineIP {
+	if x != nil {
+		return x.Ips
+	}
+	return nil
+}
+
+type OnlineIP struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ip            string                 `protobuf:"bytes,1,opt,name=ip,proto3" json:"ip,omitempty"`
+	LastSeenUnix  int64                  `protobuf:"varint,2,opt,name=last_seen_unix,json=lastSeenUnix,proto3" json:"last_seen_unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OnlineIP) Reset() {
+	*x = OnlineIP{}
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OnlineIP) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OnlineIP) ProtoMessage() {}
+
+func (x *OnlineIP) ProtoReflect() protoreflect.Message {
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OnlineIP.ProtoReflect.Descriptor instead.
+func (*OnlineIP) Descriptor() ([]byte, []int) {
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *OnlineIP) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
+func (x *OnlineIP) GetLastSeenUnix() int64 {
+	if x != nil {
+		return x.LastSeenUnix
+	}
+	return 0
+}
+
 type OutboundUsageBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BatchId       string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
@@ -1823,7 +2131,7 @@ type OutboundUsageBatch struct {
 
 func (x *OutboundUsageBatch) Reset() {
 	*x = OutboundUsageBatch{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[30]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1835,7 +2143,7 @@ func (x *OutboundUsageBatch) String() string {
 func (*OutboundUsageBatch) ProtoMessage() {}
 
 func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[30]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1848,7 +2156,7 @@ func (x *OutboundUsageBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageBatch.ProtoReflect.Descriptor instead.
 func (*OutboundUsageBatch) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{30}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *OutboundUsageBatch) GetBatchId() string {
@@ -1876,7 +2184,7 @@ type OutboundUsageSample struct {
 
 func (x *OutboundUsageSample) Reset() {
 	*x = OutboundUsageSample{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[31]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1888,7 +2196,7 @@ func (x *OutboundUsageSample) String() string {
 func (*OutboundUsageSample) ProtoMessage() {}
 
 func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[31]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1901,7 +2209,7 @@ func (x *OutboundUsageSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboundUsageSample.ProtoReflect.Descriptor instead.
 func (*OutboundUsageSample) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{31}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *OutboundUsageSample) GetTag() string {
@@ -1934,7 +2242,7 @@ type AckUsageRequest struct {
 
 func (x *AckUsageRequest) Reset() {
 	*x = AckUsageRequest{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[32]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +2254,7 @@ func (x *AckUsageRequest) String() string {
 func (*AckUsageRequest) ProtoMessage() {}
 
 func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[32]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1959,7 +2267,7 @@ func (x *AckUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageRequest.ProtoReflect.Descriptor instead.
 func (*AckUsageRequest) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{32}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AckUsageRequest) GetBatchId() string {
@@ -1979,7 +2287,7 @@ type AckUsageResponse struct {
 
 func (x *AckUsageResponse) Reset() {
 	*x = AckUsageResponse{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[33]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1991,7 +2299,7 @@ func (x *AckUsageResponse) String() string {
 func (*AckUsageResponse) ProtoMessage() {}
 
 func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[33]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2004,7 +2312,7 @@ func (x *AckUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckUsageResponse.ProtoReflect.Descriptor instead.
 func (*AckUsageResponse) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{33}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AckUsageResponse) GetBatchId() string {
@@ -2032,7 +2340,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[34]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2044,7 +2352,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[34]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2057,7 +2365,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{34}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *StreamLogsRequest) GetStreamId() string {
@@ -2092,7 +2400,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[35]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2104,7 +2412,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_rebecca_node_v1_node_proto_msgTypes[35]
+	mi := &file_rebecca_node_v1_node_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2117,7 +2425,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{35}
+	return file_rebecca_node_v1_node_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *LogLine) GetStreamId() string {
@@ -2176,12 +2484,13 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\fnode_version\x18\x04 \x01(\tR\vnodeVersion\x12!\n" +
 	"\finstall_mode\x18\x05 \x01(\tR\vinstallMode\x12%\n" +
 	"\x0eupdate_channel\x18\x06 \x01(\tR\rupdateChannel\x12\x18\n" +
-	"\amessage\x18\a \x01(\tR\amessage\"\x84\x01\n" +
+	"\amessage\x18\a \x01(\tR\amessage\"\xac\x01\n" +
 	"\x14RuntimeConfigRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1f\n" +
 	"\vconfig_json\x18\x02 \x01(\tR\n" +
 	"configJson\x12(\n" +
-	"\x10include_db_users\x18\x03 \x01(\bR\x0eincludeDbUsers\"r\n" +
+	"\x10include_db_users\x18\x03 \x01(\bR\x0eincludeDbUsers\x12&\n" +
+	"\x0fov_runtime_json\x18\x04 \x01(\tR\rovRuntimeJson\"r\n" +
 	"\x12StopRuntimeRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x129\n" +
 	"\x19collect_usage_before_stop\x18\x02 \x01(\bR\x16collectUsageBeforeStop\"\xa9\x01\n" +
@@ -2249,7 +2558,20 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x14ServiceUpdateRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\"\x9f\x02\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\"6\n" +
+	"\x11HostRebootRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\"\xa4\x01\n" +
+	"\x0eIPBlockRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x125\n" +
+	"\x06blocks\x18\x02 \x03(\v2\x1d.rebecca.node.v1.IPBlockEntryR\x06blocks\x12\x1b\n" +
+	"\ttcp_ports\x18\x03 \x03(\rR\btcpPorts\x12\x1b\n" +
+	"\tudp_ports\x18\x04 \x03(\rR\budpPorts\"r\n" +
+	"\fIPBlockEntry\x12\x0e\n" +
+	"\x02ip\x18\x01 \x01(\tR\x02ip\x12\x1f\n" +
+	"\vttl_seconds\x18\x02 \x01(\rR\n" +
+	"ttlSeconds\x12\x19\n" +
+	"\buser_uid\x18\x03 \x01(\tR\auserUid\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x9f\x02\n" +
 	"\rSystemMetrics\x12\x1b\n" +
 	"\tcpu_cores\x18\x01 \x01(\x05R\bcpuCores\x12(\n" +
 	"\x10cpu_frequency_hz\x18\x02 \x01(\x01R\x0ecpuFrequencyHz\x12*\n" +
@@ -2266,13 +2588,22 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x0edownload_speed\x18\x04 \x01(\x04R\rdownloadSpeed\"N\n" +
 	"\x13CollectUsageRequest\x12!\n" +
 	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x14\n" +
-	"\x05reset\x18\x02 \x01(\bR\x05reset\"c\n" +
+	"\x05reset\x18\x02 \x01(\bR\x05reset\"\xa1\x01\n" +
 	"\x0eUserUsageBatch\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x126\n" +
-	"\x05stats\x18\x02 \x03(\v2 .rebecca.node.v1.UserUsageSampleR\x05stats\"9\n" +
+	"\x05stats\x18\x02 \x03(\v2 .rebecca.node.v1.UserUsageSampleR\x05stats\x12<\n" +
+	"\n" +
+	"online_ips\x18\x03 \x03(\v2\x1d.rebecca.node.v1.OnlineUserIPR\tonlineIps\"9\n" +
 	"\x0fUserUsageSample\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value\"k\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value\"c\n" +
+	"\fOnlineUserIP\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12+\n" +
+	"\x03ips\x18\x03 \x03(\v2\x19.rebecca.node.v1.OnlineIPR\x03ips\"@\n" +
+	"\bOnlineIP\x12\x0e\n" +
+	"\x02ip\x18\x01 \x01(\tR\x02ip\x12$\n" +
+	"\x0elast_seen_unix\x18\x02 \x01(\x03R\flastSeenUnix\"k\n" +
 	"\x12OutboundUsageBatch\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x12:\n" +
 	"\x05stats\x18\x02 \x03(\v2$.rebecca.node.v1.OutboundUsageSampleR\x05stats\"K\n" +
@@ -2296,8 +2627,7 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\x12NodeControlService\x12F\n" +
 	"\x05Hello\x12\x1d.rebecca.node.v1.HelloRequest\x1a\x1e.rebecca.node.v1.HelloResponse\x12L\n" +
 	"\aConnect\x12\x1f.rebecca.node.v1.ConnectRequest\x1a .rebecca.node.v1.ConnectResponse\x12I\n" +
-	"\x06Health\x12\x1e.rebecca.node.v1.HealthRequest\x1a\x1f.rebecca.node.v1.HealthResponse2\x9a\n" +
-	"\n" +
+	"\x06Health\x12\x1e.rebecca.node.v1.HealthRequest\x1a\x1f.rebecca.node.v1.HealthResponse2\xce\v\n" +
 	"\x12NodeRuntimeService\x12]\n" +
 	"\fStartRuntime\x12%.rebecca.node.v1.RuntimeConfigRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12_\n" +
 	"\x0eRestartRuntime\x12%.rebecca.node.v1.RuntimeConfigRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12Z\n" +
@@ -2315,7 +2645,10 @@ const file_rebecca_node_v1_node_proto_rawDesc = "" +
 	"\rUpdateRuntime\x12%.rebecca.node.v1.RuntimeUpdateRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12V\n" +
 	"\tUpdateGeo\x12!.rebecca.node.v1.GeoUpdateRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12`\n" +
 	"\x0eRestartService\x12&.rebecca.node.v1.ServiceRestartRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12^\n" +
-	"\rUpdateService\x12%.rebecca.node.v1.ServiceUpdateRequest\x1a&.rebecca.node.v1.RuntimeActionResponse2\xfe\x02\n" +
+	"\rUpdateService\x12%.rebecca.node.v1.ServiceUpdateRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12X\n" +
+	"\n" +
+	"RebootHost\x12\".rebecca.node.v1.HostRebootRequest\x1a&.rebecca.node.v1.RuntimeActionResponse\x12X\n" +
+	"\rApplyIPBlocks\x12\x1f.rebecca.node.v1.IPBlockRequest\x1a&.rebecca.node.v1.RuntimeActionResponse2\xfe\x02\n" +
 	"\x10NodeUsageService\x12Y\n" +
 	"\x10CollectUserUsage\x12$.rebecca.node.v1.CollectUsageRequest\x1a\x1f.rebecca.node.v1.UserUsageBatch\x12S\n" +
 	"\fAckUserUsage\x12 .rebecca.node.v1.AckUsageRequest\x1a!.rebecca.node.v1.AckUsageResponse\x12a\n" +
@@ -2337,7 +2670,7 @@ func file_rebecca_node_v1_node_proto_rawDescGZIP() []byte {
 	return file_rebecca_node_v1_node_proto_rawDescData
 }
 
-var file_rebecca_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_rebecca_node_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_rebecca_node_v1_node_proto_goTypes = []any{
 	(*Empty)(nil),                    // 0: rebecca.node.v1.Empty
 	(*HelloRequest)(nil),             // 1: rebecca.node.v1.HelloRequest
@@ -2364,18 +2697,23 @@ var file_rebecca_node_v1_node_proto_goTypes = []any{
 	(*GeoFile)(nil),                  // 22: rebecca.node.v1.GeoFile
 	(*ServiceRestartRequest)(nil),    // 23: rebecca.node.v1.ServiceRestartRequest
 	(*ServiceUpdateRequest)(nil),     // 24: rebecca.node.v1.ServiceUpdateRequest
-	(*SystemMetrics)(nil),            // 25: rebecca.node.v1.SystemMetrics
-	(*TransferMetrics)(nil),          // 26: rebecca.node.v1.TransferMetrics
-	(*CollectUsageRequest)(nil),      // 27: rebecca.node.v1.CollectUsageRequest
-	(*UserUsageBatch)(nil),           // 28: rebecca.node.v1.UserUsageBatch
-	(*UserUsageSample)(nil),          // 29: rebecca.node.v1.UserUsageSample
-	(*OutboundUsageBatch)(nil),       // 30: rebecca.node.v1.OutboundUsageBatch
-	(*OutboundUsageSample)(nil),      // 31: rebecca.node.v1.OutboundUsageSample
-	(*AckUsageRequest)(nil),          // 32: rebecca.node.v1.AckUsageRequest
-	(*AckUsageResponse)(nil),         // 33: rebecca.node.v1.AckUsageResponse
-	(*StreamLogsRequest)(nil),        // 34: rebecca.node.v1.StreamLogsRequest
-	(*LogLine)(nil),                  // 35: rebecca.node.v1.LogLine
-	nil,                              // 36: rebecca.node.v1.InboundUser.FieldsEntry
+	(*HostRebootRequest)(nil),        // 25: rebecca.node.v1.HostRebootRequest
+	(*IPBlockRequest)(nil),           // 26: rebecca.node.v1.IPBlockRequest
+	(*IPBlockEntry)(nil),             // 27: rebecca.node.v1.IPBlockEntry
+	(*SystemMetrics)(nil),            // 28: rebecca.node.v1.SystemMetrics
+	(*TransferMetrics)(nil),          // 29: rebecca.node.v1.TransferMetrics
+	(*CollectUsageRequest)(nil),      // 30: rebecca.node.v1.CollectUsageRequest
+	(*UserUsageBatch)(nil),           // 31: rebecca.node.v1.UserUsageBatch
+	(*UserUsageSample)(nil),          // 32: rebecca.node.v1.UserUsageSample
+	(*OnlineUserIP)(nil),             // 33: rebecca.node.v1.OnlineUserIP
+	(*OnlineIP)(nil),                 // 34: rebecca.node.v1.OnlineIP
+	(*OutboundUsageBatch)(nil),       // 35: rebecca.node.v1.OutboundUsageBatch
+	(*OutboundUsageSample)(nil),      // 36: rebecca.node.v1.OutboundUsageSample
+	(*AckUsageRequest)(nil),          // 37: rebecca.node.v1.AckUsageRequest
+	(*AckUsageResponse)(nil),         // 38: rebecca.node.v1.AckUsageResponse
+	(*StreamLogsRequest)(nil),        // 39: rebecca.node.v1.StreamLogsRequest
+	(*LogLine)(nil),                  // 40: rebecca.node.v1.LogLine
+	nil,                              // 41: rebecca.node.v1.InboundUser.FieldsEntry
 }
 var file_rebecca_node_v1_node_proto_depIdxs = []int32{
 	7,  // 0: rebecca.node.v1.HelloResponse.runtime:type_name -> rebecca.node.v1.RuntimeState
@@ -2384,62 +2722,69 @@ var file_rebecca_node_v1_node_proto_depIdxs = []int32{
 	15, // 3: rebecca.node.v1.HealthResponse.metrics:type_name -> rebecca.node.v1.MetricsResponse
 	7,  // 4: rebecca.node.v1.RuntimeActionResponse.runtime:type_name -> rebecca.node.v1.RuntimeState
 	13, // 5: rebecca.node.v1.InboundUserRequest.user:type_name -> rebecca.node.v1.InboundUser
-	36, // 6: rebecca.node.v1.InboundUser.fields:type_name -> rebecca.node.v1.InboundUser.FieldsEntry
+	41, // 6: rebecca.node.v1.InboundUser.fields:type_name -> rebecca.node.v1.InboundUser.FieldsEntry
 	7,  // 7: rebecca.node.v1.MetricsResponse.runtime:type_name -> rebecca.node.v1.RuntimeState
-	25, // 8: rebecca.node.v1.MetricsResponse.system:type_name -> rebecca.node.v1.SystemMetrics
-	26, // 9: rebecca.node.v1.MetricsResponse.transfer:type_name -> rebecca.node.v1.TransferMetrics
+	28, // 8: rebecca.node.v1.MetricsResponse.system:type_name -> rebecca.node.v1.SystemMetrics
+	29, // 9: rebecca.node.v1.MetricsResponse.transfer:type_name -> rebecca.node.v1.TransferMetrics
 	22, // 10: rebecca.node.v1.GeoUpdateRequest.files:type_name -> rebecca.node.v1.GeoFile
-	29, // 11: rebecca.node.v1.UserUsageBatch.stats:type_name -> rebecca.node.v1.UserUsageSample
-	31, // 12: rebecca.node.v1.OutboundUsageBatch.stats:type_name -> rebecca.node.v1.OutboundUsageSample
-	1,  // 13: rebecca.node.v1.NodeControlService.Hello:input_type -> rebecca.node.v1.HelloRequest
-	3,  // 14: rebecca.node.v1.NodeControlService.Connect:input_type -> rebecca.node.v1.ConnectRequest
-	5,  // 15: rebecca.node.v1.NodeControlService.Health:input_type -> rebecca.node.v1.HealthRequest
-	8,  // 16: rebecca.node.v1.NodeRuntimeService.StartRuntime:input_type -> rebecca.node.v1.RuntimeConfigRequest
-	8,  // 17: rebecca.node.v1.NodeRuntimeService.RestartRuntime:input_type -> rebecca.node.v1.RuntimeConfigRequest
-	9,  // 18: rebecca.node.v1.NodeRuntimeService.StopRuntime:input_type -> rebecca.node.v1.StopRuntimeRequest
-	8,  // 19: rebecca.node.v1.NodeRuntimeService.SyncConfig:input_type -> rebecca.node.v1.RuntimeConfigRequest
-	11, // 20: rebecca.node.v1.NodeRuntimeService.AddUser:input_type -> rebecca.node.v1.InboundUserRequest
-	11, // 21: rebecca.node.v1.NodeRuntimeService.UpdateUser:input_type -> rebecca.node.v1.InboundUserRequest
-	12, // 22: rebecca.node.v1.NodeRuntimeService.RemoveUser:input_type -> rebecca.node.v1.RemoveInboundUserRequest
-	14, // 23: rebecca.node.v1.NodeRuntimeService.Metrics:input_type -> rebecca.node.v1.MetricsRequest
-	16, // 24: rebecca.node.v1.NodeRuntimeService.PublicIPs:input_type -> rebecca.node.v1.PublicIPsRequest
-	18, // 25: rebecca.node.v1.NodeRuntimeService.TestOutbound:input_type -> rebecca.node.v1.OutboundTestRequest
-	20, // 26: rebecca.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> rebecca.node.v1.RuntimeUpdateRequest
-	21, // 27: rebecca.node.v1.NodeRuntimeService.UpdateGeo:input_type -> rebecca.node.v1.GeoUpdateRequest
-	23, // 28: rebecca.node.v1.NodeRuntimeService.RestartService:input_type -> rebecca.node.v1.ServiceRestartRequest
-	24, // 29: rebecca.node.v1.NodeRuntimeService.UpdateService:input_type -> rebecca.node.v1.ServiceUpdateRequest
-	27, // 30: rebecca.node.v1.NodeUsageService.CollectUserUsage:input_type -> rebecca.node.v1.CollectUsageRequest
-	32, // 31: rebecca.node.v1.NodeUsageService.AckUserUsage:input_type -> rebecca.node.v1.AckUsageRequest
-	27, // 32: rebecca.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> rebecca.node.v1.CollectUsageRequest
-	32, // 33: rebecca.node.v1.NodeUsageService.AckOutboundUsage:input_type -> rebecca.node.v1.AckUsageRequest
-	34, // 34: rebecca.node.v1.NodeLogsService.StreamLogs:input_type -> rebecca.node.v1.StreamLogsRequest
-	2,  // 35: rebecca.node.v1.NodeControlService.Hello:output_type -> rebecca.node.v1.HelloResponse
-	4,  // 36: rebecca.node.v1.NodeControlService.Connect:output_type -> rebecca.node.v1.ConnectResponse
-	6,  // 37: rebecca.node.v1.NodeControlService.Health:output_type -> rebecca.node.v1.HealthResponse
-	10, // 38: rebecca.node.v1.NodeRuntimeService.StartRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 39: rebecca.node.v1.NodeRuntimeService.RestartRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 40: rebecca.node.v1.NodeRuntimeService.StopRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 41: rebecca.node.v1.NodeRuntimeService.SyncConfig:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 42: rebecca.node.v1.NodeRuntimeService.AddUser:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 43: rebecca.node.v1.NodeRuntimeService.UpdateUser:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 44: rebecca.node.v1.NodeRuntimeService.RemoveUser:output_type -> rebecca.node.v1.RuntimeActionResponse
-	15, // 45: rebecca.node.v1.NodeRuntimeService.Metrics:output_type -> rebecca.node.v1.MetricsResponse
-	17, // 46: rebecca.node.v1.NodeRuntimeService.PublicIPs:output_type -> rebecca.node.v1.PublicIPsResponse
-	19, // 47: rebecca.node.v1.NodeRuntimeService.TestOutbound:output_type -> rebecca.node.v1.OutboundTestResponse
-	10, // 48: rebecca.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 49: rebecca.node.v1.NodeRuntimeService.UpdateGeo:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 50: rebecca.node.v1.NodeRuntimeService.RestartService:output_type -> rebecca.node.v1.RuntimeActionResponse
-	10, // 51: rebecca.node.v1.NodeRuntimeService.UpdateService:output_type -> rebecca.node.v1.RuntimeActionResponse
-	28, // 52: rebecca.node.v1.NodeUsageService.CollectUserUsage:output_type -> rebecca.node.v1.UserUsageBatch
-	33, // 53: rebecca.node.v1.NodeUsageService.AckUserUsage:output_type -> rebecca.node.v1.AckUsageResponse
-	30, // 54: rebecca.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> rebecca.node.v1.OutboundUsageBatch
-	33, // 55: rebecca.node.v1.NodeUsageService.AckOutboundUsage:output_type -> rebecca.node.v1.AckUsageResponse
-	35, // 56: rebecca.node.v1.NodeLogsService.StreamLogs:output_type -> rebecca.node.v1.LogLine
-	35, // [35:57] is the sub-list for method output_type
-	13, // [13:35] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	27, // 11: rebecca.node.v1.IPBlockRequest.blocks:type_name -> rebecca.node.v1.IPBlockEntry
+	32, // 12: rebecca.node.v1.UserUsageBatch.stats:type_name -> rebecca.node.v1.UserUsageSample
+	33, // 13: rebecca.node.v1.UserUsageBatch.online_ips:type_name -> rebecca.node.v1.OnlineUserIP
+	34, // 14: rebecca.node.v1.OnlineUserIP.ips:type_name -> rebecca.node.v1.OnlineIP
+	36, // 15: rebecca.node.v1.OutboundUsageBatch.stats:type_name -> rebecca.node.v1.OutboundUsageSample
+	1,  // 16: rebecca.node.v1.NodeControlService.Hello:input_type -> rebecca.node.v1.HelloRequest
+	3,  // 17: rebecca.node.v1.NodeControlService.Connect:input_type -> rebecca.node.v1.ConnectRequest
+	5,  // 18: rebecca.node.v1.NodeControlService.Health:input_type -> rebecca.node.v1.HealthRequest
+	8,  // 19: rebecca.node.v1.NodeRuntimeService.StartRuntime:input_type -> rebecca.node.v1.RuntimeConfigRequest
+	8,  // 20: rebecca.node.v1.NodeRuntimeService.RestartRuntime:input_type -> rebecca.node.v1.RuntimeConfigRequest
+	9,  // 21: rebecca.node.v1.NodeRuntimeService.StopRuntime:input_type -> rebecca.node.v1.StopRuntimeRequest
+	8,  // 22: rebecca.node.v1.NodeRuntimeService.SyncConfig:input_type -> rebecca.node.v1.RuntimeConfigRequest
+	11, // 23: rebecca.node.v1.NodeRuntimeService.AddUser:input_type -> rebecca.node.v1.InboundUserRequest
+	11, // 24: rebecca.node.v1.NodeRuntimeService.UpdateUser:input_type -> rebecca.node.v1.InboundUserRequest
+	12, // 25: rebecca.node.v1.NodeRuntimeService.RemoveUser:input_type -> rebecca.node.v1.RemoveInboundUserRequest
+	14, // 26: rebecca.node.v1.NodeRuntimeService.Metrics:input_type -> rebecca.node.v1.MetricsRequest
+	16, // 27: rebecca.node.v1.NodeRuntimeService.PublicIPs:input_type -> rebecca.node.v1.PublicIPsRequest
+	18, // 28: rebecca.node.v1.NodeRuntimeService.TestOutbound:input_type -> rebecca.node.v1.OutboundTestRequest
+	20, // 29: rebecca.node.v1.NodeRuntimeService.UpdateRuntime:input_type -> rebecca.node.v1.RuntimeUpdateRequest
+	21, // 30: rebecca.node.v1.NodeRuntimeService.UpdateGeo:input_type -> rebecca.node.v1.GeoUpdateRequest
+	23, // 31: rebecca.node.v1.NodeRuntimeService.RestartService:input_type -> rebecca.node.v1.ServiceRestartRequest
+	24, // 32: rebecca.node.v1.NodeRuntimeService.UpdateService:input_type -> rebecca.node.v1.ServiceUpdateRequest
+	25, // 33: rebecca.node.v1.NodeRuntimeService.RebootHost:input_type -> rebecca.node.v1.HostRebootRequest
+	26, // 34: rebecca.node.v1.NodeRuntimeService.ApplyIPBlocks:input_type -> rebecca.node.v1.IPBlockRequest
+	30, // 35: rebecca.node.v1.NodeUsageService.CollectUserUsage:input_type -> rebecca.node.v1.CollectUsageRequest
+	37, // 36: rebecca.node.v1.NodeUsageService.AckUserUsage:input_type -> rebecca.node.v1.AckUsageRequest
+	30, // 37: rebecca.node.v1.NodeUsageService.CollectOutboundUsage:input_type -> rebecca.node.v1.CollectUsageRequest
+	37, // 38: rebecca.node.v1.NodeUsageService.AckOutboundUsage:input_type -> rebecca.node.v1.AckUsageRequest
+	39, // 39: rebecca.node.v1.NodeLogsService.StreamLogs:input_type -> rebecca.node.v1.StreamLogsRequest
+	2,  // 40: rebecca.node.v1.NodeControlService.Hello:output_type -> rebecca.node.v1.HelloResponse
+	4,  // 41: rebecca.node.v1.NodeControlService.Connect:output_type -> rebecca.node.v1.ConnectResponse
+	6,  // 42: rebecca.node.v1.NodeControlService.Health:output_type -> rebecca.node.v1.HealthResponse
+	10, // 43: rebecca.node.v1.NodeRuntimeService.StartRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 44: rebecca.node.v1.NodeRuntimeService.RestartRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 45: rebecca.node.v1.NodeRuntimeService.StopRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 46: rebecca.node.v1.NodeRuntimeService.SyncConfig:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 47: rebecca.node.v1.NodeRuntimeService.AddUser:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 48: rebecca.node.v1.NodeRuntimeService.UpdateUser:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 49: rebecca.node.v1.NodeRuntimeService.RemoveUser:output_type -> rebecca.node.v1.RuntimeActionResponse
+	15, // 50: rebecca.node.v1.NodeRuntimeService.Metrics:output_type -> rebecca.node.v1.MetricsResponse
+	17, // 51: rebecca.node.v1.NodeRuntimeService.PublicIPs:output_type -> rebecca.node.v1.PublicIPsResponse
+	19, // 52: rebecca.node.v1.NodeRuntimeService.TestOutbound:output_type -> rebecca.node.v1.OutboundTestResponse
+	10, // 53: rebecca.node.v1.NodeRuntimeService.UpdateRuntime:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 54: rebecca.node.v1.NodeRuntimeService.UpdateGeo:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 55: rebecca.node.v1.NodeRuntimeService.RestartService:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 56: rebecca.node.v1.NodeRuntimeService.UpdateService:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 57: rebecca.node.v1.NodeRuntimeService.RebootHost:output_type -> rebecca.node.v1.RuntimeActionResponse
+	10, // 58: rebecca.node.v1.NodeRuntimeService.ApplyIPBlocks:output_type -> rebecca.node.v1.RuntimeActionResponse
+	31, // 59: rebecca.node.v1.NodeUsageService.CollectUserUsage:output_type -> rebecca.node.v1.UserUsageBatch
+	38, // 60: rebecca.node.v1.NodeUsageService.AckUserUsage:output_type -> rebecca.node.v1.AckUsageResponse
+	35, // 61: rebecca.node.v1.NodeUsageService.CollectOutboundUsage:output_type -> rebecca.node.v1.OutboundUsageBatch
+	38, // 62: rebecca.node.v1.NodeUsageService.AckOutboundUsage:output_type -> rebecca.node.v1.AckUsageResponse
+	40, // 63: rebecca.node.v1.NodeLogsService.StreamLogs:output_type -> rebecca.node.v1.LogLine
+	40, // [40:64] is the sub-list for method output_type
+	16, // [16:40] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_rebecca_node_v1_node_proto_init() }
@@ -2453,7 +2798,7 @@ func file_rebecca_node_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rebecca_node_v1_node_proto_rawDesc), len(file_rebecca_node_v1_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   37,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

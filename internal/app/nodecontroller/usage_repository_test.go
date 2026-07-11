@@ -476,6 +476,16 @@ func TestParseUserUsageSampleUID(t *testing.T) {
 	if !ok || userID != 42 || onlineOnly {
 		t.Fatalf("unexpected xray stat marker parse: id=%d onlineOnly=%v ok=%v", userID, onlineOnly, ok)
 	}
+
+	userID, onlineOnly, ok = parseUserUsageSampleUID("openvpn:42")
+	if !ok || userID != 42 || onlineOnly {
+		t.Fatalf("unexpected OV marker parse: id=%d onlineOnly=%v ok=%v", userID, onlineOnly, ok)
+	}
+
+	userID, onlineOnly, ok = parseUserUsageSampleUID("online:openvpn:42")
+	if !ok || userID != 42 || !onlineOnly {
+		t.Fatalf("unexpected online OV marker parse: id=%d onlineOnly=%v ok=%v", userID, onlineOnly, ok)
+	}
 }
 
 func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {

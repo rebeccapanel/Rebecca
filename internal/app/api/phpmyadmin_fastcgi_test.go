@@ -1,6 +1,8 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -27,5 +29,18 @@ func TestRewritePHPMyAdminBodyRemovesFrameProtection(t *testing.T) {
 	}
 	if !strings.Contains(rewritten, phpMyAdminEmbedPath+"themes/pmahomme/css/theme.css") {
 		t.Fatalf("expected phpMyAdmin paths to be rewritten, got %s", rewritten)
+	}
+}
+
+func TestPHPMyAdminEnvValueReadsRebeccaEnvFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte("MYSQL_ROOT_PASSWORD = \"root-pass\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REBECCA_ENV_FILE", path)
+	t.Setenv("MYSQL_ROOT_PASSWORD", "")
+
+	if got := phpMyAdminEnvValue("MYSQL_ROOT_PASSWORD"); got != "root-pass" {
+		t.Fatalf("expected root password from env file, got %q", got)
 	}
 }

@@ -107,6 +107,8 @@ CREATE TABLE subscription_settings (
 	home_page_template VARCHAR(255) NOT NULL DEFAULT 'home/index.html',
 	v2ray_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
 	v2ray_settings_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/settings.json',
+	happ_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
+	incy_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
 	singbox_subscription_template VARCHAR(255) NOT NULL DEFAULT 'singbox/default.json',
 	singbox_settings_template VARCHAR(255) NOT NULL DEFAULT 'singbox/settings.json',
 	mux_template VARCHAR(255) NOT NULL DEFAULT 'mux/default.json',
@@ -115,6 +117,7 @@ CREATE TABLE subscription_settings (
 	use_custom_json_for_v2rayng INTEGER NOT NULL DEFAULT 0,
 	use_custom_json_for_streisand INTEGER NOT NULL DEFAULT 0,
 	use_custom_json_for_happ INTEGER NOT NULL DEFAULT 0,
+	use_custom_json_for_incy INTEGER NOT NULL DEFAULT 0,
 	subscription_aliases TEXT NOT NULL DEFAULT '[]',
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -134,6 +137,8 @@ CREATE TABLE subscription_settings (
 	home_page_template VARCHAR(255) NOT NULL DEFAULT 'home/index.html',
 	v2ray_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
 	v2ray_settings_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/settings.json',
+	happ_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
+	incy_subscription_template VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json',
 	singbox_subscription_template VARCHAR(255) NOT NULL DEFAULT 'singbox/default.json',
 	singbox_settings_template VARCHAR(255) NOT NULL DEFAULT 'singbox/settings.json',
 	mux_template VARCHAR(255) NOT NULL DEFAULT 'mux/default.json',
@@ -142,6 +147,7 @@ CREATE TABLE subscription_settings (
 	use_custom_json_for_v2rayng BOOLEAN NOT NULL DEFAULT 0,
 	use_custom_json_for_streisand BOOLEAN NOT NULL DEFAULT 0,
 	use_custom_json_for_happ BOOLEAN NOT NULL DEFAULT 0,
+	use_custom_json_for_incy BOOLEAN NOT NULL DEFAULT 0,
 	subscription_aliases TEXT NOT NULL,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -183,6 +189,8 @@ func subscriptionSettingsColumns() []struct {
 		{"home_page_template", "VARCHAR(255) NOT NULL DEFAULT 'home/index.html'", ""},
 		{"v2ray_subscription_template", "VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json'", ""},
 		{"v2ray_settings_template", "VARCHAR(255) NOT NULL DEFAULT 'v2ray/settings.json'", ""},
+		{"happ_subscription_template", "VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json'", ""},
+		{"incy_subscription_template", "VARCHAR(255) NOT NULL DEFAULT 'v2ray/default.json'", ""},
 		{"singbox_subscription_template", "VARCHAR(255) NOT NULL DEFAULT 'singbox/default.json'", ""},
 		{"singbox_settings_template", "VARCHAR(255) NOT NULL DEFAULT 'singbox/settings.json'", ""},
 		{"mux_template", "VARCHAR(255) NOT NULL DEFAULT 'mux/default.json'", ""},
@@ -191,6 +199,7 @@ func subscriptionSettingsColumns() []struct {
 		{"use_custom_json_for_v2rayng", "INTEGER NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT 0"},
 		{"use_custom_json_for_streisand", "INTEGER NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT 0"},
 		{"use_custom_json_for_happ", "INTEGER NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"use_custom_json_for_incy", "INTEGER NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT 0"},
 		{"subscription_aliases", "TEXT NOT NULL DEFAULT '[]'", "TEXT NULL"},
 		{"created_at", "DATETIME NULL", ""},
 		{"updated_at", "DATETIME NULL", ""},
@@ -212,6 +221,8 @@ func normalizeSubscriptionSettingsRows(ctx context.Context, tx *sql.Tx) error {
 		`UPDATE subscription_settings SET home_page_template = 'home/index.html' WHERE home_page_template IS NULL OR TRIM(home_page_template) = ''`,
 		`UPDATE subscription_settings SET v2ray_subscription_template = 'v2ray/default.json' WHERE v2ray_subscription_template IS NULL OR TRIM(v2ray_subscription_template) = ''`,
 		`UPDATE subscription_settings SET v2ray_settings_template = 'v2ray/settings.json' WHERE v2ray_settings_template IS NULL OR TRIM(v2ray_settings_template) = ''`,
+		`UPDATE subscription_settings SET happ_subscription_template = 'v2ray/default.json' WHERE happ_subscription_template IS NULL OR TRIM(happ_subscription_template) = ''`,
+		`UPDATE subscription_settings SET incy_subscription_template = 'v2ray/default.json' WHERE incy_subscription_template IS NULL OR TRIM(incy_subscription_template) = ''`,
 		`UPDATE subscription_settings SET singbox_subscription_template = 'singbox/default.json' WHERE singbox_subscription_template IS NULL OR TRIM(singbox_subscription_template) = ''`,
 		`UPDATE subscription_settings SET singbox_settings_template = 'singbox/settings.json' WHERE singbox_settings_template IS NULL OR TRIM(singbox_settings_template) = ''`,
 		`UPDATE subscription_settings SET mux_template = 'mux/default.json' WHERE mux_template IS NULL OR TRIM(mux_template) = ''`,
@@ -220,6 +231,7 @@ func normalizeSubscriptionSettingsRows(ctx context.Context, tx *sql.Tx) error {
 		`UPDATE subscription_settings SET use_custom_json_for_v2rayng = 0 WHERE use_custom_json_for_v2rayng IS NULL`,
 		`UPDATE subscription_settings SET use_custom_json_for_streisand = 0 WHERE use_custom_json_for_streisand IS NULL`,
 		`UPDATE subscription_settings SET use_custom_json_for_happ = 0 WHERE use_custom_json_for_happ IS NULL`,
+		`UPDATE subscription_settings SET use_custom_json_for_incy = 0 WHERE use_custom_json_for_incy IS NULL`,
 	}
 	for _, query := range updates {
 		if _, err := tx.ExecContext(ctx, query); err != nil {
@@ -251,6 +263,8 @@ INSERT INTO subscription_settings (
 	home_page_template,
 	v2ray_subscription_template,
 	v2ray_settings_template,
+	happ_subscription_template,
+	incy_subscription_template,
 	singbox_subscription_template,
 	singbox_settings_template,
 	mux_template,
@@ -259,8 +273,9 @@ INSERT INTO subscription_settings (
 	use_custom_json_for_v2rayng,
 	use_custom_json_for_streisand,
 	use_custom_json_for_happ,
+	use_custom_json_for_incy,
 	subscription_aliases
-) VALUES ('', 'Subscription', 'https://t.me/', '12', 'sub', '[]', 'clash/default.yml', 'clash/settings.yml', 'subscription/index.html', 'home/index.html', 'v2ray/default.json', 'v2ray/settings.json', 'singbox/default.json', 'singbox/settings.json', 'mux/default.json', 0, 0, 0, 0, 0, '[]')`)
+) VALUES ('', 'Subscription', 'https://t.me/', '12', 'sub', '[]', 'clash/default.yml', 'clash/settings.yml', 'subscription/index.html', 'home/index.html', 'v2ray/default.json', 'v2ray/settings.json', 'v2ray/default.json', 'v2ray/default.json', 'singbox/default.json', 'singbox/settings.json', 'mux/default.json', 0, 0, 0, 0, 0, 0, '[]')`)
 	return err
 }
 

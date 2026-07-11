@@ -329,6 +329,231 @@ func TestParseRejectsInvalidExecutableInbound(t *testing.T) {
 	}
 }
 
+func TestParseRejectsIncompleteOVInbound(t *testing.T) {
+	base := func(settings map[string]any) map[string]any {
+		return map[string]any{
+			"inbounds": []any{
+				map[string]any{
+					"tag":      "ov",
+					"port":     1194,
+					"protocol": "openvpn",
+					"settings": settings,
+				},
+			},
+			"outbounds": []any{
+				map[string]any{"tag": "DIRECT", "protocol": "freedom"},
+			},
+		}
+	}
+	validSettings := map[string]any{
+		"transport":          "udp",
+		"tunnel_port":        51194,
+		"ipv4_pool_cidr":     "10.66.0.0/16",
+		"ca":                 "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
+		"server_certificate": "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----",
+		"server_key":         "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+	}
+	if _, err := Parse(base(validSettings), Options{}); err != nil {
+		t.Fatalf("valid OV inbound rejected: %v", err)
+	}
+	directSettings := map[string]any{}
+	for key, value := range validSettings {
+		directSettings[key] = value
+	}
+	directSettings["tproxy_enabled"] = false
+	delete(directSettings, "tunnel_port")
+	if _, err := Parse(base(directSettings), Options{}); err != nil {
+		t.Fatalf("direct OV inbound without tunnel_port rejected: %v", err)
+	}
+	dcoSettings := map[string]any{}
+	for key, value := range validSettings {
+		dcoSettings[key] = value
+	}
+	dcoSettings["require_dco"] = true
+	dcoSettings["cipher"] = "AES-256-CBC"
+	if _, err := Parse(base(dcoSettings), Options{}); err == nil || !strings.Contains(err.Error(), "not DCO-compatible") {
+		t.Fatalf("expected DCO cipher validation error, got %v", err)
+	}
+
+	cases := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "missing tunnel port", key: "tunnel_port", want: "tunnel_port is required"},
+		{name: "missing ca", key: "ca", want: "ca is required"},
+		{name: "missing server certificate", key: "server_certificate", want: "server_certificate is required"},
+		{name: "missing server key", key: "server_key", want: "server_key is required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[string]any{}
+			for key, value := range validSettings {
+				settings[key] = value
+			}
+			delete(settings, tc.key)
+			_, err := Parse(base(settings), Options{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
+	base := func(settings map[string]any) map[string]any {
+		return map[string]any{
+			"inbounds": []any{
+				map[string]any{
+					"tag":      "l2tp",
+					"port":     1701,
+					"protocol": "l2tp",
+					"settings": settings,
+				},
+			},
+			"outbounds": []any{
+				map[string]any{"tag": "DIRECT", "protocol": "freedom"},
+			},
+		}
+	}
+	validSettings := map[string]any{
+		"tunnel_port":    1702,
+		"ipv4_pool_cidr": "10.67.0.0/16",
+		"ipsec_psk":      "secret",
+	}
+	if _, err := Parse(base(validSettings), Options{}); err != nil {
+		t.Fatalf("valid L2TP inbound rejected: %v", err)
+	}
+	invalidPort := base(validSettings)
+	invalidPort["inbounds"].([]any)[0].(map[string]any)["port"] = 4999
+	if _, err := Parse(invalidPort, Options{}); err == nil || !strings.Contains(err.Error(), "L2TP port must be 1701") {
+		t.Fatalf("expected L2TP port validation error, got %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "missing psk", key: "ipsec_psk", want: "ipsec_psk is required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[string]any{}
+			for key, value := range validSettings {
+				settings[key] = value
+			}
+			delete(settings, tc.key)
+			_, err := Parse(base(settings), Options{})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{
+			map[string]any{
+				"tag":      "l2tp-edge",
+				"port":     1701,
+				"protocol": "l2tp",
+				"settings": map[string]any{
+					"tunnel_port":    1702,
+					"ipv4_pool_cidr": "10.67.0.0/16",
+					"ipsec_psk":      "secret",
+				},
+			},
+		},
+		"routing": map[string]any{
+			"rules": []any{
+				map[string]any{"type": "field", "inboundTag": []any{"l2tp-edge"}, "outboundTag": "warp"},
+			},
+		},
+	}
+	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
+	inbound := runtime["inbounds"].([]any)[0].(map[string]any)
+	if inbound["protocol"] != "dokodemo-door" || inbound["tag"] != "__rebecca_l2tp_tunnel__l2tp-edge" {
+		t.Fatalf("unexpected runtime inbound: %#v", inbound)
+	}
+	rule := runtime["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	tags := rule["inboundTag"].([]any)
+	if len(tags) != 1 || tags[0] != "__rebecca_l2tp_tunnel__l2tp-edge" {
+		t.Fatalf("unexpected translated rule: %#v", rule)
+	}
+}
+
+func TestTranslateDirectVirtualInboundSkipsRuntimeTunnelAndRouting(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{
+			map[string]any{
+				"tag":      "ov-direct",
+				"port":     1194,
+				"protocol": "openvpn",
+				"settings": map[string]any{
+					"tproxy_enabled":     false,
+					"ipv4_pool_cidr":     "10.66.0.0/16",
+					"ca":                 "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----",
+					"server_certificate": "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----",
+					"server_key":         "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----",
+				},
+			},
+			map[string]any{"tag": "vless", "port": 443, "protocol": "vless", "settings": map[string]any{}},
+		},
+		"routing": map[string]any{
+			"rules": []any{
+				map[string]any{"type": "field", "inboundTag": []any{"ov-direct"}, "outboundTag": "warp"},
+				map[string]any{"type": "field", "inboundTag": []any{"vless", "ov-direct"}, "outboundTag": "direct"},
+			},
+		},
+	}
+	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
+	inbounds := runtime["inbounds"].([]any)
+	if len(inbounds) != 1 || inbounds[0].(map[string]any)["tag"] != "vless" {
+		t.Fatalf("unexpected runtime inbounds: %#v", inbounds)
+	}
+	rules := runtime["routing"].(map[string]any)["rules"].([]any)
+	if len(rules) != 1 {
+		t.Fatalf("unexpected runtime rules: %#v", rules)
+	}
+	tags := rules[0].(map[string]any)["inboundTag"].([]any)
+	if len(tags) != 1 || tags[0] != "vless" {
+		t.Fatalf("unexpected filtered rule: %#v", rules[0])
+	}
+}
+
+func TestPPTPNATDoesNotReserveL2TPTunnelPort(t *testing.T) {
+	ports := inboundRuntimePorts(map[string]any{
+		"tag":      "pptp-direct",
+		"port":     1723,
+		"protocol": "pptp",
+		"settings": map[string]any{"tproxy_enabled": false},
+	})
+	if len(ports) != 1 || ports[0] != 1723 {
+		t.Fatalf("unexpected PPTP NAT runtime ports: %#v", ports)
+	}
+}
+
+func TestPPTPRejectsPoolLargerThan24(t *testing.T) {
+	err := validateVirtualTunnelInbound("pptp", map[string]any{
+		"tag":      "pptp",
+		"port":     1723,
+		"protocol": "pptp",
+		"settings": map[string]any{
+			"ipv4_pool_cidr": "10.68.0.0/16",
+			"tproxy_enabled": false,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "/24 or narrower") {
+		t.Fatalf("expected PPTP pool validation error, got %v", err)
+	}
+}
+
 func hasAPIInbound(payload map[string]any) bool {
 	for _, inbound := range payload["inbounds"].([]any) {
 		if inbound.(map[string]any)["tag"] == "API_INBOUND" {

@@ -45,14 +45,16 @@ type phpMyAdminResponse struct {
 	PublicURL   string `json:"public_url"`
 	ExternalURL string `json:"external_url"`
 	EmbedURL    string `json:"embed_url"`
+	LoginMode   string `json:"login_mode"`
 }
 
 type phpMyAdminCredentials struct {
-	Username string
-	Password string
-	Host     string
-	Port     string
-	Database string
+	Username        string
+	Password        string
+	Host            string
+	Port            string
+	Database        string
+	LimitToDatabase bool
 }
 
 type jsonRaw = json.RawMessage
@@ -172,7 +174,7 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusConflict, "phpMyAdmin is disabled")
 		return
 	}
-	credentials, err := parsePHPMyAdminCredentials(s.cfg.Database)
+	credentials, err := s.phpMyAdminCredentials(r.Context())
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -243,6 +245,7 @@ func (s *Server) phpMyAdminStatus(r *http.Request) phpMyAdminResponse {
 		PublicURL:   publicURL,
 		ExternalURL: publicURL,
 		EmbedURL:    "/api/settings/phpmyadmin/embed-html",
+		LoginMode:   normalizePHPMyAdminLoginMode(settings.PHPMyAdminLoginMode),
 	}
 }
 
@@ -319,12 +322,67 @@ func parsePHPMyAdminCredentials(databaseURL string) (phpMyAdminCredentials, erro
 		database = unescaped
 	}
 	return phpMyAdminCredentials{
-		Username: username,
-		Password: password,
-		Host:     host,
-		Port:     port,
-		Database: database,
+		Username:        username,
+		Password:        password,
+		Host:            host,
+		Port:            port,
+		Database:        database,
+		LimitToDatabase: true,
 	}, nil
+}
+
+func (s *Server) phpMyAdminCredentials(ctx context.Context) (phpMyAdminCredentials, error) {
+	credentials, err := parsePHPMyAdminCredentials(s.cfg.Database)
+	if err != nil {
+		return phpMyAdminCredentials{}, err
+	}
+	if strings.EqualFold(credentials.Username, "root") && strings.TrimSpace(credentials.Password) == "" {
+		credentials.Password = phpMyAdminEnvValue("MYSQL_ROOT_PASSWORD")
+	}
+	settings, err := s.settingsRepo.RuntimeSettings(ctx)
+	if err != nil {
+		return credentials, nil
+	}
+	if normalizePHPMyAdminLoginMode(settings.PHPMyAdminLoginMode) != "custom" {
+		return credentials, nil
+	}
+	username := firstNonEmpty(strings.TrimSpace(settings.PHPMyAdminUsername), phpMyAdminEnvValue("PHPMYADMIN_USERNAME", "MYSQL_USER"))
+	if username == "" {
+		return credentials, nil
+	}
+	credentials.Username = username
+	credentials.Password = settings.PHPMyAdminPassword
+	if strings.TrimSpace(credentials.Password) == "" {
+		if strings.EqualFold(username, "root") {
+			credentials.Password = phpMyAdminEnvValue("PHPMYADMIN_PASSWORD", "MYSQL_ROOT_PASSWORD")
+		} else {
+			credentials.Password = phpMyAdminEnvValue("PHPMYADMIN_PASSWORD", "MYSQL_PASSWORD")
+		}
+	}
+	credentials.LimitToDatabase = false
+	return credentials, nil
+}
+
+func phpMyAdminEnvValue(keys ...string) string {
+	env := loadEnvFiles()
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(env[key]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizePHPMyAdminLoginMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "custom":
+		return "custom"
+	default:
+		return "rebecca"
+	}
 }
 
 func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme string) error {
@@ -337,11 +395,20 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 		themeLine = "$cfg['ThemeDefault'] = 'blueberry';\n"
 	}
 	onlyDBLine := ""
-	if strings.TrimSpace(credentials.Database) != "" {
+	if credentials.LimitToDatabase && strings.TrimSpace(credentials.Database) != "" {
 		onlyDBLine = "$cfg['Servers'][$i]['only_db'] = " + phpString(credentials.Database) + ";\n"
+	}
+	allowNoPassword := "false"
+	if strings.TrimSpace(credentials.Password) == "" {
+		allowNoPassword = "true"
 	}
 	config := "<?php\n" +
 		"declare(strict_types=1);\n" +
+		"ini_set('upload_max_filesize', '4096M');\n" +
+		"ini_set('post_max_size', '4096M');\n" +
+		"ini_set('memory_limit', '4096M');\n" +
+		"ini_set('max_execution_time', '0');\n" +
+		"ini_set('max_input_time', '0');\n" +
 		"$i = 1;\n" +
 		"$cfg['Servers'] = [];\n" +
 		"$cfg['Servers'][$i] = [];\n" +
@@ -351,9 +418,10 @@ func ensurePHPMyAdminRuntimeConfig(credentials phpMyAdminCredentials, theme stri
 		"$cfg['Servers'][$i]['connect_type'] = 'tcp';\n" +
 		"$cfg['Servers'][$i]['user'] = " + phpString(credentials.Username) + ";\n" +
 		"$cfg['Servers'][$i]['password'] = " + phpString(credentials.Password) + ";\n" +
-		"$cfg['Servers'][$i]['AllowNoPassword'] = false;\n" +
+		"$cfg['Servers'][$i]['AllowNoPassword'] = " + allowNoPassword + ";\n" +
 		onlyDBLine +
 		"$cfg['AllowArbitraryServer'] = false;\n" +
+		"$cfg['ExecTimeLimit'] = 0;\n" +
 		themeLine
 	if err := os.WriteFile("/etc/phpmyadmin/conf.d/rebecca.php", []byte(config), 0o644); err != nil {
 		return fmt.Errorf("write phpMyAdmin runtime config: %w", err)

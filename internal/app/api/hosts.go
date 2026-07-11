@@ -205,6 +205,10 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 			return nil, statusError{status: http.StatusBadRequest, detail: fmt.Sprintf("Inbound %s doesn't exist", inboundTag)}
 		}
 	}
+	inboundProtocols := make(map[string]string, len(payload))
+	for inboundTag := range payload {
+		inboundProtocols[inboundTag] = s.hostInboundProtocol(r.Context(), inboundTag)
+	}
 
 	allKeptIDs := make(map[int64]bool)
 	for _, hosts := range payload {
@@ -228,13 +232,16 @@ func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) 
 		if err := ensureHostInboundRecordTx(r.Context(), tx, inboundTag); err != nil {
 			return nil, err
 		}
-		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, payload[inboundTag], allKeptIDs, affectedServices, beforeServiceTags); err != nil {
+		if err := s.replaceHostsForInboundTx(r, tx, inboundTag, inboundProtocols[inboundTag], payload[inboundTag], allKeptIDs, affectedServices, beforeServiceTags); err != nil {
 			return nil, err
 		}
 	}
 	changedServices, err := changedServiceRuntimeInboundSetsTx(r.Context(), tx, beforeServiceTags, affectedServices)
 	if err != nil {
 		return nil, err
+	}
+	for serviceID := range affectedServices {
+		changedServices[serviceID] = true
 	}
 	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return nil, err
@@ -279,6 +286,9 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	if err != nil {
 		return hostResponse{}, err
 	}
+	for serviceID := range serviceSet {
+		changedServices[serviceID] = true
+	}
 	if err := enqueueAffectedServicesUsersTx(r.Context(), tx, changedServices); err != nil {
 		return hostResponse{}, err
 	}
@@ -288,7 +298,7 @@ func (s *Server) updateHostStatus(r *http.Request, hostID int64, disabled bool) 
 	return queryHostByID(r, s.db, hostID)
 }
 
-func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool, beforeServiceTags map[int64]map[string]bool) error {
+func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTag string, inboundProtocol string, payload []hostPayload, keptIDs map[int64]bool, affectedServices map[int64]bool, beforeServiceTags map[int64]map[string]bool) error {
 	existing, err := existingHostIDsForInboundTx(r.Context(), tx, inboundTag)
 	if err != nil {
 		return err
@@ -300,26 +310,21 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 
 	for _, host := range payload {
 		host = normalizeHostPayload(host)
+		host = sanitizeHostPayloadForInboundProtocol(host, inboundProtocol)
 		if err := validateHostPayload(host); err != nil {
 			return err
 		}
 		if host.ID != nil && *host.ID > 0 {
-			oldTag, oldDisabled, err := hostRuntimeLinkStateTx(r.Context(), tx, *host.ID)
-			if err != nil {
-				return err
-			}
 			if exists, err := hostExistsTx(r.Context(), tx, *host.ID); err != nil {
 				return err
 			} else if exists {
 				newDisabled := boolPtrValue(host.IsDisabled)
-				if oldTag != inboundTag || oldDisabled != newDisabled {
-					oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
-					if err != nil {
-						return err
-					}
-					if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
-						return err
-					}
+				oldServices, err := serviceIDsForHostTx(r.Context(), tx, *host.ID)
+				if err != nil {
+					return err
+				}
+				if err := addAffectedServiceIDsTx(r.Context(), tx, affectedServices, beforeServiceTags, oldServices); err != nil {
+					return err
 				}
 				if err := updateHostTx(r.Context(), tx, inboundTag, host); err != nil {
 					return err
@@ -363,6 +368,40 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 		}
 	}
 	return nil
+}
+
+func (s *Server) hostInboundProtocol(ctx context.Context, tag string) string {
+	inbound, err := s.configRepo.GetInbound(ctx, tag)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(fmt.Sprint(inbound["protocol"])))
+}
+
+func sanitizeHostPayloadForInboundProtocol(payload hostPayload, protocol string) hostPayload {
+	if protocol != "openvpn" {
+		return payload
+	}
+	payload.Port = nil
+	payload.Path = nil
+	payload.SNI = nil
+	payload.SNIOptions = nil
+	payload.SNIMode = "random"
+	payload.SNITTL = nil
+	payload.Host = nil
+	payload.HostOptions = nil
+	payload.HostMode = "random"
+	payload.HostTTL = nil
+	payload.Security = "inbound_default"
+	payload.ALPN = "none"
+	payload.Fingerprint = "none"
+	payload.AllowInsecure = nil
+	payload.MuxEnable = boolPtr(false)
+	payload.FragmentSetting = nil
+	payload.NoiseSetting = nil
+	payload.RandomUserAgent = boolPtr(false)
+	payload.UseSNIAsHost = boolPtr(false)
+	return payload
 }
 
 func (s *Server) manageableInboundTags(r *http.Request) ([]string, error) {
@@ -941,19 +980,6 @@ func hostExistsTx(ctx context.Context, tx *sql.Tx, hostID int64) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
-}
-
-func hostRuntimeLinkStateTx(ctx context.Context, tx *sql.Tx, hostID int64) (string, bool, error) {
-	var inboundTag string
-	var disabled int
-	err := tx.QueryRowContext(ctx, `SELECT inbound_tag, COALESCE(is_disabled, 0) FROM hosts WHERE id = ? LIMIT 1`, hostID).Scan(&inboundTag, &disabled)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	return inboundTag, disabled != 0, nil
 }
 
 func serviceIDsForHostTx(ctx context.Context, tx *sql.Tx, hostID int64) ([]int64, error) {

@@ -445,6 +445,7 @@ type GeoDialogTarget =
 type ServiceActionConfirm =
 	| { type: "restart"; node: NodeType; label: string }
 	| { type: "update"; node: NodeType; label: string }
+	| { type: "reboot"; node: NodeType; label: string }
 	| {
 			type: "disable";
 			node: NodeType;
@@ -458,7 +459,8 @@ type ServiceActionConfirm =
 				| "bulk-disable"
 				| "bulk-delete"
 				| "bulk-reset"
-				| "bulk-update";
+				| "bulk-update"
+				| "bulk-reboot";
 			nodes: NodeType[];
 			count: number;
 			hostImpact?: NodeHostImpact;
@@ -517,6 +519,7 @@ export const NodesPage: FC = () => {
 		regenerateNodeCertificate,
 		reconnectNode,
 		restartNodeService,
+		rebootNodeHost,
 		updateNodeService,
 		resetNodeUsage,
 		deleteNode,
@@ -560,6 +563,9 @@ export const NodesPage: FC = () => {
 	const [restartingServiceNodeId, setRestartingServiceNodeId] = useState<
 		number | null
 	>(null);
+	const [rebootingHostNodeId, setRebootingHostNodeId] = useState<number | null>(
+		null,
+	);
 	const [updatingServiceNodeId, setUpdatingServiceNodeId] = useState<
 		number | null
 	>(null);
@@ -913,6 +919,26 @@ export const NodesPage: FC = () => {
 			},
 		});
 
+	const { mutate: rebootHostMutate, isLoading: isRebootingHost } =
+		useMutation(rebootNodeHost, {
+			onMutate: (node: NodeType) => {
+				setRebootingHostNodeId(node.id ?? null);
+			},
+			onSuccess: () => {
+				generateSuccessMessage(
+					t("nodes.rebootHostTriggered", "Node reboot requested"),
+					toast,
+				);
+				queryClient.invalidateQueries(FetchNodesQueryKey);
+			},
+			onError: (err) => {
+				generateErrorMessage(err, toast);
+			},
+			onSettled: () => {
+				setRebootingHostNodeId(null);
+			},
+		});
+
 	const runToggleNodeStatus = (node: NodeType) => {
 		if (!node?.id) return;
 		const isEnabled = node.status !== "disabled";
@@ -1002,6 +1028,12 @@ export const NodesPage: FC = () => {
 		setServiceActionConfirm({ type: "update", node, label });
 	};
 
+	const handleRebootNodeHost = (node: NodeType) => {
+		if (!node?.id) return;
+		const label = node.name || node.address || t("nodes.thisNode", "this node");
+		setServiceActionConfirm({ type: "reboot", node, label });
+	};
+
 	const copyToClipboard = async (
 		value: string | null | undefined,
 		label: string,
@@ -1089,6 +1121,11 @@ export const NodesPage: FC = () => {
 			setServiceActionConfirm(null);
 			return;
 		}
+		if (serviceActionConfirm.type === "reboot") {
+			rebootHostMutate(serviceActionConfirm.node);
+			setServiceActionConfirm(null);
+			return;
+		}
 		if (serviceActionConfirm.type === "disable") {
 			const targetNode = serviceActionConfirm.node;
 			const hostImpact = serviceActionConfirm.hostImpact;
@@ -1110,7 +1147,8 @@ export const NodesPage: FC = () => {
 			serviceActionConfirm.type === "bulk-disable" ||
 			serviceActionConfirm.type === "bulk-delete" ||
 			serviceActionConfirm.type === "bulk-reset" ||
-			serviceActionConfirm.type === "bulk-update"
+			serviceActionConfirm.type === "bulk-update" ||
+			serviceActionConfirm.type === "bulk-reboot"
 		) {
 			const actionType = serviceActionConfirm.type;
 			const targetNodes = serviceActionConfirm.nodes.filter(
@@ -1161,6 +1199,11 @@ export const NodesPage: FC = () => {
 								body: {
 									channel: getNodeUpdateChannel(node, nodeUpdateChannel),
 								},
+							});
+							break;
+						case "bulk-reboot":
+							await apiFetch(`/node/${node.id}/host/reboot`, {
+								method: "POST",
 							});
 							break;
 						default:
@@ -1648,7 +1691,8 @@ export const NodesPage: FC = () => {
 			| "bulk-disable"
 			| "bulk-delete"
 			| "bulk-reset"
-			| "bulk-update",
+			| "bulk-update"
+			| "bulk-reboot",
 		nodesForAction: NodeType[],
 	) => {
 		if (nodesForAction.length === 0) {
@@ -1738,6 +1782,8 @@ export const NodesPage: FC = () => {
 			? t("nodes.restartServiceAction", "Restart node service")
 			: serviceActionConfirm?.type === "update"
 				? t("nodes.updateServiceAction", "Update node service")
+				: serviceActionConfirm?.type === "reboot"
+					? t("nodes.rebootHostAction", "Reboot server")
 				: serviceActionConfirm?.type === "disable"
 					? t("nodes.disableNode", "Disable node")
 				: serviceActionConfirm?.type === "update-all"
@@ -1752,6 +1798,8 @@ export const NodesPage: FC = () => {
 									? t("nodes.bulkResetTraffic", "Reset selected traffic")
 									: serviceActionConfirm?.type === "bulk-update"
 										? t("nodes.bulkUpdateService", "Update selected services")
+										: serviceActionConfirm?.type === "bulk-reboot"
+											? t("nodes.bulkRebootHost", "Reboot selected servers")
 					: "";
 
 	const serviceActionConfirmMessage =
@@ -1767,6 +1815,12 @@ export const NodesPage: FC = () => {
 						"Send an update request to {{name}}? The node will download updates and restart.",
 						{ name: serviceActionConfirm.label },
 					)
+				: serviceActionConfirm?.type === "reboot"
+					? t(
+							"nodes.rebootHostConfirm",
+							"Reboot {{name}} now? All active connections on this node will disconnect until the server comes back online.",
+							{ name: serviceActionConfirm.label },
+						)
 				: serviceActionConfirm?.type === "disable"
 					? renderHostImpactMessage(
 							t("nodes.disableConfirm", "Disable {{name}}?", {
@@ -1816,11 +1870,19 @@ export const NodesPage: FC = () => {
 												"Update Rebecca-node service on {{count}} selected binary nodes?",
 												{ count: serviceActionConfirm.count },
 											)
+										: serviceActionConfirm?.type === "bulk-reboot"
+											? t(
+													"nodes.bulkRebootHostConfirm",
+													"Reboot {{count}} selected node servers now? All active connections on those nodes will disconnect until the servers come back online.",
+													{ count: serviceActionConfirm.count },
+												)
 					: "";
 
 	const serviceActionConfirmLabel =
 		serviceActionConfirm?.type === "restart"
 			? t("nodes.restartServiceAction", "Restart node service")
+			: serviceActionConfirm?.type === "reboot"
+				? t("nodes.rebootHostAction", "Reboot server")
 			: serviceActionConfirm?.type === "update-all"
 				? t("nodes.updateAllNodeServices", "Update all node services")
 				: serviceActionConfirm?.type === "disable"
@@ -1835,11 +1897,14 @@ export const NodesPage: FC = () => {
 								? t("nodes.resetUsage", "Reset usage")
 								: serviceActionConfirm?.type === "bulk-update"
 									? t("nodes.updateServiceAction", "Update node service")
+									: serviceActionConfirm?.type === "bulk-reboot"
+										? t("nodes.rebootHostAction", "Reboot server")
 				: t("nodes.updateServiceAction", "Update node service");
 
 	const serviceActionConfirmLoading =
 		isRestartingService ||
 		isUpdatingService ||
+		isRebootingHost ||
 		hostCleanupLoading ||
 		updatingBulkService ||
 		Boolean(bulkNodeActionLoading);
@@ -2042,6 +2107,7 @@ export const NodesPage: FC = () => {
 				maxWidth: "142px",
 				truncate: true,
 				tooltip: true,
+				align: "start",
 				mobileLabel: t("nodes.runtime", "Runtime"),
 				mobilePriority: 4,
 				cell: (node) => {
@@ -2068,9 +2134,10 @@ export const NodesPage: FC = () => {
 						[node.node_install_mode, node.node_update_channel]
 							.filter(Boolean)
 							.join(" / ") || EMPTY_CELL_VALUE;
+					const rebootRequired = /reboot/i.test(node.message ?? "");
 					return (
 						<VStack
-							align="center"
+							align="start"
 							justify="center"
 							spacing={1}
 							minW={0}
@@ -2084,7 +2151,7 @@ export const NodesPage: FC = () => {
 									maxW="full"
 									overflow="hidden"
 									whiteSpace="nowrap"
-									justifyContent="center"
+									justifyContent="flex-start"
 								>
 									{t("nodes.nodeServiceVersionTag", {
 										version: nodeRuntimeDisplayVersion,
@@ -2101,7 +2168,7 @@ export const NodesPage: FC = () => {
 								noOfLines={1}
 								minW={0}
 								maxW="full"
-								textAlign="center"
+								textAlign="start"
 							>
 								{nodeInstallLabel}
 							</Text>
@@ -2124,6 +2191,27 @@ export const NodesPage: FC = () => {
 									isDisabled={!nodeId || !nodeHostActionsAvailable}
 								>
 									{t("nodes.updateAvailable", "Update available")}
+								</Button>
+							)}
+							{rebootRequired && (
+								<Button
+									size="xs"
+									variant="link"
+									colorScheme="red"
+									flexShrink={0}
+									leftIcon={<ArrowPathIconStyled />}
+									onClick={(event) => {
+										event.stopPropagation();
+										handleRebootNodeHost(node);
+									}}
+									isLoading={
+										isRebootingHost &&
+										nodeId != null &&
+										rebootingHostNodeId === nodeId
+									}
+									isDisabled={!nodeId || !nodeHostActionsAvailable}
+								>
+									{t("nodes.rebootRequired", "Reboot required")}
 								</Button>
 							)}
 						</VStack>
@@ -2314,11 +2402,14 @@ export const NodesPage: FC = () => {
 			},
 		],
 		[
+			handleRebootNodeHost,
 			handleUpdateNodeService,
 			hostActionsAvailable,
+			isRebootingHost,
 			isUpdatingService,
 			maintenanceInfo,
 			nodeUpdateChannel,
+			rebootingHostNodeId,
 			t,
 			updatingServiceNodeId,
 		],
@@ -2339,6 +2430,8 @@ export const NodesPage: FC = () => {
 			isRestartingService && nodeId != null && restartingServiceNodeId === nodeId;
 		const isUpdatingMaintenance =
 			isUpdatingService && nodeId != null && updatingServiceNodeId === nodeId;
+		const isRebootingMaintenance =
+			isRebootingHost && nodeId != null && rebootingHostNodeId === nodeId;
 
 		return [
 			{
@@ -2394,6 +2487,15 @@ export const NodesPage: FC = () => {
 				onClick: () => handleUpdateNodeService(node),
 				isDisabled:
 					!nodeId || !nodeHostActionsAvailable || isUpdatingMaintenance,
+			},
+			{
+				id: "reboot-host",
+				label: t("nodes.rebootHostAction", "Reboot server"),
+				icon: <ArrowPathIconStyled />,
+				onClick: () => handleRebootNodeHost(node),
+				isDisabled:
+					!nodeId || !nodeHostActionsAvailable || isRebootingMaintenance,
+				isDanger: true,
 			},
 			{
 				id: "reset-usage",
@@ -2918,6 +3020,23 @@ export const NodesPage: FC = () => {
 						</Button>
 						<Button
 							size="sm"
+							variant="outline"
+							leftIcon={<ArrowPathIconStyled />}
+							onClick={() =>
+								openBulkActionConfirm(
+									"bulk-reboot",
+									selectedConnectedBinaryNodes(),
+								)
+							}
+							isDisabled={
+								Boolean(bulkNodeActionLoading) ||
+								selectedConnectedBinaryNodes().length === 0
+							}
+						>
+							{t("nodes.rebootHostAction", "Reboot server")}
+						</Button>
+						<Button
+							size="sm"
 							colorScheme="red"
 							variant="outline"
 							leftIcon={<DeleteIconStyled />}
@@ -2971,8 +3090,11 @@ export const NodesPage: FC = () => {
 				colorScheme={
 					serviceActionConfirm?.type === "restart"
 						? "orange"
+						: serviceActionConfirm?.type === "reboot"
+							? "red"
 						: serviceActionConfirm?.type === "bulk-delete" ||
-								serviceActionConfirm?.type === "bulk-reset"
+								serviceActionConfirm?.type === "bulk-reset" ||
+								serviceActionConfirm?.type === "bulk-reboot"
 							? "red"
 							: "blue"
 				}

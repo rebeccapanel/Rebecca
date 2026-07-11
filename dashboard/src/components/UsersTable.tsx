@@ -24,6 +24,7 @@ import {
 	CircleStackIcon,
 	ClipboardIcon,
 	ClockIcon,
+	GlobeAltIcon,
 	LinkIcon,
 	NoSymbolIcon,
 	PencilIcon,
@@ -121,6 +122,23 @@ const ExtendIcon = chakra(ClockIcon, iconProps);
 const UsageHistoryIcon = chakra(ChartBarIcon, iconProps);
 const DataLimitIcon = chakra(CircleStackIcon, iconProps);
 const ExpiryIcon = chakra(CalendarDaysIcon, iconProps);
+const IPsIcon = chakra(GlobeAltIcon, iconProps);
+
+type UserIPRecord = {
+	node_id: number;
+	node_name?: string;
+	protocol: string;
+	inbound_tag?: string;
+	session_id?: string;
+	ip?: string;
+	assigned_ip?: string;
+	last_seen_at?: string;
+};
+
+type UserIPsResponse = {
+	username: string;
+	ips: UserIPRecord[];
+};
 
 const getResetStrategy = (strategy: string): string => {
 	const entry = resetStrategy.find((item) => item.value === strategy);
@@ -478,6 +496,54 @@ export const UsersTable: FC<UsersTableProps> = ({
 			refetchUsers(true);
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
+		} finally {
+			setContextAction(null);
+			closeContextMenu();
+		}
+	};
+
+	const formatUserIPRecords = (records: UserIPRecord[]) => {
+		if (records.length === 0) {
+			return t("usersTable.noOnlineIps", "No online IPs found.");
+		}
+		return records
+			.map((record) => {
+				const node = record.node_name || `node-${record.node_id}`;
+				const ip = record.ip || record.assigned_ip || "-";
+				const assigned =
+					record.assigned_ip && record.assigned_ip !== ip
+						? ` assigned=${record.assigned_ip}`
+						: "";
+				const inbound = record.inbound_tag ? ` ${record.inbound_tag}` : "";
+				return `${record.protocol}${inbound} @ ${node}: ${ip}${assigned}`;
+			})
+			.join("\n");
+	};
+
+	const handleGetIPs = async (user: UserListItem) => {
+		setContextAction("ips");
+		try {
+			const response = await fetch<UserIPsResponse>(
+				`/user/${encodeURIComponent(user.username)}/ips`,
+			);
+			const text = formatUserIPRecords(response.ips || []);
+			await copyTextToClipboard(text).catch(() => undefined);
+			toast({
+				title: t("usersTable.getIps", "Get IPs"),
+				description: text,
+				status: response.ips?.length ? "success" : "info",
+				duration: 9000,
+				isClosable: true,
+			});
+		} catch (error: any) {
+			toast({
+				title:
+					error?.data?.detail ||
+					error?.message ||
+					t("usersTable.getIpsFailed", "Unable to get IPs"),
+				status: "error",
+				duration: 1800,
+			});
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -862,6 +928,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 					setQRCode(configLinks, user.username);
 					setSubLink(subscriptionLink);
 				},
+			},
+			{
+				id: "get-ips",
+				label: t("usersTable.getIps", "Get IPs"),
+				icon: <IPsIcon />,
+				isDisabled: contextAction === "ips",
+				onClick: () => handleGetIPs(user),
 			},
 		];
 

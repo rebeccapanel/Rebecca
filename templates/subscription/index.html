@@ -1,152 +1,3820 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en" dir="ltr">
 <head>
-    <title>Subscription Information</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rebecca Subscription</title>
     <style>
+        @font-face {
+            font-family: "Arad";
+            src: url("/statics/fonts/Arad-Regular.woff2") format("woff2");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: "Arad";
+            src: url("/statics/fonts/Arad-Bold.woff2") format("woff2");
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            color-scheme: dark;
+            --rb-font-ltr: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            --rb-font-rtl: "Arad", var(--rb-font-ltr);
+            --rb-panel-bg: #101010;
+            --rb-panel-main: #111111;
+            --rb-panel-sidebar: #2b2b2b;
+            --rb-panel-surface: #242424;
+            --rb-panel-elevated: #2f2f2f;
+            --rb-panel-border: #3a3a3a;
+            --rb-panel-border-strong: #4a4a4a;
+            --rb-panel-text: #f5f5f5;
+            --rb-panel-text-secondary: #b8b8b8;
+            --rb-panel-text-muted: #8a8a8a;
+            --rb-panel-accent: #e0003c;
+            --rb-panel-accent-hover: #f01446;
+            --rb-panel-success: #22c55e;
+            --rb-panel-warning: #f59e0b;
+            --rb-panel-danger: #ef4444;
+            --rb-panel-info: #2563eb;
+            --rb-accent-rgb: 224, 0, 60;
+            --primary-50: #ffe6ed;
+            --primary-100: #ffb8c9;
+            --primary-200: #ff88a5;
+            --primary-300: #fb5a82;
+            --primary-400: #f42d62;
+            --primary-500: #e0003c;
+            --primary-600: #bf0033;
+            --primary-700: #990029;
+            --primary-800: #73001f;
+            --primary-900: #4c0015;
+        }
+
+        .rb-theme-light {
+            color-scheme: light;
+            --rb-panel-bg: #f4f5f7;
+            --rb-panel-main: #f7f8fa;
+            --rb-panel-sidebar: #ffffff;
+            --rb-panel-surface: #ffffff;
+            --rb-panel-elevated: #eef0f3;
+            --rb-panel-border: #d8dce2;
+            --rb-panel-border-strong: #c2c8d0;
+            --rb-panel-text: #17191c;
+            --rb-panel-text-secondary: #4f5661;
+            --rb-panel-text-muted: #7a828e;
+        }
+
+        .rb-theme-dark {
+            color-scheme: dark;
+            --rb-panel-bg: #101010;
+            --rb-panel-main: #111111;
+            --rb-panel-sidebar: #2b2b2b;
+            --rb-panel-surface: #242424;
+            --rb-panel-elevated: #2f2f2f;
+            --rb-panel-border: #3a3a3a;
+            --rb-panel-border-strong: #4a4a4a;
+            --rb-panel-text: #f5f5f5;
+            --rb-panel-text-secondary: #b8b8b8;
+            --rb-panel-text-muted: #8a8a8a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        html {
+            font-family: var(--rb-font-ltr);
+            background: var(--rb-panel-bg);
+            color: var(--rb-panel-text);
+        }
+
+        html[dir="rtl"] {
+            font-family: var(--rb-font-rtl);
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at top left, rgba(var(--rb-accent-rgb), 0.18), transparent 24rem),
+                radial-gradient(circle at bottom right, rgba(var(--rb-accent-rgb), 0.1), transparent 22rem),
+                linear-gradient(180deg, var(--rb-panel-main), var(--rb-panel-bg));
+            color: var(--rb-panel-text);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
         }
 
-        h1 {
-            margin-top: 0;
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
         }
 
-        .link-input {
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        ::selection {
+            background: rgba(var(--rb-accent-rgb), 0.26);
+        }
+
+        .rb-shell {
+            width: min(1220px, calc(100% - 24px));
+            margin: 0 auto;
+            padding: 18px 0 36px;
+        }
+
+        .rb-panel-card {
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 18px;
+            background: rgba(17, 17, 17, 0.82);
+            background: color-mix(in srgb, var(--rb-panel-surface) 90%, transparent);
+            box-shadow: 0 22px 40px rgba(0, 0, 0, 0.16);
+            backdrop-filter: blur(18px);
+        }
+
+        .rb-topbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 18px 18px 16px;
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 50;
+        }
+
+        .rb-topbar-copy {
+            min-width: 0;
+        }
+
+        .rb-eyebrow {
+            margin: 0 0 8px;
+            color: var(--rb-panel-text-muted);
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .rb-title-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .rb-title {
+            margin: 0;
+            font-size: clamp(1.5rem, 3vw, 2.15rem);
+            line-height: 1.04;
+            letter-spacing: -0.03em;
+        }
+
+        .rb-subtitle {
+            margin: 0;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.98rem;
+        }
+
+        .rb-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 30px;
+            padding: 0 12px;
+            border-radius: 999px;
+            border: 1px solid var(--rb-panel-border);
+            background: var(--rb-panel-elevated);
+            color: var(--rb-panel-text);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .rb-badge--service {
+            color: var(--rb-panel-accent);
+            border-color: rgba(var(--rb-accent-rgb), 0.42);
+            background: rgba(var(--rb-accent-rgb), 0.1);
+        }
+
+        .rb-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .rb-toolbar-menu-shell {
+            position: relative;
+        }
+
+        .rb-toolbar-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--rb-panel-text);
+            cursor: pointer;
+            transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+        }
+
+        .rb-toolbar-icon:hover {
+            background: var(--rb-panel-elevated);
+            border-color: var(--rb-panel-border-strong);
+            transform: translateY(-1px);
+        }
+
+        .rb-toolbar-menu {
+            position: absolute;
+            top: calc(100% + 10px);
+            inset-inline-end: 0;
+            z-index: 30;
+            min-width: 230px;
+            padding: 8px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: var(--rb-panel-surface);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+        }
+
+        .rb-toolbar-menu[hidden] {
+            display: none;
+        }
+
+        .rb-menu-section {
+            display: grid;
+            gap: 4px;
+        }
+
+        .rb-menu-section + .rb-menu-section {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--rb-panel-border);
+        }
+
+        .rb-menu-heading {
+            padding: 4px 10px;
+            color: var(--rb-panel-text-muted);
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .rb-menu-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            min-height: 40px;
+            padding: 0 10px;
+            border: 0;
+            border-radius: 12px;
+            background: transparent;
+            color: var(--rb-panel-text);
+            cursor: pointer;
+            text-align: start;
+        }
+
+        .rb-menu-item:hover {
+            background: var(--rb-panel-elevated);
+        }
+
+        .rb-menu-item.is-active {
+            background: rgba(var(--rb-accent-rgb), 0.12);
+        }
+
+        .rb-menu-item-main {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .rb-menu-check {
+            color: var(--rb-panel-accent);
+            font-size: 0.94rem;
+            font-weight: 800;
+            opacity: 0;
+        }
+
+        .rb-menu-item.is-active .rb-menu-check {
+            opacity: 1;
+        }
+
+        .rb-menu-item-main img.rb-flag-emoji {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            flex: none;
+        }
+
+        .rb-overview {
+            padding: 18px;
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 50;
+        }
+
+        .rb-overview-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .rb-overview-meta {
+            min-width: 0;
+        }
+
+        .rb-username-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .rb-username-row .rb-label {
+            margin: 0;
+        }
+
+        .rb-overview-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            flex: none;
+        }
+
+        .rb-label {
+            margin: 0 0 6px;
+            color: var(--rb-panel-text-muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .rb-username {
+            margin: 0;
+            font-size: clamp(1.3rem, 2vw, 1.72rem);
+            line-height: 1.08;
+            letter-spacing: -0.03em;
+            word-break: break-word;
+        }
+
+        .rb-status-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 0 16px;
+            border-radius: 999px;
+            font-size: 0.88rem;
+            font-weight: 800;
+            border: 1px solid transparent;
+            text-transform: capitalize;
+        }
+
+        .rb-status-chip[data-state="active"] {
+            background: rgba(34, 197, 94, 0.14);
+            border-color: rgba(34, 197, 94, 0.34);
+            color: #7ee8a6;
+        }
+
+        .rb-status-chip[data-state="on_hold"] {
+            background: rgba(37, 99, 235, 0.14);
+            border-color: rgba(37, 99, 235, 0.34);
+            color: #8cb4ff;
+        }
+
+        .rb-status-chip[data-state="limited"] {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.32);
+            color: #ffd27b;
+        }
+
+        .rb-status-chip[data-state="expired"] {
+            background: rgba(239, 68, 68, 0.14);
+            border-color: rgba(239, 68, 68, 0.32);
+            color: #ff9b9b;
+        }
+
+        .rb-status-chip[data-state="disabled"] {
+            background: rgba(148, 163, 184, 0.16);
+            border-color: rgba(148, 163, 184, 0.28);
+            color: #d5dbe4;
+        }
+
+        .rb-status-note {
+            margin: 10px 0 0;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.94rem;
+        }
+
+        .rb-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .rb-metric {
+            padding: 14px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .rb-metric-value {
+            display: block;
+            margin-top: 8px;
+            font-size: 1.24rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .rb-metric-value[dir="ltr"] {
+            unicode-bidi: isolate;
+        }
+
+        .rb-usage-block {
+            padding: 18px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: linear-gradient(180deg, rgba(var(--rb-accent-rgb), 0.08), transparent 120px), var(--rb-panel-main);
+        }
+
+        .rb-usage-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
             margin-bottom: 10px;
         }
 
-        .copy-button {
-            margin-left: 10px;
+        .rb-usage-summary {
+            margin: 0 0 12px;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.65;
         }
 
-        .status {
+        .rb-progress {
+            position: relative;
+            height: 10px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .rb-progress-fill {
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--rb-panel-accent), var(--rb-panel-accent-hover));
+            transition: width 180ms ease;
+        }
+
+        .rb-account-block {
+            margin-top: 16px;
+            padding: 18px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-account-block .rb-label {
+            margin: 0 0 12px;
+        }
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .rb-subscription-card .rb-card-body {
+            padding: 14px 16px;
+        }
+
+        .rb-subscription-preview {
+            min-width: 0;
+        }
+
+        .rb-subscription-url {
+            margin: 4px 0 0;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.94rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            direction: ltr;
+            unicode-bidi: isolate;
+        }
+
+        .rb-button-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .rb-card-head .rb-button-row {
+            margin-inline-end: 15px;
+        }
+
+        .rb-button,
+        .rb-link-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 38px;
+            padding: 0 14px;
+            border-radius: 12px;
+            border: 1px solid var(--rb-panel-border);
+            background: transparent;
+            color: var(--rb-panel-text);
+            cursor: pointer;
+            transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+
+        .rb-button:hover,
+        .rb-link-button:hover {
+            transform: translateY(-1px);
+            background: var(--rb-panel-elevated);
+            border-color: var(--rb-panel-border-strong);
+        }
+
+        .rb-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .rb-button--primary {
+            border-color: rgba(var(--rb-accent-rgb), 0.42);
+            background: var(--rb-panel-accent);
+            color: #ffffff;
+        }
+
+        .rb-button--primary:hover {
+            background: var(--rb-panel-accent-hover);
+            border-color: rgba(var(--rb-accent-rgb), 0.48);
+        }
+
+        .rb-button--icon {
+            width: 38px;
+            min-width: 38px;
+            padding: 0;
+            gap: 0;
+        }
+
+        .rb-button--icon span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rb-button--icon svg {
+            display: block;
+            width: 17px;
+            height: 17px;
+        }
+
+        .rb-icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            min-width: 36px;
+            height: 36px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--rb-panel-text-secondary);
+            cursor: pointer;
+            transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+
+        .rb-icon-button span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rb-icon-button svg {
+            display: block;
+        }
+
+        .rb-icon-button:hover {
+            background: var(--rb-panel-elevated);
+            border-color: var(--rb-panel-border);
+            color: var(--rb-panel-text);
+        }
+
+        .rb-icon-button.is-copied {
+            color: #7ee8a6;
+            border-color: rgba(34, 197, 94, 0.3);
+            background: rgba(34, 197, 94, 0.12);
+        }
+
+        .rb-main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .rb-stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        .rb-card-body {
+            padding: 18px;
+        }
+
+        .rb-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .rb-card-title {
+            margin: 0;
+            font-size: 1.08rem;
+            letter-spacing: -0.02em;
+        }
+
+        .rb-card-copy {
+            margin: 6px 0 0;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.92rem;
+        }
+
+        .rb-search {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 0 12px;
+            height: 42px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 14px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-search svg {
+            flex: 0 0 auto;
+            color: var(--rb-panel-text-muted);
+        }
+
+        .rb-search input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--rb-panel-text);
+        }
+
+        .rb-search input::placeholder {
+            color: var(--rb-panel-text-muted);
+        }
+
+        .rb-protocol-tabs-wrap {
+            margin-bottom: 14px;
+        }
+
+        .rb-protocol-tabs-wrap[hidden] {
+            display: none;
+        }
+
+        .rb-protocol-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 6px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 18px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-protocol-tab {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex: 1 1 150px;
+            min-height: 54px;
+            padding: 0 14px;
+            border: 1px solid transparent;
+            border-radius: 14px;
+            background: transparent;
+            color: var(--rb-panel-text);
+            cursor: pointer;
+            transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+        }
+
+        .rb-protocol-tab:hover {
+            background: var(--rb-panel-elevated);
+            transform: translateY(-1px);
+        }
+
+        .rb-protocol-tab.is-active {
+            border-color: rgba(var(--rb-accent-rgb), 0.42);
+            background: rgba(var(--rb-accent-rgb), 0.14);
+        }
+
+        .rb-protocol-tab-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            font-size: 0.92rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            text-transform: lowercase;
+        }
+
+        .rb-protocol-tab-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--rb-panel-text);
+            font-size: 0.8rem;
+            font-weight: 800;
+        }
+
+        .rb-protocol-panel[hidden] {
+            display: none;
+        }
+
+        .rb-config-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .rb-config-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 14px;
+            background: var(--rb-panel-main);
+            transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+        }
+
+        .rb-config-item:hover {
+            border-color: var(--rb-panel-border-strong);
+            background: var(--rb-panel-elevated);
+            transform: translateY(-1px);
+        }
+
+        .rb-config-main {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .rb-config-top {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .rb-config-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .rb-flag-emoji {
             display: inline-block;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-weight: bold;
-            font-size: 16px;
+            width: 1.05em;
+            height: 1.05em;
+            vertical-align: -0.15em;
+            border-radius: 2px;
+            flex: none;
+        }
+
+        .rb-protocol-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(var(--rb-accent-rgb), 0.1);
+            color: var(--rb-panel-accent);
+            font-size: 0.74rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .rb-config-url {
+            display: none;
+        }
+
+        .rb-config-actions {
+            display: flex;
+            align-items: center;
+            flex: none;
+            gap: 6px;
+        }
+
+        .rb-empty {
+            margin: 0;
+            padding: 16px;
+            border: 1px dashed var(--rb-panel-border);
+            border-radius: 14px;
+            color: var(--rb-panel-text-muted);
+            text-align: center;
+        }
+
+        .rb-detail-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-rows: repeat(3, auto);
+            grid-auto-flow: column;
+            column-gap: 28px;
+            row-gap: 0;
+        }
+
+        .rb-detail-row {
+            display: grid;
+            grid-template-columns: minmax(0, 132px) minmax(0, 1fr);
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--rb-panel-border);
+        }
+
+        .rb-detail-list .rb-detail-row:nth-child(3),
+        .rb-detail-list .rb-detail-row:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .rb-detail-key {
+            color: var(--rb-panel-text-muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .rb-detail-value {
+            color: var(--rb-panel-text);
+            font-weight: 600;
+            text-align: end;
+            word-break: break-word;
+        }
+
+        .rb-detail-value[dir="ltr"] {
+            unicode-bidi: isolate;
+        }
+
+        .rb-detail-row--actions {
+            grid-template-columns: 1fr;
+        }
+
+        .rb-detail-row--actions .rb-quick-links {
+            margin-top: 0;
+        }
+
+        .rb-detail-row--actions .rb-quick-links a {
+            flex: 1 1 0;
+        }
+
+        .rb-quick-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .rb-quick-links a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 0 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            color: var(--rb-panel-text-secondary);
+            transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+        }
+
+        .rb-quick-links a:hover {
+            background: var(--rb-panel-elevated);
+            border-color: var(--rb-panel-border-strong);
+            color: var(--rb-panel-text);
+        }
+
+        .rb-vpn-block {
+            display: grid;
+            gap: 12px;
+        }
+
+        .rb-vpn-group {
+            padding: 14px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-vpn-title {
+            margin: 0 0 12px;
+            font-size: 0.96rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .rb-vpn-download {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--rb-panel-border);
+        }
+
+        .rb-vpn-download:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .rb-vpn-name {
+            display: block;
+            font-weight: 700;
+        }
+
+        .rb-vpn-meta {
+            display: block;
+            margin-top: 4px;
+            color: var(--rb-panel-text-muted);
+            font-size: 0.84rem;
+        }
+
+        .rb-credential-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .rb-credential-card {
+            padding: 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .rb-credential-name {
+            margin: 0 0 10px;
+            font-size: 0.92rem;
+            font-weight: 800;
+        }
+
+        .rb-credential-grid {
+            display: grid;
+            gap: 8px;
+        }
+
+        .rb-credential-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            background: var(--rb-panel-surface);
+        }
+
+        .rb-credential-copy {
+            min-width: 0;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.83rem;
+            word-break: break-word;
+        }
+
+        .rb-chart-shell {
+            display: grid;
+            gap: 14px;
+        }
+
+        .rb-range-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .rb-range-pill {
+            min-height: 32px;
+            padding: 0 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--rb-panel-text-secondary);
+            cursor: pointer;
+        }
+
+        .rb-range-pill:hover {
+            background: var(--rb-panel-elevated);
+            color: var(--rb-panel-text);
+        }
+
+        .rb-range-pill.is-active {
+            border-color: rgba(var(--rb-accent-rgb), 0.42);
+            background: rgba(var(--rb-accent-rgb), 0.12);
+            color: var(--rb-panel-text);
+        }
+
+        .rb-chart {
+            min-height: 220px;
+            padding: 16px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-chart-svg-wrap {
+            width: 100%;
+            min-height: 200px;
+        }
+
+        .rb-chart-svg {
+            display: block;
+            width: 100%;
+            height: 240px;
+            overflow: visible;
+        }
+
+        .rb-chart-gridline {
+            stroke: var(--rb-panel-border);
+            stroke-width: 1;
+        }
+
+        .rb-chart-axis-label {
+            fill: var(--rb-panel-text-muted);
+            font-size: 10px;
+            direction: ltr;
+        }
+
+        .rb-chart-area {
+            fill: url(#rbChartFill);
+            stroke: none;
+        }
+
+        .rb-chart-line {
+            fill: none;
+            stroke: var(--rb-panel-accent);
+            stroke-width: 2.4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+
+        .rb-chart-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 14px;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.88rem;
+        }
+
+        .rb-chart-message {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 150px;
+            color: var(--rb-panel-text-muted);
+            text-align: center;
+        }
+
+        .rb-app-downloads {
+            margin-top: 16px;
+        }
+
+        .rb-app-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .rb-app-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 34px;
+            padding: 0 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--rb-panel-text-secondary);
+            cursor: pointer;
             line-height: 1;
         }
 
-        .active {
-            background-color: #4CAF50;
-            color: white;
+        .rb-app-tab:hover {
+            background: var(--rb-panel-elevated);
+            color: var(--rb-panel-text);
         }
 
-        .limited {
-            background-color: #F44336;
-            color: white;
+        .rb-app-tab.is-active {
+            border-color: rgba(var(--rb-accent-rgb), 0.42);
+            background: rgba(var(--rb-accent-rgb), 0.12);
+            color: var(--rb-panel-text);
         }
 
-        .expired {
-            background-color: #FF9800;
-            color: white;
+        .rb-os-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            min-width: 18px;
+            height: 18px;
         }
 
-        .disabled {
-            background-color: #9E9E9E;
-            color: white;
+        .rb-os-icon svg {
+            width: 18px;
+            height: 18px;
         }
 
-        .qr-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: white;
-            padding: 10px 25px 25px 25px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        .rb-app-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .rb-app-item {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 10px 12px;
+            align-items: center;
+            padding: 14px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 14px;
+            background: var(--rb-panel-main);
+        }
+
+        .rb-app-item--full {
+            grid-column: 1 / -1;
+        }
+
+        .rb-app-icon-shell {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 46px;
+            height: 46px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            background: var(--rb-panel-elevated);
+            overflow: hidden;
+        }
+
+        .rb-app-icon {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .rb-app-icon-fallback {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: var(--rb-panel-text);
+            font-size: 0.84rem;
+            font-weight: 900;
+            letter-spacing: 0;
+            background: rgba(var(--rb-accent-rgb), 0.18);
+        }
+
+        .rb-app-name {
+            display: block;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .rb-app-meta {
+            display: block;
+            margin-top: 4px;
+            color: var(--rb-panel-text-muted);
+            font-size: 0.84rem;
+        }
+
+        .rb-app-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: stretch;
+            gap: 8px;
+            grid-column: 1 / -1;
+        }
+
+        .rb-app-actions .rb-link-button {
+            flex: 1 1 0;
+        }
+
+        .rb-modal[hidden],
+        .rb-toast[hidden] {
             display: none;
-            z-index: 9999;
         }
 
-        .qr-close-button {
-            text-align: right;
-            margin-bottom: 5px;
-            margin-right: -15px;
+        .rb-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+
+        .rb-modal-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.62);
+            backdrop-filter: blur(10px);
+        }
+
+        .rb-modal-card {
+            position: relative;
+            width: min(420px, 100%);
+            padding: 18px;
+            border: 1px solid var(--rb-panel-border-strong);
+            border-radius: 20px;
+            background: var(--rb-panel-surface);
+            box-shadow: 0 28px 50px rgba(0, 0, 0, 0.28);
+        }
+
+        .rb-modal-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .rb-modal-head-meta {
+            min-width: 0;
+        }
+
+        .rb-modal-title {
+            margin: 0;
+            font-size: 1.02rem;
+        }
+
+        .rb-modal-subtitle {
+            margin: 6px 0 0;
+            overflow: hidden;
+            color: var(--rb-panel-text-secondary);
+            font-size: 0.9rem;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .rb-qr-frame {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: fit-content;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+            padding: 10px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 16px;
+            background: #ffffff;
+        }
+
+        .rb-modal-url {
+            margin: 14px 0 0;
+            padding: 10px 12px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            background: var(--rb-panel-main);
+            color: var(--rb-panel-text-muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.76rem;
+            line-height: 1.5;
+            word-break: break-all;
+            direction: ltr;
+            unicode-bidi: isolate;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+        }
+
+        .rb-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .rb-toast {
+            position: fixed;
+            top: 16px;
+            inset-inline-end: 16px;
+            z-index: 1100;
+            max-width: min(320px, calc(100% - 24px));
+            padding: 12px 14px;
+            border: 1px solid rgba(var(--rb-accent-rgb), 0.38);
+            border-radius: 14px;
+            background: var(--rb-panel-surface);
+            color: var(--rb-panel-text);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+        }
+
+        [dir="rtl"] .rb-topbar,
+        [dir="rtl"] .rb-overview-header,
+        [dir="rtl"] .rb-card-head,
+        [dir="rtl"] .rb-usage-row,
+        [dir="rtl"] .rb-subscription-box,
+        [dir="rtl"] .rb-config-item,
+        [dir="rtl"] .rb-vpn-download,
+        [dir="rtl"] .rb-modal-head {
+            direction: rtl;
+        }
+
+        [dir="rtl"] .rb-detail-value {
+            text-align: start;
+        }
+
+        [dir="rtl"] .rb-toolbar {
+            justify-content: flex-start;
+        }
+
+        [dir="rtl"] .rb-toolbar-menu {
+            inset-inline-start: 0;
+            inset-inline-end: auto;
+        }
+
+        [dir="rtl"] .rb-quick-links,
+        [dir="rtl"] .rb-button-row,
+        [dir="rtl"] .rb-config-actions,
+        [dir="rtl"] .rb-range-row,
+        [dir="rtl"] .rb-app-tabs,
+        [dir="rtl"] .rb-app-actions {
+            justify-content: flex-start;
+        }
+
+        @media (max-width: 1040px) {
+            .rb-main-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .rb-metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 760px) {
+            .rb-shell {
+                width: min(100% - 18px, 100%);
+                padding-top: 10px;
+            }
+
+            .rb-topbar,
+            .rb-overview,
+            .rb-account-block,
+            .rb-card-body {
+                padding: 14px;
+            }
+
+            .rb-topbar,
+            .rb-card-head,
+            .rb-subscription-box,
+            .rb-config-item,
+            .rb-vpn-download {
+                display: grid;
+                grid-template-columns: 1fr;
+            }
+
+            .rb-overview-header {
+                gap: 10px;
+            }
+
+            .rb-overview-actions {
+                gap: 8px;
+            }
+
+            .rb-toolbar-icon {
+                width: 38px;
+                height: 38px;
+            }
+
+            .rb-status-chip {
+                min-height: 32px;
+                padding: 0 12px;
+                font-size: 0.8rem;
+            }
+
+            .rb-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .rb-protocol-tab {
+                flex-basis: calc(50% - 4px);
+            }
+
+            .rb-detail-list {
+                grid-template-columns: 1fr;
+                grid-template-rows: none;
+                grid-auto-flow: row;
+                row-gap: 0;
+            }
+
+            .rb-detail-list .rb-detail-row:nth-child(3) {
+                border-bottom: 1px solid var(--rb-panel-border);
+                padding-bottom: 10px;
+            }
+
+            .rb-detail-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
+                padding: 10px 0;
+            }
+
+            .rb-detail-value {
+                text-align: start;
+            }
+
+            .rb-app-list {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
+<body
+    class="rb-theme-dark"
+    data-username="{{ user.username }}"
+    data-status="{{ user.status }}"
+    data-used-traffic="{{ user.used_traffic }}"
+    data-data-limit="{% if user.data_limit %}{{ user.data_limit }}{% else %}0{% endif %}"
+    data-expire-ts="{% if user.expire %}{{ user.expire }}{% else %}0{% endif %}"
+    data-created-at="{{ user.created_at }}"
+    data-online-at="{% if user.online_at %}{{ user.online_at }}{% endif %}"
+    data-reset-strategy="{{ user.data_limit_reset_strategy }}"
+    data-subscription-url="{{ user.subscription_url }}"
+    data-usage-url="{{ usage_url }}"
+    data-service-name="{% if user.service_name %}{{ user.service_name }}{% endif %}"
+>
+    <main class="rb-shell">
+        <section class="rb-overview rb-panel-card">
+            <div class="rb-overview-header">
+                <div class="rb-overview-meta">
+                    <div class="rb-username-row">
+                        <p class="rb-label" data-i18n="usernameLabel">Username</p>
+                        {% if user.service_name %}
+                        <span class="rb-badge rb-badge--service">{{ user.service_name }}</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="rb-username">{{ user.username }}</h2>
+                    <p class="rb-status-note" id="statusNote"></p>
+                </div>
+                <div class="rb-overview-actions">
+                    <div class="rb-toolbar">
+                        <button class="rb-toolbar-icon" type="button" id="themeToggleButton" title="Theme">
+                            <span id="themeToggleIcon" aria-hidden="true"></span>
+                        </button>
+                        <div class="rb-toolbar-menu-shell">
+                            <button class="rb-toolbar-icon" type="button" id="langMenuButton" aria-haspopup="menu" aria-expanded="false" title="Language">
+                                <span aria-hidden="true">
+                                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.55"></circle>
+                                        <path d="M3.5 12H20.5" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"></path>
+                                        <path d="M12 3.5C14.4 6 15.7 8.9 15.7 12C15.7 15.1 14.4 18 12 20.5C9.6 18 8.3 15.1 8.3 12C8.3 8.9 9.6 6 12 3.5Z" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    </svg>
+                                </span>
+                            </button>
+                            <div class="rb-toolbar-menu" id="langMenu" hidden>
+                                <div class="rb-menu-section">
+                                    <span class="rb-menu-heading" data-i18n="languageLabel">Language</span>
+                                    <button class="rb-menu-item" type="button" data-lang-choice="en">
+                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1fa-1f1f8.png" alt="" loading="lazy"><span>English</span></span>
+                                        <span class="rb-menu-check">✓</span>
+                                    </button>
+                                    <button class="rb-menu-item" type="button" data-lang-choice="fa">
+                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1ee-1f1f7.png" alt="" loading="lazy"><span>فارسی</span></span>
+                                        <span class="rb-menu-check">✓</span>
+                                    </button>
+                                    <button class="rb-menu-item" type="button" data-lang-choice="ru">
+                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1f7-1f1fa.png" alt="" loading="lazy"><span>Русский</span></span>
+                                        <span class="rb-menu-check">✓</span>
+                                    </button>
+                                    <button class="rb-menu-item" type="button" data-lang-choice="zh">
+                                        <span class="rb-menu-item-main"><img class="rb-flag-emoji rb-menu-lang-flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/1f1e8-1f1f3.png" alt="" loading="lazy"><span>中文</span></span>
+                                        <span class="rb-menu-check">✓</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rb-status-chip" id="statusChip" data-state="{{ user.status }}">{{ user.status }}</div>
+                </div>
+            </div>
 
-<body>
-    <h1>User Information</h1>
-    <p>Username: {{ user.username }}</p>
-    <p>Status: <span
-            class="status {% if user.status.value == 'active' %}active{% elif user.status.value == 'limited' %}limited{% elif user.status.value == 'expired' %}expired{% elif user.status.value == 'disabled' %}disabled{% endif %}">{{
-            user.status.value }}</span></p>
-    <p>Data Limit: {% if not user.data_limit %}∞{% else %}{{ user.data_limit | bytesformat }}{% endif %}</p>
-    <p>Data Used: {{ user.used_traffic | bytesformat }}{% if user.data_limit_reset_strategy != 'no_reset' %} (resets
-        every {{ user.data_limit_reset_strategy.value }}){% endif %}</p>
-    <p>Expiration Date:
-        {% if not user.expire %}
-        ∞
-        {% else %}
-        {% set current_timestamp = now().timestamp() %}
-        {% set remaining_days = ((user.expire - current_timestamp) // (24 * 3600)) %}
-        {{ user.expire | datetime }} ({{ remaining_days | int }} days
-        remaining)
-        {% endif %}</p>
+            <div class="rb-metrics">
+                <div class="rb-metric">
+                    <span class="rb-label" data-i18n="usedLabel">Used</span>
+                    <strong class="rb-metric-value" id="metricUsed" dir="ltr"></strong>
+                </div>
+                <div class="rb-metric">
+                    <span class="rb-label" data-i18n="totalLabel">Total</span>
+                    <strong class="rb-metric-value" id="metricTotal" dir="ltr"></strong>
+                </div>
+                <div class="rb-metric">
+                    <span class="rb-label" data-i18n="remainingLabel">Remaining</span>
+                    <strong class="rb-metric-value" id="metricRemaining" dir="ltr"></strong>
+                </div>
+                <div class="rb-metric">
+                    <span class="rb-label" data-i18n="expireLabel">Expire</span>
+                    <strong class="rb-metric-value" id="metricExpire"></strong>
+                </div>
+            </div>
 
-    {% if user.status == 'active' or user.status == 'on_hold' %}
-    <h2>Links:</h2>
-    <ul>
-        {% for link in user.links %}
-        <li>
-            <input type="text" value="{{ link }}" readonly>
-            <button class="copy-button" onclick="copyLink('{{ link }}', this)">Copy</button>
-            <button class="qr-button" data-link="{{ link }}">QR Code</button>
-        </li>
-        {% endfor %}
-    </ul>
-    <div class="qr-popup" id="qrPopup">
-        <div class="qr-close-button">
-            <button onclick="closeQrPopup()">X</button>
+            <div class="rb-usage-block">
+                <div class="rb-usage-row">
+                    <p class="rb-label" data-i18n="usageOverviewLabel">Usage overview</p>
+                    <span class="rb-badge" id="resetStrategyBadge"></span>
+                </div>
+                <p class="rb-usage-summary" id="usageSummaryText"></p>
+                <div class="rb-progress" aria-hidden="true">
+                    <div class="rb-progress-fill" id="usageProgressFill"></div>
+                </div>
+            </div>
+
+            <div class="rb-account-block">
+                <p class="rb-label" data-i18n="accountTitle">Account details</p>
+                <div class="rb-detail-list">
+                    <div class="rb-detail-row">
+                        <span class="rb-detail-key" data-i18n="detailStatus">Status</span>
+                        <span class="rb-detail-value" id="detailStatus"></span>
+                    </div>
+                    <div class="rb-detail-row">
+                        <span class="rb-detail-key" data-i18n="detailLastOnline">Last online</span>
+                        <span class="rb-detail-value" id="detailLastOnline"></span>
+                    </div>
+                    <div class="rb-detail-row">
+                        <span class="rb-detail-key" data-i18n="detailCreatedAt">Created at</span>
+                        <span class="rb-detail-value" id="detailCreatedAt"></span>
+                    </div>
+                    <div class="rb-detail-row">
+                        <span class="rb-detail-key" data-i18n="detailExpiry">Expiry</span>
+                        <span class="rb-detail-value" id="detailExpiry"></span>
+                    </div>
+                    <div class="rb-detail-row">
+                        <span class="rb-detail-key" data-i18n="detailReset">Reset</span>
+                        <span class="rb-detail-value" id="detailReset"></span>
+                    </div>
+                    <div class="rb-detail-row rb-detail-row--actions">
+                        <div class="rb-quick-links">
+                            <a href="{{ usage_url }}" target="_blank" rel="noopener noreferrer" data-i18n="usageApiButton">Usage API</a>
+                            {% if support_url %}
+                            <a href="{{ support_url }}" target="_blank" rel="noopener noreferrer" data-i18n="supportButton">Support</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <div class="rb-main-grid">
+            <div class="rb-stack">
+                <section class="rb-panel-card">
+                    <div class="rb-card-body">
+                        <div class="rb-card-head">
+                            <div>
+                                <h3 class="rb-card-title" id="protocolCardTitle" data-i18n="configsTitle">Configurations</h3>
+                                <p class="rb-card-copy" id="configsCountText"></p>
+                            </div>
+                            <div class="rb-button-row">
+                                <button class="rb-button" type="button" id="copyAllConfigsButton">
+                                    <span data-i18n="copyAllButton">Copy all</span>
+                                </button>
+                                <button class="rb-icon-button" type="button" id="showSubscriptionQrButton" title="QR code">
+                                    <span id="showSubscriptionQrButtonIcon" aria-hidden="true"></span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="rb-protocol-tabs-wrap" id="protocolTabsWrap" hidden>
+                            <div class="rb-protocol-tabs" id="protocolTabs"></div>
+                        </div>
+
+                        <div class="rb-protocol-panel" id="linksProtocolPanel">
+                            <label class="rb-search" id="configSearchWrap">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M21 21L16.65 16.65M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                                <input id="configsSearchInput" type="search" autocomplete="off" spellcheck="false">
+                            </label>
+                            <div class="rb-config-list" id="configList"></div>
+                            <p class="rb-empty" id="configEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
+
+                        <div class="rb-protocol-panel" id="ovpnProtocolPanel" hidden>
+                            <div class="rb-vpn-block">
+                                {% if openvpn.downloads %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="openvpnTitle">OpenVPN downloads</h4>
+                                    {% for item in openvpn.profiles %}
+                                    <div class="rb-vpn-download" data-ovpn-profile>
+                                        <div>
+                                            <span class="rb-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
+                                            <span class="rb-vpn-meta">{{ item.Filename }}</span>
+                                        </div>
+                                        <a class="rb-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <p class="rb-empty" id="ovpnEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
+
+                        <div class="rb-protocol-panel" id="l2tpProtocolPanel" hidden>
+                            <div class="rb-vpn-block">
+                                {% if l2tp %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="l2tpTitle">L2TP / IPSec</h4>
+                                    <div class="rb-credential-list">
+                                        {% for item in l2tp %}
+                                        <div class="rb-credential-card" data-l2tp-card>
+                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="rb-credential-grid">
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Server }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                {% if item.IPSecPSK %}
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.IPSecPSK }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.IPSecPSK }}" data-copy-title="psk">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                {% if pptp %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="pptpTitle">PPTP</h4>
+                                    <div class="rb-credential-list">
+                                        {% for item in pptp %}
+                                        <div class="rb-credential-card" data-pptp-card>
+                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="rb-credential-grid">
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Server }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                                <div class="rb-credential-row">
+                                                    <span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span>
+                                                    <button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password">
+                                                        <span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <p class="rb-empty" id="l2tpEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rb-panel-card">
+                    <div class="rb-card-body">
+                        <div class="rb-card-head">
+                            <div>
+                                <h3 class="rb-card-title" data-i18n="usageChartTitle">Usage history</h3>
+                                <p class="rb-card-copy" data-i18n="usageChartCopy">Daily traffic pulled from the panel usage endpoint.</p>
+                            </div>
+                        </div>
+                        <div class="rb-chart-shell">
+                            <div class="rb-range-row">
+                                <button class="rb-range-pill is-active" type="button" data-range-days="7">7D</button>
+                                <button class="rb-range-pill" type="button" data-range-days="30">30D</button>
+                                <button class="rb-range-pill" type="button" data-range-days="90">90D</button>
+                            </div>
+                            <div class="rb-chart" id="usageChart"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
-        <div id="qrCodeContainer"></div>
-    </div>
-    {% endif %}
+
+        <section class="rb-panel-card rb-app-downloads">
+            <div class="rb-card-body">
+                <div class="rb-card-head">
+                    <div>
+                        <h3 class="rb-card-title" data-i18n="appDownloadsTitle">Download apps</h3>
+                        <p class="rb-card-copy" data-i18n="appDownloadsCopy">Pick your platform, download a client, then add this subscription directly.</p>
+                    </div>
+                </div>
+                <div class="rb-app-tabs" id="appPlatformTabs">
+                    <button class="rb-app-tab is-active" type="button" data-fallback-platform="ios">
+                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M16.7 2.4C16.2 3.8 15.1 5 13.8 5.1C13.6 3.7 14.5 2.4 15.2 1.9C15.8 1.5 16.4 1.3 16.7 1.3V2.4Z" fill="currentColor"></path><path d="M19.2 17.5C18.6 18.8 18.3 19.3 17.5 20.5C16.4 22.1 14.8 22.1 14.1 22.1C13.4 22.1 12.6 21.6 11.8 21.6C11 21.6 10.1 22.1 9.3 22.1C8.5 22.1 7.1 22 6 20.5C3.7 17.1 3.4 13.1 4.9 10.8C6 9.2 7.6 8.3 9.1 8.3C9.9 8.3 10.7 8.8 11.5 8.8C12.2 8.8 13.2 8.2 14.4 8.2C15.3 8.2 17 8.4 18.2 10.2C15.4 11.7 15.9 15.8 19.2 17.5Z" fill="currentColor"></path></svg></span>
+                        <span>iOS</span>
+                    </button>
+                    <button class="rb-app-tab" type="button" data-fallback-platform="android">
+                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.3 8.2H16.7C18 8.2 19 9.2 19 10.5V17.5C19 18.8 18 19.8 16.7 19.8H7.3C6 19.8 5 18.8 5 17.5V10.5C5 9.2 6 8.2 7.3 8.2Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8 8L6.4 5.4M16 8L17.6 5.4M8.5 12.2H8.6M15.4 12.2H15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><path d="M8 20V22M16 20V22M3 11V17M21 11V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+                        <span>Android</span>
+                    </button>
+                    <button class="rb-app-tab" type="button" data-fallback-platform="windows">
+                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 5.2L10.5 4.2V11.2H3.5V5.2ZM12 4L20.5 2.8V11.2H12V4ZM3.5 12.8H10.5V19.8L3.5 18.8V12.8ZM12 12.8H20.5V21.2L12 20V12.8Z" fill="currentColor"></path></svg></span>
+                        <span>Windows</span>
+                    </button>
+                    <button class="rb-app-tab" type="button" data-fallback-platform="macos">
+                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M9 20H15M12 16V20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+                        <span>macOS</span>
+                    </button>
+                    <button class="rb-app-tab" type="button" data-fallback-platform="linux">
+                        <span class="rb-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5C5 6.1 6.1 5 7.5 5H16.5C17.9 5 19 6.1 19 7.5V16.5C19 17.9 17.9 19 16.5 19H7.5C6.1 19 5 17.9 5 16.5V7.5Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8.5 9L11 11.5L8.5 14M12.5 15H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+                        <span>Linux</span>
+                    </button>
+                </div>
+                <div class="rb-app-list" id="appDownloadList"></div>
+                <p class="rb-empty" id="appDownloadEmptyState" hidden data-i18n="appDownloadEmpty">No apps available for this platform.</p>
+            </div>
+        </section>
+    </main>
 
     <script>
-        function copyLink(link, button) {
-            const tempInput = document.createElement('input');
-            tempInput.setAttribute('value', link);
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-
-            button.textContent = 'Copied!';
-            setTimeout(function () {
-                button.textContent = 'Copy';
-            }, 1500);
-        }
-
-        const qrButtons = document.querySelectorAll('.qr-button');
-        const qrPopup = document.getElementById('qrPopup');
-
-        qrButtons.forEach((qrButton) => {
-            qrButton.addEventListener('click', () => {
-                const link = qrButton.dataset.link;
-                while (qrCodeContainer.firstChild) {
-                    qrCodeContainer.removeChild(qrCodeContainer.firstChild);
+        (function () {
+            var FALLBACK_APPS = [
+                {
+                    name: 'Happ',
+                    icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg',
+                    initials: 'HP',
+                    urlScheme: 'happ://add/{url}',
+                    os: ['Android', 'iOS', 'Windows', 'macOS', 'Linux'],
+                    link: 'https://happ.su/main/download',
+                    downloadLinks: {
+                        Android: 'https://play.google.com/store/apps/details?id=com.happproxy',
+                        iOS: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215',
+                        macOS: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215',
+                        Windows: 'https://happ.su/main/download',
+                        Linux: 'https://happ.su/main/download'
+                    }
+                },
+                {
+                    name: 'Hiddify',
+                    icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png',
+                    initials: 'HD',
+                    urlScheme: 'hiddify://import/{url}',
+                    os: ['Android', 'iOS', 'Windows', 'macOS', 'Linux'],
+                    link: 'https://github.com/hiddify/hiddify-app/releases/latest',
+                    downloadLinks: {
+                        iOS: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532',
+                        macOS: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532'
+                    }
+                },
+                {
+                    name: 'v2rayNG',
+                    icon: 'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',
+                    initials: 'NG',
+                    urlScheme: 'v2rayng://install-sub?url={url_enc}',
+                    os: ['Android'],
+                    link: 'https://github.com/2dust/v2rayNG/releases/latest'
+                },
+                {
+                    name: 'Streisand',
+                    icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6b/e0/93/6be09364-a713-c26e-a089-e21bcadc14de/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/100x100bb.jpg',
+                    initials: 'ST',
+                    urlScheme: 'streisand://import/{url}',
+                    os: ['iOS', 'macOS'],
+                    link: 'https://apps.apple.com/app/streisand/id6450534064'
+                },
+                {
+                    name: 'Shadowrocket',
+                    icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/44/d3/df/44d3df14-cf72-37d1-6e61-582f7023b90e/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/100x100bb.jpg',
+                    initials: 'SR',
+                    urlScheme: 'sub://{url_b64}',
+                    os: ['iOS'],
+                    link: 'https://apps.apple.com/app/shadowrocket/id932747118'
+                },
+                {
+                    name: 'sing-box',
+                    icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg',
+                    initials: 'SB',
+                    urlScheme: 'sing-box://import-remote-profile?url={url_enc}',
+                    os: ['Android', 'iOS', 'Windows', 'Linux'],
+                    link: 'https://github.com/SagerNet/sing-box/releases/latest',
+                    downloadLinks: {
+                        iOS: 'https://apps.apple.com/app/sing-box-vt/id6673731168'
+                    }
+                },
+                {
+                    name: 'V2Box',
+                    icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/0c/ed/a40ced0f-f168-b7ae-ff71-5bc94c65f5a7/V2BoxIcon-0-0-1x_U007epad-0-1-P3-85-220.png/100x100bb.jpg',
+                    initials: 'V2',
+                    urlScheme: 'v2box://install-sub?url={url}',
+                    os: ['iOS', 'macOS'],
+                    link: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690'
+                },
+                {
+                    name: 'NekoBox',
+                    icon: 'https://raw.githubusercontent.com/MatsuriDayo/NekoBoxForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',
+                    initials: 'NB',
+                    urlScheme: 'sn://subscription?url={url_enc}',
+                    os: ['Android'],
+                    link: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases/latest'
+                },
+                {
+                    name: 'v2rayN',
+                    icon: 'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/v2rayN.Desktop/v2rayN.png',
+                    initials: 'VN',
+                    urlScheme: 'v2rayn://install-sub?url={url_enc}',
+                    os: ['Windows', 'Linux'],
+                    link: 'https://github.com/2dust/v2rayN/releases/latest'
+                },
+                {
+                    name: 'NekoRay',
+                    icon: 'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/nekobox.png',
+                    initials: 'NR',
+                    os: ['Windows', 'Linux'],
+                    link: 'https://github.com/MatsuriDayo/nekoray/releases/latest'
+                },
+                {
+                    name: 'OpenVPN Connect',
+                    icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg',
+                    initials: 'OV',
+                    os: ['Android', 'iOS', 'Windows', 'macOS', 'Linux'],
+                    link: 'https://openvpn.net/client/',
+                    downloadLinks: {
+                        Android: 'https://play.google.com/store/apps/details?id=net.openvpn.openvpn',
+                        iOS: 'https://apps.apple.com/app/openvpn-connect-openvpn-app/id590379981',
+                        Windows: 'https://openvpn.net/client/',
+                        macOS: 'https://openvpn.net/client/',
+                        Linux: 'https://openvpn.net/openvpn-client-for-linux/'
+                    }
                 }
-                const qrCode = new QRCode(qrCodeContainer, {
-                    text: link,
-                    width: 256,
-                    height: 256,
-                    correctLevel: QRCode.CorrectLevel.L
+            ];
+
+            var PLATFORM_KEY = { ios: 'iOS', android: 'Android', windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+
+            function toBase64(text) {
+                try {
+                    return btoa(unescape(encodeURIComponent(text)));
+                } catch (err) {
+                    return '';
+                }
+            }
+
+            function buildAddUrl(app, subUrl) {
+                if (!app.urlScheme) return '';
+                return app.urlScheme
+                    .replace(/\{url_enc\}/g, encodeURIComponent(subUrl))
+                    .replace(/\{url_b64\}/g, toBase64(subUrl))
+                    .replace(/\{url\}/g, subUrl)
+                    .replace(/\{name\}/g, encodeURIComponent(app.name));
+            }
+
+            function renderAppList() {
+                var subUrl = document.body.getAttribute('data-subscription-url') || '';
+                var list = document.getElementById('appDownloadList');
+                if (!list) return;
+                var html = '';
+                Object.keys(PLATFORM_KEY).forEach(function (platformKey) {
+                    var osName = PLATFORM_KEY[platformKey];
+                    var matches = FALLBACK_APPS.filter(function (app) { return app.os.indexOf(osName) !== -1; });
+                    matches.forEach(function (app, index) {
+                        var downloadHref = (app.downloadLinks && app.downloadLinks[osName]) || app.link;
+                        var addHref = buildAddUrl(app, subUrl);
+                        var fullClass = (matches.length % 2 === 1 && index === matches.length - 1) ? ' rb-app-item--full' : '';
+                        html += '<article class="rb-app-item' + fullClass + '" data-fallback-app-platform="' + platformKey + '" hidden>' +
+                            '<span class="rb-app-icon-shell">' +
+                            (app.icon ? '<img class="rb-app-icon" src="' + app.icon + '" alt="" loading="lazy">' : '') +
+                            '<span class="rb-app-icon-fallback"' + (app.icon ? ' hidden' : '') + '>' + app.initials + '</span>' +
+                            '</span>' +
+                            '<div><span class="rb-app-name">' + app.name + '</span><span class="rb-app-meta">' + osName + '</span></div>' +
+                            '<div class="rb-app-actions">' +
+                            '<a class="rb-link-button" href="' + downloadHref + '" target="_blank" rel="noopener noreferrer">Download</a>' +
+                            (addHref ? '<a class="rb-link-button rb-button--primary" href="' + addHref + '">Add to app</a>' : '') +
+                            '</div></article>';
+                    });
                 });
-                qrPopup.style.display = 'block';
+                list.innerHTML = html;
+            }
+
+            renderAppList();
+
+            var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-fallback-platform]'));
+            var rows = Array.prototype.slice.call(document.querySelectorAll('[data-fallback-app-platform]'));
+            if (!tabs.length || !rows.length) return;
+
+            function selectPlatform(platform) {
+                tabs.forEach(function (tab) {
+                    var active = tab.getAttribute('data-fallback-platform') === platform;
+                    tab.classList.toggle('is-active', active);
+                    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                });
+                rows.forEach(function (row) {
+                    row.hidden = row.getAttribute('data-fallback-app-platform') !== platform;
+                });
+            }
+
+            function installImageFallbacks() {
+                document.querySelectorAll('.rb-app-icon').forEach(function (image) {
+                    image.addEventListener('error', function () {
+                        image.hidden = true;
+                        if (image.nextElementSibling) {
+                            image.nextElementSibling.hidden = false;
+                        }
+                    });
+                });
+            }
+
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    selectPlatform(tab.getAttribute('data-fallback-platform'));
+                });
             });
-        });
-        function closeQrPopup() {
-            document.getElementById('qrPopup').style.display = 'none';
-        }
+            installImageFallbacks();
+            function detectFallbackPlatform() {
+                var ua = String(navigator.userAgent || '');
+                var platform = String(navigator.platform || '');
+                var isAppleTouch = /Mac/i.test(platform) && navigator.maxTouchPoints > 1;
+                if (/iPhone|iPad|iPod/i.test(ua) || isAppleTouch) return 'ios';
+                if (/Android/i.test(ua)) return 'android';
+                if (/Mac/i.test(ua) || /Mac/i.test(platform)) return 'macos';
+                if (/Win/i.test(ua) || /Win/i.test(platform)) return 'windows';
+                if (/Linux/i.test(ua) || /Linux/i.test(platform)) return 'linux';
+                return 'ios';
+            }
+            var detectedPlatform = detectFallbackPlatform();
+            var hasDetectedTab = tabs.some(function (tab) { return tab.getAttribute('data-fallback-platform') === detectedPlatform; });
+            selectPlatform(hasDetectedTab ? detectedPlatform : tabs[0].getAttribute('data-fallback-platform'));
+        })();
+    </script>
+
+    <div class="rb-modal" id="qrModal" hidden>
+        <div class="rb-modal-backdrop" data-close-qr></div>
+        <div class="rb-modal-card">
+            <div class="rb-modal-head">
+                <div class="rb-modal-head-meta">
+                    <h4 class="rb-modal-title" data-i18n="qrModalTitle">QR code</h4>
+                    <p class="rb-modal-subtitle" id="qrModalSubtitle"></p>
+                </div>
+                <button class="rb-icon-button" type="button" data-close-qr aria-label="close">✕</button>
+            </div>
+            <div class="rb-qr-frame" id="qrCodeFrame"></div>
+            <p class="rb-modal-url" id="qrModalUrl"></p>
+            <div class="rb-modal-actions">
+                <button class="rb-button" type="button" id="copyQrValueButton">
+                    <span data-i18n="copyButton">Copy</span>
+                </button>
+                <button class="rb-button rb-button--primary" type="button" data-close-qr>
+                    <span data-i18n="closeButton">Close</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="rb-toast" id="toast" hidden></div>
+
+    <script>
+        (function () {
+            var themeKey = 'rb-theme';
+            var chakraThemeKey = 'chakra-ui-color-mode';
+            var accentKey = 'rb-accent';
+            var languageKey = 'i18nextLng';
+            var languageCookieKey = 'i18next';
+            var onlineWindowSeconds = 20;
+            var config = document.body.dataset || {};
+            var rawLinks = {{ links_text|safe }};
+            var accentMap = {
+                crimson: { color: '#e0003c', hover: '#f01446' },
+                blue: { color: '#2563eb', hover: '#3b82f6' },
+                green: { color: '#16a34a', hover: '#22c55e' },
+                purple: { color: '#7c3aed', hover: '#8b5cf6' },
+                orange: { color: '#ea580c', hover: '#f97316' }
+            };
+            var translations = {
+                en: {
+                    panelLabel: 'Rebecca Panel',
+                    pageTitle: 'Subscription Workspace',
+                    pageSubtitle: 'A subscription page rebuilt with the same panel language and theme.',
+                    themeLabel: 'Theme',
+                    settingsLabel: 'Settings',
+                    themeDark: 'Dark',
+                    themeLight: 'Light',
+                    languageLabel: 'Language',
+                    usernameLabel: 'Username',
+                    usedLabel: 'Used',
+                    totalLabel: 'Total',
+                    remainingLabel: 'Remaining',
+                    expireLabel: 'Expire',
+                    usageOverviewLabel: 'Usage overview',
+                    subscriptionLabel: 'Subscription link',
+                    copySubscriptionButton: 'Copy subscription',
+                    qrButton: 'QR code',
+                    supportButton: 'Support',
+                    configsTitle: 'Configurations',
+                    v2Title: 'links',
+                    wireguardTitle: 'WireGuard configs',
+                    copyAllButton: 'Copy all',
+                    noConfigs: 'No configurations available.',
+                    searchPlaceholder: 'Search by name, protocol, host or raw link...',
+                    protocolTabV2: 'v2',
+                    protocolTabOVPN: 'ovpn',
+                    protocolTabWireGuard: 'wireguard',
+                    protocolTabL2TP: 'l2tp/ipsec',
+                    openvpnCount: '[[count]] profile ready',
+                    credentialCount: '[[count]] credential card ready',
+                    usageChartTitle: 'Usage history',
+                    usageChartCopy: 'Your daily data usage over time.',
+                    accountTitle: 'Account details',
+                    accountCopy: 'Status, expiry and recent activity in the same panel tone.',
+                    detailStatus: 'Status',
+                    detailLastOnline: 'Last online',
+                    detailCreatedAt: 'Created at',
+                    detailExpiry: 'Expiry',
+                    detailReset: 'Reset',
+                    usageApiButton: 'Usage API',
+                    vpnTitle: 'VPN access',
+                    vpnCopy: 'Extra download profiles and credential cards.',
+                    openvpnTitle: 'OpenVPN downloads',
+                    l2tpTitle: 'L2TP / IPSec',
+                    pptpTitle: 'PPTP',
+                    downloadButton: 'Download',
+                    appDownloadsTitle: 'Download apps',
+                    appDownloadsCopy: 'Pick your platform, download a client, then add this subscription directly.',
+                    appDownloadEmpty: 'No apps available for this platform.',
+                    appAddButton: 'Add to app',
+                    appPlatformIOS: 'iOS',
+                    appPlatformAndroid: 'Android',
+                    appPlatformWindows: 'Windows',
+                    appPlatformMacOS: 'macOS',
+                    appPlatformLinux: 'Linux',
+                    qrModalTitle: 'QR code',
+                    closeButton: 'Close',
+                    copyButton: 'Copy',
+                    copied: 'Copied',
+                    allProtocols: 'All',
+                    configsCount: 'Showing [[shown]] of [[total]] configurations',
+                    usageSummaryUnlimited: 'Unlimited traffic · [[used]] used so far',
+                    usageSummaryLimited: '[[used]] used from [[total]] · [[percent]]% consumed',
+                    resetNever: 'No reset',
+                    resetDay: 'Resets daily',
+                    resetWeek: 'Resets weekly',
+                    resetMonth: 'Resets monthly',
+                    resetYear: 'Resets yearly',
+                    statusActive: 'Active',
+                    statusLimited: 'Limited',
+                    statusExpired: 'Expired',
+                    statusDisabled: 'Disabled',
+                    statusOnHold: 'On hold',
+                    noteActive: 'Everything is ready. Use the main subscription or copy individual configs below.',
+                    noteLimited: 'Traffic is depleted. Renew or reset usage to reconnect.',
+                    noteExpired: 'Time has expired. Extend the account to reconnect.',
+                    noteDisabled: 'This account is disabled right now.',
+                    noteOnHold: 'This account starts counting down on the first successful connection.',
+                    unlimited: 'Unlimited',
+                    notConnectedYet: 'Not connected yet',
+                    onlineNow: 'Online',
+                    ago: 'ago',
+                    today: 'today',
+                    expiresIn: 'Expires in [[time]]',
+                    expiredSince: 'Expired [[time]] ago',
+                    noExpiry: 'No expiry',
+                    usageLoading: 'Loading usage data...',
+                    usageEmpty: 'No usage data for this range.',
+                    usageUnavailable: 'Usage data is unavailable right now.',
+                    usageTotal: 'Range total',
+                    qrSubscriptionLabel: 'Main subscription',
+                    qrConfigLabel: 'Configuration',
+                    server: 'Server',
+                    username: 'Username',
+                    password: 'Password',
+                    psk: 'PSK'
+                },
+                fa: {
+                    panelLabel: 'پنل ربکا',
+                    pageTitle: 'فضای اشتراک',
+                    pageSubtitle: 'صفحه اشتراکی که با همان زبان و تم پنل بازسازی شده است.',
+                    themeLabel: 'تم',
+                    settingsLabel: 'تنظیمات',
+                    themeDark: 'تیره',
+                    themeLight: 'روشن',
+                    languageLabel: 'زبان',
+                    usernameLabel: 'نام کاربری',
+                    usedLabel: 'مصرف‌شده',
+                    totalLabel: 'کل',
+                    remainingLabel: 'باقی‌مانده',
+                    expireLabel: 'انقضا',
+                    usageOverviewLabel: 'نمای مصرف',
+                    subscriptionLabel: 'لینک اشتراک',
+                    copySubscriptionButton: 'کپی اشتراک',
+                    qrButton: 'کیوآر',
+                    supportButton: 'پشتیبانی',
+                    configsTitle: 'کانفیگ‌ها',
+                    v2Title: 'links',
+                    wireguardTitle: 'کانفیگ‌های WireGuard',
+                    copyAllButton: 'کپی همه',
+                    noConfigs: 'کانفیگی برای نمایش وجود ندارد.',
+                    searchPlaceholder: 'جستجو بر اساس نام، پروتکل، هاست یا لینک خام...',
+                    protocolTabV2: 'v2',
+                    protocolTabOVPN: 'ovpn',
+                    protocolTabWireGuard: 'wireguard',
+                    protocolTabL2TP: 'l2tp/ipsec',
+                    openvpnCount: '[[count]] پروفایل آماده است',
+                    credentialCount: '[[count]] کارت اطلاعاتی آماده است',
+                    usageChartTitle: 'تاریخچه مصرف',
+                    usageChartCopy: 'روند مصرف روزانه‌ی شما در طول زمان.',
+                    accountTitle: 'جزئیات حساب',
+                    accountCopy: 'وضعیت، انقضا و فعالیت اخیر با همان حس خود پنل.',
+                    detailStatus: 'وضعیت',
+                    detailLastOnline: 'آخرین آنلاین',
+                    detailCreatedAt: 'تاریخ ساخت',
+                    detailExpiry: 'انقضا',
+                    detailReset: 'ریست',
+                    usageApiButton: 'API مصرف',
+                    vpnTitle: 'دسترسی VPN',
+                    vpnCopy: 'پروفایل‌های اضافه و کارت‌های اطلاعاتی VPN.',
+                    openvpnTitle: 'دانلود OpenVPN',
+                    l2tpTitle: 'L2TP / IPSec',
+                    pptpTitle: 'PPTP',
+                    downloadButton: 'دانلود',
+                    appDownloadsTitle: 'دانلود برنامه',
+                    appDownloadsCopy: 'پلتفرم را انتخاب کنید، برنامه را دانلود کنید و اشتراک را مستقیم اضافه کنید.',
+                    appDownloadEmpty: 'برای این پلتفرم برنامه‌ای وجود ندارد.',
+                    appAddButton: 'افزودن به برنامه',
+                    appPlatformIOS: 'iOS',
+                    appPlatformAndroid: 'Android',
+                    appPlatformWindows: 'Windows',
+                    appPlatformMacOS: 'macOS',
+                    appPlatformLinux: 'Linux',
+                    qrModalTitle: 'کد QR',
+                    closeButton: 'بستن',
+                    copyButton: 'کپی',
+                    copied: 'کپی شد',
+                    allProtocols: 'همه',
+                    configsCount: 'نمایش [[shown]] از [[total]] کانفیگ',
+                    usageSummaryUnlimited: 'ترافیک نامحدود · تا این لحظه [[used]] مصرف شده',
+                    usageSummaryLimited: '[[used]] از [[total]] مصرف شده · [[percent]]٪',
+                    resetNever: 'بدون ریست',
+                    resetDay: 'ریست روزانه',
+                    resetWeek: 'ریست هفتگی',
+                    resetMonth: 'ریست ماهانه',
+                    resetYear: 'ریست سالانه',
+                    statusActive: 'فعال',
+                    statusLimited: 'لیمیت',
+                    statusExpired: 'منقضی',
+                    statusDisabled: 'غیرفعال',
+                    statusOnHold: 'در انتظار',
+                    noteActive: 'همه‌چیز آماده است. از لینک اصلی یا کانفیگ‌های پایین استفاده کنید.',
+                    noteLimited: 'حجم تمام شده است. برای اتصال دوباره، تمدید یا ریست لازم است.',
+                    noteExpired: 'زمان کاربر تمام شده است. برای اتصال دوباره باید زمان را افزایش دهید.',
+                    noteDisabled: 'این حساب فعلاً غیرفعال است.',
+                    noteOnHold: 'زمان این حساب از اولین اتصال موفق شروع می‌شود.',
+                    unlimited: 'نامحدود',
+                    notConnectedYet: 'هنوز متصل نشده',
+                    onlineNow: 'آنلاین',
+                    ago: 'پیش',
+                    today: 'امروز',
+                    expiresIn: '[[time]] تا پایان',
+                    expiredSince: '[[time]] پیش منقضی شده',
+                    noExpiry: 'بدون انقضا',
+                    usageLoading: 'در حال بارگذاری مصرف...',
+                    usageEmpty: 'برای این بازه داده‌ای وجود ندارد.',
+                    usageUnavailable: 'اطلاعات مصرف فعلاً در دسترس نیست.',
+                    usageTotal: 'جمع بازه',
+                    qrSubscriptionLabel: 'اشتراک اصلی',
+                    qrConfigLabel: 'کانفیگ',
+                    server: 'سرور',
+                    username: 'نام کاربری',
+                    password: 'رمز عبور',
+                    psk: 'کلید PSK'
+                },
+                ru: {
+                    panelLabel: 'Панель Rebecca',
+                    pageTitle: 'Подписка',
+                    pageSubtitle: 'Страница подписки в том же визуальном стиле, что и панель.',
+                    themeLabel: 'Тема',
+                    settingsLabel: 'Настройки',
+                    themeDark: 'Темная',
+                    themeLight: 'Светлая',
+                    languageLabel: 'Язык',
+                    usernameLabel: 'Имя пользователя',
+                    usedLabel: 'Использовано',
+                    totalLabel: 'Лимит',
+                    remainingLabel: 'Осталось',
+                    expireLabel: 'Срок',
+                    usageOverviewLabel: 'Сводка трафика',
+                    subscriptionLabel: 'Ссылка подписки',
+                    copySubscriptionButton: 'Копировать подписку',
+                    qrButton: 'QR код',
+                    supportButton: 'Поддержка',
+                    configsTitle: 'Конфиги',
+                    v2Title: 'links',
+                    wireguardTitle: 'Конфиги WireGuard',
+                    copyAllButton: 'Копировать все',
+                    noConfigs: 'Нет доступных конфигов.',
+                    searchPlaceholder: 'Поиск по имени, протоколу, хосту или ссылке...',
+                    protocolTabV2: 'v2',
+                    protocolTabOVPN: 'ovpn',
+                    protocolTabWireGuard: 'wireguard',
+                    protocolTabL2TP: 'l2tp/ipsec',
+                    openvpnCount: 'Готово профилей: [[count]]',
+                    credentialCount: 'Готово карточек доступа: [[count]]',
+                    usageChartTitle: 'История трафика',
+                    usageChartCopy: 'Ваш ежедневный расход трафика.',
+                    accountTitle: 'Детали аккаунта',
+                    accountCopy: 'Статус, срок и недавняя активность в стиле панели.',
+                    detailStatus: 'Статус',
+                    detailLastOnline: 'Последний онлайн',
+                    detailCreatedAt: 'Создан',
+                    detailExpiry: 'Истекает',
+                    detailReset: 'Сброс',
+                    usageApiButton: 'Usage API',
+                    vpnTitle: 'VPN доступ',
+                    vpnCopy: 'Дополнительные профили и карточки учетных данных.',
+                    openvpnTitle: 'OpenVPN загрузки',
+                    l2tpTitle: 'L2TP / IPSec',
+                    pptpTitle: 'PPTP',
+                    downloadButton: 'Скачать',
+                    appDownloadsTitle: 'Скачать приложения',
+                    appDownloadsCopy: 'Выберите платформу, скачайте клиент и добавьте эту подписку напрямую.',
+                    appDownloadEmpty: 'Для этой платформы нет приложений.',
+                    appAddButton: 'Добавить в приложение',
+                    appPlatformIOS: 'iOS',
+                    appPlatformAndroid: 'Android',
+                    appPlatformWindows: 'Windows',
+                    appPlatformMacOS: 'macOS',
+                    appPlatformLinux: 'Linux',
+                    qrModalTitle: 'QR код',
+                    closeButton: 'Закрыть',
+                    copyButton: 'Копировать',
+                    copied: 'Скопировано',
+                    allProtocols: 'Все',
+                    configsCount: 'Показано [[shown]] из [[total]] конфигов',
+                    usageSummaryUnlimited: 'Безлимитный трафик · использовано [[used]]',
+                    usageSummaryLimited: '[[used]] из [[total]] · [[percent]]% использовано',
+                    resetNever: 'Без сброса',
+                    resetDay: 'Сброс каждый день',
+                    resetWeek: 'Сброс каждую неделю',
+                    resetMonth: 'Сброс каждый месяц',
+                    resetYear: 'Сброс каждый год',
+                    statusActive: 'Активен',
+                    statusLimited: 'Ограничен',
+                    statusExpired: 'Истек',
+                    statusDisabled: 'Отключен',
+                    statusOnHold: 'Ожидание',
+                    noteActive: 'Все готово. Используйте основную подписку или отдельные конфиги ниже.',
+                    noteLimited: 'Лимит трафика исчерпан. Продлите аккаунт или сбросьте трафик.',
+                    noteExpired: 'Срок действия истек. Продлите аккаунт для повторного подключения.',
+                    noteDisabled: 'Аккаунт сейчас отключен.',
+                    noteOnHold: 'Таймер начнется после первого успешного подключения.',
+                    unlimited: 'Без лимита',
+                    notConnectedYet: 'Еще не подключался',
+                    onlineNow: 'В сети',
+                    ago: 'назад',
+                    today: 'сегодня',
+                    expiresIn: 'Истекает через [[time]]',
+                    expiredSince: 'Истек [[time]] назад',
+                    noExpiry: 'Без срока',
+                    usageLoading: 'Загрузка статистики...',
+                    usageEmpty: 'Нет данных за выбранный период.',
+                    usageUnavailable: 'Статистика сейчас недоступна.',
+                    usageTotal: 'Итого за период',
+                    qrSubscriptionLabel: 'Основная подписка',
+                    qrConfigLabel: 'Конфиг',
+                    server: 'Сервер',
+                    username: 'Имя пользователя',
+                    password: 'Пароль',
+                    psk: 'PSK'
+                },
+                zh: {
+                    panelLabel: 'Rebecca 面板',
+                    pageTitle: '订阅空间',
+                    pageSubtitle: '按面板主题与语言重新打造的订阅页。',
+                    themeLabel: '主题',
+                    settingsLabel: '设置',
+                    themeDark: '深色',
+                    themeLight: '浅色',
+                    languageLabel: '语言',
+                    usernameLabel: '用户名',
+                    usedLabel: '已用',
+                    totalLabel: '总量',
+                    remainingLabel: '剩余',
+                    expireLabel: '到期',
+                    usageOverviewLabel: '流量概览',
+                    subscriptionLabel: '订阅链接',
+                    copySubscriptionButton: '复制订阅',
+                    qrButton: '二维码',
+                    supportButton: '支持',
+                    configsTitle: '配置列表',
+                    v2Title: 'links',
+                    wireguardTitle: 'WireGuard 配置',
+                    copyAllButton: '复制全部',
+                    noConfigs: '暂无可用配置。',
+                    searchPlaceholder: '按名称、协议、主机或原始链接搜索...',
+                    protocolTabV2: 'v2',
+                    protocolTabOVPN: 'ovpn',
+                    protocolTabWireGuard: 'wireguard',
+                    protocolTabL2TP: 'l2tp/ipsec',
+                    openvpnCount: '已准备 [[count]] 个配置文件',
+                    credentialCount: '已准备 [[count]] 张凭据卡',
+                    usageChartTitle: '流量历史',
+                    usageChartCopy: '您每日的流量使用趋势。',
+                    accountTitle: '账户详情',
+                    accountCopy: '状态、到期与近期活动，统一为面板风格。',
+                    detailStatus: '状态',
+                    detailLastOnline: '最后在线',
+                    detailCreatedAt: '创建时间',
+                    detailExpiry: '到期时间',
+                    detailReset: '重置策略',
+                    usageApiButton: '流量 API',
+                    vpnTitle: 'VPN 访问',
+                    vpnCopy: '额外下载配置与凭据卡片。',
+                    openvpnTitle: 'OpenVPN 下载',
+                    l2tpTitle: 'L2TP / IPSec',
+                    pptpTitle: 'PPTP',
+                    downloadButton: '下载',
+                    appDownloadsTitle: '下载应用',
+                    appDownloadsCopy: '选择平台、下载客户端，然后直接添加此订阅。',
+                    appDownloadEmpty: '此平台暂无应用。',
+                    appAddButton: '添加到应用',
+                    appPlatformIOS: 'iOS',
+                    appPlatformAndroid: 'Android',
+                    appPlatformWindows: 'Windows',
+                    appPlatformMacOS: 'macOS',
+                    appPlatformLinux: 'Linux',
+                    qrModalTitle: '二维码',
+                    closeButton: '关闭',
+                    copyButton: '复制',
+                    copied: '已复制',
+                    allProtocols: '全部',
+                    configsCount: '显示 [[shown]] / [[total]] 个配置',
+                    usageSummaryUnlimited: '无限流量 · 已使用 [[used]]',
+                    usageSummaryLimited: '已用 [[used]] / [[total]] · [[percent]]%',
+                    resetNever: '不重置',
+                    resetDay: '每日重置',
+                    resetWeek: '每周重置',
+                    resetMonth: '每月重置',
+                    resetYear: '每年重置',
+                    statusActive: '激活',
+                    statusLimited: '受限',
+                    statusExpired: '已过期',
+                    statusDisabled: '已禁用',
+                    statusOnHold: '等待中',
+                    noteActive: '一切已就绪。可以直接使用主订阅或下方单独配置。',
+                    noteLimited: '流量已用尽。请续费或重置流量后再连接。',
+                    noteExpired: '时间已到期。请延长订阅后重新连接。',
+                    noteDisabled: '该账户当前已禁用。',
+                    noteOnHold: '首次成功连接后才会开始计时。',
+                    unlimited: '无限制',
+                    notConnectedYet: '尚未连接',
+                    onlineNow: '在线',
+                    ago: '前',
+                    today: '今天',
+                    expiresIn: '还有 [[time]] 到期',
+                    expiredSince: '已过期 [[time]]',
+                    noExpiry: '无到期',
+                    usageLoading: '正在加载流量数据...',
+                    usageEmpty: '该时间范围内没有数据。',
+                    usageUnavailable: '暂时无法获取流量数据。',
+                    usageTotal: '区间总量',
+                    qrSubscriptionLabel: '主订阅',
+                    qrConfigLabel: '配置',
+                    server: '服务器',
+                    username: '用户名',
+                    password: '密码',
+                    psk: 'PSK'
+                }
+            };
+            function detectPlatform() {
+                var ua = String(navigator.userAgent || '');
+                var platform = String(navigator.platform || '');
+                var isAppleTouch = /Mac/i.test(platform) && navigator.maxTouchPoints > 1;
+                if (/iPhone|iPad|iPod/i.test(ua) || isAppleTouch) return 'ios';
+                if (/Android/i.test(ua)) return 'android';
+                if (/Mac/i.test(ua) || /Mac/i.test(platform)) return 'macos';
+                if (/Win/i.test(ua) || /Win/i.test(platform)) return 'windows';
+                if (/Linux/i.test(ua) || /Linux/i.test(platform)) return 'linux';
+                return 'ios';
+            }
+
+            var state = {
+                theme: normalizeTheme(readStorage(themeKey)),
+                language: normalizeLanguage(readStorage(languageKey) || readCookie(languageCookieKey) || 'en'),
+                query: '',
+                activeView: 'v2',
+                activeAppPlatform: detectPlatform(),
+                qrValue: '',
+                qrLabel: '',
+                usageRange: 7
+            };
+            var bodyData = {
+                username: config.username || '',
+                status: normalizeStatus(config.status || ''),
+                usedTraffic: toNumber(config.usedTraffic),
+                dataLimit: toNumber(config.dataLimit),
+                expireTs: toNumber(config.expireTs),
+                createdAt: config.createdAt || '',
+                onlineAt: config.onlineAt || '',
+                resetStrategy: normalizeResetStrategy(config.resetStrategy || 'no_reset'),
+                subscriptionUrl: config.subscriptionUrl || '',
+                usageUrl: config.usageUrl || '',
+                serviceName: config.serviceName || ''
+            };
+            var v2ConfigLinks = [];
+            var wireguardConfigLinks = [];
+            var availableTabs = [];
+            var appCatalog = [
+                { platform: 'ios', name: 'Happ', meta: 'iOS', download: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
+                { platform: 'ios', name: 'Hiddify', meta: 'iOS', download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
+                { platform: 'ios', name: 'Streisand', meta: 'iOS 14+', download: 'https://apps.apple.com/app/streisand/id6450534064', scheme: 'streisand', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6b/e0/93/6be09364-a713-c26e-a089-e21bcadc14de/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/100x100bb.jpg', short: 'ST' },
+                { platform: 'ios', name: 'Shadowrocket', meta: 'iOS', download: 'https://apps.apple.com/app/shadowrocket/id932747118', scheme: 'shadowrocket', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/44/d3/df/44d3df14-cf72-37d1-6e61-582f7023b90e/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/100x100bb.jpg', short: 'SR' },
+                { platform: 'ios', name: 'sing-box', meta: 'iOS', download: 'https://apps.apple.com/app/sing-box-vt/id6673731168', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
+                { platform: 'ios', name: 'V2Box', meta: 'iOS 14+', download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690', scheme: 'v2box', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/0c/ed/a40ced0f-f168-b7ae-ff71-5bc94c65f5a7/V2BoxIcon-0-0-1x_U007epad-0-1-P3-85-220.png/100x100bb.jpg', short: 'V2' },
+                { platform: 'ios', name: 'OpenVPN Connect', meta: 'iOS', download: 'https://apps.apple.com/app/openvpn-connect-openvpn-app/id590379981', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
+                { platform: 'android', name: 'Happ', meta: 'Android', download: 'https://play.google.com/store/apps/details?id=com.happproxy', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
+                { platform: 'android', name: 'Hiddify', meta: 'Android', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
+                { platform: 'android', name: 'v2rayNG', meta: 'Android', download: 'https://github.com/2dust/v2rayNG/releases/latest', scheme: 'v2rayng', icon: 'https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', short: 'NG' },
+                { platform: 'android', name: 'sing-box', meta: 'Android', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
+                { platform: 'android', name: 'NekoBox', meta: 'Android', download: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases/latest', scheme: 'nekobox', icon: 'https://raw.githubusercontent.com/MatsuriDayo/NekoBoxForAndroid/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', short: 'NB' },
+                { platform: 'android', name: 'OpenVPN Connect', meta: 'Android', download: 'https://play.google.com/store/apps/details?id=net.openvpn.openvpn', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
+                { platform: 'windows', name: 'Happ', meta: 'Windows', download: 'https://happ.su/main/download', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
+                { platform: 'windows', name: 'Hiddify', meta: 'Windows', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
+                { platform: 'windows', name: 'sing-box', meta: 'Windows', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
+                { platform: 'windows', name: 'v2rayN', meta: 'Windows', download: 'https://github.com/2dust/v2rayN/releases/latest', scheme: 'v2rayn', icon: 'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/v2rayN.Desktop/v2rayN.png', short: 'VN' },
+                { platform: 'windows', name: 'NekoRay', meta: 'Windows', download: 'https://github.com/MatsuriDayo/nekoray/releases/latest', scheme: 'nekoray', icon: 'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/nekobox.png', short: 'NR' },
+                { platform: 'windows', name: 'OpenVPN Connect', meta: 'Windows', download: 'https://openvpn.net/client/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
+                { platform: 'windows', name: 'Clash Verge Rev', meta: 'Windows', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' },
+                { platform: 'macos', name: 'Happ', meta: 'macOS', download: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
+                { platform: 'macos', name: 'Hiddify', meta: 'macOS', download: 'https://apps.apple.com/app/hiddify-proxy-vpn/id6596777532', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
+                { platform: 'macos', name: 'Streisand', meta: 'macOS / iOS', download: 'https://apps.apple.com/app/streisand/id6450534064', scheme: 'streisand', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6b/e0/93/6be09364-a713-c26e-a089-e21bcadc14de/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/100x100bb.jpg', short: 'ST' },
+                { platform: 'macos', name: 'V2Box', meta: 'macOS', download: 'https://apps.apple.com/app/v2box-v2ray-client/id6446814690', scheme: 'v2box', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/0c/ed/a40ced0f-f168-b7ae-ff71-5bc94c65f5a7/V2BoxIcon-0-0-1x_U007epad-0-1-P3-85-220.png/100x100bb.jpg', short: 'V2' },
+                { platform: 'macos', name: 'OpenVPN Connect', meta: 'macOS', download: 'https://openvpn.net/client/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
+                { platform: 'macos', name: 'Clash Verge Rev', meta: 'macOS', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' },
+                { platform: 'linux', name: 'Happ', meta: 'Linux', download: 'https://happ.su/main/download', scheme: 'happ', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/60/8c/43/608c4326-9d15-bee3-f0d0-683a290b8b8c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/100x100bb.jpg', short: 'HP' },
+                { platform: 'linux', name: 'Hiddify', meta: 'Linux', download: 'https://github.com/hiddify/hiddify-next/releases/latest', scheme: 'hiddify', icon: 'https://raw.githubusercontent.com/hiddify/hiddify-next/main/android/app/src/main/ic_launcher-playstore.png', short: 'HD' },
+                { platform: 'linux', name: 'sing-box', meta: 'Linux', download: 'https://github.com/SagerNet/sing-box/releases/latest', scheme: 'singbox', icon: 'https://raw.githubusercontent.com/SagerNet/sing-box/testing/docs/assets/icon.svg', short: 'SB' },
+                { platform: 'linux', name: 'v2rayN', meta: 'Linux', download: 'https://github.com/2dust/v2rayN/releases/latest', scheme: 'v2rayn', icon: 'https://raw.githubusercontent.com/2dust/v2rayN/master/v2rayN/v2rayN.Desktop/v2rayN.png', short: 'VN' },
+                { platform: 'linux', name: 'NekoRay', meta: 'Linux', download: 'https://github.com/MatsuriDayo/nekoray/releases/latest', scheme: 'nekoray', icon: 'https://raw.githubusercontent.com/MatsuriDayo/nekoray/main/res/public/nekobox.png', short: 'NR' },
+                { platform: 'linux', name: 'OpenVPN Connect', meta: 'Linux', download: 'https://openvpn.net/openvpn-client-for-linux/', scheme: 'openvpn', icon: 'https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/51/16/6b/51166b12-3136-6063-98a6-b595c5824ae2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/100x100bb.jpg', short: 'OV' },
+                { platform: 'linux', name: 'Clash Verge Rev', meta: 'Linux', download: 'https://github.com/clash-verge-rev/clash-verge-rev/releases/latest', scheme: 'clash', icon: 'https://raw.githubusercontent.com/clash-verge-rev/clash-verge-rev/main/src-tauri/icons/128x128.png', short: 'CV' }
+            ];
+
+            function readStorage(key) {
+                try {
+                    return localStorage.getItem(key);
+                } catch (error) {
+                    return null;
+                }
+            }
+
+            function writeStorage(key, value) {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (error) {}
+            }
+
+            function readCookie(key) {
+                var prefix = encodeURIComponent(key) + '=';
+                var items = document.cookie.split(';');
+                for (var i = 0; i < items.length; i += 1) {
+                    var part = items[i].trim();
+                    if (part.indexOf(prefix) === 0) {
+                        return decodeURIComponent(part.slice(prefix.length));
+                    }
+                }
+                return '';
+            }
+
+            function writeCookie(key, value) {
+                document.cookie = encodeURIComponent(key) + '=' + encodeURIComponent(value) + '; Max-Age=31536000; Path=/; SameSite=Lax';
+            }
+
+            function normalizeTheme(value) {
+                return value === 'light' ? 'light' : 'dark';
+            }
+
+            function normalizeLanguage(value) {
+                var raw = String(value || '').toLowerCase();
+                if (raw.indexOf('fa') === 0) return 'fa';
+                if (raw.indexOf('ru') === 0) return 'ru';
+                if (raw.indexOf('zh') === 0) return 'zh';
+                return 'en';
+            }
+
+            function normalizeStatus(value) {
+                var allowed = ['active', 'limited', 'expired', 'disabled', 'on_hold'];
+                return allowed.indexOf(value) >= 0 ? value : 'disabled';
+            }
+
+            function normalizeResetStrategy(value) {
+                var allowed = ['no_reset', 'day', 'week', 'month', 'year'];
+                return allowed.indexOf(value) >= 0 ? value : 'no_reset';
+            }
+
+            function toNumber(value) {
+                var parsed = Number(value || 0);
+                return isFinite(parsed) ? parsed : 0;
+            }
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function hexToRgb(hex) {
+                var normalized = String(hex || '').replace('#', '');
+                if (normalized.length === 3) {
+                    normalized = normalized.split('').map(function (char) { return char + char; }).join('');
+                }
+                if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+                    return { r: 224, g: 0, b: 60 };
+                }
+                return {
+                    r: parseInt(normalized.slice(0, 2), 16),
+                    g: parseInt(normalized.slice(2, 4), 16),
+                    b: parseInt(normalized.slice(4, 6), 16)
+                };
+            }
+
+            function rgbToHex(r, g, b) {
+                var toHex = function (value) {
+                    return value.toString(16).padStart(2, '0');
+                };
+                return '#' + toHex(r) + toHex(g) + toHex(b);
+            }
+
+            function rgbToHsl(r, g, b) {
+                r /= 255;
+                g /= 255;
+                b /= 255;
+                var max = Math.max(r, g, b);
+                var min = Math.min(r, g, b);
+                var h = 0;
+                var s = 0;
+                var l = (max + min) / 2;
+                if (max !== min) {
+                    var d = max - min;
+                    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    switch (max) {
+                        case r:
+                            h = (g - b) / d + (g < b ? 6 : 0);
+                            break;
+                        case g:
+                            h = (b - r) / d + 2;
+                            break;
+                        default:
+                            h = (r - g) / d + 4;
+                    }
+                    h /= 6;
+                }
+                return { h: h, s: s, l: l };
+            }
+
+            function hueToRgb(p, q, t) {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1 / 6) return p + (q - p) * 6 * t;
+                if (t < 1 / 2) return q;
+                if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+                return p;
+            }
+
+            function hslToRgb(h, s, l) {
+                var r;
+                var g;
+                var b;
+                if (s === 0) {
+                    r = g = b = l;
+                } else {
+                    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                    var p = 2 * l - q;
+                    r = hueToRgb(p, q, h + 1 / 3);
+                    g = hueToRgb(p, q, h);
+                    b = hueToRgb(p, q, h - 1 / 3);
+                }
+                return {
+                    r: Math.round(r * 255),
+                    g: Math.round(g * 255),
+                    b: Math.round(b * 255)
+                };
+            }
+
+            function generatePalette(baseHex) {
+                var rgb = hexToRgb(baseHex);
+                var hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+                var stops = {
+                    50: 0.42,
+                    100: 0.32,
+                    200: 0.22,
+                    300: 0.12,
+                    400: 0.06,
+                    500: 0,
+                    600: -0.06,
+                    700: -0.13,
+                    800: -0.22,
+                    900: -0.32
+                };
+                Object.keys(stops).forEach(function (key) {
+                    var next = hslToRgb(hsl.h, hsl.s, clamp(hsl.l + stops[key], 0, 1));
+                    document.documentElement.style.setProperty('--primary-' + key, rgbToHex(next.r, next.g, next.b));
+                });
+            }
+
+            function applyAccent() {
+                var stored = readStorage(accentKey) || 'crimson';
+                var accent = accentMap[stored] || accentMap.crimson;
+                var rgb = hexToRgb(accent.color);
+                document.documentElement.style.setProperty('--rb-panel-accent', accent.color);
+                document.documentElement.style.setProperty('--rb-panel-accent-hover', accent.hover);
+                document.documentElement.style.setProperty('--rb-accent-rgb', rgb.r + ', ' + rgb.g + ', ' + rgb.b);
+                generatePalette(accent.color);
+            }
+
+            function iconThemeDark() {
+                return '<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><mask id="rbMoonMask"><rect width="24" height="24" fill="#fff"></rect><circle cx="15.5" cy="8.5" r="6.5" fill="#000"></circle></mask><circle cx="12" cy="12" r="8" fill="currentColor" mask="url(#rbMoonMask)"></circle></svg>';
+            }
+
+            function iconThemeLight() {
+                return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.4" stroke="currentColor" stroke-width="1.55"></circle><path d="M12 2.75V4.25M12 19.75V21.25M21.25 12H19.75M4.25 12H2.75M18.54 5.46L17.48 6.52M6.52 17.48L5.46 18.54M18.54 18.54L17.48 17.48M6.52 6.52L5.46 5.46" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"></path></svg>';
+            }
+
+            function renderPreferencesMenuState() {
+                var themeButton = document.getElementById('themeToggleButton');
+                var themeIcon = document.getElementById('themeToggleIcon');
+                if (themeButton) {
+                    var themeToggleLabel = state.theme === 'light' ? t('themeDark') : t('themeLight');
+                    themeButton.setAttribute('aria-label', themeToggleLabel);
+                    themeButton.setAttribute('title', themeToggleLabel);
+                }
+                if (themeIcon) {
+                    themeIcon.innerHTML = state.theme === 'light' ? iconThemeLight() : iconThemeDark();
+                }
+                var langButton = document.getElementById('langMenuButton');
+                if (langButton) {
+                    langButton.setAttribute('aria-label', t('languageLabel'));
+                    langButton.setAttribute('title', t('languageLabel'));
+                }
+                document.querySelectorAll('[data-lang-choice]').forEach(function (button) {
+                    button.classList.toggle('is-active', button.getAttribute('data-lang-choice') === state.language);
+                });
+            }
+
+            function closePreferencesMenu() {
+                var menu = document.getElementById('langMenu');
+                var button = document.getElementById('langMenuButton');
+                if (menu) menu.hidden = true;
+                if (button) button.setAttribute('aria-expanded', 'false');
+            }
+
+            function togglePreferencesMenu() {
+                var menu = document.getElementById('langMenu');
+                var button = document.getElementById('langMenuButton');
+                if (!menu || !button) return;
+                var open = Boolean(menu.hidden);
+                menu.hidden = !open;
+                button.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+
+            function toggleTheme() {
+                applyTheme(state.theme === 'light' ? 'dark' : 'light');
+            }
+
+            function applyTheme(theme) {
+                state.theme = normalizeTheme(theme);
+                writeStorage(themeKey, state.theme);
+                writeStorage(chakraThemeKey, state.theme);
+                var targets = [document.documentElement, document.body];
+                targets.forEach(function (target) {
+                    if (!target) return;
+                    target.classList.remove('rb-theme-light', 'rb-theme-dark', 'chakra-ui-light', 'chakra-ui-dark');
+                    target.classList.add('rb-theme-' + state.theme, 'chakra-ui-' + state.theme);
+                    target.dataset.theme = state.theme;
+                    target.style.colorScheme = state.theme;
+                });
+                renderPreferencesMenuState();
+            }
+
+            function applyLanguage(language) {
+                state.language = normalizeLanguage(language);
+                writeStorage(languageKey, state.language);
+                writeCookie(languageCookieKey, state.language);
+                document.documentElement.lang = state.language;
+                document.documentElement.dir = state.language === 'fa' ? 'rtl' : 'ltr';
+                document.body.dir = document.documentElement.dir;
+                document.title = t('pageTitle');
+                document.querySelectorAll('[data-i18n]').forEach(function (node) {
+                    node.textContent = t(node.getAttribute('data-i18n'));
+                });
+                var searchInput = document.getElementById('configsSearchInput');
+                if (searchInput) {
+                    searchInput.setAttribute('placeholder', t('searchPlaceholder'));
+                }
+                renderSummary();
+                renderPreferencesMenuState();
+                renderProtocolTabs();
+                renderActiveProtocolPanel();
+                renderAppDownloads();
+                renderAccountDetails();
+                renderUsageChart(state.usageRange);
+            }
+
+            function t(key) {
+                var table = translations[state.language] || translations.en;
+                return table[key] || translations.en[key] || key;
+            }
+
+            function interpolate(template, params) {
+                return String(template || '').replace(/\[\[(.+?)\]\]/g, function (_, key) {
+                    return params && params[key] != null ? String(params[key]) : '';
+                });
+            }
+
+            function localeForLanguage() {
+                if (state.language === 'fa') return 'fa-IR';
+                if (state.language === 'ru') return 'ru-RU';
+                if (state.language === 'zh') return 'zh-CN';
+                return 'en-US';
+            }
+
+            function normalizeUrl(value) {
+                var raw = String(value || '').trim();
+                if (!raw) return '';
+                if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return raw;
+                if (raw.indexOf('//') === 0) return window.location.protocol + raw;
+                if (raw.charAt(0) === '/') return window.location.origin + raw;
+                return raw;
+            }
+
+            function parseServerDate(value) {
+                var raw = String(value || '').trim();
+                if (!raw) return null;
+                var normalized = raw.replace(' ', 'T');
+                if (!(/[zZ]$|[+-]\d{2}:?\d{2}$/).test(normalized)) {
+                    normalized += 'Z';
+                }
+                var parsed = new Date(normalized);
+                return isNaN(parsed.getTime()) ? null : parsed;
+            }
+
+            function formatDateTime(date) {
+                if (!date) return '—';
+                try {
+                    return new Intl.DateTimeFormat(localeForLanguage(), {
+                        year: 'numeric',
+                        month: 'short',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }).format(date);
+                } catch (error) {
+                    return date.toISOString().replace('T', ' ').slice(0, 16);
+                }
+            }
+
+            function formatNumber(value) {
+                try {
+                    return new Intl.NumberFormat(localeForLanguage()).format(value);
+                } catch (error) {
+                    return String(value);
+                }
+            }
+
+            function formatBytes(value) {
+                var size = Math.max(0, Number(value || 0));
+                var units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+                var index = 0;
+                while (size >= 1024 && index < units.length - 1) {
+                    size /= 1024;
+                    index += 1;
+                }
+                if (index === 0) return formatNumber(Math.round(size)) + ' ' + units[index];
+                var fixed = size >= 10 ? size.toFixed(0) : size.toFixed(1);
+                return fixed + ' ' + units[index];
+            }
+
+            function buildRelativeParts(fromDate, toDate) {
+                var diffSeconds = Math.max(0, Math.floor((toDate.getTime() - fromDate.getTime()) / 1000));
+                if (diffSeconds < 3600) {
+                    return { value: Math.max(1, Math.floor(diffSeconds / 60) || 1), unit: 'minutes' };
+                }
+                if (diffSeconds < 86400) {
+                    return { value: Math.floor(diffSeconds / 3600), unit: 'hours' };
+                }
+                return { value: Math.floor(diffSeconds / 86400), unit: 'days' };
+            }
+
+            function formatRelative(date, past) {
+                if (!date) return t('notConnectedYet');
+                var now = new Date();
+                var start = past ? date : now;
+                var end = past ? now : date;
+                var diff = end.getTime() - start.getTime();
+                if (diff <= 0) {
+                    return t('today');
+                }
+                var parts = buildRelativeParts(start, end);
+                var unitMap = {
+                    minutes: state.language === 'fa' ? 'دقیقه' : state.language === 'ru' ? 'мин' : state.language === 'zh' ? '分钟' : 'min',
+                    hours: state.language === 'fa' ? 'ساعت' : state.language === 'ru' ? 'ч' : state.language === 'zh' ? '小时' : 'hr',
+                    days: state.language === 'fa' ? 'روز' : state.language === 'ru' ? 'дн' : state.language === 'zh' ? '天' : 'day'
+                };
+                var count = formatNumber(parts.value);
+                var label = unitMap[parts.unit];
+                return count + ' ' + label;
+            }
+
+            function statusLabel(status) {
+                var map = {
+                    active: t('statusActive'),
+                    limited: t('statusLimited'),
+                    expired: t('statusExpired'),
+                    disabled: t('statusDisabled'),
+                    on_hold: t('statusOnHold')
+                };
+                return map[status] || status;
+            }
+
+            function statusNote(status) {
+                var map = {
+                    active: t('noteActive'),
+                    limited: t('noteLimited'),
+                    expired: t('noteExpired'),
+                    disabled: t('noteDisabled'),
+                    on_hold: t('noteOnHold')
+                };
+                return map[status] || '';
+            }
+
+            function resetLabel(strategy) {
+                var map = {
+                    no_reset: t('resetNever'),
+                    day: t('resetDay'),
+                    week: t('resetWeek'),
+                    month: t('resetMonth'),
+                    year: t('resetYear')
+                };
+                return map[strategy] || t('resetNever');
+            }
+
+            function decodeLabel(value) {
+                var normalized = String(value || '').replace(/\+/g, ' ');
+                try {
+                    return decodeURIComponent(normalized).trim();
+                } catch (error) {
+                    return normalized.trim();
+                }
+            }
+
+            function extractHashLabel(link) {
+                var index = link.indexOf('#');
+                if (index >= 0 && index < link.length - 1) {
+                    return decodeLabel(link.slice(index + 1));
+                }
+                return '';
+            }
+
+            function extractQueryLabel(link) {
+                var qIndex = link.indexOf('?');
+                if (qIndex === -1) return '';
+                var end = link.indexOf('#');
+                var query = link.slice(qIndex + 1, end === -1 ? link.length : end);
+                try {
+                    var params = new URLSearchParams(query);
+                    var keys = ['remark', 'remarks', 'ps', 'name', 'tag', 'host'];
+                    for (var i = 0; i < keys.length; i += 1) {
+                        var value = params.get(keys[i]);
+                        if (value) return decodeLabel(value);
+                    }
+                } catch (error) {}
+                return '';
+            }
+
+            function decodeVmessLabel(link) {
+                if (link.toLowerCase().indexOf('vmess://') !== 0) return '';
+                var payload = link.slice(8);
+                var hashIndex = payload.indexOf('#');
+                if (hashIndex >= 0) payload = payload.slice(0, hashIndex);
+                if (!payload) return '';
+                var normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+                var padding = normalized.length % 4;
+                if (padding) normalized += '='.repeat(4 - padding);
+                try {
+                    var decoded = atob(normalized);
+                    var parsed = JSON.parse(decoded);
+                    return decodeLabel(parsed.ps || parsed.name || parsed.tag || '');
+                } catch (error) {
+                    return '';
+                }
+            }
+
+            function protocolOf(link) {
+                var raw = String(link || '').trim();
+                if (!raw) return 'other';
+                if (/\.ovpn(\?|$)/i.test(raw)) return 'openvpn';
+                var match = raw.match(/^([a-z0-9+.-]+):/i);
+                if (!match) return 'other';
+                var protocol = match[1].toLowerCase();
+                if (protocol === 'https' || protocol === 'http') {
+                    return /\.ovpn(\?|$)/i.test(raw) ? 'openvpn' : protocol;
+                }
+                if (protocol === 'hysteria2') return 'hy2';
+                return protocol;
+            }
+
+            function isV2Protocol(protocol) {
+                return protocol !== 'openvpn' &&
+                    protocol !== 'wireguard' &&
+                    protocol !== 'l2tp' &&
+                    protocol !== 'pptp' &&
+                    protocol !== 'http' &&
+                    protocol !== 'https';
+            }
+
+            function buildConfigCatalog() {
+                var parsedLinks = rawLinks
+                    .map(function (link, index) {
+                        var normalized = normalizeUrl(link);
+                        return {
+                            id: 'cfg-' + index,
+                            raw: link,
+                            value: normalized,
+                            protocol: protocolOf(link),
+                            label: extractHashLabel(link) || decodeVmessLabel(link) || extractQueryLabel(link) || '',
+                            order: index + 1
+                        };
+                    });
+                v2ConfigLinks = parsedLinks.filter(function (item) {
+                    return isV2Protocol(item.protocol);
+                });
+                wireguardConfigLinks = parsedLinks.filter(function (item) {
+                    return item.protocol === 'wireguard';
+                });
+            }
+
+            function escapeHtml(text) {
+                return String(text || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            var APPLE_EMOJI_BASE = 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.1.2/img/apple/64/';
+
+            function renderNameWithFlags(text) {
+                var escaped = escapeHtml(text);
+                return escaped.replace(/[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]/g, function (flag) {
+                    var codePoints = [];
+                    for (var i = 0; i < flag.length; i += 2) {
+                        codePoints.push(flag.codePointAt(i).toString(16));
+                    }
+                    var src = APPLE_EMOJI_BASE + codePoints.join('-') + '.png';
+                    return '<img class="rb-flag-emoji" src="' + src + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">';
+                });
+            }
+
+            function iconCopy() {
+                return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 8.75C8 7.50736 9.00736 6.5 10.25 6.5H18.25C19.4926 6.5 20.5 7.50736 20.5 8.75V18.25C20.5 19.4926 19.4926 20.5 18.25 20.5H10.25C9.00736 20.5 8 19.4926 8 18.25V8.75Z" stroke="currentColor" stroke-width="1.6"></path><path d="M4.5 15.25V5.75C4.5 4.50736 5.50736 3.5 6.75 3.5H15.25" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
+            }
+
+            function iconQr() {
+                return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4H10V10H4V4ZM14 4H20V10H14V4ZM4 14H10V20H4V14ZM14 14H16V16H14V14ZM18 14H20V16H18V14ZM14 18H16V20H14V18ZM18 18H20V20H18V18ZM16 16H18V18H16V16Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>';
+            }
+
+            function iconCopySolid() {
+                return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+            }
+
+            function iconQrSolid() {
+                return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2" fill="currentColor"></rect><rect x="13" y="3" width="8" height="8" rx="2" fill="currentColor"></rect><rect x="3" y="13" width="8" height="8" rx="2" fill="currentColor"></rect><rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor"></rect></svg>';
+            }
+
+            function showToast(message) {
+                var toast = document.getElementById('toast');
+                if (!toast) return;
+                toast.textContent = message;
+                toast.hidden = false;
+                window.clearTimeout(showToast.timer);
+                showToast.timer = window.setTimeout(function () {
+                    toast.hidden = true;
+                }, 1400);
+            }
+
+            function fallbackCopy(text, done) {
+                var area = document.createElement('textarea');
+                area.value = text;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                area.style.pointerEvents = 'none';
+                document.body.appendChild(area);
+                area.focus();
+                area.select();
+                try {
+                    document.execCommand('copy');
+                } catch (error) {}
+                document.body.removeChild(area);
+                done();
+            }
+
+            function copyText(text, button) {
+                if (!text) return;
+                var done = function () {
+                    if (button) {
+                        button.classList.add('is-copied');
+                        window.setTimeout(function () {
+                            button.classList.remove('is-copied');
+                        }, 1100);
+                    }
+                    showToast(t('copied'));
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(function () {
+                        fallbackCopy(text, done);
+                    });
+                    return;
+                }
+                fallbackCopy(text, done);
+            }
+
+            function renderSummary() {
+                var total = bodyData.dataLimit > 0 ? formatBytes(bodyData.dataLimit) : t('unlimited');
+                var remaining = bodyData.dataLimit > 0 ? formatBytes(Math.max(bodyData.dataLimit - bodyData.usedTraffic, 0)) : t('unlimited');
+                var percent = bodyData.dataLimit > 0 ? Math.min(100, Math.round((bodyData.usedTraffic / bodyData.dataLimit) * 100)) : 0;
+                var expireText = t('noExpiry');
+                var subscriptionUrl = normalizeUrl(bodyData.subscriptionUrl);
+                if (bodyData.expireTs > 0) {
+                    var expireDate = new Date(bodyData.expireTs * 1000);
+                    var diff = expireDate.getTime() - Date.now();
+                    expireText = diff >= 0
+                        ? interpolate(t('expiresIn'), { time: formatRelative(expireDate, false) })
+                        : interpolate(t('expiredSince'), { time: formatRelative(expireDate, true) });
+                }
+                document.getElementById('metricUsed').textContent = formatBytes(bodyData.usedTraffic);
+                document.getElementById('metricTotal').textContent = total;
+                document.getElementById('metricRemaining').textContent = remaining;
+                document.getElementById('metricExpire').textContent = expireText;
+                document.getElementById('resetStrategyBadge').textContent = resetLabel(bodyData.resetStrategy);
+                document.getElementById('usageSummaryText').textContent = bodyData.dataLimit > 0
+                    ? interpolate(t('usageSummaryLimited'), {
+                        used: formatBytes(bodyData.usedTraffic),
+                        total: formatBytes(bodyData.dataLimit),
+                        percent: formatNumber(percent)
+                    })
+                    : interpolate(t('usageSummaryUnlimited'), {
+                        used: formatBytes(bodyData.usedTraffic)
+                    });
+                document.getElementById('usageProgressFill').style.width = percent + '%';
+                document.getElementById('statusChip').textContent = statusLabel(bodyData.status);
+                document.getElementById('statusChip').setAttribute('data-state', bodyData.status);
+                document.getElementById('statusNote').textContent = statusNote(bodyData.status);
+            }
+
+            function renderAccountDetails() {
+                var createdDate = parseServerDate(bodyData.createdAt);
+                var onlineDate = parseServerDate(bodyData.onlineAt);
+                var expiryValue = t('noExpiry');
+                if (bodyData.expireTs > 0) {
+                    var expiryDate = new Date(bodyData.expireTs * 1000);
+                    expiryValue = formatDateTime(expiryDate);
+                }
+                var onlineText = t('notConnectedYet');
+                if (onlineDate) {
+                    var diffSeconds = Math.floor((Date.now() - onlineDate.getTime()) / 1000);
+                    if (diffSeconds <= onlineWindowSeconds) {
+                        onlineText = t('onlineNow');
+                    } else {
+                        onlineText = formatRelative(onlineDate, true) + ' ' + t('ago');
+                    }
+                }
+                document.getElementById('detailStatus').textContent = statusLabel(bodyData.status);
+                document.getElementById('detailLastOnline').textContent = onlineText;
+                document.getElementById('detailCreatedAt').textContent = createdDate ? formatDateTime(createdDate) : '—';
+                document.getElementById('detailExpiry').textContent = expiryValue;
+                document.getElementById('detailReset').textContent = resetLabel(bodyData.resetStrategy);
+            }
+
+            function countOpenvpnProfiles() {
+                return document.querySelectorAll('[data-ovpn-profile]').length;
+            }
+
+            function countCredentialCards() {
+                return document.querySelectorAll('[data-l2tp-card], [data-pptp-card]').length;
+            }
+
+            function buildAvailableTabs() {
+                var tabs = [];
+                if (v2ConfigLinks.length > 0) {
+                    tabs.push({ key: 'v2', count: v2ConfigLinks.length });
+                }
+                if (countOpenvpnProfiles() > 0) {
+                    tabs.push({ key: 'ovpn', count: countOpenvpnProfiles() });
+                }
+                if (wireguardConfigLinks.length > 0) {
+                    tabs.push({ key: 'wireguard', count: wireguardConfigLinks.length });
+                }
+                if (countCredentialCards() > 0) {
+                    tabs.push({ key: 'l2tp', count: countCredentialCards() });
+                }
+                availableTabs = tabs;
+            }
+
+            function ensureActiveView() {
+                var keys = availableTabs.map(function (item) { return item.key; });
+                if (keys.indexOf(state.activeView) >= 0) return;
+                if (keys.indexOf('v2') >= 0) {
+                    state.activeView = 'v2';
+                    return;
+                }
+                state.activeView = keys[0] || 'v2';
+            }
+
+            function activeLinkCollection() {
+                return state.activeView === 'wireguard' ? wireguardConfigLinks : v2ConfigLinks;
+            }
+
+            function tabLabel(view) {
+                if (view === 'ovpn') return t('protocolTabOVPN');
+                if (view === 'wireguard') return t('protocolTabWireGuard');
+                if (view === 'l2tp') return t('protocolTabL2TP');
+                return t('protocolTabV2');
+            }
+
+            function activeViewTitle() {
+                if (state.activeView === 'ovpn') return t('openvpnTitle');
+                if (state.activeView === 'wireguard') return t('wireguardTitle');
+                if (state.activeView === 'l2tp') return t('l2tpTitle');
+                return t('v2Title');
+            }
+
+            function renderProtocolTabs() {
+                buildAvailableTabs();
+                ensureActiveView();
+                var wrap = document.getElementById('protocolTabsWrap');
+                var root = document.getElementById('protocolTabs');
+                if (!wrap || !root) return;
+                root.innerHTML = '';
+                wrap.hidden = availableTabs.length <= 1;
+                availableTabs.forEach(function (tab) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'rb-protocol-tab' + (state.activeView === tab.key ? ' is-active' : '');
+                    button.innerHTML =
+                        '<span class="rb-protocol-tab-label">' + tabLabel(tab.key) + '</span>' +
+                        '<span class="rb-protocol-tab-count" dir="ltr">' + formatNumber(tab.count) + '</span>';
+                    button.addEventListener('click', function () {
+                        state.activeView = tab.key;
+                        renderProtocolTabs();
+                        renderActiveProtocolPanel();
+                    });
+                    root.appendChild(button);
+                });
+            }
+
+            function filteredConfigs() {
+                return activeLinkCollection().filter(function (item) {
+                    var haystack = (item.label + ' ' + item.protocol + ' ' + item.value).toLowerCase();
+                    return haystack.indexOf(state.query) >= 0;
+                });
+            }
+
+            function openQrModal(value, label) {
+                state.qrValue = value;
+                state.qrLabel = label;
+                var modal = document.getElementById('qrModal');
+                var frame = document.getElementById('qrCodeFrame');
+                var subtitleEl = document.getElementById('qrModalSubtitle');
+                var urlEl = document.getElementById('qrModalUrl');
+                subtitleEl.textContent = label;
+                subtitleEl.title = label;
+                urlEl.textContent = value;
+                urlEl.title = value;
+                frame.innerHTML = '';
+                if (typeof QRCode === 'function') {
+                    new QRCode(frame, {
+                        text: value,
+                        width: 236,
+                        height: 236,
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                }
+                modal.hidden = false;
+            }
+
+            function closeQrModal() {
+                document.getElementById('qrModal').hidden = true;
+            }
+
+            function renderActiveProtocolPanel() {
+                buildAvailableTabs();
+                ensureActiveView();
+                var title = document.getElementById('protocolCardTitle');
+                var count = document.getElementById('configsCountText');
+                var copyAllButton = document.getElementById('copyAllConfigsButton');
+                var qrSubButton = document.getElementById('showSubscriptionQrButton');
+                var searchWrap = document.getElementById('configSearchWrap');
+                var linksPanel = document.getElementById('linksProtocolPanel');
+                var ovpnPanel = document.getElementById('ovpnProtocolPanel');
+                var l2tpPanel = document.getElementById('l2tpProtocolPanel');
+                var ovpnEmpty = document.getElementById('ovpnEmptyState');
+                var l2tpEmpty = document.getElementById('l2tpEmptyState');
+                var ovpnCount = countOpenvpnProfiles();
+                var credentialCount = countCredentialCards();
+                var isLinkView = state.activeView === 'v2' || state.activeView === 'wireguard';
+
+                if (title) {
+                    title.textContent = activeViewTitle();
+                }
+                if (searchWrap) {
+                    searchWrap.hidden = !isLinkView;
+                }
+                if (copyAllButton) {
+                    copyAllButton.hidden = !isLinkView;
+                }
+                if (qrSubButton) {
+                    qrSubButton.hidden = !isLinkView;
+                    qrSubButton.setAttribute('title', t('qrButton'));
+                    qrSubButton.setAttribute('aria-label', t('qrButton'));
+                    var qrSubIcon = document.getElementById('showSubscriptionQrButtonIcon');
+                    if (qrSubIcon && !qrSubIcon.innerHTML) {
+                        qrSubIcon.innerHTML = iconQrSolid();
+                    }
+                }
+                if (linksPanel) {
+                    linksPanel.hidden = !isLinkView;
+                }
+                if (ovpnPanel) {
+                    ovpnPanel.hidden = state.activeView !== 'ovpn';
+                }
+                if (l2tpPanel) {
+                    l2tpPanel.hidden = state.activeView !== 'l2tp';
+                }
+                if (ovpnEmpty) {
+                    ovpnEmpty.hidden = ovpnCount > 0;
+                }
+                if (l2tpEmpty) {
+                    l2tpEmpty.hidden = credentialCount > 0;
+                }
+
+                if (state.activeView === 'ovpn') {
+                    count.textContent = interpolate(t('openvpnCount'), {
+                        count: formatNumber(ovpnCount)
+                    });
+                    if (copyAllButton) {
+                        copyAllButton.disabled = true;
+                    }
+                    return;
+                }
+
+                if (state.activeView === 'l2tp') {
+                    count.textContent = interpolate(t('credentialCount'), {
+                        count: formatNumber(credentialCount)
+                    });
+                    if (copyAllButton) {
+                        copyAllButton.disabled = true;
+                    }
+                    return;
+                }
+
+                renderConfigList();
+            }
+
+            function renderConfigList() {
+                var list = document.getElementById('configList');
+                var empty = document.getElementById('configEmptyState');
+                var count = document.getElementById('configsCountText');
+                var copyAllButton = document.getElementById('copyAllConfigsButton');
+                if (!list || !empty || !count) return;
+                var items = filteredConfigs();
+                var totalItems = activeLinkCollection();
+                count.textContent = interpolate(t('configsCount'), {
+                    shown: formatNumber(items.length),
+                    total: formatNumber(totalItems.length)
+                });
+                if (copyAllButton) {
+                    copyAllButton.disabled = items.length === 0;
+                }
+                list.innerHTML = '';
+                empty.hidden = items.length > 0;
+                if (items.length === 0) return;
+                items.forEach(function (item, index) {
+                    var row = document.createElement('article');
+                    row.className = 'rb-config-item';
+                    row.title = item.value;
+                    var main = document.createElement('div');
+                    main.className = 'rb-config-main';
+                    var top = document.createElement('div');
+                    top.className = 'rb-config-top';
+                    var name = document.createElement('span');
+                    name.className = 'rb-config-name';
+                    name.innerHTML = renderNameWithFlags(item.label || (t('qrConfigLabel') + ' #' + item.order));
+                    var protocol = document.createElement('span');
+                    protocol.className = 'rb-protocol-badge';
+                    protocol.textContent = item.protocol.toUpperCase();
+                    top.appendChild(name);
+                    top.appendChild(protocol);
+                    main.appendChild(top);
+                    var actions = document.createElement('div');
+                    actions.className = 'rb-config-actions';
+                    var copyButton = document.createElement('button');
+                    copyButton.type = 'button';
+                    copyButton.className = 'rb-icon-button';
+                    copyButton.title = t('copySubscriptionButton');
+                    copyButton.innerHTML = iconCopySolid();
+                    copyButton.addEventListener('click', function () {
+                        copyText(item.value, copyButton);
+                    });
+                    var qrButton = document.createElement('button');
+                    qrButton.type = 'button';
+                    qrButton.className = 'rb-icon-button';
+                    qrButton.title = t('qrButton');
+                    qrButton.innerHTML = iconQrSolid();
+                    qrButton.addEventListener('click', function () {
+                        openQrModal(item.value, item.label || t('qrConfigLabel'));
+                    });
+                    actions.appendChild(copyButton);
+                    actions.appendChild(qrButton);
+                    row.appendChild(main);
+                    row.appendChild(actions);
+                    list.appendChild(row);
+                });
+            }
+
+            function appPlatformLabel(platform) {
+                var map = {
+                    ios: t('appPlatformIOS'),
+                    android: t('appPlatformAndroid'),
+                    windows: t('appPlatformWindows'),
+                    macos: t('appPlatformMacOS'),
+                    linux: t('appPlatformLinux')
+                };
+                return map[platform] || platform;
+            }
+
+            function osIcon(platform) {
+                var icons = {
+                    ios: '<svg viewBox="0 0 24 24" fill="none"><path d="M16.7 2.4C16.2 3.8 15.1 5 13.8 5.1C13.6 3.7 14.5 2.4 15.2 1.9C15.8 1.5 16.4 1.3 16.7 1.3V2.4Z" fill="currentColor"></path><path d="M19.2 17.5C18.6 18.8 18.3 19.3 17.5 20.5C16.4 22.1 14.8 22.1 14.1 22.1C13.4 22.1 12.6 21.6 11.8 21.6C11 21.6 10.1 22.1 9.3 22.1C8.5 22.1 7.1 22 6 20.5C3.7 17.1 3.4 13.1 4.9 10.8C6 9.2 7.6 8.3 9.1 8.3C9.9 8.3 10.7 8.8 11.5 8.8C12.2 8.8 13.2 8.2 14.4 8.2C15.3 8.2 17 8.4 18.2 10.2C15.4 11.7 15.9 15.8 19.2 17.5Z" fill="currentColor"></path></svg>',
+                    android: '<svg viewBox="0 0 24 24" fill="none"><path d="M7.3 8.2H16.7C18 8.2 19 9.2 19 10.5V17.5C19 18.8 18 19.8 16.7 19.8H7.3C6 19.8 5 18.8 5 17.5V10.5C5 9.2 6 8.2 7.3 8.2Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8 8L6.4 5.4M16 8L17.6 5.4M8.5 12.2H8.6M15.4 12.2H15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><path d="M8 20V22M16 20V22M3 11V17M21 11V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>',
+                    windows: '<svg viewBox="0 0 24 24" fill="none"><path d="M3.5 5.2L10.5 4.2V11.2H3.5V5.2ZM12 4L20.5 2.8V11.2H12V4ZM3.5 12.8H10.5V19.8L3.5 18.8V12.8ZM12 12.8H20.5V21.2L12 20V12.8Z" fill="currentColor"></path></svg>',
+                    macos: '<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M9 20H15M12 16V20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>',
+                    linux: '<svg viewBox="0 0 24 24" fill="none"><path d="M5 7.5C5 6.1 6.1 5 7.5 5H16.5C17.9 5 19 6.1 19 7.5V16.5C19 17.9 17.9 19 16.5 19H7.5C6.1 19 5 17.9 5 16.5V7.5Z" stroke="currentColor" stroke-width="1.6"></path><path d="M8.5 9L11 11.5L8.5 14M12.5 15H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
+                };
+                return icons[platform] || '';
+            }
+
+            function appPlatforms() {
+                var order = ['ios', 'android', 'windows', 'macos', 'linux'];
+                return order.filter(function (platform) {
+                    return appCatalog.some(function (app) { return app.platform === platform; });
+                });
+            }
+
+            function base64Encode(value) {
+                try {
+                    return btoa(unescape(encodeURIComponent(value)));
+                } catch (error) {
+                    try {
+                        return btoa(value);
+                    } catch (innerError) {
+                        return '';
+                    }
+                }
+            }
+
+            function base64UrlEncode(value) {
+                return base64Encode(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+            }
+
+            function appSubscriptionUrl() {
+                return normalizeUrl(bodyData.subscriptionUrl) || window.location.href;
+            }
+
+            function appSubscriptionName() {
+                return bodyData.serviceName || bodyData.username || 'Rebecca';
+            }
+
+            function appAddUrl(app) {
+                var subscription = appSubscriptionUrl();
+                var encodedUrl = encodeURIComponent(subscription);
+                var encodedName = encodeURIComponent(appSubscriptionName());
+                switch (app.scheme) {
+                    case 'happ':
+                        return 'happ://add/' + subscription;
+                    case 'hiddify':
+                        return 'hiddify://install-sub/?url=' + encodedUrl + '&name=' + encodedName;
+                    case 'v2rayng':
+                        return 'v2rayng://install-config?url=' + encodedUrl;
+                    case 'nekobox':
+                        return 'nekobox://install-config?url=' + encodedUrl;
+                    case 'nekoray':
+                        return 'nekoray://install-config?url=' + encodedUrl;
+                    case 'v2box':
+                        return 'v2box://install-sub?url=' + encodedUrl + '&name=' + encodedName;
+                    case 'streisand':
+                        return 'streisand://import/' + base64UrlEncode(subscription);
+                    case 'shadowrocket':
+                        return 'shadowrocket://add/sub://' + base64Encode(subscription) + '?remark=' + encodedName;
+                    case 'singbox':
+                        return 'sing-box://import-remote-profile?url=' + encodedUrl;
+                    case 'v2rayn':
+                        return 'v2rayn://install-sub?url=' + encodedUrl;
+                    case 'clash':
+                        return 'clash://install-config?url=' + encodedUrl + '&name=' + encodedName;
+                    default:
+                        return subscription;
+                }
+            }
+
+            function appInitials(app) {
+                if (app.short) return app.short;
+                return String(app.name || 'APP')
+                    .split(/\s+/)
+                    .map(function (part) { return part.charAt(0); })
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase();
+            }
+
+            function buildAppIcon(app) {
+                var shell = document.createElement('span');
+                shell.className = 'rb-app-icon-shell';
+                var image = document.createElement('img');
+                image.className = 'rb-app-icon';
+                image.src = app.icon || '';
+                image.alt = '';
+                image.loading = 'lazy';
+                var fallback = document.createElement('span');
+                fallback.className = 'rb-app-icon-fallback';
+                fallback.textContent = appInitials(app);
+                fallback.hidden = Boolean(app.icon);
+                image.addEventListener('error', function () {
+                    image.hidden = true;
+                    fallback.hidden = false;
+                });
+                if (app.icon) {
+                    shell.appendChild(image);
+                }
+                shell.appendChild(fallback);
+                return shell;
+            }
+
+            function renderAppPlatformTabs() {
+                var root = document.getElementById('appPlatformTabs');
+                if (!root) return;
+                var platforms = appPlatforms();
+                if (platforms.indexOf(state.activeAppPlatform) === -1) {
+                    state.activeAppPlatform = platforms[0] || 'ios';
+                }
+                root.innerHTML = '';
+                platforms.forEach(function (platform) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'rb-app-tab' + (state.activeAppPlatform === platform ? ' is-active' : '');
+                    button.setAttribute('aria-selected', state.activeAppPlatform === platform ? 'true' : 'false');
+                    var icon = document.createElement('span');
+                    icon.className = 'rb-os-icon';
+                    icon.setAttribute('aria-hidden', 'true');
+                    icon.innerHTML = osIcon(platform);
+                    var label = document.createElement('span');
+                    label.textContent = appPlatformLabel(platform);
+                    button.appendChild(icon);
+                    button.appendChild(label);
+                    button.addEventListener('click', function () {
+                        state.activeAppPlatform = platform;
+                        renderAppDownloads();
+                    });
+                    root.appendChild(button);
+                });
+            }
+
+            function renderAppDownloads() {
+                renderAppPlatformTabs();
+                var root = document.getElementById('appDownloadList');
+                var empty = document.getElementById('appDownloadEmptyState');
+                if (!root || !empty) return;
+                var items = appCatalog.filter(function (app) {
+                    return app.platform === state.activeAppPlatform;
+                });
+                root.innerHTML = '';
+                empty.hidden = items.length > 0;
+                if (items.length === 0) return;
+                items.forEach(function (app, index) {
+                    var row = document.createElement('article');
+                    row.className = 'rb-app-item';
+                    if (items.length % 2 === 1 && index === items.length - 1) {
+                        row.className += ' rb-app-item--full';
+                    }
+                    var icon = buildAppIcon(app);
+                    var info = document.createElement('div');
+                    var name = document.createElement('span');
+                    name.className = 'rb-app-name';
+                    name.textContent = app.name;
+                    var meta = document.createElement('span');
+                    meta.className = 'rb-app-meta';
+                    meta.textContent = app.meta;
+                    info.appendChild(name);
+                    info.appendChild(meta);
+
+                    var actions = document.createElement('div');
+                    actions.className = 'rb-app-actions';
+                    var download = document.createElement('a');
+                    download.className = 'rb-link-button';
+                    download.href = app.download;
+                    download.target = '_blank';
+                    download.rel = 'noopener noreferrer';
+                    download.textContent = t('downloadButton');
+                    var add = document.createElement('a');
+                    add.className = 'rb-link-button rb-button--primary';
+                    add.href = appAddUrl(app);
+                    add.textContent = t('appAddButton');
+                    actions.appendChild(download);
+                    actions.appendChild(add);
+                    row.appendChild(icon);
+                    row.appendChild(info);
+                    row.appendChild(actions);
+                    root.appendChild(row);
+                });
+            }
+
+            function setRangeButtons(days) {
+                document.querySelectorAll('[data-range-days]').forEach(function (button) {
+                    button.classList.toggle('is-active', Number(button.getAttribute('data-range-days')) === days);
+                });
+            }
+
+            function usageUrlForDays(days) {
+                var base = normalizeUrl(bodyData.usageUrl);
+                var url = new URL(base, window.location.origin);
+                var end = new Date();
+                var start = new Date();
+                start.setUTCDate(end.getUTCDate() - (days - 1));
+                start.setUTCHours(0, 0, 0, 0);
+                end.setUTCHours(23, 59, 59, 999);
+                url.searchParams.set('start', start.toISOString());
+                url.searchParams.set('end', end.toISOString());
+                return url.toString();
+            }
+
+            function buildSmoothPath(points) {
+                if (points.length < 2) return '';
+                var d = 'M' + points[0].x.toFixed(2) + ',' + points[0].y.toFixed(2);
+                for (var i = 0; i < points.length - 1; i++) {
+                    var p0 = points[i === 0 ? i : i - 1];
+                    var p1 = points[i];
+                    var p2 = points[i + 1];
+                    var p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+                    var cp1x = p1.x + (p2.x - p0.x) / 6;
+                    var cp1y = p1.y + (p2.y - p0.y) / 6;
+                    var cp2x = p2.x - (p3.x - p1.x) / 6;
+                    var cp2y = p2.y - (p3.y - p1.y) / 6;
+                    d += ' C' + cp1x.toFixed(2) + ',' + cp1y.toFixed(2) + ' ' + cp2x.toFixed(2) + ',' + cp2y.toFixed(2) + ' ' + p2.x.toFixed(2) + ',' + p2.y.toFixed(2);
+                }
+                return d;
+            }
+
+            function renderUsageBars(points) {
+                var root = document.getElementById('usageChart');
+                if (!root) return;
+                if (!Array.isArray(points) || points.length === 0) {
+                    root.innerHTML = '<div class="rb-chart-message">' + t('usageEmpty') + '</div>';
+                    return;
+                }
+                var values = points.map(function (item) { return toNumber(item.used_traffic); });
+                var total = values.reduce(function (sum, value) { return sum + value; }, 0);
+                var rawMax = Math.max.apply(null, values.concat([1]));
+                var chartMax = rawMax * 1.12 || 1;
+
+                var width = 640;
+                var height = 240;
+                var padLeft = 56;
+                var padRight = 10;
+                var padTop = 14;
+                var padBottom = 26;
+                var plotW = width - padLeft - padRight;
+                var plotH = height - padTop - padBottom;
+
+                var coords = points.map(function (item, index) {
+                    var used = toNumber(item.used_traffic);
+                    var x = points.length === 1 ? (padLeft + plotW / 2) : (padLeft + (plotW * index) / (points.length - 1));
+                    var y = padTop + plotH - (used / chartMax) * plotH;
+                    return { x: x, y: y };
+                });
+
+                var linePath = buildSmoothPath(coords);
+                var baseline = padTop + plotH;
+                var areaPath = linePath +
+                    ' L' + coords[coords.length - 1].x.toFixed(2) + ',' + baseline.toFixed(2) +
+                    ' L' + coords[0].x.toFixed(2) + ',' + baseline.toFixed(2) + ' Z';
+
+                var gridSteps = 4;
+                var gridSvg = '';
+                for (var g = 0; g <= gridSteps; g++) {
+                    var gy = padTop + (plotH * g) / gridSteps;
+                    var gVal = chartMax - (chartMax * g) / gridSteps;
+                    gridSvg += '<line class="rb-chart-gridline" x1="' + padLeft + '" y1="' + gy.toFixed(2) + '" x2="' + (width - padRight) + '" y2="' + gy.toFixed(2) + '"></line>';
+                    gridSvg += '<text class="rb-chart-axis-label" x="' + (padLeft - 8) + '" y="' + (gy + 3.5).toFixed(2) + '" text-anchor="end">' + formatBytes(gVal) + '</text>';
+                }
+
+                var step = Math.max(1, Math.ceil(points.length / 8));
+                var xLabelsSvg = '';
+                points.forEach(function (item, index) {
+                    var showLabel = points.length <= 10 || index % step === 0 || index === points.length - 1;
+                    if (!showLabel) return;
+                    var label = String(item.date || item.timestamp || '').slice(5, 10);
+                    if (!label) return;
+                    var anchor = index === 0 ? 'start' : (index === points.length - 1 ? 'end' : 'middle');
+                    xLabelsSvg += '<text class="rb-chart-axis-label" x="' + coords[index].x.toFixed(2) + '" y="' + (height - 8) + '" text-anchor="' + anchor + '">' + label + '</text>';
+                });
+
+                var svg = '<svg class="rb-chart-svg" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" role="img" aria-label="' + t('usageChartTitle') + '">' +
+                    '<defs><linearGradient id="rbChartFill" x1="0" y1="0" x2="0" y2="1">' +
+                    '<stop offset="0%" stop-color="var(--rb-panel-accent)" stop-opacity="0.4"></stop>' +
+                    '<stop offset="100%" stop-color="var(--rb-panel-accent)" stop-opacity="0"></stop>' +
+                    '</linearGradient></defs>' +
+                    gridSvg +
+                    '<path class="rb-chart-area" d="' + areaPath + '"></path>' +
+                    '<path class="rb-chart-line" d="' + linePath + '"></path>' +
+                    xLabelsSvg +
+                    '</svg>';
+
+                root.innerHTML = '<div class="rb-chart-svg-wrap">' + svg + '</div>' +
+                    '<div class="rb-chart-foot"><span>' + t('usageTotal') + '</span><strong dir="ltr">' + formatBytes(total) + '</strong></div>';
+            }
+
+            var usageChartRequestId = 0;
+
+            function renderUsageChart(days) {
+                state.usageRange = days;
+                setRangeButtons(days);
+                var root = document.getElementById('usageChart');
+                if (!root) return;
+                var requestId = ++usageChartRequestId;
+                root.innerHTML = '<div class="rb-chart-message">' + t('usageLoading') + '</div>';
+                fetch(usageUrlForDays(days), {
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                })
+                    .then(function (response) {
+                        if (!response.ok) throw new Error('usage');
+                        return response.json();
+                    })
+                    .then(function (payload) {
+                        if (requestId !== usageChartRequestId) return;
+                        renderUsageBars((payload && payload.usages) || []);
+                    })
+                    .catch(function () {
+                        if (requestId !== usageChartRequestId) return;
+                        root.innerHTML = '<div class="rb-chart-message">' + t('usageUnavailable') + '</div>';
+                    });
+            }
+
+            function wireEvents() {
+                var themeShell = document.querySelector('.rb-toolbar-menu-shell');
+                var themeToggleButton = document.getElementById('themeToggleButton');
+                var langMenuButton = document.getElementById('langMenuButton');
+                var langMenu = document.getElementById('langMenu');
+                if (themeToggleButton) {
+                    themeToggleButton.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                        toggleTheme();
+                    });
+                }
+                if (langMenuButton) {
+                    langMenuButton.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                        togglePreferencesMenu();
+                    });
+                }
+                if (langMenu) {
+                    langMenu.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                    });
+                }
+                document.querySelectorAll('[data-lang-choice]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        applyLanguage(button.getAttribute('data-lang-choice'));
+                        closePreferencesMenu();
+                    });
+                });
+                document.getElementById('configsSearchInput').addEventListener('input', function (event) {
+                    state.query = String(event.target.value || '').trim().toLowerCase();
+                    if (state.activeView === 'v2' || state.activeView === 'wireguard') {
+                        renderConfigList();
+                    }
+                });
+                document.getElementById('copyAllConfigsButton').addEventListener('click', function () {
+                    copyText(filteredConfigs().map(function (item) { return item.value; }).join('\n'), null);
+                });
+                document.getElementById('showSubscriptionQrButton').addEventListener('click', function () {
+                    openQrModal(normalizeUrl(bodyData.subscriptionUrl), t('qrSubscriptionLabel'));
+                });
+                document.getElementById('copyQrValueButton').addEventListener('click', function () {
+                    copyText(state.qrValue, null);
+                });
+                document.querySelectorAll('[data-close-qr]').forEach(function (button) {
+                    button.addEventListener('click', closeQrModal);
+                });
+                document.addEventListener('click', function (event) {
+                    if (themeShell && !themeShell.contains(event.target)) {
+                        closePreferencesMenu();
+                    }
+                });
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape') {
+                        closePreferencesMenu();
+                        closeQrModal();
+                    }
+                });
+                document.querySelectorAll('[data-copy-text]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        copyText(button.getAttribute('data-copy-text') || '', button);
+                    });
+                });
+                document.querySelectorAll('[data-range-days]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        renderUsageChart(Number(button.getAttribute('data-range-days')) || 7);
+                    });
+                });
+            }
+
+            buildConfigCatalog();
+            applyAccent();
+            applyTheme(state.theme);
+            wireEvents();
+            renderAppDownloads();
+            applyLanguage(state.language);
+        })();
     </script>
 </body>
-
 </html>

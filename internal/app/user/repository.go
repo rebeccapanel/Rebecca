@@ -140,6 +140,7 @@ func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSetti
 	result.UseCustomJSONForV2rayNG = truthy(row["use_custom_json_for_v2rayng"])
 	result.UseCustomJSONForStreisand = truthy(row["use_custom_json_for_streisand"])
 	result.UseCustomJSONForHapp = truthy(row["use_custom_json_for_happ"])
+	result.UseCustomJSONForIncy = truthy(row["use_custom_json_for_incy"])
 	result.RawSubscriptionSettings = json.RawMessage(mustJSON(row))
 	return result, nil
 }
@@ -262,7 +263,6 @@ func (r Repository) ResolvedInboundsByTag(ctx context.Context) (map[string]Resol
 	}
 	result := map[string]ResolvedInbound{}
 	order := make([]string, 0)
-	excluded := excludedInboundTags()
 	for _, raw := range rawConfigs {
 		inbounds := listOfMaps(raw["inbounds"])
 		for _, inbound := range inbounds {
@@ -271,10 +271,7 @@ func (r Repository) ResolvedInboundsByTag(ctx context.Context) (map[string]Resol
 			if tag == "" || protocol == "" {
 				continue
 			}
-			if _, ok := proxyProtocols[protocol]; !ok {
-				continue
-			}
-			if _, skip := excluded[tag]; skip {
+			if !isResolvableInboundProtocol(protocol) {
 				continue
 			}
 			resolved, err := resolveInbound(inbound)

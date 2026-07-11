@@ -27,6 +27,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/internal/admin/validate", s.handleInternalAdminValidate)
+	r.HandleFunc("/internal/node/session-event", s.handleNodeSessionEvent)
 	r.HandleFunc("/xray/*", s.requireSudo(s.handleXrayHelperPath))
 	r.HandleFunc("/inbounds/full", s.requireSudo(s.handleInboundsFull))
 	r.HandleFunc("/inbounds/*", s.requireSudo(s.handleInboundPath))
@@ -96,6 +97,7 @@ func (s *Server) registerConfigRoutes(r chi.Router) {
 
 func (s *Server) registerInboundHostRoutes(r chi.Router) {
 	r.HandleFunc("/inbounds/full", s.requireSudo(s.handleInboundsFull))
+	r.HandleFunc("/inbounds/openvpn/runtime", s.requireSudo(s.handleOVRuntime))
 	r.HandleFunc("/inbounds/*", s.requireSudo(s.handleInboundPath))
 	r.HandleFunc("/inbounds", s.handleInboundsRootEntry)
 	r.HandleFunc("/hosts/*", s.requireAdmin(s.handleHostStatusPath))

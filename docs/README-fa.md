@@ -95,6 +95,14 @@
 curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install
 ```
 
+نصاب‌ها را با `sudo bash -c "$(curl ...)"` اجرا نکنید؛ متن اسکریپت ممکن است از محدودیت single argument لینوکس بزرگ‌تر شود و خطای `Argument list too long` بدهد. همیشه دانلود را مثل نمونه بالا به `sudo bash -s --` pipe کنید.
+
+برای نصب کانال dev:
+
+```bash
+curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install --dev
+```
+
 برای نصب باینری Rebecca-node روی هر سرور نود:
 
 ```bash

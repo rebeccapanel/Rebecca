@@ -175,7 +175,7 @@ func TestHostsBulkModifyMoveDisableAndEnqueue(t *testing.T) {
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'info'`, 2)
 }
 
-func TestHostsBulkModifySubscriptionOnlyChangeDoesNotEnqueueRuntimeSync(t *testing.T) {
+func TestHostsBulkModifySubscriptionChangeEnqueuesRuntimeSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("cdn", "vless", 443)))
@@ -206,10 +206,10 @@ func TestHostsBulkModifySubscriptionOnlyChangeDoesNotEnqueueRuntimeSync(t *testi
 		t.Fatalf("hosts update status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 10 AND host_id = `+itoa(hostID), 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }
 
-func TestHostsBulkModifyDeletingDuplicateInboundHostDoesNotEnqueueRuntimeSync(t *testing.T) {
+func TestHostsBulkModifyDeletingDuplicateInboundHostEnqueuesRuntimeSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("cdn", "vless", 443)))
@@ -244,7 +244,7 @@ func TestHostsBulkModifyDeletingDuplicateInboundHostDoesNotEnqueueRuntimeSync(t 
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE id = 55`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 10 AND host_id = `+itoa(firstHostID), 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations`, 0)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }
 
 func TestHostsRejectUnknownInbound(t *testing.T) {

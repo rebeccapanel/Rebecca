@@ -3172,7 +3172,7 @@
           "Subscriptions"
         ],
         "summary": "Subscription info",
-        "description": "Return subscription user info for a resolved identifier.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Return subscription user info for a resolved identifier, including OpenVPN downloads, WireGuard downloads plus `wg://` links and inline `.conf` bodies, L2TP/IPsec connection info, and PPTP connection info when the user service has those hosts.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.",
         "security": [],
         "parameters": [
           {
@@ -3186,7 +3186,15 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/JSON"
+            "description": "Subscription info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
           }
         },
         "operationId": "getSubIdentifierInfo"
@@ -3230,7 +3238,7 @@
           "Subscriptions"
         ],
         "summary": "Render two-part subscription path",
-        "description": "Render either identifier/client_type or username/credential_key subscription paths. Rebecca resolves the meaning from stored user credentials and known client types.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Ambiguous two-part subscription paths are resolved by checking whether the second part is a known client type or a credential key.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Render either identifier/client_type or username/credential_key subscription paths. Rebecca resolves the meaning from stored user credentials and known client types.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Ambiguous two-part subscription paths are resolved by checking whether the second part is a known client type or a credential key. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {
@@ -3245,6 +3253,7 @@
             "name": "part2",
             "in": "path",
             "required": true,
+            "description": "Credential key, legacy subscription key, or known client type such as `v2raytun`, `karing`, `shadowrocket`, `wireguard`, `wg`, or `openvpn`.",
             "schema": {
               "type": "string"
             }
@@ -3264,7 +3273,7 @@
           "Subscriptions"
         ],
         "summary": "Username/key subscription info",
-        "description": "Return subscription user info using explicit username and credential key.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Return subscription user info using explicit username and credential key, including OpenVPN downloads, WireGuard downloads plus `wg://` links and inline `.conf` bodies, L2TP/IPsec connection info, and PPTP connection info when available.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
         "security": [],
         "parameters": [
           {
@@ -3281,7 +3290,15 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/JSON"
+            "description": "Subscription info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
           }
         },
         "operationId": "getSubUsernameCredentialKeyInfo"
@@ -3328,7 +3345,7 @@
           "Subscriptions"
         ],
         "summary": "Username/key client subscription",
-        "description": "Render client-specific subscription output using explicit username and credential key.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Use this form when your integration knows username, credential key, and desired client format explicitly.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Render client-specific subscription output using explicit username and credential key.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Use this form when your integration knows username, credential key, and desired client format explicitly. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {
@@ -3347,7 +3364,27 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "v2ray",
+                "v2ray-json",
+                "clash",
+                "clash-meta",
+                "sing-box",
+                "outline",
+                "openvpn",
+                "wireguard",
+                "wg",
+                "happ",
+                "v2raytun",
+                "throne",
+                "shadowrocket",
+                "karing",
+                "clash-mi",
+                "incy",
+                "passwall",
+                "nekobox"
+              ]
             }
           }
         ],
@@ -3484,6 +3521,135 @@
         },
         "operationId": "getMaintenanceStatus"
       }
+    },
+    "/api/node/{node_id}/host/reboot": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "summary": "Reboot node host",
+        "description": "Request a binary Rebecca-node host reboot through the node gRPC controller. The node schedules the Linux `reboot` command and active connections on that node will drop until the server returns.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. The current dashboard JWT is also accepted.\n\nPermissions: Requires sudo/full_access. Node calls use Go node controller and gRPC/mTLS where runtime communication is needed.\n\nSide effects: this reboots the node server OS.",
+        "operationId": "postNodeNodeIdHostReboot",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Reboot scheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/sub/{identifier}/ov/{host_tag}.ovpn": {
+      "get": {
+        "tags": [
+          "Subscriptions"
+        ],
+        "summary": "Download OV profile",
+        "description": "Download a single OpenVPN/OV profile for the resolved subscription user and host tag. The host tag is the host tag/remark-safe value, not the inbound tag.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
+        "operationId": "getSubIdentifierOvHostTagProfile",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OV profile",
+            "content": {
+              "application/x-openvpn-profile": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/sub/{identifier}/wg/{host_tag}.conf": {
+      "get": {
+        "tags": [
+          "Subscriptions"
+        ],
+        "summary": "Download WireGuard profile",
+        "description": "Download a single WireGuard profile for the resolved subscription user and host tag. The host tag is the host tag/remark-safe value, not the inbound tag.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint.",
+        "operationId": "getSubIdentifierWgHostTagProfile",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host_tag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WireGuard profile",
+            "content": {
+              "application/x-wireguard-profile": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3612,6 +3778,11 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Object"
+            },
+            "example": {
+              "name": "example",
+              "status": "active",
+              "settings": {}
             }
           }
         },
@@ -3667,6 +3838,11 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/AnyValue"
+            },
+            "example": {
+              "id": 1,
+              "status": "ok",
+              "detail": "Operation completed"
             }
           }
         }
@@ -3704,10 +3880,19 @@
     "schemas": {
       "Object": {
         "type": "object",
-        "additionalProperties": true
+        "additionalProperties": true,
+        "example": {
+          "name": "example",
+          "status": "active",
+          "settings": {}
+        }
       },
       "AnyValue": {
         "nullable": true,
+        "example": {
+          "id": 1,
+          "status": "ok"
+        },
         "oneOf": [
           {
             "type": "object",

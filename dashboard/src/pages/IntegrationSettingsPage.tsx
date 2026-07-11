@@ -164,6 +164,8 @@ type TemplateKey =
 	| "home_page_template"
 	| "v2ray_subscription_template"
 	| "v2ray_settings_template"
+	| "happ_subscription_template"
+	| "incy_subscription_template"
 	| "singbox_subscription_template"
 	| "singbox_settings_template"
 	| "mux_template";
@@ -244,6 +246,9 @@ const defaultRuntimeSettings: RuntimeSettingsResponse = {
 	phpmyadmin_port: 8080,
 	phpmyadmin_path: "/phpmyadmin/",
 	phpmyadmin_public_url: "",
+	phpmyadmin_login_mode: "rebecca",
+	phpmyadmin_username: "",
+	phpmyadmin_password: "",
 };
 
 const flattenEventToggleValues = (
@@ -633,6 +638,8 @@ const buildSubscriptionDefaults = (
 	home_page_template: settings?.home_page_template ?? "",
 	v2ray_subscription_template: settings?.v2ray_subscription_template ?? "",
 	v2ray_settings_template: settings?.v2ray_settings_template ?? "",
+	happ_subscription_template: settings?.happ_subscription_template ?? "",
+	incy_subscription_template: settings?.incy_subscription_template ?? "",
 	singbox_subscription_template: settings?.singbox_subscription_template ?? "",
 	singbox_settings_template: settings?.singbox_settings_template ?? "",
 	mux_template: settings?.mux_template ?? "",
@@ -642,6 +649,7 @@ const buildSubscriptionDefaults = (
 	use_custom_json_for_streisand:
 		settings?.use_custom_json_for_streisand ?? false,
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
+	use_custom_json_for_incy: settings?.use_custom_json_for_incy ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
 	subscription_aliases: settings?.subscription_aliases ?? [],
 	subscription_ports: settings?.subscription_ports ?? [],
@@ -1628,6 +1636,8 @@ export const IntegrationSettingsPage = () => {
 			home_page_template: values.home_page_template.trim(),
 			v2ray_subscription_template: values.v2ray_subscription_template.trim(),
 			v2ray_settings_template: values.v2ray_settings_template.trim(),
+			happ_subscription_template: values.happ_subscription_template.trim(),
+			incy_subscription_template: values.incy_subscription_template.trim(),
 			singbox_subscription_template:
 				values.singbox_subscription_template.trim(),
 			singbox_settings_template: values.singbox_settings_template.trim(),
@@ -1637,6 +1647,7 @@ export const IntegrationSettingsPage = () => {
 			use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
 			use_custom_json_for_streisand: values.use_custom_json_for_streisand,
 			use_custom_json_for_happ: values.use_custom_json_for_happ,
+			use_custom_json_for_incy: values.use_custom_json_for_incy,
 			subscription_path: values.subscription_path?.trim() || "sub",
 			subscription_aliases: aliases,
 			subscription_ports: ports,
@@ -2301,6 +2312,96 @@ export const IntegrationSettingsPage = () => {
 															"phpMyAdmin opens inside its own panel page and uses the panel database credentials.",
 														)}
 													</FormHelperText>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t(
+															"phpmyadmin.loginMode",
+															"Login credentials",
+														)}
+													</FormLabel>
+													<Select
+														value={runtimeSettingsForm.phpmyadmin_login_mode}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_login_mode: event.target.value as
+																	| "rebecca"
+																	| "custom",
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													>
+														<option value="rebecca">
+															{t(
+																"phpmyadmin.loginModeRebecca",
+																"Login with Rebecca database account",
+															)}
+														</option>
+														<option value="custom">
+															{t(
+																"phpmyadmin.loginModeCustom",
+																"Login with custom username password",
+															)}
+														</option>
+													</Select>
+													<FormHelperText>
+														{t(
+															"phpmyadmin.loginModeHint",
+															"Custom credentials are used only for embedded phpMyAdmin login.",
+														)}
+													</FormHelperText>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.username", "Username")}
+													</FormLabel>
+													<Input
+														value={runtimeSettingsForm.phpmyadmin_username}
+														placeholder="root"
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_username: event.target.value,
+															}))
+														}
+													/>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.password", "Password")}
+													</FormLabel>
+													<Input
+														type="password"
+														value={runtimeSettingsForm.phpmyadmin_password}
+														placeholder={t(
+															"phpmyadmin.passwordPlaceholder",
+															"Database password",
+														)}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_password: event.target.value,
+															}))
+														}
+													/>
 												</FormControl>
 											</SimpleGrid>
 										</Box>
@@ -3338,6 +3439,56 @@ export const IntegrationSettingsPage = () => {
 											</FormControl>
 											<FormControl>
 												<FormLabel>
+													{t("settings.subscriptions.happTemplate")}
+												</FormLabel>
+												<HStack spacing={2} align="stretch">
+													<Input
+														flex="1"
+														{...subscriptionRegister(
+															"happ_subscription_template",
+														)}
+													/>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() =>
+															openTemplateEditor(
+																"happ_subscription_template",
+																null,
+															)
+														}
+													>
+														{t("settings.subscriptions.editTemplate")}
+													</Button>
+												</HStack>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t("settings.subscriptions.incyTemplate")}
+												</FormLabel>
+												<HStack spacing={2} align="stretch">
+													<Input
+														flex="1"
+														{...subscriptionRegister(
+															"incy_subscription_template",
+														)}
+													/>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() =>
+															openTemplateEditor(
+																"incy_subscription_template",
+																null,
+															)
+														}
+													>
+														{t("settings.subscriptions.editTemplate")}
+													</Button>
+												</HStack>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
 													{t("settings.subscriptions.singboxTemplate")}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
@@ -3587,6 +3738,28 @@ export const IntegrationSettingsPage = () => {
 															</Text>
 															<Text fontSize="sm" color="gray.500">
 																{t("settings.subscriptions.customJsonHappHint")}
+															</Text>
+														</Box>
+														<Switch
+															isChecked={field.value}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													</FormControl>
+												)}
+											/>
+											<Controller
+												control={subscriptionControl}
+												name="use_custom_json_for_incy"
+												render={({ field }) => (
+													<FormControl display="flex" alignItems="center">
+														<Box flex="1">
+															<Text fontWeight="medium">
+																{t("settings.subscriptions.customJsonIncy")}
+															</Text>
+															<Text fontSize="sm" color="gray.500">
+																{t("settings.subscriptions.customJsonIncyHint")}
 															</Text>
 														</Box>
 														<Switch
@@ -4179,6 +4352,88 @@ export const IntegrationSettingsPage = () => {
 																		<FormControl>
 																			<FormLabel>
 																				{t(
+																					"settings.subscriptions.happTemplate",
+																				)}
+																			</FormLabel>
+																			<HStack spacing={2} align="stretch">
+																				<Input
+																					flex="1"
+																					placeholder={
+																						subscriptionBundle?.settings
+																							.happ_subscription_template || ""
+																					}
+																					value={
+																						settings.happ_subscription_template ??
+																						""
+																					}
+																					onChange={(event) =>
+																						handleAdminTemplateChange(
+																							admin.id,
+																							"happ_subscription_template",
+																							event.target.value,
+																						)
+																					}
+																				/>
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					onClick={() =>
+																						openTemplateEditor(
+																							"happ_subscription_template",
+																							admin.id,
+																						)
+																					}
+																				>
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
+																				</Button>
+																			</HStack>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"settings.subscriptions.incyTemplate",
+																				)}
+																			</FormLabel>
+																			<HStack spacing={2} align="stretch">
+																				<Input
+																					flex="1"
+																					placeholder={
+																						subscriptionBundle?.settings
+																							.incy_subscription_template || ""
+																					}
+																					value={
+																						settings.incy_subscription_template ??
+																						""
+																					}
+																					onChange={(event) =>
+																						handleAdminTemplateChange(
+																							admin.id,
+																							"incy_subscription_template",
+																							event.target.value,
+																						)
+																					}
+																				/>
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					onClick={() =>
+																						openTemplateEditor(
+																							"incy_subscription_template",
+																							admin.id,
+																						)
+																					}
+																				>
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
+																				</Button>
+																			</HStack>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
 																					"settings.subscriptions.singboxTemplate",
 																				)}
 																			</FormLabel>
@@ -4460,6 +4715,38 @@ export const IntegrationSettingsPage = () => {
 																					handleAdminTemplateChange(
 																						admin.id,
 																						"use_custom_json_for_happ",
+																						event.target.checked,
+																					)
+																				}
+																			/>
+																		</FormControl>
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
+																			<Box flex="1">
+																				<Text fontWeight="medium">
+																					{t(
+																						"settings.subscriptions.customJsonIncy",
+																					)}
+																				</Text>
+																				<Text fontSize="sm" color="gray.500">
+																					{t(
+																						"settings.subscriptions.customJsonIncyHint",
+																					)}
+																				</Text>
+																			</Box>
+																			<Switch
+																				isChecked={
+																					settings.use_custom_json_for_incy ??
+																					subscriptionBundle?.settings
+																						.use_custom_json_for_incy ??
+																					false
+																				}
+																				onChange={(event) =>
+																					handleAdminTemplateChange(
+																						admin.id,
+																						"use_custom_json_for_incy",
 																						event.target.checked,
 																					)
 																				}

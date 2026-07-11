@@ -136,43 +136,12 @@ body {
 }
 
 .rb-sidebar-scroll {
-  scrollbar-color: var(--rb-panel-border-strong) var(--rb-panel-sidebar);
-  scrollbar-gutter: stable;
-  --rb-sidebar-scroll-edge-offset: 12px;
-}
-
-.rb-sidebar-scroll[data-dir="rtl"] {
-  direction: ltr;
-}
-
-.rb-sidebar-scroll[data-dir="rtl"] > * {
-  direction: rtl;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"] {
-  direction: rtl;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"] > * {
-  direction: ltr;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"][data-collapsed="false"] {
-  margin-left: calc(var(--rb-sidebar-scroll-edge-offset) * -1);
-  padding-left: var(--rb-sidebar-scroll-edge-offset);
-}
-
-.rb-sidebar-scroll[data-dir="rtl"][data-collapsed="false"] {
-  margin-right: calc(var(--rb-sidebar-scroll-edge-offset) * -1);
-  padding-right: var(--rb-sidebar-scroll-edge-offset);
-}
-
-.rb-sidebar-scroll[data-collapsed="true"] {
   scrollbar-width: none;
   scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
 }
 
-.rb-sidebar-scroll[data-collapsed="true"]::-webkit-scrollbar {
+.rb-sidebar-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
