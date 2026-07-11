@@ -336,6 +336,9 @@ func (s *Server) phpMyAdminCredentials(ctx context.Context) (phpMyAdminCredentia
 	if err != nil {
 		return phpMyAdminCredentials{}, err
 	}
+	if strings.EqualFold(credentials.Username, "root") && strings.TrimSpace(credentials.Password) == "" {
+		credentials.Password = phpMyAdminEnvValue("MYSQL_ROOT_PASSWORD")
+	}
 	settings, err := s.settingsRepo.RuntimeSettings(ctx)
 	if err != nil {
 		return credentials, nil
@@ -343,14 +346,34 @@ func (s *Server) phpMyAdminCredentials(ctx context.Context) (phpMyAdminCredentia
 	if normalizePHPMyAdminLoginMode(settings.PHPMyAdminLoginMode) != "custom" {
 		return credentials, nil
 	}
-	username := strings.TrimSpace(settings.PHPMyAdminUsername)
+	username := firstNonEmpty(strings.TrimSpace(settings.PHPMyAdminUsername), phpMyAdminEnvValue("PHPMYADMIN_USERNAME", "MYSQL_USER"))
 	if username == "" {
 		return credentials, nil
 	}
 	credentials.Username = username
 	credentials.Password = settings.PHPMyAdminPassword
+	if strings.TrimSpace(credentials.Password) == "" {
+		if strings.EqualFold(username, "root") {
+			credentials.Password = phpMyAdminEnvValue("PHPMYADMIN_PASSWORD", "MYSQL_ROOT_PASSWORD")
+		} else {
+			credentials.Password = phpMyAdminEnvValue("PHPMYADMIN_PASSWORD", "MYSQL_PASSWORD")
+		}
+	}
 	credentials.LimitToDatabase = false
 	return credentials, nil
+}
+
+func phpMyAdminEnvValue(keys ...string) string {
+	env := loadEnvFiles()
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(env[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizePHPMyAdminLoginMode(value string) string {
