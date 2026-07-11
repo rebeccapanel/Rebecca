@@ -137,7 +137,7 @@ ORDER BY id`, args...)
 func PPTPRuntimeSettings(inbound map[string]any) map[string]any {
 	out := L2TPRuntimeSettings(inbound)
 	if strings.TrimSpace(OVStringValue(out["ipv4_pool_cidr"])) == "" || OVStringValue(out["ipv4_pool_cidr"]) == "10.67.0.0/16" {
-		out["ipv4_pool_cidr"] = "10.68.0.0/16"
+		out["ipv4_pool_cidr"] = "10.68.0.0/24"
 	}
 	delete(out, "ipsec_psk")
 	delete(out, "ipsec_ike_port")

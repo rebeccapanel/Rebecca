@@ -613,7 +613,10 @@ func inboundRuntimePorts(inbound map[string]any) []int {
 	if !isVirtualTunnelProtocol(protocol) {
 		return ports
 	}
-	settings := normalizeOVSettings(mapValue(inbound["settings"]))
+	settings := normalizeVirtualTunnelSettings(protocol, mapValue(inbound["settings"]))
+	if !virtualTunnelRoutesToXray(settings) {
+		return ports
+	}
 	if tunnelPort, ok := virtualTunnelPort(settings); ok && tunnelPort > 0 {
 		ports = append(ports, tunnelPort)
 	}

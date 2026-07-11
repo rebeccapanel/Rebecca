@@ -478,7 +478,7 @@ func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
 	}
 	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
 	inbound := runtime["inbounds"].([]any)[0].(map[string]any)
-	if inbound["protocol"] != "tunnel" || inbound["tag"] != "__rebecca_l2tp_tunnel__l2tp-edge" {
+	if inbound["protocol"] != "dokodemo-door" || inbound["tag"] != "__rebecca_l2tp_tunnel__l2tp-edge" {
 		t.Fatalf("unexpected runtime inbound: %#v", inbound)
 	}
 	rule := runtime["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
@@ -524,6 +524,33 @@ func TestTranslateDirectVirtualInboundSkipsRuntimeTunnelAndRouting(t *testing.T)
 	tags := rules[0].(map[string]any)["inboundTag"].([]any)
 	if len(tags) != 1 || tags[0] != "vless" {
 		t.Fatalf("unexpected filtered rule: %#v", rules[0])
+	}
+}
+
+func TestPPTPNATDoesNotReserveL2TPTunnelPort(t *testing.T) {
+	ports := inboundRuntimePorts(map[string]any{
+		"tag":      "pptp-direct",
+		"port":     1723,
+		"protocol": "pptp",
+		"settings": map[string]any{"tproxy_enabled": false},
+	})
+	if len(ports) != 1 || ports[0] != 1723 {
+		t.Fatalf("unexpected PPTP NAT runtime ports: %#v", ports)
+	}
+}
+
+func TestPPTPRejectsPoolLargerThan24(t *testing.T) {
+	err := validateVirtualTunnelInbound("pptp", map[string]any{
+		"tag":      "pptp",
+		"port":     1723,
+		"protocol": "pptp",
+		"settings": map[string]any{
+			"ipv4_pool_cidr": "10.68.0.0/16",
+			"tproxy_enabled": false,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "/24 or narrower") {
+		t.Fatalf("expected PPTP pool validation error, got %v", err)
 	}
 }
 

@@ -15,7 +15,7 @@ const (
 	defaultOVPoolCIDR   = "10.66.0.0/16"
 	defaultWGPoolCIDR   = "10.69.0.0/16"
 	defaultL2TPPoolCIDR = "10.67.0.0/16"
-	defaultPPTPPoolCIDR = "10.68.0.0/16"
+	defaultPPTPPoolCIDR = "10.68.0.0/24"
 	L2TPIPSecIKEPort    = 500
 	L2TPIPSecNATPort    = 4500
 	L2TPPort            = 1701
@@ -319,8 +319,12 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 			return fmt.Errorf("invalid inbound %q: %s tunnel_port must be different from port", tag, strings.ToUpper(protocol))
 		}
 	}
-	if _, err := netip.ParsePrefix(stringValue(settings["ipv4_pool_cidr"])); err != nil {
+	poolPrefix, err := netip.ParsePrefix(stringValue(settings["ipv4_pool_cidr"]))
+	if err != nil {
 		return fmt.Errorf("invalid inbound %q: %s IPv4 pool CIDR is invalid", tag, strings.ToUpper(protocol))
+	}
+	if protocol == PPTPProtocol && poolPrefix.Bits() < 24 {
+		return fmt.Errorf("invalid inbound %q: PPTP IPv4 pool must be /24 or narrower", tag)
 	}
 	for _, server := range normalizeStringAnyList(settings["dns_servers"]) {
 		addr, err := netip.ParseAddr(stringValue(server))
@@ -557,15 +561,20 @@ func runtimeTunnelInbound(inbound map[string]any, usedPorts map[int]struct{}) ma
 		"tag":      RuntimeTunnelTagForProtocol(protocol, stringValue(inbound["tag"])),
 		"listen":   firstNonEmptyString(settings["tunnel_listen"], settings["tproxy_listen"], "127.0.0.1"),
 		"port":     tunnelPort,
-		"protocol": "tunnel",
+		"protocol": "dokodemo-door",
 		"settings": map[string]any{
-			"allowedNetwork": "tcp,udp",
+			"network":        "tcp,udp",
 			"followRedirect": true,
 		},
 		"streamSettings": map[string]any{
 			"sockopt": map[string]any{
 				"tproxy": "tproxy",
+				"mark":   255,
 			},
+		},
+		"sniffing": map[string]any{
+			"enabled":      true,
+			"destOverride": []any{"http", "tls"},
 		},
 	}
 }
