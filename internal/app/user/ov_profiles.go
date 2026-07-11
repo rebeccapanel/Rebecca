@@ -483,8 +483,12 @@ func OVIPv4AddressForUser(userID int64, pool string) string {
 	return OVIPv4ForUser(userID, pool)
 }
 
-func WGIPv4AddressForUser(userID int64, pool string) string {
-	return OVIPv4ForUser(userID, pool)
+func WGIPv4AddressForUser(userID int64, pool string, serverAddress string) string {
+	addressPool, err := newWGAddressPool(pool, serverAddress)
+	if err != nil {
+		addressPool, _ = newWGAddressPool(defaultWGProfilePoolCIDR, "")
+	}
+	return addressPool.address(uint64(userID-1) % addressPool.capacity)
 }
 
 func L2TPIPv4AddressForUser(userID int64, pool string) string {

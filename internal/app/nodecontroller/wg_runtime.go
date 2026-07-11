@@ -79,7 +79,7 @@ func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, err
 		if err != nil {
 			return WGRuntime{}, err
 		}
-		peers, err := r.WGUsersForServices(ctx, serviceIDs, OVStringValue(settings["address_pool"]))
+		peers, err := r.WGUsersForServices(ctx, tag, serviceIDs, OVStringValue(settings["address_pool"]), OVStringValue(settings["server_address"]))
 		if err != nil {
 			return WGRuntime{}, err
 		}
@@ -99,7 +99,7 @@ func (r Repository) WGRuntime(ctx context.Context, nodeID int64) (WGRuntime, err
 	return runtimeConfig, nil
 }
 
-func (r Repository) WGUsersForServices(ctx context.Context, serviceIDs []int64, pool string) ([]WGRuntimePeer, error) {
+func (r Repository) WGUsersForServices(ctx context.Context, inboundTag string, serviceIDs []int64, pool string, serverAddress string) ([]WGRuntimePeer, error) {
 	if len(serviceIDs) == 0 {
 		return []WGRuntimePeer{}, nil
 	}
@@ -132,12 +132,25 @@ ORDER BY id`, args...)
 			return nil, fmt.Errorf("user %d WireGuard credential: %w", item.UserID, err)
 		}
 		item.PublicKey = pair.PublicKey
-		item.Address = userapp.WGIPv4AddressForUser(item.UserID, pool)
 		item.DataLimit = nullableOVInt64(dataLimit)
 		item.Expire = nullableOVInt64(expire)
 		peers = append(peers, item)
 	}
-	return peers, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	userIDs := make([]int64, len(peers))
+	for i := range peers {
+		userIDs[i] = peers[i].UserID
+	}
+	addresses, err := userapp.NewRepository(r.db, r.dialect).WGIPv4Addresses(ctx, inboundTag, userIDs, pool, serverAddress)
+	if err != nil {
+		return nil, err
+	}
+	for i := range peers {
+		peers[i].Address = addresses[peers[i].UserID]
+	}
+	return peers, nil
 }
 
 func WGRuntimeSettings(inbound map[string]any) map[string]any {

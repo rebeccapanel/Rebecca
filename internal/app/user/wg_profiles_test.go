@@ -1,6 +1,8 @@
 package user
 
 import (
+	"context"
+	"database/sql"
 	"encoding/base64"
 	"net/url"
 	"strings"
@@ -16,6 +18,60 @@ func testWGPrivateKey() string {
 	key[31] &= 127
 	key[31] |= 64
 	return base64.StdEncoding.EncodeToString(key)
+}
+
+func TestWGIPv4AddressForUserIsUniqueAndSkipsServer(t *testing.T) {
+	seen := make(map[string]struct{}, 20000)
+	for id := int64(1); id <= 20000; id++ {
+		address := WGIPv4AddressForUser(id, "10.69.0.0/16", "10.69.0.1/16")
+		if address == "10.69.0.1" {
+			t.Fatal("assigned the WireGuard server address to a user")
+		}
+		if _, exists := seen[address]; exists {
+			t.Fatalf("duplicate WireGuard address %s for user %d", address, id)
+		}
+		seen[address] = struct{}{}
+	}
+}
+
+func TestWGIPv4AddressesPersistsCollisionResolution(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:wg-addresses?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE wireguard_peer_addresses (
+		inbound_tag TEXT NOT NULL,
+		user_id INTEGER NOT NULL,
+		pool TEXT NOT NULL,
+		server_address TEXT NOT NULL,
+		address TEXT NOT NULL,
+		PRIMARY KEY (inbound_tag, user_id),
+		UNIQUE (inbound_tag, address)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	ids := []int64{103, 65636, 6120, 8692}
+	first, err := repo.WGIPv4Addresses(context.Background(), "wg", ids, "10.69.0.0/16", "10.69.0.1/16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{}
+	for _, id := range ids {
+		if _, duplicate := seen[first[id]]; duplicate {
+			t.Fatalf("duplicate persisted address %s", first[id])
+		}
+		seen[first[id]] = struct{}{}
+	}
+	second, err := repo.WGIPv4Addresses(context.Background(), "wg", []int64{65636, 103}, "10.69.0.0/16", "10.69.0.1/16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second[103] != first[103] || second[65636] != first[65636] {
+		t.Fatalf("WireGuard addresses changed: first=%v second=%v", first, second)
+	}
 }
 
 func TestWGSubscriptionPathUsesHostTag(t *testing.T) {

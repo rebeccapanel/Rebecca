@@ -147,6 +147,10 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 			if item.ServiceID != nil {
 				configUser.ServiceHostOrders = serviceOrders[*item.ServiceID]
 			}
+			configUser.Hosts = hosts
+			if err := r.populateWGAddresses(ctx, &configUser, inbounds); err != nil {
+				return UsersResponse{}, err
+			}
 			links, err := BuildConfigLinks(configUser, inbounds, inboundOrder, hosts, masks, false)
 			if err != nil {
 				return UsersResponse{}, err

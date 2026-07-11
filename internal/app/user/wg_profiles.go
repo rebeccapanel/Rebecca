@@ -69,6 +69,9 @@ func (s Service) WGProfiles(ctx context.Context, userID int64, hostTag string, i
 	if strings.TrimSpace(item.ServerIP) == "" {
 		item.ServerIP = s.repo.configServerIP(ctx)
 	}
+	if err := s.repo.populateWGAddresses(ctx, &item, inbounds); err != nil {
+		return nil, err
+	}
 
 	inboundIndex := make(map[string]int, len(inboundOrder))
 	for i, tag := range inboundOrder {
@@ -197,7 +200,11 @@ func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, 
 	if err != nil {
 		return wgProfileMaterial{}, err
 	}
-	clientAddress := WGIPv4AddressForUser(item.ID, stringValue(settings["address_pool"])) + "/32"
+	clientAddress := item.WireGuardAddresses[stringValue(inbound["tag"])]
+	if clientAddress == "" {
+		clientAddress = WGIPv4AddressForUser(item.ID, stringValue(settings["address_pool"]), stringValue(settings["server_address"]))
+	}
+	clientAddress += "/32"
 	endpoint := formatWGEndpoint(address, portString(inbound["port"]))
 	if endpoint == "" {
 		return wgProfileMaterial{}, fmt.Errorf("WireGuard endpoint is required")

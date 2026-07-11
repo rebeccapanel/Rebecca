@@ -71,6 +71,7 @@ type ConfigLinkUser struct {
 	XrayInboundOrder     []string                   `json:"xray_inbound_order,omitempty"`
 	Hosts                []Host                     `json:"hosts,omitempty"`
 	ServerIP             string                     `json:"server_ip,omitempty"`
+	WireGuardAddresses   map[string]string          `json:"wireguard_addresses,omitempty"`
 }
 
 type UserListItem struct {
