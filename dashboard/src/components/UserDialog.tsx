@@ -578,6 +578,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		linkTemplates,
 		setQRCode,
 		setSubLink,
+		editingUserInitialTab,
 	} = useDashboard();
 
 	const isEditing = !!editingUser;
@@ -1391,8 +1392,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			setExpireDays(deriveDaysFromSeconds(formatted.expire));
 			setUsage(createUsageConfig(colorMode, usageTitle));
 			setUsageFilter("1m");
-			setUsageFetched(false);
-			setActiveTab(0);
+			// Deep-link support: open directly on the Usage tab (index 1) when
+			// requested via onEditingUser(user, 1), otherwise the Edit tab.
+			const wantsUsageTab = editingUserInitialTab === 1 && canViewTraffic;
+			if (wantsUsageTab) {
+				setUsageFetched(true);
+				fetchUsageWithFilter({
+					start: dayjs()
+						.utc()
+						.subtract(30, "day")
+						.format("YYYY-MM-DDTHH:00:00"),
+				});
+			} else {
+				setUsageFetched(false);
+			}
+			setActiveTab(wantsUsageTab ? 1 : 0);
 			setCopiedSubscriptionKey(null);
 			setCopiedAllConfigs(false);
 			setCopiedConfigIndex(null);
@@ -1438,6 +1452,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		}
 	}, [
 		editingUser,
+		editingUserInitialTab,
+		canViewTraffic,
+		fetchUsageWithFilter,
 		deriveDaysFromSeconds,
 		form.reset,
 		resetAutoRenewFormValues,

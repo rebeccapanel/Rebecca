@@ -1946,5 +1946,14 @@
 	"tutorials.table.today": "Today",
 	"tutorials.table.daysLeft": "{{count}} days left",
 	"tutorials.table.expired": "Expired {{count}} days ago",
-	"tutorials.table.ipLimit": "IP limit: {{count}}"
+	"tutorials.table.ipLimit": "IP limit: {{count}}",
+	"save": "Save",
+	"usersTable.usageHistory": "Usage history",
+	"usersTable.setDataLimit": "Set data limit",
+	"usersTable.setExpiry": "Set custom expiry",
+	"usersTable.setDataLimitSuccess": "Data limit updated",
+	"usersTable.setExpirySuccess": "Expiry date updated",
+	"usersTable.unlimitedHint": "Set 0 for unlimited.",
+	"usersTable.expiryClearHint": "Leave empty for no expiry.",
+	"usersTable.admin": "Admin"
 }
