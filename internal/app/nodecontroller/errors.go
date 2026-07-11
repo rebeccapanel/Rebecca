@@ -16,7 +16,7 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 	}
 	message := strings.TrimSpace(err.Error())
 	title := classifyNodeError(err, message)
-	if errors.Is(err, context.DeadlineExceeded) {
+	if compactNodeError(title) {
 		return fmt.Errorf("%s during %s for node %d", title, action, nodeID)
 	}
 	if st, ok := status.FromError(err); ok {
@@ -26,7 +26,11 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 		}
 		switch st.Code() {
 		case codes.Unavailable:
-			return fmt.Errorf("%s during %s for node %d: %s", classifyNodeError(err, detail), action, nodeID, detail)
+			title = classifyNodeError(err, detail)
+			if compactNodeError(title) {
+				return fmt.Errorf("%s during %s for node %d", title, action, nodeID)
+			}
+			return fmt.Errorf("%s during %s for node %d: %s", title, action, nodeID, detail)
 		case codes.Unauthenticated, codes.PermissionDenied:
 			return fmt.Errorf("node %d rejected %s authentication: %s", nodeID, action, detail)
 		case codes.FailedPrecondition:
@@ -41,6 +45,15 @@ func friendlyNodeError(action string, nodeID int64, err error) error {
 		return fmt.Errorf("%s during %s for node %d", title, action, nodeID)
 	}
 	return fmt.Errorf("%s during %s for node %d: %s", title, action, nodeID, message)
+}
+
+func compactNodeError(title string) bool {
+	switch title {
+	case "Connection timeout", "Connection refused", "DNS lookup failed", "Network unreachable", "TLS/certificate error":
+		return true
+	default:
+		return false
+	}
 }
 
 func classifyNodeError(err error, message string) string {
