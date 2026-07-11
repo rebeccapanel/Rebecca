@@ -85,9 +85,6 @@ func (c Controller) collectUsageForNode(
 	client, _, err := c.dial(nodeCtx, node.ID)
 	if err != nil {
 		cancel()
-		if c.shouldAttemptLegacyFallback(node.ID) && c.collectLegacyUsageForNode(ctx, node, collectUsers, collectOutbound, persistOptions, &result) {
-			return result
-		}
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d: %s", node.ID, err.Error()))
 		return result
 	}
@@ -200,68 +197,6 @@ func mergeCollectUsageResult(result *CollectUsageResult, next CollectUsageResult
 	result.UserAcked += next.UserAcked
 	result.OutboundAcked += next.OutboundAcked
 	result.Errors = append(result.Errors, next.Errors...)
-}
-
-func (c Controller) collectLegacyUsageForNode(ctx context.Context, node NodeRow, collectUsers bool, collectOutbound bool, persistOptions UsagePersistOptions, result *CollectUsageResult) bool {
-	nodeCtx, cancel := WithDefaultTimeout(ctx)
-	defer cancel()
-	client, err := c.newLegacyRESTClient(nodeCtx, node)
-	if err != nil {
-		return false
-	}
-	if _, err := client.connect(nodeCtx); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy connect: %s", node.ID, err.Error()))
-		return true
-	}
-	var userBatchID string
-	var outboundBatchID string
-	var userDeltas []UserUsageDelta
-	var outboundDeltas []OutboundUsageDelta
-	if collectUsers {
-		batchID, deltas, samples, err := client.collectUserUsage(nodeCtx)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy user usage: %s", node.ID, err.Error()))
-			return true
-		}
-		userBatchID = batchID
-		userDeltas = deltas
-		result.UserSamples += samples
-		if userBatchID != "" {
-			result.UserBatches++
-		}
-	}
-	if collectOutbound {
-		batchID, deltas, samples, err := client.collectOutboundUsage(nodeCtx)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy outbound usage: %s", node.ID, err.Error()))
-			return true
-		}
-		outboundBatchID = batchID
-		outboundDeltas = deltas
-		result.OutboundSamples += samples
-		if outboundBatchID != "" {
-			result.OutboundBatches++
-		}
-	}
-	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, persistOptions); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy DB write: %s", node.ID, err.Error()))
-		return true
-	}
-	if userBatchID != "" {
-		if err := client.ackUserUsage(nodeCtx, userBatchID); err == nil {
-			result.UserAcked++
-		} else {
-			result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy ack user usage: %s", node.ID, err.Error()))
-		}
-	}
-	if outboundBatchID != "" {
-		if err := client.ackOutboundUsage(nodeCtx, outboundBatchID); err == nil {
-			result.OutboundAcked++
-		} else {
-			result.Errors = append(result.Errors, fmt.Sprintf("node %d legacy ack outbound usage: %s", node.ID, err.Error()))
-		}
-	}
-	return true
 }
 
 func usageCollectionShouldReset(req CollectUsageRequest) bool {
