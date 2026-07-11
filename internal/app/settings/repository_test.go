@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *testing.T) {
+func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -100,11 +100,21 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 
 	dataDir := t.TempDir()
 	t.Setenv("REBECCA_DATA_DIR", dataDir)
-	templatePath := filepath.Join(dataDir, "templates", "subscription", "index.html")
-	if err := os.MkdirAll(filepath.Dir(templatePath), 0o755); err != nil {
+	staleTemplatePath := filepath.Join(dataDir, "templates", "subscription", "index.html")
+	if err := os.MkdirAll(filepath.Dir(staleTemplatePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(templatePath, []byte("persistent subscription template"), 0o644); err != nil {
+	if err := os.WriteFile(staleTemplatePath, []byte("persistent subscription template"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	templateRoot := t.TempDir()
+	t.Chdir(templateRoot)
+	appTemplatePath := filepath.Join(templateRoot, "templates", "subscription", "index.html")
+	if err := os.MkdirAll(filepath.Dir(appTemplatePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(appTemplatePath, []byte("app subscription template"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,8 +122,8 @@ func TestReadTemplateContentUsesPersistentDirectoryWhenDBDirectoryIsEmpty(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(content.Content) != "persistent subscription template" {
-		t.Fatalf("expected persistent template content, got %q", content.Content)
+	if strings.TrimSpace(content.Content) != "app subscription template" {
+		t.Fatalf("expected app template content, got %q", content.Content)
 	}
 	if content.ResolvedPath == nil || strings.TrimSpace(*content.ResolvedPath) == "" {
 		t.Fatalf("expected a resolved path, got %#v", content.ResolvedPath)

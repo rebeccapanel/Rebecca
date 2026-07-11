@@ -384,7 +384,7 @@ func resolveCustomTemplatePath(templateName string, customDirectory *string, adm
 		baseDir = strings.TrimSpace(*customDirectory)
 	}
 	if baseDir == "" {
-		baseDir = persistentTemplateDirectory(adminID)
+		return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, templateName)
 	}
 	path, err := safeJoin(baseDir, templateName)
 	if err != nil {
@@ -409,6 +409,21 @@ func resolveAppTemplatePath(templateName string) (string, error) {
 
 func resolveWritableTemplatePath(templateName string, customDirectory string) (string, error) {
 	return safeJoin(customDirectory, templateName)
+}
+
+func normalizeTemplateName(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	slashed := strings.ReplaceAll(trimmed, "\\", "/")
+	if strings.HasPrefix(slashed, "/") || filepath.IsAbs(trimmed) {
+		return "", fmt.Errorf("template path escapes the templates directory")
+	}
+	if _, err := safeJoin("templates", trimmed); err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(filepath.Clean(trimmed)), nil
 }
 
 func displayTemplatePath(path string, templateName string, customDirectory *string) string {

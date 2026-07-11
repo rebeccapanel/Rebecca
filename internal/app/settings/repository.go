@@ -210,12 +210,21 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 			add(key, string(encoded))
 		case "use_custom_json_default", "use_custom_json_for_v2rayn", "use_custom_json_for_v2rayng", "use_custom_json_for_streisand", "use_custom_json_for_happ", "use_custom_json_for_incy":
 			add(key, rawBoolDefault(value, false))
-		case "custom_templates_directory", "clash_subscription_template", "clash_settings_template", "subscription_page_template", "home_page_template", "v2ray_subscription_template", "v2ray_settings_template", "happ_subscription_template", "incy_subscription_template", "singbox_subscription_template", "singbox_settings_template", "mux_template":
+		case "custom_templates_directory":
 			if string(value) == "null" {
 				add(key, nil)
 			} else {
 				add(key, strings.TrimSpace(rawStringDefault(value, "")))
 			}
+		case "clash_subscription_template", "clash_settings_template", "subscription_page_template", "home_page_template", "v2ray_subscription_template", "v2ray_settings_template", "happ_subscription_template", "incy_subscription_template", "singbox_subscription_template", "singbox_settings_template", "mux_template":
+			if string(value) == "null" {
+				continue
+			}
+			templateName, err := normalizeTemplateName(rawStringDefault(value, ""))
+			if err != nil {
+				return SubscriptionSettings{}, fmt.Errorf("%s: %w", key, err)
+			}
+			add(key, templateName)
 		}
 	}
 	if len(sets) > 0 {

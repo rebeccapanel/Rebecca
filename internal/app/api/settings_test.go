@@ -490,8 +490,11 @@ func TestSubscriptionTemplateContentRoutes(t *testing.T) {
 	}
 
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions", token, `{"clash_subscription_template":"../escape.yml"}`)
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("set traversal template status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := db.Exec(`UPDATE subscription_settings SET clash_subscription_template = '../escape.yml'`); err != nil {
+		t.Fatal(err)
 	}
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions/templates/clash_subscription_template", token, `{"content":"nope"}`)
 	if rec.Code != http.StatusBadRequest {
