@@ -164,7 +164,7 @@ func runPreGooseLegacyRepairs(ctx context.Context, db *sql.DB, dialect string) e
 	if err := dropUserUsernameIndexIfPossible(ctx, tx, dialect, "username"); err != nil {
 		return err
 	}
-	if err := createIndex(ctx, tx, dialect, "users", "ix_users_username", []string{"username"}, true); err != nil {
+	if err := createIndex(ctx, tx, dialect, "users", "ix_users_username", []string{"username"}, false); err != nil {
 		return err
 	}
 	return tx.Commit()

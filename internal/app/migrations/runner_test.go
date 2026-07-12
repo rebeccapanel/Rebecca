@@ -368,7 +368,7 @@ VALUES
 	assertTableColumns(t, ctx, db, "sqlite", "vpn_user_sessions", []string{"client_ip"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_online_ips", []string{"node_id", "user_id", "protocol", "ip"})
 	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"note"})
-	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "dupe_2")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "dupe")
 	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 2`, "DUPE")
 	assertDBStringMigration(t, db, `SELECT status FROM users WHERE id = 3`, "disabled")
 	var proxyRows int
@@ -378,8 +378,8 @@ VALUES
 	if proxyRows != 6 {
 		t.Fatalf("expected legacy VMess/VLESS proxy materialization for three users, got %d rows", proxyRows)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, username) VALUES (99, 'DUPE')`); err == nil {
-		t.Fatal("expected duplicate username insert to fail after legacy repair")
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, username) VALUES (99, 'dupe')`); err != nil {
+		t.Fatalf("duplicate username insert should remain database-compatible: %v", err)
 	}
 }
 
@@ -425,6 +425,37 @@ func TestRunMigrationsToSQLite(t *testing.T) {
 		t.Fatalf("unexpected final version: %#v", finalVersion)
 	}
 	assertTableColumns(t, ctx, db, "sqlite", "services", []string{"id", "name", "used_traffic"})
+}
+
+func TestRepairDuplicateUsernamesPreservesExistingUsernames(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username TEXT,
+	status TEXT
+);
+INSERT INTO users (id, username, status) VALUES
+	(1, 'seller', 'deleted'),
+	(2, 'Seller', 'active'),
+	(3, 'seller', 'disabled');`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repairDuplicateUsernames(ctx, tx); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "seller")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 2`, "Seller")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 3`, "seller")
 }
 
 func TestUnsupportedDowngrade(t *testing.T) {
@@ -659,12 +690,12 @@ VALUES
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	assertUserRow(t, db, 1, "Alice_2", "disabled", "11111111111141118111111111111111", "xtls-rprx-vision")
+	assertUserRow(t, db, 1, "Alice", "disabled", "11111111111141118111111111111111", "xtls-rprx-vision")
 	assertUserRow(t, db, 2, "alice", "active", "22222222222242228222222222222222", "")
 	assertUserStatus(t, db, 3, "expired")
 	assertUserStatus(t, db, 4, "limited")
 	assertCredentialKeyNull(t, db, 5)
-	assertUserName(t, db, 6, "bob_2_6")
+	assertUserName(t, db, 6, "bob")
 	assertUserName(t, db, 7, "bob")
 	assertTableColumns(t, ctx, db, "sqlite", "next_plans", []string{"position", "increase_data_limit", "start_on_first_connect", "trigger_on"})
 

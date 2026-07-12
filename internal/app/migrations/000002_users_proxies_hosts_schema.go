@@ -115,9 +115,8 @@ CREATE TABLE users (
 		columns []string
 		unique  bool
 	}{
-		// Legacy Alembic databases can contain duplicate usernames until the
-		// soft-delete repair runs in 000008. Keep this early index non-unique;
-		// 000008 drops/recreates it as unique after repairing duplicate rows.
+		// Legacy databases can contain duplicate usernames; keep the database
+		// compatible and let application validation reject new active duplicates.
 		{"ix_users_username", []string{"username"}, false},
 		{"ix_users_subadress", []string{"subadress"}, false},
 		{"ix_users_service_id", []string{"service_id"}, false},
