@@ -94,35 +94,50 @@ func (r Repository) WGIPv4Addresses(ctx context.Context, inboundTag string, user
 
 	normalizedPool := addressPool.prefix.String()
 	normalizedServer := addressPool.serverAddress()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_peer_addresses WHERE inbound_tag = ? AND (pool != ? OR server_address != ?)`, inboundTag, normalizedPool, normalizedServer); err != nil {
-		return nil, err
+	queryArgs := make([]any, 0, len(ids)+1)
+	queryArgs = append(queryArgs, inboundTag)
+	for _, id := range ids {
+		queryArgs = append(queryArgs, id)
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT user_id, address FROM wireguard_peer_addresses WHERE inbound_tag = ?`, inboundTag)
+	rows, err := tx.QueryContext(ctx, `
+SELECT user_id, address, pool, server_address
+FROM wireguard_peer_addresses
+WHERE inbound_tag = ? AND user_id IN (`+placeholders(len(ids))+`)`, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
-	existing := map[int64]string{}
 	used := map[string]struct{}{}
+	stale := []int64{}
 	for rows.Next() {
 		var userID int64
-		var address string
-		if err := rows.Scan(&userID, &address); err != nil {
+		var address, rowPool, rowServer string
+		if err := rows.Scan(&userID, &address, &rowPool, &rowServer); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		existing[userID] = address
+		if rowPool != normalizedPool || rowServer != normalizedServer {
+			stale = append(stale, userID)
+			continue
+		}
+		result[userID] = address
 		used[address] = struct{}{}
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if uint64(len(used)) > addressPool.capacity {
-		return nil, fmt.Errorf("WireGuard address pool %s is exhausted", addressPool.prefix)
+	if len(stale) > 0 {
+		args := make([]any, 0, len(stale)+1)
+		args = append(args, inboundTag)
+		for _, id := range stale {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM wireguard_peer_addresses WHERE inbound_tag = ? AND user_id IN (`+placeholders(len(stale))+`)`, args...); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, userID := range ids {
-		if address := existing[userID]; address != "" {
-			result[userID] = address
+		if result[userID] != "" {
 			continue
 		}
 		start := uint64(userID-1) % addressPool.capacity
@@ -132,22 +147,36 @@ func (r Repository) WGIPv4Addresses(ctx context.Context, inboundTag string, user
 			if _, occupied := used[candidate]; occupied {
 				continue
 			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO wireguard_peer_addresses (inbound_tag, user_id, pool, server_address, address) VALUES (?, ?, ?, ?, ?)`, inboundTag, userID, normalizedPool, normalizedServer, candidate); err != nil {
+				if isWGAddressConflict(err) {
+					used[candidate] = struct{}{}
+					continue
+				}
+				return nil, err
+			}
 			assigned = candidate
+			used[assigned] = struct{}{}
+			result[userID] = assigned
 			break
 		}
 		if assigned == "" {
 			return nil, fmt.Errorf("WireGuard address pool %s is exhausted", addressPool.prefix)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO wireguard_peer_addresses (inbound_tag, user_id, pool, server_address, address) VALUES (?, ?, ?, ?, ?)`, inboundTag, userID, normalizedPool, normalizedServer, assigned); err != nil {
-			return nil, err
-		}
-		used[assigned] = struct{}{}
-		result[userID] = assigned
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func isWGAddressConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate") ||
+		strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "constraint failed")
 }
 
 func (r Repository) populateWGAddresses(ctx context.Context, item *ConfigLinkUser, inbounds map[string]ResolvedInbound) error {

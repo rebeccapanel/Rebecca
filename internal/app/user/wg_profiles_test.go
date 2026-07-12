@@ -74,6 +74,46 @@ func TestWGIPv4AddressesPersistsCollisionResolution(t *testing.T) {
 	}
 }
 
+func TestWGIPv4AddressesOnlyTouchesRequestedUsers(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:wg-addresses-scoped?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE wireguard_peer_addresses (
+		inbound_tag TEXT NOT NULL,
+		user_id INTEGER NOT NULL,
+		pool TEXT NOT NULL,
+		server_address TEXT NOT NULL,
+		address TEXT NOT NULL,
+		PRIMARY KEY (inbound_tag, user_id),
+		UNIQUE (inbound_tag, address)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO wireguard_peer_addresses (inbound_tag, user_id, pool, server_address, address) VALUES
+		('wg', 999, '10.8.0.0/24', '10.8.0.1', '10.8.0.9'),
+		('wg', 1000, '10.69.0.0/16', '10.69.0.1', '10.69.0.9')`); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	addresses, err := repo.WGIPv4Addresses(context.Background(), "wg", []int64{7}, "10.69.0.0/16", "10.69.0.1/16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addresses[7] == "" {
+		t.Fatalf("expected assigned address, got %#v", addresses)
+	}
+	var unrelated int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM wireguard_peer_addresses WHERE inbound_tag = 'wg' AND user_id IN (999, 1000)`).Scan(&unrelated); err != nil {
+		t.Fatal(err)
+	}
+	if unrelated != 2 {
+		t.Fatalf("unrelated rows were changed, count=%d", unrelated)
+	}
+}
+
 func TestWGSubscriptionPathUsesHostTag(t *testing.T) {
 	req, ok := resolvePrefixedSubscriptionPath("/sub/alice-token/wg/germany-12.conf", "/sub/")
 	if !ok {

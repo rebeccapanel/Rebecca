@@ -61,6 +61,17 @@ VALUES ('sync_config', 7, 42, '{"config_json":"{}"}', 'pending', 'op-1', CURRENT
 	if err := repo.MarkOperationRetrying(ctx, rows[0].ID, "node down"); err != nil {
 		t.Fatal(err)
 	}
+	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 1)
+	rows, err = repo.PendingOperations(ctx, 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected fresh sync_config retry to wait for backoff, got %#v", rows)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE node_operations SET updated_at = '2000-01-01 00:00:00' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
 	rows, err = repo.PendingOperations(ctx, 7, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -1090,6 +1101,50 @@ VALUES (1, 'connected', 'ok', '1.0.0', '2026-06-26 00:00:00');
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1`, 1)
 }
 
+func TestRepositoryQueueSyncConfigCoalescesPendingFullSyncs(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "sync-config-coalesce.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES
+	('sync_config', 7, NULL, '{"source":"node_reconnected"}', 'pending', 'sync-old', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"source":"runtime_hot_apply_failed"}', 'retrying', 'sync-new', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	('sync_config', 7, NULL, '{"config_json":"{\"inbounds\":[]}"}', 'pending', 'sync-custom', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nodeID := int64(7)
+	repo := NewRepository(db, "sqlite")
+	if err := repo.QueueSyncConfig(ctx, &nodeID, map[string]any{"source": "node_reconnected"}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type = 'sync_config' AND status IN ('pending', 'retrying') AND payload NOT LIKE '%config_json%'`, 1)
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 2`, "retrying")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 3`, "pending")
+}
+
 func TestRepositoryDefersRuntimeDeltasUntilReconnectFullSync(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "node-reconnect-sync.db")+"?_pragma=busy_timeout(30000)")
@@ -1195,12 +1250,12 @@ VALUES
 		t.Fatal(err)
 	}
 	if queued != 2 {
-		t.Fatalf("expected two backlog syncs to be queued, got %d", queued)
+		t.Fatalf("expected two backlog syncs to be covered, got %d", queued)
 	}
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 1 AND status = 'pending'`, 1)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 2`, 0)
-	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 2)
-	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3 AND payload LIKE '%runtime_backlog%'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 3 AND payload LIKE '%runtime_backlog%'`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id IN (1, 3) AND operation_type IN ('add_user', 'update_user', 'disable_user') AND status IN ('pending', 'retrying')`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 2 AND operation_type = 'add_user' AND status = 'pending'`, 3)
 }
