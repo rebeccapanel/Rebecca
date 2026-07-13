@@ -1786,11 +1786,11 @@ table thead {
   }
 }
 
-img.twemoji-emoji {
+img.apple-emoji {
   display: inline-block;
-  height: 1.2em;
   width: 1.2em;
-  margin: 0 0.1em 0 0.1em;
+  height: 1.2em;
+  margin: 0 0.1em;
   vertical-align: -0.1em;
 }
 
@@ -1911,23 +1911,6 @@ img.twemoji-emoji {
   background: #22c55e;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .rb-user-status-dot[data-online="true"] {
-    animation: rb-user-dot-pulse 2.6s ease-out infinite;
-  }
-}
-
-@keyframes rb-user-dot-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 45%, transparent);
-  }
-
-  70%,
-  100% {
-    box-shadow: 0 0 0 8px transparent;
-  }
-}
-
 /* --- username meta row (admin chip + last-seen) --------------------- */
 
 .rb-user-username-meta {
@@ -2002,22 +1985,6 @@ img.twemoji-emoji {
 .rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
   opacity: 0.55;
   background-size: 200% 100%;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
-    animation: rb-user-usage-flow 3.2s linear infinite;
-  }
-}
-
-@keyframes rb-user-usage-flow {
-  from {
-    background-position: 0% 0;
-  }
-
-  to {
-    background-position: 200% 0;
-  }
 }
 
 .rb-user-usage-pair {

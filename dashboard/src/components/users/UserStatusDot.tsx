@@ -16,9 +16,8 @@ const isOnline = (lastOnline?: string | null): boolean => {
 
 /**
  * Online indicator for the Users list: a small dot that lights up green
- * (with a soft pulse) while the user is connected and stays a neutral,
- * muted gray otherwise. Subscription status is conveyed by the status
- * badge column, not this dot.
+ * while the user is connected and stays a neutral, muted gray otherwise.
+ * Subscription status is conveyed by the status badge column, not this dot.
  */
 export const UserStatusDot: FC<UserStatusDotProps> = ({ lastOnline }) => (
 	<Box

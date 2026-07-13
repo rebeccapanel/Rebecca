@@ -35,7 +35,7 @@ export const formatUsagePair = (used: number, total: number | null): string => {
 /**
  * Gradient usage meter for the Users list. The fill color shifts from green
  * through yellow to red as the consumed share grows; unlimited users get a
- * soft shimmering blue bar instead of an indeterminate spinner.
+ * static blue bar instead of an indeterminate spinner.
  */
 export const UserUsageBar: FC<UserUsageBarProps> = ({
 	used,
