@@ -169,6 +169,10 @@ WHERE inbound_tag = ? AND user_id IN (`+placeholders(len(ids))+`)`, queryArgs...
 	return result, nil
 }
 
+func (r Repository) OVIPv4Addresses(ctx context.Context, inboundTag string, userIDs []int64, pool string) (map[int64]string, error) {
+	return r.WGIPv4Addresses(ctx, "openvpn:"+strings.TrimSpace(inboundTag), userIDs, pool, "")
+}
+
 func isWGAddressConflict(err error) bool {
 	if err == nil {
 		return false

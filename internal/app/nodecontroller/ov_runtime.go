@@ -81,7 +81,7 @@ func (r Repository) OVRuntime(ctx context.Context, nodeID int64) (OVRuntime, err
 		if err != nil {
 			return OVRuntime{}, err
 		}
-		users, err := r.OVUsersForServices(ctx, serviceIDs, OVStringValue(settings["ipv4_pool_cidr"]))
+		users, err := r.OVUsersForServices(ctx, tag, serviceIDs, OVStringValue(settings["ipv4_pool_cidr"]))
 		if err != nil {
 			return OVRuntime{}, err
 		}
@@ -126,7 +126,7 @@ ORDER BY sh.service_id`, tag)
 	return result, rows.Err()
 }
 
-func (r Repository) OVUsersForServices(ctx context.Context, serviceIDs []int64, pool string) ([]OVRuntimeUser, error) {
+func (r Repository) OVUsersForServices(ctx context.Context, inboundTag string, serviceIDs []int64, pool string) ([]OVRuntimeUser, error) {
 	if len(serviceIDs) == 0 {
 		return []OVRuntimeUser{}, nil
 	}
@@ -147,6 +147,7 @@ ORDER BY id`, args...)
 	}
 	defer rows.Close()
 	users := []OVRuntimeUser{}
+	userIDs := []int64{}
 	for rows.Next() {
 		var item OVRuntimeUser
 		var credentialKey string
@@ -160,12 +161,22 @@ ORDER BY id`, args...)
 		}
 		item.VPNUsername = item.Username
 		item.Password = password
-		item.IPv4Address = userapp.OVIPv4AddressForUser(item.UserID, pool)
 		item.DataLimit = nullableOVInt64(dataLimit)
 		item.Expire = nullableOVInt64(expire)
 		users = append(users, item)
+		userIDs = append(userIDs, item.UserID)
 	}
-	return users, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	addresses, err := userapp.NewRepository(r.db, r.dialect).OVIPv4Addresses(ctx, inboundTag, userIDs, pool)
+	if err != nil {
+		return nil, err
+	}
+	for i := range users {
+		users[i].IPv4Address = addresses[users[i].UserID]
+	}
+	return users, nil
 }
 
 func nullableOVInt64(value sql.NullInt64) *int64 {

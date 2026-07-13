@@ -114,6 +114,48 @@ func TestWGIPv4AddressesOnlyTouchesRequestedUsers(t *testing.T) {
 	}
 }
 
+func TestOVIPv4AddressesPersistUniqueAssignments(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:ov-addresses?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE wireguard_peer_addresses (
+		inbound_tag TEXT NOT NULL,
+		user_id INTEGER NOT NULL,
+		pool TEXT NOT NULL,
+		server_address TEXT NOT NULL,
+		address TEXT NOT NULL,
+		PRIMARY KEY (inbound_tag, user_id),
+		UNIQUE (inbound_tag, address)
+	)`); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	addresses, err := repo.OVIPv4Addresses(context.Background(), "ov-main", []int64{1, 2, 3}, "10.66.0.0/29")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]struct{}{}
+	for _, id := range []int64{1, 2, 3} {
+		if addresses[id] == "" || addresses[id] == "10.66.0.1" {
+			t.Fatalf("bad OV address for user %d: %#v", id, addresses)
+		}
+		if _, duplicate := seen[addresses[id]]; duplicate {
+			t.Fatalf("duplicate OV address %s", addresses[id])
+		}
+		seen[addresses[id]] = struct{}{}
+	}
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM wireguard_peer_addresses WHERE inbound_tag = 'openvpn:ov-main'`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 {
+		t.Fatalf("expected three persisted OV addresses, got %d", rows)
+	}
+}
+
 func TestWGSubscriptionPathUsesHostTag(t *testing.T) {
 	req, ok := resolvePrefixedSubscriptionPath("/sub/alice-token/wg/germany-12.conf", "/sub/")
 	if !ok {
