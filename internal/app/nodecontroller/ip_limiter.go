@@ -146,7 +146,10 @@ ON CONFLICT(node_id, user_id, protocol, ip) DO UPDATE SET last_seen_at = exclude
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM user_online_ips WHERE last_seen_at < ?`, r.timeArg(time.Now().UTC().Add(-onlineIPActiveWindow*2))); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM user_online_ips WHERE node_id = ? AND last_seen_at < ?`,
+		nodeID,
+		r.timeArg(time.Now().UTC().Add(-onlineIPActiveWindow*2)),
+	); err != nil {
 		return err
 	}
 	return tx.Commit()

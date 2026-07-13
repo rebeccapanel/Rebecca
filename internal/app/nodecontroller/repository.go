@@ -63,6 +63,8 @@ const (
 	syncConfigRetryBackoff       = 5 * time.Minute
 )
 
+var runtimeProxyProtocolList = []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria"}
+
 func NewRepository(db *sql.DB, dialect string) Repository {
 	return Repository{db: db, dialect: dialect}
 }
@@ -148,14 +150,18 @@ func (r Repository) UUIDMasks(ctx context.Context) (map[string][]byte, error) {
 }
 
 func (r Repository) RuntimeUsers(ctx context.Context) ([]runtimeUserRow, error) {
-	return r.runtimeUsers(ctx, 0)
+	return r.runtimeUsers(ctx, 0, nil)
 }
 
 func (r Repository) RuntimeUsersByID(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
 	if userID <= 0 {
 		return nil, nil
 	}
-	return r.runtimeUsers(ctx, userID)
+	return r.runtimeUsers(ctx, userID, nil)
+}
+
+func (r Repository) RuntimeUsersForProtocols(ctx context.Context, protocols []string) ([]runtimeUserRow, error) {
+	return r.runtimeUsers(ctx, 0, protocols)
 }
 
 func (r Repository) RuntimeUserIdentity(ctx context.Context, userID int64) (runtimeUserIdentity, error) {
@@ -197,8 +203,12 @@ func (r Repository) RuntimeUserIDsForServices(ctx context.Context, serviceIDs []
 	return result, rows.Err()
 }
 
-func (r Repository) runtimeUsers(ctx context.Context, userID int64) ([]runtimeUserRow, error) {
+func (r Repository) runtimeUsers(ctx context.Context, userID int64, protocols []string) ([]runtimeUserRow, error) {
 	excludeVPNSessions, _ := r.tableExists(ctx, "vpn_user_sessions")
+	protocolQuery := runtimeProtocolsQuery(protocols)
+	if protocolQuery == "" {
+		return nil, nil
+	}
 	vpnDeviceExpr := `
       CASE
         WHEN COALESCE(vus.client_ip, '') != '' THEN 'client:' || vus.client_ip
@@ -223,14 +233,18 @@ SELECT
 	protocols.type,
 	COALESCE(p.settings, '{}')
 FROM users u
-JOIN (
-	SELECT 'vmess' AS type
-	UNION ALL SELECT 'vless'
-	UNION ALL SELECT 'trojan'
-	UNION ALL SELECT 'shadowsocks'
-	UNION ALL SELECT 'hysteria'
-) protocols
-LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type
+JOIN (` + protocolQuery + `) protocols
+LEFT JOIN proxies p ON u.id = p.user_id AND LOWER(p.type) = protocols.type`
+	if excludeVPNSessions {
+		query += `
+LEFT JOIN (
+	SELECT user_id, COUNT(DISTINCT ` + vpnDeviceExpr + `) AS open_devices
+	FROM vpn_user_sessions vus
+	WHERE vus.ended_at IS NULL
+	GROUP BY user_id
+) vpn_devices ON vpn_devices.user_id = u.id`
+	}
+	query += `
 WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0
   AND (p.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM proxies existing WHERE existing.user_id = u.id))`
 	args := []any{}
@@ -238,11 +252,7 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 		query += `
   AND (
     COALESCE(u.ip_limit, 0) <= 0
-    OR (
-      SELECT COUNT(DISTINCT ` + vpnDeviceExpr + `)
-      FROM vpn_user_sessions vus
-      WHERE vus.user_id = u.id AND vus.ended_at IS NULL
-    ) < COALESCE(u.ip_limit, 0)
+    OR COALESCE(vpn_devices.open_devices, 0) < COALESCE(u.ip_limit, 0)
   )`
 	}
 	if userID > 0 {
@@ -283,6 +293,33 @@ WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.servi
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func runtimeProtocolsQuery(protocols []string) string {
+	allowed := map[string]bool{}
+	for _, protocol := range protocols {
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		if _, ok := proxyProtocols[protocol]; ok {
+			allowed[protocol] = true
+		}
+	}
+	if len(allowed) == 0 && len(protocols) == 0 {
+		for _, protocol := range runtimeProxyProtocolList {
+			allowed[protocol] = true
+		}
+	}
+	parts := []string{}
+	for _, protocol := range runtimeProxyProtocolList {
+		if !allowed[protocol] {
+			continue
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "SELECT '"+protocol+"' AS type")
+		} else {
+			parts = append(parts, "UNION ALL SELECT '"+protocol+"'")
+		}
+	}
+	return strings.Join(parts, "\n\t")
 }
 
 func (r Repository) RuntimeSessionCallback(ctx context.Context, node NodeRow) (RuntimeSessionCallback, error) {

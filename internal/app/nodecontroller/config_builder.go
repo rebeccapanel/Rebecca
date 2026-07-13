@@ -168,7 +168,11 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 	}
 
 	if data == nil {
-		loaded, err := c.loadRuntimeConfigData(ctx)
+		protocols := make([]string, 0, len(inboundsByProtocol))
+		for protocol := range inboundsByProtocol {
+			protocols = append(protocols, protocol)
+		}
+		loaded, err := c.loadRuntimeConfigDataForProtocols(ctx, protocols)
 		if err != nil {
 			return err
 		}
@@ -236,7 +240,11 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {
-	users, err := c.repo.RuntimeUsers(ctx)
+	return c.loadRuntimeConfigDataForProtocols(ctx, nil)
+}
+
+func (c Controller) loadRuntimeConfigDataForProtocols(ctx context.Context, protocols []string) (*runtimeConfigData, error) {
+	users, err := c.repo.RuntimeUsersForProtocols(ctx, protocols)
 	if err != nil {
 		return nil, err
 	}

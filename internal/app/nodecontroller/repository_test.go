@@ -1421,6 +1421,75 @@ VALUES
 	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 7`, "pending")
 }
 
+func TestRepositoryRuntimeUsersExcludesUsersAtSessionLimit(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "runtime-users-limit.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username TEXT NOT NULL,
+	credential_key TEXT,
+	flow TEXT,
+	service_id INTEGER,
+	status TEXT NOT NULL,
+	ip_limit INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE proxies (
+	id INTEGER PRIMARY KEY,
+	user_id INTEGER NOT NULL,
+	type TEXT NOT NULL,
+	settings TEXT
+);
+CREATE TABLE vpn_user_sessions (
+	id INTEGER PRIMARY KEY,
+	node_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	protocol TEXT NOT NULL,
+	inbound_tag TEXT,
+	session_id TEXT NOT NULL,
+	assigned_ip TEXT,
+	client_ip TEXT,
+	started_at DATETIME,
+	last_seen_at DATETIME,
+	ended_at DATETIME
+);
+INSERT INTO users (id, username, credential_key, service_id, status, ip_limit) VALUES
+	(1, 'at-limit', 'key-1', 10, 'active', 1),
+	(2, 'under-limit', 'key-2', 10, 'active', 2);
+INSERT INTO proxies (id, user_id, type, settings) VALUES
+	(1, 1, 'vless', '{}'),
+	(2, 2, 'vless', '{}');
+INSERT INTO vpn_user_sessions (node_id, user_id, protocol, session_id, assigned_ip, client_ip, started_at, last_seen_at, ended_at) VALUES
+	(7, 1, 'ov', 'ov-one', '10.66.0.2', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+	(7, 2, 'ov', 'ov-two', '10.66.0.3', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL);
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	rows, err := repo.RuntimeUsers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != 2 {
+		t.Fatalf("expected only user under session limit, got %#v", rows)
+	}
+
+	rows, err = repo.RuntimeUsersForProtocols(ctx, []string{"shadowsocks"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected protocol filter to skip unrelated proxies, got %#v", rows)
+	}
+}
+
 func TestRepositoryRecoverableNodeIDsOnlyReturnsStaleConnectingAndErrorNodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "node-recovery.db")+"?_pragma=busy_timeout(30000)")
