@@ -1,15 +1,9 @@
 import {
 	Button,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Text,
 	useToast,
 } from "@chakra-ui/react";
+import { AppDialog } from "components/dialogs/AppDialog";
 import { DEFAULT_ADMIN_PERMISSIONS } from "constants/adminPermissions";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useEffect, useState } from "react";
@@ -83,22 +77,39 @@ export const AdminPermissionsModal = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="4xl">
-			<ModalOverlay />
-			<ModalContent
-				maxW={{ base: "100vw", md: "calc(100vw - 24px)", lg: "960px" }}
-				h={{ base: "100dvh", md: "auto" }}
-				maxH={{ base: "100dvh", md: "calc(100dvh - 7.5rem)" }}
-				my={{ base: 0, md: "3.75rem" }}
-				borderRadius={{ base: 0, md: "md" }}
-			>
-				<ModalHeader pr={12} fontSize={{ base: "xl", md: "2xl" }}>
-					{t("admins.permissions.modalTitle", {
-						username: admin?.username ?? "",
-					})}
-				</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody overflowX="hidden" overflowY="auto">
+		<AppDialog
+			isOpen={isOpen}
+			onClose={onClose}
+			size="4xl"
+			title={t("admins.permissions.modalTitle", {
+				username: admin?.username ?? "",
+			})}
+			contentProps={{
+				maxW: { base: "100vw", md: "calc(100vw - 24px)", lg: "960px" },
+				h: { base: "100dvh", md: "auto" },
+				maxH: { base: "100dvh", md: "calc(100dvh - 7.5rem)" },
+				my: { base: 0, md: "3.75rem" },
+				borderRadius: { base: 0, md: "md" },
+			}}
+			headerProps={{ pr: 12, fontSize: { base: "xl", md: "2xl" } }}
+			bodyProps={{ overflowX: "hidden", overflowY: "auto" }}
+			footerProps={{ gap: 3 }}
+			footer={
+				<>
+					<Button variant="ghost" onClick={onClose}>
+						{t("cancel")}
+					</Button>
+					<Button
+						colorScheme="primary"
+						onClick={handleSave}
+						isLoading={saving}
+						isDisabled={!admin || isFullAccess}
+					>
+						{t("save")}
+					</Button>
+				</>
+			}
+		>
 					{isFullAccess && (
 						<Text color="gray.500" mb={3}>
 							{t("admins.permissions.fullAccessLocked")}
@@ -127,22 +138,7 @@ export const AdminPermissionsModal = ({
 						hideExtendedSections={false}
 						isReadOnly={isFullAccess}
 					/>
-				</ModalBody>
-				<ModalFooter gap={3}>
-					<Button variant="ghost" onClick={onClose}>
-						{t("cancel")}
-					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={handleSave}
-						isLoading={saving}
-						isDisabled={!admin || isFullAccess}
-					>
-						{t("save")}
-					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+		</AppDialog>
 	);
 };
 

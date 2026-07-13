@@ -369,6 +369,7 @@ export const protocolOptions: Protocol[] = [
 	"openvpn",
 	"wireguard",
 	"l2tp",
+	"pptp",
 	"http",
 	"socks",
 ];

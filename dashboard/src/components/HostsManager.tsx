@@ -32,15 +32,10 @@ import {
 	TabPanels,
 	Tabs,
 	Tag,
-	TagCloseButton,
-	TagLabel,
 	Text,
 	Tooltip,
-	useColorModeValue,
 	useToast,
 	VStack,
-	Wrap,
-	WrapItem,
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
@@ -61,7 +56,6 @@ import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
-	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -76,7 +70,7 @@ import {
 } from "./common/MultiValueAutocomplete";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import { DeleteIcon } from "./common/DeleteIcon";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { JsonEditor } from "./JsonEditor";
 import {
 	DataTable,
@@ -1481,8 +1475,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							{t("hostsPage.cancel")}
 						</Button>
 					) : (
-						<DeleteConfirmPopover
-							message={t("hostsPage.deleteConfirmation")}
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
 							isLoading={deleting}
 							onConfirm={() => onDelete(host.uid)}
 						>
@@ -1494,7 +1488,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							>
 								{t("hostsPage.delete")}
 							</Button>
-						</DeleteConfirmPopover>
+						</DeleteConfirmDialog>
 					)}
 					<HStack spacing={3}>
 						{!isCloneMode && onClone && (
@@ -2642,8 +2636,9 @@ export const HostsManager: FC = () => {
 		[inboundOptions, renderRotationValues, t],
 	);
 
-	const hostRowActions = useCallback(
-		(host: HostState): DataTableRowAction<HostState>[] => {
+	const hostRowActions = (
+		host: HostState,
+	): DataTableRowAction<HostState>[] => {
 			const isActive = !host.data.is_disabled;
 			return [
 				{
@@ -2671,8 +2666,8 @@ export const HostsManager: FC = () => {
 					icon: <TrashIcon width={16} />,
 					isDanger: true,
 					render: (_row, onMenuClose) => (
-						<DeleteConfirmPopover
-							message={t("hostsPage.deleteConfirmation")}
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
 							isLoading={deletingUid === host.uid && isPostLoading}
 							onConfirm={async () => {
 								await handleDeleteHost(host.uid);
@@ -2687,13 +2682,11 @@ export const HostsManager: FC = () => {
 							>
 								{t("hostsPage.delete", "Delete")}
 							</MenuItem>
-						</DeleteConfirmPopover>
+						</DeleteConfirmDialog>
 					),
 				},
 			];
-		},
-		[deletingUid, isPostLoading, t],
-	);
+	};
 
 	return (
 		<VStack align="stretch" spacing={4}>
@@ -2810,8 +2803,8 @@ export const HostsManager: FC = () => {
 							>
 								{t("hostsPage.disable", "Disable")}
 							</Button>
-							<DeleteConfirmPopover
-								message={t(
+							<DeleteConfirmDialog
+								description={t(
 									"hostsPage.confirmBulkDelete",
 									"Delete {{count}} selected host(s)?",
 									{ count: selectedRows.length },
@@ -2834,7 +2827,7 @@ export const HostsManager: FC = () => {
 								>
 									{t("hostsPage.delete", "Delete")}
 								</Button>
-							</DeleteConfirmPopover>
+							</DeleteConfirmDialog>
 						</>
 					);
 				}}

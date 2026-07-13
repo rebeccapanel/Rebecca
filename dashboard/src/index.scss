@@ -51,6 +51,10 @@
   --primary-700: #990029;
   --primary-800: #73001f;
   --primary-900: #4c0015;
+  --rb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --rb-ease-standard: cubic-bezier(0.77, 0, 0.175, 1);
+  --rb-duration-fast: 140ms;
+  --rb-duration-ui: 180ms;
 }
 
 .rb-theme-dark,
@@ -1106,18 +1110,8 @@ body {
 }
 
 .bg-blue-animate {
-  animation: blur-animate 200ms ease-in;
   backdrop-filter: blur(10px);
-}
-
-@keyframes blur-animate {
-  from {
-    backdrop-filter: blur(1px);
-  }
-
-  to {
-    backdrop-filter: blur(10px);
-  }
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .animate-spin {
@@ -1409,7 +1403,9 @@ table thead {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
   border: none;
   display: flex;
   align-items: center;
@@ -1461,7 +1457,10 @@ table thead {
   margin: 2px;
   border-radius: 6px;
   font-size: 0.9rem;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
 }
 
 .datepicker-with-quickselect .react-datepicker__day:hover {
@@ -1509,7 +1508,15 @@ table thead {
   background-color: transparent;
   border: 1.5px solid var(--chakra-colors-gray-300);
   color: var(--chakra-colors-gray-700);
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out),
+    transform 120ms var(--rb-ease-out);
+}
+
+.datepicker-quickselect-panel button:active {
+  transform: scale(0.97);
 }
 
 .chakra-ui-dark .datepicker-quickselect-panel button {
@@ -2101,10 +2108,10 @@ img.twemoji-emoji {
   box-shadow: 0 12px 26px rgb(15 23 42 / 12%);
 }
 
-/* springy scale-in when a card expands */
+/* crisp scale-in when a card expands */
 @media (prefers-reduced-motion: no-preference) {
   .rb-users-section .rb-resource-expanded {
-    animation: rb-users-expand-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: rb-users-expand-in var(--rb-duration-ui) var(--rb-ease-out);
     transform-origin: top center;
   }
 }
@@ -2146,7 +2153,7 @@ img.twemoji-emoji {
   transform: scale(0.92);
 }
 
-/* floating bulk action bar: slide up with a spring, accent tint */
+/* floating bulk action bar: fast slide up, accent tint */
 .rb-users-section .rb-bulk-action-bar {
   border-radius: 14px;
   border-color: color-mix(in srgb, var(--rb-panel-accent) 35%, var(--rb-panel-border-strong));
@@ -2161,7 +2168,7 @@ img.twemoji-emoji {
 
 @media (prefers-reduced-motion: no-preference) {
   .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
-    animation: rb-users-bulk-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: rb-users-bulk-in 220ms var(--rb-ease-out);
   }
 }
 
@@ -2174,6 +2181,22 @@ img.twemoji-emoji {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-blue-animate,
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"],
+  .rb-snow-layer,
+  .rb-snow-layer::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    transform: none !important;
   }
 }
 

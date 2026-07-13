@@ -11,35 +11,40 @@ import {
 	Flex,
 	Text,
 	useColorModeValue,
+	useDisclosure,
 } from "@chakra-ui/react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import type { ReactNode } from "react";
-import { useRef } from "react";
+import {
+	cloneElement,
+	type MouseEvent,
+	type ReactElement,
+	type ReactNode,
+	useRef,
+	useState,
+} from "react";
+import { useTranslation } from "react-i18next";
 
 const WarningIcon = chakra(ExclamationTriangleIcon, {
-	baseStyle: {
-		w: 6,
-		h: 6,
-	},
+	baseStyle: { w: 6, h: 6 },
 });
 
-type ConfirmActionDialogProps = {
+export type ConfirmDialogProps = {
 	isOpen: boolean;
-	title: string;
-	message: ReactNode;
-	confirmLabel: string;
-	cancelLabel: string;
+	title: ReactNode;
+	description: ReactNode;
+	confirmLabel?: string;
+	cancelLabel?: string;
 	colorScheme?: string;
 	isLoading?: boolean;
 	isConfirmDisabled?: boolean;
 	onClose: () => void;
-	onConfirm: () => void;
+	onConfirm: () => void | Promise<void>;
 };
 
-export const ConfirmActionDialog = ({
+export const ConfirmDialog = ({
 	isOpen,
 	title,
-	message,
+	description,
 	confirmLabel,
 	cancelLabel,
 	colorScheme = "primary",
@@ -47,7 +52,8 @@ export const ConfirmActionDialog = ({
 	isConfirmDisabled = false,
 	onClose,
 	onConfirm,
-}: ConfirmActionDialogProps) => {
+}: ConfirmDialogProps) => {
+	const { t } = useTranslation();
 	const cancelRef = useRef<HTMLButtonElement | null>(null);
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorder = useColorModeValue("light-border", "gray.700");
@@ -84,7 +90,7 @@ export const ConfirmActionDialog = ({
 							return;
 						}
 						event.preventDefault();
-						onConfirm();
+						void onConfirm();
 					}}
 				>
 					<Flex align="flex-start" gap={2.5}>
@@ -111,12 +117,12 @@ export const ConfirmActionDialog = ({
 								{title}
 							</AlertDialogHeader>
 							<AlertDialogBody p={0} mt={1.5}>
-								{typeof message === "string" ? (
+								{typeof description === "string" ? (
 									<Text color={mutedText} fontSize="sm" lineHeight="1.45">
-										{message}
+										{description}
 									</Text>
 								) : (
-									message
+									description
 								)}
 							</AlertDialogBody>
 						</Box>
@@ -140,7 +146,7 @@ export const ConfirmActionDialog = ({
 							px={3}
 							fontSize="sm"
 						>
-							{cancelLabel}
+							{cancelLabel ?? t("cancel", "Cancel")}
 						</Button>
 						<Button
 							colorScheme={colorScheme}
@@ -154,7 +160,7 @@ export const ConfirmActionDialog = ({
 							px={3}
 							fontSize="sm"
 						>
-							{confirmLabel}
+							{confirmLabel ?? t("confirm", "Confirm")}
 						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -163,4 +169,85 @@ export const ConfirmActionDialog = ({
 	);
 };
 
-export default ConfirmActionDialog;
+const stripHtmlTags = (value: string) => value.replace(/<[^>]*>/g, "");
+
+export type DeleteConfirmDialogProps = {
+	children: ReactElement;
+	description?: ReactNode;
+	confirmLabel?: string;
+	cancelLabel?: string;
+	isLoading?: boolean;
+	isDisabled?: boolean;
+	onConfirm: () => void | Promise<void>;
+	onCancel?: () => void;
+};
+
+export const DeleteConfirmDialog = ({
+	children,
+	description,
+	confirmLabel,
+	cancelLabel,
+	isLoading,
+	isDisabled,
+	onConfirm,
+	onCancel,
+}: DeleteConfirmDialogProps) => {
+	const { t } = useTranslation();
+	const { isOpen, onClose, onOpen } = useDisclosure();
+	const [isConfirming, setIsConfirming] = useState(false);
+	const busy = Boolean(isLoading) || isConfirming;
+	const confirmMessage =
+		typeof description === "string"
+			? stripHtmlTags(description)
+			: (description ?? t("common.confirmDelete", "Delete this item?"));
+
+	const handleClose = () => {
+		if (busy) return;
+		onCancel?.();
+		onClose();
+	};
+	const handleConfirm = async () => {
+		setIsConfirming(true);
+		try {
+			await onConfirm();
+			onClose();
+		} finally {
+			setIsConfirming(false);
+		}
+	};
+	const childProps = children.props as {
+		onClick?: (event: MouseEvent<HTMLElement>) => void;
+		onClickCapture?: (event: MouseEvent<HTMLElement>) => void;
+	};
+	const trigger = cloneElement(children, {
+		onClickCapture: (event: MouseEvent<HTMLElement>) => {
+			childProps.onClickCapture?.(event);
+			if (event.defaultPrevented) return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (!isDisabled && !busy) onOpen();
+		},
+		onClick: (event: MouseEvent<HTMLElement>) => {
+			childProps.onClick?.(event);
+			event.stopPropagation();
+		},
+	} as Partial<typeof children.props>);
+
+	return (
+		<>
+			{trigger}
+			<ConfirmDialog
+				isOpen={isOpen}
+				onClose={handleClose}
+				onConfirm={handleConfirm}
+				title={t("common.confirmAction", "Confirm action")}
+				description={confirmMessage}
+				confirmLabel={confirmLabel ?? t("delete", "Delete")}
+				cancelLabel={cancelLabel ?? t("cancel", "Cancel")}
+				colorScheme="red"
+				isLoading={busy}
+				isConfirmDisabled={Boolean(isDisabled)}
+			/>
+		</>
+	);
+};

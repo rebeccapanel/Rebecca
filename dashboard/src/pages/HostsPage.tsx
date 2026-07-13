@@ -1,15 +1,8 @@
-import {
-	Box,
-	HStack,
-	Icon,
-	Text,
-	useColorModeValue,
-	VStack,
-} from "@chakra-ui/react";
+import { HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
-import { TabSystem } from "components/ui";
+import { PageHeader, TabSystem } from "components/ui";
 import { fetchInbounds } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import useGetUser from "hooks/useGetUser";
@@ -20,8 +13,6 @@ export const HostsPage: FC = () => {
 	const { t } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
 	const { fetchHosts } = useHosts();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const panelBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const [activeTab, setActiveTab] = useState<number>(0);
 	const tabKeys = useMemo(() => ["inbounds", "hosts"], []);
 	const hostsTabIndex = 1;
@@ -73,56 +64,20 @@ export const HostsPage: FC = () => {
 	if (!canManageHosts) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Box
-					borderWidth="1px"
-					borderColor={panelBorder}
-					borderRadius="md"
-					bg={panelBg}
-					p={4}
-				>
-					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("header.hostSettings", "Inbounds & Hosts")}
-					</Text>
-					<Text
-						fontSize="sm"
-						color="gray.500"
-						_dark={{ color: "gray.400" }}
-						mt={2}
-					>
-						{t(
-							"hostsPage.noPermission",
-							"You do not have permission to manage host or inbound settings.",
-						)}
-					</Text>
-				</Box>
+				<PageHeader title={t("header.hostSettings", "Inbounds & Hosts")} />
+				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+					{t(
+						"hostsPage.noPermission",
+						"You do not have permission to manage host or inbound settings.",
+					)}
+				</Text>
 			</VStack>
 		);
 	}
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={panelBorder}
-				borderRadius="md"
-				bg={panelBg}
-				p={4}
-			>
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("header.hostSettings", "Inbounds & Hosts")}
-				</Text>
-				<Text
-					fontSize="sm"
-					color="gray.600"
-					_dark={{ color: "gray.300" }}
-					mt={2}
-				>
-					{t(
-						"hostsPage.pageDescription",
-						"Manage inbound listeners and host rules from one focused workspace.",
-					)}
-				</Text>
-			</Box>
+			<PageHeader title={t("header.hostSettings", "Inbounds & Hosts")} />
 			<TabSystem
 				tabs={[
 					{

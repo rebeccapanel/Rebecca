@@ -30,7 +30,7 @@ import {
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
-import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 import { SearchableTagSelect } from "../common/SearchableTagSelect";
 import {
 	DataTable,
@@ -627,8 +627,8 @@ export const InboundsManager: FC = () => {
 			icon: <TrashIcon width={16} />,
 			isDanger: true,
 			render: (_row, onMenuClose) => (
-				<DeleteConfirmPopover
-					message={t("inbounds.confirmDelete", {
+				<DeleteConfirmDialog
+					description={t("inbounds.confirmDelete", {
 						tag: inbound.tag,
 					})}
 					isLoading={isMutating}
@@ -645,7 +645,7 @@ export const InboundsManager: FC = () => {
 					>
 						{t("common.delete", "Delete")}
 					</MenuItem>
-				</DeleteConfirmPopover>
+				</DeleteConfirmDialog>
 			),
 		},
 	];
@@ -748,8 +748,8 @@ export const InboundsManager: FC = () => {
 					count: selectedInboundTags.length,
 				})}
 				renderBulkActions={(selectedRows) => (
-					<DeleteConfirmPopover
-						message={t(
+					<DeleteConfirmDialog
+						description={t(
 							"inbounds.confirmBulkDelete",
 							"Delete {{count}} selected inbound(s)?",
 							{ count: selectedRows.length },
@@ -768,7 +768,7 @@ export const InboundsManager: FC = () => {
 						>
 							{t("common.delete", "Delete")}
 						</Button>
-					</DeleteConfirmPopover>
+					</DeleteConfirmDialog>
 				)}
 				mobileBreakpoint="lg"
 				tableProps={{

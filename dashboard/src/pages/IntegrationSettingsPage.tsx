@@ -96,7 +96,7 @@ import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
-import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
+import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
@@ -106,7 +106,7 @@ import {
 	XrayModalFooter,
 	XrayModalHeader,
 } from "../components/xray/XrayDialog";
-import { PageHeader, ResourceListCard, TabSystem } from "../components/ui";
+import { PageHeader, TabSystem } from "../components/ui";
 
 type EventToggleItem = {
 	key: string;
@@ -1937,18 +1937,7 @@ export const IntegrationSettingsPage = () => {
 				},
 			}}
 		>
-			<ResourceListCard
-				title={
-					<PageHeader
-						title={t("settings.integrations", "Settings")}
-						description={t(
-							"settings.integrationsDescription",
-							"Configure panel runtime, backups, Telegram, subscriptions, and templates.",
-						)}
-					/>
-				}
-				mb={4}
-			/>
+			<PageHeader title={t("settings.integrations", "Settings")} mb={4} />
 			<TabSystem
 				className="master-settings-tabs"
 				overflowX="auto"
@@ -4986,7 +4975,7 @@ export const IntegrationSettingsPage = () => {
 							/>
 						</VStack>
 			</Box>
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isDevUpdateConfirmOpen}
 				onClose={() => setDevUpdateConfirmOpen(false)}
 				onConfirm={confirmDevPanelUpdate}
@@ -4994,12 +4983,11 @@ export const IntegrationSettingsPage = () => {
 					"settings.panel.devChannelConfirmTitle",
 					"Update to dev build?",
 				)}
-				message={t(
+				description={t(
 					"settings.panel.devChannelConfirm",
 					"You are switching/updating this panel to the dev channel. Dev builds are not stable and can include unfinished changes, breaking migrations, or temporary bugs. Continue?",
 				)}
 				confirmLabel={t("settings.panel.updatePanel", "Update panel")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="yellow"
 				isLoading={updateMutation.isLoading}
 			/>

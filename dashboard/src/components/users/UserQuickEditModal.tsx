@@ -4,19 +4,13 @@ import {
 	FormLabel,
 	InputGroup,
 	InputRightAddon,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Text,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
 import { NumericInput } from "components/common/NumericInput";
 import { DateTimePicker } from "components/DateTimePicker";
+import { AppDialog } from "components/dialogs/AppDialog";
 import { useDashboard } from "contexts/DashboardContext";
 import dayjs from "dayjs";
 import { type FC, useEffect, useState } from "react";
@@ -102,21 +96,40 @@ export const UserQuickEditModal: FC = () => {
 	const isDataLimit = field === "data_limit";
 
 	return (
-		<Modal
+		<AppDialog
 			isCentered
 			isOpen={Boolean(quickEditUser)}
 			onClose={onClose}
 			size="sm"
+			title={
+				isDataLimit
+					? t("usersTable.setDataLimit", "Set data limit")
+					: t("usersTable.setExpiry", "Set custom expiry")
+			}
+			overlayProps={{ bg: "blackAlpha.300", backdropFilter: "blur(10px)" }}
+			contentProps={{ mx: "3" }}
+			footerProps={{ gap: 3 }}
+			footer={
+				<>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={onClose}
+						isDisabled={loading}
+					>
+						{t("cancel", "Cancel")}
+					</Button>
+					<Button
+						size="sm"
+						colorScheme="primary"
+						onClick={save}
+						isLoading={loading}
+					>
+						{t("save", "Save")}
+					</Button>
+				</>
+			}
 		>
-			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-			<ModalContent mx="3">
-				<ModalHeader>
-					{isDataLimit
-						? t("usersTable.setDataLimit", "Set data limit")
-						: t("usersTable.setExpiry", "Set custom expiry")}
-				</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody>
 					<VStack align="stretch" spacing={3}>
 						{user && (
 							<Text fontSize="sm" color="panel.textMuted" dir="ltr">
@@ -157,26 +170,6 @@ export const UserQuickEditModal: FC = () => {
 							</FormControl>
 						)}
 					</VStack>
-				</ModalBody>
-				<ModalFooter gap={3}>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={onClose}
-						isDisabled={loading}
-					>
-						{t("cancel", "Cancel")}
-					</Button>
-					<Button
-						size="sm"
-						colorScheme="primary"
-						onClick={save}
-						isLoading={loading}
-					>
-						{t("save", "Save")}
-					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+		</AppDialog>
 	);
 };

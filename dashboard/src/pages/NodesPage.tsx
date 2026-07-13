@@ -84,11 +84,12 @@ import {
 } from "utils/toastHandler";
 import {
 	DataTable,
+	PageHeader,
 	type DataTableColumn,
 	type DataTableRowAction,
 } from "../components/ui";
 import { CoreVersionDialog } from "../components/CoreVersionDialog";
-import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
+import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { GeoUpdateDialog } from "../components/GeoUpdateDialog";
 import { NodeFormModal } from "../components/NodeFormModal";
 import { NodeModalStatusBadge } from "../components/NodeModalStatusBadge";
@@ -617,6 +618,11 @@ export const NodesPage: FC = () => {
 			enabled: canManageNodes,
 		},
 	);
+	const detectedNodeUpdateChannel =
+		nodes?.find((nodeItem) => nodeItem.node_update_channel)
+			?.node_update_channel || maintenanceInfo?.node_update?.channel;
+	const nodeUpdateChannel =
+		detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
 	const panelInstallMode =
 		maintenanceInfo?.panel?.mode ||
 		maintenanceInfo?.panel?.install_mode ||
@@ -649,38 +655,6 @@ export const NodesPage: FC = () => {
 			fetchInbounds();
 		}
 	}, [canManageNodes, inbounds.size]);
-
-	const currentNodeVersion = useMemo(() => {
-		const versionedNode = nodes?.find(
-			(nodeItem) => nodeItem.node_binary_tag || nodeItem.node_service_version,
-		);
-		return (
-			versionedNode?.node_binary_tag ||
-			versionedNode?.node_service_version ||
-			""
-		);
-	}, [nodes]);
-	const detectedNodeUpdateChannel =
-		nodes?.find((nodeItem) => nodeItem.node_update_channel)
-			?.node_update_channel || maintenanceInfo?.node_update?.channel;
-	const nodeUpdateChannel =
-		detectedNodeUpdateChannel === "dev" ? "dev" : "latest";
-	const latestNodeVersion = getLatestNodeVersionForChannel(
-		maintenanceInfo,
-		nodeUpdateChannel,
-	);
-	const currentNodeDisplayVersion =
-		nodeUpdateChannel === "dev" &&
-		currentNodeVersion &&
-		!/^dev-[0-9a-f]{7,40}$/i.test(currentNodeVersion)
-			? `dev (${currentNodeVersion})`
-			: currentNodeVersion;
-	const isNodeUpdateAvailable =
-		getNodeServiceUpdateAvailable(
-			currentNodeVersion,
-			latestNodeVersion,
-			nodeUpdateChannel,
-	);
 
 	const { isLoading: isAdding, mutate: addNodeMutate } = useMutation(addNode, {
 		onSuccess: (createdNode: NodeType) => {
@@ -2631,49 +2605,7 @@ export const NodesPage: FC = () => {
 			align="stretch"
 			pb={selectedNodeIds.length > 0 ? { base: 32, md: 24 } : 0}
 		>
-			<Stack
-				spacing={1}
-				borderWidth="1px"
-				borderColor={nodePanelBorder}
-				borderRadius="6px"
-				bg={nodePanelBg}
-				p={4}
-			>
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("header.nodes")}
-				</Text>
-				<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-					{t(
-						"nodes.pageDescription",
-						"Manage node availability, update runtime versions, and edit node settings.",
-					)}
-				</Text>
-				<HStack spacing={2} flexWrap="wrap" pt={1}>
-					{currentNodeDisplayVersion ? (
-						<Tag size="sm" colorScheme="gray">
-							{t("nodes.nodeServiceVersionTag", {
-								version: currentNodeDisplayVersion,
-							})}
-						</Tag>
-					) : (
-						<Text as="span" fontSize="sm" color="gray.500">
-							-
-						</Text>
-					)}
-					{latestNodeVersion ? (
-						<Tag size="sm" colorScheme="blue">
-							{t("nodes.latestNodeVersionTag", {
-								version: normalizeVersion(latestNodeVersion),
-							})}
-						</Tag>
-					) : null}
-					{isNodeUpdateAvailable && (
-						<Tag size="sm" colorScheme="green">
-							{t("nodes.nodeUpdateAvailable", "Update available")}
-						</Tag>
-					)}
-				</HStack>
-			</Stack>
+			<PageHeader title={t("header.nodes")} />
 
 			{hasError && (
 				<Alert status="error" borderRadius="md">
@@ -3079,14 +3011,13 @@ export const NodesPage: FC = () => {
 				showMasterOptions={false}
 				isSubmitting={geoDialogLoading}
 			/>
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={Boolean(serviceActionConfirm)}
 				onClose={closeServiceActionConfirm}
 				onConfirm={confirmServiceAction}
 				title={serviceActionConfirmTitle}
-				message={serviceActionConfirmMessage}
+				description={serviceActionConfirmMessage}
 				confirmLabel={serviceActionConfirmLabel}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme={
 					serviceActionConfirm?.type === "restart"
 						? "orange"
@@ -3100,12 +3031,12 @@ export const NodesPage: FC = () => {
 				}
 				isLoading={serviceActionConfirmLoading}
 			/>
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isDeleteConfirmOpen}
 				onClose={handleCloseDeleteConfirm}
 				onConfirm={confirmDeleteNode}
 				title={t("delete")}
-				message={renderHostImpactMessage(
+				description={renderHostImpactMessage(
 					t("deleteNode.prompt", {
 						name:
 							deleteCandidate?.name ??
@@ -3115,18 +3046,17 @@ export const NodesPage: FC = () => {
 					deleteHostImpact,
 				)}
 				confirmLabel={t("delete")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="red"
 				isLoading={isDeletingNode || hostCleanupLoading}
 				isConfirmDisabled={!deleteCandidate}
 			/>
 
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isResetConfirmOpen}
 				onClose={handleCloseResetConfirm}
 				onConfirm={confirmResetUsage}
 				title={t("nodes.resetUsage", "Reset usage")}
-				message={t(
+				description={t(
 					"nodes.resetUsageConfirm",
 					"Are you sure you want to reset usage for {{name}}?",
 					{
@@ -3137,7 +3067,6 @@ export const NodesPage: FC = () => {
 					},
 				)}
 				confirmLabel={t("nodes.resetUsage", "Reset usage")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="red"
 				isLoading={isResettingUsage}
 				isConfirmDisabled={!resetCandidate}

@@ -10,13 +10,6 @@ import {
 	FormLabel,
 	HStack,
 	IconButton,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Stack,
 	Text,
 	Tooltip,
@@ -27,6 +20,7 @@ import {
 } from "@chakra-ui/react";
 import { SparklesIcon } from "@heroicons/react/24/outline";
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -420,14 +414,17 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 				</Button>
 			)}
 
-			<Modal isOpen={isOpen} onClose={onClose} size="lg">
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader>
-						{t("filters.advancedActions.modalTitle", "Advanced actions")}
-					</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
+			<AppDialog
+				isOpen={isOpen}
+				onClose={onClose}
+				size="lg"
+				title={t("filters.advancedActions.modalTitle", "Advanced actions")}
+				footer={
+					<Button variant="ghost" onClick={onClose}>
+						{t("filters.advancedActions.close", "Close")}
+					</Button>
+				}
+			>
 						<VStack spacing={6} align="stretch">
 							<Alert status="warning" borderRadius="md">
 								<AlertIcon />
@@ -784,14 +781,7 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 								</Box>
 							</Stack>
 						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						<Button variant="ghost" onClick={onClose}>
-							{t("filters.advancedActions.close", "Close")}
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+			</AppDialog>
 		</>
 	);
 };

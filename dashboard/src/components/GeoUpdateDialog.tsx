@@ -11,13 +11,6 @@ import {
 	HStack,
 	IconButton,
 	Input,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Radio,
 	RadioGroup,
 	SimpleGrid,
@@ -27,6 +20,7 @@ import {
 	useColorModeValue,
 } from "@chakra-ui/react";
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
 import {
 	ArrowPathIcon,
 	MinusIcon,
@@ -272,12 +266,27 @@ export const GeoUpdateDialog = ({
 	);
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>{title}</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody>
+		<AppDialog
+			isOpen={isOpen}
+			onClose={onClose}
+			isCentered
+			size="xl"
+			title={title}
+			footer={
+				<>
+					<Button variant="ghost" mr={3} onClick={onClose}>
+						{t("cancel")}
+					</Button>
+					<Button
+						colorScheme="primary"
+						onClick={handleSubmit}
+						isLoading={isSubmitting}
+					>
+						{t("nodes.geoDialog.confirmUpdate")}
+					</Button>
+				</>
+			}
+		>
 					<Stack spacing={4}>
 						<FormControl as="fieldset">
 							<FormLabel as="legend" fontSize="sm">
@@ -394,21 +403,7 @@ export const GeoUpdateDialog = ({
 							</Alert>
 						)}
 					</Stack>
-				</ModalBody>
-				<ModalFooter>
-					<Button variant="ghost" mr={3} onClick={onClose}>
-						{t("cancel")}
-					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={handleSubmit}
-						isLoading={isSubmitting}
-					>
-						{t("nodes.geoDialog.confirmUpdate")}
-					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+		</AppDialog>
 	);
 };
 

@@ -7,18 +7,12 @@ import {
 	FormControl,
 	FormLabel,
 	Input,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Spinner,
 	Stack,
 	Text,
 } from "@chakra-ui/react";
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "react-query";
@@ -105,12 +99,27 @@ export const CoreVersionDialog = ({
 	const isLoadingReleases = releasesQuery.isLoading;
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} isCentered size="lg">
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>{title}</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody>
+		<AppDialog
+			isOpen={isOpen}
+			onClose={onClose}
+			isCentered
+			size="lg"
+			title={title}
+			footer={
+				<>
+					<Button variant="ghost" mr={3} onClick={onClose}>
+						{t("cancel")}
+					</Button>
+					<Button
+						colorScheme="primary"
+						onClick={handleSubmit}
+						isLoading={isSubmitting}
+					>
+						{t("nodes.coreVersionDialog.confirmUpdate")}
+					</Button>
+				</>
+			}
+		>
 					<Stack spacing={4}>
 						{description && (
 							<Text
@@ -198,21 +207,7 @@ export const CoreVersionDialog = ({
 							</Alert>
 						)}
 					</Stack>
-				</ModalBody>
-				<ModalFooter>
-					<Button variant="ghost" mr={3} onClick={onClose}>
-						{t("cancel")}
-					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={handleSubmit}
-						isLoading={isSubmitting}
-					>
-						{t("nodes.coreVersionDialog.confirmUpdate")}
-					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+		</AppDialog>
 	);
 };
 

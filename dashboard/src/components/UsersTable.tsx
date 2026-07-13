@@ -6,12 +6,15 @@ import {
 	Flex,
 	HStack,
 	IconButton,
+	Menu,
+	MenuButton,
 	MenuItem,
+	MenuList,
+	Portal,
 	Stack,
 	Text,
 	Tooltip,
 	useBreakpointValue,
-	useColorModeValue,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
@@ -44,6 +47,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -58,7 +62,7 @@ import {
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
 import {
@@ -138,6 +142,132 @@ type UserIPRecord = {
 type UserIPsResponse = {
 	username: string;
 	ips: UserIPRecord[];
+};
+
+const TRAFFIC_AMOUNTS = [1, 2, 3, 5, 10] as const;
+
+const TrafficSubmenu: FC<{
+	label: string;
+	isRTL: boolean;
+	activeAction: string | null;
+	onClose: () => void;
+	onSelect: (gigabytes: number) => void;
+	getOptionLabel: (gigabytes: number) => string;
+}> = ({
+	label,
+	isRTL,
+	activeAction,
+	onClose,
+	onSelect,
+	getOptionLabel,
+}) => {
+	const [isOpen, setIsOpen] = useState(false);
+	const closeTimer = useRef<number | null>(null);
+
+	const cancelClose = () => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+	};
+	const openMenu = () => {
+		cancelClose();
+		setIsOpen(true);
+	};
+	const closeMenu = () => {
+		cancelClose();
+		setIsOpen(false);
+	};
+	const scheduleClose = () => {
+		cancelClose();
+		closeTimer.current = window.setTimeout(() => setIsOpen(false), 120);
+	};
+
+	useEffect(
+		() => () => {
+			if (closeTimer.current !== null) {
+				window.clearTimeout(closeTimer.current);
+			}
+		},
+		[],
+	);
+
+	return (
+		<Menu
+			isOpen={isOpen}
+			onClose={closeMenu}
+			placement={isRTL ? "left-start" : "right-start"}
+			strategy="fixed"
+			autoSelect={false}
+			closeOnSelect={false}
+			gutter={4}
+		>
+			<MenuButton
+				as={MenuItem}
+				icon={<TrafficIcon />}
+				isDisabled={activeAction?.startsWith("traffic-")}
+				closeOnSelect={false}
+				onMouseEnter={openMenu}
+				onMouseLeave={scheduleClose}
+				onClick={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					openMenu();
+				}}
+				onKeyDown={(event) => {
+					if (event.key === (isRTL ? "ArrowLeft" : "ArrowRight")) {
+						event.preventDefault();
+						event.stopPropagation();
+						openMenu();
+					}
+				}}
+			>
+				<HStack w="full" justify="space-between" spacing={3}>
+					<Text as="span" noOfLines={1}>
+						{label}
+					</Text>
+					<ChevronRightIcon
+						width={14}
+						style={{
+							flexShrink: 0,
+							transform: isRTL ? "rotate(180deg)" : undefined,
+						}}
+					/>
+				</HStack>
+			</MenuButton>
+			<Portal>
+				<MenuList
+					data-rb-context-menu=""
+					minW="152px"
+					maxH="min(70vh, 320px)"
+					overflowY="auto"
+					overflowX="hidden"
+					overscrollBehavior="contain"
+					borderRadius="lg"
+					boxShadow="2xl"
+					zIndex={2600}
+					onMouseEnter={openMenu}
+					onMouseLeave={scheduleClose}
+					onClick={(event) => event.stopPropagation()}
+				>
+					{TRAFFIC_AMOUNTS.map((gigabytes) => (
+						<MenuItem
+							key={gigabytes}
+							isDisabled={activeAction === `traffic-${gigabytes}`}
+							onClick={(event) => {
+								event.stopPropagation();
+								closeMenu();
+								onClose();
+								onSelect(gigabytes);
+							}}
+						>
+							{getOptionLabel(gigabytes)}
+						</MenuItem>
+					))}
+				</MenuList>
+			</Portal>
+		</Menu>
+	);
 };
 
 const getResetStrategy = (strategy: string): string => {
@@ -274,9 +404,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 			}),
 		[toast],
 	);
-	const dialogBg = useColorModeValue("panel.surface", "panel.surface");
-	const dialogBorderColor = useColorModeValue("panel.border", "panel.border");
-
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
@@ -1003,63 +1130,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 				label: t("usersTable.addTraffic", "Add traffic"),
 				icon: <TrafficIcon />,
 				render: (_row, onClose) => (
-					<Box position="relative" role="group">
-						<MenuItem
-							icon={<TrafficIcon />}
-							isDisabled={contextAction?.startsWith("traffic-")}
-							closeOnSelect={false}
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-							}}
-						>
-							<HStack w="full" justify="space-between" spacing={3}>
-								<Text as="span" noOfLines={1}>
-									{t("usersTable.addTraffic", "Add traffic")}
-								</Text>
-								<ChevronRightIcon
-									width={14}
-									style={{
-										flexShrink: 0,
-										transform: isRTL ? "rotate(180deg)" : undefined,
-									}}
-								/>
-							</HStack>
-						</MenuItem>
-						<Stack
-							display="none"
-							_groupHover={{ display: "flex" }}
-							position="absolute"
-							top={0}
-							left={isRTL ? "auto" : "100%"}
-							right={isRTL ? "100%" : "auto"}
-							minW="140px"
-							spacing={1}
-							p={2}
-							bg={dialogBg}
-							borderWidth="1px"
-							borderColor={dialogBorderColor}
-							borderRadius="md"
-							boxShadow="lg"
-							zIndex={2501}
-						>
-							{[1, 2, 3, 5, 10].map((gigabytes) => (
-								<MenuItem
-									key={gigabytes}
-									isDisabled={contextAction === `traffic-${gigabytes}`}
-									onClick={(event) => {
-										event.stopPropagation();
-										onClose();
-										handleAdjustTraffic(user, gigabytes);
-									}}
-								>
-									{t("usersTable.addGb", "Add {{count}} GB", {
-										count: gigabytes,
-									})}
-								</MenuItem>
-							))}
-						</Stack>
-					</Box>
+					<TrafficSubmenu
+						label={t("usersTable.addTraffic", "Add traffic")}
+						isRTL={isRTL}
+						activeAction={contextAction}
+						onClose={onClose}
+						onSelect={(gigabytes) =>
+							handleAdjustTraffic(user, gigabytes)
+						}
+						getOptionLabel={(gigabytes) =>
+							t("usersTable.addGb", "Add {{count}} GB", {
+								count: gigabytes,
+							})
+						}
+					/>
 				),
 			});
 		}
@@ -1113,8 +1197,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <DeleteIcon />,
 				isDanger: true,
 				render: (_row, onClose) => (
-					<DeleteConfirmPopover
-						message={t("deleteUser.prompt", { username: user.username })}
+					<DeleteConfirmDialog
+						description={t("deleteUser.prompt", { username: user.username })}
 						onConfirm={async () => {
 							onClose();
 							await handleDeleteUser(user);
@@ -1127,7 +1211,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						>
 							{t("deleteUser.title", "Delete user")}
 						</MenuItem>
-					</DeleteConfirmPopover>
+					</DeleteConfirmDialog>
 				),
 			});
 		}
@@ -1328,10 +1412,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 									</Button>
 								)}
 								{canDeleteUserActions && (
-									<DeleteConfirmPopover
-										message={t(
+									<DeleteConfirmDialog
+										description={t(
 											"usersTable.bulkDeletePrompt",
-											"Delete selected users?",
+											"Delete selected users? This cannot be undone.",
 										)}
 										onConfirm={handleBulkDelete}
 									>
@@ -1347,7 +1431,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 										>
 											{t("delete", "Delete")}
 										</Button>
-									</DeleteConfirmPopover>
+									</DeleteConfirmDialog>
 								)}
 							</>
 						)}
@@ -1526,8 +1610,8 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				</Tooltip>
 			)}
 			{onDelete && (
-				<DeleteConfirmPopover
-					message={t("deleteUser.prompt", { username: user.username })}
+				<DeleteConfirmDialog
+					description={t("deleteUser.prompt", { username: user.username })}
 					onConfirm={onDelete}
 				>
 					<IconButton
@@ -1540,7 +1624,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 						color="red.400"
 						_hover={{ color: "red.300", bg: "whiteAlpha.100" }}
 					/>
-				</DeleteConfirmPopover>
+				</DeleteConfirmDialog>
 			)}
 			{menuActions && menuActions.length > 0 && (
 				<RowActionsMenu actions={menuActions} label={t("actions", "Actions")} />

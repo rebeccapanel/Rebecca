@@ -105,7 +105,7 @@ import { NumericInput } from "./common/NumericInput";
 import { AnimatedSubmitButton } from "./common/AnimatedSubmitButton";
 import { DeleteIcon } from "./common/DeleteIcon";
 import { DateTimePicker } from "./DateTimePicker";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { createUsageConfig, UsageFilter } from "./UsageFilter";
@@ -4044,8 +4044,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										{isEditing && (
 											<>
 												{canDeleteUsersVisible && (
-													<DeleteConfirmPopover
-														message={t("deleteUser.prompt", {
+											<DeleteConfirmDialog
+												description={t("deleteUser.prompt", {
 															username: editingUser?.username ?? "",
 														})}
 														isLoading={deleteLoading}
@@ -4059,7 +4059,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																<DeleteIcon />
 															</IconButton>
 														</Tooltip>
-													</DeleteConfirmPopover>
+											</DeleteConfirmDialog>
 												)}
 
 												{canResetUsageVisible && (

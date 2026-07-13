@@ -92,7 +92,7 @@ import {
 	validateInboundFormValues,
 } from "utils/inbounds";
 import { NumericInput } from "../common/NumericInput";
-import { DeleteConfirmPopover } from "../DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 import {
 	XrayModalBody,
 	XrayModalContent,
@@ -5147,8 +5147,8 @@ export const InboundFormModal: FC<Props> = ({
 				>
 					{isEditMode && onDelete && (
 						<HStack spacing={3}>
-							<DeleteConfirmPopover
-								message={t(
+							<DeleteConfirmDialog
+								description={t(
 									"inbounds.confirmDelete",
 									"Are you sure you want to delete this inbound?",
 								)}
@@ -5163,7 +5163,7 @@ export const InboundFormModal: FC<Props> = ({
 								>
 									{t("common.delete", "Delete")}
 								</Button>
-							</DeleteConfirmPopover>
+							</DeleteConfirmDialog>
 							{onClone && (
 								<Button
 									variant="outline"
