@@ -15,6 +15,7 @@ __pycache__
 db.sqlite3
 db.sqlite3-journal
 docker-compose*.yml
+dashboard/public/tutorial-content
 v2ray-core
 venv
 xray-core

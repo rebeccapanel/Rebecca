@@ -38,14 +38,13 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
 import { AdminRole, AdminSection } from "types/Admin";
 import {
-	getTutorialAssetUrl,
+	getTutorialManifestUrl,
+	getTutorialSeenKey,
 	normalizeTutorialLang,
-	syncTutorialUpdateStorage,
-	TUTORIALS_UPDATED_EVENT,
-} from "utils/tutorialUpdates";
+} from "utils/tutorials";
 
 const iconProps = {
 	baseStyle: {
@@ -88,109 +87,13 @@ type SidebarItem = {
 	title: string;
 	icon: ElementType;
 	url?: string;
-	external?: boolean;
-	subItems?: { title: string; url: string; icon: ElementType; external?: boolean }[];
+	subItems?: {
+		title: string;
+		url: string;
+		icon: ElementType;
+	}[];
 };
 type SidebarSubItems = NonNullable<SidebarItem["subItems"]>;
-
-type TutorialMenuSection = {
-	id?: string;
-	requiresRole?: ("sudo" | "full_access")[];
-	subsections?: { id?: string }[];
-};
-
-type TutorialMenuContent = {
-	meta?: { updated?: string };
-	quickTips?: unknown[];
-	sections?: TutorialMenuSection[];
-	dialogSections?: { id?: string }[];
-	samples?: unknown[];
-	statuses?: { status?: string }[];
-	faqs?: { id?: string }[];
-	adminRoles?: { id?: string }[];
-};
-
-const normalizeRole = (role?: string | null) =>
-	role
-		?.toString()
-		.toLowerCase()
-		.replace(/[^a-z]/g, "") || "";
-
-const getTutorialMenuIds = (
-	content: TutorialMenuContent,
-	normalizedUserRole: string,
-	hasResolvedUser: boolean,
-) => {
-	const ids = new Set<string>();
-
-	if (Array.isArray(content.quickTips) && content.quickTips.length > 0) {
-		ids.add("quick-tips");
-	}
-
-	(content.sections || []).forEach((section) => {
-		const sectionId = section.id?.toString().trim();
-		if (!sectionId) return;
-		const requiredRoles = (section.requiresRole || [])
-			.map((role) => normalizeRole(role))
-			.filter(Boolean);
-		if (requiredRoles.length > 0) {
-			if (!hasResolvedUser || !normalizedUserRole) return;
-			if (!requiredRoles.includes(normalizedUserRole)) return;
-		}
-		ids.add(`section-${sectionId}`);
-		(section.subsections || []).forEach((subsection) => {
-			const subsectionId = subsection.id?.toString().trim();
-			if (!subsectionId) return;
-			ids.add(`section-${sectionId}-${subsectionId}`);
-		});
-	});
-
-	if (
-		Array.isArray(content.dialogSections) &&
-		content.dialogSections.length > 0
-	) {
-		ids.add("dialog-guide");
-		ids.add("dialog-illustration");
-		content.dialogSections.forEach((section) => {
-			const sectionId = section.id?.toString().trim();
-			if (!sectionId) return;
-			ids.add(`dialog-${sectionId}`);
-		});
-	}
-
-	if (Array.isArray(content.samples) && content.samples.length > 0) {
-		ids.add("samples");
-	}
-
-	if (Array.isArray(content.statuses) && content.statuses.length > 0) {
-		ids.add("statuses");
-		content.statuses.forEach((status) => {
-			const statusId = status.status?.toString().trim();
-			if (!statusId) return;
-			ids.add(`status-${statusId}`);
-		});
-	}
-
-	if (Array.isArray(content.faqs) && content.faqs.length > 0) {
-		ids.add("faq");
-		content.faqs.forEach((faq) => {
-			const faqId = faq.id?.toString().trim();
-			if (!faqId) return;
-			ids.add(`faq-${faqId}`);
-		});
-	}
-
-	if (Array.isArray(content.adminRoles) && content.adminRoles.length > 0) {
-		ids.add("admin-roles");
-		content.adminRoles.forEach((role) => {
-			const roleId = role.id?.toString().trim();
-			if (!roleId) return;
-			ids.add(`admin-role-${roleId}`);
-		});
-	}
-
-	return Array.from(ids);
-};
 
 const LogoIcon = chakra("img", {
 	baseStyle: {
@@ -207,27 +110,22 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const dashboardRoot = useHref("/");
 	const { colorMode } = useColorMode();
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData } = useGetUser();
 	const currentLanguage = i18n.language || "en";
+	const tutorialsUrl = "/tutorials";
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
-	const isPrivilegedAdmin =
-		isFullAccess || userData.role === AdminRole.Sudo;
+	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
 	const sidebarBg = useColorModeValue("panel.sidebar", "panel.sidebar");
-	const sidebarBorderColor = useColorModeValue(
-		"panel.border",
-		"panel.border",
+	const sidebarBorderColor = useColorModeValue("panel.border", "panel.border");
+	const sidebarPanelBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const sidebarPanelBorder = useColorModeValue("panel.border", "panel.border");
+	const itemColor = useColorModeValue(
+		"panel.textSecondary",
+		"panel.textSecondary",
 	);
-	const sidebarPanelBg = useColorModeValue(
-		"panel.elevated",
-		"panel.elevated",
-	);
-	const sidebarPanelBorder = useColorModeValue(
-		"panel.border",
-		"panel.border",
-	);
-	const itemColor = useColorModeValue("panel.textSecondary", "panel.textSecondary");
 	const activeItemBg = useColorModeValue("panel.elevated", "panel.elevated");
 	const activeItemColor = useColorModeValue("panel.text", "panel.text");
 	const hoverItemBg = useColorModeValue("panel.elevated", "panel.elevated");
@@ -249,52 +147,38 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		sectionAccess?.[AdminSection.Services],
 	);
 	const [hasNewTutorials, setHasNewTutorials] = useState(false);
-	const normalizedUserRole = normalizeRole(userData?.role);
 
 	const checkTutorialUpdates = useCallback(async () => {
 		const langKey = normalizeTutorialLang(i18n.language);
 		try {
-			const response = await fetch(getTutorialAssetUrl(i18n.language), {
+			const response = await fetch(getTutorialManifestUrl(dashboardRoot), {
 				headers: { "Cache-Control": "no-cache" },
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to load tutorial meta: ${response.status}`);
 			}
-			const data = (await response.json()) as TutorialMenuContent;
-			const updated = data?.meta?.updated?.toString().trim();
-			const hasRoleScopedTutorials = (data.sections || []).some(
-				(section) => (section.requiresRole || []).length > 0,
-			);
-			if (hasRoleScopedTutorials && !getUserIsSuccess) {
+			const manifest = (await response.json()) as Record<string, string>;
+			const version = manifest[langKey]?.toString().trim();
+			if (!version) {
 				setHasNewTutorials(false);
 				return;
 			}
-			const menuIds = getTutorialMenuIds(
-				data,
-				normalizedUserRole,
-				getUserIsSuccess,
-			);
-			const unseenIds = syncTutorialUpdateStorage(langKey, updated, menuIds);
-			setHasNewTutorials(unseenIds.length > 0);
+			const seenKey = getTutorialSeenKey(langKey);
+			const seenVersion = window.localStorage.getItem(seenKey);
+			if (seenVersion === null) {
+				window.localStorage.setItem(seenKey, version);
+				setHasNewTutorials(false);
+				return;
+			}
+			setHasNewTutorials(seenVersion !== version);
 		} catch (err) {
 			console.error("Failed to check tutorial updates", err);
 			setHasNewTutorials(false);
 		}
-	}, [getUserIsSuccess, i18n.language, normalizedUserRole]);
+	}, [dashboardRoot, i18n.language]);
 
 	useEffect(() => {
 		void checkTutorialUpdates();
-	}, [checkTutorialUpdates]);
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const handleUpdate = () => {
-			void checkTutorialUpdates();
-		};
-		window.addEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
-		return () => {
-			window.removeEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
-		};
 	}, [checkTutorialUpdates]);
 
 	const baseSettingsSubItems: SidebarSubItems = [
@@ -356,7 +240,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			: null,
 		{
 			title: t("tutorials.menu", "Tutorials"),
-			url: "/tutorials",
+			url: tutorialsUrl,
 			icon: TutorialIconStyled,
 		},
 	].filter(Boolean) as SidebarSubItems;
@@ -470,7 +354,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/access-insights"),
 				pickSetting("/api-docs"),
 				pickSetting("/phpmyadmin"),
-				pickSetting("/tutorials"),
+				pickSetting(tutorialsUrl),
 			],
 		},
 	].map((group) => ({
@@ -595,9 +479,10 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 													location.pathname.startsWith(itemUrl));
 											const Icon = item.icon;
 											const showTutorialBadge =
-												itemUrl === "/tutorials" && hasNewTutorials;
+												itemUrl === tutorialsUrl && hasNewTutorials;
 											const navItem = (
 												<Tooltip
+													key={itemUrl}
 													label={collapsed ? item.title : ""}
 													placement="right"
 													hasArrow
@@ -682,20 +567,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												</Tooltip>
 											);
 
-											return item.external ? (
-												<Box
-													key={itemUrl}
-													as="a"
-													href={itemUrl}
-													onClick={() => {
-														if (inDrawer && onRequestExpand) {
-															onRequestExpand();
-														}
-													}}
-												>
-													{navItem}
-												</Box>
-											) : (
+											return (
 												<NavLink
 													key={itemUrl}
 													to={itemUrl}

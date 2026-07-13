@@ -1,0 +1,79 @@
+baseURL: /
+title: Rebecca Tutorials
+relativeURLs: true
+enableRobotsTXT: false
+disableKinds: [taxonomy, term, rss, sitemap]
+defaultContentLanguage: en
+hasCJKLanguage: true
+
+languages:
+  en:
+    languageName: English
+    languageCode: en
+    languageDirection: ltr
+    weight: 1
+    title: Rebecca Tutorials
+    params:
+      tutorialVersion: "2026-07-13 18:00"
+  fa:
+    languageName: فارسی
+    languageCode: fa
+    languageDirection: rtl
+    weight: 2
+    title: راهنمای ربکا
+    params:
+      tutorialVersion: "22-04-1405 18:00"
+
+module:
+  hugoVersion:
+    extended: true
+    min: "0.146.0"
+  imports:
+    - path: github.com/imfing/hextra
+
+markup:
+  highlight:
+    noClasses: false
+  goldmark:
+    renderer:
+      unsafe: true
+
+menu:
+  main:
+    - identifier: backToPanel
+      name: Back to panel
+      url: "#panel"
+      weight: 1
+      params:
+        icon: home
+    - identifier: search
+      name: Search
+      weight: 2
+      params:
+        type: search
+
+params:
+  description: Practical guides for the Rebecca panel.
+  externalLinkDecoration: true
+  navbar:
+    displayTitle: true
+    displayLogo: false
+    width: wide
+  theme:
+    default: dark
+    displayToggle: false
+  footer:
+    enable: false
+  displayUpdatedDate: false
+  search:
+    enable: true
+    type: flexsearch
+    flexsearch:
+      index: content
+      tokenize: forward
+  page:
+    width: wide
+    contextMenu:
+      enable: false
+  toc:
+    displayTags: false

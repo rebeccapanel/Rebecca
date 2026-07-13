@@ -100,7 +100,6 @@ type SettingsMenuItem = {
 	label: string;
 	to: string;
 	icon?: ElementType;
-	external?: boolean;
 };
 
 type BottomNavItem = {
@@ -123,6 +122,7 @@ export function AppLayout() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const tutorialsUrl = "/tutorials";
 	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
 	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -179,16 +179,10 @@ export function AppLayout() {
 		"0 6px 14px rgba(0, 0, 0, 0.24)",
 	);
 	const shellBorder = useColorModeValue("panel.border", "panel.border");
-	const shellHeaderBg = useColorModeValue(
-		"panel.surface",
-		"panel.surface",
-	);
+	const shellHeaderBg = useColorModeValue("panel.surface", "panel.surface");
 	const shellHeaderShadow = "none";
 	const shellMainBg = useColorModeValue("panel.main", "panel.main");
-	const headerButtonBg = useColorModeValue(
-		"panel.elevated",
-		"panel.elevated",
-	);
+	const headerButtonBg = useColorModeValue("panel.elevated", "panel.elevated");
 	const headerButtonHoverBg = useColorModeValue(
 		"panel.borderStrong",
 		"panel.borderStrong",
@@ -291,7 +285,7 @@ export function AppLayout() {
 			{
 				key: "tutorials",
 				label: t("tutorials.menu", "Tutorials"),
-				to: "/tutorials",
+				to: tutorialsUrl,
 				icon: TutorialIcon,
 			},
 		];
@@ -431,7 +425,6 @@ export function AppLayout() {
 	const activeSettingsItem = useMemo(
 		() =>
 			settingsMenuItems.find((item) => {
-				if (item.external) return false;
 				if (item.to === "/") return location.pathname === "/";
 				return location.pathname.startsWith(item.to);
 			}),
@@ -695,11 +688,6 @@ export function AppLayout() {
 	};
 
 	const navigateToSettingsItem = (target: string) => {
-		const item = settingsMenuItems.find((entry) => entry.to === target);
-		if (item?.external) {
-			window.location.assign(target);
-			return;
-		}
 		const defaultTab = settingsDefaultTabByPath[target];
 		if (defaultTab) {
 			navigate(`${target}#${defaultTab}`);
@@ -922,19 +910,19 @@ export function AppLayout() {
 													zIndex={9999}
 													userSelect="none"
 													sx={{
-													".chakra-menu__menuitem": {
-														bg: "transparent !important",
-														"&:hover": {
-															bg: `${menuHover} !important`,
-														},
-														"&:active, &:focus-visible": {
-															bg: `${menuHover} !important`,
-														},
-														"&:focus:not(:focus-visible)": {
+														".chakra-menu__menuitem": {
 															bg: "transparent !important",
+															"&:hover": {
+																bg: `${menuHover} !important`,
+															},
+															"&:active, &:focus-visible": {
+																bg: `${menuHover} !important`,
+															},
+															"&:focus:not(:focus-visible)": {
+																bg: "transparent !important",
+															},
 														},
-													},
-												}}
+													}}
 												>
 													{languageItems.map(({ code, label, flag }) => {
 														const isActiveLang = i18n.language === code;

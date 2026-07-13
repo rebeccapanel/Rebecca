@@ -172,6 +172,8 @@ data/redis_backup/
 
 # Dashboard build directory (built by Docker)
 dashboard/build/
+dashboard/public/tutorial-content/
+tutorials/.hugo_build.lock
 go/internal/gateway/static/dashboard/build/*
 !go/internal/gateway/static/dashboard/build/.gitkeep
 

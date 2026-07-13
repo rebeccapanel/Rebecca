@@ -1,5 +1,12 @@
 import { Box, Button, Heading, Text, VStack } from "@chakra-ui/react";
-import { createBrowserRouter } from "react-router-dom";
+import {
+	createBrowserRouter,
+	isRouteErrorResponse,
+	Navigate,
+	redirect,
+	useNavigate,
+	useRouteError,
+} from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { fetch } from "../service/http";
 import { getAuthToken, removeAuthToken } from "../utils/authStorage";
@@ -15,17 +22,10 @@ import MyAccountPage from "./MyAccountPage";
 import { NodesPage } from "./NodesPage";
 import { PhpMyAdminPage } from "./PhpMyAdminPage";
 import ServicesPage from "./ServicesPage";
-import TutorialsPage from "./TutorialsPage";
+import { TutorialsPage } from "./TutorialsPage";
 import UsagePage from "./UsagePage";
 import { UsersPage } from "./UsersPage";
 import { XrayLogsPage } from "./XrayLogsPage";
-import {
-	isRouteErrorResponse,
-	Navigate,
-	redirect,
-	useNavigate,
-	useRouteError,
-} from "react-router-dom";
 
 const routeErrorMessage = (error: unknown) => {
 	if (isRouteErrorResponse(error)) {
@@ -99,7 +99,9 @@ const getDashboardBasename = () => {
 	if (typeof window === "undefined") return "/dashboard";
 	const segments = window.location.pathname.split("/").filter(Boolean);
 	if (!segments.length) return import.meta.env.DEV ? "/" : "/dashboard";
-	const routeIndex = segments.findIndex((segment) => routeSegments.has(segment));
+	const routeIndex = segments.findIndex((segment) =>
+		routeSegments.has(segment),
+	);
 	if (routeIndex > 0) {
 		return `/${segments.slice(0, routeIndex).join("/")}`;
 	}

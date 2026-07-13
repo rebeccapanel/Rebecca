@@ -2663,7 +2663,11 @@ export const NodesPage: FC = () => {
 							minW={0}
 							w="full"
 							onClick={() =>
-								navigate("/tutorials?focus=section-nodes-admin-guide")
+								navigate(
+									`/tutorials?doc=${encodeURIComponent(
+										"admin/nodes/#section-nodes-admin-guide",
+									)}`,
+								)
 							}
 						>
 							{t("nodes.toolbarTutorial", "Tutorial")}

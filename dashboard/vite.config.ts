@@ -1,8 +1,29 @@
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
-import { defineConfig, loadEnv, splitVendorChunkPlugin } from "vite";
+import {
+	defineConfig,
+	loadEnv,
+	type Plugin,
+	splitVendorChunkPlugin,
+} from "vite";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
+
+const tutorialDirectoryIndex = {
+	name: "tutorial-directory-index",
+	configureServer(server) {
+		server.middlewares.use((request, _response, next) => {
+			const url = new URL(request.url || "/", "http://localhost");
+			if (
+				url.pathname.startsWith("/tutorial-content/") &&
+				url.pathname.endsWith("/")
+			) {
+				request.url = `${url.pathname}index.html${url.search}`;
+			}
+			next();
+		});
+	},
+} satisfies Plugin;
 
 const getApiProxyConfig = (baseAPI?: string) => {
 	if (!baseAPI || !/^https?:\/\//i.test(baseAPI)) {
@@ -42,6 +63,7 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [
+			tutorialDirectoryIndex,
 			tsconfigPaths(),
 			react({
 				include: "**/*.tsx",
@@ -58,6 +80,8 @@ export default defineConfig(({ mode }) => {
 				}
 			: undefined,
 		build: {
+			outDir: "build",
+			assetsDir: "statics",
 			rollupOptions: {
 				onwarn(warning, warn) {
 					if (
