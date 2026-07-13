@@ -986,6 +986,29 @@
             font-size: 0.84rem;
         }
 
+        .rb-vpn-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .rb-wg-config {
+            width: 100%;
+            min-height: 180px;
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid var(--rb-panel-border);
+            border-radius: 12px;
+            background: var(--rb-panel-surface);
+            color: var(--rb-panel-text-secondary);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.78rem;
+            line-height: 1.55;
+            direction: ltr;
+            resize: vertical;
+        }
+
         .rb-credential-list {
             display: grid;
             gap: 10px;
@@ -1672,6 +1695,37 @@
                             <p class="rb-empty" id="ovpnEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
 
+                        <div class="rb-protocol-panel" id="wgProtocolPanel" hidden>
+                            <div class="rb-vpn-block">
+                                {% if wireguard.profiles %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="wireguardTitle">WireGuard configs</h4>
+                                    {% for item in wireguard.profiles %}
+                                    <div class="rb-vpn-download" data-wg-profile>
+                                        <div>
+                                            <span class="rb-vpn-name">{% if item.Remark %}{{ item.Remark }}{% else %}{{ item.Filename }}{% endif %}</span>
+                                            <span class="rb-vpn-meta">{{ item.Filename }}</span>
+                                        </div>
+                                        <div class="rb-vpn-actions">
+                                            <a class="rb-link-button" href="{{ item.DownloadURL }}" target="_blank" rel="noopener noreferrer" data-i18n="downloadButton">Download</a>
+                                            {% if item.Link %}
+                                            <button class="rb-link-button" type="button" data-copy-text="{{ item.Link }}" data-i18n="copyLinkButton">Copy link</button>
+                                            {% endif %}
+                                            {% if item.Body %}
+                                            <button class="rb-link-button" type="button" data-copy-target="wg-config-{{ item.HostTag }}" data-i18n="copyConfigButton">Copy config</button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% if item.Body %}
+                                    <textarea class="rb-wg-config" id="wg-config-{{ item.HostTag }}" readonly>{{ item.Body }}</textarea>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <p class="rb-empty" id="wgEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
+
                         <div class="rb-protocol-panel" id="l2tpProtocolPanel" hidden>
                             <div class="rb-vpn-block">
                                 {% if l2tp %}
@@ -2085,6 +2139,8 @@
                     v2Title: 'links',
                     wireguardTitle: 'WireGuard configs',
                     copyAllButton: 'Copy all',
+                    copyLinkButton: 'Copy link',
+                    copyConfigButton: 'Copy config',
                     noConfigs: 'No configurations available.',
                     searchPlaceholder: 'Search by name, protocol, host or raw link...',
                     protocolTabV2: 'v2',
@@ -2092,6 +2148,7 @@
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
                     openvpnCount: '[[count]] profile ready',
+                    wireguardCount: '[[count]] config ready',
                     credentialCount: '[[count]] credential card ready',
                     usageChartTitle: 'Usage history',
                     usageChartCopy: 'Your daily data usage over time.',
@@ -2183,6 +2240,8 @@
                     v2Title: 'links',
                     wireguardTitle: 'کانفیگ‌های WireGuard',
                     copyAllButton: 'کپی همه',
+                    copyLinkButton: 'کپی لینک',
+                    copyConfigButton: 'کپی کانفیگ',
                     noConfigs: 'کانفیگی برای نمایش وجود ندارد.',
                     searchPlaceholder: 'جستجو بر اساس نام، پروتکل، هاست یا لینک خام...',
                     protocolTabV2: 'v2',
@@ -2190,6 +2249,7 @@
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
                     openvpnCount: '[[count]] پروفایل آماده است',
+                    wireguardCount: '[[count]] کانفیگ آماده است',
                     credentialCount: '[[count]] کارت اطلاعاتی آماده است',
                     usageChartTitle: 'تاریخچه مصرف',
                     usageChartCopy: 'روند مصرف روزانه‌ی شما در طول زمان.',
@@ -2281,6 +2341,8 @@
                     v2Title: 'links',
                     wireguardTitle: 'Конфиги WireGuard',
                     copyAllButton: 'Копировать все',
+                    copyLinkButton: 'Копировать ссылку',
+                    copyConfigButton: 'Копировать конфиг',
                     noConfigs: 'Нет доступных конфигов.',
                     searchPlaceholder: 'Поиск по имени, протоколу, хосту или ссылке...',
                     protocolTabV2: 'v2',
@@ -2288,6 +2350,7 @@
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
                     openvpnCount: 'Готово профилей: [[count]]',
+                    wireguardCount: 'Готово конфигов: [[count]]',
                     credentialCount: 'Готово карточек доступа: [[count]]',
                     usageChartTitle: 'История трафика',
                     usageChartCopy: 'Ваш ежедневный расход трафика.',
@@ -2379,6 +2442,8 @@
                     v2Title: 'links',
                     wireguardTitle: 'WireGuard 配置',
                     copyAllButton: '复制全部',
+                    copyLinkButton: '复制链接',
+                    copyConfigButton: '复制配置',
                     noConfigs: '暂无可用配置。',
                     searchPlaceholder: '按名称、协议、主机或原始链接搜索...',
                     protocolTabV2: 'v2',
@@ -2386,6 +2451,7 @@
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
                     openvpnCount: '已准备 [[count]] 个配置文件',
+                    wireguardCount: '已准备 [[count]] 个配置',
                     credentialCount: '已准备 [[count]] 张凭据卡',
                     usageChartTitle: '流量历史',
                     usageChartCopy: '您每日的流量使用趋势。',
@@ -3167,6 +3233,10 @@
                 return document.querySelectorAll('[data-ovpn-profile]').length;
             }
 
+            function countWireguardProfiles() {
+                return document.querySelectorAll('[data-wg-profile]').length;
+            }
+
             function countCredentialCards() {
                 return document.querySelectorAll('[data-l2tp-card], [data-pptp-card]').length;
             }
@@ -3179,8 +3249,8 @@
                 if (countOpenvpnProfiles() > 0) {
                     tabs.push({ key: 'ovpn', count: countOpenvpnProfiles() });
                 }
-                if (wireguardConfigLinks.length > 0) {
-                    tabs.push({ key: 'wireguard', count: wireguardConfigLinks.length });
+                if (countWireguardProfiles() > 0 || wireguardConfigLinks.length > 0) {
+                    tabs.push({ key: 'wireguard', count: countWireguardProfiles() || wireguardConfigLinks.length });
                 }
                 if (countCredentialCards() > 0) {
                     tabs.push({ key: 'l2tp', count: countCredentialCards() });
@@ -3284,12 +3354,15 @@
                 var searchWrap = document.getElementById('configSearchWrap');
                 var linksPanel = document.getElementById('linksProtocolPanel');
                 var ovpnPanel = document.getElementById('ovpnProtocolPanel');
+                var wgPanel = document.getElementById('wgProtocolPanel');
                 var l2tpPanel = document.getElementById('l2tpProtocolPanel');
                 var ovpnEmpty = document.getElementById('ovpnEmptyState');
+                var wgEmpty = document.getElementById('wgEmptyState');
                 var l2tpEmpty = document.getElementById('l2tpEmptyState');
                 var ovpnCount = countOpenvpnProfiles();
+                var wgCount = countWireguardProfiles();
                 var credentialCount = countCredentialCards();
-                var isLinkView = state.activeView === 'v2' || state.activeView === 'wireguard';
+                var isLinkView = state.activeView === 'v2';
 
                 if (title) {
                     title.textContent = activeViewTitle();
@@ -3315,11 +3388,17 @@
                 if (ovpnPanel) {
                     ovpnPanel.hidden = state.activeView !== 'ovpn';
                 }
+                if (wgPanel) {
+                    wgPanel.hidden = state.activeView !== 'wireguard';
+                }
                 if (l2tpPanel) {
                     l2tpPanel.hidden = state.activeView !== 'l2tp';
                 }
                 if (ovpnEmpty) {
                     ovpnEmpty.hidden = ovpnCount > 0;
+                }
+                if (wgEmpty) {
+                    wgEmpty.hidden = wgCount > 0;
                 }
                 if (l2tpEmpty) {
                     l2tpEmpty.hidden = credentialCount > 0;
@@ -3328,6 +3407,16 @@
                 if (state.activeView === 'ovpn') {
                     count.textContent = interpolate(t('openvpnCount'), {
                         count: formatNumber(ovpnCount)
+                    });
+                    if (copyAllButton) {
+                        copyAllButton.disabled = true;
+                    }
+                    return;
+                }
+
+                if (state.activeView === 'wireguard') {
+                    count.textContent = interpolate(t('wireguardCount'), {
+                        count: formatNumber(wgCount || wireguardConfigLinks.length)
                     });
                     if (copyAllButton) {
                         copyAllButton.disabled = true;
@@ -3799,6 +3888,12 @@
                 document.querySelectorAll('[data-copy-text]').forEach(function (button) {
                     button.addEventListener('click', function () {
                         copyText(button.getAttribute('data-copy-text') || '', button);
+                    });
+                });
+                document.querySelectorAll('[data-copy-target]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        var target = document.getElementById(button.getAttribute('data-copy-target') || '');
+                        copyText(target ? target.value || target.textContent || '' : '', button);
                     });
                 });
                 document.querySelectorAll('[data-range-days]').forEach(function (button) {

@@ -166,15 +166,18 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse wg link: %v", err)
 	}
-	if parsed.Scheme != "wg" || parsed.Host != "vpn.example.com:51820" {
+	if parsed.Scheme != "wireguard" || parsed.Host != "vpn.example.com:51820" || parsed.User == nil || parsed.User.Username() == "" {
 		t.Fatalf("unexpected wg URI endpoint: %s", material.Link)
 	}
 	query := parsed.Query()
-	if query.Get("pk") == "" || query.Get("peer_pk") == "" {
+	if query.Get("publickey") == "" {
 		t.Fatalf("wg URI is missing keys: %s", material.Link)
 	}
-	if local := query.Get("local_address"); !strings.HasSuffix(local, "/32") {
-		t.Fatalf("local_address should be a client /32, got %q", local)
+	if local := query.Get("address"); !strings.HasSuffix(local, "/32") {
+		t.Fatalf("address should be a client /32, got %q", local)
+	}
+	if reserved := query.Get("reserved"); reserved != "0,0,0" {
+		t.Fatalf("reserved fallback should be set, got %q", reserved)
 	}
 }
 
@@ -219,7 +222,12 @@ func TestBuildConfigLinksEmitsWireGuardURI(t *testing.T) {
 	if len(links.Links) != 1 {
 		t.Fatalf("expected one WireGuard link, got %#v", links.Links)
 	}
-	if !strings.HasPrefix(links.Links[0], "wg://vpn.example.com:51820/") {
+	if !strings.HasPrefix(links.Links[0], "wireguard://") || !strings.Contains(links.Links[0], "@vpn.example.com:51820?") {
 		t.Fatalf("unexpected WireGuard link: %s", links.Links[0])
+	}
+	for _, want := range []string{"address=", "publickey=", "reserved=0%2C0%2C0"} {
+		if !strings.Contains(links.Links[0], want) {
+			t.Fatalf("WireGuard link missing %q: %s", want, links.Links[0])
+		}
 	}
 }

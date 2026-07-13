@@ -194,7 +194,18 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 	}, []string{
 		"vless://id@example.com:443?security=tls&type=ws#Alpha",
 		"ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta",
-	}, "/sub/token/usage", "https://support.example", "token")
+	}, "/sub/token/usage", "https://support.example", "token", map[string]any{
+		"wireguard": map[string]any{
+			"profiles": []WGProfile{{
+				HostTag:     "wg-edge",
+				Remark:      "WG Edge",
+				Filename:    "alice-wg-edge.conf",
+				DownloadURL: "/sub/token/wg/wg-edge.conf",
+				Link:        "wireguard://key@wg.example.com:51820?address=10.70.0.2%2F32&publickey=pub&reserved=0%2C0%2C0#WG",
+				Body:        "[Interface]\nPrivateKey = key\n",
+			}},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,10 +219,15 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 		`data-lang-choice="zh"`,
 		`id="appDownloadList"`,
 		`data-fallback-platform="android"`,
-		`class="rb-app-icon" src="https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"`,
+		`class="rb-app-icon"`,
+		`https://raw.githubusercontent.com/2dust/v2rayNG/master/V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png`,
 		`appDownloadsTitle: 'Download apps'`,
 		`name: 'v2rayNG'`,
 		`var rawLinks = ['vless://id@example.com:443?security=tls&type=ws#Alpha', 'ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta'];`,
+		`id="wgProtocolPanel"`,
+		`id="wg-config-wg-edge"`,
+		`href="/sub/token/wg/wg-edge.conf"`,
+		`data-copy-target="wg-config-wg-edge"`,
 	} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected %q in rendered bundled template:\n%s", expected, html)
@@ -312,7 +328,7 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 		},
 		"wireguard": map[string]any{
 			"downloads": []string{"https://vpn.example/sub/token/wg/edge.conf"},
-			"links":     []string{"wg://vpn.example:51820/?pk=client#edge"},
+			"links":     []string{"wireguard://client@vpn.example:51820?address=10.70.0.2%2F32&publickey=server&reserved=0%2C0%2C0#edge"},
 			"profiles": []WGProfile{{
 				Body: "[Interface]\nPrivateKey = key\n",
 			}},
@@ -331,7 +347,7 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 	for _, expected := range []string{
 		"https://vpn.example/sub/token/ov/edge.ovpn",
 		"https://vpn.example/sub/token/wg/edge.conf",
-		"wg://vpn.example:51820/?pk=client#edge",
+		"wireguard://client@vpn.example:51820?address=10.70.0.2%2F32&amp;publickey=server&amp;reserved=0%2C0%2C0#edge",
 		"PrivateKey = key",
 		"l2tp.example.com",
 		"alice",

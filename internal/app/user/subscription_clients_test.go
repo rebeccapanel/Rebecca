@@ -240,8 +240,13 @@ func TestSubscriptionInfoIncludesVPNDownloadMaterialAndProtocolEntries(t *testin
 		t.Fatalf("unexpected WG downloads: %#v", wireguard["downloads"])
 	}
 	wgLinks, ok := wireguard["links"].([]string)
-	if !ok || len(wgLinks) != 1 || !strings.HasPrefix(wgLinks[0], "wg://wg.example.com:51820/") {
+	if !ok || len(wgLinks) != 1 || !strings.HasPrefix(wgLinks[0], "wireguard://") || !strings.Contains(wgLinks[0], "@wg.example.com:51820?") {
 		t.Fatalf("unexpected WG links: %#v", wireguard["links"])
+	}
+	for _, expected := range []string{"address=", "publickey=", "reserved=0%2C0%2C0"} {
+		if !strings.Contains(wgLinks[0], expected) {
+			t.Fatalf("WG link missing %q: %s", expected, wgLinks[0])
+		}
 	}
 	wgProfiles, ok := wireguard["profiles"].([]WGProfile)
 	if !ok || len(wgProfiles) != 1 {
@@ -383,6 +388,14 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			service_id INTEGER,
 			host_id INTEGER,
 			sort BIGINT DEFAULT 0
+		)`,
+		`CREATE TABLE wireguard_peer_addresses (
+			inbound_tag TEXT,
+			user_id INTEGER,
+			pool TEXT,
+			server_address TEXT,
+			address TEXT,
+			PRIMARY KEY (inbound_tag, user_id, pool, server_address)
 		)`,
 		`CREATE TABLE xray_config (
 			id INTEGER PRIMARY KEY,

@@ -844,6 +844,14 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			rawLinks = append(rawLinks, downloadLinks...)
 		}
 	}
+	if wireguard, ok := vpnInfo["wireguard"].(map[string]any); ok {
+		if wgLinks, ok := wireguard["links"].([]string); ok {
+			rawLinks = append(rawLinks, wgLinks...)
+		}
+		if downloadLinks, ok := wireguard["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
 	content := fallbackSubscriptionPageTemplate
 	if s.templates != nil {
 		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)

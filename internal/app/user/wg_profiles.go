@@ -272,11 +272,17 @@ func buildWGConfigBody(privateKey string, clientAddress string, serverPublicKey 
 
 func buildWGURI(remark string, address string, port string, privateKey string, clientAddress string, serverPublicKey string, settings map[string]any) string {
 	values := url.Values{}
-	values.Set("pk", privateKey)
-	values.Set("local_address", clientAddress)
-	values.Set("peer_pk", serverPublicKey)
+	values.Set("address", clientAddress)
+	values.Set("publickey", serverPublicKey)
+	values.Set("reserved", wgReservedBytes(settings))
+	if allowed := stringList(settings["allowed_ips"]); len(allowed) > 0 {
+		values.Set("allowedips", strings.Join(allowed, ","))
+	}
+	if dns := stringList(settings["dns_servers"]); len(dns) > 0 {
+		values.Set("dns", strings.Join(dns, ","))
+	}
 	if psk := strings.TrimSpace(firstNonEmptyString(settings["pre_shared_key"], settings["preshared_key"], settings["presharedKey"])); psk != "" {
-		values.Set("pre_shared_key", psk)
+		values.Set("presharedkey", psk)
 	}
 	if mtu := intValue(settings["mtu"]); mtu > 0 {
 		values.Set("mtu", fmt.Sprint(mtu))
@@ -284,20 +290,26 @@ func buildWGURI(remark string, address string, port string, privateKey string, c
 	if keepalive := intValue(settings["persistent_keepalive"]); keepalive > 0 {
 		values.Set("keepalive", fmt.Sprint(keepalive))
 	}
-	if workers := strings.TrimSpace(stringValue(settings["workers"])); workers != "" && workers != "0" {
-		values.Set("workers", workers)
-	}
-	if reserved := strings.TrimSpace(firstNonEmptyString(settings["reserved"], settings["reserved_bytes"], settings["reservedBytes"])); reserved != "" {
-		values.Set("reserved", reserved)
-	}
 	u := url.URL{
-		Scheme:   "wg",
+		Scheme:   "wireguard",
+		User:     url.User(privateKey),
 		Host:     formatWGEndpoint(address, port),
-		Path:     "/",
 		RawQuery: values.Encode(),
 		Fragment: remark,
 	}
 	return u.String()
+}
+
+func wgReservedBytes(settings map[string]any) string {
+	for _, key := range []string{"reserved", "reserved_bytes", "reservedBytes"} {
+		if reserved, ok := settings[key].(string); ok && strings.TrimSpace(reserved) != "" {
+			return strings.TrimSpace(reserved)
+		}
+		if parts := stringList(settings[key]); len(parts) > 0 {
+			return strings.Join(parts, ",")
+		}
+	}
+	return "0,0,0"
 }
 
 func wgServerPublicKey(settings map[string]any) (string, error) {
